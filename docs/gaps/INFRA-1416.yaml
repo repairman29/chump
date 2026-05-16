@@ -1,0 +1,14 @@
+- id: INFRA-1416
+  domain: INFRA
+  title: "EFFECTIVE: chump pr explain-block <PR> — reads CI rollup + cross-refs sibling gaps in flight + names the next mechanical action (replaces 6× manual statusCheckRollup digging today)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New CLI: chump pr explain-block <pr-number-or-url> reads the GitHub status-check rollup + cross-refs against fleet state to produce a single coherent explanation"
+    - "For each failing/queued check: identifies the test name + failure class + whether the failure is local to this PR or fleet-wide (cross-ref open PRs failing same check)"
+    - "Names the next mechanical action: \"rebase against main (INFRA-1389 driver should auto-resolve)\", \"wait for INFRA-NEW sibling-fix (in flight, PR #NNN)\", \"fix locally: cargo clippy says X at file:line\""
+    - "If failure is fleet-wide (>3 PRs failing same check), also surfaces: \"this is a fleet-wide block, file a P0 fix or wait — see kind=ci_failure_cluster ambient events\""
+    - "--json variant for tooling"
+    - CI test scripts/ci/test-pr-explain-block.sh stubs a few stuck-PR scenarios + asserts the right explanation per scenario
+

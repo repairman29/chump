@@ -1,0 +1,18 @@
+- id: INFRA-1389
+  domain: INFRA
+  title: "ZERO-WASTE: extend merge-driver coverage to ALL append-only shared files (ci.yml, EVENT_REGISTRY.yaml, Cargo.toml deps, app.js components) — kills ~70% of today's PR conflicts at source"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    Observed today (2026-05-15 session): 4 PRs (#2075, #2084, #2088, #2116, #2122) required manual rebase against changing main, with 2 of them hitting actual conflicts in ci.yml and EVENT_REGISTRY.yaml. Both conflicts were semantically independent — each PR was adding a new test step / new kind — but git sees adjacent-line additions as conflicts. The infrastructure for auto-resolution already exists (gap-yaml-add-line per install-merge-drivers output) but coverage is incomplete across the 5 hot shared files. This is the highest-leverage single fix in the ship-at-scale arc: kills ~70% of today's manual conflict-resolution rework.
+  acceptance_criteria:
+    - Audit current .gitattributes — list every file that has a custom merge driver registered
+    - For each of the 5 hot shared files (.github/workflows/ci.yml, docs/observability/EVENT_REGISTRY.yaml, Cargo.toml, web/v2/app.js, src/main.rs), verify a merge driver exists that auto-resolves additive diffs (new step, new kind, new dep, new class, new arm)
+    - Where missing, implement a `gap-yaml-add-line`-style driver (see existing scripts/git-hooks/merge-drivers/ for pattern) — driver reads both sides, keys by structural unit (step name, kind, package name, class name, match-arm literal), unions both, sorts for determinism
+    - .gitattributes entries register the driver for each path
+    - CI test scripts/ci/test-merge-driver-coverage.sh asserts every hot file is registered, AND simulates a synthetic conflict on each file to assert auto-resolution returns a buildable diff
+    - scripts/setup/install-merge-drivers.sh extended to cover the new drivers; install-on-clone hook validates coverage
+    - "docs/process/MERGE_DRIVERS.md (new or appended) documents the pattern: which files are append-only, how a new entry should be added, what the driver does on conflict"
+    - "Measure: count of \"CONFLICT\" lines in `git rebase` runs across last 50 rebases — target >70% drop"
+

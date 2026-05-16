@@ -43,11 +43,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
+import json
 import os
 import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -55,6 +58,98 @@ try:
 except ImportError:
     print("error: PyYAML not installed (pip install pyyaml)", file=sys.stderr)
     sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# INFRA-1424: gap_drift alert source deduplication
+# ---------------------------------------------------------------------------
+
+_DRIFT_ALERT_STATE_FILE = "drift-alert-state.json"
+# Default dedup window: 60 minutes. Override via CHUMP_DRIFT_ALERT_WINDOW_MIN.
+_DEFAULT_DRIFT_ALERT_WINDOW_MIN = 60
+
+
+def _drift_alert_window_min() -> int:
+    """Return the dedup window in minutes (env-configurable)."""
+    try:
+        return int(os.environ.get("CHUMP_DRIFT_ALERT_WINDOW_MIN", _DEFAULT_DRIFT_ALERT_WINDOW_MIN))
+    except (ValueError, TypeError):
+        return _DEFAULT_DRIFT_ALERT_WINDOW_MIN
+
+
+def _subject_hash(kind: str, ids: list) -> str:
+    """Stable hash for (kind, sorted-ids) — same alert always → same hash."""
+    payload = kind + "\x00" + "\x00".join(sorted(ids))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _load_drift_alert_state(locks_dir: Path) -> dict:
+    """Load {subject_hash: last_emit_ts_unix} from drift-alert-state.json.
+
+    Returns empty dict on any read/parse error (fail-open: let the emit happen).
+    """
+    state_path = locks_dir / _DRIFT_ALERT_STATE_FILE
+    if not state_path.exists():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_drift_alert_state(locks_dir: Path, state: dict) -> None:
+    """Atomically write drift-alert-state.json (write-tmp, rename)."""
+    locks_dir.mkdir(parents=True, exist_ok=True)
+    state_path = locks_dir / _DRIFT_ALERT_STATE_FILE
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=locks_dir, prefix=".drift-alert-state-", suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            json.dump(state, f, separators=(",", ":"))
+            f.write("\n")
+        os.replace(tmp_name, state_path)
+    except OSError:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+
+
+def _prune_drift_alert_state(state: dict, window_min: int) -> dict:
+    """Remove entries older than 2× the dedup window to keep the file small."""
+    cutoff = dt.datetime.now(dt.timezone.utc).timestamp() - (window_min * 2 * 60)
+    return {k: v for k, v in state.items() if v >= cutoff}
+
+
+def should_emit_drift_alert(
+    locks_dir: Path,
+    kind: str,
+    ids: list,
+) -> tuple:
+    """Return (should_emit, subject_hash) and update state if emitting.
+
+    Only emits if (kind, subject_hash) was not emitted within the last
+    CHUMP_DRIFT_ALERT_WINDOW_MIN minutes (default 60).
+
+    This function is idempotent on the "no" path — it only mutates state
+    when it returns should_emit=True.
+    """
+    window_min = _drift_alert_window_min()
+    shash = _subject_hash(kind, ids)
+    state = _load_drift_alert_state(locks_dir)
+    state = _prune_drift_alert_state(state, window_min)
+
+    last_emit = state.get(shash)
+    now_ts = dt.datetime.now(dt.timezone.utc).timestamp()
+    if last_emit is not None and (now_ts - last_emit) < (window_min * 60):
+        return False, shash
+
+    # Mark this hash as emitted now, then save
+    state[shash] = now_ts
+    _save_drift_alert_state(locks_dir, state)
+    return True, shash
+
+
+# ---------------------------------------------------------------------------
 
 
 def repo_root() -> Path:
@@ -413,26 +508,46 @@ def cmd_safe_sweep(args, root: Path) -> int:
         except subprocess.CalledProcessError:
             main_repo = root
         ambient = main_repo / ".chump-locks" / "ambient.jsonl"
-        if not ambient.parent.exists():
-            ambient.parent.mkdir(parents=True, exist_ok=True)
-        import json as _json
+        locks_dir = ambient.parent
+        if not locks_dir.exists():
+            locks_dir.mkdir(parents=True, exist_ok=True)
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        emitted = 0
         if bucket3:
             # CREDIBLE-012: ids/note only mention OPEN gaps now. The alert is
             # actionable (low cardinality, real signal), not a noise floor.
-            evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_orphan",
-                   "source": "gap-doctor-safe-sweep", "ids": bucket3,
-                   "note": f"{len(bucket3)} OPEN gap(s) in state.db with no YAML mirror (per CREDIBLE-012, done/superseded gaps no longer counted; YAML is optional post-INFRA-760)"}
-            with ambient.open("a") as f:
-                f.write(_json.dumps(evt, separators=(",", ":")) + "\n")
+            #
+            # INFRA-1424: source dedup — only emit once per window per unique
+            # subject (kind + sorted IDs). Avoids 20+ identical alerts per hour
+            # when gap-doctor runs every 15 min and the same orphan persists.
+            do_emit, shash = should_emit_drift_alert(locks_dir, "gap_drift_orphan", bucket3)
+            if do_emit:
+                evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_orphan",
+                       "source": "gap-doctor-safe-sweep", "ids": bucket3,
+                       "subject_hash": shash,
+                       "note": f"{len(bucket3)} OPEN gap(s) in state.db with no YAML mirror (per CREDIBLE-012, done/superseded gaps no longer counted; YAML is optional post-INFRA-760)"}
+                with ambient.open("a") as f:
+                    f.write(json.dumps(evt, separators=(",", ":")) + "\n")
+                emitted += 1
+            else:
+                window_min = _drift_alert_window_min()
+                print(f"[safe-sweep] gap_drift_orphan suppressed (dedup window {window_min}m, hash={shash})")
         if bucket4:
-            evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_yaml_only",
-                   "source": "gap-doctor-safe-sweep", "ids": bucket4,
-                   "note": f"{len(bucket4)} gaps in YAML with no DB row (likely YAML-direct fallback collision)"}
-            with ambient.open("a") as f:
-                f.write(_json.dumps(evt, separators=(",", ":")) + "\n")
-        print(f"\n[safe-sweep] emitted {(1 if bucket3 else 0) + (1 if bucket4 else 0)} ALERT event(s) to {ambient}")
+            do_emit, shash = should_emit_drift_alert(locks_dir, "gap_drift_yaml_only", bucket4)
+            if do_emit:
+                evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_yaml_only",
+                       "source": "gap-doctor-safe-sweep", "ids": bucket4,
+                       "subject_hash": shash,
+                       "note": f"{len(bucket4)} gaps in YAML with no DB row (likely YAML-direct fallback collision)"}
+                with ambient.open("a") as f:
+                    f.write(json.dumps(evt, separators=(",", ":")) + "\n")
+                emitted += 1
+            else:
+                window_min = _drift_alert_window_min()
+                print(f"[safe-sweep] gap_drift_yaml_only suppressed (dedup window {window_min}m, hash={shash})")
+        if emitted:
+            print(f"\n[safe-sweep] emitted {emitted} ALERT event(s) to {ambient}")
 
     print(f"\n[safe-sweep] complete (auto-fixed: {len(bucket1) + len(bucket2)}, alerted: {len(bucket3) + len(bucket4)})")
     return 0

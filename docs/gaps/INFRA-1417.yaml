@@ -1,0 +1,16 @@
+- id: INFRA-1417
+  domain: INFRA
+  title: "CREDIBLE: per-PR wall-clock SLO + dashboard — measure 'PR opened → merged' median + p90; alert when p90 >2h fleet-wide (today p90=∞ due to convoy wedge)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - New scripts/dev/pr-cycle-slo.sh that pages over closed (merged) PRs in last N days from GitHub
+    - Computes median + p90 of created_at → merged_at deltas
+    - Emits kind=pr_cycle_slo to ambient.jsonl with {ts, kind, window_days, median_min, p90_min, sample_size}
+    - "Threshold: p90 >120min fires kind=pr_cycle_slo_breach (separate alert)"
+    - PWA <chump-view-fleet-health> panel renders the latest pr_cycle_slo as a sparkline
+    - Existing scripts/coord/_bounced_pr_classifier.py also reports cycle time per PR-rejection; this is the rolled-up fleet metric
+    - Launchd job runs hourly
+    - CI test scripts/ci/test-pr-cycle-slo.sh fabricates a github_cache.db with synthetic merged PRs + asserts the sparkline computation
+

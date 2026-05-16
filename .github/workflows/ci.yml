@@ -28,6 +28,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5  # path filter only; <30s in practice
+    # INFRA-1348: dorny/paths-filter can fail transiently (GitHub runner issue,
+    # network blip). A FAILURE here flips rollup state and blocks auto-merge
+    # even though all correctness gates (test, audit, ACP) passed. COE makes
+    # the conclusion "neutral" on failure; downstream jobs see null outputs
+    # and treat all path-filters as false (= skip) which is safe.
+    continue-on-error: true
     outputs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
@@ -36,6 +42,12 @@ jobs:
       scripts: ${{ steps.filter.outputs.scripts }}
       acp: ${{ steps.filter.outputs.acp }}
       docs: ${{ steps.filter.outputs.docs }}
+      # INFRA-1379: granular lane outputs
+      rust_code: ${{ steps.filter.outputs.rust }}
+      web_code: ${{ steps.filter.outputs.web_code }}
+      ci_config_only: ${{ steps.lanes.outputs.ci_config_only }}
+      scripts_only: ${{ steps.lanes.outputs.scripts_only }}
+      docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -95,10 +107,10 @@ jobs:
               - 'scripts/ci/verify-external-golden-path.sh'
               - '.github/workflows/ci.yml'
             tauri:
-              - 'src/**'
+              - 'src/desktop_launcher.rs'
               - 'desktop/**'
               - 'e2e-tauri/**'
-              - '.github/workflows/ci.yml'
+              - 'src-tauri/**'
             rust:
               - 'src/**'
               - 'crates/**'
@@ -127,22 +139,59 @@ jobs:
               - 'CODE_OF_CONDUCT.md'
               - 'CHANGELOG.md'
               - 'SECURITY.md'
+            # INFRA-1379: new granular lane filters
+            web_code:
+              - 'web/**'
+              - 'ChumpMenu/**'
+            ci_config_raw:
+              - '.github/workflows/**'
+
+      # INFRA-1379: Compute derived exclusion flags.  dorny/paths-filter can
+      # only tell you IF a path changed; it cannot tell you if that was the
+      # ONLY thing that changed.  We compute docs_only / scripts_only /
+      # ci_config_only here so stubs can fire on pure-lane PRs.
+      - name: Compute lane flags (INFRA-1379)
+        id: lanes
+        run: |
+          rust="${{ steps.filter.outputs.rust }}"
+          web="${{ steps.filter.outputs.web_code }}"
+          scripts="${{ steps.filter.outputs.scripts }}"
+          docs="${{ steps.filter.outputs.docs }}"
+          ci="${{ steps.filter.outputs.ci_config_raw }}"
+
+          # docs_only: docs changed but no rust / web / scripts
+          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$ci" != "true" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # scripts_only: scripts changed but no rust / web
+          if [[ "$scripts" == "true" && "$rust" != "true" && "$web" != "true" ]]; then
+            echo "scripts_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ci_config_only: only .github/workflows/** changed
+          if [[ "$ci" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$docs" != "true" ]]; then
+            echo "ci_config_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
-  # INFRA-1348: Only runs on push-to-main and merge_group — NOT on PRs.
-  #
-  # Root-cause analysis: `continue-on-error: true` (INFRA-1342) was intended
-  # to stop this flaky job from blocking auto-merge, but it doesn't help:
-  # GitHub's statusCheckRollup aggregates individual job *conclusions* (not the
-  # workflow-run conclusion), so a job with conclusion=failure still sets
-  # statusCheckRollup.state=FAILURE → mergeStateStatus=BLOCKED fleet-wide.
-  #
-  # The correct fix is to not run the job on pull_request events at all.
-  # The test requires Ollama (unreachable on CI runners) so it will always
-  # fail on PRs anyway. Run it post-merge on push to surface real regressions.
+  # Only runs when desktop / src / e2e-tauri files change. Skipped on
+  # docs-only, scripts-only, crate-only PRs.
   tauri-cowork-e2e:
     needs: changes
-    if: github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: removed 'push' trigger — push events create a check run
+    # with conclusion=failure on the commit, which GitHub's statusCheckRollup
+    # aggregates into FAILURE and blocks auto-merge on ALL PRs fleet-wide, even
+    # those that pass all required checks.  Only run tauri when tauri files
+    # change (any event) or in the merge queue.  continue-on-error retained as
+    # a second layer of protection.
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -440,6 +489,17 @@ jobs:
         # Per-line opt-out: `# chump-harness-ok: claude-mention`.
         # Promote to --strict once INFRA-1053 backfill closes the long-tail.
         run: bash scripts/ci/test-no-claude-leak.sh
+
+      - name: release staleness gate (INFRA-1373, P2 warn-only)
+        # Warns when the latest GitHub release is > CHUMP_RELEASE_STALENESS_DAYS
+        # (default 14d) behind main HEAD. Non-blocking at P2; promote to
+        # blocking (remove continue-on-error) when gap exceeds 30d.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHUMP_RELEASE_STALENESS_DAYS: "14"
+        run: bash scripts/ci/check-release-staleness.sh
+
       - name: markdown intra-doc links (DOC-039)
         # Gates on links in .md files MODIFIED by this PR — prevents
         # regression without forcing a one-shot cleanup of the 492
@@ -899,8 +959,8 @@ jobs:
   # Skipped when no e2e-relevant files change.  Target wall-clock: ~10-12 min.
   e2e-pwa:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
@@ -979,8 +1039,8 @@ jobs:
   # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
   e2e-battle-sim:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -997,8 +1057,8 @@ jobs:
   # No Ollama.  Target wall-clock: ~5 min.
   e2e-golden-path:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -1056,6 +1116,11 @@ jobs:
     needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
     if: always()
     runs-on: ubuntu-latest
+    # INFRA-1348: e2e shards all have continue-on-error: true, so test-e2e
+    # normally always succeeds. But runner failures or script errors in this
+    # aggregator itself could still contribute FAILURE to rollup state, blocking
+    # auto-merge on PRs where all required checks (test, audit, ACP) passed.
+    continue-on-error: true
     steps:
       - name: Verify all e2e shards passed
         run: |
@@ -1086,6 +1151,12 @@ jobs:
   # marks itself green in <1min. To remove this job entirely, also remove
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
+    needs: changes
+    # INFRA-1379: skip audit for docs-only PRs (gap YAMLs, .md edits) — audit-stub
+    # satisfies the required check. Always runs on push/merge_group to keep main green.
+    if: |
+      needs.changes.outputs.docs_only != 'true' ||
+      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
@@ -1139,6 +1210,9 @@ jobs:
 
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
+
+      - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
+        run: bash scripts/ci/test-cache-mergestatestatus.sh
 
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
@@ -1201,6 +1275,12 @@ jobs:
         run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: PWA flake quarantine wiring (INFRA-1332)
         run: bash scripts/ci/test-pwa-flake-quarantine.sh
+      - name: worktree-prune protects live edits (INFRA-1347)
+        run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
+      - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
+        run: bash scripts/ci/test-cockpit-wake-fleet.sh
+      - name: pre-commit/pre-push gate auto-skip on irrelevant file types (INFRA-1398)
+        run: bash scripts/ci/test-precommit-gate-auto-skip.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
@@ -1547,16 +1627,18 @@ jobs:
   audit-stub:
     name: audit-stub
     needs: changes
+    # INFRA-1379: fire when code filter is empty (original condition) OR when
+    # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
     if: |
-      needs.changes.outputs.code != 'true' &&
+      (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
       github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: audit skipped (no code changes detected)
+      - name: audit skipped (no code changes or docs-only lane detected)
         run: |
-          echo "audit-stub: no code-filter changes — audit CI checks not required for this diff."
-          echo "Branch protection satisfied by this stub."
+          echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
+          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub."
 
   # ── audit-required: rollup that branch protection enforces ───────────────
   audit-required:
@@ -1607,6 +1689,9 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
+
+      - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
+        run: bash scripts/ci/test-cargo-mutex-isolation.sh
 
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.

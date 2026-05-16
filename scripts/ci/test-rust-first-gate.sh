@@ -158,6 +158,37 @@ out="$(run_gate "$TR9" "tmp")"; rc=$?
 if [[ $rc -eq 0 ]]; then ok "modifying existing file: allowed (only adds blocked)"; else fail "modify-only blocked: $out"; fi
 rm -rf "$TR9"
 
+# ── Test 10: chump-commit.sh -m with Rust-First-Bypass: → gate passes ─────────
+# End-to-end test for INFRA-1367: chump-commit.sh must stamp COMMIT_EDITMSG
+# with the inline -m message before git runs pre-commit hooks, so that the
+# Rust-first gate can see the bypass trailer even in -m (not -F) form.
+TR10="$(mk_repo)"
+mkdir -p "$TR10/scripts/coord" "$TR10/.chump-locks"
+echo '#!/bin/sh' > "$TR10/scripts/coord/foo.sh"
+# Install a pre-commit hook that calls the real Rust-first gate.
+cat > "$TR10/.git/hooks/pre-commit" <<HOOKEOF
+#!/usr/bin/env bash
+exec bash "$GATE"
+HOOKEOF
+chmod +x "$TR10/.git/hooks/pre-commit"
+BYPASS_MSG="$(printf 'feat: add glue shim\n\nRust-First-Bypass: 30-line gh+jq glue, not state-mutating')"
+out="$(cd "$TR10" && \
+    CHUMP_AMBIENT_GLANCE=0 \
+    CHUMP_LEASE_CHECK=0 \
+    CHUMP_AUTO_LEASE_FROM_MSG=0 \
+    CHUMP_WRONG_WORKTREE_CHECK=0 \
+    CHUMP_INDEX_LOCK=0 \
+    bash "$REPO_ROOT/scripts/coord/chump-commit.sh" \
+        scripts/coord/foo.sh \
+        -m "$BYPASS_MSG" 2>&1)"
+rc=$?
+if [[ $rc -eq 0 ]]; then
+    ok "chump-commit.sh -m with Rust-First-Bypass: trailer: gate passes (INFRA-1367)"
+else
+    fail "chump-commit.sh -m bypass trailer silently lost (rc=$rc): $out"
+fi
+rm -rf "$TR10"
+
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then

@@ -22,6 +22,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# INFRA-1378: per-PR group, cancel-in-progress so redundant pushes deduplicate.
+concurrency:
+  group: gap-status-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gap-status-check:
     runs-on: ubuntu-latest

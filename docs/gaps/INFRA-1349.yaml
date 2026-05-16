@@ -1,7 +1,8 @@
 - id: INFRA-1349
   domain: INFRA
   title: "ZERO-WASTE: target/ artifact reaper — prune cargo build dirs in stale worktrees when disk > 80%"
-  status: open
+  status: done
+  closed_pr: 2083
   priority: P1
   effort: s
   description: |

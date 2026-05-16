@@ -1,0 +1,17 @@
+- id: INFRA-1390
+  domain: INFRA
+  title: "ZERO-WASTE: pre-push hook fails CLOSED on lint-class CI errors (cargo fmt/clippy/CI test scripts on diff only) — kills cycle of push → CI catches lint → fix → re-push (today's INFRA-1370 clippy::doc-lazy-continuation)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Today's INFRA-1370 hit clippy::doc-lazy-continuation in CI after I skipped local clippy due to disk pressure. Cost: one full 20-min CI cycle, force-push, second cycle. Pre-push hook exists at scripts/git-hooks/pre-push but only skips known-flake test names; doesn't gate on lint surface. Failing locally takes 30 seconds; failing in CI takes 20 minutes + a rebase. Pairs with INFRA-1391 (stack-on-main dry-run) and INFRA-1063 (per-worktree CARGO_TARGET_DIR) to make local pre-push viable on space-pressed machines.
+  acceptance_criteria:
+    - "Extend scripts/git-hooks/pre-push to run, on the diff-only files: (a) cargo fmt --check, (b) cargo clippy --all-targets -- -D warnings on the affected crates, (c) any scripts/ci/test-<name>.sh matching the touched paths"
+    - Hook fails the push (exit 1) on any lint-class error
+    - "Bypass: --no-verify is ALLOWED for non-lint failures, but explicit --lint-bypass flag required for lint failures; bypass emits kind=lint_bypass to ambient.jsonl"
+    - Hook detects disk pressure (<5GB free) and refuses to bypass — fail with operational error message pointing at cargo-target reaper script
+    - CI test scripts/ci/test-pre-push-lint-gate.sh stands up a synthetic repo with a clippy-warning commit, runs pre-push, asserts non-zero exit + correct error message
+    - "Measure: kind=lint_bypass count in ambient.jsonl over 7d (should approach 0 once enforced)"
+    - "Bypass-of-bypass: CHUMP_LINT_GATE=off ONLY when fleet is in lint-deluge state (declared by ambient kind=lint_deluge)"
+

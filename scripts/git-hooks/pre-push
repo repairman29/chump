@@ -77,7 +77,39 @@ fi
 # Bypass: CHUMP_FMT_CHECK=0 git push
 # -----------------------------------------------------------------------
 if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
-    if ls src/**/*.rs &>/dev/null 2>&1; then
+    # INFRA-1398: gate on the PUSH DELTA's .rs content, not on whether the repo
+    # has any Rust files at all. Pre-1398 the `ls src/**/*.rs` glob was always
+    # true (chump is a Rust repo), so doc-only / ci.yml-only pushes ran
+    # cargo fmt --check unnecessarily — slow + irrelevant.
+    #
+    # Push range: stdin gives `<local-sha> <local-ref> <remote-sha> <remote-ref>`.
+    # When we cannot derive a range (first-push of a new branch, no stdin
+    # available because hook called manually), fall back to the OLD behaviour
+    # (run on every push) — safer default.
+    push_has_rust=0
+    while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
+        [[ -z "$local_sha" ]] && continue
+        # Skip branch deletions (local_sha all zeros).
+        if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
+        # First push of branch: remote_sha is zeros → compare against origin/main.
+        if [[ "$remote_sha" =~ ^0+$ ]]; then
+            range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
+            [[ -z "$range_base" ]] && range_base="origin/main"
+        else
+            range_base="$remote_sha"
+        fi
+        if git diff --name-only "$range_base..$local_sha" 2>/dev/null | grep -qE '\.rs$'; then
+            push_has_rust=1
+            break
+        fi
+    done <<<"$(cat 2>/dev/null || true)"
+    # Conservative fallback: if we couldn't read stdin (manual invocation) AND
+    # the repo has Rust files, run the check to avoid silently letting bad
+    # code through.
+    if [[ "$push_has_rust" -eq 0 ]] && [[ -t 0 ]] && ls src/**/*.rs &>/dev/null 2>&1; then
+        push_has_rust=1
+    fi
+    if [[ "$push_has_rust" -eq 1 ]]; then
         if ! cargo fmt --all -- --check >/dev/null 2>&1; then
             echo "" >&2
             echo "[pre-push] BLOCKED: cargo fmt --check failed (INFRA-749)." >&2
@@ -88,6 +120,96 @@ if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             echo "" >&2
             exit 1
         fi
+    fi
+fi
+
+# -----------------------------------------------------------------------
+# Guard 0c: cargo clippy lint gate (INFRA-1390)
+#
+# Runs cargo clippy on changed crates before the full test suite so
+# lint-class CI failures are caught locally in ~10s rather than after a
+# 20-min CI cycle.  Only fires when .rs files are changed in the diff.
+#
+# Disk-pressure guard: clippy on a large codebase needs ~200MB workspace.
+# If < CHUMP_CLIPPY_MIN_DISK_KB (default 5000000 = 5 GB) is available,
+# the gate fails with an operational message pointing at the reaper script
+# (cargo-target-reaper.sh) before wasting time on a doomed cargo invocation.
+#
+# Bypass (rare):
+#   CHUMP_CLIPPY_GATE=0 git push
+#   Emits kind=lint_bypass to ambient.jsonl; requires 'Lint-Gate-Bypass: <reason>'
+#   trailer in HEAD commit body.  Use when the clippy error is a known
+#   upstream regression or when running in lint-deluge state
+#   (ambient kind=lint_deluge present in last 10m):
+#     CHUMP_LINT_GATE=off git push   (bypass-of-bypass, deluge mode only)
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_LINT_GATE:-on}" == "off" ]]; then
+    echo "[pre-push] CHUMP_LINT_GATE=off — skipping clippy lint gate (lint-deluge mode)" >&2
+elif [[ "${CHUMP_CLIPPY_GATE:-1}" == "0" ]]; then
+    # Emit lint_bypass telemetry.
+    _lg_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _lg_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    _lg_gap="$(echo "$_lg_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
+    _lg_reason="$(git log -1 --pretty=format:%B 2>/dev/null \
+        | grep -i '^Lint-Gate-Bypass:' | head -1 \
+        | sed 's/^[Ll]int-[Gg]ate-[Bb]ypass:[[:space:]]*//' || echo "")"
+    printf '{"ts":"%s","kind":"lint_bypass","gap_id":"%s","reason":"%s","branch":"%s","bypassed_by":"CHUMP_CLIPPY_GATE=0"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lg_gap" "$_lg_reason" "$_lg_branch" \
+        >> "${_lg_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    unset _lg_root _lg_branch _lg_gap _lg_reason
+elif command -v cargo &>/dev/null; then
+    # Determine if any .rs files changed in the push vs origin/main.
+    _CLIPPY_HAS_RS=0
+    if git fetch origin main --quiet 2>/dev/null; then
+        if git diff --name-only origin/main...HEAD 2>/dev/null | grep -qE '\.rs$'; then
+            _CLIPPY_HAS_RS=1
+        fi
+    else
+        # Offline — check working tree diff.
+        if git diff --name-only HEAD 2>/dev/null | grep -qE '\.rs$'; then
+            _CLIPPY_HAS_RS=1
+        fi
+    fi
+
+    if [[ "$_CLIPPY_HAS_RS" == "1" ]]; then
+        # Disk-pressure check before invoking cargo.
+        _CLIPPY_MIN_KB="${CHUMP_CLIPPY_MIN_DISK_KB:-5000000}"
+        _AVAIL_KB=0
+        if command -v df &>/dev/null; then
+            # macOS: df -k . → 512-byte blocks; use df -k for kB
+            _AVAIL_KB=$(df -k . 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+        fi
+        if [[ "$_AVAIL_KB" -lt "$_CLIPPY_MIN_KB" ]] 2>/dev/null; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: disk pressure — only ${_AVAIL_KB}KB available, need ${_CLIPPY_MIN_KB}KB for clippy." >&2
+            echo "[pre-push] Run the cargo-target reaper to free space:" >&2
+            echo "[pre-push]   bash scripts/dev/cargo-target-reaper.sh" >&2
+            echo "[pre-push] Or bypass after freeing space: CHUMP_CLIPPY_GATE=0 git push" >&2
+            echo "" >&2
+            exit 1
+        fi
+
+        REPO_ROOT_CL="$(git rev-parse --show-toplevel)"
+        echo "[pre-push] INFRA-1390: running cargo clippy (diff has .rs changes)..." >&2
+        echo "[pre-push] Bypass: CHUMP_CLIPPY_GATE=0 git push  (with Lint-Gate-Bypass: trailer)" >&2
+
+        _WT_CLIPPY_TARGET="$REPO_ROOT_CL/.cargo-test-target"
+
+        # Run clippy; capture exit code.
+        if ! (cd "$REPO_ROOT_CL" && CARGO_TARGET_DIR="$_WT_CLIPPY_TARGET" \
+            cargo clippy --all-targets --quiet -- -D warnings) 2>&1; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: cargo clippy -D warnings failed (INFRA-1390)." >&2
+            echo "[pre-push] Lint errors must be fixed before pushing — CI will reject them." >&2
+            echo "[pre-push] Fix: cargo clippy --all-targets -- -D warnings  # then git add -u && git commit --amend" >&2
+            echo "" >&2
+            echo "[pre-push] Bypass (rare — lint infra broken, known upstream regression):" >&2
+            echo "[pre-push]   CHUMP_CLIPPY_GATE=0 git push" >&2
+            echo "[pre-push]   Add 'Lint-Gate-Bypass: <reason>' to HEAD commit body." >&2
+            echo "" >&2
+            exit 1
+        fi
+        echo "[pre-push] INFRA-1390: ✓ clippy clean" >&2
     fi
 fi
 
@@ -222,74 +344,105 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # expands to the array contents iff set-and-non-empty, otherwise
             # to nothing (zero args, not one empty arg — important because
             # cargo test treats `""` as a filter and silently runs zero tests).
-            if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
-                cargo test --bin chump --tests --no-fail-fast --quiet \
-                    ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \
-                | tee "$_TEST_LOG" | tail -200; then
-                mkdir -p "$CACHE_DIR"
-                date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
-                echo "[pre-push] INFRA-761: ✓ full suite green; cached for tree $TREE_SHA" >&2
-            else
-                # RESILIENT-012: auto-bypass if ALL failing tests are in KNOWN_FLAKES.yaml.
-                # Prevents manual Test-Gate-Bypass trailers for pre-existing main failures.
-                _CATALOG="$REPO_ROOT_T/docs/process/KNOWN_FLAKES.yaml"
-                # `|| true` defuses `set -e + pipefail`: when grep finds
-                # zero "test FOO ... FAILED" lines (compile error, panic,
-                # mock-cargo failure, etc.), the pipeline exits 1 and
-                # aborts the hook BEFORE the BLOCKED diagnostic can fire.
-                # Pre-fix: hook silently exited 1 with no diagnostic,
-                # causing scripts/ci/test-pre-push-test-gate.sh Test 4
-                # to fail "test failure should block (rc=1, out=...)"
-                # because the expected BLOCKED line never reached stdout.
-                _FAILED=$(grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$_TEST_LOG" \
-                    | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) .*/\1/' \
-                    | sort -u || true)
-                _ALL_KNOWN=1
-                _UNKNOWN_TESTS=()
-                if [[ -n "$_FAILED" && -f "$_CATALOG" ]]; then
-                    _CATALOG_TESTS=$(grep -E '^[[:space:]]*-[[:space:]]*test:' "$_CATALOG" \
-                        | sed -E 's/^[[:space:]]*-[[:space:]]*test:[[:space:]]+//; s/"//g; s/[[:space:]]*$//')
-                    while IFS= read -r _tname; do
-                        [[ -z "$_tname" ]] && continue
-                        if ! printf '%s\n' "$_CATALOG_TESTS" | grep -qxF "$_tname"; then
-                            _ALL_KNOWN=0
-                            _UNKNOWN_TESTS+=("$_tname")
-                        fi
-                    done <<< "$_FAILED"
-                else
-                    # No parseable failures (compile error?) or no catalog — treat as real failure.
-                    _ALL_KNOWN=0
-                fi
-
-                if [[ "$_ALL_KNOWN" -eq 1 && -n "$_FAILED" ]]; then
-                    _FAILED_LIST=$(printf '%s\n' "$_FAILED" | tr '\n' ' ')
-                    echo "" >&2
-                    echo "[pre-push] RESILIENT-012: all failures are catalogued in KNOWN_FLAKES.yaml — auto-bypassing gate" >&2
-                    echo "[pre-push] Known flakes: $_FAILED_LIST" >&2
-                    echo "[pre-push] (no Test-Gate-Bypass trailer needed; these are pre-existing main failures)" >&2
+            # INFRA-1403: prefer cargo-test-with-rerun.sh when available; it handles
+            # KNOWN_FLAKES auto-rerun and structured ambient telemetry internally,
+            # superseding the RESILIENT-012 manual bypass logic in the fallback path.
+            _RERUN_SCRIPT="$REPO_ROOT_T/scripts/ci/cargo-test-with-rerun.sh"
+            if [[ -x "$_RERUN_SCRIPT" ]]; then
+                if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    bash "$_RERUN_SCRIPT" -- \
+                        cargo test --bin chump --tests --no-fail-fast --quiet \
+                        ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}); then
                     mkdir -p "$CACHE_DIR"
                     date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
+                    echo "[pre-push] INFRA-761: ✓ full suite green; cached for tree $TREE_SHA" >&2
                 else
                     echo "" >&2
-                    echo "[pre-push] BLOCKED: cargo test --bin chump --tests failed (INFRA-761)." >&2
-                    echo "[pre-push] Full-suite test failure cannot be pushed — CI would reject." >&2
-                    if [[ "${#_UNKNOWN_TESTS[@]}" -gt 0 ]]; then
-                        echo "[pre-push] Unknown failures (not in KNOWN_FLAKES.yaml):" >&2
-                        for _t in "${_UNKNOWN_TESTS[@]}"; do
-                            echo "[pre-push]   $t" >&2
-                        done
-                    fi
-                    echo "" >&2
-                    echo "[pre-push] If this is a known pre-existing flake, classify it via" >&2
-                    echo "[pre-push]   docs/process/KNOWN_FLAKES.yaml (see INFRA-764) and rerun." >&2
+                    echo "[pre-push] BLOCKED: test suite failed after flake auto-rerun (INFRA-761/1403)." >&2
+                    echo "[pre-push] Classify new flakes in docs/process/KNOWN_FLAKES.yaml (see INFRA-764)." >&2
                     echo "[pre-push] Bypass (rare): CHUMP_TEST_GATE=0 git push" >&2
                     echo "[pre-push]   When bypassing, include 'Test-Gate-Bypass: <reason>' in" >&2
                     echo "[pre-push]   the HEAD commit body so the audit log can find the trailer." >&2
                     echo "" >&2
                     exit 1
                 fi
-            fi
-        fi
+            else
+                # Fallback (RESILIENT-012): direct cargo test with post-failure parse
+                # against KNOWN_FLAKES.yaml for auto-bypass when wrapper is absent.
+                if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    cargo test --bin chump --tests --no-fail-fast --quiet \
+                        ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \
+                    | tee "$_TEST_LOG" | tail -200; then
+                    mkdir -p "$CACHE_DIR"
+                    date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
+                    echo "[pre-push] INFRA-761: ✓ full suite green; cached for tree $TREE_SHA" >&2
+                else
+                    # RESILIENT-012: auto-bypass if ALL failing tests are in KNOWN_FLAKES.yaml.
+                    # Prevents manual Test-Gate-Bypass trailers for pre-existing main failures.
+                    _CATALOG="$REPO_ROOT_T/docs/process/KNOWN_FLAKES.yaml"
+                    # `|| true` defuses `set -e + pipefail`: when grep finds
+                    # zero "test FOO ... FAILED" lines (compile error, panic,
+                    # mock-cargo failure, etc.), the pipeline exits 1 and
+                    # aborts the hook BEFORE the BLOCKED diagnostic can fire.
+                    _FAILED=$(grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$_TEST_LOG" \
+                        | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) .*/\1/' \
+                        | sort -u || true)
+                    _ALL_KNOWN=1
+                    _UNKNOWN_TESTS=()
+                    if [[ -n "$_FAILED" && -f "$_CATALOG" ]]; then
+                        _CATALOG_TESTS=$(grep -E '^[[:space:]]*-[[:space:]]*test:' "$_CATALOG" \
+                            | sed -E 's/^[[:space:]]*-[[:space:]]*test:[[:space:]]+//; s/"//g; s/[[:space:]]*$//')
+                        while IFS= read -r _tname; do
+                            [[ -z "$_tname" ]] && continue
+                            if ! printf '%s\n' "$_CATALOG_TESTS" | grep -qxF "$_tname"; then
+                                _ALL_KNOWN=0
+                                _UNKNOWN_TESTS+=("$_tname")
+                            fi
+                        done <<< "$_FAILED"
+                    else
+                        # No parseable failures (compile error?) or no catalog — treat as real failure.
+                        _ALL_KNOWN=0
+                    fi
+
+                    if [[ "$_ALL_KNOWN" -eq 1 && -n "$_FAILED" ]]; then
+                        _FAILED_LIST=$(printf '%s\n' "$_FAILED" | tr '\n' ' ')
+                        echo "" >&2
+                        echo "[pre-push] RESILIENT-012: all failures are catalogued in KNOWN_FLAKES.yaml — auto-bypassing gate" >&2
+                        echo "[pre-push] Known flakes: $_FAILED_LIST" >&2
+                        echo "[pre-push] (no Test-Gate-Bypass trailer needed; these are pre-existing main failures)" >&2
+                        mkdir -p "$CACHE_DIR"
+                        date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
+                    else
+                        echo "" >&2
+                        echo "[pre-push] BLOCKED: cargo test --bin chump --tests failed (INFRA-761)." >&2
+                        echo "[pre-push] Full-suite test failure cannot be pushed — CI would reject." >&2
+                        if [[ "${#_UNKNOWN_TESTS[@]}" -gt 0 ]]; then
+                            echo "[pre-push] Unknown failures (not in KNOWN_FLAKES.yaml):" >&2
+                            for _t in "${_UNKNOWN_TESTS[@]}"; do
+                                echo "[pre-push]   $_t" >&2
+                            done
+                        fi
+                        echo "" >&2
+                        echo "[pre-push] If this is a known pre-existing flake, classify it via" >&2
+                        echo "[pre-push]   docs/process/KNOWN_FLAKES.yaml (see INFRA-764) and rerun." >&2
+                        echo "[pre-push] Bypass (rare): CHUMP_TEST_GATE=0 git push" >&2
+                        echo "[pre-push]   When bypassing, include 'Test-Gate-Bypass: <reason>' in" >&2
+                        echo "[pre-push]   the HEAD commit body so the audit log can find the trailer." >&2
+                        echo "" >&2
+                        exit 1
+                    fi
+                fi
+            fi  # end if [[ -x "$_RERUN_SCRIPT" ]]
+        else
+            # INFRA-1403: no .rs changes in this push — skip test gate and emit telemetry.
+            _AMBIENT_LOG="$REPO_ROOT_T/.chump-locks/ambient.jsonl"
+            _BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            mkdir -p "$(dirname "$_AMBIENT_LOG")" 2>/dev/null || true
+            printf '{"ts":"%s","event":"INFO","kind":"pre_push_test_gate_skipped","reason":"no_rust_changes","branch":"%s","source":"pre-push"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BRANCH" \
+                >> "$_AMBIENT_LOG" 2>/dev/null || true
+            echo "[pre-push] INFRA-1403: no .rs changes — test gate skipped." >&2
+        fi  # end if [[ "$ANY_RS" == "1" ]]
     fi
 fi
 

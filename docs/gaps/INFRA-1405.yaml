@@ -1,0 +1,18 @@
+- id: INFRA-1405
+  domain: INFRA
+  title: "ZERO-WASTE: event-driven auto-rebase on local-push OR pull_request.synchronize webhook — replaces pr-rescue.sh 2h cron without coupling to GitHub"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Root-cause reframe (Chief of Product, 2026-05-16): the original spec said 'on pull_request.synchronize webhook'. Same anti-offline trap as INFRA-1392: hard-coupling to a GitHub-delivered event. Reframe so the same logic fires on the LOCAL signal that triggers a stale rebase need (local main moved while a feature branch was open)."
+    - "Two equivalent triggers, both produce ambient kind=branch_rebase_needed: TRIGGER_LOCAL = post-receive hook on local main bare repo (Pi mesh case) OR git config hook on local main fast-forward (single-machine case) emits an event whenever HEAD moves; TRIGGER_WEBHOOK = github-webhook-receiver.py emits the same event on pull_request.synchronize OR push to main."
+    - chump rebase-daemon (new bin or scripts/coord/rebase-daemon.sh) subscribes to kind=branch_rebase_needed; for each open feature branch behind main, spawn rebase via existing pr-rescue.sh logic (already idempotent). Replaces the 2h cron — wakes within seconds of the trigger.
+    - "Offline behavior: when CHUMP_GITHUB_MODE=offline, only TRIGGER_LOCAL fires (no webhook). The daemon still works; rebases happen against local main. Verified by scripts/ci/test-rebase-daemon-offline.sh."
+    - "Online behavior unchanged: TRIGGER_WEBHOOK fires immediately on PR-synchronize, daemon rebases all open feature branches without waiting for the 2h cron."
+    - "Failure-class taxonomy: TRANSIENT={network_blip_during_fetch,nats_publish_retry} → auto-retry with backoff; PERMANENT={rebase_conflict_unresolvable_by_drivers,branch_diverged_too_far} → emit kind=rebase_blocked with reason, tag PR with needs-human; DEGRADED={webhook_lag_>5min,local_hook_missing} → emit kind=rebase_signal_degraded, fall back to opportunistic rebase on next claim."
+    - "Events emitted: branch_rebase_needed (trigger), branch_rebase_started, branch_rebase_succeeded {duration_s, conflicts_auto_resolved}, branch_rebase_blocked {reason, branch}, rebase_signal_degraded."
+    - "Cost: zero API spend in offline mode; in online mode, one webhook delivery + one git fetch per main-bump (vs N fetches per cron cycle today). chump waste-tally --kind rebase_daemon attributes wall-clock."
+    - "Acceptance: scripts/ci/test-rebase-daemon-offline.sh seeds 3 open branches behind main, advances local main, asserts all 3 rebase within 30s of the post-receive hook firing, with no GitHub call (verified via stub or tcpdump). scripts/ci/test-rebase-daemon-online.sh same scenario but via webhook."
+    - Pairs with INFRA-1323 (local merge queue) — both consume the same TRIGGER_LOCAL signal. Pairs with INFRA-1392 (proof-of-merge) — rebase success doesn't flip gap status; the eventual merge does.
+

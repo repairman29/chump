@@ -44,9 +44,16 @@ THRESHOLD="${CHUMP_OBS_BUDGET_FEATURE_THRESHOLD:-50}"
 
 # numstat = added\tremoved\tpath ; we want only added across our code
 # extensions, ignoring the guard's own test fixtures and hook plumbing.
+#
+# INFRA-1398: also exclude CI assertion scripts (scripts/ci/test-*.sh) — they
+# don't emit runtime events because they ARE the observability (the assertions
+# themselves). Same for scripts/git-hooks/* (they're pre-commit gates, not
+# runtime code paths). Forcing operators to add tracing::info! inside a CI
+# assert script makes no semantic sense and burned ~7 bypass-trailers in the
+# 2026-05-16 session alone.
 STATS=$(git diff --cached --numstat --diff-filter=ACM -- \
     '*.rs' '*.sh' '*.py' 2>/dev/null \
-    | grep -vE '(scripts/git-hooks/pre-commit-obs-budget|scripts/ci/test-obs-budget-guard)' \
+    | grep -vE '(scripts/git-hooks/|scripts/ci/test-)' \
     || true)
 
 if [[ -z "$STATS" ]]; then

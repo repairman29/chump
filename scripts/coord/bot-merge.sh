@@ -213,7 +213,7 @@ FAST=0
 DRY_RUN=0
 NO_MERGE_DRIVER=0
 # INFRA-193: speculative execution opt-in. With --speculative, chump claim
-# writes `"speculative": true` into the lease and gap-preflight.sh allows
+# writes `"speculative": true` into the lease and `chump gap preflight` allows
 # concurrent claims by other speculative-mode sessions on the same gap.
 # After auto-merge is armed for our PR, the post-arm sweep below scans for
 # open sibling PRs citing the same gap and closes them with a "superseded
@@ -397,7 +397,6 @@ BOT_MERGE_HOT_FILES=(
     "scripts/git-hooks/pre-commit"
     "scripts/coord/bot-merge.sh"
     "scripts/coord/gap-claim.sh"
-    "scripts/coord/gap-preflight.sh"
     "scripts/coord/gap-reserve.sh"
     "CLAUDE.md"
     "AGENTS.md"
@@ -904,7 +903,7 @@ export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Chump Dispatched}"
 export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 
 # ── Session-ID auto-detection ─────────────────────────────────────────────────
-# gap-preflight reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
+# `chump gap preflight` reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
 # If not set, try to infer it from an existing gap lease file so the preflight
 # recognises our own claim at ship time (the claim may have been written by a
 # different shell with a different default session ID — e.g. CHUMP_SESSION_ID
@@ -1140,7 +1139,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
     # INFRA-193: when speculative, export so gap-preflight allows the
     # concurrent-speculative case (still blocks non-speculative collisions).
-    if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+    if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
         _bm_fail "preflight" 10 "gap already done or claimed"
@@ -1200,7 +1199,7 @@ BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || ec
 # likely means the work has already landed on main via another agent.
 if [[ "$BEHIND" -gt 50 ]]; then
     red "Branch is $BEHIND commits behind $REMOTE/$BASE_BRANCH — too stale to merge safely."
-    red "Run: scripts/coord/gap-preflight.sh ${GAP_IDS[*]:-<gap-ids>}"
+    red "Run: chump gap preflight ${GAP_IDS[*]:-<gap-ids>}"
     red "Then: git fetch && git rebase $REMOTE/$BASE_BRANCH (resolve conflicts)"
     red "If all your gaps are already done on main, close this branch instead."
     exit 3
@@ -1226,7 +1225,7 @@ if [[ "$BEHIND" -gt 0 ]]; then
         # INFRA-509: INFRA-344 filing-style PR detection removed — post-INFRA-498,
         # gap YAMLs are no longer added as new files in PRs; state.db is canonical.
         # Always run preflight here so we catch gaps completed on main while rebasing.
-        if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+        if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
             red "Gap was completed on main while we rebased — nothing left to push."
             _bm_fail "preflight" 10 "gap completed on main during rebase"
         fi
@@ -1349,8 +1348,14 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 #   - When the wait exceeds 60 s, cargo emits "Blocking waiting for file lock"
 #     to stderr; we capture that and emit kind=cargo_lock_wait to ambient.jsonl.
 if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
-    export CARGO_TARGET_DIR="${REPO_ROOT}/target"
-    info "INFRA-1063: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree isolation)"
+    # INFRA-1374: use a hidden .cargo-build-target dir so the per-worktree
+    # isolation doesn't collide with the workspace `target/` name that cargo
+    # also uses by default (and which .cargo/config.toml may override globally
+    # to the main repo path). Using a distinct name ensures each worktree at
+    # /tmp/chump-* gets its own, unambiguous build cache regardless of any
+    # global config.toml target-dir override from install-sccache.sh (INFRA-481).
+    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+    info "INFRA-1374: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree mutex isolation)"
 else
     info "INFRA-1063: CARGO_TARGET_DIR already set to ${CARGO_TARGET_DIR} (respecting caller)"
 fi
@@ -2140,7 +2145,7 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                         green "Code-reviewer verdict: APPROVE/SKIP — proceeding with auto-merge." ;;
                     1)
                         red "Code-reviewer raised CONCERN — auto-merge NOT enabled."
-                        red "Resolve concerns then run: gh pr merge $TARGET_PR --auto --squash"
+                        red "Resolve concerns then run: gh pr merge $TARGET_PR --auto --squash  # (omit --squash if merge queue is active)"
                         exit 1 ;;
                     2)
                         red "Code-reviewer ESCALATED — human review required, auto-merge NOT enabled."
@@ -2418,6 +2423,8 @@ print(f"{incomplete} {failed} {total}")
                 # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts
                 # to avoid burning gh pr merge calls on PRs that failed recently.
                 # between successive gh pr merge --auto calls across all callers.
+                # INFRA-1377: auto-merge-armer.sh detects merge queue and adjusts
+                # merge strategy accordingly (omits --squash, skips REST-direct).
                 stage_start "auto-merge-armer.sh --pr $TARGET_PR"
                 if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then
                     red "auto-merge-armer failed (see above)."

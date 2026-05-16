@@ -1,0 +1,14 @@
+- id: INFRA-1428
+  domain: INFRA
+  title: "ZERO-WASTE: chump gap reserve writes yaml to MAIN repo docs/gaps regardless of cwd (INFRA-1354 documented the bug; today's PR #2063 cascade cost ~840 LOC of cockpit work + 2 rescue PRs because reserve auto-staged in wrong worktree)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump gap reserve resolves main repo root via 'git worktree list' first item (the bare/main worktree) OR CHUMP_HOME OR git common-dir parent
+    - Writes docs/gaps/<id>.yaml to that main repo's docs/gaps/, NOT current worktree
+    - auto-stage in main repo + emit kind=gap_yaml_written {path} to ambient
+    - If main repo path cannot be resolved, fallback to current worktree with stderr warning
+    - "Smoke test scripts/ci/test-gap-reserve-cross-worktree-write.sh: reserve from /tmp/<linked-worktree>, assert yaml shows up in MAIN repo's docs/gaps/"
+    - Closes INFRA-1354 (documentation gap) by shipping the implementation
+
