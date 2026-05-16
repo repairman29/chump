@@ -260,6 +260,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR checklist and quality bar |
 | [`docs/operations/OPERATIONS.md`](docs/operations/OPERATIONS.md) | Run modes, env vars, heartbeats |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What's next |
+| [`docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md`](docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md) | Offline compliance rubric — 3 `offline_class` values, forbidden-pattern catalog, decision tree (INFRA-1418 linter reference) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [`CONTRIBUTING.md`](CONTRIBUTING.md#bug-reports).
