@@ -31,3 +31,4 @@ scripts/ops/pr-blocked-watch.sh           # migration gap: INFRA-1249
 scripts/ops/pr-repair-rebase.sh           # migration gap: INFRA-1249
 scripts/ops/pr-watch-shepherd.sh          # migration gap: INFRA-1249
 scripts/ops/stale-pr-reaper.sh            # migration gap: INFRA-1249
+scripts/coord/chump-pr-triage.sh          # operator-facing advisory tool; uses gh for read-only PR listing; migration: INFRA-1249
