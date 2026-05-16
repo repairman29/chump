@@ -1,0 +1,14 @@
+- id: INFRA-1524
+  domain: INFRA
+  title: "RESILIENT: Rust-First-Bypass trailer format coercion — paramedic detects markdown-bullet form trailers and auto-rewrites PR body to bare-line so the ^Rust-First-Bypass: regex matches"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Paramedic detects audit-fail with 'state-mutating' or 'hot-path' violation; fetches PR body via gh api; if regex 'bullet/backtick form of Rust-First-Bypass:' matches AND no bare-line ^Rust-First-Bypass: also present, extracts the reason and appends a bare-line trailer below current body"
+    - "Auto-rewrite uses gh pr edit --body-file with original body + 2 blank lines + 'Rust-First-Bypass: <extracted reason>'"
+    - Emit kind=rust_first_bypass_format_fixed {pr, original_form, extracted_reason}
+    - Then runs gh pr update-branch --rebase to retrigger CI
+    - "Smoke test scripts/ci/test-paramedic-bypass-format-coerce.sh: fixture PR with bullet-trailer, assert paramedic rewrites to bare-line, retriggers CI"
+    - "Today's signal: #2184/#2183 had bypass intent expressed as markdown bullets, gate regex required bare-line, manual rewrite unblocked them"
+

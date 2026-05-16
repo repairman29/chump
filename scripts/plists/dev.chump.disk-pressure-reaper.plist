@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  INFRA-1471: pressure-tiered disk reaper launchd job.
+  Runs every 15 min. Script self-throttles based on disk pressure tier:
+    ≥ 50 GB free → exit 0
+    20-50 GB → Tier 1: target/ idle > 6h
+    10-20 GB → Tier 2: target/ idle > 2h + worktrees with merged+deleted branches
+     5-10 GB → Tier 3: aggressive whole-worktree reap (no lease, no uncommitted)
+     < 5 GB  → Tier 4: ALERT + operator escalation hint
+
+  Install with scripts/setup/install-disk-pressure-reaper-launchd.sh.
+  Logs to /tmp/chump-disk-pressure-reaper.log.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.chump.disk-pressure-reaper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>CHUMP_REPO="$HOME/Projects/Chump" "$HOME/Projects/Chump/scripts/coord/disk-pressure-reaper.sh" --execute</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/chump-disk-pressure-reaper.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/chump-disk-pressure-reaper.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

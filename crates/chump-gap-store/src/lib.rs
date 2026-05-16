@@ -2385,6 +2385,179 @@ impl GapStore {
         Ok(backfilled)
     }
 
+    /// INFRA-1434: import_from_yaml with title-similarity guard.
+    ///
+    /// Wraps [`Self::import_from_yaml`] with an INFRA-1149-style Jaccard check
+    /// applied to each *net-new* gap (id not already in state.db). When the top
+    /// match against open + recently-closed gaps scores ≥ `block_threshold`,
+    /// the row is treated as a duplicate: removed after import, counted in the
+    /// returned `blocked_by_similarity`, and a `gap_import_similarity_block`
+    /// event is appended to `<repo_root>/.chump-locks/ambient.jsonl`.
+    ///
+    /// Returns `(inserted, already_present, backfilled, blocked_by_similarity)`.
+    /// The first three match `import_from_yaml`'s tuple; the fourth is new.
+    ///
+    /// Bypass: pass `block_threshold=None` to behave exactly like
+    /// `import_from_yaml`. The CLI exposes this via `CHUMP_GAP_IMPORT_NO_SIMILARITY=1`.
+    pub fn import_from_yaml_with_similarity(
+        &self,
+        repo_root: &Path,
+        block_threshold: Option<f64>,
+    ) -> Result<(usize, usize, usize, usize)> {
+        // Fast path: no filter requested → delegate to the canonical importer.
+        // Keeps internal callers (GapStore::open, next_id, tests) unchanged.
+        let Some(threshold) = block_threshold else {
+            let (ins, skip, backfilled) = self.import_from_yaml(repo_root)?;
+            return Ok((ins, skip, backfilled, 0));
+        };
+
+        // Pre-pass: collect (id, title) for *net-new* gaps only. Routine
+        // round-trips of existing gaps via dump→import must not fire.
+        let new_titles: Vec<(String, String)> = self.parse_new_gap_titles(repo_root)?;
+
+        // Two-source check: each net-new gap is compared against (a) existing
+        // open + recently-closed gaps in state.db via similarity_candidates,
+        // AND (b) any previously-accepted new gaps in *this* batch. Without
+        // (b), a single import containing two identical titles (today's
+        // INFRA-1267/1268 case) would slip through because both are absent
+        // from the DB at pre-pass time.
+        use std::collections::HashSet;
+        let mut skip_ids: HashSet<String> = HashSet::new();
+        let mut blocked_log: Vec<(String, String, String, f64)> = Vec::new();
+        // Accumulator of (id, title) for new gaps already accepted in this
+        // batch. Iteration order matches parse_new_gap_titles → directory-
+        // sorted YAML files, so the lower filename wins (deterministic).
+        let mut accepted_in_batch: Vec<(String, String)> = Vec::new();
+        for (id, title) in &new_titles {
+            // (a) Existing-DB check.
+            let mut top_match: Option<(String, String, f64)> = None;
+            if let Ok(cands) = self.similarity_candidates(title, 1, 30) {
+                if let Some((top_id, top_title, _status, top_score)) = cands.first() {
+                    if top_id != id && *top_score >= threshold {
+                        top_match = Some((top_id.clone(), top_title.clone(), *top_score));
+                    }
+                }
+            }
+            // (b) Within-batch check — wins over (a) if higher-scoring.
+            for (prev_id, prev_title) in &accepted_in_batch {
+                let s = Self::title_jaccard(title, prev_title);
+                if s >= threshold && top_match.as_ref().map(|m| s > m.2).unwrap_or(true) {
+                    top_match = Some((prev_id.clone(), prev_title.clone(), s));
+                }
+            }
+            match top_match {
+                Some((top_id, top_title, score)) => {
+                    skip_ids.insert(id.clone());
+                    blocked_log.push((id.clone(), top_id, top_title, score));
+                }
+                None => {
+                    accepted_in_batch.push((id.clone(), title.clone()));
+                }
+            }
+        }
+
+        // Emit one ambient event per blocked row. Best-effort; never abort
+        // the import on ambient-write failure.
+        if !blocked_log.is_empty() {
+            let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Some(parent) = ambient_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let ts = unix_now();
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&ambient_path)
+            {
+                use std::io::Write;
+                for (proposed_id, top_id, top_title, score) in &blocked_log {
+                    let safe_title = top_title.replace(['"', '\\'], "");
+                    let _ = writeln!(
+                        f,
+                        r#"{{"ts":{ts},"kind":"gap_import_similarity_block","proposed_id":"{proposed_id}","top_match_id":"{top_id}","top_match_title":"{safe_title}","top_match_score":{score:.3}}}"#
+                    );
+                }
+            }
+        }
+
+        // Run the canonical import, then DELETE the rows that we should have
+        // blocked. Safe because parse_new_gap_titles guarantees skip_ids are
+        // net-new — never present before this call — and import_from_yaml
+        // uses INSERT OR IGNORE which won't overwrite anything.
+        let (ins_total, skip_already_present, backfilled) = self.import_from_yaml(repo_root)?;
+        let mut blocked = 0usize;
+        for id in &skip_ids {
+            let removed = self
+                .conn
+                .execute("DELETE FROM gaps WHERE id=?1", params![id])?;
+            blocked += removed;
+        }
+        let ins_kept = ins_total.saturating_sub(blocked);
+        Ok((ins_kept, skip_already_present, backfilled, blocked))
+    }
+
+    /// INFRA-1434 helper: parse YAML files in `<repo_root>/docs/gaps/` (or the
+    /// monolithic `docs/gaps.yaml`) and return only the (id, title) pairs whose
+    /// ID is **not already present** in state.db. Round-tripping an existing
+    /// gap via `chump gap dump --update-yaml` → `chump gap import` should not
+    /// fire similarity checks.
+    fn parse_new_gap_titles(&self, repo_root: &Path) -> Result<Vec<(String, String)>> {
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        let text = if per_file_dir.is_dir() {
+            let mut parts = Vec::new();
+            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+                .with_context(|| format!("reading {}", per_file_dir.display()))?
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml")
+                        .unwrap_or(false)
+                })
+                .collect();
+            dir_entries.sort_by_key(|e| e.file_name());
+            for entry in &dir_entries {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    parts.push(content);
+                }
+            }
+            if parts.is_empty() {
+                return Ok(Vec::new());
+            }
+            format!("gaps:\n{}", parts.join(""))
+        } else {
+            let yaml_path = repo_root.join("docs").join("gaps.yaml");
+            match std::fs::read_to_string(&yaml_path) {
+                Ok(t) => t,
+                Err(_) => return Ok(Vec::new()),
+            }
+        };
+        let file: YamlGapsFile = match serde_yaml::from_str(&text) {
+            Ok(f) => f,
+            Err(_) => return Ok(Vec::new()), // canonical import will surface parse errors
+        };
+
+        let mut existing_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut stmt = self.conn.prepare("SELECT id FROM gaps")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        for r in rows.flatten() {
+            existing_ids.insert(r);
+        }
+
+        let mut out = Vec::new();
+        for g in &file.gaps {
+            if existing_ids.contains(&g.id) {
+                continue;
+            }
+            if g.title.trim().is_empty() {
+                continue;
+            }
+            out.push((g.id.clone(), g.title.clone()));
+        }
+        Ok(out)
+    }
+
     pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize, usize)> {
         // INFRA-188: prefer per-file directory if it exists and is non-empty.
         let per_file_dir = repo_root.join("docs").join("gaps");

@@ -1,0 +1,17 @@
+- id: INFRA-1504
+  domain: INFRA
+  title: "EFFECTIVE: chump --upgrade auto-notify + one-command upgrade path — surfaces stale binary in chump health"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Stale binary is the recurring root cause of state.db drift, gap-ID collisions, and the orphan-PR cascade. chump health should always surface a stale-binary warning when the running binary is >24h older than HEAD. One-command upgrade path: chump --upgrade runs the right command for the platform (brew upgrade chump on macOS, cargo install --force on dev, etc.).
+  acceptance_criteria:
+    - chump health output includes a 'binary_age_h' field + stale warning when >24h
+    - chump --upgrade detects install method (brew/cargo/manual) and runs the right upgrade
+    - "If brew: brew update + brew upgrade chump"
+    - "If cargo: cargo install --path $CHUMP_REPO --bin chump --force"
+    - "If manual: print instructions"
+    - "--dry-run flag to preview the command"
+    - Smoke test scripts/ci/test-chump-upgrade-detection.sh
+

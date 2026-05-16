@@ -56,8 +56,25 @@ pub fn git_tools_enabled() -> bool {
 /// `run_git`'s convention: returns (exit_ok, combined output) so callers
 /// can decide how to surface the failure.
 async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
-    let out = Command::new("gh")
-        .args(args)
+    // INFRA-001b: when a speculative sandbox is active, isolate gh operations
+    // to the sandbox worktree by setting GIT_DIR and GIT_WORK_TREE.
+    let mut cmd = Command::new("gh");
+    cmd.args(args);
+
+    if let Some(sandbox_root) = crate::speculative_execution::speculative_sandbox_root() {
+        if crate::speculative_execution::sandbox_speculation_enabled() {
+            let git_dir = sandbox_root.join(".git");
+            cmd.env("GIT_DIR", git_dir.to_string_lossy().to_string());
+            cmd.env("GIT_WORK_TREE", sandbox_root.to_string_lossy().to_string());
+            tracing::debug!(
+                sandbox = %sandbox_root.display(),
+                git_dir = %git_dir.display(),
+                "INFRA-001b: gh redirecting to speculative sandbox"
+            );
+        }
+    }
+
+    let out = cmd
         .output()
         .await
         .map_err(|e| anyhow!("gh exec failed: {}", e))?;
@@ -80,13 +97,32 @@ async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
         std::env::var("CHUMP_GIT_AUTHOR_NAME").unwrap_or_else(|_| "Chump".to_string());
     let author_email =
         std::env::var("CHUMP_GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "chump@chump.local".to_string());
-    let out = Command::new("git")
-        .args(args)
+
+    // INFRA-001b: when a speculative sandbox is active, isolate git operations
+    // to the sandbox worktree by setting GIT_DIR and GIT_WORK_TREE.
+    let mut cmd = Command::new("git");
+    cmd.args(args)
         .current_dir(repo_dir)
         .env("GIT_AUTHOR_NAME", &author_name)
         .env("GIT_AUTHOR_EMAIL", &author_email)
         .env("GIT_COMMITTER_NAME", &author_name)
-        .env("GIT_COMMITTER_EMAIL", &author_email)
+        .env("GIT_COMMITTER_EMAIL", &author_email);
+
+    // If a speculative sandbox is active, redirect git to that worktree.
+    if let Some(sandbox_root) = crate::speculative_execution::speculative_sandbox_root() {
+        if crate::speculative_execution::sandbox_speculation_enabled() {
+            let git_dir = sandbox_root.join(".git");
+            cmd.env("GIT_DIR", git_dir.to_string_lossy().to_string());
+            cmd.env("GIT_WORK_TREE", sandbox_root.to_string_lossy().to_string());
+            tracing::debug!(
+                sandbox = %sandbox_root.display(),
+                git_dir = %git_dir.display(),
+                "INFRA-001b: git_commit redirecting to speculative sandbox"
+            );
+        }
+    }
+
+    let out = cmd
         .output()
         .await
         .map_err(|e| anyhow!("git failed: {}", e))?;

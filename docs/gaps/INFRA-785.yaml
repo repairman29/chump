@@ -4,25 +4,6 @@
   status: open
   priority: P1
   effort: s
-  acceptance_criteria: |
-    Empirical finding (2026-05-08): NVIDIA Llama 3.3 70B calls
-    read_file → patch_file → git_commit in the correct order, but
-    patch_file fails because the model generates malformed unified diffs.
-    The agent then storms on retries with the same bad input.
-
-    Two complementary fixes:
-
-    1. **Fuzzy patch matching** — when patch_file's exact-match fails,
-       attempt fuzzy matching (ignore leading whitespace, allow ±3 lines
-       context drift). Many Llama patches are "almost right" but have
-       minor whitespace or line-number errors.
-
-    2. **write_file fallback prompt** — when patch_file fails 2× for
-       the same file, inject a recovery message: "patch_file failed.
-       Use read_file to read the full file, then use write_file to
-       write the corrected version." This trades efficiency for
-       reliability. Requires adding write_file to DISPATCH_FREE_TOOL_KEYS.
-
-    Test: NVIDIA Llama 3.3 70B completes the E2E-9999 gap (add a
-    comment to execute_gap.rs) without hitting consecutive-fail abort.
+  acceptance_criteria:
+    - "1. patch_apply::parse_single_file_patch gains a header-lenient mode that accepts diffs with missing ---/+++ filename lines (just @@ hunks); used as a third fallback tier after strict and fuzzy; 2. repo_tools.rs patch_file handler tries: (a) strict, (b) fuzzy, (c) headerless-parse+apply; returns current file excerpt with hint only after all 3 fail; 3. CI test scripts/ci/test-patch-file-fallback.sh: fixture Llama-style headerless diff applies correctly via tier-c; context-mismatch still returns helpful error; 4. log_patch_file emits mode='applied-headerless' for tier-c successes"
 

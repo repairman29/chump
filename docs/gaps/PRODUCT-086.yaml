@@ -1,7 +1,7 @@
 - id: PRODUCT-086
   domain: PRODUCT
   title: "PRODUCT: PWA PR action panel — approve/revise/revert/comment from PWA via gh, eliminating GitHub round-trips"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |

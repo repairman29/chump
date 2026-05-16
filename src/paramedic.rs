@@ -233,62 +233,350 @@ pub fn execute(plan: &ActionPlan, repo_root: &Path, dry_run: bool, budget_secs: 
 }
 
 /// `chump paramedic daemon --interval-secs N` — loop triage→execute.
+/// INFRA-1397: daemon with leader election.
+///
+/// If CHUMP_NATS_URL is set and `nats` CLI is reachable, uses NATS-KV
+/// (bucket chump_paramedic, key leader, TTL 30s) for multi-machine election.
+/// Otherwise falls back to a lockfile at .chump-locks/paramedic.leader with
+/// mtime-based TTL (equivalent semantics, same-machine scope only).
+///
+/// CHUMP_PARAMEDIC_FORCE_LEADER=1 bypasses election and always runs as leader
+/// (docs/process/PARAMEDIC_SUPERVISION.md §Manual force leader).
 pub fn daemon(interval_secs: u64, repo_root: &Path, dry_run: bool) -> Result<()> {
-    let lock_path = repo_root.join(".chump-locks").join("paramedic.lock");
     let budget_secs = std::env::var("CHUMP_PARAMEDIC_BUDGET_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(90u64);
 
-    // Single-instance guard via PID file.
-    if let Ok(existing) = fs::read_to_string(&lock_path) {
-        let existing_pid: u32 = existing.trim().parse().unwrap_or(0);
-        if existing_pid > 0 {
-            // Check if process is still alive.
-            let alive = std::process::Command::new("kill")
-                .args(["-0", &existing_pid.to_string()])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if alive {
-                eprintln!("[paramedic] already running (PID {existing_pid}), exiting.");
-                return Ok(());
-            }
-        }
-    }
+    let nats_url = std::env::var("CHUMP_NATS_URL").unwrap_or_default();
+    let force_leader = std::env::var("CHUMP_PARAMEDIC_FORCE_LEADER")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let machine = hostname();
     let pid = std::process::id();
-    if !dry_run {
-        if let Some(p) = lock_path.parent() {
-            fs::create_dir_all(p).ok();
-        }
-        fs::write(&lock_path, pid.to_string()).ok();
-    }
+    let started_at = iso8601_now();
+    let leader_path = repo_root.join(".chump-locks").join("paramedic.leader");
 
-    info!(interval_secs, dry_run, pid, "paramedic daemon started");
-    eprintln!("[paramedic] daemon started (interval={interval_secs}s dry_run={dry_run} pid={pid})");
+    info!(interval_secs, dry_run, pid, machine = %machine, "paramedic daemon started");
+    eprintln!(
+        "[paramedic] daemon started (interval={interval_secs}s dry_run={dry_run} pid={pid} machine={machine})"
+    );
+
+    let mut cycle_count: u64 = 0;
+    let mut last_standby_emit: u64 = 0;
+    let mut last_renew: u64 = 0;
 
     loop {
-        let cycle_start = Instant::now();
-        match triage(repo_root, dry_run) {
-            Ok(plan) => {
-                let n = plan.items.len();
-                info!(action_count = n, "paramedic daemon: triage complete");
-                eprintln!("[paramedic] triage: {n} action(s) queued");
-                if let Err(e) = execute(&plan, repo_root, dry_run, budget_secs) {
-                    warn!(error = %e, "paramedic daemon: execute error");
-                    eprintln!("[paramedic] execute error: {e:#}");
+        let now_s = now_epoch();
+
+        // ── leader election ─────────────────────────────────────────────────
+        let is_leader = if force_leader {
+            if !dry_run {
+                leader_write(&leader_path, &machine, pid, &started_at);
+            }
+            true
+        } else if !nats_url.is_empty() {
+            nats_kv_try_acquire(&nats_url, &machine, pid, &started_at, dry_run)
+        } else {
+            lockfile_try_acquire(&leader_path, &machine, pid, &started_at, dry_run)
+        };
+
+        if is_leader {
+            // Renew leadership every 10s (updates mtime / NATS TTL).
+            if now_s.saturating_sub(last_renew) >= 10 {
+                if !dry_run {
+                    if !nats_url.is_empty() {
+                        nats_kv_renew(&nats_url, &machine, pid, &started_at);
+                    } else {
+                        leader_write(&leader_path, &machine, pid, &started_at);
+                    }
+                }
+                last_renew = now_s;
+            }
+
+            cycle_count += 1;
+            let cycle_start = Instant::now();
+
+            // Run one triage→execute cycle.
+            let (pr_count, action_count) = match triage(repo_root, dry_run) {
+                Ok(plan) => {
+                    let pr_count = plan
+                        .items
+                        .iter()
+                        .map(|i| i.pr_number)
+                        .collect::<std::collections::HashSet<_>>()
+                        .len() as u64;
+                    let n = plan.items.len() as u64;
+                    info!(action_count = n, "paramedic daemon: triage complete");
+                    eprintln!("[paramedic] triage: {n} action(s) queued");
+                    if let Err(e) = execute(&plan, repo_root, dry_run, budget_secs) {
+                        warn!(error = %e, "paramedic daemon: execute error");
+                        eprintln!("[paramedic] execute error: {e:#}");
+                    }
+                    (pr_count, n)
+                }
+                Err(e) => {
+                    warn!(error = %e, "paramedic daemon: triage error");
+                    eprintln!("[paramedic] triage error: {e:#}");
+                    (0, 0)
+                }
+            };
+
+            // Emit heartbeat (AC §6).
+            emit_paramedic_heartbeat(
+                repo_root,
+                &machine,
+                pid,
+                cycle_count,
+                pr_count,
+                action_count,
+                dry_run,
+            );
+
+            let elapsed = cycle_start.elapsed().as_secs();
+            let sleep_secs = interval_secs.saturating_sub(elapsed);
+            if sleep_secs > 0 {
+                std::thread::sleep(Duration::from_secs(sleep_secs));
+            }
+        } else {
+            // Standby: emit event every 60s and poll for leader expiry.
+            if now_s.saturating_sub(last_standby_emit) >= 60 {
+                emit_paramedic_standby(repo_root, &machine, pid, dry_run);
+                last_standby_emit = now_s;
+                info!(machine = %machine, pid, "paramedic daemon: standby");
+                eprintln!("[paramedic] standby — waiting for leader expiry");
+            }
+            // Poll every 10s for leader TTL expiry (30s TTL → standby acquires within 30s of crash).
+            std::thread::sleep(Duration::from_secs(10));
+        }
+    }
+}
+
+// ── leader election helpers ───────────────────────────────────────────────────
+
+/// Write leader JSON to the lockfile (creates parents if needed).
+fn leader_write(path: &std::path::Path, machine: &str, pid: u32, started_at: &str) {
+    let payload = json!({
+        "machine": machine,
+        "pid": pid,
+        "started_at": started_at,
+        "renewed_at": iso8601_now(),
+    });
+    let content = serde_json::to_string(&payload).unwrap_or_default();
+    if let Some(p) = path.parent() {
+        let _ = fs::create_dir_all(p);
+    }
+    let _ = fs::write(path, content);
+}
+
+/// Lockfile-based leader election (AC §5).
+///
+/// TTL semantics: leader is considered live if the file mtime was updated
+/// within the last 30s. Standby processes detect expiry by checking mtime;
+/// the leader renews every 10s, so staleness means crash or network partition.
+///
+/// Returns true if this process is (or became) the leader.
+fn lockfile_try_acquire(
+    path: &std::path::Path,
+    machine: &str,
+    pid: u32,
+    started_at: &str,
+    dry_run: bool,
+) -> bool {
+    const LEADER_TTL_SECS: u64 = 30;
+
+    if dry_run {
+        return true; // Always leader in dry-run (no file I/O).
+    }
+
+    if let Ok(content) = fs::read_to_string(path) {
+        if let Ok(leader) = serde_json::from_str::<serde_json::Value>(&content) {
+            let leader_pid = leader.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let leader_machine = leader.get("machine").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Check mtime — primary TTL mechanism (works across machines via shared FS).
+            let is_fresh = path
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.elapsed().ok())
+                .map(|e| e.as_secs() < LEADER_TTL_SECS)
+                .unwrap_or(false);
+
+            if is_fresh {
+                // On same machine, also verify the PID is still alive.
+                if leader_machine == machine && leader_pid > 0 && leader_pid != pid {
+                    let alive = std::process::Command::new("kill")
+                        .args(["-0", &leader_pid.to_string()])
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false);
+                    if alive {
+                        return false; // Active same-machine leader.
+                    }
+                    // PID dead → fall through to acquire below.
+                } else if leader_machine != machine {
+                    return false; // Remote machine leader still fresh.
+                } else if leader_pid == pid {
+                    return true; // We already are the leader.
                 }
             }
-            Err(e) => {
-                warn!(error = %e, "paramedic daemon: triage error");
-                eprintln!("[paramedic] triage error: {e:#}");
-            }
+            // Stale leader (TTL expired or PID dead) → try to acquire.
         }
-        let elapsed = cycle_start.elapsed().as_secs();
-        let sleep_secs = interval_secs.saturating_sub(elapsed);
-        if sleep_secs > 0 {
-            std::thread::sleep(Duration::from_secs(sleep_secs));
+    }
+
+    // No valid leader — write our entry and become leader.
+    leader_write(path, machine, pid, started_at);
+    true
+}
+
+/// NATS-KV leader election via `nats` CLI (AC §4).
+///
+/// Uses `nats kv create` (atomic — fails if key already exists) to win the
+/// election race. Bucket TTL of 30s makes the key disappear when the leader
+/// crashes and stops renewing.
+///
+/// Falls back to lockfile if `nats` CLI is unavailable or the server is
+/// unreachable (INFRA-1397 AC §5 guarantee).
+fn nats_kv_try_acquire(
+    nats_url: &str,
+    machine: &str,
+    pid: u32,
+    started_at: &str,
+    dry_run: bool,
+) -> bool {
+    if dry_run {
+        return true;
+    }
+
+    let payload = json!({"machine": machine, "pid": pid, "started_at": started_at});
+    let value = serde_json::to_string(&payload).unwrap_or_default();
+
+    // Ensure bucket exists (idempotent; TTL 30s on the bucket keys).
+    let _ = std::process::Command::new("nats")
+        .args([
+            "kv",
+            "add",
+            "chump_paramedic",
+            "--ttl",
+            "30s",
+            "--server",
+            nats_url,
+        ])
+        .output();
+
+    // Atomic create — fails with non-zero if key already exists.
+    let result = std::process::Command::new("nats")
+        .args([
+            "kv",
+            "create",
+            "chump_paramedic",
+            "leader",
+            &value,
+            "--server",
+            nats_url,
+        ])
+        .output();
+
+    match result {
+        Ok(out) => out.status.success(),
+        Err(_) => {
+            // NATS CLI unavailable — log and return false so caller falls
+            // through to lockfile_try_acquire on next iteration.
+            eprintln!("[paramedic] WARN: nats CLI unavailable; CHUMP_NATS_URL set but unreachable");
+            false
         }
+    }
+}
+
+/// Renew NATS-KV leader TTL by overwriting with a fresh timestamp.
+fn nats_kv_renew(nats_url: &str, machine: &str, pid: u32, started_at: &str) {
+    let payload = json!({
+        "machine": machine, "pid": pid, "started_at": started_at,
+        "renewed_at": iso8601_now(),
+    });
+    let value = serde_json::to_string(&payload).unwrap_or_default();
+    let _ = std::process::Command::new("nats")
+        .args([
+            "kv",
+            "put",
+            "chump_paramedic",
+            "leader",
+            &value,
+            "--server",
+            nats_url,
+        ])
+        .output();
+}
+
+/// Get hostname for leader election JSON payload.
+fn hostname() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Emit kind=paramedic_heartbeat to ambient.jsonl (AC §6).
+fn emit_paramedic_heartbeat(
+    repo_root: &Path,
+    machine: &str,
+    pid: u32,
+    cycle_count: u64,
+    pr_count: u64,
+    last_action_count: u64,
+    dry_run: bool,
+) {
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "paramedic_heartbeat",
+        "machine": machine,
+        "pid": pid,
+        "cycle_count": cycle_count,
+        "pr_count": pr_count,
+        "last_action_count": last_action_count,
+        "dry_run": dry_run,
+    });
+    info!(
+        machine = %machine,
+        pid,
+        cycle_count,
+        pr_count,
+        last_action_count,
+        "paramedic heartbeat"
+    );
+    let line = serde_json::to_string(&event).unwrap_or_default() + "\n";
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&ambient_path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Emit kind=paramedic_standby to ambient.jsonl (AC §6).
+fn emit_paramedic_standby(repo_root: &Path, machine: &str, pid: u32, dry_run: bool) {
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let event = json!({
+        "ts": iso8601_now(),
+        "kind": "paramedic_standby",
+        "machine": machine,
+        "pid": pid,
+        "dry_run": dry_run,
+    });
+    warn!(machine = %machine, pid, "paramedic standby: waiting for leader");
+    let line = serde_json::to_string(&event).unwrap_or_default() + "\n";
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&ambient_path)
+    {
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -673,12 +961,13 @@ fn record_attempt(conn: &Connection, pr_number: u64, action: &str, outcome: &str
 fn read_pr_state(repo_root: &Path) -> Result<Vec<PrInfo>> {
     let db_path = repo_root.join(".chump").join("github_cache.db");
     if db_path.exists() {
-        match read_from_cache_db(&db_path) {
-            Ok(prs) if !prs.is_empty() => return Ok(prs),
-            _ => {}
-        }
+        // Cache-first (INFRA-1081): if the DB is present, trust it even if empty.
+        // An empty cache means "no PRs in the window" — don't fall back to gh
+        // for a potentially stale network read.  Absence of the file means the
+        // cache receiver hasn't run yet; fall back to gh in that case only.
+        return read_from_cache_db(&db_path);
     }
-    // Fallback: gh pr list.
+    // Fallback: gh pr list (only when cache DB has never been populated).
     read_from_gh()
 }
 

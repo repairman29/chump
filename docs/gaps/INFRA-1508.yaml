@@ -1,0 +1,14 @@
+- id: INFRA-1508
+  domain: INFRA
+  title: "RESILIENT: paramedic rule CARGO_FMT_AUTOFIX — detect 'Diff in ... ' in fast-checks log, run cargo fmt + push to same branch"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Paramedic daemon (INFRA-1375) new action CARGO_FMT_AUTOFIX: when fast-checks fails with regex 'Diff in .*src/.*\\.rs:[0-9]+:', clone PR branch + run cargo fmt + commit 'fix: cargo fmt autofix (paramedic)' + push --force-with-lease"
+    - Skip if PR's branch has uncommitted changes from a worker (lockfile present at .chump-locks/<gap>.json) — avoid trampling live work
+    - "Smoke test scripts/ci/test-paramedic-cargo-fmt-autofix.sh: fixture PR with misordered mod declaration, assert paramedic detects + pushes fmt commit + emits kind=paramedic_action action=CARGO_FMT_AUTOFIX outcome=success"
+    - "Today's signal: #2110 (RESILIENT-011) sat 18h failing fast-checks on circuit_breaker module ordering — 1-line fmt fix that took 30 seconds inline; rule engine should catch this in <90s of CI failure"
+    - Rate-limit 3 autofix PRs per branch (avoid loops if a worker keeps re-introducing drift)
+    - "Class-aware: only fires on cargo fmt diffs, not on clippy errors or test failures (those need real code work)"
+
