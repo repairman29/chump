@@ -1,0 +1,15 @@
+- id: RESILIENT-011
+  domain: RESILIENT
+  title: "RESILIENT: circuit-breaker pattern for cascading fleet failures — protect downstream"
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-16'
+  closed_pr: 2110
+  acceptance_criteria:
+    - "Implement circuit-breaker trait in src/circuit_breaker.rs with three states: Closed (pass-through), Open (fail fast), Half-Open (probing)"
+    - "Configure per-target thresholds: error_threshold (default 5 failures), success_threshold (default 2 successes), timeout (default 30s) via env CHUMP_CB_*"
+    - "Emit ambient events: circuit_breaker_opened, circuit_breaker_closed, circuit_breaker_state_change with target and reason"
+    - "Register events in EVENT_REGISTRY.yaml with emitter=chump_main and consumers=[fleet_health, operator_dashboard]"
+    - "Integration test scripts/ci/test-circuit-breaker.sh: verify Open state fast-fails, Half-Open probes, Closed passes through"
+    - "Cargo unit tests in src/circuit_breaker.rs covering all 3 transitions"
