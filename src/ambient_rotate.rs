@@ -10,8 +10,12 @@
 
 use std::path::Path;
 
-/// Default rotation threshold: 50 MB.
-pub const DEFAULT_MAX_BYTES: u64 = 50 * 1024 * 1024;
+/// Default rotation threshold: 10 MB (lowered from 50 MB — INFRA-1468).
+///
+/// At 50 MB the file caused measurable endpoint hangs (INFRA-1464 / INFRA-1466).
+/// 10 MB is small enough that reads stay fast while still allowing reasonable burst.
+/// Override via CHUMP_AMBIENT_MAX_MB environment variable.
+pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Read CHUMP_AMBIENT_MAX_MB from the environment. Falls back to DEFAULT_MAX_BYTES.
 pub fn max_bytes() -> u64 {

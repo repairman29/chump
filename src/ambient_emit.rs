@@ -156,7 +156,47 @@ pub fn emit(args: &EmitArgs) -> Result<PathBuf> {
     base.push('\n');
 
     append_atomic(&ambient, &base)?;
+    // INFRA-1468: inline watchdog — emit lagging alert + rotate if file is oversized.
+    maybe_warn_and_rotate(&ambient);
     Ok(ambient)
+}
+
+/// Check ambient.jsonl size after each write; emit `kind=ambient_rotation_lagging`
+/// and rotate in-process when the file exceeds the configured threshold.
+///
+/// This ensures rotation is not deferred until `chump ambient-rotate` is invoked
+/// manually or via fleet_health — it fires automatically on every emit call once
+/// the file crosses the threshold (INFRA-1468).
+///
+/// Thread-safety: `metadata` + `rename` are each individually atomic on POSIX.
+/// Two concurrent callers racing at the threshold may both try to rename; the
+/// second rename is a no-op on the fresh (tiny) file. Acceptable at production
+/// emit rates.
+fn maybe_warn_and_rotate(ambient: &std::path::Path) {
+    // Re-use ambient_rotate's threshold so both subsystems stay in sync.
+    let threshold = crate::ambient_rotate::max_bytes();
+    let size = match std::fs::metadata(ambient) {
+        Ok(m) => m.len(),
+        Err(_) => return, // file may not exist yet (race with O_CREAT); ignore
+    };
+    if size < threshold {
+        return;
+    }
+
+    // Write the lagging alert as a raw direct append — NOT via emit() to avoid
+    // recursion. This lands in the file *before* rotation so it's visible in
+    // the archived .1 copy.
+    let ts = current_iso8601();
+    let warn_line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"ambient_rotation_lagging\",\"size_bytes\":{size},\"threshold_bytes\":{threshold}}}\n",
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(ambient) {
+        let _ = std::io::Write::write_all(&mut f, warn_line.as_bytes());
+    }
+
+    // Rotate: rename ambient.jsonl → .1 (→ .2 cascade). After the rename the
+    // next O_CREAT|O_APPEND open in append_atomic() creates a fresh file.
+    crate::ambient_rotate::rotate_if_needed(ambient);
 }
 
 /// Resolve the main-repo root (linked-worktree-safe). Mirrors the shell
