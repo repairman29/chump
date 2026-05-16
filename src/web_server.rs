@@ -4445,9 +4445,7 @@ fn pr_list_cache() -> &'static std::sync::Mutex<Option<(std::time::Instant, serd
 ///
 /// Each row: number, title, author, age_s, merge_state, ci_ok, url.
 /// Result cached server-side for 30 s. gh unavailable → 503.
-async fn handle_pr_list(
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_pr_list(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -4488,25 +4486,38 @@ async fn handle_pr_list(
 /// Shape a single PR row for the list.  Shared by open + merged sections.
 fn pr_row(pr: &serde_json::Value, now_secs: u64) -> serde_json::Value {
     let number = pr["number"].as_u64().unwrap_or(0);
-    let title   = pr["title"].as_str().unwrap_or("").to_string();
-    let author  = pr["author"]["login"].as_str()
+    let title = pr["title"].as_str().unwrap_or("").to_string();
+    let author = pr["author"]["login"]
+        .as_str()
         .or_else(|| pr["author"].as_str())
-        .unwrap_or("").to_string();
-    let url     = pr["url"].as_str().unwrap_or("").to_string();
+        .unwrap_or("")
+        .to_string();
+    let url = pr["url"].as_str().unwrap_or("").to_string();
 
     // Parse createdAt / mergedAt → age_s
-    let ts_str = pr["mergedAt"].as_str()
+    let ts_str = pr["mergedAt"]
+        .as_str()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| pr["createdAt"].as_str().unwrap_or(""));
     let age_s = parse_iso8601_age_secs(ts_str, now_secs);
 
-    let merge_state = pr["mergeStateStatus"].as_str()
-        .unwrap_or("UNKNOWN").to_string();
+    let merge_state = pr["mergeStateStatus"]
+        .as_str()
+        .unwrap_or("UNKNOWN")
+        .to_string();
 
     // Quick CI summary: count successes vs failures in statusCheckRollup
-    let checks = pr["statusCheckRollup"].as_array().cloned().unwrap_or_default();
+    let checks = pr["statusCheckRollup"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let (pass, fail) = checks.iter().fold((0u32, 0u32), |(p, f), c| {
-        match c["conclusion"].as_str().unwrap_or("").to_uppercase().as_str() {
+        match c["conclusion"]
+            .as_str()
+            .unwrap_or("")
+            .to_uppercase()
+            .as_str()
+        {
             "SUCCESS" => (p + 1, f),
             "FAILURE" => (p, f + 1),
             _ => (p, f),
@@ -4531,12 +4542,16 @@ fn pr_row(pr: &serde_json::Value, now_secs: u64) -> serde_json::Value {
 /// Returns `now_secs` (age 0) on failure.
 fn parse_iso8601_age_secs(ts: &str, now_secs: u64) -> u64 {
     // Expected format: "2026-05-14T18:30:00Z" or "2026-05-14T18:30:00+00:00"
-    if ts.len() < 19 { return 0; }
+    if ts.len() < 19 {
+        return 0;
+    }
     let (date, time_rest) = ts.split_once('T').unwrap_or(("", ""));
     let time = time_rest.trim_end_matches('Z').trim_end_matches("+00:00");
     let parts_d: Vec<&str> = date.split('-').collect();
     let parts_t: Vec<&str> = time.split(':').collect();
-    if parts_d.len() < 3 || parts_t.len() < 2 { return 0; }
+    if parts_d.len() < 3 || parts_t.len() < 2 {
+        return 0;
+    }
     let y: u64 = parts_d[0].parse().unwrap_or(0);
     let mo: u64 = parts_d[1].parse().unwrap_or(0);
     let d: u64 = parts_d[2].parse().unwrap_or(0);
@@ -4552,11 +4567,13 @@ fn parse_iso8601_age_secs(ts: &str, now_secs: u64) -> u64 {
 
 fn days_since_epoch(y: u64, mo: u64, d: u64) -> u64 {
     // Algorithm: days from 1970-01-01. Good enough for age display.
-    if y < 1970 { return 0; }
+    if y < 1970 {
+        return 0;
+    }
     let months = [0u64, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     let m_idx = (mo.saturating_sub(1)) as usize;
     let m_days = months.get(m_idx).copied().unwrap_or(0);
-    let year_days = (y - 1970) * 365 + (y - 1969) / 4;   // close enough
+    let year_days = (y - 1970) * 365 + (y - 1969) / 4; // close enough
     year_days + m_days + d.saturating_sub(1)
 }
 
@@ -4571,14 +4588,21 @@ async fn fetch_pr_list() -> anyhow::Result<serde_json::Value> {
     // ── Open PRs ────────────────────────────────────────────────────────────
     let open_out = std::process::Command::new("gh")
         .args([
-            "pr", "list", "--state", "open", "--limit", "50",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "50",
             "--json",
             "number,title,author,createdAt,mergeStateStatus,statusCheckRollup,url",
         ])
         .output()?;
     if !open_out.status.success() {
-        anyhow::bail!("gh pr list --state open failed: {}",
-            String::from_utf8_lossy(&open_out.stderr));
+        anyhow::bail!(
+            "gh pr list --state open failed: {}",
+            String::from_utf8_lossy(&open_out.stderr)
+        );
     }
     let open_raw: serde_json::Value = serde_json::from_slice(&open_out.stdout)?;
     let open_prs: Vec<serde_json::Value> = open_raw
@@ -4598,7 +4622,9 @@ async fn fetch_pr_list() -> anyhow::Result<serde_json::Value> {
         .filter(|pr| {
             let ms = pr["mergeStateStatus"].as_str().unwrap_or("").to_uppercase();
             let is_dirty = ms == "DIRTY" || ms == "BLOCKED";
-            if !is_dirty { return false; }
+            if !is_dirty {
+                return false;
+            }
             let row = pr_row(pr, now_secs);
             row["age_s"].as_u64().unwrap_or(0) > stuck_cutoff_secs
         })
@@ -4608,8 +4634,14 @@ async fn fetch_pr_list() -> anyhow::Result<serde_json::Value> {
     // ── Merged PRs (last 24 h) ───────────────────────────────────────────────
     let merged_out = std::process::Command::new("gh")
         .args([
-            "pr", "list", "--state", "merged", "--limit", "30",
-            "--json", "number,title,author,mergedAt,url",
+            "pr",
+            "list",
+            "--state",
+            "merged",
+            "--limit",
+            "30",
+            "--json",
+            "number,title,author,mergedAt,url",
         ])
         .output()?;
     // Merged list failure is best-effort; don't abort entire endpoint.
