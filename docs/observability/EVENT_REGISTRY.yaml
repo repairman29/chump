@@ -1749,6 +1749,24 @@ events:
       Refusal conditions (exit non-zero, no event emitted):
         - exit_reason=clean → "session already completed"
         - resume_attempts > CHUMP_ORCHESTRATE_MAX_RESUMES (default 3) → loop guard
+  - kind: orchestrate_session_summary
+    emitter: src/orchestrate.rs (chump orchestrate — emitted once at session end, INFRA-1363)
+    trigger: every chump orchestrate session ends, regardless of exit path (clean, user_quit, crash, timeout)
+    consumers: [fleet-brief, kpi-report, cost-watch, ops-audit]
+    effect_metric: self
+    fields_required: [ts, kind, session_id, intents_routed, intents_failed, tool_calls, cost_usd, wall_time_s, exit_reason]
+    docs: |
+      session_id: matches CHUMP_ORCHESTRATE_SESSION_ID env var if set, else
+        synthesized as "orchestrate-<pid>-<epoch>".
+      intents_routed: total operator intents processed this session (int).
+      intents_failed: intents where any tool call returned an error string (int).
+      tool_calls: total TOOL: lines dispatched across all intents (int).
+      cost_usd: approximate dollar cost based on estimated token usage, 4 decimal
+        places (float). Uses opus pricing ($15/1M input, $75/1M output) as the
+        orchestrator defaults to opus.
+      wall_time_s: elapsed seconds from session start to summary emit (int).
+      exit_reason: one of "clean" (exit/quit typed), "user_quit" (EOF/Ctrl-D),
+        "crash" (unhandled error), "timeout" (future INFRA-1364 hang detection).
 
   # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
   - kind: intent_parse_ok
