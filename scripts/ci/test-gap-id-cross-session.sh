@@ -19,7 +19,7 @@ GAP_STORE_PATH=$(find_gap_store_path)
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 [[ -x "$CHUMP_BIN" ]] || fail "chump binary not found at $CHUMP_BIN — run cargo build first"
 
 TMP="$(mktemp -d -t test-credible-052.XXXXXX)"

@@ -12,8 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
-
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 
