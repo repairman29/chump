@@ -183,42 +183,21 @@ reports back) without human-typing each chump CLI command.
 
 ---
 
-## Phase 5 — Fleet quality (post-June 6) — velocity-first sequencing
+## Phase 5 — Fleet quality backlog (superseded by Waves)
 
-**Outcome.** Fleet throughput becomes measurable; GitHub rate-limit drag drops to near-zero; the agent-misdiagnosis class closes; operator trust in agent claims is grounded in tooling, not prose.
+**Superseded 2026-05-16 by [`docs/strategy/ROADMAP_WAVES.md`](strategy/ROADMAP_WAVES.md)** — the canonical ship-order discipline with explicit prerequisite gating (Waves 0 → 0b → 1 → 2 → 3 → 4 and transition tests per wave). This section was filed earlier the same day in PR #2255 as a parallel ordering; the Waves doc lands the same intent more rigorously and replaces it.
 
-**Sequencing rule.** Velocity-unlocking ship infra (rate-limit relief, observability, failure-class recovery) ships **before** agent-quality work (code intelligence, MCP code server). The agent-quality lift is real but compounds slower than the rate-limit floor that throttles every PR. Reference precedent: 44K `gh_self_throttled` events in 23h on 2026-05-15.
+**Filed-2026-05-16 gaps with wave assignments** (also stored in each gap's `notes:` field per the Waves §How-to-use rule):
 
-**Implementing gaps (strict order — each tier ships before the next):**
+| Wave | Role | Gaps |
+|---|---|---|
+| **0** | Truth gates | INFRA-1548 (schema_version contract), INFRA-1550 (EVENT_REGISTRY truth), INFRA-1554 (synthesis filing-atomicity), INFRA-1562 (preregistered evals), INFRA-1576 (doc staleness markers), **INFRA-1589** (runtime-verification discipline) |
+| **0b** | Auto-recovery | INFRA-1546 (monitor plists), INFRA-1547 (war-room SessionStart), INFRA-1549 (path-level lease via PreToolUse), INFRA-1552 (FAILURE_MODES wire-up), INFRA-1563 (/api/decisions endpoint), INFRA-1564 (3 dev-script plists), INFRA-1582 (chump gap show reaped), META-051 (failure-class pattern detector) |
+| **2-3** | Capacity | INFRA-1317 (GitHub Liaison Phase 1), INFRA-1318 (Phase 2 webhook-cache) |
+| **4** | Customer-facing / agent quality | INFRA-1545 (routing-brain wire-up), INFRA-1553 (chump-mcp-lifecycle in ACP), INFRA-1555 (FLEET-048 ratings picker), INFRA-1565 (chump-xml-adapter), INFRA-1570 (/api/settings/repo), INFRA-1571 (Tauri native), INFRA-1583 (chump-mcp-code MCP server) |
+| **noise** | Do not block ship (per Mission Yield calibration) | INFRA-1551, INFRA-1569, INFRA-1572, INFRA-1573, INFRA-1574, INFRA-1577, INFRA-1578 |
 
-1. **Measurement first.** Without these, downstream velocity changes can't be measured.
-   - **INFRA-1546** (P1) — launchd plists for queue-health-monitor / fleet-metrics-snapshot / velocity-trending
-   - **INFRA-1550** (P1) — EVENT_REGISTRY truth audit (416 declared kinds vs <20 actually firing — dashboards stop displaying scaffolding)
-
-2. **Rate-limit relief.** Today's biggest single throughput drag.
-   - **INFRA-1317** (P1) — GitHub Liaison Phase 1 (single-writer election + cache-mandatory reads)
-   - **INFRA-1318** (P1) — GitHub Liaison Phase 2 (webhook-first cache, builds on Phase 1)
-
-3. **Failure-class recovery.** Replace manual rescue cycles (5 rounds for the 1.95 clippy fire) with structural-fix proposals.
-   - **INFRA-1552** (P1) — wire `docs/process/FAILURE_MODES.yaml` (217 rules) into `orchestrate::classify_failure`
-   - **META-051** (P1) — failure-class pattern detector (auto-files structural-fix candidate gaps on 3-in-1h cluster)
-
-4. **Truth grounding.** Planning loop currently lies (INFRA-1305 cautionary case).
-   - **INFRA-1554** (P1) — synthesis-pass gap-filing must be atomic (call `chump gap reserve`, capture returned ID, validator catches drift)
-   - **INFRA-1551** (P1) — schema cull (`routing_outcomes` / `intents` corpses, dead `gaps` columns referenced by FLEET-034)
-
-5. **Agent quality.** Once velocity is unstuck, lift the agent ceiling.
-   - **INFRA-1589** (P2) — interim discipline: adopt `ast-grep` + `universal-ctags` + `rust-analyzer` + `gh search code` TODAY, plus AGENTS.md runtime-verification rule
-   - **INFRA-1583** (P2) — chump-mcp-code MCP server with ~10 tools; subsumes **INFRA-1582** when its Phase 1 lands
-
-6. **Cleanup tier.** After the above ship and stabilize.
-   - **INFRA-1569** (P2) dead-route triage (27 registered routes + 12 test-only with zero production callers)
-   - **INFRA-1577** (P2) scripts cleanup (legacy run-study, orphaned smokes, spike/demo archive)
-   - **INFRA-1573** (P2) two-Thompson-sampler dedup decision
-   - **INFRA-1571** (P3) Tauri native features (tray / notifications / dialogs)
-   - **INFRA-1574** (P3) `fleet_ws_echo` WP-5.1 spike retire-or-graduate
-
-**Out of scope this phase.** New surface-area expansion (PRODUCT-*), new eval protocols, new doc series. Phase 5 is purely fleet-quality consolidation of what already ships.
+**Why this section stayed instead of being removed**: PR #2255 ships AGENTS.md Behaviour 4 + `scripts/dev/verify-existence.sh`. Removing the originating Phase 5 framing leaves orphan references. Cross-linking to Waves preserves audit trail without competing.
 
 ---
 
