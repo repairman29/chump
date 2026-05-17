@@ -29,8 +29,8 @@
     - "web/v2/cockpit.js header docstring updated: removes stale '?view=cockpit until promoted' claim; notes PRODUCT-127–131 iteration arc"
     - Legacy NOW components (pre-cockpit) audited; each is either deleted OR has a follow-up gap explaining what cockpit doesn't cover
     - "docs/PWA_USER_GUIDE.md updated: cockpit described as the NOW landing; gap-queue demoted to LIBRARY sub-tab description"
-    - /v2/?view=cockpit URL decision documented in PR (alias-for-one-release vs drop)
-    - "Smoke verification: /v2/ renders cockpit; /v2/?view=cockpit also renders cockpit"
+    - "/v2/?view=cockpit URL kept as alias for one release with console.warn('deprecated: use /v2/?cadence=now'); follow-up gap filed to drop the alias after one release cycle"
+    - "Smoke verification: /v2/ renders cockpit; /v2/?view=cockpit also renders cockpit AND prints deprecation warning to console"
     - Visual snapshot baselines updated to reflect cockpit-as-NOW (using INFRA-1591 infrastructure)
   depends_on: [PRODUCT-127, PRODUCT-128, PRODUCT-129, PRODUCT-130, PRODUCT-131, INFRA-1591]
 
