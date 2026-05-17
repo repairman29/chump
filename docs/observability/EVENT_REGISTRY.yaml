@@ -3875,3 +3875,17 @@ events:
       was bypassed wholesale.
     consumers: [fleet-brief, ops-audit, pr-hygiene-gate]
     fields_required: [ts, kind, pr_number]
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
+
+  - kind: claim_collision_detected
+    effect_metric: self
+    emitter: src/atomic_claim.rs run_claim (INFRA-1412)
+    trigger: >
+      `chump claim` found a non-expired lease for the same gap_id already
+      in state.db before creating the worktree. Claim aborts with exit 2.
+      This prevents the PRODUCT-127 double-claim pattern where two sessions
+      simultaneously hold live leases on the same gap.
+      Bypassed by CHUMP_ALLOW_DOUBLE_CLAIM=1.
+    consumers: [fleet-brief, audit-log, silent-agent-watchdog]
+    fields_required: [ts, kind, gap_id, existing_session, existing_worktree]

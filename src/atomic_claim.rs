@@ -416,6 +416,43 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         run_doctor_probe(&args.repo_root)?;
     }
 
+    // 3b. INFRA-1412: Cross-session active-lease guard.
+    //
+    // Checks state.db for any non-expired lease on the SAME gap_id before
+    // creating a worktree. Without this, two concurrent agents could both
+    // pass the `verify_or_seed_gap` check (which only tests gap.status),
+    // then both create worktrees under different session IDs, yielding two
+    // live leases (the PRODUCT-127 double-claim incident).
+    //
+    // This is still a TOCTOU window (check-then-create), but it collapses
+    // the race from "entire claim flow" to "sub-millisecond DB window" and
+    // catches every realistic inter-machine or inter-process scenario.
+    //
+    // Bypass: CHUMP_ALLOW_DOUBLE_CLAIM=1 (for force-recover or test isolation).
+    let allow_double = std::env::var("CHUMP_ALLOW_DOUBLE_CLAIM")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false);
+    if !allow_double {
+        if let Some((existing_session, existing_worktree)) =
+            active_lease_for_gap(&args.repo_root, &args.gap_id)
+        {
+            emit_claim_collision_event(
+                &args.repo_root,
+                &args.gap_id,
+                &existing_session,
+                &existing_worktree,
+            );
+            eprintln!(
+                "ERROR: INFRA-1412: {} already has an active lease from session {existing_session} \
+                 (worktree: {existing_worktree}).\n  \
+                 The prior agent is still in flight. Pick a different gap or wait.\n  \
+                 (override: CHUMP_ALLOW_DOUBLE_CLAIM=1 — use only for debugging)",
+                args.gap_id,
+            );
+            std::process::exit(2);
+        }
+    }
+
     // 4. Session ID — explicit --session flag > derived.
     //
     // Deliberately do NOT honor CHUMP_SESSION_ID env: each `chump claim`
@@ -1030,6 +1067,64 @@ fn emit_gap_claimed_event(repo_root: &Path, gap_id: &str, session_id: &str) -> R
 
 /// INFRA-1439: emit kind=chump_claim_force_recover to ambient.jsonl.
 /// Best-effort — silently no-ops if the file isn't writable.
+/// INFRA-1412: Check state.db for an existing non-expired lease on `gap_id`.
+/// Returns `Some((session_id, worktree))` if a live lease exists, `None` otherwise.
+/// Best-effort: returns `None` on any DB error (fail-open for resilience).
+fn active_lease_for_gap(repo_root: &Path, gap_id: &str) -> Option<(String, String)> {
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open(&db_path).ok()?;
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    conn.query_row(
+        "SELECT session_id, worktree FROM leases \
+         WHERE gap_id = ?1 AND expires_at > ?2 \
+         ORDER BY expires_at DESC LIMIT 1",
+        rusqlite::params![gap_id, now_secs],
+        |row| {
+            let session: String = row.get(0)?;
+            let worktree: String = row.get(1)?;
+            Ok((session, worktree))
+        },
+    )
+    .ok()
+}
+
+/// INFRA-1412: emit kind=claim_collision_detected to ambient.jsonl.
+fn emit_claim_collision_event(
+    repo_root: &Path,
+    gap_id: &str,
+    existing_session: &str,
+    existing_worktree: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_collision_detected\",\
+         \"gap_id\":\"{}\",\"existing_session\":\"{}\",\"existing_worktree\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(existing_session),
+        json_escape(existing_worktree),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
 fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, actions: &str) {
     let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
     let secs = SystemTime::now()
