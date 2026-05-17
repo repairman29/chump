@@ -653,6 +653,22 @@ Four similarly-named entry points; pick the right one for the symptom:
 
 The `chump-doctor` *concept* (env vars like `CHUMP_DOCTOR_SKIP`, the heal pattern, the binary-probe preflight) is still named `chump-doctor` everywhere — INFRA-1218 only renamed the script *file* from `chump-doctor.sh` to `chump-binary-unwedge.sh` to disambiguate the filename from `chump --doctor`. The Rust subcommand and the wedge-recovery script have different jobs; their names should reflect that.
 
+## Code-intelligence shortcuts — verify before claiming missing (INFRA-1575, 2026-05-16)
+
+When verifying whether a feature, gap, symbol, or endpoint exists, prefer these over raw grep + filename inference. Each is one shell call; together they close the misdiagnosis class that produced [INFRA-1575](../gaps/INFRA-1575.yaml) — 10 shipped A2A gaps claimed "missing" because `chump gap show` returned "not found" for closed-and-reaped gaps. See AGENTS.md "Filing meta-patterns" behaviour 4 for the discipline rule; this is the canonical command per question.
+
+| Question | Canonical command | Wrong way that bites |
+|---|---|---|
+| Does gap-ID X exist (open or shipped)? | `gh search code <ID> --limit 5` or `git log --all --oneline \| grep <ID>` | `chump gap show <ID>` alone — silent on reaped |
+| Does symbol X exist in Rust source? | `ast-grep --pattern 'fn $NAME(...)' src/` | `grep -rn 'fn X' src/` — matches comments, misses generics |
+| Who calls fn X? | `rust-analyzer` LSP (when wired) or `ast-grep --pattern '$NAME(...)' src/` | `grep -rn 'X(' src/` — matches definitions + false positives |
+| What handler serves `/api/foo`? | `grep -nE 'route\("/api/foo"' src/web_server.rs` + check `web/v2/` for callers | guessing from route registration alone |
+| Is event-kind X emitted anywhere? | `grep -rE '"kind":"<X>"' src/ scripts/` + cross-check `docs/observability/EVENT_REGISTRY.yaml` | reading EVENT_REGISTRY.yaml alone (416 declared vs ~20 firing) |
+
+**Helper script**: `scripts/dev/verify-existence.sh <ID-or-symbol>` ([INFRA-1589](../gaps/INFRA-1589.yaml)) runs all four checks and reports tri-state `{confirmed_shipped | confirmed_absent | ambiguous}`. Use this **before filing any "feature X is missing" gap** — it's one of the AGENTS.md behaviour-4 mandates.
+
+[INFRA-1583](../gaps/INFRA-1583.yaml) (chump-mcp-code MCP server, Phase 5) will replace each CLI invocation with a structured MCP call (~50 tokens vs ~5000 for a file read). Until that ships, these CLI shortcuts are the discipline.
+
 ## Known error classes — self-help index (INFRA-590)
 
 Scripts append `See: docs/process/CLAUDE_GOTCHAS.md#<anchor>` to high-frequency

@@ -517,14 +517,54 @@ week — consider a META-* gap covering the class" without having to do
 a periodic-RCA pass manually. Defense in depth, not replacement for
 behaviour 1.
 
-**Why these three matter together:** behaviour 1 is the human-in-the-
+**4. Runtime verification before missing-claim.** Before filing a gap
+that claims a feature is missing, broken, or unfiled, run all three
+checks. `chump gap show <ID>` returns "not found" both for typos AND
+for gaps that shipped and were reaped from the active registry — the
+silence is ambiguous and will mislead you:
+
+- **`gh search code <ID>` (or `git log --all --oneline | grep <ID>`)** —
+  does the gap ID appear in any shipped commit subject? Reaped gaps
+  leave their `feat(<ID>):` commit behind even after the YAML is gone.
+- **`ast-grep --pattern 'fn $NAME(...)' src/`** (or `grep -rln <symbol>
+  src/`) — does the symbol exist? Raw grep misses generics and matches
+  comments; ast-grep is structural.
+- **Runtime surface** — does the script exist on disk (`test -x`)? Is
+  the endpoint registered in `web_server.rs` (`grep -n '"/api/X"'`)?
+  Is the ambient `kind` actually emitted by anyone (`grep -rE
+  '"kind":"<X>"' src/ scripts/`)?
+
+The helper `scripts/dev/verify-existence.sh <ID-or-symbol>` (INFRA-1589)
+runs the four standard checks and returns tri-state
+`{confirmed_shipped | confirmed_absent | ambiguous}` so you can do this
+in one shell call before filing.
+
+[INFRA-1575](docs/gaps/INFRA-1575.yaml) (2026-05-16) is the cautionary
+precedent: an agent filed a P1 gap claiming a 10-gap A2A implementation
+chain (INFRA-1296..1302 + PRODUCT-103..105) was missing from the
+registry. All ten had in fact shipped (PRs #1900, #1960, #1967, #1969,
+#1972, #1991, #1992, #1994, #1997, #1998, #2004). The agent stopped at
+`chump gap show: not found` and never checked git history or the
+runtime surface (broadcast.sh exists, /api/broadcast registered).
+INFRA-238 is the earlier sibling — claiming origin/main reverted state
+without `git fetch origin main && git show origin/main:<path>`
+verification. Same class.
+
+[INFRA-1583](docs/gaps/INFRA-1583.yaml) (chump-mcp-code MCP server,
+Phase 5) will ship a structured query layer that makes these checks
+one MCP call each, 100× cheaper than file reads. Until then, the
+CLI shortcuts above are the discipline.
+
+**Why these four matter together:** behaviour 1 is the human-in-the-
 loop catch (what the operator just did with the "Did we do any RCA
-work?" question). Behaviour 2 prevents one specific failure mode
-(stale-tree misdiagnosis). Behaviour 3 automates the cluster-detection
-half of behaviour 1, so cycle-end RCA becomes "review the pattern-
-detector's ALERT list" instead of "scan all session filings from
-memory." None alone is enough; together they make pattern-blindness
-a recoverable error rather than a silent one.
+work?" question). Behaviour 2 prevents stale-tree misdiagnosis.
+Behaviour 3 automates the cluster-detection half of behaviour 1 so
+cycle-end RCA becomes "review the pattern-detector's ALERT list"
+instead of "scan all session filings from memory." Behaviour 4 closes
+the missing-claim misdiagnosis class (INFRA-1575 / INFRA-238) by
+requiring runtime verification before existence assertions. None alone
+is enough; together they make both pattern-blindness AND
+existence-hallucination recoverable errors rather than silent ones.
 
 ## Naming conventions (INFRA-186, 2026-05-01)
 
