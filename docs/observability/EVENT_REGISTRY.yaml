@@ -356,6 +356,19 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, mode, installed, skipped_healthy, failed, missing_count]
 
+  - kind: fleet_bootstrap_incomplete
+    effect_metric: self
+    emitter: scripts/setup/chump-fleet-bootstrap.sh (INFRA-1594)
+    trigger: --check mode found one or more REQUIRED_DAEMONS unregistered
+      in launchd (paramedic, bot-merge-watchdog, etc.). Names the missing
+      daemons so paramedic on peer hosts can flag the bootstrap gap on
+      machines that joined the fleet without a full install.
+      2026-05-16 M4 incident: host ran runner plists but no paramedic;
+      PRs got stuck DIRTY for hours because the self-healing daemon
+      literally wasn't installed.
+    consumers: [paramedic, fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, missing_daemons, missing_count, host]
+
   - kind: picker_used_priority
     effect_metric: self
     emitter: scripts/dispatch/_pick_gap.py + _pick_and_claim_gap.py (INFRA-1258)
