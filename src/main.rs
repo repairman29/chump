@@ -4262,7 +4262,9 @@ async fn main() -> Result<()> {
                 eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
                 eprintln!("  whoworkson  <topic> [--json]  -- who is working on a given topic (INFRA-1446)");
                 eprintln!("  canary      [--lane LABEL] [--json] [--record-baseline]");
-                eprintln!("              -- broad runner-lane canary (INFRA-1568): runs full production");
+                eprintln!(
+                    "              -- broad runner-lane canary (INFRA-1568): runs full production"
+                );
                 eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
                 std::process::exit(2);
             }
