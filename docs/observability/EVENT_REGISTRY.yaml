@@ -3875,3 +3875,16 @@ events:
       was bypassed wholesale.
     consumers: [fleet-brief, ops-audit, pr-hygiene-gate]
     fields_required: [ts, kind, pr_number]
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
+
+  - kind: gap_yaml_written
+    effect_metric: self
+    emitter: src/main.rs gap reserve subcommand (INFRA-1428)
+    trigger: >
+      `chump gap reserve` successfully wrote a per-file YAML mirror to
+      docs/gaps/<ID>.yaml. The `target` field indicates where the YAML
+      landed: `main_repo` (correct path) or `worktree_fallback` (CHUMP_HOME
+      not set; wrote to current linked worktree with warning).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, path, target]
