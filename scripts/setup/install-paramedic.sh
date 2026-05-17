@@ -130,10 +130,16 @@ echo "[install-paramedic]   chump binary: ${CHUMP_BIN}"
 
 mkdir -p "$LAUNCH_AGENTS_DIR" "$LOG_DIR"
 
-# Substitute placeholders in plist template.
+# Substitute placeholders in plist template (INFRA-1597 adds WorkingDirectory,
+# CHUMP_HOME, CHUMP_REPO, HOME, and ~/.cargo/bin onto PATH).
+USER_HOME_VAL="${HOME}"
+DOTCARGO_BIN="${HOME}/.cargo/bin"
 sed \
     -e "s|CHUMP_BIN_PLACEHOLDER|${CHUMP_BIN}|g" \
     -e "s|CHUMP_LOG_DIR_PLACEHOLDER|${LOG_DIR}|g" \
+    -e "s|CHUMP_REPO_ROOT_PLACEHOLDER|${REPO_ROOT}|g" \
+    -e "s|USER_HOME_PLACEHOLDER|${USER_HOME_VAL}|g" \
+    -e "s|CHUMP_HOME_PLACEHOLDER_DOTCARGO_BIN|${DOTCARGO_BIN}|g" \
     "$PLIST_TEMPLATE" > "$INSTALLED_PLIST"
 
 echo "[install-paramedic]   plist: ${INSTALLED_PLIST}"

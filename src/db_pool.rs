@@ -16,6 +16,17 @@ fn chump_memory_db_path() -> PathBuf {
     if let Ok(p) = std::env::var("CHUMP_MEMORY_DB_PATH") {
         return PathBuf::from(p);
     }
+    // INFRA-1597: prefer CHUMP_HOME / CHUMP_REPO over current_dir(); when the
+    // paramedic daemon runs under launchd its cwd is `/`, which would yield
+    // `/sessions/chump_memory.db` and break r2d2 pool init.
+    if let Some(dir) = std::env::var("CHUMP_HOME")
+        .or_else(|_| std::env::var("CHUMP_REPO"))
+        .ok()
+        .map(|p| PathBuf::from(p.trim().to_string()))
+        .filter(|p| p.is_dir())
+    {
+        return dir.join("sessions/chump_memory.db");
+    }
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("sessions/chump_memory.db")

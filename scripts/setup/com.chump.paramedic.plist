@@ -41,11 +41,25 @@
         <string>600</string>
     </array>
 
-    <!-- Inherit PATH from launchd environment so gh / git are found. -->
+    <!-- INFRA-1597: WorkingDirectory + CHUMP_HOME so the daemon can resolve
+         sessions/chump_memory.db; without this it runs with cwd=/ and r2d2
+         tries to open /sessions/chump_memory.db (read-only, fails). -->
+    <key>WorkingDirectory</key>
+    <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
+
+    <!-- Inherit PATH from launchd environment so gh / git / cargo are found,
+         and pass CHUMP_HOME / HOME so repo_path::repo_root() resolves correctly
+         even when WorkingDirectory drifts. (INFRA-1556 pattern.) -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>CHUMP_HOME_PLACEHOLDER_DOTCARGO_BIN:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>CHUMP_HOME</key>
+        <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
+        <key>CHUMP_REPO</key>
+        <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
+        <key>HOME</key>
+        <string>USER_HOME_PLACEHOLDER</string>
     </dict>
 
     <!-- Logs -->
