@@ -258,7 +258,7 @@ jobs:
           CHUMP_DESKTOP_API_BASE: http://127.0.0.1:3848
           CHUMP_DESKTOP_AUTO_WEB: '0'
         run: |
-          ./target/debug/chump --web &
+          ${CARGO_TARGET_DIR:-./target}/debug/chump --web &
           CHUMP_PID=$!
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
@@ -655,12 +655,12 @@ jobs:
       - name: fleet brief subcommand (INFRA-721)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-fleet-brief.sh
 
       - name: orchestrate session-summary ambient emit (INFRA-1363)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-orchestrate-session-summary.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-orchestrate-session-summary.sh
 
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
@@ -764,11 +764,11 @@ jobs:
       - name: gap-ID cross-session collision prevention (CREDIBLE-052)
         run: |
           export PATH="$(pwd)/target/debug:$PATH"
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-id-cross-session.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-cross-session.sh
 
       - name: bot-merge auto-close handshake (INFRA-154)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-bot-merge-auto-close.sh
 
       - name: bot-merge health monitoring + hung-process detection (INFRA-119)
@@ -788,7 +788,7 @@ jobs:
 
       - name: CLI help system consistency — all 31 commands have Usage strings (CREDIBLE-015)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-cli-help.sh
 
       - name: CLI version/debug flags (CREDIBLE-019)
@@ -796,12 +796,12 @@ jobs:
 
       - name: CLI fleet + health + coord commands (CREDIBLE-035)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-cli-fleet-coord.sh
 
       - name: CLI integration tests by command category — 31 commands (CREDIBLE-018)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-cli-integration.sh
 
       # INFRA-024: standalone example workspace (not a root workspace member).
@@ -1081,7 +1081,7 @@ jobs:
           CHUMP_WEB_PORT=3847 CHUMP_WEB_TOKEN="" \
             CHUMP_LIGHT_CONTEXT="$CHUMP_LIGHT_CONTEXT" \
             OPENAI_API_BASE="$OPENAI_API_BASE" OPENAI_API_KEY="$OPENAI_API_KEY" OPENAI_MODEL="$OPENAI_MODEL" \
-            ./target/debug/chump --web &
+            ${CARGO_TARGET_DIR:-./target}/debug/chump --web &
           CHUMP_WEB_PID=$!
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:3847/api/health >/dev/null; then
@@ -1397,11 +1397,11 @@ jobs:
         run: bash scripts/ci/check-path-filter-coverage.sh
       - name: state.db corruption recovery — restore from state.sql (INFRA-538)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-state-db-restore.sh
       - name: PWA gap workflow e2e — 4-phase stub + status transition (CREDIBLE-020)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-pwa-e2e-gap-workflow.sh
       - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
         run: bash scripts/ci/test-fleet-state-mutex.sh
@@ -1420,7 +1420,7 @@ jobs:
       - name: gap audit-ac --open — warn on vague open gaps before claim (INFRA-936)
         run: |
           cargo build --bin chump 2>&1 | tail -2
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
       - name: bot-merge.sh step-specific exit codes (RESILIENT-010)
         run: bash scripts/ci/test-bot-merge-exit-codes.sh
 
@@ -1429,22 +1429,22 @@ jobs:
 
       - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
       - name: velocity trending — ship_rate/waste_rate 7d trend, improving/stable/degrading (INFRA-901)
         run: bash scripts/ci/test-velocity-trending.sh
       - name: gap show AC rendering — numbered list + json ac_count/ac_has_todos (CREDIBLE-033)
         run: |
           cargo build --bin chump 2>&1 | tail -2
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
 
       - name: chump gap set --add-note timestamped append (EFFECTIVE-020)
         run: |
           cargo build --bin chump 2>&1 | tail -2
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-add-note.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-add-note.sh
 
       - name: CLI output format consistency — --quiet/--format/--json (EFFECTIVE-008)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-cli-output-format.sh
       - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
         run: bash scripts/ci/test-prepush-worktree-cd.sh
       - name: KNOWN_FLAKES auto-bypass gate — 11 pre-push flakes catalogued (RESILIENT-012)
@@ -1454,7 +1454,7 @@ jobs:
       - name: gap consolidate — near-duplicate title detection (INFRA-935)
         run: |
           cargo build --bin chump 2>&1 | tail -2
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-consolidate.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-consolidate.sh
       - name: gap impact rating — rate CLI, ambient event, kpi --impact (FLEET-048)
         run: bash scripts/ci/test-gap-impact-rating.sh
       - name: speculative race-loss event tracking (FLEET-035)
@@ -1507,7 +1507,7 @@ jobs:
         run: bash scripts/ci/test-error-path-coverage.sh
       - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-pwa-security.sh
       - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
         run: bash scripts/ci/test-per-worktree-target-guard.sh
@@ -1519,13 +1519,13 @@ jobs:
         run: bash scripts/ci/test-autonomous-ship-rate.sh
       - name: release --lease <ID> flag — named session release (INFRA-1026)
         run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
 
       - name: chump gap list --since filter (EFFECTIVE-018)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-gap-list-since.sh
       - name: gap list --json schema audit — required fields present in every gap object (CREDIBLE-061)
         run: bash scripts/ci/test-gap-list-since-json-schema.sh
@@ -1536,7 +1536,7 @@ jobs:
       - name: /api/gap-queue fat shape — 15 fields, filters, sort, pillar derivation, ambient signal (INFRA-1197)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-api-gap-queue-shape.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
@@ -1760,12 +1760,12 @@ jobs:
       - name: PWA auth-toast dedup — fleet_auth_fallback stream + unit (INFRA-991)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-pwa-auth-toast-stream.sh
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-pwa-auth-toast-stream.sh
           node web/v2/tests/auth-toast.dedup.test.js
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
 
       - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
