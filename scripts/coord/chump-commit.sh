@@ -237,9 +237,24 @@ fi
 #
 # Bypass: CHUMP_INDEX_LOCK=0
 _INDEX_MUTEX="$(git rev-parse --git-dir)/.chump-index-mutex"
-if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v flock >/dev/null 2>&1; then
+
+# INFRA-1600 follow-up: discover flock from brew keg-only path on macOS.
+# `brew install util-linux` doesn't symlink flock into /opt/homebrew/bin;
+# it lives at /opt/homebrew/opt/util-linux/bin/flock. On self-hosted macOS
+# runners with a launchd-inherited PATH that lacks brew-keg-only paths,
+# `command -v flock` returns false even though flock IS installed.
+_FLOCK_BIN=""
+if command -v flock >/dev/null 2>&1; then
+    _FLOCK_BIN="flock"
+elif [[ -x /opt/homebrew/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/opt/homebrew/opt/util-linux/bin/flock"
+elif [[ -x /usr/local/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/usr/local/opt/util-linux/bin/flock"
+fi
+
+if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && [[ -n "$_FLOCK_BIN" ]]; then
     exec 200>>"$_INDEX_MUTEX"
-    if ! flock -w 30 200; then
+    if ! "$_FLOCK_BIN" -w 30 200; then
         echo "[chump-commit] ERROR: could not acquire git index mutex after 30s." >&2
         echo "[chump-commit]   Another agent is committing to this worktree." >&2
         echo "[chump-commit]   Retry once that commit completes." >&2
@@ -248,7 +263,7 @@ if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v flock >/dev/null 2>&1; th
     fi
 elif [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]]; then
     echo "[chump-commit] WARNING: flock(1) not found — git index unprotected." >&2
-    echo "[chump-commit]   Install util-linux for concurrent-commit safety on Linux." >&2
+    echo "[chump-commit]   Install util-linux (Linux: apt; macOS: brew install util-linux)." >&2
     echo "[chump-commit]   Safe to ignore on single-agent or isolated-worktree setups." >&2
 fi
 
