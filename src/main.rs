@@ -143,6 +143,7 @@ mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
+mod pr_ac_coverage;
 mod pr_coupling_cost;
 mod pr_fix_clippy;
 mod pr_triage;
@@ -1510,6 +1511,37 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump pr triage: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump pr ac-coverage <PR#> [--advisory]`
+    // (INFRA-1541) — CREDIBLE: pre-merge AC coverage gate
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("ac-coverage")
+    {
+        let pr_number: Option<u64> = args.get(3).and_then(|s| s.parse().ok());
+        let pr_number = match pr_number {
+            Some(n) => n,
+            None => {
+                eprintln!("Usage: chump pr ac-coverage <PR#>");
+                std::process::exit(2);
+            }
+        };
+        match pr_ac_coverage::run(pr_number) {
+            Ok(result) => {
+                // print JSON summary
+                println!("{}", pr_ac_coverage::render_json(&result));
+                if result.status == pr_ac_coverage::CoverageStatus::Miss
+                    && std::env::var("CHUMP_AC_GATE_ADVISORY").as_deref() != Ok("true")
+                {
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("chump pr ac-coverage: {e}");
                 std::process::exit(1);
             }
         }
