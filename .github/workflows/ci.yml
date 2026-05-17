@@ -1256,16 +1256,20 @@ jobs:
       - name: chump gap list domain summary + test-filter (INFRA-431)
         # INFRA-582: switched from --release to debug build; release compile was
         # 9+ min cold. Debug with shared cache completes in <60s.
+        # INFRA-1600 follow-up: honor $CARGO_TARGET_DIR (shared cache on self-hosted
+        # runners redirects build output away from $(pwd)/target).
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-gap-list-domain-summary.sh
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
+          bash scripts/ci/test-gap-list-domain-summary.sh
 
       - name: chump gap list done-format — closed-pr + closed-date (EFFECTIVE-024)
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-gap-list-done-format.sh
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
+          bash scripts/ci/test-gap-list-done-format.sh
 
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
