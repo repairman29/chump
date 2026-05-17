@@ -4304,10 +4304,7 @@ async fn main() -> Result<()> {
                             );
                         }
                         if !outcome.daemons_failed.is_empty() {
-                            println!(
-                                "  daemons FAILED: {}",
-                                outcome.daemons_failed.join(", ")
-                            );
+                            println!("  daemons FAILED: {}", outcome.daemons_failed.join(", "));
                         }
                         if !outcome.prs_dispatched.is_empty() {
                             println!(
@@ -4353,8 +4350,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary>"
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|doctor>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -4382,7 +4378,9 @@ async fn main() -> Result<()> {
                     "              -- broad runner-lane canary (INFRA-1568): runs full production"
                 );
                 eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
-                eprintln!("  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)");
+                eprintln!(
+                    "  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)"
+                );
                 std::process::exit(2);
             }
         }

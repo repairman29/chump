@@ -253,16 +253,12 @@ fn launchctl_loaded(label: &str) -> bool {
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
         .or_else(|| {
-            Command::new("id")
-                .arg("-u")
-                .output()
-                .ok()
-                .and_then(|o| {
-                    String::from_utf8_lossy(&o.stdout)
-                        .trim()
-                        .parse::<u32>()
-                        .ok()
-                })
+            Command::new("id").arg("-u").output().ok().and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+            })
         })
         .unwrap_or(501);
     let target = format!("gui/{uid}/{label}");
@@ -393,8 +389,7 @@ pub fn extract_gap_id(title: &str) -> Option<String> {
 fn dispatch_execute_gap(gap_id: &str) -> Result<(), String> {
     // Spawn the existing autonomous agent path. Detached: we don't await
     // completion (gaps run for many minutes; the heal cycle must stay fast).
-    let chump_bin = std::env::current_exe()
-        .map_err(|e| format!("current_exe: {e}"))?;
+    let chump_bin = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     Command::new(&chump_bin)
         .args(["--execute-gap", gap_id])
         .stdin(std::process::Stdio::null())
@@ -434,18 +429,11 @@ fn append_dispatch_log(log: &Path, pr: u64, gap_id: &str) {
     }
 }
 
-fn page_operator(
-    cfg: &HealConfig,
-    used: usize,
-    budget: usize,
-    pending: &[(u64, String)],
-) {
+fn page_operator(cfg: &HealConfig, used: usize, budget: usize, pending: &[(u64, String)]) {
     let path = cfg
         .operator_action_override
         .clone()
-        .unwrap_or_else(|| {
-            repo_path::repo_root().join(".chump-locks/operator-action-needed.json")
-        });
+        .unwrap_or_else(|| repo_path::repo_root().join(".chump-locks/operator-action-needed.json"));
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
@@ -467,7 +455,10 @@ fn page_operator(
             BUDGET_WINDOW_SECS
         ),
     });
-    let _ = std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default());
+    let _ = std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&payload).unwrap_or_default(),
+    );
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -519,7 +510,10 @@ mod tests {
             ..Default::default()
         };
         let out = run_heal_cycle(&cfg);
-        assert!(out.idle, "should be idle when all daemons loaded + no stuck PRs");
+        assert!(
+            out.idle,
+            "should be idle when all daemons loaded + no stuck PRs"
+        );
         assert!(out.daemons_installed.is_empty());
         assert!(out.prs_dispatched.is_empty());
     }
@@ -552,9 +546,15 @@ mod tests {
             ..Default::default()
         };
         let out = run_heal_cycle(&cfg);
-        assert!(out.budget_hit, "should hit budget with 4 stuck PRs and budget=2");
+        assert!(
+            out.budget_hit,
+            "should hit budget with 4 stuck PRs and budget=2"
+        );
         assert_eq!(out.prs_dispatched.len(), 2);
-        assert!(op_path.exists(), "operator-action-needed.json must be written");
+        assert!(
+            op_path.exists(),
+            "operator-action-needed.json must be written"
+        );
     }
 
     #[test]
@@ -578,7 +578,9 @@ mod tests {
             ..Default::default()
         };
         let out = run_heal_cycle(&cfg);
-        assert!(out.daemons_installed.contains(&"com.chump.paramedic".to_string()));
+        assert!(out
+            .daemons_installed
+            .contains(&"com.chump.paramedic".to_string()));
         assert!(!out.idle);
     }
 }
