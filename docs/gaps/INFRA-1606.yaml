@@ -1,0 +1,40 @@
+- id: INFRA-1606
+  domain: INFRA
+  title: "EFFECTIVE: PWA AMBIENT cadence live-diff stream panel — last N commits with semantic-aware diff summaries, real-time SSE feed; the fleet becomes visible to the operator"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    The fleet currently ships 80+ PRs/24h. The operator can see this in git log, gh pr list, the ambient.jsonl stream, the bot-merge logs — but nowhere in the PWA. Each surface is a different shape: git log is hashes, gh pr list is metadata, ambient is events. None is 'here is the codebase EVOLVING, right now.'
+    
+    This gap makes that visible. The fleet stops feeling like background noise and starts feeling like the alive coordination layer it actually is.
+    
+    Pairs with INFRA-1603 (hot-reload PWA on PR merge): hot-reload makes the operator's PWA evolve; live-diff stream makes the codebase evolution itself visible.
+    
+    Rough shape:
+    (a) New endpoint /api/codebase-stream (Rust, src/web_server.rs): SSE stream emitting one event per merged PR (replay last N=50 on connect). Each event: {pr_number, title, sha, merged_at, files_changed[], net_lines, gap_id_if_any, pillar_if_any, one_line_semantic_summary}.
+    (b) Semantic summary v1: heuristic — pick from PR title (strip the gap-prefix), file-class summary ('5 src/, 2 tests/, 1 docs/'). v2: LLM-generated 8-word summary cached per-PR. v1 ships; v2 is a follow-up.
+    (c) Backend feed source: github-webhook-receiver.py (already lands pr_merged events) + replay from gh api on cold start.
+    (d) New PWA component <chump-view-codebase-stream> placed in AMBIENT cadence as a sub-tab (per docs/design/OPERATOR_CONSOLE_V2.md §AMBIENT — 'live event tail + filtered fleet state').
+    (e) Visual treatment: chronological list, newest top, each row collapsible. Click expands to: full file list, gap card (if gap_id known), pillar grade context. Animate in new rows with subtle fade (respect prefers-reduced-motion).
+    (f) Filter chips: pillar / domain (INFRA/PRODUCT/META) / file-type (touched web/v2/** vs not) / 'mine' (PRs the operator authored vs fleet workers).
+    (g) 'Codebase evolved' counter top-right: 'N commits in last 24h / Mh / Mm' — matches the fleet brief stats Jeff gets at session-start.
+    (h) ACP-style click-through: every row has [open commit in editor] (chump://acp/open?sha=X — composes with PRODUCT-110 ACP deeplinks).
+    (i) Smoke test: scripts/ci/test-pwa-codebase-stream.sh — fixture web server with 5 synthetic merged PRs, asserts SSE delivers 5 events in order, PWA renders them in correct sort, filter chips work.
+    
+    Marketing value: this is a screenshot-worthy demo of the 'fleet of agents shipping in parallel' thesis. Today the demo is 'look at this CLI'. With this view, the demo is 'look at the codebase moving.'
+    
+    When picked, run chump gap decompose <ID>.
+  acceptance_criteria:
+    - /api/codebase-stream SSE endpoint emits one event per merged PR with full schema (pr_number, title, sha, merged_at, files_changed[], net_lines, gap_id, pillar, summary)
+    - Replays last N=50 events on connect
+    - <chump-view-codebase-stream> renders in AMBIENT cadence as a sub-tab per OPERATOR_CONSOLE_V2.md
+    - Newest-top chronological list, each row collapsible with file list + gap card + pillar grade context
+    - "Filter chips: pillar / domain / file-type (web/v2/** vs not) / mine"
+    - "'Codebase evolved' counter top-right: N commits / Mh / Mm window"
+    - Each row has ACP deeplink [open commit in editor] composing with PRODUCT-110
+    - Semantic summary v1 = heuristic (PR title + file-class breakdown); LLM-summary follow-up filed for v2
+    - Animations respect prefers-reduced-motion
+    - "scripts/ci/test-pwa-codebase-stream.sh: 5 synthetic PRs round-tripped through SSE → PWA render → filter chip"
+    - Visual snapshot baseline added to INFRA-1591 suite
+
