@@ -29,6 +29,14 @@
 
 set -uo pipefail
 
+# INFRA-1600: self-hosted macOS runners inherit a launchd PATH that lacks
+# $HOME/.cargo/bin. Without this, the `cargo` invocation below 127s.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -f "$SCRIPT_DIR/lib/ensure-cargo-on-path.sh" ]]; then
+    # shellcheck source=lib/ensure-cargo-on-path.sh
+    source "$SCRIPT_DIR/lib/ensure-cargo-on-path.sh"
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CATALOG="$REPO_ROOT/docs/process/KNOWN_FLAKES.yaml"
 
