@@ -403,6 +403,47 @@ Every commit runs the checks below. Most are silent no-ops; each one fails loud 
 
 `git commit --no-verify` bypasses ALL pre-commit guards (the chump-commit.sh wrapper has its own bypass envs). Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
 
+### Rust-First-Bypass — machine-acknowledgment gate (INFRA-1580)
+
+The Rust-first pre-commit gate (META-064) lets you bypass with a `Rust-First-Bypass: <reason>` trailer when adding new shell to `scripts/coord/`, `scripts/dispatch/`, or `scripts/ops/`. As of INFRA-1580 the gate runs a SECOND, stricter check on bypassed commits:
+
+When a bypass trailer is present, the hook scores each newly-added shell file under `scripts/` against four **machine-checkable criteria**:
+
+| Key | Fails when… |
+|---|---|
+| `loc` | file is > 200 LOC (`wc -l`) |
+| `state` | file writes to `state.db`, `ambient.jsonl`, or `.chump-locks/*.state` (grep) |
+| `hot` | file contains `while true` OR is referenced by a `~/Library/LaunchAgents/*.plist` (KeepAlive daemon) |
+| `test` | no `scripts/ci/test-<basename>.sh` sibling exists |
+
+**If 2 or more criteria fail**, narrative-only bypass is INSUFFICIENT. The committer must additionally include a `Rust-First-Bypass-Accept:` trailer naming each failing key:
+
+```
+feat(INFRA-NNNN): stage-gated migration helper
+
+Three-stage pipeline; full Rust port tracked as INFRA-NNNN+1.
+
+Rust-First-Bypass: stage-gated migration; full port tracked as INFRA-NNNN+1
+Rust-First-Bypass-Accept: loc,state,hot,test
+```
+
+The bypass-accept CSV is **machine-verified against the actual file** — you can't pre-accept criteria the file doesn't violate (no-op), and you can't skip criteria it does (gate rejects). Valid keys: `loc`, `state`, `hot`, `test`.
+
+Narrative `Rust-First-Bypass:` is still required — the audit trail captures *why* the tradeoffs were taken, not just *that* they were taken.
+
+**Failure mode this fixes (2026-05-16):** `scripts/coord/chump-runner-migration-pipeline.sh` shipped with `Rust-First-Bypass: glue between gh+jq` despite being 339 LOC, mutating `ambient.jsonl`, running `while true`, and having no test sibling — four-of-four violations, narrative-only bypass passed under the old gate.
+
+**Audit existing scripts:**
+
+```bash
+scripts/dev/rust-first-bypass-audit.sh           # text output, walks coord/+setup/
+scripts/dev/rust-first-bypass-audit.sh --json    # JSON-only
+```
+
+Emits one `kind=rust_first_bypass_audit` per violating file with `{path, violations, has_bypass, has_acknowledgment, loc}`. Useful for prioritizing port-to-Rust work — files with multiple violations and no acknowledgment are the highest-value Rust ports.
+
+Test: `scripts/ci/test-rust-first-bypass-gate.sh` covers (a) clean glue accepted, (b) narrative-only on a bad daemon rejected, (c) full-ack on the same daemon accepted, (d) partial-ack still rejected.
+
 ## Dispatched-subagent backend (COG-025, 2026-04-19)
 
 If you wake up inside a `chump-orchestrator`-dispatched worktree, you may be

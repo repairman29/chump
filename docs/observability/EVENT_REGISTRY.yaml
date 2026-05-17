@@ -394,6 +394,24 @@ events:
       per-file reasons (hot-path|state-mutator|>200 LOC|long-lived).
     fields_required: [ts, kind, files, reasons]
     consumers: [fleet-brief, audit-log, META-064-effectiveness]
+  - kind: rust_first_strict_blocked
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (INFRA-1580)
+    trigger: pre-commit STRICT gate (INFRA-1580) saw a 'Rust-First-Bypass:'
+      trailer but the file failed 2+ machine-checkable criteria (loc/state/
+      hot/test) AND the commit lacked a 'Rust-First-Bypass-Accept:' CSV
+      covering them. Commit rejected; narrative-only bypass insufficient.
+    fields_required: [ts, kind, files, unacknowledged]
+    consumers: [fleet-brief, audit-log, META-064-effectiveness]
+  - kind: rust_first_bypass_audit
+    effect_metric: self
+    emitter: scripts/dev/rust-first-bypass-audit.sh (INFRA-1580)
+    trigger: read-only audit walks scripts/coord/*.sh + scripts/setup/*.sh,
+      applies the strict 4-criteria check, and emits one event per violating
+      file with violations CSV (loc,state,hot,test), bypass-present bool,
+      and acknowledgment-present bool. Used for port-to-Rust prioritization.
+    fields_required: [ts, kind, path, violations, has_bypass, has_acknowledgment, loc]
+    consumers: [fleet-brief, audit-log, META-064-effectiveness]
   - kind: redundancy_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
