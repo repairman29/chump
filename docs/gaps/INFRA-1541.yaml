@@ -1,0 +1,17 @@
+- id: INFRA-1541
+  domain: INFRA
+  title: "CREDIBLE: pre-merge AC coverage gate — block ship when PR diff misses AC bullets"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "Implemented as chump subcommand: chump pr ac-coverage <PR_NUMBER> — exits 0 iff every AC bullet of the referenced gap is covered; non-zero with numbered miss-list. Shell script scripts/ci/test-pr-ac-coverage.sh is a 3-line exec wrapper invoking the binary (Rust-First; logic lives in src/commands/pr_ac_coverage.rs, not in shell)."
+    - "Title parser: pulls INFRA-N (or any <DOMAIN>-N) from PR title; no gap-ref → exit 0 with note no_gap_ref (covers hotfix PRs)."
+    - "AC coverage rule: each AC bullet counts as covered iff ANY of: (a) file path mentioned literally in bullet appears in diff, (b) symbol/CLI-flag mentioned in bullet appears in diff, (c) commit carries Closes-AC: <prefix> trailer matching bullet's first 40 chars, (d) new test file under scripts/ci/test-*.sh or tests/ references a keyword from bullet."
+    - "Escape hatch: AC-Coverage-Waive: <bullet-index>: <reason> trailer waives that bullet; emits kind=ac_coverage_waived with reason for audit trail."
+    - "Wired into pr-hygiene job as ac-coverage step; added to required-checks AFTER false-positive rate < 5% over 50 PRs (advisory mode first)."
+    - "Emits kind=ac_coverage_miss to ambient.jsonl on every miss with pr_number, gap_id, bullet_index, bullet_text_prefix."
+    - "Smoke test scripts/ci/test-ac-coverage-gate.sh exercises 3 fixtures: full-coverage pass, missing-bullet fail, waiver bypass — asserts exit code + JSON shape + ambient emit."
+    - "Event kinds ac_coverage_miss + ac_coverage_waived registered in EVENT_REGISTRY.yaml."
+    - "Operator override: repo var CHUMP_AC_GATE_ENABLED=false short-circuits to exit 0 with kind=ac_coverage_disabled ambient emit."
+    - "cargo test -- pr_ac_coverage passes with unit tests covering the 4 coverage-rule branches and the title-parser regex."
