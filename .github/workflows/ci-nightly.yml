@@ -1,0 +1,145 @@
+name: CI Nightly — Full E2E Suite
+
+# RESILIENT-016 (2026-05-17): E2E jobs (tauri-cowork-e2e, e2e-battle-sim,
+# e2e-golden-path) were disabled from per-PR ci.yml runs because Selenium
+# timeouts and long wall-clock times were blocking 5+ PRs simultaneously
+# (INFRA-1529). This workflow runs the full e2e suite nightly on main.
+#
+# Per-PR: fast-checks (format, clippy, cargo test, audit) still gate every PR.
+# Nightly: full e2e matrix catches regressions within 24h of landing.
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC nightly on main
+  workflow_dispatch:        # manual trigger for pre-release checks
+
+concurrency:
+  group: ci-nightly
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Shard A: Tauri cowork E2E ─────────────────────────────────────────────
+  tauri-cowork-e2e:
+    runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Linux packages (tauri-driver)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            webkit2gtk-4.1 libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential pkg-config libssl-dev \
+            libgtk-3-dev librsvg2-dev xvfb
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-nightly-tauri
+
+      - name: Tauri cowork E2E suite
+        run: bash scripts/ci/run-tauri-cowork-e2e.sh
+
+  # ── Shard B: Battle sim ───────────────────────────────────────────────────
+  e2e-battle-sim:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Battle sim suite (no web / no LLM)
+        env:
+          BATTLE_SIM_SKIP_CARGO: 1
+          BATTLE_SIM_SKIP_IF_NO_LLM: 1
+        run: bash scripts/ci/run-battle-sim-suite.sh
+
+  # ── Shard C: Golden path ──────────────────────────────────────────────────
+  e2e-golden-path:
+    runs-on: ${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Linux packages for chump-desktop
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            webkit2gtk-4.1 libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential pkg-config libssl-dev \
+            libgtk-3-dev librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-nightly-golden
+
+      - name: External golden path smoke
+        run: bash scripts/ci/verify-external-golden-path.sh
+
+      - name: Golden path timing
+        run: bash scripts/ci/golden-path-timing.sh
+
+      - name: Upload golden path timing log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golden-path-timing-nightly
+          path: logs/golden-path-timing-*.jsonl
+          retention-days: 30
+
+  # ── Aggregator ────────────────────────────────────────────────────────────
+  nightly-e2e-status:
+    needs: [tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all nightly e2e shards passed
+        run: |
+          tauri="${{ needs.tauri-cowork-e2e.result }}"
+          sim="${{ needs.e2e-battle-sim.result }}"
+          golden="${{ needs.e2e-golden-path.result }}"
+          echo "tauri-cowork-e2e=$tauri  e2e-battle-sim=$sim  e2e-golden-path=$golden"
+          fail=0
+          for r in "$tauri" "$sim" "$golden"; do
+            case "$r" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::error::One or more nightly e2e shards failed — investigate before next release"
+            exit 1
+          fi
+          echo "All nightly e2e shards green."
