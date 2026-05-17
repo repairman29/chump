@@ -22,7 +22,7 @@
 
 set -uo pipefail
 
-DRY_RUN=0
+DRY_RUN="${DRY_RUN:-0}"  # INFRA-1618: honor env-var override (for tests + ops)
 LOOP=0
 for arg in "$@"; do
     case "$arg" in
@@ -212,6 +212,52 @@ for c in json.load(sys.stdin).get('statusCheckRollup',[]):
     return 0
 }
 
+handle_audit_chump_bin_hardcoded() {
+    # INFRA-1618: ACTIVE-FIX handler. Detects workflow-YAML-level CHUMP_BIN
+    # hardcode failures (audit job step 7, ACP smoke). When the fix commits
+    # are already on main, rebases the failing PR via `gh pr update-branch`.
+    # When they're not yet on main, falls back to a stub (inline-patch is
+    # complex enough to file separately if it ever becomes critical).
+    local pr="$1"; local log="$2"
+    if ! echo "$log" | grep -qE "target/(debug|release)/chump not found"; then
+        return 99  # not my pattern
+    fi
+    say "  → handler: audit_chump_bin_hardcoded on PR $pr (ACTIVE-FIX)"
+    [[ $DRY_RUN -eq 1 ]] && { log_rescue "$pr" "audit_chump_bin_hardcoded" "dry_run_skip"; return 0; }
+
+    # Check if the two known-good fix commits are on origin/main yet.
+    # We look for them by commit message (stable across cherry-picks).
+    git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
+    local audit_fix_on_main acp_fix_on_main
+    audit_fix_on_main=$(git -C "$REPO_ROOT" log origin/main --oneline -100 \
+        --grep "audit job honors CARGO_TARGET_DIR" 2>/dev/null | head -1)
+    acp_fix_on_main=$(git -C "$REPO_ROOT" log origin/main --oneline -100 \
+        --grep "ACP workflow sources cargo PATH" 2>/dev/null | head -1)
+
+    if [[ -n "$audit_fix_on_main" && -n "$acp_fix_on_main" ]]; then
+        say "    fix is on main; rebasing PR $pr via gh pr update-branch"
+        local out
+        out=$(gh pr update-branch "$pr" --rebase --repo repairman29/chump 2>&1)
+        if echo "$out" | grep -qi "updated\|success"; then
+            say "    REBASED: $pr"
+            log_rescue "$pr" "audit_chump_bin_hardcoded" "rebased_against_main"
+            emit_event "pr_auto_rescue_invoked" \
+                "\"pr\":$pr,\"handler\":\"audit_chump_bin_hardcoded\",\"outcome\":\"rebased_against_main\""
+        else
+            say "    rebase failed: $(echo "$out" | head -1)"
+            log_rescue "$pr" "audit_chump_bin_hardcoded" "rebase_failed"
+            emit_event "pr_auto_rescue_invoked" \
+                "\"pr\":$pr,\"handler\":\"audit_chump_bin_hardcoded\",\"outcome\":\"rebase_failed\""
+        fi
+    else
+        say "    fix NOT on main yet (audit=$audit_fix_on_main acp=$acp_fix_on_main); inline-patch not implemented"
+        log_rescue "$pr" "audit_chump_bin_hardcoded" "waiting_for_main"
+        emit_event "pr_auto_rescue_invoked" \
+            "\"pr\":$pr,\"handler\":\"audit_chump_bin_hardcoded\",\"outcome\":\"waiting_for_main\""
+    fi
+    return 0
+}
+
 handle_adjacent_string_eprintln() {
     local pr="$1"; local log="$2"
     if ! echo "$log" | grep -qE "expected.*\`,\`.*found.*\"Usage:"; then
@@ -260,7 +306,9 @@ for p in json.load(sys.stdin):
         say "PR $pr: examining failure (past rescues: $past)"
 
         # Dispatch in order; each handler self-checks pattern.
-        for handler in cargo_fmt_drift tauri_flake cargo_not_found chump_bin_not_found adjacent_string_eprintln; do
+        # INFRA-1618: audit_chump_bin_hardcoded is ACTIVE (rebases) — try first
+        # so it preempts the passive chump_bin_not_found handler that just logs.
+        for handler in audit_chump_bin_hardcoded cargo_fmt_drift tauri_flake cargo_not_found chump_bin_not_found adjacent_string_eprintln; do
             if in_cooldown "$pr" "$handler"; then
                 continue
             fi

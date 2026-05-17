@@ -1346,6 +1346,8 @@ jobs:
         run: bash scripts/ci/test-cockpit-wake-fleet.sh
       - name: PR auto-rescue daemon smoke (INFRA-1600)
         run: bash scripts/ci/test-pr-failure-auto-rescue.sh
+      - name: PR auto-rescue active audit-handler (INFRA-1618)
+        run: bash scripts/ci/test-pr-rescue-audit-handler.sh
       - name: heavy CI jobs cross-platform — apt-get gated + lane-flippable (INFRA-1542)
         run: bash scripts/ci/test-ci-heavy-jobs-cross-platform.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
