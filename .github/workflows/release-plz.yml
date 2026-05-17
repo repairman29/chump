@@ -45,6 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install system dependencies for chump-desktop (workspace member)
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           sudo apt-get update
           sudo apt-get install -y \

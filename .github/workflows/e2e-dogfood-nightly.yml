@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -32,6 +33,7 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           sudo apt-get update
           sudo apt-get install -y \

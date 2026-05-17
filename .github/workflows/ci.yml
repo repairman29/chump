@@ -199,6 +199,7 @@ jobs:
       # Same rationale as the test job's Free disk space step — this job
       # builds chump + chump-desktop (two binaries) plus tauri-driver.
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -424,6 +425,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
+
+      - name: Workflow Linux-only step guard sweep (INFRA-1539)
+        # Proactive sweep: every workflow step that runs sudo/apt-get/pip-install
+        # must carry `if: runner.os == 'Linux'`. Catches the cascade that hit on
+        # 2026-05-16 (an unguarded apt-get tripped 8+ PRs when ci.yml shifted to
+        # self-hosted macOS). Runs on ubuntu-latest as part of pr-hygiene; the
+        # smoke itself is pure awk so it works anywhere.
+        run: bash scripts/ci/test-workflow-linux-guard.sh
 
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
@@ -889,6 +898,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
@@ -996,6 +1006,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -1094,6 +1105,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
