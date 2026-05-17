@@ -426,6 +426,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
 
+      # INFRA-1541: pre-merge AC coverage gate.
+      # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
+      # script always exit 0 after emitting `kind=ac_coverage_miss` events
+      # for any uncovered AC bullets. Flip the repo var to "true" once the
+      # 50-PR observation window shows false-positive rate < 5%. Operator
+      # kill-switch: `CHUMP_AC_GATE_ENABLED=false`.
+      - name: AC coverage gate (INFRA-1541, advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHUMP_AC_GATE_BLOCKING: ${{ vars.CHUMP_AC_GATE_BLOCKING || 'false' }}
+          CHUMP_AC_GATE_ENABLED: ${{ vars.CHUMP_AC_GATE_ENABLED || 'true' }}
+        run: bash scripts/ci/test-pr-ac-coverage.sh ${{ github.event.pull_request.number }} || true
+
       - name: Workflow Linux-only step guard sweep (INFRA-1539)
         # Proactive sweep: every workflow step that runs sudo/apt-get/pip-install
         # must carry `if: runner.os == 'Linux'`. Catches the cascade that hit on

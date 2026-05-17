@@ -3689,3 +3689,37 @@ events:
       classification needs tightening.
     consumers: [fleet-brief, ops-audit, operator-attention]
     fields_required: [ts, kind, pr, branch, gap]
+
+  # ── INFRA-1541: pre-merge AC coverage gate ────────────────────────────────
+  - kind: ac_coverage_miss
+    effect_metric: self
+    emitter: scripts/ci/test-pr-ac-coverage.sh (INFRA-1541)
+    trigger: >
+      Pre-merge gate found an acceptance-criteria bullet in the gap
+      referenced by the PR title that is not covered by the PR diff
+      (no matching file path, symbol, Closes-AC trailer, or test
+      reference). One event per uncovered bullet. Advisory-only by
+      default; flips to merge-blocking when CHUMP_AC_GATE_BLOCKING=true
+      after the 50-PR observation window.
+    consumers: [fleet-brief, kpi-report, ac-coverage-dashboard]
+    fields_required: [ts, kind, pr_number, gap_id, bullet_index, bullet_text_prefix]
+
+  - kind: ac_coverage_waived
+    effect_metric: self
+    emitter: scripts/ci/test-pr-ac-coverage.sh (INFRA-1541)
+    trigger: >
+      PR carries an `AC-Coverage-Waive: <bullet-index>: <reason>` trailer
+      that bypasses the coverage check for that bullet. The reason is
+      recorded for audit; rising waiver rate is a fleet-discipline signal.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, pr_number, gap_id, bullet_index, reason]
+
+  - kind: ac_coverage_disabled
+    effect_metric: self
+    emitter: scripts/ci/test-pr-ac-coverage.sh (INFRA-1541)
+    trigger: >
+      Operator override `CHUMP_AC_GATE_ENABLED=false` short-circuited the
+      gate. Audit-only emit so operators can see when coverage enforcement
+      was bypassed wholesale.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
