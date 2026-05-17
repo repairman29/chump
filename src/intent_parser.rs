@@ -20,21 +20,38 @@ use std::path::Path;
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntentOp {
     // Gap operations
-    GapList { filter: Option<String> },
-    GapShow { id: String },
-    GapClaim { id: String },
-    GapShip { id: String },
-    GapReserve { title: String },
+    GapList {
+        filter: Option<String>,
+    },
+    GapShow {
+        id: String,
+    },
+    GapClaim {
+        id: String,
+    },
+    GapShip {
+        id: String,
+    },
+    GapReserve {
+        title: String,
+    },
     // Fleet operations
     FleetStatus,
-    FleetStart,
+    /// INFRA-1451: carries extracted --size / --domain / --priority flags.
+    FleetStart {
+        size: Option<u32>,
+        domain: Option<String>,
+        priority: Option<String>,
+    },
     FleetStop,
     // Cognition / reporting
     MissionGrade,
     PillarBalance,
     WasteTally,
     // Fallback
-    Unknown { raw: String },
+    Unknown {
+        raw: String,
+    },
 }
 
 impl IntentOp {
@@ -48,7 +65,24 @@ impl IntentOp {
             Self::GapShip { id } => format!("chump gap ship {id}"),
             Self::GapReserve { title } => format!("chump gap reserve --title \"{title}\""),
             Self::FleetStatus => "chump fleet status".to_string(),
-            Self::FleetStart => "chump fleet start".to_string(),
+            Self::FleetStart {
+                size,
+                domain,
+                priority,
+            } => {
+                // INFRA-1451: build chump fleet start with extracted flags.
+                let mut cmd = "chump fleet start".to_string();
+                if let Some(n) = size {
+                    cmd.push_str(&format!(" --size {n}"));
+                }
+                if let Some(d) = domain {
+                    cmd.push_str(&format!(" --domain {d}"));
+                }
+                if let Some(p) = priority {
+                    cmd.push_str(&format!(" --priority {p}"));
+                }
+                cmd
+            }
             Self::FleetStop => "chump fleet stop".to_string(),
             Self::MissionGrade => "chump mission-grade".to_string(),
             Self::PillarBalance => "chump pillar-balance".to_string(),
@@ -148,7 +182,15 @@ pub fn parse_intent(input: &str) -> IntentOp {
     }
 
     if has_fleet && contains_any(&lc, &["start", "spawn", "launch"]) {
-        return IntentOp::FleetStart;
+        // INFRA-1451: extract optional parameters before returning.
+        let size = extract_size(input);
+        let domain = extract_domain(input);
+        let priority = extract_fleet_priority(input);
+        return IntentOp::FleetStart {
+            size,
+            domain,
+            priority,
+        };
     }
 
     if contains_any(
@@ -303,6 +345,71 @@ fn extract_gap_id(words: &[&str]) -> Option<String> {
     })
 }
 
+/// INFRA-1451: Extract numeric fleet size (e.g. "size 4", "4 workers", "--size 4").
+fn extract_size(input: &str) -> Option<u32> {
+    let lc = input.to_lowercase();
+    let words: Vec<&str> = lc.split_whitespace().collect();
+    // Patterns: "size N", "--size N", "N workers", "N worker"
+    for i in 0..words.len() {
+        if (words[i] == "size" || words[i] == "--size") && i + 1 < words.len() {
+            if let Ok(n) = words[i + 1].trim_end_matches(',').parse::<u32>() {
+                return Some(n);
+            }
+        }
+        // "N workers" / "N worker"
+        if i + 1 < words.len() && (words[i + 1].starts_with("worker")) {
+            if let Ok(n) = words[i].trim_end_matches(',').parse::<u32>() {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// INFRA-1451: Extract domain keyword (infra, product, credible, effective, resilient, zero-waste).
+fn extract_domain(input: &str) -> Option<String> {
+    let lc = input.to_lowercase();
+    // Order matters: check multi-word first.
+    for (keyword, domain) in &[
+        ("zero-waste", "ZERO-WASTE"),
+        ("zero_waste", "ZERO-WASTE"),
+        ("zerowaste", "ZERO-WASTE"),
+        ("effective", "EFFECTIVE"),
+        ("credible", "CREDIBLE"),
+        ("resilient", "RESILIENT"),
+        ("product", "PRODUCT"),
+        ("infra", "INFRA"),
+        ("meta", "META"),
+        ("mission", "MISSION"),
+    ] {
+        if lc.contains(keyword) {
+            return Some(domain.to_string());
+        }
+    }
+    None
+}
+
+/// INFRA-1451: Extract fleet priority flags (p0, p1, p0/p1, highest).
+fn extract_fleet_priority(input: &str) -> Option<String> {
+    let lc = input.to_lowercase();
+    // "p0/p1" or "p0,p1" → P0,P1
+    if lc.contains("p0/p1") || lc.contains("p0,p1") || lc.contains("p0 p1") {
+        return Some("P0,P1".to_string());
+    }
+    // "highest" → P0
+    if lc.contains("highest") || lc.contains("urgent") || lc.contains("critical") {
+        return Some("P0".to_string());
+    }
+    // Standalone p0 or p1
+    if contains_any(&lc, &[" p0 ", " p0,", " p0/", "on p0", "(p0"]) || lc.ends_with(" p0") {
+        return Some("P0".to_string());
+    }
+    if contains_any(&lc, &[" p1 ", " p1,", " p1/", "on p1", "(p1"]) || lc.ends_with(" p1") {
+        return Some("P1".to_string());
+    }
+    None
+}
+
 /// Extract a priority filter like "--priority P1" from the input.
 fn extract_priority_filter(input: &str) -> Option<String> {
     let lc = input.to_lowercase();
@@ -394,6 +501,113 @@ mod tests {
     fn fleet_stop() {
         assert_eq!(parse_intent("stop the fleet now"), IntentOp::FleetStop);
         assert_eq!(parse_intent("halt fleet"), IntentOp::FleetStop);
+    }
+
+    // ── INFRA-1451: FleetStart parameter extraction ───────────────────────────
+
+    #[test]
+    fn fleet_start_no_params() {
+        let op = parse_intent("start the fleet");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: None,
+                domain: None,
+                priority: None
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_with_size() {
+        let op = parse_intent("spawn the fleet size 4");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: Some(4),
+                domain: None,
+                priority: None
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_workers_phrasing() {
+        let op = parse_intent("launch 3 workers fleet");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: Some(3),
+                domain: None,
+                priority: None
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_domain_infra() {
+        let op = parse_intent("spawn the fleet on infra");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: None,
+                domain: Some("INFRA".to_string()),
+                priority: None
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_full_demo_phrase() {
+        // The exact phrase from the June-6 demo criterion #4.
+        let op = parse_intent("spawn the fleet on infra p0/p1, size 4");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: Some(4),
+                domain: Some("INFRA".to_string()),
+                priority: Some("P0,P1".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_to_chump_command_full() {
+        let op = IntentOp::FleetStart {
+            size: Some(4),
+            domain: Some("INFRA".to_string()),
+            priority: Some("P0,P1".to_string()),
+        };
+        assert_eq!(
+            op.to_chump_command(),
+            "chump fleet start --size 4 --domain INFRA --priority P0,P1"
+        );
+    }
+
+    #[test]
+    fn fleet_start_priority_p1_only() {
+        let op = parse_intent("start fleet on infra p1");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: None,
+                domain: Some("INFRA".to_string()),
+                priority: Some("P1".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn fleet_start_effective_domain() {
+        let op = parse_intent("spawn fleet effective gaps size 2");
+        assert_eq!(
+            op,
+            IntentOp::FleetStart {
+                size: Some(2),
+                domain: Some("EFFECTIVE".to_string()),
+                priority: None,
+            }
+        );
     }
 
     #[test]
