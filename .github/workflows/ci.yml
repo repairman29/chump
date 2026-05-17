@@ -366,6 +366,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
 
+      # INFRA-1427: fleet doctor --strict snapshot for the hygiene log.
+      # Informational only — never fails PR. Runs if a prebuilt chump
+      # binary is present (e.g. from a sibling job); otherwise skipped.
+      - name: Fleet doctor strict snapshot (INFRA-1427, informational)
+        continue-on-error: true
+        env:
+          CHUMP_FLEET_DOCTOR_SKIP_GH: "1"
+        run: |
+          if [[ -x ./target/release/chump ]]; then
+            ./target/release/chump fleet doctor --strict --json || true
+          else
+            echo "chump binary not pre-built in this job; skipping doctor --strict snapshot"
+          fi
+
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
   # `cargo clippy --workspace --all-targets`. A handful of guards build

@@ -80,6 +80,7 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
+mod fleet_doctor_strict;
 mod fleet_health;
 mod fleet_resize;
 mod fleet_status;
@@ -3450,9 +3451,30 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            "doctor" => {
+                // INFRA-1427: `chump fleet doctor --strict` — single command
+                // that exits non-zero on any known fleet regression. Building
+                // block for INFRA-1595 (--heal). Without --strict, this arm
+                // prints the same report but exits 0 regardless (diagnostic
+                // mode). The pre-existing `auth fleet doctor` path in
+                // `src/auth.rs` is separate from this fleet-wide health
+                // doctor (auth-only checks live there).
+                let strict = args.iter().any(|a| a == "--strict");
+                let json = args.iter().any(|a| a == "--json");
+                let results = fleet_doctor_strict::run_all_checks(&repo_root);
+                if json {
+                    println!("{}", fleet_doctor_strict::render_json(&results));
+                } else {
+                    print!("{}", fleet_doctor_strict::render_text(&results));
+                }
+                if strict && fleet_doctor_strict::any_failed(&results) {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|doctor>"
                 );
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop        [--session NAME]");
@@ -3469,6 +3491,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
                 eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
+                eprintln!("  doctor      [--strict] [--json]  -- exit non-zero on any regression (INFRA-1427)");
                 std::process::exit(2);
             }
         }
