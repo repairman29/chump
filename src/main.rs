@@ -1078,6 +1078,26 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump upgrade [--dry-run]` (INFRA-1504) — upgrade the chump binary.
+    // Detects install method (brew / cargo / manual) and runs the right upgrade.
+    if args.get(1).map(String::as_str) == Some("upgrade") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump upgrade [--dry-run]");
+            println!();
+            println!("Detects how chump was installed and runs the appropriate upgrade:");
+            println!("  brew:   brew upgrade chump");
+            println!("  cargo:  cargo install --force chump");
+            println!("  manual: prints instructions to download a new release");
+            println!();
+            println!("Options:");
+            println!("  --dry-run  show the upgrade command without running it");
+            return Ok(());
+        }
+        let dry_run = args.iter().any(|a| a == "--dry-run");
+        fleet_health::run_upgrade(dry_run);
+        return Ok(());
+    }
+
     // `chump health [--json] [--watch]` (INFRA-644) — composite fleet health
     // score (0-100) rolling up fleet-status, waste-tally, cost-watch,
     // mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.
