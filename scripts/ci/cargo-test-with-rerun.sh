@@ -53,10 +53,13 @@ emit_ambient() {
 }
 
 # Parse `--` separator and recover the command to run.
+# INFRA-1612: only treat the FIRST `--` as the separator; all subsequent
+# args (including any later `--` passed to cargo test as the argument
+# boundary before --skip/--exact/etc.) are appended verbatim to CMD.
 SEP_FOUND=0
 CMD=()
 for arg in "$@"; do
-    if [[ "$arg" == "--" ]]; then
+    if [[ "$SEP_FOUND" == "0" && "$arg" == "--" ]]; then
         SEP_FOUND=1
         continue
     fi
