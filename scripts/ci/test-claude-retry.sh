@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test for claude-retry.sh
-set -u
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

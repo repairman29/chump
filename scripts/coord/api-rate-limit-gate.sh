@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # api-rate-limit-gate.sh — INFRA-1055: circuit breaker for GitHub API quota.
 #
 # Thresholds (from AC):

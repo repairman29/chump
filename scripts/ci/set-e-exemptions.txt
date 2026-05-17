@@ -1,0 +1,75 @@
+# scripts/ci/set-e-exemptions.txt — INFRA-1492
+#
+# Scripts exempt from the "set -e in first 30 lines" gate.
+# Two categories:
+#
+#   SOURCE — library files meant to be sourced by other scripts.
+#            Adding `set -e` at the top of a sourced file propagates
+#            it to the calling shell, which may not be desirable.
+#            These files still rely on callers having set -e.
+#
+#   LATE   — scripts that have `set -e` in their file, just after line 30
+#            due to a long copyright/comment/shellcheck-disable header.
+#            They ARE protected; the placement is cosmetic, not a bug.
+
+# ── SOURCE: library files (sourced, not executed directly) ───────────────────
+scripts/ci/lib/gate-emit.sh
+scripts/ci/lib/source-grep.sh
+scripts/coord/lib/ambient-write.sh
+scripts/coord/lib/fleet-state-writer.sh
+scripts/coord/lib/gap-cooldown.sh
+scripts/coord/lib/gap-pr-status.sh
+scripts/coord/lib/github_cache.sh
+scripts/coord/lib/github.sh
+scripts/coord/lib/operator-id.sh
+scripts/coord/lib/pr-dedup.sh
+
+# ── FIXTURE: test fixture scripts (not run as part of fleet) ─────────────────
+scripts/ci/test-fixtures/raw-gh-violator.sh
+
+# ── EXPLICIT: scripts where set -e would break intentional error handling ─────
+# claude-retry.sh: explicitly captures exit codes from `claude` subprocess to
+# decide retry vs. give-up; set -e would abort before the error-check logic.
+# Uses set -u.
+scripts/coord/claude-retry.sh
+# system-gap-tick.sh: dual-mode (sourced OR direct); sourced callers rely on
+# their own set -e context. Marked "Sourced by opus-curator.sh + emergency-fast-path.sh".
+scripts/coord/system-gap-tick.sh
+
+# ── LATE: set -e present but after line 30 (long headers; not a gap) ─────────
+scripts/ci/audit-branch-protection.sh
+scripts/ci/auth-tier-audit.sh
+scripts/ci/check-mass-deletion.sh
+scripts/ci/precommit-strict-replay.sh
+scripts/ci/test-acp-real-clients.sh
+scripts/ci/test-broad-canary-coverage.sh
+scripts/ci/test-gap-closure-consistency.sh
+scripts/ci/test-markdown-intra-doc-links.sh
+scripts/ci/test-no-claude-leak.sh
+scripts/ci/test-no-inline-ambient-printf.sh
+scripts/ci/test-no-new-shell-tests-for-rust.sh
+scripts/ci/test-pr-ac-coverage.sh
+scripts/ci/test-workflow-linux-guard.sh
+scripts/ci/triage-test-failure.sh
+scripts/coord/audit-gap-state-drift.sh
+scripts/coord/bot-merge-circuit-breaker.sh
+scripts/coord/bot-merge.sh
+scripts/coord/bounced-pr-detector.sh
+scripts/coord/broadcast.sh
+scripts/coord/chump-ci-retrigger.sh
+scripts/coord/chump-decomposition-propose.sh
+scripts/coord/chump-pr-triage.sh
+scripts/coord/close-gaps-from-commit-subjects.sh
+scripts/coord/detect-gap-failure.sh
+scripts/coord/fleet-doctor-strict.sh
+scripts/coord/gap-normalize-domains.sh
+scripts/coord/gap-reserve.sh
+scripts/coord/hot-file-lock.sh
+scripts/coord/intent-overlap-check.sh
+scripts/coord/lease-auto-extend.sh
+scripts/coord/operator-rules.sh
+scripts/coord/orphan-pr-closer.sh
+scripts/coord/pr-create-gate.sh
+scripts/coord/pr-title-drift-detector.sh
+scripts/coord/pr-watch.sh
+scripts/coord/target-dir-reaper.sh
