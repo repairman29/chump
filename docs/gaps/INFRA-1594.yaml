@@ -1,0 +1,14 @@
+- id: INFRA-1594
+  domain: INFRA
+  title: "RESILIENT: chump-fleet-bootstrap.sh --check must verify paramedic + pr-rebase + bot-merge-watchdog daemons installed (META-066 expansion)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/setup/chump-fleet-bootstrap.sh --check exits non-zero if any of these daemons are NOT registered + active: com.chump.paramedic (INFRA-1375), com.chump.pr-rebase-daemon if exists (INFRA-1406 followup), com.chump.bot-merge-watchdog if exists (INFRA-1532)."
+    - For each missing daemon, --check prints a one-line install command (e.g. 'bash scripts/setup/install-paramedic.sh') so operator can act without spelunking.
+    - chump-fleet-bootstrap.sh without --check (the install path) registers ALL required daemons idempotently — running install-paramedic.sh, install-pr-rebase-daemon.sh, etc., in turn.
+    - Mandatory pre-flight per CLAUDE.md already calls this; reinforce by adding to scripts/ci/test-fleet-bootstrap-coverage.sh which greps the bootstrap script for each known daemon name and fails if any is missing.
+    - Emit kind=fleet_bootstrap_incomplete to ambient when --check fails, with named missing-daemon list, so paramedic itself can flag the bootstrap gap on other machines that join the fleet later.
+    - "Cross-link: 2026-05-16 M4 host was running runner plists but no paramedic — PRs got stuck DIRTY for hours because the self-healing daemon literally wasn't installed. INFRA-1594 closes the 'host setup drift' hole that META-066 missed."
+
