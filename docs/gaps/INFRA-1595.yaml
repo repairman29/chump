@@ -1,0 +1,33 @@
+- id: INFRA-1595
+  domain: INFRA
+  title: "RESILIENT: chump fleet self-doctor --heal — autonomous loop that auto-installs missing daemons + dispatches subagents for stuck PRs (no operator intervention)"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "New 'chump fleet doctor --heal' mode extends existing 'chump fleet doctor --strict' (INFRA-1427) by AUTO-FIXING what it diagnoses: missing daemons get auto-installed via the relevant install-*.sh script."
+    - "Per-daemon registry: a config (TOML or hardcoded const list) names every chump daemon + its install command + its launchctl label. Doctor iterates the list, checks launchctl status, runs install if missing. Idempotent."
+    - For stuck PRs (DIRTY or BLOCKED > 30min with no progress markers per INFRA-1410 SLO), doctor auto-dispatches via 'chump --execute-gap <gap-id>' (existing autonomous agent path) — NOT the Agent tool which is session-bound.
+    - "Circuit breaker: doctor refuses to spawn > 3 subagents per 10-minute window (CHUMP_SELF_DOCTOR_BUDGET=3); on budget exceeded emits kind=self_doctor_budget_exceeded and pages operator (writes to .chump-locks/operator-action-needed.json)."
+    - "Launchd plist: scripts/setup/com.chump.self-doctor.plist + scripts/setup/install-self-doctor.sh. ThrottleInterval 300s (every 5min). KeepAlive true."
+    - "Emits per cycle: kind=self_doctor_tick (idle case), kind=self_doctor_healed (action taken) with {daemon_installed "
+    - " pr_dispatched "
+    - " budget_hit}, kind=self_doctor_failed (action attempted but failed)."
+    - EVENT_REGISTRY.yaml entries for the 3 new kinds + scripts/ci/event-registry-reserved.txt.
+    - chump-fleet-bootstrap.sh --check (INFRA-1594 expansion) MUST verify com.chump.self-doctor is registered + running.
+    - "Smoke test scripts/ci/test-self-doctor-heal.sh: synthetic stuck-PR fixture + missing-daemon fixture, assert doctor takes correct action (with mocked install + mocked execute-gap)."
+    - "Doc: docs/process/FLEET_SELF_HEAL.md explaining the loop, the budget, the operator-page contract."
+    - "Cross-link: 2026-05-16 M4 had stuck PRs because paramedic wasn't installed; operator had to surface this. INFRA-1594 catches missing daemons at bootstrap; INFRA-1610 (this gap) catches them in-flight AND dispatches fixes."
+  notes: |
+    Wave 0b in roadmap (insert between Wave 0 and Wave 1). Cost of skipping: operator continues to play detective every time a daemon dies or a PR gets weird. Pairs with:
+    - INFRA-1427 (chump fleet doctor --strict) — diagnose layer
+    - INFRA-1594 (bootstrap completeness check) — bootstrap layer
+    - INFRA-1410 (PR-stuck SLO + auto-respawn) — PR-level remediation
+    - INFRA-1375 (paramedic) — per-PR rule-engine fixes
+    
+    This gap is the OUTER loop tying them: when paramedic fails or isn't running, when bootstrap missed a daemon, when a stuck PR escapes the SLO — self-doctor catches the gap and dispatches.
+    
+    Don't ship with --heal default-on until INFRA-1541 AC gate has 50-PR observation done; ship --heal as opt-in env (CHUMP_FLEET_SELF_DOCTOR_HEAL=true), default off. After observation, flip to on.
+    
+    Belongs as Wave 0b because every subsequent wave's daemons need it to stay installed across reboots + drift.
+
