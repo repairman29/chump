@@ -70,19 +70,25 @@ if command -v cargo >/dev/null 2>&1 && [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
 fi
 
 # ── Integration smoke: stub session with 3 intents ────────────────────────────
-# Resolve binary: prefer env-provided CHUMP_BIN (set by ci.yml build step),
-# then workspace target dir (worktrees share the main repo target/), then PATH.
-if [[ -z "${CHUMP_BIN:-}" ]]; then
-    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+# Resolve binary via shared helper (INFRA-1600 follow-up: honors CARGO_TARGET_DIR).
+if [[ -f "$(dirname "$0")/lib/discover-chump-bin.sh" ]]; then
+    # shellcheck source=lib/discover-chump-bin.sh disable=SC1091
+    source "$(dirname "$0")/lib/discover-chump-bin.sh" 2>/dev/null || true
 fi
-if [[ ! -x "$CHUMP_BIN" ]]; then
-    # Worktree: find workspace target dir via cargo metadata
-    _meta="$(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null \
-        | python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])' 2>/dev/null || echo "")"
-    if [[ -n "$_meta" && -x "$_meta/debug/chump" ]]; then
-        CHUMP_BIN="$_meta/debug/chump"
-    else
-        CHUMP_BIN="$(command -v chump 2>/dev/null || true)"
+# Legacy fallback: if helper didn't set CHUMP_BIN (e.g. caller already exported), keep going.
+if [[ -z "${CHUMP_BIN:-}" || ! -x "${CHUMP_BIN:-}" ]]; then
+    # cargo metadata fallback for worktree case (preserves prior behavior)
+    if [[ -z "${CHUMP_BIN:-}" ]]; then
+        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+    fi
+    if [[ ! -x "$CHUMP_BIN" ]]; then
+        _meta="$(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])' 2>/dev/null || echo "")"
+        if [[ -n "$_meta" && -x "$_meta/debug/chump" ]]; then
+            CHUMP_BIN="$_meta/debug/chump"
+        else
+            CHUMP_BIN="$(command -v chump 2>/dev/null || true)"
+        fi
     fi
 fi
 
