@@ -114,6 +114,20 @@ while IFS=$'\t' read -r pr title branch updated; do
         continue
     fi
 
+    # INFRA-1406: per-PR immunity via commit-body trailer
+    # `Orphan-Closer-Immunity: <reason>` on any commit in the PR. Surfaces
+    # in the audit trail (vs the title marker which only the author sees
+    # while editing). Costs 1 gh API call per PR; cheap.
+    _immunity="$(gh api "repos/{owner}/{repo}/pulls/$pr/commits" \
+        --jq '[.[].commit.message] | join("\n")' 2>/dev/null \
+        | grep -E '^Orphan-Closer-Immunity:' | head -1 || true)"
+    if [[ -n "$_immunity" ]]; then
+        _reason="$(echo "$_immunity" | sed -E 's/^Orphan-Closer-Immunity:[[:space:]]*//')"
+        echo "[orphan-pr-closer] SKIP #$pr ($gap_id): commit-body immunity: $_reason" >&2
+        emit_ambient "orphan_pr_close_immunity_honored" "$pr" "$gap_id" "$_reason"
+        continue
+    fi
+
     # Skip if already seen.
     if grep -qxF "closed:$pr" "$SEEN_FILE" 2>/dev/null; then
         continue

@@ -3648,3 +3648,26 @@ events:
     trigger: operator runs chump-pr-triage.sh to get next-action table for open PRs
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, scope, pr_count, output]
+  # ── INFRA-1406: orphan-pr-closer per-PR immunity ─────────────────────────
+  - kind: orphan_pr_close_immunity_honored
+    effect_metric: self
+    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1406)
+    trigger: >
+      Orphan-pr-closer was about to close a PR but found
+      'Orphan-Closer-Immunity: <reason>' trailer in one of the PR's
+      commit messages — skipped the close. Companion to the existing
+      title-marker 'orphan-pr-closer-skip' escape hatch.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, gap, reason]
+
+  - kind: orphan_pr_rescued
+    effect_metric: self
+    emitter: scripts/coord/pr-rescue-false-close.sh (INFRA-1406)
+    trigger: >
+      Operator (or automation) invoked the rescue script after a PR was
+      falsely closed by an auto-closer. The PR is reopened + auto-merge
+      re-armed + an audit comment posted. The rate of this kind over
+      time is the false-close-rate signal — drives whether the closer's
+      classification needs tightening.
+    consumers: [fleet-brief, ops-audit, operator-attention]
+    fields_required: [ts, kind, pr, branch, gap]
