@@ -174,6 +174,99 @@ else
 fi
 rm -rf "$TR_D"
 
+# ── Fixture (e): MODIFIED existing bypass file + insufficient ack → REJECT ────
+echo ""
+echo "Fixture (e): MODIFIED file with Rust-First-Bypass: header, 2+ criteria, no Accept"
+TR_E="$(mk_repo)"
+mkdir -p "$TR_E/scripts/coord" "$TR_E/.chump-locks"
+# Commit the bad daemon (with bypass header) as an existing file first.
+mk_bad_daemon "$TR_E/scripts/coord/bad-daemon.sh"
+# Add a Rust-First-Bypass: header so the modified-gate recognises it.
+echo "# Rust-First-Bypass: pre-existing bypass — glue script" \
+    >> "$TR_E/scripts/coord/bad-daemon.sh"
+(
+    cd "$TR_E"
+    git add scripts/coord/bad-daemon.sh
+    CHUMP_RUST_FIRST_CHECK=0 git commit -q -m "init: add daemon"
+)
+# Now modify the file (add a comment line) so it shows up as diff-filter=M.
+echo "# a small change" >> "$TR_E/scripts/coord/bad-daemon.sh"
+MSG_E="fix: tweak bad daemon
+
+Rust-First-Bypass: still just glue"
+out_e="$(run_gate "$TR_E" "$MSG_E")"; rc_e=$?
+if [[ $rc_e -ne 0 ]] && echo "$out_e" | grep -q 'STRICT gate (INFRA-1580)'; then
+    ok "(e) MODIFIED file w/ bypass header, no Accept: rejected by strict gate"
+else
+    fail "(e) should reject MODIFIED file with 2+ unacked criteria (rc=$rc_e)"
+    echo "----- output:" >&2
+    printf '%s\n' "$out_e" >&2
+    echo "-----" >&2
+fi
+rm -rf "$TR_E"
+
+# ── Fixture (f): MODIFIED file + full Accept → ACCEPT ────────────────────────
+echo ""
+echo "Fixture (f): MODIFIED file with Rust-First-Bypass: header, full Accept → ACCEPT"
+TR_F="$(mk_repo)"
+mkdir -p "$TR_F/scripts/coord" "$TR_F/.chump-locks"
+mk_bad_daemon "$TR_F/scripts/coord/bad-daemon.sh"
+echo "# Rust-First-Bypass: pre-existing bypass — glue script" \
+    >> "$TR_F/scripts/coord/bad-daemon.sh"
+(
+    cd "$TR_F"
+    git add scripts/coord/bad-daemon.sh
+    CHUMP_RUST_FIRST_CHECK=0 git commit -q -m "init: add daemon"
+)
+echo "# a small change" >> "$TR_F/scripts/coord/bad-daemon.sh"
+MSG_F="fix: tweak bad daemon, eyes wide open
+
+Rust-First-Bypass: stage-gated migration; port tracked as INFRA-NEXT
+Rust-First-Bypass-Accept: loc,state,hot,test"
+out_f="$(run_gate "$TR_F" "$MSG_F")"; rc_f=$?
+if [[ $rc_f -eq 0 ]]; then
+    ok "(f) MODIFIED file w/ full Accept: accepted"
+else
+    fail "(f) MODIFIED file w/ full Accept should be accepted (rc=$rc_f): $out_f"
+fi
+rm -rf "$TR_F"
+
+# ── Fixture (g): CHUMP_RUST_FIRST_AUDIT=1 mode → emits audit events ──────────
+echo ""
+echo "Fixture (g): CHUMP_RUST_FIRST_AUDIT=1 emits kind=rust_first_bypass_audit"
+TR_G="$(mk_repo)"
+mkdir -p "$TR_G/scripts/coord" "$TR_G/.chump-locks"
+mk_bad_daemon "$TR_G/scripts/coord/bad-daemon.sh"
+# Add a Rust-First-Bypass: header to the file so the audit picks it up.
+sed -i.bak '2a # Rust-First-Bypass: test bypass for audit' \
+    "$TR_G/scripts/coord/bad-daemon.sh" 2>/dev/null \
+    || { echo "# Rust-First-Bypass: test bypass for audit" >> "$TR_G/scripts/coord/bad-daemon.sh"; }
+rm -f "$TR_G/scripts/coord/bad-daemon.sh.bak"
+(
+    cd "$TR_G"
+    git add scripts/coord/bad-daemon.sh
+    CHUMP_RUST_FIRST_CHECK=0 git commit -q -m "init: add daemon with bypass"
+)
+out_g="$(
+    cd "$TR_G"
+    CHUMP_RUST_FIRST_AUDIT=1 CHUMP_AMBIENT_LOG="$TR_G/.chump-locks/ambient.jsonl" \
+        bash "$GATE" 2>&1
+)"; rc_g=$?
+if [[ $rc_g -eq 0 ]]; then
+    ok "(g) audit mode exits 0"
+else
+    fail "(g) audit mode should exit 0 (rc=$rc_g): $out_g"
+fi
+if [[ -f "$TR_G/.chump-locks/ambient.jsonl" ]] \
+    && grep -q '"kind":"rust_first_bypass_audit"' "$TR_G/.chump-locks/ambient.jsonl"; then
+    ok "(g) audit mode emits kind=rust_first_bypass_audit to ambient"
+else
+    fail "(g) audit mode did not emit rust_first_bypass_audit"
+    echo "ambient contents:" >&2
+    cat "$TR_G/.chump-locks/ambient.jsonl" 2>/dev/null || echo "(missing)" >&2
+fi
+rm -rf "$TR_G"
+
 echo ""
 echo "=== Summary: $PASS pass, $FAIL fail ==="
 if (( FAIL > 0 )); then
