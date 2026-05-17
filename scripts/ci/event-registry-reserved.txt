@@ -241,3 +241,12 @@ ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same
 ac_coverage_disabled    # reason: INFRA-1541 operator-override audit emit from same gate; outside PROD_PATHS
 ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs without gap ref; outside PROD_PATHS
 ac_coverage_no_ac       # reason: INFRA-1541 pass-through marker when gap has no AC bullets; outside PROD_PATHS
+
+# ── INFRA-1410: PR-stuck SLO + auto-respawn ──────────────────────────────────
+# Emitted via `respawn_emit()` helper in scripts/ops/stale-pr-reaper.sh —
+# helper-function emit pattern (printf with variable kind) is not grep-scannable
+# as a `"kind":"..."` literal in the production path scan. Registered in
+# EVENT_REGISTRY.yaml; reserved here so coverage gate does not flag them.
+pr_stuck_cycle_1_rebase_attempted  # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_stuck_exempt                    # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable

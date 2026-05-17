@@ -86,6 +86,114 @@ green "=== stuck-pr-filer (base: $REMOTE/$BASE) ==="
 # Format per line: pr_num\tcheck_name\tci_red_mins\tpr_branch\tgap_ids
 SHARED_BLOCKER_TMP=$(mktemp /tmp/chump-shared-blocker-XXXXXX)
 
+# INFRA-1410: reopen_respawned_gaps definition + invocation. Runs BEFORE the
+# `git fetch` below so a network-offline environment still drains queued
+# pr_auto_closed_for_respawn events into reopened gaps.
+#
+# Bypass: CHUMP_RESPAWN_REFILE=0 disables.
+reopen_respawned_gaps() {
+    [[ "${CHUMP_RESPAWN_REFILE:-1}" == "0" ]] && return 0
+    command -v chump >/dev/null 2>&1 || return 0
+
+    local lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
+    local ambient="$lock_dir/ambient.jsonl"
+    [[ -s "$ambient" ]] || return 0
+
+    local window_hrs="${RESPAWN_WINDOW_HRS:-24}"
+
+    # Collect (pr_num, gap_ids) tuples for pr_auto_closed_for_respawn events
+    # in the window.
+    local events
+    events=$(python3 - "$ambient" "$window_hrs" <<'PYEOF' || true
+import json, sys
+from datetime import datetime, timezone, timedelta
+path, window = sys.argv[1], int(sys.argv[2])
+cutoff = datetime.now(timezone.utc) - timedelta(hours=window)
+seen = {}
+try:
+    fp = open(path)
+except Exception:
+    fp = None
+if fp is not None:
+    for line in fp:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get('kind') != 'pr_auto_closed_for_respawn':
+            continue
+        ts = d.get('ts','')
+        try:
+            t = datetime.fromisoformat(ts.replace('Z','+00:00'))
+            if t < cutoff:
+                continue
+        except Exception:
+            continue
+        pr = str(d.get('pr',''))
+        if not pr:
+            continue
+        gap_ids = (d.get('gap_ids') or '').strip()
+        seen[pr] = gap_ids   # last event wins
+    fp.close()
+for pr, gap_ids in seen.items():
+    print(f"{pr}\t{gap_ids}")
+PYEOF
+    )
+
+    [[ -z "$events" ]] && return 0
+
+    local reopened=0
+    while IFS=$'\t' read -r pr_num gap_ids_csv; do
+        [[ -z "$pr_num" || -z "$gap_ids_csv" ]] && continue
+        # Iterate cited gap IDs (comma-separated).
+        IFS=',' read -ra _gids <<<"$gap_ids_csv"
+        for gid in "${_gids[@]}"; do
+            [[ -z "$gid" ]] && continue
+            local current
+            current=$(chump gap show "$gid" 2>/dev/null || true)
+            [[ -z "$current" ]] && continue
+            if grep -qF "respawn-handled:${pr_num}" <<<"$current"; then
+                continue
+            fi
+            local status
+            status=$(awk '/^[[:space:]]*status:/{sub(/^[[:space:]]*status:[[:space:]]*/,""); print; exit}' <<<"$current")
+            local cycle
+            # grep returns rc=1 on no match — wrap to keep `set -e` happy.
+            cycle=$( { grep -oE 'stuck cycle [0-9]+' <<<"$current" || true; } \
+                     | { grep -oE '[0-9]+' || true; } \
+                     | sort -n | tail -1)
+            cycle="${cycle:-0}"
+            cycle=$((cycle + 1))
+            local note_date
+            note_date=$(date -u +%Y-%m-%d)
+            local note="stuck cycle ${cycle} → re-attempt ${note_date} (PR #${pr_num} auto-closed) respawn-handled:${pr_num}"
+
+            if [[ $DRY_RUN -eq 1 ]]; then
+                printf '  [dry-run] would reopen %s (status=%s) with note: %s\n' "$gid" "$status" "$note"
+                continue
+            fi
+
+            if [[ "$status" != "open" ]]; then
+                chump gap set "$gid" --status open >/dev/null 2>&1 \
+                    || printf '\033[0;33m  WARN: chump gap set %s --status open failed\033[0m\n' "$gid"
+            fi
+            chump gap set "$gid" --add-note "$note" >/dev/null 2>&1 \
+                || printf '\033[0;33m  WARN: chump gap set %s --add-note failed\033[0m\n' "$gid"
+            printf '  reopened %s for picker (cycle %d, ex-PR #%s)\n' "$gid" "$cycle" "$pr_num"
+            reopened=$((reopened + 1))
+        done
+    done <<<"$events"
+
+    [[ $reopened -gt 0 ]] && printf '\033[0;32m  reopened %d gap(s) from pr_auto_closed_for_respawn events\033[0m\n' "$reopened"
+    return 0
+}
+
+# Run early so we drain respawn events even when the network fetch fails.
+reopen_respawned_gaps
+
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
 }

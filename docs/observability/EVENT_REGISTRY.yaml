@@ -818,6 +818,33 @@ events:
     trigger: PR BLOCKED > 4h with no progress
     consumers: [audit-log, fleet]
 
+  - kind: pr_stuck_cycle_1_rebase_attempted
+    effect_metric: pr_auto_closed_for_respawn_within_30m
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
+    trigger: PR has been mergeStateStatus=BLOCKED for ≥ CHUMP_PR_STUCK_SLO_HRS
+      (default 2h); reaper records state and invokes chump-rebase-and-push.sh
+      as the first rescue attempt before any close action.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, branch, age_hrs]
+
+  - kind: pr_auto_closed_for_respawn
+    effect_metric: gap_reopened_within_1h
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
+    trigger: PR remained BLOCKED for ≥ CHUMP_PR_STUCK_RECLOSE_MINS (default 30m)
+      AFTER a pr_stuck_cycle_1_rebase_attempted; reaper closes the PR with a
+      "gap re-claimable" comment. stuck-pr-filer.sh reads this event and
+      re-opens the cited gap for the next picker.
+    consumers: [stuck-pr-filer, fleet-brief, audit-log, operator-recall]
+    fields_required: [ts, kind, pr, branch, gap_ids, title]
+
+  - kind: pr_stuck_exempt
+    effect_metric: self
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
+    trigger: PR carries the `do-not-respawn` label; reaper skips all
+      auto-respawn logic for the PR and clears any pending state.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, reason]
+
   - kind: stuck_pr_filing_dedup_hit
     effect_metric: self
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-855)
