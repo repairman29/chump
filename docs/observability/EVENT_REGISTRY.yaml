@@ -928,6 +928,13 @@ events:
     trigger: workspace-file landing → open-PR rebase sweep
     consumers: [audit-log]
 
+  - kind: cascade_rebase_run
+    effect_metric: self
+    emitter: chump pr cascade-rebase (INFRA-1458)
+    trigger: operator runs chump pr cascade-rebase <check-name>; fired once per invocation
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, check, pr_count, success_count, conflict_count, skipped_count]
+
   - kind: cascade_rebase_skipped_duplicate
     effect_metric: self
     emitter: scripts/coord/queue-driver.sh (INFRA-1310)
