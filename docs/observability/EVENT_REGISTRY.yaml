@@ -3633,6 +3633,16 @@ events:
       recording the selected window and top-line metric counts
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, window, prs_merged, gaps_closed, operator_hours_saved]
+  # ── INFRA-1600: PR auto-rescue daemon ─────────────────────────────────────
+  - kind: pr_auto_rescue_invoked
+    emitter: scripts/coord/pr-failure-auto-rescue.sh (INFRA-1600)
+    trigger: >
+      The auto-rescue daemon matched a known CI-failure pattern on an open
+      PR and applied (or attempted to apply) the corresponding handler.
+      Linchpin instrumentation: tonight's manual cascade-fix work, productized.
+    consumers: [fleet-brief, cos-weekly-digest, ops-audit]
+    fields_required: [ts, kind, pr, handler, outcome]
+
   # ── INFRA-1490: ci.yml merge driver mid-file fallback ────────────────────
   - kind: ci_yml_row_add_merged
     emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1490)
