@@ -426,6 +426,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/check-mass-deletion.sh
 
+      - name: Broad canary coverage smoke (INFRA-1568)
+        # Asserts every external CLI invoked by self-hosted-targeted workflow
+        # steps is exercised by scripts/setup/test-runner-lane-broad-canary.sh.
+        # Closes the "canary too narrow" regression hole (2026-05-16 cascade:
+        # INFRA-1556/1539/1561). A new external CLI in a workflow step makes
+        # this gate fail until the canary surface is taught about it.
+        run: bash scripts/ci/test-broad-canary-coverage.sh
+
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
       # script always exit 0 after emitting `kind=ac_coverage_miss` events

@@ -3621,6 +3621,18 @@ events:
       without blocking the UI thread
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, status_filter, priority_filter, domain_filter, pillar_filter, search, result_count]
+  # ── INFRA-1568: broad-canary skip (operator override) ────────────────────
+  - kind: runner_canary_skipped
+    emitter: scripts/setup/install-self-hosted-runner.sh (INFRA-1568)
+    trigger: >
+      install-self-hosted-runner.sh ran --check or completed install but the
+      operator set CHUMP_SKIP_CANARY=1 / passed --skip-canary OR the broad
+      canary script was missing. The runner is reported as ready WITHOUT the
+      full production-step validation the broad canary gate normally enforces.
+      Reasons: operator_override, install_skip_canary_flag, canary_script_missing.
+    consumers: [fleet-brief, ops-audit]
+    effect_metric: self
+    fields_required: [ts, kind, reason, host]
   # ── INFRA-1535: self-hosted runner migration pipeline ─────────────────────
   - kind: runner_migration_step
     emitter: scripts/coord/chump-runner-migration-pipeline.sh (INFRA-1535)
