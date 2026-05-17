@@ -48,6 +48,85 @@ pub struct PrEntry {
     pub class: PrClass,
     pub hours_since_green: Option<f64>,
     pub run_id: Option<String>,
+    /// INFRA-1409: per-PR recommended mechanical action.
+    pub recommended_action: Option<RecommendedAction>,
+    /// INFRA-1409: when waiting-for-sibling, which gap.
+    pub waiting_on_gap: Option<String>,
+    /// INFRA-1409: name of the first failing check (informs action recommendation).
+    pub failing_check: Option<String>,
+}
+
+/// INFRA-1409: machine-actionable next step for a PR.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecommendedAction {
+    Rebase,
+    ForcePush,
+    ReArmAutoMerge,
+    FixClippy,
+    WaitForSibling,
+    CloseAndRespawn,
+    Monitor,
+}
+
+impl RecommendedAction {
+    pub fn label(&self) -> &'static str {
+        match self {
+            RecommendedAction::Rebase => "rebase",
+            RecommendedAction::ForcePush => "force-push",
+            RecommendedAction::ReArmAutoMerge => "re-arm",
+            RecommendedAction::FixClippy => "fix-clippy",
+            RecommendedAction::WaitForSibling => "wait-sibling",
+            RecommendedAction::CloseAndRespawn => "close-respawn",
+            RecommendedAction::Monitor => "monitor",
+        }
+    }
+}
+
+/// INFRA-1409: derive the recommended action from a PR's classification
+/// and (optionally) failing-check name + currently-claimed-gaps map.
+pub fn recommend_action(
+    class: &PrClass,
+    failing_check: Option<&str>,
+    sibling_claims: &std::collections::HashMap<String, String>,
+) -> (RecommendedAction, Option<String>) {
+    match class {
+        PrClass::Clean => (RecommendedAction::Monitor, None),
+        PrClass::AutoMergeArmed => (RecommendedAction::Monitor, None),
+        PrClass::Dirty => (RecommendedAction::Rebase, None),
+        PrClass::Blocked => {
+            if let Some(check) = failing_check {
+                let check_l = check.to_lowercase();
+                for (gap_id, gap_title) in sibling_claims.iter() {
+                    let t = gap_title.to_lowercase();
+                    if t.contains(&check_l)
+                        || (check_l.contains("audit") && t.contains("audit"))
+                        || (check_l.contains("clippy") && t.contains("clippy"))
+                        || (check_l.contains("acp") && t.contains("acp"))
+                    {
+                        return (RecommendedAction::WaitForSibling, Some(gap_id.clone()));
+                    }
+                }
+            }
+            (RecommendedAction::ReArmAutoMerge, None)
+        }
+        PrClass::Failing {
+            flake_detected: true,
+        } => (RecommendedAction::Monitor, None),
+        PrClass::Failing {
+            flake_detected: false,
+        } => {
+            if let Some(check) = failing_check {
+                let check_l = check.to_lowercase();
+                if check_l.contains("clippy") {
+                    return (RecommendedAction::FixClippy, None);
+                }
+                if check_l.contains("fmt") {
+                    return (RecommendedAction::Rebase, None);
+                }
+            }
+            (RecommendedAction::CloseAndRespawn, None)
+        }
+    }
 }
 
 pub struct TriageReport {
@@ -461,14 +540,73 @@ pub struct TriageOptions {
     pub json: bool,
 }
 
+/// INFRA-1409: scan .chump-locks/*.json for active sibling leases. Returns
+/// a `{gap_id → gap_title}` map for cross-reference when recommending
+/// `wait-for-sibling` actions. Used by `recommend_action()`.
+///
+/// Lease file shape (from atomic_claim::write_basic_lease):
+///   { "gap_id": "INFRA-1410", "title": "...", "session_id": "...", ... }
+pub fn load_sibling_claims() -> std::collections::HashMap<String, String> {
+    use std::path::PathBuf;
+    let repo_root: PathBuf = std::env::var("CHUMP_REPO_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+    let locks_dir = repo_root.join(".chump-locks");
+    let mut map = std::collections::HashMap::new();
+    let Ok(entries) = std::fs::read_dir(&locks_dir) else {
+        return map;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        // Skip non-lease files (curator metadata, ambient, etc.).
+        if !body.contains("\"gap_id\":") {
+            continue;
+        }
+        // Hand-rolled extraction to avoid serde_json.
+        let gap_id = extract_json_str(&body, "gap_id").unwrap_or_default();
+        let title = extract_json_str(&body, "title").unwrap_or_default();
+        if !gap_id.is_empty() {
+            map.insert(gap_id, title);
+        }
+    }
+    map
+}
+
+/// Crude JSON string-field extractor for "\"key\":\"value\"" patterns.
+fn extract_json_str(body: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":\"", key);
+    let start = body.find(&needle)? + needle.len();
+    let rest = &body[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
 pub fn run_triage(opts: &TriageOptions) -> Result<TriageReport, String> {
     let raw = list_open_prs()?;
     let prs = parse_prs(&raw);
+
+    // INFRA-1409: load sibling-claimed gaps once for the whole report so
+    // each PR's `wait-for-sibling` recommendation can cross-reference.
+    let sibling_claims = load_sibling_claims();
 
     let mut entries = vec![];
     for pr in &prs {
         let (class, run_id) = classify(pr);
         let hours = hours_since_green(&pr.checks);
+        // First failing check name (informs recommended action).
+        let failing_check: Option<String> = pr
+            .checks
+            .iter()
+            .find(|c| c.state == "FAILURE")
+            .map(|c| c.name.clone());
+        let (action, waiting_on) =
+            recommend_action(&class, failing_check.as_deref(), &sibling_claims);
         entries.push(PrEntry {
             number: pr.number,
             title: pr.title.clone(),
@@ -476,6 +614,9 @@ pub fn run_triage(opts: &TriageOptions) -> Result<TriageReport, String> {
             class,
             hours_since_green: hours,
             run_id,
+            recommended_action: Some(action),
+            waiting_on_gap: waiting_on,
+            failing_check,
         });
     }
 
@@ -539,11 +680,12 @@ pub fn render_text(report: &TriageReport) -> String {
         "PR TRIAGE — {} open PRs\n\n",
         report.entries.len()
     ));
+    // INFRA-1409: ACTION column added.
     out.push_str(&format!(
-        "{:<6} {:<20} {:<18} {:<8}\n",
-        "PR#", "CLASS", "CI-GREENED", "TITLE"
+        "{:<6} {:<16} {:<14} {:<14} {:<8}\n",
+        "PR#", "CLASS", "CI-GREENED", "ACTION", "TITLE"
     ));
-    out.push_str(&"-".repeat(70));
+    out.push_str(&"-".repeat(86));
     out.push('\n');
     for e in &report.entries {
         let green = match e.hours_since_green {
@@ -558,16 +700,29 @@ pub fn render_text(report: &TriageReport) -> String {
             } => " [FLAKE?]",
             _ => "",
         };
-        let title = if e.title.len() > 40 {
-            format!("{}…", &e.title[..39])
+        let title = if e.title.len() > 36 {
+            format!("{}…", &e.title[..35])
         } else {
             e.title.clone()
         };
+        // INFRA-1409: action column + optional waiting-on-gap suffix.
+        let action_str = e
+            .recommended_action
+            .as_ref()
+            .map(|a| {
+                if let Some(g) = e.waiting_on_gap.as_ref() {
+                    format!("{}:{}", a.label(), g)
+                } else {
+                    a.label().to_string()
+                }
+            })
+            .unwrap_or_else(|| "?".to_string());
         out.push_str(&format!(
-            "#{:<5} {:<20} {:<18} {}{}\n",
+            "#{:<5} {:<16} {:<14} {:<14} {}{}\n",
             e.number,
             e.class.label(),
             green,
+            action_str,
             title,
             flake_tag
         ));
@@ -588,14 +743,33 @@ pub fn render_json(report: &TriageReport) -> String {
             .hours_since_green
             .map(|h| format!("{:.2}", h))
             .unwrap_or_else(|| "null".to_string());
+        // INFRA-1409: new fields recommended_action, waiting_on_gap, failing_check.
+        let action_field = e
+            .recommended_action
+            .as_ref()
+            .map(|a| format!("\"{}\"", a.label()))
+            .unwrap_or_else(|| "null".to_string());
+        let waiting_field = e
+            .waiting_on_gap
+            .as_ref()
+            .map(|g| json_str(g).to_string())
+            .unwrap_or_else(|| "null".to_string());
+        let failing_field = e
+            .failing_check
+            .as_ref()
+            .map(|s| json_str(s).to_string())
+            .unwrap_or_else(|| "null".to_string());
         parts.push(format!(
-            r#"{{"number":{},"title":{},"branch":{},"class":"{}","flake_detected":{},"hours_since_green":{}}}"#,
+            r#"{{"number":{},"title":{},"branch":{},"class":"{}","flake_detected":{},"hours_since_green":{},"recommended_action":{},"waiting_on_gap":{},"failing_check":{}}}"#,
             e.number,
             json_str(&e.title),
             json_str(&e.branch),
             e.class.label(),
             flake,
-            hours
+            hours,
+            action_field,
+            waiting_field,
+            failing_field,
         ));
     }
     format!("[{}]\n", parts.join(","))
@@ -711,6 +885,9 @@ mod tests {
                 class: PrClass::Clean,
                 hours_since_green: Some(2.5),
                 run_id: None,
+                recommended_action: Some(RecommendedAction::Monitor),
+                waiting_on_gap: None,
+                failing_check: None,
             }],
         };
         let json = render_json(&r);
