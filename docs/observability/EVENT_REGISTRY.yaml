@@ -3732,6 +3732,15 @@ events:
       Linchpin instrumentation: tonight's manual cascade-fix work, productized.
     consumers: [fleet-brief, cos-weekly-digest, ops-audit]
     fields_required: [ts, kind, pr, handler, outcome]
+  # ── INFRA-1437: chump session-summary ─────────────────────────────────────
+  - kind: session_summary_rendered
+    emitter: src/main.rs (INFRA-1437) — chump session-summary handler
+    trigger: >
+      Operator (or PM-curator) ran `chump session-summary` to compile per-session
+      handoff. Feeds the weekly Mission Yield digest (CREDIBLE-071 chump cos
+      digest) by aggregating per-session counts.
+    consumers: [cos-weekly-digest, fleet-brief, ops-audit]
+    fields_required: [ts, kind, session_id, merged_prs, armed_prs, gaps_filed, gaps_shipped, bytes_reclaimed]
 
   # ── INFRA-1490: ci.yml merge driver mid-file fallback ────────────────────
   - kind: ci_yml_row_add_merged

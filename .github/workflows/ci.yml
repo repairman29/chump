@@ -1349,6 +1349,8 @@ jobs:
         run: bash scripts/ci/test-pr-failure-auto-rescue.sh
       - name: PR auto-rescue active audit-handler (INFRA-1618)
         run: bash scripts/ci/test-pr-rescue-audit-handler.sh
+      - name: chump session-summary handler wiring (INFRA-1437)
+        run: bash scripts/ci/test-chump-session-summary.sh
       - name: heavy CI jobs cross-platform — apt-get gated + lane-flippable (INFRA-1542)
         run: bash scripts/ci/test-ci-heavy-jobs-cross-platform.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
