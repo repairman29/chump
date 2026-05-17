@@ -10,14 +10,19 @@
 
 ## TL;DR for a returning operator (2026-05-16 reality)
 
-Three parallel workstreams. Each has its own focused doc; this page is the
-index + "this week's bets."
+Five anchors. **Mission Yield** is the headline number; **Wave order** is the ship discipline; the three workstreams below run inside both constraints.
 
-| Workstream | Doc | Horizon | Outcome |
-|---|---|---|---|
-| **🚀 50 PRs/hour push** | [strategy/ROADMAP_50_PER_HOUR.md](strategy/ROADMAP_50_PER_HOUR.md) | 15 days (→ 2026-06-01) | sustain 50 PRs/hr via fleet+CI capacity work |
-| **👤 Marcus customer arc** | [strategy/ROADMAP_MARCUS.md](strategy/ROADMAP_MARCUS.md) | 5 milestones (M-A → M-E) | deliver the experience Persona-1 named in 2026-05-15 interview |
-| **🛠️ Backlog decisions** | [strategy/ROADMAP_BACKLOG.md](strategy/ROADMAP_BACKLOG.md) | design queue | 8 items decided 2026-05-16 — what's build, defer, fold |
+| Anchor | Doc | What it answers |
+|---|---|---|
+| **📊 Mission Yield (the rule of X)** | [strategy/MISSION_YIELD.md](strategy/MISSION_YIELD.md) | Is the work actually moving the product? Single number, weekly. |
+| **⏯️ Wave order (ship discipline)** | [strategy/ROADMAP_WAVES.md](strategy/ROADMAP_WAVES.md) | What ships first to avoid rework? 4 waves, cumulative. |
+| **🚀 50 PRs/hour push** | [strategy/ROADMAP_50_PER_HOUR.md](strategy/ROADMAP_50_PER_HOUR.md) | Capacity to sustain Mission Yield at scale. 15 days. |
+| **👤 Marcus customer arc** | [strategy/ROADMAP_MARCUS.md](strategy/ROADMAP_MARCUS.md) | The customer the product is for. 5 milestones M-A → M-E. |
+| **🛠️ Backlog decisions** | [strategy/ROADMAP_BACKLOG.md](strategy/ROADMAP_BACKLOG.md) | 8 design-conversation items decided 2026-05-16 — what's build/defer/fold. |
+
+**Read order:** Mission Yield first (the why), Waves second (the order), then the three workstreams (what's pickable now).
+
+**Operating model:** the Chief of Staff role (currently Claude-as-COS; productized via [process/COS_OPERATING_MODEL.md](process/COS_OPERATING_MODEL.md) for autonomy by ~2026-07-01) opens every session with current Mission Yield, enforces the 30%-per-pillar cap, and produces a Sunday digest at [syntheses/cos-weekly-*.md](syntheses/). First digest: [cos-weekly-2026-05-17.md](syntheses/cos-weekly-2026-05-17.md) (Mission Yield baseline ~13.6/Mtok).
 
 **Framing reset 2026-05-16:** Infra IS the product. GitHub is where users
 live. "Offline-first" is a tier-3 differentiator, not the spine. The fleet's

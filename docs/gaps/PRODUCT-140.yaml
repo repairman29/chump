@@ -1,0 +1,9 @@
+- id: PRODUCT-140
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA chip-tag UI on PR action panel — operator sets Mission Yield chip at merge time"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "[\"Extend PRODUCT-086 PWA PR action panel: add a 4-chip selector (marcus / fleet-quality / dev-tool / noise) BELOW the existing approve/revise/revert/comment actions. Required selection before merge. Pre-merge button disabled until chip is set.\",\"On tap, write to: (a) GitHub PR label `mission-yield/<tag>` via REST, (b) ambient event kind=pr_chip_tagged {pr, tag, operator, ts}, (c) .chump/state.db pr_chip_tag row.\",\"Also surface a one-line behavior-delta text input: `What changes for someone using chump after this lands?` Required, < 200 chars, written to GitHub PR body as comment + ambient event field.\",\"Tooltip for each chip references definitions in docs/strategy/MISSION_YIELD.md (link target).\",\"If operator tries to merge without chip-tag: cockpit shows tooltip `Missing chip-tag (required per docs/strategy/MISSION_YIELD.md). Bypass: --operator-override <reason>.`\",\"CI smoke test scripts/ci/test-pwa-chip-tag-ui.sh: hit /pr/<n> in dev server, assert 4-chip selector + delta input + disabled merge until chip chosen.\",\"Telemetry: emit kind=pr_chip_tag_set {pr, tag, operator, behavior_delta_chars}.\",\"Wave-3-or-4 work; file now, claim after Wave 0+1.\",\"Out of scope: chip-tag DISPUTE flow (operator changes a chip after-the-fact), critique-pass auto-tag (Phase 3 work).\"]"
+
