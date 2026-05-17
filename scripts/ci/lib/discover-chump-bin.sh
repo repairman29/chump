@@ -37,3 +37,22 @@ else
 fi
 
 export CHUMP_BIN
+
+# INFRA-755 observability hook: emit ambient event recording which target dir
+# resolved. Useful for diagnosing future CARGO_TARGET_DIR drift between runner
+# lanes. Best-effort — failures must not block the test caller.
+{
+    _amb="${REPO_ROOT:-$PWD}/.chump-locks/ambient.jsonl"
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+    _src=""
+    case "$CHUMP_BIN" in
+        "${CARGO_TARGET_DIR:-_unset_}"/*) _src=cargo_target_dir ;;
+        "${REPO_ROOT:-_unset_}"/*)        _src=repo_root_target ;;
+        *)                                _src=other ;;
+    esac
+    if [[ -d "$(dirname "$_amb")" ]]; then
+        printf '{"ts":"%s","kind":"chump_bin_resolved","source":"%s","path":"%s"}\n' \
+            "$_ts" "$_src" "$CHUMP_BIN" >> "$_amb" 2>/dev/null || true
+    fi
+    unset _amb _ts _src
+} 2>/dev/null || true

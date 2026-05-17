@@ -2328,6 +2328,16 @@ events:
     consumers: [fleet-brief, operator-recall, watchdogs]
     fields_required: [ts, kind, baked_sha, commits_ahead, elapsed_s, rc]
 
+  # ── INFRA-1600 follow-up: which target dir resolved for CI test scripts ──
+  - kind: chump_bin_resolved
+    effect_metric: self
+    emitter: scripts/ci/lib/discover-chump-bin.sh (INFRA-1600 follow-up)
+    trigger: CI test script sourced discover-chump-bin.sh and found a chump
+      binary. source=cargo_target_dir on self-hosted runners using INFRA-1540
+      shared cache; source=repo_root_target on GitHub-hosted runners.
+    consumers: [fleet-brief, diagnostic-tooling]
+    fields_required: [ts, kind, source, path]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     effect_metric: self
