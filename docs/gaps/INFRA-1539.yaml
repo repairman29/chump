@@ -4,24 +4,12 @@
   status: open
   priority: P1
   effort: xs
-  pillar: RESILIENT
   acceptance_criteria:
-    - "Audit every step in .github/workflows/*.yml that runs `sudo`, `apt-get`, or `pip install` (without bundled fallback)"
-    - "Add `if: runner.os == 'Linux'` to each such step that does NOT already have a runner-os guard, INCLUDING jobs currently pinned to ubuntu-latest (idempotent — protects against future migration breakage)"
-    - "Exception: steps inside container: jobs (Linux is guaranteed) — leave un-guarded"
-    - "New CI smoke `scripts/ci/test-workflow-linux-guard.sh` fails if any matching step lacks the guard; wired into pr-hygiene job"
-    - "Verify on M4 self-hosted lane: a workflow run with CHUMP_SELF_HOSTED_ENABLED=true completes the freshly-migrated job without sudo password prompts"
-    - "Cross-link: this is the proactive sweep counterpart to INFRA-1535 stage-by-stage migration; goal is zero per-stage guard-fix PRs going forward"
-  notes: |
-    Pattern emerged across #2238 (fast-checks), #2241 (pip pyyaml), #2244 (ACP smoke jq),
-    and same-day guard-fix commits on #2240 clippy + #2243 cargo-test branches.
-    Every conditional-runs-on migration so far has shipped twice: first the toggle,
-    then a guard-fix once the M4 lane revealed the broken step. Front-loading the
-    guards eliminates that second round.
+    - Audit every step in .github/workflows/*.yml that runs sudo, apt-get, or pip install (without bundled fallback).
+    - "Add if: runner.os == 'Linux' to each such step that does NOT already have a runner-os guard, INCLUDING jobs currently pinned to ubuntu-latest (idempotent, protects against future migration breakage)."
+    - "Exception: steps inside container: jobs (Linux guaranteed) left unguarded."
+    - New CI smoke scripts/ci/test-workflow-linux-guard.sh fails if any matching step lacks the guard; wired into pr-hygiene job.
+    - "Verify on M4 self-hosted: workflow run with CHUMP_SELF_HOSTED_ENABLED=true completes the freshly-migrated job without sudo password prompts."
+    - "Cross-link: this is proactive sweep counterpart to INFRA-1535 stage-by-stage migration; goal is zero per-stage guard-fix PRs going forward."
+  pillar: RESILIENT
 
-    Sweep candidates already identified (from `grep -n "sudo\|apt-get\|pip install" .github/workflows/`):
-      ci.yml: ~7 instances of "Free disk space" + "Install Linux packages"
-      ci-advisory.yml: 4 instances
-      acp-real-clients.yml: 2 instances
-
-    Out of scope: container-scoped Linux-only steps inside `container:` jobs.

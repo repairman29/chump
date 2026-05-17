@@ -4,28 +4,13 @@
   status: open
   priority: P1
   effort: s
-  pillar: CREDIBLE
   acceptance_criteria:
-    - "New script scripts/setup/test-runner-lane-broad-canary.sh that, given a runner lane label (e.g. 'macos-arm64'), runs the FULL production workflow end-to-end on that lane: checkout → cargo build → every step in fast-checks + clippy + cargo-test + ACP smoke, asserting each step's stdout/exit-code matches the GitHub-hosted baseline"
-    - "Run via `chump fleet canary --lane <label>` — exits 0 iff all production steps pass; non-zero with named failing step list"
-    - "Documented in docs/process/SELF_HOSTED_RUNNERS.md: install-self-hosted-runner.sh's --check mode delegates to this script; no runner is declared 'ready' until broad-canary passes"
-    - "Contrast with today's narrow canary (#2239): it ran `cargo build` only. Broad canary would have caught chump-on-PATH (INFRA-1556), apt-get unguarded (INFRA-1539), AND silent chump --acp (INFRA-1561) before any migration PR shipped"
-    - "Smoke test scripts/ci/test-broad-canary-coverage.sh: parses the broad canary script, asserts it exercises every step that any conditional-runs-on job in .github/workflows/ exercises on its currently-conditional lane (auto-discoverable via grep CHUMP_SELF_HOSTED)"
-    - "When a workflow adds a new step that touches a new external CLI, the broad-canary smoke test fails until that CLI is added to the canary's surface — closes the 'canary too narrow' regression hole structurally"
-    - "Acceptance gate: install-self-hosted-runner.sh's exit-0 condition tightens to require broad-canary pass (or --skip-canary flag for explicit override that emits kind=runner_canary_skipped)"
-  notes: |
-    Pattern from 2026-05-16: 3 runner-env bugs in 8 hours (chump-PATH, apt-guard,
-    ACP-silent). Each cost a guard-fix PR + ~30 min cascade-firefighting + a
-    blocked-PRs window. Front-loading a broad canary turns 3× reactive-debug
-    into 1× upfront-verify.
-
-    The narrow canary (#2239) ran roughly 30 sec of work and validated a 5%
-    surface. The broad canary would run ~5-10 min and validate ~100%. That's
-    a fair trade for the migration risk surface.
-
-    Cross-link: INFRA-1541 (AC coverage gate) is the SHIPPING-time analog of
-    this gap. INFRA-1568 is the LANE-READINESS analog. Both close the
-    "passed-the-narrow-check, broke-the-broad-reality" failure mode at
-    different layers.
-
+    - "New scripts/setup/test-runner-lane-broad-canary.sh runs FULL production workflow end-to-end against a lane: checkout, cargo build, every step in fast-checks + clippy + cargo-test + ACP smoke. Asserts each step's stdout/exit matches GitHub-hosted baseline."
+    - Exposed via chump fleet canary --lane <label>; exits 0 iff all production steps pass; non-zero with named failing-step list.
+    - "docs/process/SELF_HOSTED_RUNNERS.md: install-self-hosted-runner.sh --check delegates to broad canary; no runner declared ready until pass."
+    - "Contrast with narrow canary #2239 (cargo build only) which missed INFRA-1556 chump-PATH, INFRA-1539 apt-guard, INFRA-1561 chump --acp silent — broad canary would catch all three upfront."
+    - scripts/ci/test-broad-canary-coverage.sh parses canary script, asserts it exercises every step that any conditional-runs-on job in .github/workflows/ uses on its lane (auto-discoverable via grep CHUMP_SELF_HOSTED).
+    - New external CLI in a workflow step → coverage smoke fails until canary surface adds it. Closes 'canary too narrow' regression hole structurally.
+    - install-self-hosted-runner.sh exit-0 condition tightens to require broad-canary pass (or --skip-canary flag emitting kind=runner_canary_skipped).
+  pillar: CREDIBLE
 
