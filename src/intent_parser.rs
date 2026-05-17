@@ -335,6 +335,165 @@ fn extract_remainder_after(input: &str, skip_words: &[&str]) -> Option<String> {
     None
 }
 
+// ── LLM fallback support (INFRA-1452) ────────────────────────────────────────
+
+/// Returns `true` if any LLM provider is configured in the environment.
+///
+/// Checked in order: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+/// `CHUMP_OPENAI_API_KEY`, `OLLAMA_HOST`, `CHUMP_CASCADE_ENABLED=1`.
+pub fn llm_provider_configured() -> bool {
+    let has_key = |var: &str| !std::env::var(var).unwrap_or_default().trim().is_empty();
+    has_key("ANTHROPIC_API_KEY")
+        || has_key("OPENAI_API_KEY")
+        || has_key("CHUMP_OPENAI_API_KEY")
+        || has_key("OLLAMA_HOST")
+        || std::env::var("CHUMP_CASCADE_ENABLED")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false)
+}
+
+/// Extract the `TOOL: <command>` line from an LLM response.
+///
+/// Returns `Some(command)` on first matching TOOL line, else `None`.
+pub fn parse_llm_response(response: &str) -> Option<String> {
+    for line in response.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("TOOL:") {
+            let cmd = rest.trim().to_string();
+            if !cmd.is_empty() {
+                return Some(cmd);
+            }
+        }
+    }
+    None
+}
+
+/// Emit `kind=intent_parse_llm` to `.chump-locks/ambient.jsonl`.
+pub fn emit_intent_llm_event(raw: &str, command: &str, provider: &str, repo_root: &Path) {
+    let locks_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&locks_dir);
+    let ts = iso8601_now();
+    let raw_esc = raw.replace('"', "\\\"");
+    let cmd_esc = command.replace('"', "\\\"");
+    let prov_esc = provider.replace('"', "\\\"");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"intent_parse_llm\",\
+         \"raw\":\"{raw_esc}\",\"command\":\"{cmd_esc}\",\"provider\":\"{prov_esc}\"}}\n"
+    );
+    let path = locks_dir.join("ambient.jsonl");
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// Budget status for LLM-fallback intent calls.
+#[derive(Debug)]
+pub enum BudgetStatus {
+    /// Enough budget remains; `per_call` is the estimated cost to charge.
+    Ok { per_call: f64 },
+    /// Daily cap exceeded; re-run with `--confirm-budget` to override.
+    Exceeded { spend: f64, cap: f64 },
+}
+
+/// Check whether the per-intent LLM budget allows one more call.
+///
+/// Env vars:
+///   `CHUMP_INTENT_LLM_BUDGET_USD`       — per-call cost (default `$0.01`)
+///   `CHUMP_INTENT_LLM_DAILY_BUDGET_USD` — daily cap    (default `$0.10`)
+///   `CHUMP_INTENT_LLM_CONFIRM_BUDGET=1` — override exhausted budget
+pub fn intent_llm_budget_check(repo_root: &Path) -> BudgetStatus {
+    let confirm = std::env::var("CHUMP_INTENT_LLM_CONFIRM_BUDGET")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false);
+    let daily_cap: f64 = std::env::var("CHUMP_INTENT_LLM_DAILY_BUDGET_USD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.10);
+    let per_call: f64 = std::env::var("CHUMP_INTENT_LLM_BUDGET_USD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.01);
+
+    let spend = read_today_intent_spend(repo_root);
+    if spend >= daily_cap && !confirm {
+        BudgetStatus::Exceeded { spend, cap: daily_cap }
+    } else {
+        BudgetStatus::Ok { per_call }
+    }
+}
+
+/// Record `per_call` dollars against today's intent LLM budget.
+///
+/// Stored in `<repo>/.chump/intent_llm_spend.txt` as `YYYY-MM-DD <usd>` lines.
+pub fn record_intent_llm_spend(repo_root: &Path, per_call: f64) {
+    let path = repo_root.join(".chump").join("intent_llm_spend.txt");
+    let today = today_date();
+    let existing = read_today_intent_spend(repo_root);
+    let new_spend = existing + per_call;
+
+    // Re-write file: keep all non-today lines, append updated today line.
+    let prior = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut lines: Vec<String> = prior
+        .lines()
+        .filter(|l| !l.starts_with(today.as_str()))
+        .map(String::from)
+        .collect();
+    lines.push(format!("{today} {new_spend:.6}"));
+    let content = lines.join("\n") + "\n";
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(repo_root));
+    let _ = std::fs::write(&path, content);
+}
+
+fn read_today_intent_spend(repo_root: &Path) -> f64 {
+    let path = repo_root.join(".chump").join("intent_llm_spend.txt");
+    let today = today_date();
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return 0.0;
+    };
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix(today.as_str()) {
+            return rest.trim().parse().unwrap_or(0.0);
+        }
+    }
+    0.0
+}
+
+fn today_date() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let total_days = secs / 86400;
+    let year = 1970 + total_days / 365;
+    let day_of_year = total_days % 365;
+    let month = day_of_year / 30 + 1;
+    let day = day_of_year % 30 + 1;
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+fn iso8601_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let total_days = secs / 86400;
+    let year = 1970 + total_days / 365;
+    let day_of_year = total_days % 365;
+    let month = day_of_year / 30 + 1;
+    let day = day_of_year % 30 + 1;
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

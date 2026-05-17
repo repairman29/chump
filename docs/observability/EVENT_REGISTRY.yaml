@@ -1876,6 +1876,15 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, command]
 
+  - kind: intent_parse_llm
+    effect_metric: self
+    emitter: src/main.rs (chump orchestrate <text> single-shot LLM fallback — INFRA-1452)
+    trigger: >
+      pattern matching returned Unknown AND a configured LLM provider was available;
+      LLM resolved the intent to a chump command via TOOL: response line.
+    consumers: [fleet-brief, kpi-report, cost-ledger]
+    fields_required: [ts, raw, command, provider]
+
   # ── Pre-registered eval gate (META-043) ──────────────────────────────────
   - kind: prereg_blocked
     effect_metric: self
