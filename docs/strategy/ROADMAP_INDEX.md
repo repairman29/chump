@@ -22,9 +22,13 @@ exists for navigation across the focused horizon docs.
 ### Focused horizon docs (added 2026-05-16)
 | Question | Doc |
 |----------|-----|
-| "How do we get to 50 PRs/hour?" | [ROADMAP_50_PER_HOUR.md](ROADMAP_50_PER_HOUR.md) — 15-day infra-throughput push |
+| **"Is the work actually moving the product?"** | **[MISSION_YIELD.md](MISSION_YIELD.md) — single weekly number, the rule of X. Headline metric.** |
+| **"What order do we ship in to avoid rework?"** | **[ROADMAP_WAVES.md](ROADMAP_WAVES.md) — 4 waves, prerequisite-explicit. Read second when picking next gap.** |
+| **"How does the COS role operate?"** | **[../process/COS_OPERATING_MODEL.md](../process/COS_OPERATING_MODEL.md) — operating cadence + productization path** |
+| "How do we get to 50 PRs/hour?" | [ROADMAP_50_PER_HOUR.md](ROADMAP_50_PER_HOUR.md) — 15-day infra-throughput push (subject to wave order) |
 | "What experience are we building for Marcus?" | [ROADMAP_MARCUS.md](ROADMAP_MARCUS.md) — customer arc, 5 milestones (M-A → M-E) |
 | "What's in the design-conversation backlog?" | [ROADMAP_BACKLOG.md](ROADMAP_BACKLOG.md) — 8 items decided 2026-05-16 |
+| "What did we ship this week?" | [../syntheses/cos-weekly-*.md](../syntheses/) — Sunday digests, Mission Yield delta |
 
 ### Reference / horizon docs
 | Question | Doc |
