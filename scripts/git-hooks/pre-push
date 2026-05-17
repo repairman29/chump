@@ -48,6 +48,14 @@
 
 set -euo pipefail
 
+# INFRA-1588: ERR trap so SIGPIPE / set -e failures don't abort the hook
+# silently. Without this, `git push` prints "failed to push some refs" with
+# no diagnostic — the operator has no idea which line failed (4 ships hit
+# this on 2026-05-16: #2250, #2251, #2252, #2254). The trap MUST be after
+# `set -e`/`-o pipefail` so it actually fires; placement here is load-bearing.
+# Capture exit-status before any further commands clobber $? .
+trap 'rc=$?; echo "[pre-push] hook aborted at line $LINENO with exit $rc" >&2; exit $rc' ERR
+
 # Never block pushes to main/master — those go through PR only.
 REMOTE="$1"
 # $2 is the remote URL; unused here.
@@ -162,8 +170,11 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
     _fa_local_sha="$(git rev-parse HEAD 2>/dev/null || echo HEAD)"
     _fa_base="$(git merge-base "$_fa_local_sha" origin/main 2>/dev/null || echo "")"
     if [[ -n "$_fa_base" && "$_fa_base" != "$_fa_local_sha" ]]; then
-        _fa_ghosts="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" 2>/dev/null | \
-            grep -E " ${_fa_regex}" | awk '{print $1}' || true)"
+        # INFRA-1588: read-then-parse — git log can produce many commits;
+        # piping through grep|awk under pipefail risked SIGPIPE if a later
+        # short-circuit was added. Materialising first removes that hazard.
+        _fa_log="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" 2>/dev/null || true)"
+        _fa_ghosts="$(grep -E " ${_fa_regex}" <<<"$_fa_log" | awk '{print $1}' || true)"
         if [[ -n "$_fa_ghosts" ]]; then
             echo "" >&2
             echo "[pre-push] BLOCKED: $(echo "$_fa_ghosts" | wc -l | tr -d ' ') ghost commit(s) authored by Test<test@test.local> or similar detected (INFRA-1408)." >&2
@@ -177,8 +188,10 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
                 echo "[pre-push] CHUMP_AUTODROP_FIXTURE_COMMITS=1 — attempting auto-drop via rebase --onto" >&2
                 # Build a rebase --onto base ghost~ HEAD for each (in order)
                 # Simplest reliable approach: cherry-pick all non-ghost commits onto base
-                _fa_keep="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" --reverse | \
-                    grep -vE " ${_fa_regex}" | awk '{print $1}')"
+                # INFRA-1588: same read-then-parse pattern for the auto-drop branch.
+                _fa_keep_log="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" --reverse 2>/dev/null || true)"
+                _fa_keep="$(grep -vE " ${_fa_regex}" <<<"$_fa_keep_log" | awk '{print $1}' || true)"
+                unset _fa_keep_log
                 _fa_branch="$(git rev-parse --abbrev-ref HEAD)"
                 git checkout -q "$_fa_base"
                 _fa_failed=0
@@ -213,7 +226,7 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
             fi
         fi
     fi
-    unset _fa_regex _fa_local_sha _fa_base _fa_ghosts _fa_keep _fa_branch _fa_failed _sha
+    unset _fa_regex _fa_local_sha _fa_base _fa_ghosts _fa_keep _fa_log _fa_branch _fa_failed _sha
 fi
 
 # -----------------------------------------------------------------------
@@ -251,12 +264,17 @@ elif command -v git &>/dev/null; then
         # Conflict markers appear as lines starting with +<<<<<<<, +=======,
         # +>>>>>>> in the diff output section.
         _mp_out="$(git merge-tree "$_mp_base" origin/main HEAD 2>/dev/null || true)"
-        if echo "$_mp_out" | grep -qE '^\+<{6,7} '; then
+        if grep -qE '^\+<{6,7} ' <<<"$_mp_out"; then
             # Extract conflicting file names from the diff header lines.
-            _mp_files="$(echo "$_mp_out" \
-                | grep -E '^(diff --cc |diff --git a/)' \
+            # INFRA-1588: avoid SIGPIPE — `head -10` can close the pipe while
+            # upstream grep/sed/awk are still feeding from the (potentially
+            # large) merge-tree dump. Materialise the intermediate result, then
+            # cap with awk-NR instead of piping through head.
+            _mp_diffhdrs="$(grep -E '^(diff --cc |diff --git a/)' <<<"$_mp_out" \
                 | sed -E 's/^diff --cc //; s/^diff --git a\///' \
-                | awk '{print $1}' | sort -u | head -10 | tr '\n' ' ')"
+                | awk '{print $1}' | sort -u || true)"
+            _mp_files="$(awk 'NR<=10 {print}' <<<"$_mp_diffhdrs" | tr '\n' ' ')"
+            unset _mp_diffhdrs
             _mp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
             _mp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
             echo "" >&2
@@ -748,7 +766,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         gap_from_branch="$(echo "$branch" | sed -E 's|^chump/||' | awk -F- '{print toupper($1)"-"$2}')"
         repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
         # If we're inside a worktree, the .chump-locks/ambient.jsonl lives at the main repo.
-        main_repo="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')"
+        # INFRA-1588: read-then-parse — the old pipeline
+        #   git worktree list --porcelain | awk '/^worktree / {print $2; exit}'
+        # closes the pipe from awk's `exit` while git was still writing → SIGPIPE
+        # on git → under `set -o pipefail` becomes exit 141 → silent hook abort.
+        # Splitting producer and consumer eliminates the pipe entirely.
+        _wt_list="$(git worktree list --porcelain 2>/dev/null || true)"
+        main_repo="$(awk '/^worktree / {print $2; exit}' <<<"$_wt_list")"
+        unset _wt_list
         [[ -n "$main_repo" && -d "$main_repo/.chump-locks" ]] && repo_root="$main_repo"
         ambient="${CHUMP_AMBIENT_LOG:-$repo_root/.chump-locks/ambient.jsonl}"
         ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
