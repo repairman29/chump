@@ -61,6 +61,14 @@ installers:
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.paramedic.plist + daemon process
 
+  - id: self-doctor-launchd
+    why: INFRA-1595 — Wave 0b outer autonomy loop. Runs `chump fleet doctor --heal` every 5min; catches missing daemons + stuck PRs and dispatches via `chump --execute-gap`. Default OFF (diagnose-only); set CHUMP_FLEET_SELF_DOCTOR_HEAL=true to enable auto-fix.
+    priority: P1
+    install: bash scripts/setup/install-self-doctor.sh
+    check: bash scripts/setup/install-self-doctor.sh --check
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.self-doctor.plist + 5-min cycle
+
   - id: ambient-hooks
     why: FLEET-023 — claude SessionStart / PreToolUse / Stop hooks emit ambient events. Without these, the audit stream is silent.
     priority: P2

@@ -3625,6 +3625,47 @@ events:
       of pass/fail so fleet-brief can track health-check cadence
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, pass_count, fail_count]
+  # ── INFRA-1595: fleet self-doctor --heal (Wave 0b autonomy outer loop) ────
+  - kind: self_doctor_tick
+    effect_metric: self
+    emitter: src/fleet_self_doctor.rs run_heal_cycle (INFRA-1595)
+    trigger: >
+      `chump fleet doctor` ran a cycle and found nothing to heal (all
+      registered daemons loaded, no stuck PRs over the 30-min SLO). Emitted
+      either from --heal idle path or diagnose-only mode. Lets operators see
+      cadence even when the loop is quiet.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, status]
+  - kind: self_doctor_healed
+    effect_metric: self
+    emitter: src/fleet_self_doctor.rs run_heal_cycle (INFRA-1595)
+    trigger: >
+      Self-doctor took a remediating action this cycle. The `action` field is
+      one of {daemon_installed, pr_dispatched}. For daemon_installed the
+      `daemon` field is the launchctl label; for pr_dispatched the `pr` field
+      is the PR number and `gap_id` is the gap routed to `chump --execute-gap`.
+    consumers: [fleet-brief, ops-audit, kpi-report]
+    fields_required: [ts, kind, source, action]
+  - kind: self_doctor_failed
+    effect_metric: self
+    emitter: src/fleet_self_doctor.rs run_heal_cycle (INFRA-1595)
+    trigger: >
+      Self-doctor attempted a remediating action (daemon install or
+      execute-gap dispatch) and it failed. `error` field carries the truncated
+      stderr. Operator investigates if this fires repeatedly for the same
+      target.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, action, error]
+  - kind: self_doctor_budget_exceeded
+    effect_metric: self
+    emitter: src/fleet_self_doctor.rs run_heal_cycle (INFRA-1595)
+    trigger: >
+      Self-doctor's circuit breaker tripped — > CHUMP_SELF_DOCTOR_BUDGET
+      (default 3) subagent dispatches in the last 10-min window. Doctor
+      stops dispatching and writes `.chump-locks/operator-action-needed.json`
+      pointing the operator at the dispatch log and pending PR list.
+    consumers: [fleet-brief, ops-audit, operator-page]
+    fields_required: [ts, kind, source, budget, recent, pending]
   # ── PRODUCT-081: PWA Outcome Dashboard ───────────────────────────────────
   - kind: pwa_impact_viewed
     emitter: web/v2/impact.js ChumpViewImpact._load (PRODUCT-081)
