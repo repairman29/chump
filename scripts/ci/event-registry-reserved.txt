@@ -236,3 +236,8 @@ circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm 
 circuit_breaker_closed       # reason: RESILIENT-011 same emit site as circuit_breaker_opened; match-arm literal not grep-scannable
 circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
 pr_triage_run  # reason: emitted from scripts/coord/chump-pr-triage.sh (shell); not in PROD_PATHS
+ac_coverage_miss        # reason: INFRA-1541 pre-merge AC coverage gate; emitter scripts/ci/test-pr-ac-coverage.sh runs only in pr-hygiene job, outside PROD_PATHS grep scan
+ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same gate; outside PROD_PATHS
+ac_coverage_disabled    # reason: INFRA-1541 operator-override audit emit from same gate; outside PROD_PATHS
+ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs without gap ref; outside PROD_PATHS
+ac_coverage_no_ac       # reason: INFRA-1541 pass-through marker when gap has no AC bullets; outside PROD_PATHS
