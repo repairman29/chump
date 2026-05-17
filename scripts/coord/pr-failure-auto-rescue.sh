@@ -69,10 +69,12 @@ log_rescue() {
 }
 
 # Count past rescue actions for a PR (max-per-PR enforcement).
+# NOTE: grep -c outputs "0" on zero-match AND exits 1; piping `|| echo 0`
+# triggers another `0` write → captures "0\n0". Use awk for clean count.
 count_past_rescues() {
     local pr="$1"
     [[ ! -f "$RESCUE_LOG" ]] && { echo 0; return; }
-    grep -c "\"pr\":$pr," "$RESCUE_LOG" 2>/dev/null || echo 0
+    awk -v pr="$pr" 'BEGIN{n=0} index($0,"\"pr\":"pr",")>0 {n++} END{print n}' "$RESCUE_LOG"
 }
 
 # Check if a (PR, handler) is in cool-down.
