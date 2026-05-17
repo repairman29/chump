@@ -1436,6 +1436,13 @@ events:
     trigger: disk free < 10% (CHUMP_DISK_LOW_PCT); warning-level alert
     consumers: [operator-recall, fleet-brief]
 
+  - kind: disk_audit_report
+    effect_metric: self
+    emitter: scripts/coord/disk-audit.sh (INFRA-1469)
+    trigger: disk-audit.sh run manually or on a schedule; reports top-N consumers
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, free_gb, used_gb, top_paths]
+
   - kind: disk_recovered
     effect_metric: self
     emitter: scripts/ops/disk-pressure-watchdog.sh
