@@ -143,6 +143,114 @@ surfaces as a fleet-level health alarm.
 
 ---
 
+## INFRA-1540: ci.yml migration (2026-05-16)
+
+The original INFRA-1534 ship registered the runners but **never migrated
+ci.yml jobs to use them**. The 4 macos-arm64 runners stayed busy on
+housekeeping workflows (Release, Repo health, Gap Status Guard) while the
+real CI bottleneck queued on `ubuntu-latest`. INFRA-1540 closes the gap.
+
+### Phase 1 migrations (this PR)
+
+These 14 jobs are now on `[self-hosted, macOS, ARM64]`:
+
+| Job | Why safe on macOS |
+|---|---|
+| `changes` | dorny/paths-filter — pure JS, no apt deps |
+| `test` | Rollup gate — only reads upstream job status |
+| `pr-hygiene` | Shell scripts + CREDIBLE-026/027 gates |
+| `e2e-battle-sim` | Self-contained battle-sim |
+| `test-e2e` | Rollup gate |
+| `clippy-stub` / `cargo-test-stub` / `fast-checks-stub` / `audit-stub` | 1-step stub passes |
+| `clippy-required` / `cargo-test-required` / `fast-checks-required` / `audit-required` | Required-gate rollups |
+| `integration-test` | Cargo-based, no Linux-only deps |
+
+Each migrated job carries the **fork-PR security guard**:
+```yaml
+if: github.event.pull_request.head.repo.fork == false
+```
+Without this, a forked PR could RCE the operator's MacBook. INFRA-1534 AC #7.
+
+### Phase 2 deferrals (separate gap)
+
+These 7 jobs still install Linux-only Tauri build deps via `apt-get`
+(webkit2gtk, libgtk-3-dev, librsvg2-dev). They stay on `ubuntu-latest`
+until either (a) the `apt-get` step is gated with `if: runner.os == 'Linux'`
+and the corresponding macOS path uses native WebKit, or (b) Pi mesh
+Linux-ARM64 runners come online:
+
+- `clippy` — full clippy run
+- `cargo-test` — full unit test pass
+- `audit` — 107-step composite gate
+- `coverage` — llvm-cov pass
+- `e2e-pwa`
+- `e2e-golden-path`
+- `tauri-cowork-e2e` — Tauri desktop e2e
+
+### Persistent cache (INFRA-1534 AC #4) — fully automated
+
+**One command provisions everything.** Run from the chump repo root, on
+the machine hosting the runners:
+
+```bash
+bash scripts/setup/install-self-hosted-runners-all-local.sh
+```
+
+What it does:
+1. Provisions the shared cache (defaults to `~/.cache/chump-runner/cargo-target`;
+   set `CHUMP_RUNNER_CACHE_ROOT=/var/cache/chump-runner` to use the
+   system-wide location with sudo).
+2. Discovers every `actions-runner-*` directory under `$HOME` via
+   `find ... -name config.sh -path "*actions-runner*"`.
+3. Appends `CARGO_TARGET_DIR=...` + `CHUMP_RUNNER_CACHE_ROOT=...` to each
+   runner's `.env` (the actions-runner package reads `.env` on startup).
+4. Maps each dir → its launchd service (`com.chump.actions-runner`, `-2`,
+   `-3`, `-4`) and `launchctl kickstart -k`s each one.
+5. Polls `gh api repos/{owner}/{repo}/actions/runners` and reports
+   per-runner online status.
+
+Idempotent. Re-running is a no-op (`ALREADY HAS marker, skipping`).
+`--dry-run` previews; `--no-restart` skips the launchd kickstart phase
+when runners are mid-job and you'd rather restart manually.
+
+If you'd rather provision the cache without touching .env or restarting,
+use the lower-level script directly:
+
+```bash
+bash scripts/setup/install-self-hosted-runner-cache.sh
+```
+
+This only creates `$CACHE_ROOT/cargo-target/` and writes `runner.env` for
+manual sourcing in a launchd plist `EnvironmentVariables` block.
+
+Subsequent Rust CI runs reuse the target dir → 30-90s incremental vs
+5-10 min cold rebuild. This is the 5-10x throughput win promised but
+never delivered by the original INFRA-1534.
+
+### Migration helper
+
+Re-run the migration (idempotent):
+
+```bash
+python3 scripts/setup/migrate-ci-jobs-to-self-hosted.py --dry-run  # preview
+python3 scripts/setup/migrate-ci-jobs-to-self-hosted.py            # apply
+```
+
+Audit migration health any time:
+
+```bash
+bash scripts/ci/test-ci-self-hosted-migration.sh
+```
+
+Asserts every migrated job has the security guard, the marker comment,
+and is no longer on `ubuntu-latest`.
+
+### Related gaps
+
+- **INFRA-1535** (RUNNER_AUTOSCALE) — paramedic auto-registers runners
+  on queue surge. Currently P1; depends on this PR landing first.
+- **INFRA-NEW** (Pi mesh provisioner) — file when first Pi is racked.
+
 ## INFRA-1542: heavy job cross-platform (2026-05-16)
 
 Phase 2 of INFRA-1540: the 8 heavy ci.yml jobs (clippy, cargo-test, audit,
