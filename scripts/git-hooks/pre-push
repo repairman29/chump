@@ -230,6 +230,29 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
 fi
 
 # -----------------------------------------------------------------------
+# Guard 0f: claim-branch mismatch check (INFRA-1598)
+#
+# Asserts that the current git branch matches the gap_id in the active
+# session lease.  Guards against the INFRA-1427 incident where a subagent's
+# gitdir back-reference (INFRA-779) pointed at the parent worktree's .git,
+# making `git push origin HEAD` push to the wrong branch and open a PR on
+# the wrong base.
+#
+# Implementation delegates to `chump verify-claim-branch`; exits non-zero
+# on mismatch with an actionable diagnostic.
+# Bypass: CHUMP_BYPASS_BRANCH_CHECK=1 git push  (emergency; rare)
+if [[ "${CHUMP_BYPASS_BRANCH_CHECK:-0}" != "1" ]] \
+    && [[ "${CHUMP_OPERATOR_RECOVERY:-0}" != "1" ]]; then
+    if command -v chump >/dev/null 2>&1; then
+        if ! chump verify-claim-branch 2>&1; then
+            echo "[pre-push] BLOCKED (INFRA-1598): branch/lease mismatch — see diagnostic above." >&2
+            echo "[pre-push] Bypass: CHUMP_BYPASS_BRANCH_CHECK=1 git push  (or CHUMP_OPERATOR_RECOVERY=1)" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0e: merge-tree DIRTY conflict pre-check (INFRA-1391)
 #
 # Runs `git merge-tree <base> origin/main HEAD` to detect semantic

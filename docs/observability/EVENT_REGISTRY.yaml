@@ -3875,3 +3875,16 @@ events:
       was bypassed wholesale.
     consumers: [fleet-brief, ops-audit, pr-hygiene-gate]
     fields_required: [ts, kind, pr_number]
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
+
+  - kind: worktree_gitdir_corrupt
+    effect_metric: self
+    emitter: src/main.rs verify-claim-branch subcommand (INFRA-1598)
+    trigger: >
+      `chump verify-claim-branch` detected that the current git branch
+      implies a different gap_id than the active session lease — a symptom
+      of the INFRA-779 gitdir back-reference corruption on macOS /tmp
+      symlink. Signals that the operator is likely in the wrong worktree.
+    consumers: [fleet-brief, ops-audit, paramedic]
+    fields_required: [ts, kind, branch, branch_gap, lease_gap]

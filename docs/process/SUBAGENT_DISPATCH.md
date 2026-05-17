@@ -75,6 +75,9 @@ scripts/dev/chump-binary-unwedge.sh
 fall back to manual recovery (INFRA-028 path):
 
 ```bash
+# 0. Verify you are on the right branch (INFRA-1598 guard)
+chump verify-claim-branch || exit 1
+
 # 1. Push your branch
 CHUMP_GAP_CHECK=0 git push -u origin <your-branch> --force-with-lease
 
