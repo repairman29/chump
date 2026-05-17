@@ -55,6 +55,10 @@ pub struct ClaimArgs {
     pub check_only: bool,
     /// Output JSON format (used with --check-only).
     pub json: bool,
+    /// INFRA-1503: allow claiming a gap even when a non-draft open PR already
+    /// exists on the canonical claim branch. Without this flag the claim aborts
+    /// with exit code 2 and emits `claim_aborted_pr_in_flight` to ambient.jsonl.
+    pub allow_duplicate_pr: bool,
 }
 
 impl ClaimArgs {
@@ -76,6 +80,8 @@ impl ClaimArgs {
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
+                       --allow-duplicate-pr  Allow claim even when an open PR exists on the claim branch (INFRA-1503)\n  \
+                       -h, --help       Show this help"
                 );
                 std::process::exit(0);
             }
@@ -97,6 +103,7 @@ impl ClaimArgs {
         let mut force_overlap = false;
         let mut check_only = false;
         let mut json = false;
+        let mut allow_duplicate_pr = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -143,6 +150,8 @@ impl ClaimArgs {
                 }
                 "--json" => {
                     json = true;
+                "--allow-duplicate-pr" => {
+                    allow_duplicate_pr = true;
                     i += 1;
                 }
                 other => bail!("unknown flag: {other}"),
@@ -170,6 +179,7 @@ impl ClaimArgs {
             force_overlap,
             check_only,
             json,
+            allow_duplicate_pr,
         })
     }
 }
@@ -517,7 +527,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
-    // 5b. INFRA-1328: stomp-prevention pre-claim PR check.
+    // 5b. INFRA-1328 / INFRA-1503: stomp-prevention + in-flight PR abort.
     //
     // If an OPEN PR exists upstream with `chump/<gap>-claim` as its head,
     // the prior agent's work is in flight even if their lease lapsed (claim
@@ -527,22 +537,39 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // when sibling-PR #2013 took the same branch.
     //
     // The check is best-effort: `gh` failures return None and we fall
-    // through to today's behavior. `--resume` and CHUMP_ALLOW_STOMP=1 are
-    // legitimate overrides (resume = same agent retrying, stomp = operator
-    // explicitly takes over an abandoned PR).
+    // through to today's behavior.
+    //
+    // Override hierarchy (INFRA-1503):
+    //   --allow-duplicate-pr  explicit agent opt-in (e.g. fork/resume on different machine)
+    //   --resume              same-agent retry of the existing PR branch
+    //   CHUMP_ALLOW_STOMP=1   operator takeover of an abandoned PR
     let stomp_bypass = std::env::var("CHUMP_ALLOW_STOMP")
         .map(|v| !v.trim().is_empty() && v.trim() != "0")
         .unwrap_or(false);
-    if !args.resume && !stomp_bypass {
-        if let Some(pr_num) = open_pr_on_branch(&args.repo_root, &branch) {
-            bail!(
-                "INFRA-1328: open PR #{} exists on branch `{}` upstream — \
-                 refusing to stomp.\n  \
-                 Either (a) wait for it to land/close, (b) pass --resume to \
-                 continue that PR's work, or (c) set CHUMP_ALLOW_STOMP=1 if \
-                 the PR is genuinely abandoned and you're taking it over \
-                 (with comment closing the prior PR).",
+    if !args.resume && !stomp_bypass && !args.allow_duplicate_pr {
+        if let Some((pr_num, pr_author)) = open_pr_info(&args.repo_root, &branch) {
+            // Emit ambient event for fleet observability (INFRA-1503).
+            emit_claim_aborted_pr_in_flight_event(
+                &args.repo_root,
+                &args.gap_id,
                 pr_num,
+                &pr_author,
+            );
+            eprintln!(
+                "ERROR: PR #{pr_num} already OPEN for {} by {pr_author} — \
+                 gap is in-flight. Pick a different gap or wait.\n  \
+                 (override: --allow-duplicate-pr, --resume, or CHUMP_ALLOW_STOMP=1)",
+                args.gap_id,
+            );
+            std::process::exit(2);
+        }
+    } else if !args.resume && !stomp_bypass {
+        // --allow-duplicate-pr set: still run the check for the INFRA-1328 warn,
+        // but don't abort.
+        if let Some(pr_num) = open_pr_on_branch(&args.repo_root, &branch) {
+            eprintln!(
+                "[claim --allow-duplicate-pr] WARN: open PR #{pr_num} exists on {} — \
+                 proceeding anyway (INFRA-1503 bypass active)",
                 branch,
             );
         }
@@ -795,6 +822,12 @@ fn remote_branch_exists(repo_root: &Path, remote: &str, branch: &str) -> bool {
 /// false-negative — but the worst case is the same as today's behavior, while
 /// the success case prevents the stomp class entirely.
 pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
+    open_pr_info(repo_root, branch).map(|(num, _)| num)
+}
+
+/// INFRA-1503: Like `open_pr_on_branch` but also returns the PR author login.
+/// Returns `None` on any gh/network error (best-effort, non-blocking on failure).
+pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, String)> {
     // GH expects head as `<owner>:<branch>` — derive owner from the repo's
     // git remote (the same path bot-merge.sh and pr-stuck-cluster use).
     let owner_repo = gh_owner_repo(repo_root)?;
@@ -810,7 +843,7 @@ pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
                 owner_repo, head
             ),
             "--jq",
-            ".[0].number // empty",
+            r#".[0] | "\(.number // "")\t\(.user.login // "unknown")""#,
         ])
         .current_dir(repo_root)
         .output()
@@ -819,7 +852,15 @@ pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
         return None;
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
-    stdout.trim().parse::<u64>().ok()
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.splitn(2, '\t');
+    let num_str = parts.next()?;
+    let author = parts.next().unwrap_or("unknown").to_string();
+    let num = num_str.parse::<u64>().ok()?;
+    Some((num, author))
 }
 
 /// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
@@ -1030,6 +1071,36 @@ fn emit_gap_claimed_event(repo_root: &Path, gap_id: &str, session_id: &str) -> R
 
 /// INFRA-1439: emit kind=chump_claim_force_recover to ambient.jsonl.
 /// Best-effort — silently no-ops if the file isn't writable.
+/// INFRA-1503: emit kind=claim_aborted_pr_in_flight to ambient.jsonl.
+fn emit_claim_aborted_pr_in_flight_event(
+    repo_root: &Path,
+    gap_id: &str,
+    existing_pr: u64,
+    existing_author: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_aborted_pr_in_flight\",\
+         \"gap_id\":\"{}\",\"existing_pr\":{existing_pr},\"existing_author\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(existing_author),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
 fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, actions: &str) {
     let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
     let secs = SystemTime::now()

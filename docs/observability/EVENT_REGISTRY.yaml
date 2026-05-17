@@ -3875,3 +3875,16 @@ events:
       was bypassed wholesale.
     consumers: [fleet-brief, ops-audit, pr-hygiene-gate]
     fields_required: [ts, kind, pr_number]
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
+
+  - kind: claim_aborted_pr_in_flight
+    effect_metric: self
+    emitter: src/atomic_claim.rs run_claim (INFRA-1503)
+    trigger: >
+      `chump claim` detected a non-draft open PR already on the canonical
+      claim branch (`chump/<gap-lower>-claim`). The claim was aborted with
+      exit code 2 before any worktree or lease was created.
+      Bypassed by --allow-duplicate-pr, --resume, or CHUMP_ALLOW_STOMP=1.
+    consumers: [fleet-brief, audit-log, gap-picker]
+    fields_required: [ts, kind, gap_id, existing_pr, existing_author]
