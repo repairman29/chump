@@ -443,6 +443,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
+      # the runner's plist PATH resolves every CLI the workflow needs. Skips
+      # cleanly on ubuntu-latest. Catches "exit 127 / command not found" before
+      # the actual failing step.
+      - name: Self-hosted runner deps preflight (INFRA-1556)
+        run: bash scripts/ci/test-self-hosted-runner-deps.sh
+
       # INFRA-CI-DISKSPACE: ubuntu-latest ships with ~14 GB free. Strip ~20 GB
       # of pre-installed SDKs we don't use so the disk can breathe. Costs ~15s.
       # Self-hosted macOS skips this — no GH-shipped SDKs to remove (INFRA-1534).

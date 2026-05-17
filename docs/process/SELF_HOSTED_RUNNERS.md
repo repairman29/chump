@@ -40,6 +40,21 @@ scripts/setup/install-self-hosted-runner.sh --check
 
 Returns exit 0 with the runner list if ≥1 runner is online, exit 1 otherwise.
 
+## Upgrade existing runners (INFRA-1556)
+
+```bash
+scripts/setup/install-self-hosted-runner.sh --upgrade
+```
+
+Scans `~/Library/LaunchAgents/com.chump.actions-runner*.plist`, rewrites each
+plist's `PATH` to the current default (`~/.cargo/bin` + `~/.rustup/toolchains/<host>/bin`
++ `~/.local/bin` + system bins), and reloads via `launchctl bootout`/`bootstrap`.
+Idempotent — re-running on already-patched plists is a no-op.
+
+Use this when a workflow step fails with `exit code 127` (command not found) —
+the runner's effective PATH is the only env launchd-bootstrapped processes see,
+so missing entries here surface as cryptic failures during CI.
+
 ## Uninstall
 
 ```bash
@@ -47,6 +62,31 @@ scripts/setup/install-self-hosted-runner.sh --uninstall
 ```
 
 Removes the launchd plist and runner directory. Re-registration possible afterward.
+
+## Dependencies (INFRA-1556)
+
+Workflow steps under the self-hosted lane invoke these CLIs. Every one must be
+reachable via the plist's `PATH`. The installer's smoke test
+[`scripts/ci/test-self-hosted-runner-deps.sh`](../../scripts/ci/test-self-hosted-runner-deps.sh)
+asserts this on every CI run:
+
+| CLI | Where it lives | Used by |
+|---|---|---|
+| `chump` | `~/.cargo/bin/chump` (rustup-managed) OR `~/.local/bin/chump` (manual install) OR `/opt/homebrew/bin/chump` (brew, if packaged) | gap-preflight, --briefing, every workflow that calls chump |
+| `cargo` | `~/.cargo/bin/cargo` (rustup shim) OR `~/.rustup/toolchains/<host>/bin/cargo` (toolchain bin, when shim is broken) | fast-checks, clippy, cargo-test, build steps |
+| `git` | system or homebrew | checkout action, credential cleanup |
+| `gh` | `~/.local/bin/gh` (manual) or `/opt/homebrew/bin/gh` (brew) | gap-preflight, paramedic actions, status reports |
+| `jq` | `/opt/homebrew/bin/jq` (brew) | ACP smoke parsing, ambient log diff |
+| `python3` | `/opt/homebrew/bin/python3` (brew) | pr-triage-bot YAML parsing, version-tag scrape |
+| `bash` | `/bin/bash` (system) | every shell-step |
+
+If you add a new workflow step that calls a new CLI, add it to:
+1. The `REQUIRED_CLIS` array in `scripts/ci/test-self-hosted-runner-deps.sh`
+2. The runner's `RUNNER_PATH` if it lives in a non-standard location
+
+The installer's preflight (`ensure_chump_installed`) auto-runs `cargo install --path .`
+if `chump` isn't found in any expected location AND the script is run from a Chump
+checkout. Discovered after 2026-05-16 #2241 stalled with `chump gap show` exit 127.
 
 ## Label scheme
 

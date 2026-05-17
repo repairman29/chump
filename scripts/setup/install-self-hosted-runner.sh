@@ -12,8 +12,16 @@
 #   scripts/setup/install-self-hosted-runner.sh --check        # verify registered + online; exit 0/1
 #   scripts/setup/install-self-hosted-runner.sh --uninstall    # remove cleanly
 #   scripts/setup/install-self-hosted-runner.sh --token TOKEN  # non-interactive with explicit token
+#   scripts/setup/install-self-hosted-runner.sh --upgrade      # patch existing runners' plists in-place (PATH + reload)
 #
 # Idempotent: re-running does nothing if a healthy runner is already registered.
+# --upgrade is idempotent too: scans com.chump.actions-runner*.plist, rewrites
+# PATH to include ~/.cargo/bin + ~/.local/bin, bootouts + bootstraps each.
+#
+# Runner PATH includes ~/.cargo/bin and ~/.local/bin so workflow steps that
+# invoke `chump`, `cargo`, or other user-built binaries resolve correctly.
+# Discovered 2026-05-16 (INFRA-1556): bare /opt/homebrew/bin PATH caused
+# `chump gap show` to exit 127, breaking fast-checks on the M4 lane.
 #
 # Rust-First-Bypass: install wrapper around the upstream GitHub actions-runner
 # tarball; pure shell glue around curl + tar + launchctl + gh api; no state
@@ -28,6 +36,24 @@ RUNNER_NAME_DEFAULT="$(hostname -s | tr '[:upper:]' '[:lower:]')"
 RUNNER_NAME="${RUNNER_NAME:-$RUNNER_NAME_DEFAULT}"
 RUNNER_LABELS_DEFAULT="self-hosted,macos-arm64,chump-fleet"
 RUNNER_LABELS="${RUNNER_LABELS:-$RUNNER_LABELS_DEFAULT}"
+
+# PATH baked into the launchd plist. INFRA-1556:
+#   - ~/.cargo/bin: rustup shim location (cargo, rustc when rustup-managed)
+#   - ~/.rustup/toolchains/<host-triple>/bin: real toolchain when ~/.cargo/bin
+#     shim is broken/missing (real-world case discovered on M4 where the
+#     ~/.cargo/bin/cargo symlink dangles)
+#   - ~/.local/bin: alternate chump install location
+RUNNER_RUSTUP_HOST_BIN=""
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64)  RUNNER_RUSTUP_HOST_BIN="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin" ;;
+  Darwin-x86_64) RUNNER_RUSTUP_HOST_BIN="$HOME/.rustup/toolchains/stable-x86_64-apple-darwin/bin" ;;
+  Linux-aarch64) RUNNER_RUSTUP_HOST_BIN="$HOME/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin" ;;
+  Linux-x86_64)  RUNNER_RUSTUP_HOST_BIN="$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin" ;;
+esac
+RUNNER_PATH_DEFAULT="$HOME/.cargo/bin"
+[ -n "$RUNNER_RUSTUP_HOST_BIN" ] && RUNNER_PATH_DEFAULT="$RUNNER_PATH_DEFAULT:$RUNNER_RUSTUP_HOST_BIN"
+RUNNER_PATH_DEFAULT="$RUNNER_PATH_DEFAULT:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+RUNNER_PATH="${RUNNER_PATH:-$RUNNER_PATH_DEFAULT}"
 
 # Detect arch + os for the right tarball
 case "$(uname -s)" in
@@ -69,6 +95,79 @@ cmd_check() {
   fi
 }
 
+ensure_chump_installed() {
+  # INFRA-1556: workflow steps call `chump`; ensure the binary exists somewhere
+  # on $RUNNER_PATH before the runner registers. If absent + we're in a Chump
+  # checkout, attempt to install. If absent + not in a Chump checkout, warn.
+  if command -v chump >/dev/null 2>&1; then
+    return 0
+  fi
+  for d in "$HOME/.cargo/bin" "$HOME/.local/bin"; do
+    if [ -x "$d/chump" ]; then return 0; fi
+  done
+
+  # Not on PATH and not in expected install dirs. Try to install if we're in a
+  # Chump checkout.
+  local repo_root
+  repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$repo_root" ] && [ -f "$repo_root/Cargo.toml" ] && grep -q '^name = "chump"' "$repo_root/Cargo.toml"; then
+    echo "Installing chump binary via cargo install (one-time setup)..."
+    (cd "$repo_root" && cargo install --path . --bin chump --quiet) || {
+      echo "WARN: cargo install chump failed. Workflow steps that call chump will exit 127 until fixed."
+      return 1
+    }
+    echo "Installed chump to $HOME/.cargo/bin/chump"
+    return 0
+  fi
+
+  echo "WARN: chump binary not found on PATH and we're not in a Chump checkout."
+  echo "WARN: Workflow steps that call 'chump' will fail with exit 127 on this runner."
+  echo "WARN: To fix: run from a chump repo clone, or 'cargo install --path /path/to/chump'."
+  return 1
+}
+
+cmd_upgrade() {
+  # INFRA-1556: retroactively patch the PATH of every existing chump runner plist.
+  # Idempotent — safe to re-run.
+  shopt -s nullglob
+  local plists=( "$HOME/Library/LaunchAgents/com.chump.actions-runner"*.plist )
+  if [ "${#plists[@]}" -eq 0 ]; then
+    echo "No chump runner plists found at ~/Library/LaunchAgents/com.chump.actions-runner*.plist"
+    echo "Nothing to upgrade. Run install (no args) to add a new runner."
+    exit 0
+  fi
+  local patched=0
+  for plist in "${plists[@]}"; do
+    # Extract current PATH from the plist and compare exactly to RUNNER_PATH.
+    local current
+    current=$(awk '
+      /<key>PATH<\/key>/ { in_path=1; next }
+      in_path && /<string>/ {
+        sub(/.*<string>/, ""); sub(/<\/string>.*/, ""); print; exit
+      }
+    ' "$plist" 2>/dev/null)
+    if [ "$current" = "$RUNNER_PATH" ]; then
+      echo "  already up-to-date: $plist"
+      continue
+    fi
+    # Replace the <string>...PATH...</string> line under the PATH key.
+    local tmp
+    tmp=$(mktemp)
+    awk -v new_path="$RUNNER_PATH" '
+      /<key>PATH<\/key>/ { in_path=1; print; next }
+      in_path && /<string>/ { sub(/<string>[^<]*<\/string>/, "<string>" new_path "</string>"); in_path=0 }
+      { print }
+    ' "$plist" > "$tmp" && mv "$tmp" "$plist"
+    # Reload
+    launchctl bootout "gui/$UID" "$plist" 2>/dev/null || true
+    launchctl bootstrap "gui/$UID" "$plist" 2>&1 | head -1 | sed 's/^/    /'
+    echo "  upgraded + reloaded: $plist"
+    patched=$((patched + 1))
+  done
+  echo "Upgrade complete: $patched plist(s) patched."
+  exit 0
+}
+
 cmd_uninstall() {
   local plist="$HOME/Library/LaunchAgents/com.chump.actions-runner.plist"
   if [ -f "$plist" ]; then
@@ -90,9 +189,12 @@ cmd_install() {
   # 0. Pre-flight
   if [ -d "$RUNNER_DIR" ] && [ -f "$RUNNER_DIR/.runner" ]; then
     echo "Runner already configured at $RUNNER_DIR — re-running is a no-op."
-    echo "Use --uninstall to remove, or --check to verify health."
+    echo "Use --uninstall to remove, --upgrade to refresh plist PATH, or --check to verify."
     exit 0
   fi
+
+  # 0b. Ensure chump CLI is reachable from the runner's effective PATH (INFRA-1556)
+  ensure_chump_installed || true   # warn-only; runner still installs
 
   if [ -z "${TOKEN:-}" ]; then
     if command -v gh >/dev/null 2>&1; then
@@ -173,7 +275,7 @@ EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>$RUNNER_PATH</string>
     </dict>
 </dict>
 </plist>
@@ -197,6 +299,7 @@ TOKEN=""
 case "${1:-}" in
   --check)     cmd_check  ;;
   --uninstall) shift; while [ $# -gt 0 ]; do case "$1" in --token) TOKEN="$2"; shift 2 ;; *) shift ;; esac; done; cmd_uninstall ;;
+  --upgrade)   cmd_upgrade ;;
   --token)     TOKEN="${2:-}"; cmd_install ;;
   -h|--help)   usage 0 ;;
   "")          cmd_install ;;
