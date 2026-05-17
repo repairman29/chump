@@ -46,6 +46,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install PyYAML
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: pip install --quiet pyyaml
 
       - name: Run fast checks

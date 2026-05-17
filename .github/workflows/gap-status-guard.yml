@@ -81,6 +81,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install PyYAML
+        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
         run: python -m pip install --quiet pyyaml
 
       - name: docs/gaps/*.yaml parse + no duplicate ids (INFRA-188)
