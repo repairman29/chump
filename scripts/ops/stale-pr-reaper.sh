@@ -347,10 +347,270 @@ if command -v chump >/dev/null 2>&1; then
     fi
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# INFRA-1410: PR-stuck SLO + auto-respawn
+#
+# When a PR has been mergeStateStatus=BLOCKED for > CHUMP_PR_STUCK_SLO_HRS
+# (default 2h) and there's been no commit/comment activity in that window,
+# attempt one chump-rebase-and-push.sh (INFRA-1404). If still BLOCKED 30min
+# after the rebase attempt, close the PR with a comment + emit
+# kind=pr_auto_closed_for_respawn so stuck-pr-filer.sh re-files the gap.
+#
+# Operator escape hatch: `gh pr edit --add-label do-not-respawn` exempts the PR.
+#
+# State is persisted in .chump-locks/stuck-pr-state.json:
+#   { "<pr_num>": { "rebase_attempted_at": "ISO", "branch": "..." } }
+#
+# Bypass: CHUMP_PR_AUTO_RESPAWN=0 skips this pass entirely.
+# ─────────────────────────────────────────────────────────────────────────────
+RESPAWN_REBASED=0
+RESPAWN_CLOSED=0
+RESPAWN_EXEMPT=0
+
+if [[ "${CHUMP_PR_AUTO_RESPAWN:-1}" != "0" ]]; then
+    green "=== PR-stuck SLO + auto-respawn (INFRA-1410) ==="
+
+    LOCK_DIR="${REAPER_LOCK_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks}"
+    AMBIENT="$LOCK_DIR/ambient.jsonl"
+    STATE_FILE="$LOCK_DIR/stuck-pr-state.json"
+    SLO_HRS="${CHUMP_PR_STUCK_SLO_HRS:-2}"
+    RECLOSE_MINS="${CHUMP_PR_STUCK_RECLOSE_MINS:-30}"
+    REBASE_SCRIPT="${REBASE_SCRIPT_OVERRIDE:-${REAPER_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/scripts/coord/chump-rebase-and-push.sh}"
+
+    # Ensure state file exists and is valid JSON.
+    if [[ ! -s "$STATE_FILE" ]]; then
+        echo '{}' > "$STATE_FILE" 2>/dev/null || true
+    fi
+    python3 -c "import json; json.load(open('$STATE_FILE'))" 2>/dev/null \
+        || echo '{}' > "$STATE_FILE" 2>/dev/null || true
+
+    # respawn_emit KIND PR_NUM EXTRA_JSON_FRAGMENT — append to ambient.
+    respawn_emit() {
+        local _kind="$1" _pr="$2" _extra="${3:-}"
+        local _ts
+        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        if [[ -n "$_extra" ]]; then
+            printf '{"ts":"%s","kind":"%s","pr":%s,%s}\n' \
+                "$_ts" "$_kind" "$_pr" "$_extra" >> "$AMBIENT" 2>/dev/null || true
+        else
+            printf '{"ts":"%s","kind":"%s","pr":%s}\n' \
+                "$_ts" "$_kind" "$_pr" >> "$AMBIENT" 2>/dev/null || true
+        fi
+    }
+
+    # respawn_state_get PR_NUM FIELD — print state field or empty.
+    respawn_state_get() {
+        local _pr="$1" _field="$2"
+        python3 -c "
+import json, sys
+try:
+    d = json.load(open('$STATE_FILE'))
+except Exception:
+    sys.exit(0)
+v = (d.get('$_pr') or {}).get('$_field') or ''
+print(v)
+" 2>/dev/null || true
+    }
+
+    # respawn_state_set PR_NUM JSON_OBJECT_FRAGMENT — merge into state for PR.
+    respawn_state_set() {
+        local _pr="$1" _obj="$2"
+        python3 - "$STATE_FILE" "$_pr" "$_obj" <<'PYEOF' || true
+import json, sys
+path, pr, obj_json = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    d = json.load(open(path))
+except Exception:
+    d = {}
+try:
+    obj = json.loads(obj_json)
+except Exception:
+    obj = {}
+cur = d.get(pr) or {}
+cur.update(obj)
+d[pr] = cur
+json.dump(d, open(path, 'w'))
+PYEOF
+    }
+
+    # respawn_state_clear PR_NUM — drop the PR entry.
+    respawn_state_clear() {
+        local _pr="$1"
+        python3 - "$STATE_FILE" "$_pr" <<'PYEOF' || true
+import json, sys
+path, pr = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open(path))
+except Exception:
+    d = {}
+d.pop(pr, None)
+json.dump(d, open(path, 'w'))
+PYEOF
+    }
+
+    # mins_since ISO_TS — minutes since an ISO timestamp (0 if blank/invalid).
+    mins_since() {
+        local _ts="$1"
+        [[ -z "$_ts" ]] && { echo 0; return; }
+        python3 -c "
+from datetime import datetime, timezone
+try:
+    t = datetime.fromisoformat('$_ts'.replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - t).total_seconds() / 60))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0
+    }
+
+    # Walk open PRs again — this time looking for BLOCKED-too-long candidates.
+    RESPAWN_PRS_JSON=$(gh pr list --json number,headRefName,title,mergeStateStatus,updatedAt,labels 2>/dev/null || echo "[]")
+
+    RESPAWN_TSV=$(python3 -c "
+import json, sys
+try:
+    rows = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+for r in rows:
+    labels = ','.join((l.get('name') or '') for l in (r.get('labels') or []))
+    print('\t'.join([
+        str(r.get('number','')),
+        r.get('headRefName','') or '',
+        (r.get('title','') or '').replace('\t',' '),
+        r.get('mergeStateStatus','') or '',
+        r.get('updatedAt','') or '',
+        labels,
+    ]))
+" "$RESPAWN_PRS_JSON" 2>/dev/null || true)
+
+    if [[ -z "$RESPAWN_TSV" ]]; then
+        info "(no open PRs to evaluate for auto-respawn)"
+    fi
+
+    while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE MSS UPDATED_AT LABELS; do
+        [[ -z "$PR_NUM" ]] && continue
+
+        # Operator exemption — clear any pending state and emit once per scan.
+        if [[ ",$LABELS," == *",do-not-respawn,"* ]]; then
+            if [[ -n "$(respawn_state_get "$PR_NUM" "rebase_attempted_at")" ]]; then
+                respawn_state_clear "$PR_NUM"
+            fi
+            info "  PR #$PR_NUM has label do-not-respawn — exempt from auto-respawn."
+            respawn_emit pr_stuck_exempt "$PR_NUM" "\"reason\":\"label_do_not_respawn\""
+            RESPAWN_EXEMPT=$((RESPAWN_EXEMPT + 1))
+            continue
+        fi
+
+        # Only act on BLOCKED PRs.
+        if [[ "$MSS" != "BLOCKED" ]]; then
+            # If we had pending state for a now-unblocked PR, clear it.
+            if [[ -n "$(respawn_state_get "$PR_NUM" "rebase_attempted_at")" ]]; then
+                info "  PR #$PR_NUM no longer BLOCKED ($MSS) — clearing respawn state."
+                respawn_state_clear "$PR_NUM"
+            fi
+            continue
+        fi
+
+        # Skip filing PRs (they shouldn't be auto-closed for respawn).
+        if is_filing_pr_title "$PR_TITLE"; then
+            continue
+        fi
+
+        ATTEMPTED_AT=$(respawn_state_get "$PR_NUM" "rebase_attempted_at")
+
+        if [[ -z "$ATTEMPTED_AT" ]]; then
+            # First detection — check it's been BLOCKED long enough.
+            # PR updatedAt is a fair lower-bound on how long the PR has been
+            # in its current state (the queue updates the timestamp on each
+            # commit/comment/check-run/label change).
+            if [[ -z "$UPDATED_AT" ]]; then
+                AGE_HRS=0
+            else
+                AGE_HRS=$(python3 -c "
+from datetime import datetime, timezone
+try:
+    t = datetime.fromisoformat('$UPDATED_AT'.replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - t).total_seconds() / 3600))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+            fi
+
+            if [[ "$AGE_HRS" -lt "$SLO_HRS" ]]; then
+                info "  PR #$PR_NUM BLOCKED for ${AGE_HRS}h (< ${SLO_HRS}h SLO) — not yet stuck."
+                continue
+            fi
+
+            info "  PR #$PR_NUM BLOCKED for ${AGE_HRS}h ≥ ${SLO_HRS}h SLO — attempting rebase."
+            NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            respawn_state_set "$PR_NUM" \
+                "{\"rebase_attempted_at\":\"$NOW_TS\",\"branch\":\"$PR_BRANCH\",\"age_hrs_at_attempt\":$AGE_HRS}"
+            respawn_emit pr_stuck_cycle_1_rebase_attempted "$PR_NUM" \
+                "\"branch\":\"$PR_BRANCH\",\"age_hrs\":$AGE_HRS"
+
+            if [[ $DRY_RUN -eq 1 ]]; then
+                dry "would invoke $REBASE_SCRIPT on PR #$PR_NUM branch $PR_BRANCH"
+            elif [[ -x "$REBASE_SCRIPT" ]]; then
+                # Fetch the branch and check it out into a throw-away worktree
+                # name; failure here is non-fatal because the reaper's job is
+                # to RECORD that we attempted (so the 30-min reclose timer
+                # starts). The actual rebase efficacy is measured by the next
+                # cycle's MSS re-check.
+                (
+                    cd "$REAPER_REPO_ROOT" 2>/dev/null || exit 0
+                    git fetch "$REMOTE" "$PR_BRANCH" --quiet 2>/dev/null || true
+                    git rev-parse --verify "$REMOTE/$PR_BRANCH" >/dev/null 2>&1 \
+                        && git checkout -q -B "respawn-${PR_NUM}-$$" "$REMOTE/$PR_BRANCH" 2>/dev/null \
+                        || true
+                    "$REBASE_SCRIPT" "$BASE" --remote "$REMOTE" 2>&1 | head -20 || true
+                ) || warn "  rebase-and-push attempt failed (will re-check after ${RECLOSE_MINS}m)"
+            else
+                warn "  $REBASE_SCRIPT not executable — recording attempt without invoke."
+            fi
+            RESPAWN_REBASED=$((RESPAWN_REBASED + 1))
+            continue
+        fi
+
+        # Second pass — we already attempted a rebase. If it's been
+        # RECLOSE_MINS since and the PR is still BLOCKED, close it.
+        SINCE_MINS=$(mins_since "$ATTEMPTED_AT")
+        if [[ "$SINCE_MINS" -lt "$RECLOSE_MINS" ]]; then
+            info "  PR #$PR_NUM still BLOCKED but only ${SINCE_MINS}m since rebase attempt (need ${RECLOSE_MINS}m) — waiting."
+            continue
+        fi
+
+        # Close + emit.
+        CLOSE_COMMENT="auto-closed by stale-pr-reaper after ${SLO_HRS}h+${RECLOSE_MINS}m BLOCKED; gap re-claimable
+
+Triggered by INFRA-1410 PR-stuck SLO + auto-respawn. The original gap
+referenced in the PR title will be re-opened by stuck-pr-filer for the
+next picker. To exempt a PR from this loop permanently, run:
+
+  gh pr edit ${PR_NUM} --add-label do-not-respawn"
+
+        if [[ $DRY_RUN -eq 1 ]]; then
+            dry "would close PR #$PR_NUM with comment: ${CLOSE_COMMENT:0:80}…"
+        else
+            gh pr close "$PR_NUM" --comment "$CLOSE_COMMENT" 2>/dev/null \
+                || warn "  gh pr close $PR_NUM failed."
+            green "  Closed PR #$PR_NUM for respawn."
+        fi
+
+        # Extract gap IDs from the PR title for the emit payload.
+        RESPAWN_GAPS=$(printf '%s\n' "$PR_TITLE" | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u | paste -sd, -)
+        respawn_emit pr_auto_closed_for_respawn "$PR_NUM" \
+            "\"branch\":\"$PR_BRANCH\",\"gap_ids\":\"${RESPAWN_GAPS:-}\",\"title\":\"$(printf '%s' "$PR_TITLE" | sed 's/"/\\"/g')\""
+        respawn_state_clear "$PR_NUM"
+        RESPAWN_CLOSED=$((RESPAWN_CLOSED + 1))
+    done <<< "$RESPAWN_TSV"
+
+    green "  respawn summary: rebased=$RESPAWN_REBASED  closed=$RESPAWN_CLOSED  exempt=$RESPAWN_EXEMPT"
+fi
+
 echo ""
-green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed ==="
+green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed, $RESPAWN_REBASED respawn-rebased, $RESPAWN_CLOSED respawn-closed ==="
 
 # INFRA-120: stamp heartbeat + emit reaper_run event. Disarm trap first so we
 # don't double-emit on the EXIT trap.
 trap - EXIT
-reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED}"
+reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED,\"respawn_rebased\":$RESPAWN_REBASED,\"respawn_closed\":$RESPAWN_CLOSED}"
