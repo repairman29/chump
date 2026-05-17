@@ -1,7 +1,8 @@
 - id: INFRA-1394
   domain: INFRA
   title: "RESILIENT: chump claim hot-file collision check vs sibling leases — refuse/warn when claim+lease paths overlap on a shared file (ci.yml, EVENT_REGISTRY.yaml, web_server.rs, app.js, main.rs)"
-  status: open
+  status: done
+  closed_pr: 2172
   priority: P1
   effort: s
   acceptance_criteria:

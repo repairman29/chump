@@ -49,6 +49,8 @@ pub struct ClaimArgs {
     pub skip_doctor: bool,
     /// Skip state.db drift check / import (tests).
     pub skip_import: bool,
+    /// INFRA-1394: override the hot-file collision block (warn-only mode still fires).
+    pub force_overlap: bool,
 }
 
 impl ClaimArgs {
@@ -66,6 +68,7 @@ impl ClaimArgs {
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
+                       --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        -h, --help       Show this help"
                 );
                 std::process::exit(0);
@@ -85,6 +88,7 @@ impl ClaimArgs {
         let mut skip_import = false;
         let mut resume = false;
         let mut force_recover = false;
+        let mut force_overlap = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -121,6 +125,10 @@ impl ClaimArgs {
                     force_recover = true;
                     i += 1;
                 }
+                "--force-overlap" => {
+                    force_overlap = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -143,6 +151,7 @@ impl ClaimArgs {
             skip_import,
             resume,
             force_recover,
+            force_overlap,
         })
     }
 }
@@ -346,6 +355,59 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 e
             );
             eprintln!("[intent-gate] Set CHUMP_ENFORCE_INTENT_GATE=1 to enforce blocking.");
+        }
+    }
+
+    // 5.6. INFRA-1394: Hot-file collision check vs sibling leases.
+    //
+    // Before creating the worktree (so we never leave a dangling worktree on
+    // refusal), check if the gap's acceptance_criteria references any of the
+    // hot shared files AND a sibling lease already declares one of them in its
+    // paths[] field. If so: warn + emit ambient event. Without --force-overlap,
+    // also abort with exit code 15.
+    {
+        let hot_files_yaml = args.repo_root.join("scripts/coord/lib/hot-files.yaml");
+        let gap_ac = read_gap_ac_from_db(&args.repo_root, &args.gap_id);
+        let hot_files = load_hot_files(&hot_files_yaml);
+        if !hot_files.is_empty() {
+            if let Some(overlap_result) =
+                check_hot_file_overlap(&lock_dir, &args.gap_id, &session_id, &gap_ac, &hot_files)
+            {
+                // Always emit the ambient event.
+                emit_claim_hot_file_overlap_event(
+                    &ambient_log,
+                    &args.gap_id,
+                    &overlap_result.sibling_gap,
+                    &overlap_result.sibling_session,
+                    &overlap_result.overlap_paths,
+                );
+
+                // Print warning to stderr.
+                eprintln!(
+                    "[claim] INFRA-1394: HOT-FILE OVERLAP detected for {}",
+                    args.gap_id
+                );
+                eprintln!(
+                    "[claim]   sibling session {} (gap {}) holds: {}",
+                    overlap_result.sibling_session,
+                    overlap_result.sibling_gap,
+                    overlap_result.overlap_paths.join(", ")
+                );
+                eprintln!(
+                    "[claim]   These are hot shared files — concurrent edits risk merge conflicts."
+                );
+
+                if !args.force_overlap {
+                    eprintln!(
+                        "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
+                    );
+                    std::process::exit(15);
+                } else {
+                    eprintln!(
+                        "[claim]   --force-overlap set; proceeding despite hot-file collision."
+                    );
+                }
+            }
         }
     }
 
@@ -1371,11 +1433,42 @@ pub(crate) fn nats_dual_write_with_bin(
     session_id: &str,
     ambient_log_path: Option<&Path>,
 ) -> Result<NatsClaimOutcome> {
-    let out = Command::new(coord_bin)
-        .args(["claim", gap_id])
-        .env("CHUMP_SESSION_ID", session_id)
-        .output()
-        .with_context(|| format!("spawning {} claim {}", coord_bin.display(), gap_id))?;
+    // Retry on ETXTBSY (os error 26): the kernel returns this transiently when a
+    // script file was just written and the kernel's page-cache hasn't settled yet.
+    // Up to 3 attempts with a short backoff are sufficient in practice.
+    let out = {
+        let mut last_err: Option<std::io::Error> = None;
+        let mut result = None;
+        for attempt in 0..3 {
+            match Command::new(coord_bin)
+                .args(["claim", gap_id])
+                .env("CHUMP_SESSION_ID", session_id)
+                .output()
+            {
+                Ok(o) => {
+                    result = Some(o);
+                    break;
+                }
+                Err(e) if e.raw_os_error() == Some(26) => {
+                    // ETXTBSY — wait briefly and retry
+                    std::thread::sleep(std::time::Duration::from_millis(10 * (1 << attempt)));
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    return Err(e).with_context(|| {
+                        format!("spawning {} claim {}", coord_bin.display(), gap_id)
+                    });
+                }
+            }
+        }
+        match result {
+            Some(o) => o,
+            None => {
+                return Err(last_err.unwrap())
+                    .with_context(|| format!("spawning {} claim {}", coord_bin.display(), gap_id));
+            }
+        }
+    };
 
     if out.status.success() {
         return Ok(NatsClaimOutcome::Claimed);
@@ -1846,6 +1939,220 @@ pub fn emit_intent_refreshed(ambient_log: &Path, gap_id: &str, session_id: &str)
          \"session_id\":\"{sid}\"}}\n",
         gid = json_escape(gap_id),
         sid = json_escape(session_id),
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1394: Hot-file collision check ─────────────────────────────────────
+
+/// Result of a hot-file overlap scan.
+struct HotFileOverlapResult {
+    sibling_session: String,
+    sibling_gap: String,
+    overlap_paths: Vec<String>,
+}
+
+/// Load the hot-files list from `scripts/coord/lib/hot-files.yaml`.
+/// Returns an empty vec on any parse/IO error (best-effort; don't block claim
+/// if the yaml is missing or malformed).
+fn load_hot_files(yaml_path: &Path) -> Vec<String> {
+    let Ok(body) = std::fs::read_to_string(yaml_path) else {
+        return vec![];
+    };
+    // Minimal YAML list parser: find lines under `hot_files:` that start with `  - `.
+    let mut in_list = false;
+    let mut files = Vec::new();
+    for line in body.lines() {
+        if line.trim_start().starts_with("hot_files:") {
+            in_list = true;
+            continue;
+        }
+        if in_list {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if trimmed.starts_with('-') {
+                let entry = trimmed.trim_start_matches('-').trim().to_string();
+                if !entry.is_empty() {
+                    files.push(entry);
+                }
+            } else if !line.starts_with(' ') && !line.starts_with('\t') {
+                // Hit a new top-level key — stop.
+                break;
+            }
+        }
+    }
+    files
+}
+
+/// Read the acceptance_criteria text for `gap_id` from state.db.
+/// Returns an empty string on any error (best-effort).
+fn read_gap_ac_from_db(repo_root: &Path, gap_id: &str) -> String {
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return String::new();
+    }
+    let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+        return String::new();
+    };
+    conn.query_row(
+        "SELECT acceptance_criteria FROM gaps WHERE id = ?1",
+        [gap_id],
+        |r| r.get::<_, String>(0),
+    )
+    .unwrap_or_default()
+}
+
+/// INFRA-1394: Check whether any sibling lease's paths[] overlaps with the
+/// hot files referenced in this gap's AC text. Returns the first overlap found,
+/// or None if all clear.
+///
+/// Algorithm:
+///   1. Parse hot-files list.
+///   2. Scan gap AC text for any hot-file path mention.
+///   3. Read all .chump-locks/*.json files for sibling sessions.
+///   4. For each sibling, check if its paths[] contains any of the hot files
+///      that were found in the AC.
+fn check_hot_file_overlap(
+    lock_dir: &Path,
+    gap_id: &str,
+    own_session: &str,
+    gap_ac: &str,
+    hot_files: &[String],
+) -> Option<HotFileOverlapResult> {
+    // Step 2: which hot files appear in the gap AC text?
+    let ac_lower = gap_ac.to_lowercase();
+    let ac_hot: Vec<&str> = hot_files
+        .iter()
+        .filter(|f| {
+            // Match both the full path and just the filename component for flexibility.
+            let f_lower = f.to_lowercase();
+            let filename = f
+                .split('/')
+                .next_back()
+                .unwrap_or(f.as_str())
+                .to_lowercase();
+            ac_lower.contains(&f_lower) || ac_lower.contains(&filename)
+        })
+        .map(|f| f.as_str())
+        .collect();
+
+    if ac_hot.is_empty() {
+        return None; // Gap AC doesn't reference any hot file — no check needed.
+    }
+
+    // Step 3: read sibling leases.
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return None;
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        // Skip ambient.jsonl and non-session files.
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem == "ambient" {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+
+        let sid = val
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sid.is_empty() || sid == own_session {
+            continue;
+        }
+
+        // Skip our own gap — only conflict with OTHER gaps' leases.
+        let sibling_gap = val
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sibling_gap == gap_id {
+            continue;
+        }
+
+        // Extract sibling lease paths[].
+        let sibling_paths: Vec<String> = val
+            .get("paths")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Step 4: overlap = AC hot files ∩ sibling paths.
+        let mut overlap: Vec<String> = ac_hot
+            .iter()
+            .filter(|&&hf| {
+                sibling_paths
+                    .iter()
+                    .any(|sp| sp == hf || sp.ends_with('/') && hf.starts_with(sp.as_str()))
+            })
+            .map(|hf| hf.to_string())
+            .collect();
+
+        if !overlap.is_empty() {
+            overlap.sort();
+            overlap.dedup();
+            return Some(HotFileOverlapResult {
+                sibling_session: sid,
+                sibling_gap,
+                overlap_paths: overlap,
+            });
+        }
+    }
+
+    None
+}
+
+/// INFRA-1394: Emit kind=claim_hot_file_overlap to ambient.jsonl.
+/// Best-effort — never blocks the claim flow.
+fn emit_claim_hot_file_overlap_event(
+    ambient_log: &Path,
+    claim_gap: &str,
+    sibling_gap: &str,
+    sibling_session: &str,
+    overlap_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlap_paths).unwrap_or_else(|_| "[]".to_string());
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_hot_file_overlap\",\
+         \"claim_gap\":\"{cg}\",\"sibling_gap\":\"{sg}\",\
+         \"sibling_session\":\"{ss}\",\"overlap_paths\":{op}}}\n",
+        ts = ts,
+        cg = json_escape(claim_gap),
+        sg = json_escape(sibling_gap),
+        ss = json_escape(sibling_session),
+        op = paths_json,
     );
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -2355,13 +2662,20 @@ mod tests {
     /// Write an executable bash shim at `path` that exits with `rc` and
     /// writes `stderr_msg` to stderr.
     fn write_coord_shim(path: &Path, rc: i32, stderr_msg: &str) {
+        use std::io::Write as _;
         use std::os::unix::fs::PermissionsExt;
         let body = format!(
             "#!/usr/bin/env bash\n>&2 printf '%s\\n' \"{}\"\nexit {}\n",
             stderr_msg.replace('"', "\\\""),
             rc
         );
-        std::fs::write(path, body).unwrap();
+        // sync_all() + explicit drop before chmod avoids ETXTBSY (os error 26)
+        // on Linux when the kernel still sees the inode open for writing at exec time.
+        {
+            let mut f = std::fs::File::create(path).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
