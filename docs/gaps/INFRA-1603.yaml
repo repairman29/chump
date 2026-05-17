@@ -1,0 +1,43 @@
+- id: INFRA-1603
+  domain: INFRA
+  title: "EFFECTIVE: PWA hot-reload on PR merge — SSE event triggers service-worker invalidation + live component re-registration; operator watches canvas evolve without refresh"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today the operator opens the PWA, the fleet ships 4 PRs in the next hour, and the operator sees nothing change until they hit refresh. The fleet feels invisible. The 'stitching is the differentiator' thesis (per feedback_no_drafts_ship_and_stitch memory) says forward motion should be VISIBLE in real time, not hidden until next reload.
+    
+    This gap makes PR merges propagate to live operator PWA sessions in <5 seconds.
+    
+    Pipeline:
+      GitHub webhook → existing scripts/ops/github-webhook-receiver.py
+        → emit kind=pr_merged to ambient.jsonl (already partially wired)
+        → web_server SSE channel /api/events broadcasts pr_merged event
+        → PWA service worker (web/v2/sw.js) catches event
+        → if merged PR touched web/v2/**: skipWaiting() + clients.claim() the new asset bundle
+        → live component re-registration: dispatch custom event 'chump:component-updated' to all open clients
+        → affected chump-* custom elements call this.connectedCallback() again (or full re-attach via remove + re-define + replaceWith)
+    
+    Rough shape:
+    (a) Ensure github-webhook-receiver.py emits kind=pr_merged with {pr_number, head_sha, merged_files[], merged_at} to ambient.jsonl.
+    (b) web_server SSE endpoint /api/events already streams ambient — verify it forwards pr_merged events to PWA clients (filter list may need update).
+    (c) Update web/v2/sw.js to handle pr_merged: if merged_files contains web/v2/**, fetch /v2/manifest.json with cache-busting query, compare asset SHAs, skipWaiting() new SW + clients.claim() if changed.
+    (d) Add web/v2/hot-reload.js module: listens for SSE pr_merged, decides if reload is safe (no unsaved form state, no open modal), either auto-applies via componentscustom-element re-registration OR shows a non-modal banner 'New version live — [reload]'.
+    (e) Per-component reload-safety opt-in: chump-* components declare static get reloadSafe() { return true; } if they can hot-swap; default false means show banner.
+    (f) Telemetry: emit kind=pwa_hot_reload_applied {pr_number, components_swapped[]} to ambient on success; kind=pwa_hot_reload_deferred {reason} when blocked.
+    (g) Smoke test scripts/ci/test-pwa-hot-reload.sh: spin up fixture web server, simulate pr_merged SSE event, assert reload triggered in headless browser within 5s.
+    (h) docs/process/PWA_HOT_RELOAD.md: how the pipeline works, how to mark a component reload-safe, debug commands.
+    
+    Composes with INFRA-1198 (ambient viewer) — same SSE channel. Composes with PRODUCT-094 (notification center) — banner UX can reuse those primitives. Composes with INFRA-1591 (visual snapshots) — hot-reload safety verified by snapshot baselines.
+    
+    When picked, run chump gap decompose <ID>.
+  acceptance_criteria:
+    - github-webhook-receiver.py emits kind=pr_merged with {pr_number, head_sha, merged_files[], merged_at}
+    - SSE /api/events forwards pr_merged events to PWA clients
+    - "web/v2/sw.js handles pr_merged: cache-bust manifest, skipWaiting+clients.claim if asset SHAs changed"
+    - web/v2/hot-reload.js module listens for SSE pr_merged and either auto-reloads OR shows non-modal 'New version live' banner
+    - "Per-component opt-in: static get reloadSafe() { return true; } default false→banner"
+    - kind=pwa_hot_reload_applied + kind=pwa_hot_reload_deferred ambient events emitted
+    - "scripts/ci/test-pwa-hot-reload.sh end-to-end test: simulated PR merge → headless browser reload within 5s"
+    - docs/process/PWA_HOT_RELOAD.md documents pipeline + reload-safe opt-in + debug
+

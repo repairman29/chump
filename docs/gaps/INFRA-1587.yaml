@@ -1,0 +1,54 @@
+- id: INFRA-1587
+  domain: INFRA
+  title: "ZERO-WASTE: PWA CSS evacuation — move 2300 LOC inline component CSS from index.html into per-component shadow DOMs (target ≤300 LOC index.html style block)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    web/v2/index.html is 2,445 lines, of which lines 13-2306 (≈2,290 LOC) are a single inline <style> block holding CSS for ~32 chump-* components. This is why:
+    - cockpit.js shipped behind ?view=cockpit because '5 live leases editing app.js + index.html' made the shell unsafe to modify in place (cockpit.js header docstring lines 25-31).
+    - New components (welcome.js, cockpit.js) invented their own --bg-primary aliases rather than extending the canonical tokens — the global stylesheet was too crowded to grep.
+    - 51 PRODUCT-/INFRA- ticket comments dot the stylesheet because every patch had to slip past every other patch.
+    
+    Per the design doc's living-conventions section + the existing pattern (every chump-* JS module already attaches a shadow DOM with its own <style>), the per-component file is the correct home for component CSS. index.html should hold ONLY shell tokens + layout primitives.
+    
+    Target state — index.html <style> block contains ONLY:
+      1. :root design tokens (lines 14-34)
+      2. [data-theme='light'] override (lines 37-49)
+      3. [data-theme='high-contrast'] override (lines 52-64)
+      4. *, *::before reset (line 79)
+      5. html/body layout (lines 80-90)
+      6. #app-header layout primitives (lines 93-108) — NOT chip styling
+      7. #app-body / chump-nav / #main-content layout grid (lines 1292-1495 keep layout, drop component-internal styling)
+      8. Mobile breakpoint media queries for the shell only
+      9. #chump-toast-container / #chump-offline-banner / #chump-status-pill (truly cross-cutting)
+    
+    Everything else migrates to the component file. Total target: ≤300 LOC <style> in index.html.
+    
+    Rough shape (migrate component-by-component to keep PRs reviewable):
+    (a) <chump-first-run-wizard> CSS (index.html:131-234) → into the ChumpFirstRunWizard class at app.js:836 (already shadow-rooted? verify and add <style> if needed).
+    (b) <chump-status-footer> CSS (index.html:240-394) → into web/v2/cockpit.js or its own file.
+    (c) <chump-tool-approval-tray> CSS (index.html:927-1040) → into the tray's defining file.
+    (d) <chump-cost-meter> CSS (index.html:1041-1070) → into web/v2/cost-meter.js.
+    (e) <chump-pr-card> CSS (index.html:1071-1216) → into web/v2/pr-card.js.
+    (f) <chump-workflow-timeline> CSS (index.html:1217-1291) → into web/v2/workflow-timeline.js.
+    (g) Per-view CSS (.task-list, .gap-list, .agents-list, etc., lines 1496-1934) → into the view component (app.js custom elements).
+    (h) ChumpMenu / config-dials / repo-switcher / doctor-banner / auth-toast / ambient-viewer CSS → into their respective JS files.
+    
+    DO NOT attempt all 8 migrations in one PR. Decompose into 3-4 PRs, each closing 400-800 LOC of inline CSS. Each PR runs the visual snapshot suite (depends on INFRA-1588 below) and updates baselines.
+    
+    Migration rule: each chunk preserves the PRODUCT-/INFRA- ticket comment as a JSDoc above the component class definition, so the patch history isn't lost.
+    
+    When picked, run chump gap decompose <ID>; the decomposer will materialize a sub-gap per migration chunk against the current state of index.html (which may have shifted).
+    
+    DEPENDS_ON: visual snapshot tests must exist FIRST so the migration is safe — see the visual-snapshot gap filed alongside this one. Otherwise this is a 2,300-line blind refactor.
+  acceptance_criteria:
+    - web/v2/index.html <style> block is ≤300 LOC
+    - "web/v2/index.html <style> contains ONLY: tokens (:root + theme overrides), reset, body/header/footer/nav layout, mobile media queries, cross-cutting toast/offline-banner/status-pill"
+    - Every chump-* component's visual styling lives in that component's JS file (shadow-DOM <style> or constructed stylesheet)
+    - PRODUCT-/INFRA- ticket comments preserved as JSDoc above each migrated component class
+    - Visual snapshot tests pass without baseline updates (zero pixel-delta) on a representative migration chunk
+    - No regression in DevTools Computed Styles for any chump-* element at 375/768/1440px
+    - Migration shipped in 3-4 PRs (not one mega-PR), each ≤800 LOC of CSS moved
+  depends_on: [INFRA-1591]
+

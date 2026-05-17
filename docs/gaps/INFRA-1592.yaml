@@ -1,0 +1,36 @@
+- id: INFRA-1592
+  domain: INFRA
+  title: "EFFECTIVE: close out cockpit-as-NOW promotion — delete stale ?view=cockpit-only docstring, remove bypassed legacy NOW components, update PWA_USER_GUIDE.md"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Cockpit (web/v2/cockpit.js, PRODUCT-122) was originally landed behind /v2/?view=cockpit per its header docstring (lines 25-31): 'Routing into chump-nav cadence happens in a follow-up to avoid colliding with 5 live leases editing app.js + index.html.'
+    
+    The follow-up landed: web/v2/app.js:378 sets default_view: 'cockpit' inside the NOW cadence definition. Clicking NOW renders the cockpit today. PRODUCT-127 through PRODUCT-131 ('Cockpit fix #1–5') are now iterating on cockpit AS the NOW landing.
+    
+    But the closeout is incomplete:
+    1. cockpit.js header docstring is stale (still says 'reach via /v2/?view=cockpit until promoted').
+    2. Any legacy NOW components that pre-dated cockpit are now bypassed but possibly still loaded (script tags in index.html). Find them, decide: delete or repurpose.
+    3. PWA_USER_GUIDE.md doesn't describe cockpit as the landing — it still describes the gap-queue-first model. Operators reading the doc get an outdated picture.
+    4. /v2/?view=cockpit URL — keep as alias for one release, then drop? Decision needed in PR.
+    
+    Rough shape:
+    (a) Update web/v2/cockpit.js docstring (lines 1-31): cockpit is now the NOW default; drop the 'reach via ?view=cockpit until promoted' sentence; note PRODUCT-127–131 as the active iteration arc.
+    (b) Audit web/v2/index.html and web/v2/app.js for legacy NOW components (anything named *-dashboard, *-overview, anything wired into NOW before cockpit). Grep targets: 'NOW', 'cadence-now', 'default_view'. For each: confirm cockpit covers its function, then delete OR file a follow-up gap if function genuinely missing from cockpit.
+    (c) Update docs/PWA_USER_GUIDE.md §'Quick start' and §'Gap queue view' — describe cockpit as the landing, demote gap-queue to a LIBRARY cadence sub-tab description.
+    (d) /v2/?view=cockpit URL: decide whether to (i) keep as backward-compat alias to /v2/?cadence=now or (ii) drop. Default: keep for one release; emit deprecation console.warn. Document in PR.
+    (e) Smoke verification: open /v2/ (no query), confirm cockpit renders. Open /v2/?view=cockpit, confirm cockpit renders (with or without deprecation warning, per decision (d)).
+    
+    DEPENDS_ON: PRODUCT-127, PRODUCT-128, PRODUCT-129, PRODUCT-130, PRODUCT-131 — these are the cockpit-content fixes already in flight. This closeout gap should land AFTER those merge so the new documentation describes the as-shipped cockpit, not a moving target. AND on INFRA-1591 (visual snapshots) so the legacy-component deletion is verifiable.
+    
+    When picked, run chump gap decompose <ID>; should be a small (single-PR) closeout, but the legacy-component audit may surface findings worth their own gap.
+  acceptance_criteria:
+    - "web/v2/cockpit.js header docstring updated: removes stale '?view=cockpit until promoted' claim; notes PRODUCT-127–131 iteration arc"
+    - Legacy NOW components (pre-cockpit) audited; each is either deleted OR has a follow-up gap explaining what cockpit doesn't cover
+    - "docs/PWA_USER_GUIDE.md updated: cockpit described as the NOW landing; gap-queue demoted to LIBRARY sub-tab description"
+    - "/v2/?view=cockpit URL kept as alias for one release with console.warn('deprecated: use /v2/?cadence=now'); follow-up gap filed to drop the alias after one release cycle"
+    - "Smoke verification: /v2/ renders cockpit; /v2/?view=cockpit also renders cockpit AND prints deprecation warning to console"
+    - Visual snapshot baselines updated to reflect cockpit-as-NOW (using INFRA-1591 infrastructure)
+  depends_on: [PRODUCT-127, PRODUCT-128, PRODUCT-129, PRODUCT-130, PRODUCT-131, INFRA-1591]
+
