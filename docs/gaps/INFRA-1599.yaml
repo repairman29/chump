@@ -1,0 +1,14 @@
+- id: INFRA-1599
+  domain: INFRA
+  title: "ZERO-WASTE: batch-add concrete AC to 30+ vague open gaps — eliminate all ⚠ on P0/P1 gaps"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "`chump gap list --status open` shows zero ⚠ indicators on gaps with priority P0 or P1"
+    - "`chump gap audit-priorities` exits 0 — no `vague_pickable` warnings on any P0 or P1 gap"
+    - "All P2 gaps that were ⚠ at filing time (CREDIBLE-066, INFRA-1265, INFRA-1267, INFRA-1286, INFRA-1319, INFRA-1325, INFRA-1345) have concrete, testable AC bullets — no 'TODO' text in any acceptance_criteria field"
+    - "All A2A layer gaps (INFRA-1118 through INFRA-1123) have concrete AC derived from A2A_ROADMAP.md release gates — pickers can implement without guessing"
+    - "CI `gaps-integrity` and `gap-status-check` checks pass on the PR"
+    - "PR contains only YAML edits to `docs/gaps/*.yaml` — no code, no test script, no workflow changes"
+    - "state.db is updated to match the YAML files (no drift); `python3 scripts/coord/gap-doctor.py doctor` shows 0 rows in Bucket 1 or 2 for the gaps touched by this PR"

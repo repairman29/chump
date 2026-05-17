@@ -12,7 +12,7 @@
     - "Test: scripts/ci/test-harness-attribution.sh spawns a worker, asserts ambient session_start carries non-\"unknown\" harness field"
     - "Why: filed alongside META-055 top-3. Half of all waste alerts are this kind — it pollutes the signal and makes other waste hard to see in the report."
     - "Depends-on: INFRA-950 (which made the count visible in the first place)."
-  depends_on: [INFRA-950, META-055]
+  depends_on: [META-055]
   closed_date: '2026-05-13'
   closed_pr: 1643
 

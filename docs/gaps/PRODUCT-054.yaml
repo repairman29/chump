@@ -1,13 +1,14 @@
 - id: PRODUCT-054
   domain: PRODUCT
   title: "EFFECTIVE: PWA — toggle cascade slots on/off from UI + persist to config.toml (PRODUCT-034 slice 2)"
-  status: open
+  status: done
   priority: P1
   effort: s
-  depends_on: [PRODUCT-053]
   acceptance_criteria:
-    - "Each cascade slot on /settings has an enable/disable toggle"
+    - Each cascade slot on /settings has an enable/disable toggle
     - "Toggle sends POST to /api/cascade-slots/{name}/enabled with {enabled: bool}"
-    - "Backend persists disabled slots to ~/.chump/config.toml [cascade.disabled_slots]"
+    - Backend persists disabled slots to ~/.chump/config.toml [cascade.disabled_slots]
     - "Disabled slots are skipped by provider_cascade::build_provider() on next agent run"
-    - "Changes take effect without restarting chump --web"
+    - Changes take effect without restarting chump --web
+  closed_date: '2026-05-11'
+

@@ -14,6 +14,5 @@
     - Login page in web/v2/ accepts token, validates via POST /api/auth/check, stores in localStorage
     - Settings page shows warning banner if CHUMP_WEB_TOKEN unset AND server bound to non-localhost address
     - "Test: bind to 0.0.0.0 without token → warning visible; bind with token + bad Authorization → 401; with correct token → routes accessible"
-  depends_on: [INFRA-988, INFRA-989]
   closed_date: '2026-05-14'
 

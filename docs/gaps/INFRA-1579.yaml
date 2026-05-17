@@ -1,0 +1,38 @@
+- id: INFRA-1579
+  domain: INFRA
+  title: "RESILIENT: port runner-orchestration shell scripts to Rust — migration pipeline + autoscale daemon in crates/chump-runner-orchestrator/, exposed as 'chump runners' subcommand"
+  status: open
+  priority: P1
+  effort: l
+  pillar: RESILIENT
+  depends_on: ["INFRA-1534", "INFRA-1535", "INFRA-1538"]
+  acceptance_criteria:
+    - "New crate crates/chump-runner-orchestrator/ houses: MigrationPipeline state machine (Stage enum + transition fn + gate predicates) AND AutoscalerLoop (poll loop + scale-up/scale-down decisions + reap logic)"
+    - "Both expose Rust APIs callable from src/main.rs under a new `chump runners` subcommand: `chump runners migrate-status`, `chump runners migrate-tick`, `chump runners migrate-loop`, `chump runners autoscale-status`, `chump runners autoscale-tick`"
+    - "Shell shims (chump-runner-migration-pipeline.sh + chump-runner-autoscale.sh) become 3-line wrappers that exec `chump runners <subcmd>` — preserves existing launchd plists + cron entries without breakage"
+    - "Gate predicates use chump_gh wrapper crate (existing) + check-runs REST API — fixes INFRA-1538 (gate queried workflow .name instead of job name) as part of the port; new gate uses commit-sha check-runs lookup"
+    - "State machine persists to .chump-locks/runner-migration.state with serde — backward-compatible single-line format for now, future-extensible"
+    - "Ambient emits use existing emit_kind crate API (consistent with rest of fleet) — kinds: runner_migration_step, runner_scaled (no change to event registry)"
+    - "Smoke tests in tests/runner_orchestrator_test.rs cover all 6 stages of migration pipeline with synthetic gh-api fixtures + autoscale decisions with synthetic queue-depth fixtures — this is the test coverage that INFRA-1581 backfills, brought forward as part of the port"
+    - "Performance: Rust port reduces per-tick decision time from ~2s (shell + multiple gh subprocess spawns) to <100ms (single gh call via chump_gh, in-process logic)"
+    - "After landing: shell scripts archived under scripts/coord/legacy/ for 30 days, then removed; no Rust-First-Bypass needed on the Rust crate"
+    - "Cross-link: today's INFRA-1538 (gate query bug) shipped because the shell version had no test suite — its bypass rationale skipped the regression-test maintenance bullet. The Rust port closes that hole."
+  notes: |
+    Effort=l reflects: new crate scaffold, state-machine refactor with serde,
+    test fixtures for gh-api responses, integration with src/main.rs CLI, plus
+    migration shims. Conservative estimate ~3-5 days of focused work.
+
+    Order of operations:
+      1. Land smoke tests against existing shell (INFRA-1581) — establishes
+         behavioral baseline so the Rust port has something to match.
+      2. Stand up crates/chump-runner-orchestrator/ skeleton with Stage enum.
+      3. Port migration pipeline (the simpler of the two — state machine, no time-series).
+      4. Port autoscale daemon (more nuanced — sustained-state windows, idle tracking).
+      5. Update launchd shims + delete shell sources after 30-day archival.
+
+    Per META-064: the structural decision logic IS the "moves to Rust when..."
+    condition that the bypass header named. Pi mesh ≥ 3 nodes was the original
+    trigger; today's INFRA-1538 bug-on-day-1 is a stronger trigger that fired
+    earlier than expected.
+
+

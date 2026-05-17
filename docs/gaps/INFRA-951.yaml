@@ -12,7 +12,6 @@
     - "Test: scripts/ci/test-waste-tally-tokens.sh seeds 3 synthetic waste events with known token counts; asserts tally sums match"
     - "Why: operator (Jeff 2026-05-12) asked: \"how many tokens we throwing down the drain with poor design choices?\" — current waste-tally answers in seconds-of-compute, not tokens. Token cost is the actual dollar question."
     - "Depends on: extending WASTE_KINDS first (preceding gap). After this lands, waste-tally output drives ZERO-WASTE pillar grading."
-  depends_on: [INFRA-950]
   closed_date: '2026-05-13'
   closed_pr: 1634
 

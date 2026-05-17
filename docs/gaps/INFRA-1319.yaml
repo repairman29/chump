@@ -5,8 +5,12 @@
   priority: P2
   effort: l
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "A `chump-github-liaison` daemon (or `chump-coord` extension) receives GitHub mutation requests from workers via NATS request/reply on subject `chump.github.mutations.<action>`; only the liaison process holds the `GH_TOKEN`; workers have no direct GitHub API access"
+    - "Supported mutation types in Phase 3: `pr.create`, `pr.merge`, `pr.comment`, `pr.label`, `pr.update-branch`; each request carries `{request_id, action, params}`; response carries `{request_id, result, gh_response_code}`"
+    - "Rate-limit enforcement: liaison enforces CHUMP_GH_MAX_CALLS_PER_MIN centrally (one token bucket for the entire fleet); workers that would exceed the limit receive a `429_queued` response and may retry after `retry_after_ms`"
+    - "Call criticality honored: request carries `criticality: critical|background`; when GraphQL remaining < 10%, background mutations are queued; critical mutations proceed"
+    - "Workers that previously called `gh` or `chump_gh` directly are refactored to use the NATS request/reply wrapper; audit `scripts/coord/` and `src/web_server.rs` for direct `gh` calls and migrate them"
+    - "Offline fallback: when NATS is unavailable, workers fall back to direct `gh` calls (Phase 1/2 behavior); emit `kind=github_liaison_fallback` to ambient.jsonl"
+    - "Smoke test `scripts/ci/test-github-liaison-phase3.sh`: mock NATS + mock gh; 5 concurrent workers send `pr.create` mutations; assert all 5 requests serialized through the liaison, rate limit enforced, responses correlated by request_id"
+    - "Events: `github_mutation_queued`, `github_mutation_sent`, `github_mutation_failed`, `github_liaison_fallback` registered in EVENT_REGISTRY.yaml before code ships"
 

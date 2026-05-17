@@ -5,8 +5,8 @@
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "INFRA-1329 (stuck-PR recovery implementation) has concrete, testable AC bullets — no TODO placeholders remain in its YAML or state.db entry; `chump gap show INFRA-1329` confirms all AC bullets are present"
+    - "The AC for INFRA-1329 covers: (a) detection criterion for 'stuck' (PR open > 2h with no CI progress), (b) specific recovery actions attempted (retrigger, rebase, force-reassign), (c) escalation path when auto-recovery fails (operator notification), (d) idempotency guarantee (running recovery twice on same PR is safe)"
+    - "Smoke test for INFRA-1329: `scripts/ci/test-stuck-pr-recovery.sh` exists and covers the detection + recovery + escalation paths against a mock PR fixture"
+    - "INFRA-1345 closes when INFRA-1329's AC is finalized (this gap is a meta-AC-fix, not an implementation gap)"
 

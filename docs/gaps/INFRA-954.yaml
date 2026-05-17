@@ -12,7 +12,7 @@
     - "Test: scripts/ci/test-bot-merge-phase-timeout.sh seeds 3 synthetic phase-timeout events, asserts circuit-breaker engages on the 4th attempt"
     - "Why: META-055 #2 finding. Each wedge burns ~15k tokens (full system prompt loaded, no output). Witnessed live: COG-054 and INFRA-950 ships both hit this today."
     - "Depends-on: INFRA-845 (handler exists). This gap extends or audits it."
-  depends_on: [INFRA-845, INFRA-950, INFRA-951, META-055]
+  depends_on: [INFRA-951, META-055]
   closed_date: '2026-05-13'
   closed_pr: 1640
 

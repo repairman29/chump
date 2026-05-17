@@ -1,0 +1,16 @@
+- id: INFRA-1496
+  domain: INFRA
+  title: "RESILIENT: INFRA-1485 follow-up — async-ify Command::new at src/web_server.rs:618 (broadcast.sh shellout)"
+  status: open
+  priority: P2
+  effort: s
+  pillar: RESILIENT
+  depends_on: ["INFRA-1485"]
+  acceptance_criteria:
+    - "src/web_server.rs:618 (broadcast.sh shellout) converted from std::process::Command::new(...).output() to tokio::process::Command::new(...).output().await (or wrapped in tokio::task::spawn_blocking if .await conversion is non-trivial)"
+    - "Handler containing the call returns async; no synchronous Command::output() remains in this code path"
+    - "Smoke test scripts/ci/test-server-survives-slow-endpoint.sh extended with a case that triggers the broadcast.sh path 3× concurrently while /api/health is hammered; assert /api/health p95 stays < 500ms"
+    - "Manual repro: artificially slow broadcast.sh (sleep 5), confirm /api/health latency does NOT regress on the patched build"
+    - "No new clippy warnings; existing tests around this region still pass"
+    - "Cross-link: INFRA-1485 audited the pattern; this is one of the named residual sites"
+

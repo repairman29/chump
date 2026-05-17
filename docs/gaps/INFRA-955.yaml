@@ -11,7 +11,7 @@
     - "Test: scripts/ci/test-slo-breach-dedupe.sh runs curator twice with synthetic in-breach state; second run should NOT emit slo_breach event."
     - "Why: META-055 #3 finding. 3 events × ~9k tokens = 27k tokens (7.7%) per 7d. Continuous-breach re-emission inflates the cost without adding info."
     - "Depends-on: INFRA-848 (curator decision logging — defines the existing slo_breach emitter site)."
-  depends_on: [INFRA-848, INFRA-950, INFRA-951, META-055]
+  depends_on: [INFRA-951, META-055]
   closed_date: '2026-05-13'
   closed_pr: 1642
 
