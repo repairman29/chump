@@ -16,13 +16,10 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-CHUMP="${REPO_ROOT}/target/debug/chump"
-if [[ ! -x "$CHUMP" ]]; then
-    CHUMP="${HOME}/.cargo/bin/chump"
-fi
-if [[ ! -x "$CHUMP" ]]; then
-    CHUMP="$(command -v chump 2>/dev/null || echo "")"
-fi
+# INFRA-1602: shared helper resolves CHUMP_BIN/target/debug/PATH and builds if missing.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+CHUMP="$(ensure_debug_chump || true)"
 
 echo "=== EFFECTIVE-014: gap workflow status endpoint ==="
 echo

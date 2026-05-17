@@ -23,11 +23,15 @@ cleanup() {
     rm -rf "$WORK"
 }
 
-BIN="${CHUMP_BIN:-/private/tmp/chump-infra-989-v3/target/debug/chump}"
-if [[ ! -x "$BIN" ]]; then
-    echo "[test] FAIL: chump binary not found at $BIN — build first with cargo build --bin chump" >&2
+# INFRA-1602: replace hardcoded /private/tmp/chump-infra-989-v3/... with the
+# shared helper (builds ./target/debug/chump if missing; honors CHUMP_BIN).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+BIN="$(ensure_debug_chump)" || {
+    echo "[test] FAIL: chump binary unavailable (ensure-debug-chump failed)" >&2
     exit 2
-fi
+}
 
 start_server() {
     CHUMP_HOME="$WORK" CHUMP_SKIP_PROBE="${SKIP_PROBE:-1}" CHUMP_CSRF_ENABLED=0 \

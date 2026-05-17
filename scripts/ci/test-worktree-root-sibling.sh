@@ -8,12 +8,16 @@
 #   2. From main repo CWD with CHUMP_REPO pointing at a worktree of same repo →
 #      worktree_root() returns main repo CWD (common-dir match, INFRA-474 path)
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BINARY="${REPO_ROOT}/target/debug/chump"
-if [[ ! -x "$BINARY" ]]; then
-    echo "SKIP: binary not found at $BINARY — run cargo build first" >&2
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# INFRA-1602: shared helper builds chump if target/debug/chump is missing.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+BINARY="$(ensure_debug_chump)" || {
+    echo "SKIP: chump binary unavailable (ensure-debug-chump failed)" >&2
     exit 0
-fi
+}
 
 PASS=0; FAIL=0
 ok()   { echo "  ok: $*"; (( PASS++ )) || true; }

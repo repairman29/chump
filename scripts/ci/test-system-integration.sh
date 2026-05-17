@@ -37,20 +37,13 @@ echo "  REPO_ROOT: $REPO_ROOT"
 echo
 
 # ── Binary discovery ──────────────────────────────────────────────────────────
-CHUMP="${CHUMP_BIN:-}"
-if [[ -z "$CHUMP" || ! -x "$CHUMP" ]]; then
-    CHUMP="${REPO_ROOT}/target/debug/chump"
-fi
-if [[ ! -x "$CHUMP" ]]; then
-    CHUMP="${HOME}/.cargo/bin/chump"
-fi
-if [[ ! -x "$CHUMP" ]]; then
-    CHUMP="$(command -v chump 2>/dev/null || echo "")"
-fi
-if [[ -z "$CHUMP" || ! -x "$CHUMP" ]]; then
-    echo "  SKIP: chump binary not found (run 'cargo build --bin chump' or set CHUMP_BIN)"
+# INFRA-1602: shared helper handles CHUMP_BIN env / target build / PATH fallback.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+CHUMP="$(ensure_debug_chump)" || {
+    echo "  SKIP: chump binary not found (ensure-debug-chump failed; set CHUMP_BIN or run cargo build)"
     exit 0
-fi
+}
 echo "  binary: $CHUMP"
 
 # ── Temp directory setup ──────────────────────────────────────────────────────

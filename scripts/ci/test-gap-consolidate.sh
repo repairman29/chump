@@ -7,13 +7,16 @@ PASS=0; FAIL=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-CHUMP="${CHUMP_BIN:-${REPO_ROOT}/target/debug/chump}"
 
-if [[ ! -x "$CHUMP" ]]; then
-  echo "SKIP: chump binary not found at $CHUMP"
-  exit 0
-fi
+# INFRA-1602: shared helper builds chump if target/debug/chump is missing.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+CHUMP="$(ensure_debug_chump)" || {
+    echo "SKIP: chump binary unavailable (ensure-debug-chump failed)"
+    exit 0
+}
 
 echo "=== INFRA-935: chump gap consolidate CI gate ==="
 echo

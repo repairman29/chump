@@ -18,12 +18,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
-# Resolve chump binary
-CHUMP_BIN="${CHUMP_BIN:-${REPO_ROOT}/target/debug/chump}"
-if [ ! -x "$CHUMP_BIN" ]; then
-    CHUMP_BIN="$(command -v chump 2>/dev/null || true)"
-fi
-[ -x "$CHUMP_BIN" ] || fail "Cannot find chump binary"
+# Resolve chump binary — INFRA-1602: shared helper builds if missing.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+CHUMP_BIN="$(ensure_debug_chump)" || fail "Cannot find chump binary (ensure-debug-chump failed)"
 
 TMP="$(mktemp -d -t test-infra-1007.XXXXXX)"
 cleanup() { rm -rf "$TMP"; }

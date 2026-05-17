@@ -4,12 +4,17 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-if [[ ! -x "$ROOT/target/debug/chump-mcp-coord" ]]; then
-  cargo build -q -p chump-mcp-coord
-fi
+# INFRA-1602: shared helper resolves debug binaries + builds if missing.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/ensure-debug-chump.sh"
+MCP_COORD_BIN="$(ensure_debug_chump chump-mcp-coord)" || {
+    echo "FAIL: chump-mcp-coord binary unavailable" >&2
+    exit 1
+}
 
 out="$(echo '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}' \
-  | CHUMP_REPO="$ROOT" "$ROOT/target/debug/chump-mcp-coord")"
+  | CHUMP_REPO="$ROOT" "$MCP_COORD_BIN")"
 
 echo "$out" | grep -q 'gap_preflight' || {
   echo "expected gap_preflight in tools/list response" >&2
