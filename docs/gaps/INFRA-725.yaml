@@ -4,9 +4,6 @@
   status: open
   priority: P2
   effort: m
-  acceptance_criteria: |
-    Criterion 1: All memory-* modules (memory_db, memory_graph, memory_graph_tool, memory_graph_viz, memory_tool, belief_state, episode_db, episode_extractor) are extracted from main.rs into a `memory/` module directory
-    Criterion 2: main.rs imports from the `memory` module rather than containing the implementations inline
-    Criterion 3: Cargo build and `cargo test` pass with no functional changes
-    Criterion 4: No public API surface change — callers of memory functions continue to work unchanged
+  acceptance_criteria:
+    - "[\n  \"src/memory/ directory created with one file per module: memory_db.rs, memory_graph.rs, memory_graph_tool.rs, memory_graph_viz.rs, memory_tool.rs, belief_state.rs, episode_db.rs, episode_extractor.rs\",\n  \"All moved modules compile with no warnings\",\n  \"main.rs no longer contains these module definitions\",\n  \"cargo test passes: no regressions\",\n  \"Memory graph queries and episode extraction behave identically before and after\"\n]"
 

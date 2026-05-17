@@ -4,9 +4,6 @@
   status: open
   priority: P2
   effort: m
-  acceptance_criteria: |
-    Criterion 1: All provider-* modules (provider_bandit, provider_cascade, provider_quality, streaming_provider, local_openai, mistralrs_provider) are extracted from main.rs into a `providers/` module directory
-    Criterion 2: main.rs imports from the `providers` module rather than containing the implementations inline
-    Criterion 3: Cargo build and `cargo test` pass with no functional changes
-    Criterion 4: No public API surface change — callers of provider functions continue to work unchanged
+  acceptance_criteria:
+    - "[\n  \"src/providers/ directory created with one file per module: provider_bandit.rs, provider_cascade.rs, provider_quality.rs, streaming_provider.rs, local_openai.rs, mistralrs_provider.rs\",\n  \"All moved modules compile with no warnings (cargo build --quiet exits 0)\",\n  \"main.rs no longer contains these module definitions — only a pub mod providers; or use declaration\",\n  \"cargo test passes: no test regressions from the move\",\n  \"No behavioral change: provider selection, cascade routing, and streaming behave identically before and after\"\n]"
 

@@ -4,11 +4,6 @@
   status: open
   priority: P1
   effort: s
-  acceptance_criteria: |
-    Criterion 1: A fixture PR with a deliberately-stale assertion is created to synthesize a CI failure
-    Criterion 2: `chump review --serve` is run against the fixture PR and posts a reviewer comment with a valid template- anchored diff
-    Criterion 3: Author re-engagement (per sub-gap 3) detects the comment, applies the diff, and pushes
-    Criterion 4: CI flips from red to green within 15 minutes of the re-engagement push
-    Criterion 5: All 5 telemetry events (initiated, applied, failed, timeout, escalated) emit during the test run
-    Criterion 6: The smoke test is committed as `scripts/ci/test-review-handoff-smoke.sh` and passes in CI
+  acceptance_criteria:
+    - "[\n  \"scripts/ci/test-review-handoff-smoke.sh exists and is invoked in the fast-checks CI job\",\n  \"Smoke test synthesizes a CI failure on a fixture PR (deliberately-stale assert in a test file)\",\n  \"chump review --serve processes the pr_check_fail event and posts a review comment with valid template structure\",\n  \"Author re-engagement: reviewer comment triggers a simulated author push; verify --serve picks up the next push within 15-min window\",\n  \"CI flips green within 15 min of the corrective push (measured in fixture test)\",\n  \"All 5 telemetry events emit to ambient.jsonl: review_started, diff_validated, comment_posted, author_push_detected, ci_green_confirmed\",\n  \"Test exits 0 on success, non-zero with named failing assertion on failure\"\n]"
 

@@ -4,27 +4,6 @@
   status: open
   priority: P2
   effort: s
-  acceptance_criteria: |
-    Gemini 2.5 models emit thinking tokens (similar to Qwen3's
-    <think>...</think> blocks) that consume output token budget
-    but aren't part of the response content. The existing Qwen
-    thinking-token stripping in LocalOpenAIProvider may already
-    handle this, but needs verification.
-
-    Check:
-    1. Does Gemini 2.5 Flash emit thinking tokens via the OpenAI
-       compat endpoint? If so, are they in `content` or in a
-       separate field?
-    2. Does LocalOpenAIProvider's existing think-block stripping
-       handle them? If not, add Gemini-specific stripping.
-    3. Are thinking tokens billed? If yes, can they be disabled
-       via API parameter (e.g., `thinking: {type: "disabled"}`)?
-
-    If thinking tokens can't be disabled and are billed, add
-    max_tokens budget accounting: the free-tier prompt should
-    set a lower max_tokens to leave room for thinking overhead.
-
-    Test: Dispatch a gap via gemini-2.5-flash and check that
-    thinking tokens don't appear in tool call arguments or
-    commit messages.
+  acceptance_criteria:
+    - "[\n  \"When Gemini model returns a response containing <think>...</think> or thinking_token blocks, those blocks are stripped before the content is passed to the agent loop\",\n  \"Alternatively: a configurable token budget cap GEMINI_THINKING_BUDGET_TOKENS (default 0 = strip all) is honored in the API request if the Gemini API supports it\",\n  \"Agent loop never sees raw thinking blocks — they are either stripped or summarized before injection into context\",\n  \"scripts/ci/test-gemini-thinking-budget.sh passes: fixture response with think blocks → assert output contains no <think> markers\",\n  \"No regression on normal Gemini 2.5-flash / 2.5-pro responses without thinking blocks\"\n]"
 

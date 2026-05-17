@@ -4,9 +4,6 @@
   status: open
   priority: P2
   effort: m
-  acceptance_criteria: |
-    Criterion 1: All fleet-* modules (fleet, fleet_capability, fleet_db, fleet_health, fleet_status, fleet_tool, fleet_velocity, cluster_mesh) are extracted from main.rs into a `fleet/` module directory
-    Criterion 2: main.rs imports from the `fleet` module rather than containing the implementations inline
-    Criterion 3: Cargo build and `cargo test` pass with no functional changes
-    Criterion 4: No public API surface change — callers of fleet functions continue to work unchanged
+  acceptance_criteria:
+    - "[\n  \"src/fleet/ directory created with one file per module: fleet.rs, fleet_capability.rs, fleet_db.rs, fleet_health.rs, fleet_status.rs, fleet_tool.rs, fleet_velocity.rs, cluster_mesh.rs\",\n  \"All moved modules compile with no warnings (cargo build --quiet exits 0)\",\n  \"main.rs no longer contains these module definitions\",\n  \"cargo test passes: no regressions\",\n  \"Fleet health checks and status commands behave identically before and after the move\"\n]"
 
