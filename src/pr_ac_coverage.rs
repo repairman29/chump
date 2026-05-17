@@ -111,9 +111,12 @@ pub fn parse_gap_id(title: &str) -> Option<String> {
 /// The YAML file may be a list (starts with `- id:`) or a top-level object.
 fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
     let root = repo_root();
-    let path = root.join("docs").join("gaps").join(format!("{gap_id}.yaml"));
-    let text =
-        std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let path = root
+        .join("docs")
+        .join("gaps")
+        .join(format!("{gap_id}.yaml"));
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
 
     let mut bullets = Vec::new();
     let mut in_ac = false;
@@ -182,12 +185,12 @@ fn parse_waivers(text: &str) -> Vec<(usize, String)> {
 // ── coverage rules ────────────────────────────────────────────────────────────
 
 static COMMON_WORDS: &[&str] = &[
-    "the", "and", "for", "with", "that", "this", "from", "have", "will", "must", "each",
-    "when", "where", "into", "then", "than", "some", "file", "path", "rule", "item", "test",
-    "first", "last", "bool", "true", "false", "none", "null", "zero", "both", "only", "list",
-    "all", "any", "new", "add", "get", "set", "run", "via", "per", "not", "use", "has", "are",
-    "its", "one", "two", "may", "can", "but", "also", "emit", "does", "been", "every", "should",
-    "given", "under", "after", "before", "return", "check", "value", "match", "cover",
+    "the", "and", "for", "with", "that", "this", "from", "have", "will", "must", "each", "when",
+    "where", "into", "then", "than", "some", "file", "path", "rule", "item", "test", "first",
+    "last", "bool", "true", "false", "none", "null", "zero", "both", "only", "list", "all", "any",
+    "new", "add", "get", "set", "run", "via", "per", "not", "use", "has", "are", "its", "one",
+    "two", "may", "can", "but", "also", "emit", "does", "been", "every", "should", "given",
+    "under", "after", "before", "return", "check", "value", "match", "cover",
 ];
 
 /// Extract candidate symbols/keywords from a bullet for Rule (b).
@@ -217,7 +220,14 @@ fn rule_a(bullet: &str, diff: &str) -> bool {
     // Extract path-like tokens: anything with '/' or a known extension.
     for token in bullet.split_whitespace() {
         let token = token.trim_matches(|c: char| "'\"`(),;".contains(c));
-        if token.contains('/') || token.ends_with(".rs") || token.ends_with(".sh") || token.ends_with(".yaml") || token.ends_with(".yml") || token.ends_with(".toml") || token.ends_with(".md") {
+        if token.contains('/')
+            || token.ends_with(".rs")
+            || token.ends_with(".sh")
+            || token.ends_with(".yaml")
+            || token.ends_with(".yml")
+            || token.ends_with(".toml")
+            || token.ends_with(".md")
+        {
             let needle = format!("+++ b/{token}");
             if diff.contains(&needle) {
                 return true;
@@ -254,7 +264,10 @@ fn rule_c(bullet: &str, commit_text: &str) -> bool {
     for line in commit_text.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("Closes-AC:").map(str::trim) {
-            if rest.starts_with(prefix40) || prefix40.starts_with(rest) || rest.len() >= 10 && bullet.contains(rest) {
+            if rest.starts_with(prefix40)
+                || prefix40.starts_with(rest)
+                || rest.len() >= 10 && bullet.contains(rest)
+            {
                 return true;
             }
         }
@@ -540,20 +553,18 @@ fn json_extract_string(json: &str, key: &str) -> Option<String> {
         loop {
             match chars.next()? {
                 '"' => break,
-                '\\' => {
-                    match chars.next()? {
-                        'n' => out.push('\n'),
-                        'r' => out.push('\r'),
-                        't' => out.push('\t'),
-                        '"' => out.push('"'),
-                        '\\' => out.push('\\'),
-                        '/' => out.push('/'),
-                        c => {
-                            out.push('\\');
-                            out.push(c);
-                        }
+                '\\' => match chars.next()? {
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    '"' => out.push('"'),
+                    '\\' => out.push('\\'),
+                    '/' => out.push('/'),
+                    c => {
+                        out.push('\\');
+                        out.push(c);
                     }
-                }
+                },
                 c => out.push(c),
             }
         }
@@ -630,7 +641,10 @@ fn extract_json_string_at(s: &str) -> Option<ExtractResult> {
     };
     // consumed = 1 (opening quote) + end_byte (bytes consumed in inner)
     let consumed = 1 + end_byte;
-    Some(ExtractResult { text: out, consumed })
+    Some(ExtractResult {
+        text: out,
+        consumed,
+    })
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────
@@ -673,14 +687,20 @@ mod tests {
     fn test_coverage_rule_b_symbol() {
         let bullet = "emit kind=ac_coverage_miss to ambient";
         let diff = "+    ac_coverage_miss_event();\n";
-        assert!(rule_b(bullet, diff), "Rule (b) should match symbol ac_coverage_miss");
+        assert!(
+            rule_b(bullet, diff),
+            "Rule (b) should match symbol ac_coverage_miss"
+        );
     }
 
     #[test]
     fn test_coverage_rule_c_closes_ac_trailer() {
         let bullet = "File src/pr_ac_coverage.rs must exist and implement run()";
         let commit_text = "Closes-AC: File src/pr_ac_coverage.rs must exist and implement run()";
-        assert!(rule_c(bullet, commit_text), "Rule (c) should match Closes-AC trailer");
+        assert!(
+            rule_c(bullet, commit_text),
+            "Rule (c) should match Closes-AC trailer"
+        );
     }
 
     #[test]
@@ -690,7 +710,10 @@ mod tests {
             "+++ b/scripts/ci/test-pr-ac-coverage.sh\n",
             "+exec chump pr ac-coverage \"$@\"\n",
         );
-        assert!(rule_d(bullet, diff), "Rule (d) should match test file keyword 'exec'");
+        assert!(
+            rule_d(bullet, diff),
+            "Rule (d) should match test file keyword 'exec'"
+        );
     }
 
     #[test]
