@@ -5,8 +5,12 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Per-tool auto-approve dropdown visible in the approval UI for each pending tool call; operator can select '15 min', '1 hour', or 'this session'; policy persists in `.chump/tool-policies.json` keyed by `{tool_name, scope}` with an expiry timestamp"
+    - "Auto-approve policy enforced in `src/web_server.rs` approval handler: if incoming tool call matches an active policy (tool name matches, expiry not elapsed), the approval fires automatically without operator interaction and `kind=tool_auto_approved` is emitted to ambient.jsonl"
+    - "Web Push escalation: if operator has not responded to an approval request within 60s, a Web Push notification is dispatched to all subscribed push endpoints; requires operator to have opted in via the dashboard's notification settings page; smoke test in `scripts/ci/test-webpush-escalation.sh` stubs the push endpoint and asserts it receives a POST after a 61s simulated idle"
+    - "Optional audio cue: `CHUMP_APPROVAL_AUDIO=1` triggers an OS-level sound on each new approval request; implemented via `osascript -e 'beep'` on macOS and `paplay` fallback on Linux; default off; documented in `.env.example`"
+    - "All three features (dropdown, web push, audio) are independently togglable; disabling one does not affect the others"
+    - "Integration test: (a) configure auto-approve for 'bash' for 15 min, submit a bash tool call, assert it fires without UI interaction; (b) after 15-min policy expiry (clock-injected), assert next bash call requires manual approval again"
+    - "Events: `tool_auto_approved`, `tool_approval_escalated` (web push fired), `tool_approval_policy_changed` registered in EVENT_REGISTRY.yaml"
+    - "No regression on existing manual approval flow; existing PRODUCT-109 approval tests still pass"
 

@@ -19,8 +19,10 @@
     
     Source: META-065 (PR #NNNN) layer 3 deferred to keep that PR scoped.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Parse `docs/ROADMAP.md` milestone table to extract structured list of `(milestone, status, target_date, owning_gap_ids[])`; format derived from current ROADMAP.md shape (consult before implementing)"
+    - "Cross-reference open P0/P1 gaps in state.db against `owning_gap_ids`; surface: (a) 'P0 gap X is not on any milestone' (important but not strategically anchored), (b) 'milestone Y has 0 pickable P0/P1 progress' (milestone is starving)"
+    - "When drift exceeds threshold (default: > 3 unanchored P0/P1 OR > 1 starving milestone), auto-file a META-NEW gap with the diagnosis; rate-limited via `.chump-locks/curator-decisions/<date>.jsonl` daily sentinel (dedup: if same drift pattern filed today, skip)"
+    - "Emit `kind=roadmap_drift_detected` to ambient.jsonl on threshold cross; include `unanchored_count` and `starving_milestones[]` fields; registered in EVENT_REGISTRY.yaml before code ships"
+    - "Escape hatch: `CHUMP_CURATOR_ROADMAP_CHECK=0` disables the arm entirely; documented in `.env.example`"
+    - "Test `scripts/ci/test-curator-roadmap-drift.sh`: synthesize a ROADMAP.md with 2 milestones (one with owning gaps, one empty) + state.db with 4 unanchored P0 gaps; assert drift detection fires, auto-files gap, dedup works on second run, escape hatch suppresses"
 

@@ -5,8 +5,10 @@
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Integration test `scripts/ci/test-fleet034-cross-machine-nats.sh` (or equivalent) runs two worker processes on simulated distinct hosts (separate NATS client connection IDs, distinct `WORKER_MACHINE` env values) and verifies: (a) gap published by chump-coord assign on host-A is received and claimed by worker on host-B within 5s; (b) atomic claim holds (only one worker wins the NATS-KV CAS race)"
+    - "Test covers offline-fallback: when NATS is killed mid-test, both workers degrade to pull-loop within 5s; re-enabling NATS triggers resumed push routing within 10s"
+    - "Two-machine setup can be simulated in CI with two Docker containers sharing a local NATS server, or two goroutines/processes if container setup is not available in the CI runner; test script documents which mode is active"
+    - "Test emits `kind=fleet034_cross_machine_pass` or `kind=fleet034_cross_machine_fail` to ambient.jsonl so the release gate is machine-readable"
+    - "This test is the final AC (#8) from FLEET-034 (NATS push routing); FLEET-034 remains open until this test passes in CI and the result is confirmed via ambient event"
+    - "Test duration: < 60s in CI; if longer, extract the chaos-NATS portion into a separate nightly fixture"
 

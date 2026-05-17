@@ -5,8 +5,13 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "chump-coord exports `subscribe_events(filter: EventFilter) -> Stream<CoordEvent>` async API; integration test in `tests/a2a_layer1a.rs` demonstrates subscribe → publish → receive round-trip in < 50ms p99 on single host"
+    - "Worker session (activated via `CHUMP_A2A_LAYER=1`) subscribes to `chump.events.>` on a JetStream durable consumer at session start; events arrive via push subscription, not ambient.jsonl poll"
+    - "When NATS is unreachable at startup or drops mid-session: worker falls back to ambient.jsonl polling within 5s and emits `kind=fleet_a2a_degraded`; emits `kind=fleet_a2a_recovered` on reconnect with JetStream durable offset resumed (no missed events)"
+    - "Backpressure: slow consumer triggers `kind=fleet_a2a_backpressure` event (NATS `max_ack_pending` breach); logged to ambient.jsonl and visible in `chump fleet-status`"
+    - "CI chaos test `scripts/ci/test-a2a-layer1a-chaos.sh`: kill NATS mid-cycle, assert fallback within 5s, restart NATS, assert recovery with JetStream durable position preserved"
+    - "EVENT_REGISTRY.yaml entries for `fleet_a2a_degraded`, `fleet_a2a_recovered`, `fleet_a2a_backpressure` present before any code ships (pre-commit guard enforces this)"
+    - "Feature-gate: `CHUMP_A2A_LAYER=0` (default) preserves today's file-only behavior; `CHUMP_A2A_LAYER=1` enables NATS-primary subscribe path"
+    - "Bash-callable: `scripts/coord/a2a-events.sh subscribe [filter]` wraps the Rust API for opencode/manual harnesses"
+    - "Release gate: 7-day single-host fleet run with `CHUMP_A2A_LAYER=1`, zero `fleet_a2a_degraded` events, subscriber latency p99 < 50ms verified in CI"
 

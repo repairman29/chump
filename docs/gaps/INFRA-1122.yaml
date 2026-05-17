@@ -5,8 +5,11 @@
   priority: P1
   effort: l
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "`chump-coord::deliberate(gap_id, my_progress, other_session) -> DeliberationOutcome` implements deterministic comparator: (1) higher `percent_complete` wins, (2) tie → more recent `last_commit_sha` wins, (3) further tie → older `started_at` wins (seniority)"
+    - "Comparator is property-tested over 10K random (my_progress, other_progress) scenario pairs in `tests/a2a_deliberation_comparator.rs`; both sides running the same algorithm always agree on winner (no divergent outcomes)"
+    - "When INFRA-1116 INTENT overlap is detected: detecting session opens `ask_progress` RPC (Layer 2b) to other session; both exchange `{percent_complete, last_commit_sha, last_activity_ts, remaining_ac[]}`; loser broadcasts HANDOFF with WIP commit SHA and retracts lease within 5s"
+    - "Fairness monitor: `deliberation_wins` / `deliberation_losses` per session tracked in scratchpad (Layer 3d); emits `kind=deliberation_fairness_violation` when one session wins > 80% over 50 deliberations"
+    - "Edge cases tested: (a) unresponsive side → `a2a_rpc_timeout` after deadline, detected side wins; (b) both at 0% → seniority; (c) WIP conflict → loser attaches diff patch to HANDOFF; (d) three-way overlap → pairwise deliberation in session_id lex order"
+    - "EVENT_REGISTRY.yaml entries for `deliberation_started`, `deliberation_resolved`, `deliberation_handoff`, `deliberation_fairness_violation` present before code ships"
+    - "Release gate: 7-day fleet run with > 5 deliberations resolved (verified via `kind=deliberation_resolved` events in ambient.jsonl), zero operator-interventions for overlap conflicts"
 

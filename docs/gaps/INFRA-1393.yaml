@@ -1,0 +1,13 @@
+- id: INFRA-1393
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 11 PRs blocked >2h as of 2026-05-16"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "All 11 PRs identified as stuck (blocked > 2h as of 2026-05-16) are triaged: each is either (a) merged, (b) re-triggered and merging, (c) closed with explanation logged, or (d) escalated with a follow-up gap explaining the blocker; triage logged to `.chump-locks/pr-rescue-2026-05-16.log`"
+    - "Root cause identified: a `kind=pr_stuck_cluster_cause` ambient event is emitted with fields `cause` (bot_merge_contention | ci_flake | branch_conflict | other) and `pr_ids[]`"
+    - "If cause is systemic (bot_merge_contention or recurring ci_flake), a follow-up gap is filed before INFRA-1393 ships"
+    - "After rescue: `tail -200 .chump-locks/ambient.jsonl | grep pr_stuck | wc -l` = 0 for ≥ 2h (no new stuck events during recovery window)"
+    - "`gh pr list --state open --json number,createdAt | jq '[.[] | select(now - (.createdAt | fromdateiso8601) > 7200)] | length'` = 0 at ship time (no PRs older than 2h)"
+    - "INFRA-1393 closes when the rescue is complete; a post-mortem one-liner is appended to `docs/syntheses/fleet-scaling-2026-05-06.md` documenting the cluster cause"
