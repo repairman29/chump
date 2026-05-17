@@ -38,7 +38,27 @@ Idempotent. Re-running is a no-op if a healthy runner is already registered.
 scripts/setup/install-self-hosted-runner.sh --check
 ```
 
-Returns exit 0 with the runner list if ≥1 runner is online, exit 1 otherwise.
+Returns exit 0 only when **both** conditions hold (INFRA-1568):
+
+1. **Registration check.** ≥1 runner is online for `repairman29/chump`.
+2. **Broad canary pass.** The full production workflow step-set
+   (`fast-checks` + `clippy` + `cargo-test` + `ACP smoke`) runs end-to-end on
+   the candidate lane and every step exits 0.
+
+The narrow "is the runner registered?" check is necessary but not sufficient.
+The 2026-05-16 cascade (INFRA-1556 chump-PATH, INFRA-1539 apt-guard,
+INFRA-1561 chump --acp silent) shipped because the previous narrow canary
+(#2239 — `cargo build` only) reported OK while three production steps were
+broken. **No runner is declared ready until the broad canary passes.**
+
+To skip the canary gate (operator override — logs to ambient as
+`kind=runner_canary_skipped`):
+
+```bash
+CHUMP_SKIP_CANARY=1 scripts/setup/install-self-hosted-runner.sh --check
+# or:
+scripts/setup/install-self-hosted-runner.sh --skip-canary
+```
 
 ## Upgrade existing runners (INFRA-1556)
 
@@ -170,16 +190,78 @@ the first Pi is racked).
 - **INFRA-1397** (paramedic supervision): same launchd-plist pattern; install
   scripts could share helpers.
 
-## Smoke test
+## Broad canary (INFRA-1568)
 
-Once at least one runner is registered, the upcoming `scripts/ci/test-self-hosted-runner-registered.sh` asserts:
+**Why a broad canary.** The original "narrow canary" (#2239) only ran
+`cargo build` against a new lane. It missed three runner-env regressions in
+the 2026-05-16 cascade:
+
+| Gap | What broke | Why narrow canary missed it |
+|---|---|---|
+| INFRA-1556 | `chump` not on launchd PATH → exit 127 in fast-checks | narrow canary never invoked `chump` |
+| INFRA-1539 | Linux-only `apt-get install` ran on macOS lane | narrow canary skipped Linux-package step |
+| INFRA-1561 | `chump --acp` went silent → ACP smoke hung | narrow canary never spoke ACP |
+
+The **broad canary** runs the FULL production step set end-to-end against
+the candidate lane BEFORE the lane is declared ready. It would have caught
+all three upfront.
+
+**Run it manually.**
+
+```bash
+# Auto-detects lane from uname.
+scripts/setup/test-runner-lane-broad-canary.sh
+
+# Or via the fleet CLI (INFRA-1568):
+chump fleet canary --lane macos-arm64
+
+# First run on a new lane: record the baseline.
+scripts/setup/test-runner-lane-broad-canary.sh --record-baseline
+
+# Machine-readable summary:
+chump fleet canary --json
+```
+
+Exit 0 iff every production step passes; non-zero with a named failing-step
+list. Steps exercised (mirrors `.github/workflows/{ci,editor-integration}.yml`):
+
+- `cargo build` (editor-integration acp-smoke prerequisite)
+- Self-hosted runner deps preflight (INFRA-1556 — checks every PATH-resolved CLI)
+- `cargo fmt`
+- chump subcommand `--help` regression gate (INFRA-1246)
+- gap-preflight AC gate smoke (INFRA-1259)
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace` (via `cargo-test-with-rerun.sh`)
+- ACP protocol smoke (`test-acp-smoke.sh`)
+
+**Coverage smoke (auto-discovery).**
+
+```bash
+scripts/ci/test-broad-canary-coverage.sh
+```
+
+Parses every self-hosted-targeted workflow job in `.github/workflows/*.yml`
+and asserts every external CLI those steps invoke is exercised somewhere in
+the broad canary. **A new external CLI in a workflow step → coverage smoke
+fails until the canary surface adds it.** Closes the "canary too narrow"
+regression hole structurally — wired into the `pr-hygiene` job so any PR
+that mutates a workflow file gets gated.
+
+To declare a CLI universally-available and skip canary exercise, add it to
+the `ALLOWLIST` array in `scripts/ci/test-broad-canary-coverage.sh` (e.g.
+shell builtins, coreutils, GH-action wrappers).
+
+## Smoke test (registration only)
+
+Once at least one runner is registered, the registration check
+(`install-self-hosted-runner.sh --check` step 1, before the broad canary)
+asserts:
 
 1. `gh api /repos/.../actions/runners` returns ≥1 with `status="online"`.
 2. The runner's labels include `self-hosted` and at least one platform label.
-3. A trivial canary workflow runs to completion on the self-hosted lane.
 
-This becomes part of `chump fleet doctor --check` so a missing/wedged runner
-surfaces as a fleet-level health alarm.
+This is necessary but not sufficient — see the **Broad canary** section
+above for the production-readiness gate.
 
 ---
 

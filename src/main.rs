@@ -4196,6 +4196,30 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-1568: broad canary — exec the lane-readiness script.
+            // Exits 0 iff every production workflow step passes on the
+            // candidate lane; non-zero with a named failing-step list.
+            "canary" => {
+                let lane = flag("--lane").unwrap_or_default();
+                let script = repo_root.join("scripts/setup/test-runner-lane-broad-canary.sh");
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&script);
+                if !lane.is_empty() {
+                    cmd.arg("--lane").arg(&lane);
+                }
+                // Pass through --json and --record-baseline if present.
+                if args.iter().any(|a| a == "--json") {
+                    cmd.arg("--json");
+                }
+                if args.iter().any(|a| a == "--record-baseline") {
+                    cmd.arg("--record-baseline");
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet canary: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             // FLEET-037: ergonomic primary verb — alias for "stop".
             "down" => {
                 let session = flag("--session")
@@ -4214,7 +4238,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -4237,6 +4261,11 @@ async fn main() -> Result<()> {
                 eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
                 eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
                 eprintln!("  whoworkson  <topic> [--json]  -- who is working on a given topic (INFRA-1446)");
+                eprintln!("  canary      [--lane LABEL] [--json] [--record-baseline]");
+                eprintln!(
+                    "              -- broad runner-lane canary (INFRA-1568): runs full production"
+                );
+                eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
                 std::process::exit(2);
             }
         }

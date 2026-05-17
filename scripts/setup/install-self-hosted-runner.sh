@@ -76,6 +76,10 @@ usage() {
 
 cmd_check() {
   # Health check: query GH API for runners; assert at least one online for this repo.
+  # INFRA-1568: --check now ALSO delegates to the broad canary so a runner is
+  # never declared ready until the full production-step set passes against it.
+  # Set CHUMP_SKIP_CANARY=1 to skip (emits kind=runner_canary_skipped to
+  # .chump-locks/ambient.jsonl for audit).
   if ! command -v gh >/dev/null 2>&1; then
     echo "FAIL: gh CLI not installed"
     exit 1
@@ -83,14 +87,56 @@ cmd_check() {
   local online
   online=$(gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
     --jq '.runners[] | select(.status=="online") | .name' 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$online" -ge 1 ]; then
-    echo "OK: $online self-hosted runner(s) online for $REPO_OWNER/$REPO_NAME"
-    gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
-      --jq '.runners[] | "  - \(.name) [\(.os)] labels=\(.labels | map(.name) | join(","))"' 2>/dev/null
-    exit 0
-  else
+  if [ "$online" -lt 1 ]; then
     echo "FAIL: no online self-hosted runners for $REPO_OWNER/$REPO_NAME"
     echo "Hint: install one with 'scripts/setup/install-self-hosted-runner.sh'"
+    exit 1
+  fi
+
+  echo "OK: $online self-hosted runner(s) online for $REPO_OWNER/$REPO_NAME"
+  gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
+    --jq '.runners[] | "  - \(.name) [\(.os)] labels=\(.labels | map(.name) | join(","))"' 2>/dev/null
+
+  # INFRA-1568: broad canary gates "runner is ready" — narrow registration
+  # check is necessary but not sufficient. The 2026-05-16 cascade landed
+  # because narrow canary returned OK while three production steps were
+  # broken (INFRA-1556 chump-PATH, INFRA-1539 apt-guard, INFRA-1561 acp).
+  emit_canary_skipped_event() {
+    local reason="$1"
+    local repo_root
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    local ambient="$repo_root/.chump-locks/ambient.jsonl"
+    mkdir -p "$repo_root/.chump-locks" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"runner_canary_skipped","reason":"%s","host":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$reason" "$(hostname -s 2>/dev/null || echo unknown)" \
+      >> "$ambient" 2>/dev/null || true
+  }
+
+  if [ "${CHUMP_SKIP_CANARY:-0}" = "1" ] || [ "${SKIP_CANARY:-0}" = "1" ]; then
+    echo "WARN: --skip-canary set (CHUMP_SKIP_CANARY=1) — runner declared ready WITHOUT broad-canary pass."
+    echo "WARN: This bypasses the INFRA-1568 lane-readiness gate. Logging to ambient.jsonl."
+    emit_canary_skipped_event "operator_override"
+    exit 0
+  fi
+
+  local canary_script
+  canary_script="$(git rev-parse --show-toplevel 2>/dev/null)/scripts/setup/test-runner-lane-broad-canary.sh"
+  if [ ! -x "$canary_script" ]; then
+    echo "WARN: broad canary script not found at $canary_script"
+    echo "WARN: skipping canary gate. Run from a Chump checkout for full validation."
+    emit_canary_skipped_event "canary_script_missing"
+    exit 0
+  fi
+
+  echo
+  echo "── Broad canary (INFRA-1568) ──"
+  echo "Running full production-step set against this lane. Set CHUMP_SKIP_CANARY=1 to skip."
+  if bash "$canary_script"; then
+    echo "OK: broad canary passed — runner is ready."
+    exit 0
+  else
+    echo "FAIL: broad canary detected production-step failures. Runner is NOT ready." >&2
+    echo "Fix the failing steps before relying on this lane for production CI." >&2
     exit 1
   fi
 }
@@ -292,15 +338,60 @@ EOF
   echo
   echo "View logs:"
   echo "  tail -f $HOME/Library/Logs/Chump/actions-runner.log"
+
+  # INFRA-1568: tighten exit condition — installing the runner is not the same
+  # as declaring the lane production-ready. The broad canary asserts every
+  # production workflow step still passes on this lane before we exit 0.
+  if [ "${SKIP_CANARY:-0}" = "1" ]; then
+    echo
+    echo "WARN: --skip-canary / CHUMP_SKIP_CANARY=1 — exiting 0 without broad-canary validation."
+    echo "WARN: Lane is registered but NOT validated for production CI."
+    emit_install_canary_skipped_event() {
+      local repo_root
+      repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+      local ambient="$repo_root/.chump-locks/ambient.jsonl"
+      mkdir -p "$repo_root/.chump-locks" 2>/dev/null || true
+      printf '{"ts":"%s","kind":"runner_canary_skipped","reason":"%s","host":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "install_skip_canary_flag" "$(hostname -s 2>/dev/null || echo unknown)" \
+        >> "$ambient" 2>/dev/null || true
+    }
+    emit_install_canary_skipped_event
+    exit 0
+  fi
+
+  local canary_script
+  canary_script="$(git rev-parse --show-toplevel 2>/dev/null)/scripts/setup/test-runner-lane-broad-canary.sh"
+  if [ -x "$canary_script" ]; then
+    echo
+    echo "── Broad canary (INFRA-1568) — gates exit-0 ──"
+    echo "Asserting full production-step set passes on this lane before declaring ready."
+    if ! bash "$canary_script"; then
+      echo "FAIL: broad canary detected production-step failures." >&2
+      echo "Runner is registered with GitHub but is NOT yet production-ready." >&2
+      echo "Fix the failing steps, then re-run --check to confirm readiness." >&2
+      exit 1
+    fi
+    echo "OK: broad canary passed — runner is production-ready."
+  fi
 }
 
 # Dispatch
 TOKEN=""
+SKIP_CANARY="${SKIP_CANARY:-${CHUMP_SKIP_CANARY:-0}}"
+# Allow --skip-canary anywhere in the argv.
+for a in "$@"; do
+  case "$a" in
+    --skip-canary) SKIP_CANARY=1 ;;
+  esac
+done
+export SKIP_CANARY CHUMP_SKIP_CANARY="$SKIP_CANARY"
+
 case "${1:-}" in
   --check)     cmd_check  ;;
   --uninstall) shift; while [ $# -gt 0 ]; do case "$1" in --token) TOKEN="$2"; shift 2 ;; *) shift ;; esac; done; cmd_uninstall ;;
   --upgrade)   cmd_upgrade ;;
   --token)     TOKEN="${2:-}"; cmd_install ;;
+  --skip-canary) cmd_install ;;
   -h|--help)   usage 0 ;;
   "")          cmd_install ;;
   *)           echo "Unknown arg: $1"; usage 1 ;;
