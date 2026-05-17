@@ -63,10 +63,10 @@ emit_ambient() {
     fi
 }
 
-# INFRA-1440: auto-invoke target-dir-reaper --critical when disk_critical fires.
-# Capped to REAPER_TIMEOUT seconds so monitor never hangs. Emits
-# disk_critical_auto_remediated with freed_gb on completion.
-auto_remediate_disk() {
+# INFRA-1437: auto-invoke target-dir-reaper --critical when disk_critical fires.
+# Bounded by a manual wait loop with kill -TERM fallback so the monitor can
+# never hang. Emits disk_critical_auto_remediated with freed_gb on completion.
+auto_remediate_disk_critical() {
     if [[ "$AUTO_REMEDIATE" != "1" ]]; then
         log "auto-remediation disabled (CHUMP_DISK_AUTO_REMEDIATE=0)"
         return 0
@@ -76,12 +76,27 @@ auto_remediate_disk() {
         return 0
     fi
     if [[ "$DRY" -eq 1 ]]; then
-        log "DRY-RUN: would invoke: timeout ${REAPER_TIMEOUT} bash $REAPER_SCRIPT --execute --critical"
+        log "DRY-RUN: would invoke: bash $REAPER_SCRIPT --execute --critical (budget ${REAPER_TIMEOUT}s, kill -TERM fallback)"
         return 0
     fi
-    log "auto-remediation: invoking target-dir-reaper --execute --critical (timeout ${REAPER_TIMEOUT}s)…"
-    local reaper_out
-    reaper_out="$(timeout "${REAPER_TIMEOUT}" bash "$REAPER_SCRIPT" --execute --critical 2>&1 || true)"
+    log "auto-remediation: invoking target-dir-reaper --execute --critical (budget ${REAPER_TIMEOUT}s)…"
+    local reaper_out reaper_tmp reaper_pid waited
+    reaper_tmp="$(mktemp)"
+    bash "$REAPER_SCRIPT" --execute --critical >"$reaper_tmp" 2>&1 &
+    reaper_pid=$!
+    waited=0
+    while kill -0 "$reaper_pid" 2>/dev/null; do
+        if [[ "$waited" -ge 60 ]]; then
+            log "WARN: reaper exceeded 60s budget (REAPER_TIMEOUT=${REAPER_TIMEOUT}s) — sending kill -TERM"
+            kill -TERM "$reaper_pid" 2>/dev/null || true
+            wait "$reaper_pid" 2>/dev/null || true
+            break
+        fi
+        sleep 1
+        waited=$(( waited + 1 ))
+    done
+    reaper_out="$(cat "$reaper_tmp" 2>/dev/null || true)"
+    rm -f "$reaper_tmp"
     log "$reaper_out"
 
     # Parse freed GB from summary line: "✓  summary: reaped N, skipped M, freed X.YGB"
@@ -132,15 +147,17 @@ for dir in "${MONITOR_DIRS[@]}"; do
         else
             log "DRY-RUN: would touch $PAUSE_FILE"
         fi
-        # INFRA-1440: auto-invoke reaper in critical mode to reclaim disk immediately.
-        auto_remediate_disk
+        # INFRA-1437: close the alert→action loop. Auto-invoke the
+        # target-dir-reaper in --critical mode so disk gets reclaimed
+        # without operator intervention. Bounded by budget with kill -TERM fallback.
+        auto_remediate_disk_critical
         TRIGGERED=1
     elif [[ "$free_pct" -lt "$CRITICAL_PCT" ]]; then
         body="CRITICAL: ${free_pct}% free on ${dir} (critical threshold ${CRITICAL_PCT}%). df: ${df_out}"
         log "CRITICAL: $body"
         emit_ambient "disk_critical" "$body" '"level":"CRITICAL","dir":"'"$dir"'","free_pct":'"$free_pct"
-        # INFRA-1440: auto-invoke reaper in critical mode to reclaim disk immediately.
-        auto_remediate_disk
+        # INFRA-1437: close the alert→action loop for CRITICAL tier.
+        auto_remediate_disk_critical
         TRIGGERED=1
     elif [[ "$free_pct" -lt "$WARN_PCT" ]]; then
         body="disk pressure: ${free_pct}% free on ${dir} (warn threshold ${WARN_PCT}%). df: ${df_out}"
