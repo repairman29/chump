@@ -4108,3 +4108,31 @@ events:
       registry-state drift). Closes the bypass-debt from PR #2348.
     consumers: [content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
     fields_required: [ts, kind, run_id, reason]
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr_number, mode]
+
+  # ── CREDIBLE-068: Merge Queue Health Stream ──────────────────────────────────
+
+  - kind: merge_queue_health
+    effect_metric: queue_saturation_pct
+    emitter: scripts/coord/monitor-merge-queue.sh (CREDIBLE-068)
+    trigger: >
+      Periodic (every 10 s) poll of queued GitHub Actions runs and open PRs
+      with autoMergeRequest enabled. Provides real-time merge queue depth to
+      fleet_health and agent_backpressure consumers so workers can self-throttle
+      before saturating the CI runner pool.
+    consumers: [fleet_health, agent_backpressure]
+    fields_required: [ts, kind, queued_workflows, auto_merge_prs, queue_saturation_pct, backpressure_recommended]
+    thresholds:
+      queue_alert: 50     # saturation denominator; >70% → backpressure_recommended=true
+      queue_critical: 100 # advisory log when queued_workflows ≥ this value
+
+  - kind: queue_health_check_failed
+    effect_metric: self
+    emitter: scripts/coord/monitor-merge-queue.sh (CREDIBLE-068)
+    trigger: >
+      gh API call for merge-queue metrics timed out or returned an error.
+      Advisory-only; fleet assumes queue is healthy and continues. Rising
+      frequency of this event indicates GitHub API degradation.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, note]
