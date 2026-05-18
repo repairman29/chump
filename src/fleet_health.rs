@@ -72,6 +72,9 @@ pub struct HealthReport {
     pub commits_behind: u64,
     pub session_rescues_24h: u64,
     pub ambient_recent: Vec<AmbientSummary>,
+    // INFRA-1504: binary freshness
+    pub binary_age_h: f64,
+    pub binary_stale: bool,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -234,6 +237,21 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         signals.push(s);
     }
 
+    // ── 9. Binary freshness (INFRA-1504) ─────────────────────────────────────
+    let (binary_age_h, binary_stale) = compute_binary_age();
+    if binary_stale {
+        let s = HealthSignal {
+            name: "binary_stale".into(),
+            penalty: 5,
+            detail: format!(
+                "chump binary is {:.1}h old (>24h) — run `chump upgrade`",
+                binary_age_h
+            ),
+        };
+        total_penalty += s.penalty;
+        signals.push(s);
+    }
+
     // ── Score + grade ─────────────────────────────────────────────────────────
     let raw_score = (100i64 - total_penalty).max(0).min(100);
     let score = raw_score as u8;
@@ -264,7 +282,113 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         commits_behind,
         session_rescues_24h,
         ambient_recent: collect_ambient_recent(repo_root),
+        binary_age_h,
+        binary_stale,
     }
+}
+
+/// INFRA-1504: detect install method and upgrade the chump binary.
+///
+/// Detection order:
+///   1. `brew list chump` succeeds  → brew upgrade chump
+///   2. current_exe is under ~/.cargo/bin/ → cargo install --force chump
+///   3. otherwise                   → manual instructions
+pub fn run_upgrade(dry_run: bool) {
+    let method = detect_upgrade_method();
+    match method {
+        UpgradeMethod::Brew => {
+            let cmd = "brew upgrade chump";
+            println!("Detected install method: homebrew");
+            if dry_run {
+                println!("Would run: {cmd}");
+            } else {
+                println!("Running: {cmd}");
+                let status = std::process::Command::new("brew")
+                    .args(["upgrade", "chump"])
+                    .status();
+                match status {
+                    Ok(s) if s.success() => println!("chump upgraded via brew."),
+                    Ok(s) => {
+                        eprintln!("brew upgrade exited with {s}");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to run brew: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+        UpgradeMethod::Cargo => {
+            let cmd = "cargo install --force chump";
+            println!("Detected install method: cargo");
+            if dry_run {
+                println!("Would run: {cmd}");
+            } else {
+                println!("Running: {cmd}");
+                let status = std::process::Command::new("cargo")
+                    .args(["install", "--force", "chump"])
+                    .status();
+                match status {
+                    Ok(s) if s.success() => println!("chump upgraded via cargo."),
+                    Ok(s) => {
+                        eprintln!("cargo install exited with {s}");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to run cargo: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+        UpgradeMethod::Manual => {
+            println!("Detected install method: manual (binary not managed by brew or cargo)");
+            println!();
+            println!("To upgrade, download the latest release from:");
+            println!("  https://github.com/jeffadkins1/Chump/releases/latest");
+            println!("and replace the binary at:");
+            if let Ok(exe) = std::env::current_exe() {
+                println!("  {}", exe.display());
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum UpgradeMethod {
+    Brew,
+    Cargo,
+    Manual,
+}
+
+fn detect_upgrade_method() -> UpgradeMethod {
+    // 1. brew
+    if std::process::Command::new("brew")
+        .args(["list", "chump"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return UpgradeMethod::Brew;
+    }
+
+    // 2. cargo — binary lives under ~/.cargo/bin/
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_str = exe.to_string_lossy();
+        let home = std::env::var("HOME").unwrap_or_default();
+        if !home.is_empty() && exe_str.starts_with(&format!("{home}/.cargo/bin/")) {
+            return UpgradeMethod::Cargo;
+        }
+        // Also check CARGO_HOME if set
+        if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
+            if exe_str.starts_with(&format!("{cargo_home}/bin/")) {
+                return UpgradeMethod::Cargo;
+            }
+        }
+    }
+
+    UpgradeMethod::Manual
 }
 
 pub fn emit(repo_root: &Path, report: &HealthReport) {
@@ -292,7 +416,7 @@ impl HealthReport {
             .map(|s| format!(r#""{}""#, json_escape(&s.name)))
             .unwrap_or_else(|| r#"null"#.to_string());
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr}}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs}}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -310,6 +434,8 @@ impl HealthReport {
             auth = self.auth_ok,
             cb = self.commits_behind,
             sr = self.session_rescues_24h,
+            bah = self.binary_age_h,
+            bs = self.binary_stale,
         )
     }
 
@@ -351,7 +477,7 @@ impl HealthReport {
             })
             .collect();
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"ambient_recent":[{recent}]}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs},"ambient_recent":[{recent}]}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -372,6 +498,8 @@ impl HealthReport {
             auth = self.auth_ok,
             cb = self.commits_behind,
             sr = self.session_rescues_24h,
+            bah = self.binary_age_h,
+            bs = self.binary_stale,
             recent = recent_json.join(","),
         )
     }
@@ -431,6 +559,15 @@ impl HealthReport {
             "  Rescues:  {} operator rescue(s) in last 24h\n",
             self.session_rescues_24h
         ));
+        out.push_str(&format!(
+            "  Binary:   {:.1}h old{}",
+            self.binary_age_h,
+            if self.binary_stale {
+                "  ⚠  STALE (>24h) — run `chump upgrade`\n"
+            } else {
+                "\n"
+            }
+        ));
         if !self.signals.is_empty() {
             out.push_str("\n  Penalties:\n");
             for s in &self.signals {
@@ -457,6 +594,30 @@ impl HealthReport {
 }
 
 // ── Sub-collectors ────────────────────────────────────────────────────────────
+
+/// INFRA-1504: return (age_hours, is_stale) for the running chump binary.
+/// Falls back to (0.0, false) if the mtime is unreadable.
+fn compute_binary_age() -> (f64, bool) {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(_) => return (0.0, false),
+    };
+    let meta = match std::fs::metadata(&exe) {
+        Ok(m) => m,
+        Err(_) => return (0.0, false),
+    };
+    let mtime = match meta.modified() {
+        Ok(t) => t,
+        Err(_) => return (0.0, false),
+    };
+    let age_secs = std::time::SystemTime::now()
+        .duration_since(mtime)
+        .unwrap_or_default()
+        .as_secs_f64();
+    let age_h = age_secs / 3600.0;
+    let stale = age_h > 24.0;
+    (age_h, stale)
+}
 
 fn collect_lease_info(repo_root: &Path) -> (usize, usize) {
     let lock_dir = repo_root.join(".chump-locks");
@@ -1192,6 +1353,8 @@ mod tests {
             commits_behind: 0,
             session_rescues_24h: 0,
             ambient_recent: vec![],
+            binary_age_h: 0.0,
+            binary_stale: false,
         };
         let json = report.render_event_json();
         assert!(json.contains(r#""kind":"fleet_health""#), "kind field");
@@ -1233,6 +1396,8 @@ mod tests {
             commits_behind: 0,
             session_rescues_24h: 0,
             ambient_recent: vec![],
+            binary_age_h: 0.0,
+            binary_stale: false,
         };
         let text = report.render_text();
         assert!(text.contains("75/100"), "score in text");
@@ -1265,6 +1430,8 @@ mod tests {
             commits_behind: 0,
             session_rescues_24h: 0,
             ambient_recent: vec![],
+            binary_age_h: 0.0,
+            binary_stale: false,
         };
         let json = report.render_json();
         assert!(json.starts_with('{'), "starts with {{");
@@ -1310,6 +1477,8 @@ mod tests {
             commits_behind: 0,
             session_rescues_24h: 0,
             ambient_recent: vec![],
+            binary_age_h: 0.0,
+            binary_stale: false,
         };
         emit(&tmp, &report);
         let contents = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl")).unwrap();
