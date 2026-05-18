@@ -92,6 +92,8 @@ _BM_LAST_STEP_TRANSITION=""  # "start" or "done" — detect open transitions on 
 _BM_HEALTH_PID=""
 _BM_WATCHDOG_PID=""
 _BM_CLEANUP_DONE=0
+# INFRA-1422: per-stage budget watchdog PID (separate from gap-done watchdog).
+__STAGE_BUDGET_PID=""
 
 # INFRA-1035: append one JSONL entry to the steps file.
 # Usage: _bm_steps_append <transition> <step> [elapsed_s]
@@ -110,6 +112,8 @@ _bm_cleanup() {
     _BM_CLEANUP_DONE=1
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
+    # INFRA-1422: cancel any live stage-budget watchdog on exit.
+    [[ -n "${__STAGE_BUDGET_PID:-}" ]] && kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
     # INFRA-1035: if the last transition was "start" (no matching "done"),
     # we crashed mid-step — record that so bot-merge-recover.sh can report it.
@@ -549,17 +553,69 @@ apply_pr_parallelism_label() {
 
 __STAGE_LABEL=""
 __STAGE_T0=0
+
+# INFRA-1422: emit kind=botmerge_wedged to ambient and print an actionable message.
+# Called by the per-stage budget watchdog when a stage exceeds CHUMP_BOT_MERGE_STAGE_BUDGET_S.
+_emit_botmerge_wedged() {
+    local stage="${1:-${__STAGE_LABEL:-unknown}}"
+    local elapsed_s="${2:-0}"
+    local budget_s="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
+    local ts gap_label ambient
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"botmerge_wedged","stage":"%s","elapsed_s":%d,"budget_s":%d,"gap":"%s","note":"INFRA-1422: stage exceeded budget; set CHUMP_BOT_MERGE_RECOVERY_MODE=1 on retry"}\n' \
+        "$ts" "$stage" "$elapsed_s" "$budget_s" "$gap_label" \
+        >> "$ambient" 2>/dev/null || true
+    printf '\033[0;31mERROR (INFRA-1422): stage "%s" exceeded budget %ds (elapsed %ds).\033[0m\n' \
+        "$stage" "$budget_s" "$elapsed_s" >&2
+    printf '\033[0;31m  → kind=botmerge_wedged emitted. Retry with:\033[0m\n' >&2
+    printf '\033[0;31m      CHUMP_BOT_MERGE_RECOVERY_MODE=1 bash scripts/coord/bot-merge.sh --gap %s --auto-merge\033[0m\n' \
+        "$gap_label" >&2
+}
+
 stage_start() {
     __STAGE_LABEL="$1"
     __STAGE_T0=$(date +%s)
-    info "▶ $__STAGE_LABEL starting …"
+    local budget="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
+    info "▶ $__STAGE_LABEL starting … (budget ${budget}s)"
     # INFRA-119: keep step file current so the health-file writer tracks progress
     [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
     # INFRA-1035: record transition start in the steps log
     _bm_steps_append "start" "$__STAGE_LABEL" 0
+    # INFRA-1422: launch per-stage budget watchdog. Fires after CHUMP_BOT_MERGE_STAGE_BUDGET_S
+    # seconds if the stage hasn't called stage_done(). Emits botmerge_wedged + kills bot-merge.
+    if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
+        __STAGE_BUDGET_PID=""
+    fi
+    local _parent_pid=$$
+    local _stage_label="$__STAGE_LABEL"
+    local _stage_t0="$__STAGE_T0"
+    (
+        sleep "$budget" 2>/dev/null
+        # If we wake up the stage is still running — fire the circuit breaker.
+        local _elapsed=$(( $(date +%s) - _stage_t0 ))
+        CHUMP_BOT_MERGE_STAGE_BUDGET_S="$budget" \
+            GAP_IDS=("${GAP_IDS[@]:-}") \
+            GAP_ID="${GAP_ID:-}" \
+            REPO_ROOT="${REPO_ROOT:-.}" \
+            CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-}" \
+            _emit_botmerge_wedged "$_stage_label" "$_elapsed"
+        kill -TERM "$_parent_pid" 2>/dev/null || true
+    ) &
+    __STAGE_BUDGET_PID=$!
+    disown "$__STAGE_BUDGET_PID" 2>/dev/null || true
 }
+
 stage_done() {
+    # INFRA-1422: cancel the per-stage budget watchdog — normal completion.
+    if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
+        __STAGE_BUDGET_PID=""
+    fi
     local elapsed=$(( $(date +%s) - __STAGE_T0 ))
+    local budget="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
     info "✓ $__STAGE_LABEL done (${elapsed}s)"
     # INFRA-1035: record transition done in the steps log
     _bm_steps_append "done" "$__STAGE_LABEL" "$elapsed"
@@ -571,6 +627,11 @@ stage_done() {
     printf '{"ts":"%s","kind":"bot_merge_phase_duration","phase":"%s","elapsed_s":%d,"gap":"%s","branch":"%s"}\n' \
         "$_sd_ts" "$__STAGE_LABEL" "$elapsed" "$_sd_gap" "${BRANCH:-unknown}" \
         >> "$_sd_amb" 2>/dev/null || true
+    # INFRA-1422: belt-and-suspenders — if stage completed but over budget, emit wedge signal.
+    if [[ "$elapsed" -ge "$budget" ]]; then
+        _emit_botmerge_wedged "$__STAGE_LABEL" "$elapsed"
+        exit 1
+    fi
 }
 
 run() {
@@ -1019,6 +1080,48 @@ if [[ "${DRY_RUN:-0}" != "1" && "${CHUMP_BOT_MERGE_NO_TEE:-0}" != "1" ]]; then
     # duplicated into the log file. tee runs in its own subprocess that
     # exits when the script's fd 1/2 close.
     exec > >(tee -a "$_BM_LOG_FILE") 2>&1
+fi
+
+# ── INFRA-1422: recovery-mode fast path ──────────────────────────────────────
+# When a prior run emitted botmerge_wedged, the operator retries with
+# CHUMP_BOT_MERGE_RECOVERY_MODE=1.  In recovery mode we skip all expensive
+# stages (rebase, clippy, test) and directly push + create/update the PR +
+# arm auto-merge.  This is safe because the branch already passed the full
+# pipeline before wedging; we only need to retry the network I/O leg.
+if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
+    info "INFRA-1422: CHUMP_BOT_MERGE_RECOVERY_MODE=1 — skipping rebase/lint/test, fast-path push + PR + auto-merge"
+    _bm_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _gap_lbl="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    _bm_recover_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"botmerge_recovery_start","gap":"%s","branch":"%s","note":"INFRA-1422 fast-path retry"}\n' \
+        "$_bm_ts" "$_gap_lbl" "${BRANCH:-unknown}" >> "$_bm_recover_amb" 2>/dev/null || true
+
+    stage_start "recovery: push"
+    run git push -u origin "$BRANCH" --force-with-lease
+    stage_done
+
+    stage_start "recovery: pr create/update"
+    # Check if PR already exists for this branch.
+    _recover_pr_num="$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+    if [[ -z "$_recover_pr_num" ]]; then
+        _recover_pr_num="$(gh pr create --base main --head "$BRANCH" \
+            --title "$(git log -1 --pretty=%s)" \
+            --body "Recovery push — INFRA-1422 stage-budget circuit breaker retry." \
+            --json number --jq '.number' 2>/dev/null || true)"
+    fi
+    stage_done
+
+    if [[ -n "$_recover_pr_num" && "${AUTO_MERGE:-0}" == "1" ]]; then
+        stage_start "recovery: arm auto-merge"
+        gh pr merge "$_recover_pr_num" --auto --squash 2>/dev/null || true
+        stage_done
+        info "INFRA-1422: PR #$_recover_pr_num armed for auto-merge (recovery path)"
+    fi
+
+    printf '{"ts":"%s","kind":"botmerge_recovery_done","gap":"%s","pr":"%s","branch":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gap_lbl" "${_recover_pr_num:-?}" "${BRANCH:-unknown}" \
+        >> "$_bm_recover_amb" 2>/dev/null || true
+    exit 0
 fi
 
 # ── INFRA-539: probe GitHub API before doing any real work ────────────────────

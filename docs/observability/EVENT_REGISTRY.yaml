@@ -1148,6 +1148,29 @@ events:
     trigger: cross-PR CI blocker detected
     consumers: [operator-recall]
 
+  - kind: botmerge_wedged
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh stage_start watchdog + stage_done (INFRA-1422)
+    trigger: >
+      A bot-merge stage exceeded CHUMP_BOT_MERGE_STAGE_BUDGET_S (default 300s);
+      watchdog fires, emits this event, and sends SIGTERM to the bot-merge process.
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, stage, elapsed_s, budget_s, gap]
+
+  - kind: botmerge_recovery_start
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1422 CHUMP_BOT_MERGE_RECOVERY_MODE=1)
+    trigger: operator retried bot-merge with RECOVERY_MODE=1 after a wedge event; fast-path push+PR+merge starts
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, gap, branch]
+
+  - kind: botmerge_recovery_done
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1422 CHUMP_BOT_MERGE_RECOVERY_MODE=1)
+    trigger: recovery fast-path completed; PR created/updated and auto-merge armed
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, gap, pr, branch]
+
   - kind: bot_merge_hang
     effect_metric: self
     emitter: scripts/ops/stuck-bot-merge.sh
