@@ -198,7 +198,7 @@ while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind known_b
 
     # INFRA-538 smoke test needs the chump binary. Skip if not built —
     # CI builds it before this runner, but local invocations may not.
-    if [[ "$gate_id" == "INFRA-538-state-db-restore" ]] && [[ ! -x "$REPO_ROOT/target/debug/chump" ]] && [[ ! -x "$REPO_ROOT/target/release/chump" ]]; then
+    if [[ "$gate_id" == "INFRA-538-state-db-restore" ]] && [[ ! -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]] && [[ ! -x "$REPO_ROOT/target/release/chump" ]]; then
         skipped=$((skipped + 1))
         info "$gate_id — SKIP (chump binary not built — run 'cargo build --bin chump' first)"
         continue

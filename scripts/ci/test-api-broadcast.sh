@@ -11,7 +11,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-BIN="$REPO_ROOT/target/debug/chump"
+BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 [ -x "$BIN" ] || { echo "[test-api-broadcast] chump binary missing at $BIN; cargo build first" >&2; exit 1; }
 
 PORT="${TEST_PORT:-13848}"

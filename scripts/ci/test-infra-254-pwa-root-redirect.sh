@@ -34,16 +34,20 @@ cargo build --bin chump --quiet 2>&1 | tail -3
 
 # Boot the server in the background. CHUMP_PREWARM=0 skips the Ollama
 # warm-up call (we don't need an LLM for this test).
-CHUMP_PREWARM=0 ./target/debug/chump --web --port "$PORT" >"$LOG" 2>&1 &
+# INFRA-1600 follow-up: honor $CARGO_TARGET_DIR (shared cache on self-hosted runners).
+CHUMP_BIN_PATH="${CARGO_TARGET_DIR:-./target}/debug/chump"
+CHUMP_PREWARM=0 "$CHUMP_BIN_PATH" --web --port "$PORT" >"$LOG" 2>&1 &
 PID=$!
 
-# Wait for "listening on" up to 20s.
-for _ in $(seq 1 40); do
+# Wait for "listening on" up to 60s (INFRA-1600 follow-up: was 20s, flaked
+# repeatedly under self-hosted runner load — concurrent cargo builds on
+# CARGO_TARGET_DIR shared cache contend with `chump --web` startup).
+for _ in $(seq 1 120); do
     if grep -q "listening on" "$LOG" 2>/dev/null; then break; fi
     sleep 0.5
 done
 if ! grep -q "listening on" "$LOG"; then
-    echo "[FAIL] server did not start within 20s; log tail:"
+    echo "[FAIL] server did not start within 60s; log tail:"
     tail -20 "$LOG"
     exit 1
 fi

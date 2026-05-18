@@ -15,7 +15,7 @@ pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
 fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+BIN="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 [ -x "$BIN" ] || BIN="${HOME}/.cargo/bin/chump"
 [ -x "$BIN" ] || { echo "no chump binary found (built or installed)"; exit 0; }
 

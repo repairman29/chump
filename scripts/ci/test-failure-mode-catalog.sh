@@ -13,7 +13,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CATALOG="$REPO_ROOT/docs/process/FAILURE_MODES.yaml"
-CHUMP="$REPO_ROOT/target/debug/chump"
+CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 PASS=0
 FAIL=0
 

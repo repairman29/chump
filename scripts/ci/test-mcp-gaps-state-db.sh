@@ -13,7 +13,7 @@ if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
 elif [[ -f "$HOME/.cache/chump-fleet-target/debug/chump-mcp-gaps" ]]; then
   BIN="$HOME/.cache/chump-fleet-target/debug/chump-mcp-gaps"
 else
-  BIN="$REPO_ROOT/target/debug/chump-mcp-gaps"
+  BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump-mcp-gaps"
 fi
 
 if [[ ! -x "$BIN" ]]; then

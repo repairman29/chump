@@ -32,8 +32,8 @@ fail() { printf '  [FAIL] %s\n' "$*" >&2; FAIL=$((FAIL+1)); }
 # ── Locate binary ──────────────────────────────────────────────────────────
 if [[ -n "${CHUMP_BIN:-}" ]]; then
     CHUMP="$CHUMP_BIN"
-elif [[ -f "$REPO_ROOT/target/debug/chump" ]]; then
-    CHUMP="$REPO_ROOT/target/debug/chump"
+elif [[ -f "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 elif [[ -f "$REPO_ROOT/target/release/chump" ]]; then
     CHUMP="$REPO_ROOT/target/release/chump"
 else

@@ -22,6 +22,12 @@
 
 set -euo pipefail
 
+# INFRA-1600: source flock-discovery helper at top of script — sets $FLOCK_BIN
+# to absolute path of flock binary (handles brew util-linux keg-only case on
+# self-hosted runners). Helper exits with diagnostic if flock not found.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 # ── CREDIBLE-037: harness attribution ─────────────────────────────────────────
 _HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
 _HARNESS_ALERTED=false
@@ -129,8 +135,8 @@ JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORK
 # ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
 if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then
     _alert_json="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"kind\":\"missing_attribution\",\"event\":\"ALERT\",\"harness\":\"$_HARNESS\",\"hint\":\"CHUMP_AGENT_HARNESS not set; defaulting to 'unknown'. Set via env var or --harness flag.\"}"
-    if command -v flock &>/dev/null; then
-        ( flock -x 200; printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG" ) 200>"${AMBIENT_LOG}.lock"
+    if command -v "$FLOCK_BIN" &>/dev/null; then
+        ( "$FLOCK_BIN" -x 200; printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG" ) 200>"${AMBIENT_LOG}.lock"
     else
         printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG"
     fi
@@ -232,10 +238,10 @@ PYEOF
     fi
 fi
 
-# ── Atomic append (flock if available, plain >> otherwise) ───────────────────
-if command -v flock &>/dev/null; then
+# ── Atomic append ("$FLOCK_BIN" if available, plain >> otherwise) ───────────────────
+if command -v "$FLOCK_BIN" &>/dev/null; then
     (
-        flock -x 200
+        "$FLOCK_BIN" -x 200
         printf '%s\n' "$JSON_LINE" >> "$AMBIENT_LOG"
     ) 200>"${AMBIENT_LOG}.lock"
 else

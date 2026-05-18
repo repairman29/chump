@@ -13,7 +13,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-BIN="$REPO_ROOT/target/debug/chump"
+BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 
 PASS=0
 FAIL=0

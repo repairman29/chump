@@ -19,8 +19,8 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [[ -n "${CHUMP_BIN:-}" ]]; then
     CHUMP="$CHUMP_BIN"
-elif [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-    CHUMP="$REPO_ROOT/target/debug/chump"
+elif [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 else
     CHUMP="$(command -v chump 2>/dev/null || echo chump)"
 fi

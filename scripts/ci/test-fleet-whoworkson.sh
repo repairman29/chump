@@ -48,8 +48,8 @@ fi
 if [[ -n "$SHARED_TARGET_DIR" && -x "$SHARED_TARGET_DIR/debug/chump" ]]; then
     CHUMP_BIN="$SHARED_TARGET_DIR/debug/chump"
     echo "  using chump: $CHUMP_BIN (shared target-dir build)"
-elif [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+elif [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     echo "  using chump: $CHUMP_BIN (local target-dir build)"
 elif command -v chump >/dev/null 2>&1; then
     CHUMP_BIN="$(command -v chump)"

@@ -15,7 +15,7 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1" >&2; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-BIN="$REPO_ROOT/target/debug/chump"
+BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 
 echo "=== CREDIBLE-061: chump gap list --json schema test ==="
 echo

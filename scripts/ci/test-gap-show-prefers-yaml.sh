@@ -52,8 +52,8 @@ fi
 CHUMP_BIN=""
 if command -v chump &>/dev/null; then
     CHUMP_BIN="chump"
-elif [ -f "$REPO_ROOT/target/debug/chump" ]; then
-    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+elif [ -f "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]; then
+    CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 fi
 
 if [ -n "$CHUMP_BIN" ]; then

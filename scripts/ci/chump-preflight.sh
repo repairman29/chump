@@ -54,7 +54,7 @@ echo "Probing Chump web at: $BASE"
 
 if ! chump_web_health_ok "$BASE"; then
   echo "FAIL: GET $BASE/api/health did not return chump-web JSON."
-  echo "Fix: start the web server — ./run-web.sh or CHUMP_WEB_PORT=3000 ./target/debug/chump --web"
+  echo "Fix: start the web server — ./run-web.sh or CHUMP_WEB_PORT=3000 ${CARGO_TARGET_DIR:-./target}/debug/chump --web"
   echo "Docs: docs/process/EXTERNAL_GOLDEN_PATH.md"
   exit 1
 fi

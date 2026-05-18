@@ -18,7 +18,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CHUMP_BIN="${CHUMP_BIN:-$(cd "$REPO_ROOT" && cargo build --bin chump -q 2>/dev/null && echo "$REPO_ROOT/target/debug/chump")}"
+CHUMP_BIN="${CHUMP_BIN:-$(cd "$REPO_ROOT" && cargo build --bin chump -q 2>/dev/null && echo "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump")}"
 
 if [[ ! -x "$CHUMP_BIN" ]]; then
     echo "SKIP: chump binary not found at $CHUMP_BIN"

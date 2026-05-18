@@ -18,8 +18,8 @@ CHUMP="${CHUMP_BIN:-}"
 
 # Resolve chump binary
 if [[ -z "$CHUMP" ]]; then
-    if [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-        CHUMP="$REPO_ROOT/target/debug/chump"
+    if [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+        CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     elif command -v chump &>/dev/null; then
         CHUMP="$(command -v chump)"
     else

@@ -21,8 +21,8 @@ echo "=== EFFECTIVE-008: CLI output format consistency ==="
 # ── Locate chump binary ───────────────────────────────────────────────────────
 CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
-  if [[ -f "$REPO_ROOT/target/debug/chump" ]]; then
-    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+  if [[ -f "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
   elif command -v chump &>/dev/null; then
     CHUMP_BIN="$(command -v chump)"
   fi

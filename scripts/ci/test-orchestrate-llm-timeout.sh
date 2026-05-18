@@ -65,7 +65,7 @@ fi
 
 # ── Resolve binary ────────────────────────────────────────────────────────────
 if [[ -z "${CHUMP_BIN:-}" ]]; then
-    CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+    CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 fi
 if [[ ! -x "$CHUMP_BIN" ]]; then
     _meta="$(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null \

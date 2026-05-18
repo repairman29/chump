@@ -17,7 +17,7 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CHUMP="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+CHUMP="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 FIXTURE="$REPO_ROOT/docs/test-fixtures/import-spec/sample-spec.md"
 
 echo "=== INFRA-636 chump gap import-spec test ==="

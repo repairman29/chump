@@ -25,7 +25,7 @@ fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
 echo "=== PRODUCT-129: POST /api/lease/release-expired tests ==="
 echo
 
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 if [[ ! -x "$CHUMP_BIN" ]]; then
     CHUMP_BIN="$(command -v chump 2>/dev/null || true)"
 fi

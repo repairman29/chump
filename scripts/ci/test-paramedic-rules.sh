@@ -28,8 +28,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
-
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 echo "=== INFRA-1375 paramedic rule tests ==="
 
 # ── prerequisites ─────────────────────────────────────────────────────────────

@@ -93,8 +93,22 @@ LEASE_FILE="$LOCK_DIR/${SAFE_ID}.json"
 # `chump gap reserve` SQLite counter. Inside the lock we run `chump`,
 # capture the ID, and write `pending_new_gap` so other tools (gap-preflight,
 # external_pending_ids) see the in-flight reserve immediately.
+#
+# INFRA-1600 follow-up: self-discover flock — brew util-linux is keg-only,
+# so flock isn't on default PATH on self-hosted CI runners.
+_FLOCK_BIN=""
+if command -v flock >/dev/null 2>&1; then
+    _FLOCK_BIN="flock"
+elif [[ -x /opt/homebrew/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/opt/homebrew/opt/util-linux/bin/flock"
+elif [[ -x /usr/local/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/usr/local/opt/util-linux/bin/flock"
+else
+    echo "[gap-reserve] ERROR: flock not found (tried PATH + brew keg paths)" >&2
+    exit 1
+fi
 exec 9>"$FLOCK_PATH"
-flock -x 9
+"$_FLOCK_BIN" -x 9
 
 # Drain any stale fd inheritance: chump must not see flock fd as a tty stdin.
 #

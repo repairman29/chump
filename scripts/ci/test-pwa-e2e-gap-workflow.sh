@@ -12,7 +12,7 @@
 # CI gate: required before any PR modifying spawn_gap_workflow in web_server.rs
 #
 # Run: bash scripts/ci/test-pwa-e2e-gap-workflow.sh
-# Run (with live HTTP): CHUMP_BIN=./target/debug/chump bash scripts/ci/test-pwa-e2e-gap-workflow.sh
+# Run (with live HTTP): CHUMP_BIN=${CARGO_TARGET_DIR:-./target}/debug/chump bash scripts/ci/test-pwa-e2e-gap-workflow.sh
 
 set -uo pipefail
 
@@ -95,7 +95,7 @@ fi
 # ── (e) Live HTTP integration ─────────────────────────────────────────────────
 echo "--- Tests 11-N: live HTTP integration (POST /api/gap/work → poll status) ---"
 
-REAL_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+REAL_BIN="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 SKIP_LIVE="${SKIP_LIVE:-0}"
 
 if [[ "$SKIP_LIVE" == "1" ]]; then

@@ -31,6 +31,10 @@
 
 set -uo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 _HF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HF_REPO_ROOT="${REPO_ROOT:-$(cd "$_HF_SCRIPT_DIR/../.." && pwd)}"
 HF_YAML="${CHUMP_HOT_FILES_YAML:-$HF_REPO_ROOT/scripts/coord/hot-files.yaml}"
@@ -88,7 +92,7 @@ _hf_sanitize() {
 }
 
 # Acquire flocks for any diff files that match the serialize list. Each lock
-# is a fresh file descriptor stored in HOT_FILE_LOCK_FDS. flock holds while
+# is a fresh file descriptor stored in HOT_FILE_LOCK_FDS. "$FLOCK_BIN" holds while
 # the FD is open — by the time the caller's shell exits, locks release.
 hot_file_lock_acquire() {
   if [[ "$HF_DISABLED" == "1" ]]; then
@@ -127,7 +131,8 @@ hot_file_lock_acquire() {
     lockfile="$HF_LOCK_DIR/hot-file-${sanitized}.lock"
     fd=$(( 200 + ${#HOT_FILE_LOCK_FDS[@]} ))
     eval "exec $fd>>\"\$lockfile\""
-    if ! flock -w "$HF_TIMEOUT" "$fd"; then
+
+    if ! "$FLOCK_BIN" -w "$HF_TIMEOUT" "$fd"; then
       _hf_log "ERROR: timed out waiting for $lockfile after ${HF_TIMEOUT}s"
       return 1
     fi

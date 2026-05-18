@@ -29,7 +29,7 @@ if [[ -z "$BINARY" || ! -x "$BINARY" ]]; then
     _GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || true)"
     _MAIN_WORK="$(dirname "$_GIT_COMMON" 2>/dev/null || true)"
     for _candidate in \
-        "$REPO_ROOT/target/debug/chump" \
+        "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" \
         "$REPO_ROOT/target/release/chump" \
         "${_MAIN_WORK}/target/debug/chump" \
         "${_MAIN_WORK}/target/release/chump"

@@ -6,7 +6,7 @@
 #
 # Run modes:
 #   bash scripts/ci/test-pwa-sse-consumer.sh        # source audit only
-#   CHUMP_BIN=./target/debug/chump bash …           # adds live HTTP smoke
+#   CHUMP_BIN=${CARGO_TARGET_DIR:-./target}/debug/chump bash …           # adds live HTTP smoke
 
 set -uo pipefail
 

@@ -36,7 +36,7 @@ if [[ ! -x "$BIN" ]]; then
     (cd "$REPO_ROOT" && cargo build -p chump-planner --bin chump-plan 2>&1 | tail -3)
     # Re-check after build; may now be in workspace target.
     if [[ ! -x "$BIN" ]]; then
-        BIN="$REPO_ROOT/target/debug/chump-plan"
+        BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump-plan"
     fi
 fi
 [[ -x "$BIN" ]] && ok "chump-plan binary built at $BIN" || { fail "build failed"; exit 1; }

@@ -11,13 +11,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/release/chump}"
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 
-if [[ ! -x "$CHUMP_BIN" ]]; then
-    echo "[gen-smoke] ERROR: chump binary not found at $CHUMP_BIN" >&2
-    echo "[gen-smoke] Build with: cargo build --release" >&2
-    exit 1
-fi
 
 PASS=0
 FAIL=0

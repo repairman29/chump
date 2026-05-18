@@ -20,7 +20,7 @@ trap 'rm -rf "$TMP"; [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/nul
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 
-CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
+source "$(dirname "$0")/lib/discover-chump-bin.sh"
 [[ -x "$CHUMP_BIN" ]] || fail "no chump binary at $CHUMP_BIN (set CHUMP_BIN)"
 
 # ── Mock gh CLI ──────────────────────────────────────────────────────────────

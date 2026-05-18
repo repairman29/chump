@@ -6,7 +6,7 @@
 #   2. fleet_state_flush is idempotent on an empty queue (returns 0, no ambient event)
 #   3. Last-write-wins per key: queue same key twice, flush applies last value
 #   4. Telemetry: fleet_state_batch_flush event in ambient.jsonl after flush
-#   5. Contention telemetry: fleet_state_lock_contention emitted when flock wait > 1s
+#   5. Contention telemetry: fleet_state_lock_contention emitted when "$FLOCK_BIN" wait > 1s
 #
 # Run:
 #   bash scripts/ci/test-fleet-state-batch-writes.sh
@@ -14,6 +14,10 @@
 # Exits non-zero on any check failure.
 
 set -euo pipefail
+
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 PASS=0
 FAIL=0
@@ -229,8 +233,9 @@ fi
 
 echo
 
-# ── Test 5: contention telemetry when flock wait > 1s ────────────────────────
-echo "--- Test 5: fleet_state_lock_contention emitted when flock wait > 1s ---"
+# ── Test 5: contention telemetry when "$FLOCK_BIN" wait > 1s ────────────────────────
+
+echo "--- Test 5: fleet_state_lock_contention emitted when "$FLOCK_BIN" wait > 1s ---"
 
 # Create a modified copy of emergency-fast-path.sh where _with_lock sleeps 1.5s
 # before running the body, simulating a slow lock acquisition.
@@ -256,7 +261,7 @@ stub_func = '''_with_lock() {
     _before_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || date +%s | awk '"'"'{print $1*1000}'"'"')
     {
         local flock_rc=0
-        flock -w "$_lock_timeout" 9 || flock_rc=$?
+        "$FLOCK_BIN" -w "$_lock_timeout" 9 || flock_rc=$?
         # Simulate slow lock acquisition for contention test.
         sleep 1.5
         _after_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || date +%s | awk '"'"'{print $1*1000}'"'"')
