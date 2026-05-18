@@ -14,6 +14,10 @@
 # Run from repo root: bash scripts/ci/test-meta-011-git-stomp.sh
 
 set -e
+
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
@@ -124,8 +128,6 @@ if [[ -f "$SANDBOX/.git/.chump-index-mutex" ]]; then
     pass ".git/.chump-index-mutex created by chump-commit.sh"
 else
     # "$FLOCK_BIN" may be absent (BSD/macOS); only fail if "$FLOCK_BIN" is available.
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
     if command -v "$FLOCK_BIN" >/dev/null 2>&1; then
         fail ".git/.chump-index-mutex not created despite "$FLOCK_BIN" being available"

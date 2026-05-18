@@ -19,6 +19,10 @@
 
 set -uo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 PASS=0; FAIL=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
@@ -40,8 +44,6 @@ AMB="$TMP/ambient.jsonl"
 # ── 1. Lock file created ──────────────────────────────────────────────────────
 echo "[1. Lock file created in LOCK_DIR]"
 # Use "$FLOCK_BIN" with a file path (not FD) for bash 3.x compatibility
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 "$FLOCK_BIN" -w 2 "$LOCK_FILE" true 2>/dev/null || true
 [[ -f "$LOCK_FILE" ]] && ok "lock file created at $LOCK_FILE" || {

@@ -38,6 +38,10 @@
 
 set -euo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
@@ -151,8 +155,6 @@ emit_to_inbox() {
     for r in "${recipients[@]}"; do
         local inbox_file="$inbox_dir/$r.jsonl"
         lock_file="$inbox_dir/.$r.lock"
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
         if command -v "$FLOCK_BIN" >/dev/null 2>&1; then
             (

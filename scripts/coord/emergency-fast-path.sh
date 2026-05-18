@@ -21,6 +21,10 @@
 
 set -euo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 # Resolve REPO_ROOT from this script's location to avoid INFRA-779
 # (git rev-parse --show-toplevel returns wrong path in linked worktrees on macOS).
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,8 +71,6 @@ _with_lock() {
         || date +%s 2>/dev/null | awk '{print $1*1000}' || echo 0)
     {
         local flock_rc=0
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
         "$FLOCK_BIN" -w "$_lock_timeout" 9 || flock_rc=$?
         _after_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null \

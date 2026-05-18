@@ -25,6 +25,10 @@
 
 set -euo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 
 # INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
 export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
@@ -237,8 +241,6 @@ fi
 #
 # Bypass: CHUMP_INDEX_LOCK=0
 _INDEX_MUTEX="$(git rev-parse --git-dir)/.chump-index-mutex"
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v "$FLOCK_BIN" >/dev/null 2>&1; then
     exec 200>>"$_INDEX_MUTEX"

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 # shellcheck disable=SC2001,SC2016,SC2018,SC2019,SC2086,SC1091  # pre-existing style/info issues; not introduced by INFRA-1241
 #
 # bot-merge.sh — Automated ship pipeline for agent branches.
@@ -1754,8 +1758,6 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     # applies all redirections to the shell permanently, which would silence
     # ALL subsequent stderr output and hide set -e exits as "silent" failures.
     exec 200>"$_bm_lock_file" || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
     if ! "$FLOCK_BIN" -w 60 200 2>/dev/null; then
         red "[INFRA-860] bot-merge.lock: timed out waiting 60s — another bot-merge is stuck?"

@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 YAML="$REPO_ROOT/scripts/coord/hot-files.yaml"
@@ -74,8 +78,6 @@ echo "warn_only: []" >> "$TMP/hot-files.yaml"
 LOCKFILE="$LOCK_DIR/hot-file-sentinel-path.lock"
 
 # Spawn process A that takes the lock and holds it for 2s.
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 ( "$FLOCK_BIN" -x 9 && sleep 2 ) 9>"$LOCKFILE" &
 PID_A=$!

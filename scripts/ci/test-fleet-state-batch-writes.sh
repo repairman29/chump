@@ -15,6 +15,10 @@
 
 set -euo pipefail
 
+# INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
+# shellcheck source=../lib/discover-flock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
 PASS=0
 FAIL=0
 FAILS=()
@@ -230,8 +234,6 @@ fi
 echo
 
 # ── Test 5: contention telemetry when "$FLOCK_BIN" wait > 1s ────────────────────────
-# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
-source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 echo "--- Test 5: fleet_state_lock_contention emitted when "$FLOCK_BIN" wait > 1s ---"
 
