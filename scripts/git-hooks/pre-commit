@@ -1693,6 +1693,20 @@ if [ -x "$EVENT_REGISTRY_HOOK" ]; then
     fi
 fi
 
+# 10b. EVENT_REGISTRY effect_metric completeness guard (INFRA-1517, 2026-05-17)
+# ------------------------------------------------------------------
+# Refuses commits that add a new entry to EVENT_REGISTRY.yaml without an
+# effect_metric field. Prevents "kind registered, but no metric proves it
+# does its job" — the pattern that blocked 8+ PRs on 2026-05-16.
+# Bypass: CHUMP_EFFECT_METRIC_CHECK=0 (add `Effect-Metric-Bypass: <reason>`
+# trailer to commit body).
+EFFECT_METRIC_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-effect-metric.sh"
+if [ -x "$EFFECT_METRIC_HOOK" ]; then
+    if ! "$EFFECT_METRIC_HOOK"; then
+        exit 1
+    fi
+fi
+
 # 11. Observability budget guard (INFRA-755, 2026-05-08)
 # ------------------------------------------------------------------
 # Refuses commits whose staged diff adds substantial feature code
