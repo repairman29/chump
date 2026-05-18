@@ -10677,8 +10677,80 @@ async fn main() -> Result<()> {
         }
 
         // Single-shot mode when a positional text arg follows "orchestrate".
-        if let Some(text) = args.get(2) {
-            let op = intent_parser::parse_intent(text);
+        // INFRA-1452: when pattern match returns Unknown, auto-fallback to LLM.
+        if let Some(text) = args.get(2).filter(|a| !a.starts_with("--")) {
+            let text = text.clone();
+
+            // --confirm-budget may appear anywhere after the intent text.
+            let confirm_budget = args[3..].iter().any(|a| a == "--confirm-budget");
+            if confirm_budget {
+                // Forward to budget checker via env var so helper stays pure.
+                std::env::set_var("CHUMP_INTENT_LLM_CONFIRM_BUDGET", "1");
+            }
+
+            let op = intent_parser::parse_intent(&text);
+
+            // ── LLM auto-fallback when stub pattern didn't recognize the intent ──
+            if matches!(&op, intent_parser::IntentOp::Unknown { .. }) {
+                if intent_parser::llm_provider_configured() {
+                    // Check daily budget envelope.
+                    match intent_parser::intent_llm_budget_check(&repo_root) {
+                        intent_parser::BudgetStatus::Exceeded { spend, cap } => {
+                            eprintln!(
+                                "hint: intent_parse_llm: daily budget exceeded \
+                                 (spent ${spend:.4}, cap ${cap:.4}) — \
+                                 re-run with --confirm-budget to override"
+                            );
+                            // Fall through to print intent_parse_unknown below.
+                        }
+                        intent_parser::BudgetStatus::Ok { per_call } => {
+                            // CI/test stub: CHUMP_INTENT_LLM_STUB_CMD bypasses the real call.
+                            let stub_cmd = std::env::var("CHUMP_INTENT_LLM_STUB_CMD").ok();
+                            let (resolved, provider_name) = if let Some(cmd) = stub_cmd {
+                                (Some(cmd), "stub".to_string())
+                            } else {
+                                // Real LLM call via provider cascade.
+                                let prompt = intent_parser::format_intent_prompt(&text);
+                                let provider = crate::provider_cascade::build_provider();
+                                let msgs = vec![axonerai::provider::Message {
+                                    role: "user".into(),
+                                    content: prompt,
+                                }];
+                                match provider.complete(msgs, None, Some(256), None).await {
+                                    Ok(resp) => {
+                                        let text_out = resp.text.unwrap_or_default();
+                                        let cmd = intent_parser::parse_llm_response(&text_out);
+                                        (cmd, "cascade".to_string())
+                                    }
+                                    Err(_) => (None, "cascade".to_string()),
+                                }
+                            };
+
+                            if let Some(cmd) = resolved {
+                                println!(
+                                    "{{\"intent\":{text:?},\"command\":{cmd:?},\
+                                     \"kind\":\"intent_parse_llm\",\"provider\":{provider_name:?}}}"
+                                );
+                                intent_parser::emit_intent_llm_event(
+                                    &text,
+                                    &cmd,
+                                    &provider_name,
+                                    &repo_root,
+                                );
+                                intent_parser::record_intent_llm_spend(&repo_root, per_call);
+                                return Ok(());
+                            }
+                            // LLM returned no TOOL: line — fall through to Unknown output.
+                        }
+                    }
+                } else {
+                    // No provider configured: print hint to stderr, still emit event.
+                    eprintln!(
+                        "hint: set ANTHROPIC_API_KEY to enable freeform intents"
+                    );
+                }
+            }
+
             let cmd = op.to_chump_command();
             println!(
                 "{{\"intent\":{text:?},\"command\":{cmd:?},\"kind\":\"{}\"}}",
