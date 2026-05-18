@@ -1,3 +1,296 @@
+## Issue #12 — 2026-05-18
+
+> Audit window: commits since 2026-05-11 (Issue #11). 50 commits to `origin/main`.
+> Sandbox: fresh clone. `gap-doctor.py doctor` crashed with `no such table: gaps` on entry — INFRA-821 confirmed live today. `chump gap import` run manually; state.db seeded with 538 gaps (2 blocked by similarity). `chump` binary built from source (v0.1.2, 8afa2e9).
+
+---
+
+### Status of Prior Issues (Issue #11)
+
+- **STILL_OPEN_INACTIVE**: G1 (INFRA-821, state.db empty on fresh clone) — 0 commits since 2026-05-11. Confirmed again today: `gap-doctor.py doctor` → `sqlite3.OperationalError: no such table: gaps`.
+  ```
+  git log origin/main --grep='INFRA-821' --oneline
+  (no output)
+  ```
+- **FIXED_BUT_REPLACED**: G2 (17 vague AC gaps, INFRA-822) — INFRA-1599/PR#2267 reduced to 1 vague gap (CREDIBLE-013). But INFRA-1599 itself remains `status: open` (OPEN-BUT-LANDED).
+- **CONTESTED**: O1 (INFRA-721 fleet brief, stated inactive in Issue #11) — `docs/gaps/INFRA-721.yaml` was added in PR #2225 (2026-05-16) with `status: done, closed_pr: 1302` baked in from creation. No commits reference INFRA-721. Retroactive registration, not verifiable closure. Classification: CONTESTED pending evidence that PR #1302 actually implemented the feature.
+  ```
+  git log origin/main --grep='INFRA-721' --oneline
+  (no output)
+  git show b257cb3 -- docs/gaps/INFRA-721.yaml | head -5
+  # new file, status: done already set — retroactive registration
+  ```
+- **STILL_OPEN_INACTIVE**: O2 (Review-as-Handoff sub-gaps) — INFRA-770(0 commits), INFRA-773(0 commits), INFRA-774(1 commit). INFRA-771 marked done. INFRA-772(1 commit). Mixed; 3 of 5 remaining sub-gaps have zero implementation commits.
+- **FIXED**: C1 (ZERO-WASTE pillar starvation) — ZERO-WASTE now has 44 open gaps. Resolved.
+- **WORSE**: C2 (shipped-but-not-closed gaps) — Issue #11 noted 3; canonical scan today: **99 OPEN-BUT-LANDED** gaps (12 P0, 61 P1). 33x regression.
+  ```
+  python3 scan of chump gap list --json vs git log: OPEN-BUT-LANDED count: 99
+  ```
+- **STILL_OPEN_INACTIVE**: R1 (INFRA-824, EVAL-101 protocol deviation re-run) — 0 commits. EVAL-102 also filed and has 0 commits.
+  ```
+  git log origin/main --grep='INFRA-824' --oneline
+  (no output)
+  git log origin/main --grep='EVAL-102' --oneline
+  (no output)
+  ```
+- **STILL_OPEN_INACTIVE**: FLEET-053 (NATS deployment incomplete, P0, filed 2026-05-12 by Cold Water) — 0 commits in 6 days.
+  ```
+  git log origin/main --grep='FLEET-053' --oneline
+  (no output)
+  ```
+- **NO_GAP → filed this cycle**: INFRA-1611 (486/540 gaps missing opened_date), DOC-050 (CHUMP_TO_CHAMP.md privacy violation), RESEARCH-001 (phantom EVAL-094/RESEARCH-026 IDs).
+
+---
+
+### The Looming Ghost
+
+**[P0/High] G1 — P0 budget blown 4x: priority signal has been destroyed**
+
+We are failing at P0 budget discipline. `chump gap audit-priorities` returns 20 open P0 gaps against a hard CLAUDE.md limit of 5. Of the 20, 12 are OPEN-BUT-LANDED (have git commits but are not closed). The signal that separates "true unblocker" from "feature request someone was excited about" no longer exists.
+
+```
+chump gap audit-priorities (2026-05-18):
+P0 open gaps: 20 (CLAUDE.md budget: 5 max)
+
+Selected P0s with commits (OPEN-BUT-LANDED — likely done, not closed):
+  INFRA-1534: 16 commits (last 2026-05-16) — self-hosted runners
+  INFRA-1541:  2 commits (last 2026-05-16) — AC coverage gate
+  INFRA-1542:  2 commits (last 2026-05-16) — CI Phase 2 heavy jobs
+  INFRA-1532:  1 commit  (last 2026-05-16) — bot-merge self-watchdog
+  INFRA-1528:  1 commit  (last 2026-05-16) — auto-merge-armer
+  ... 7 more P0s with 1 commit each
+
+P0s with zero implementation commits:
+  FLEET-053   — NATS deployment (Cold Water filed 2026-05-12; 6 days, 0 commits)
+  INFRA-1075  — PWA touch target size
+  INFRA-1326  — orphan-PR-closer health check
+  INFRA-1327  — lease auto-extend for live PRs
+  INFRA-1472  — disk_critical reaper threshold
+  INFRA-1518  — bootstrap Merge Queue enforcement
+  INFRA-1522  — required-check health gate
+  INFRA-1525  — pr-rebase-daemon circuit-breaker
+```
+
+Additionally, all 20 P0s report "(0d old)" in `chump gap audit-priorities` because state.db is populated at import time and 486/540 gaps (90%) have no `opened_date` YAML field. The age column is therefore useless — see Complexity Trap G2.
+
+- evidence: `chump gap list --status open --json` (canonical), 2026-05-18 sandbox
+- evidence: `CLAUDE.md §Mission Driver §4`: "P0 budget = 5 max. Reserve P0 for true unblockers"
+- evidence: python git-log scan: 12 of 20 P0s are OPEN-BUT-LANDED with ≥1 commits
+
+*This finding is wrong if: `chump gap list --json` on a fully-seeded state.db with real opened_date values returns <6 P0s once OPEN-BUT-LANDED are triaged.*
+
+---
+
+**[P1/High] G2 — INFRA-1237 (EVENT_REGISTRY drift): 22 unregistered + 88 orphan event kinds; observability floor is compromised**
+
+We are failing at ambient observability. INFRA-1237 (P0, open) documents 22 event kinds emitted daily by production scripts that are not in EVENT_REGISTRY.yaml, and 88 registered kinds that nothing emits. One commit (2026-05-16) touched event-registry-reserved.txt but did not run the full drift audit specified in INFRA-1237's AC.
+
+```
+git log origin/main --grep='INFRA-1237' --oneline
+cd953ed feat(INFRA-1363): CREDIBLE — orchestrate session-summary ambient emit (#2109)
+# (not an INFRA-1237 implementation commit)
+
+cat docs/gaps/INFRA-1237.yaml | grep 'status:\|commits'
+  status: open   # confirmed P0/open
+```
+
+CLAUDE.md MANDATORY preflight says "watch for `lease_overlap`, `silent_agent`, `edit_burst`..." — these are in the 88-orphan bucket or the 22-unregistered bucket. The fleet cannot be trusted to have caught those events this week.
+
+- evidence: `docs/gaps/INFRA-1237.yaml` description: "22 emit-without-register kinds + 88 register-without-emit orphans"
+- evidence: `git log --grep='INFRA-1237'` → 0 implementation commits
+- evidence: `scripts/ci/test-event-registry-coverage.sh` (INFRA-1237 AC item 1) does not exist: `ls scripts/ci/test-event-registry-coverage.sh` → not found
+
+*This finding is wrong if: `scripts/ci/test-event-registry-coverage.sh` was added and passes (it would appear in `scripts/ci/`; confirmed absent).*
+
+---
+
+### The Opportunity Cost
+
+**[P0/High] O1 — FLEET-053 (NATS deployment incomplete): STILL_OPEN_INACTIVE, P0, filed by Cold Water 6 days ago**
+
+We are failing at acting on Cold Water findings. FLEET-053 was filed 2026-05-12 with P0 priority because the NATS subscription path introduced by FLEET-017 (PR #629) has never been deployed: `CHUMP_NATS_URL` is unset, Cold Water sandboxes observe the jsonl fallback path, and the fleet cannot verify whether the push-routing tier is live. Six days later, zero commits reference FLEET-053.
+
+```
+git log origin/main --grep='FLEET-053' --oneline
+(no output)
+
+cat docs/gaps/FLEET-053.yaml
+  status: open
+  priority: P0
+  opened_date: '2026-05-12'
+```
+
+- evidence: canonical `chump gap list --json`: FLEET-053 P0/open, age=6d
+- evidence: `git log origin/main --grep='FLEET-053' --oneline` → empty
+- evidence: `docs/gaps/FLEET-053.yaml:opened_date: 2026-05-12` — 6 days stale
+
+*This finding is wrong if: CHUMP_NATS_URL is set in the deployment environment and the Cold Water sandbox simply lacks the env var (plausible; FLEET-053 should document the deployment verification step).*
+
+---
+
+**[P1/High] O2 — 99 OPEN-BUT-LANDED gaps: gap closure regressed 33x since Issue #11**
+
+We are failing at closing work after it ships. Issue #11 (2026-05-11) noted 3 shipped-but-not-closed gaps as a finding (C2). Seven days later, the canonical scan returns 99 OPEN-BUT-LANDED gaps — 12 at P0 priority.
+
+```
+python3 scan (chump gap list --json vs git log, 2026-05-18):
+  OPEN-BUT-LANDED count: 99
+  By priority: P0=12, P1=61, P2=24, P3=2
+
+Top P0 OPEN-BUT-LANDED:
+  INFRA-1534: 16 commits — self-hosted GitHub Actions runners
+  INFRA-1541:  2 commits — pre-merge AC coverage gate
+  INFRA-1542:  2 commits — CI Phase 2 heavy jobs
+```
+
+bot-merge.sh does call `chump gap ship --update-yaml` (line 2553), but 7 Bot-Merge-Bypass uses in 7 days skipped that path:
+```
+git log origin/main --since='2026-05-11' --format='%B' | grep 'Bot-Merge-Bypass'
+Bot-Merge-Bypass: bot-merge silent >30s after spawn (INFRA-1399 known issue)...
+Bot-Merge-Bypass: bot-merge.sh stalled silently with no output (known INFRA-1399)...
+[5 more; all citing INFRA-1399]
+```
+
+- evidence: python git-log scan returning 99 OPEN-BUT-LANDED
+- evidence: `git log --grep='Bot-Merge-Bypass'` — 7 in 7 days
+- evidence: Issue #11 C2 finding noted 3 open-but-landed; current count is 99 (33x regression)
+
+*This finding is wrong if: the 99 gaps are intentional multi-phase gaps where first sub-phase shipped but full AC is not yet met; requires per-gap manual verification.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — 486/540 gaps (90%) have no `opened_date`: P0 aging census is non-functional**
+
+We are failing at gap metadata hygiene. 486 of 540 gap YAML files have no `opened_date` field. `chump gap audit-priorities` computes age from state.db `created_at` (which is set at import time), so all 20 P0 gaps report "(0d old)" after a fresh `chump gap import`. The CLAUDE.md Mission Driver's P0-aging enforcement is institutionally blind.
+
+```
+python3 -c "
+import yaml, glob
+gaps = []; [gaps.extend(yaml.safe_load(open(f).read()) if isinstance(yaml.safe_load(open(f).read()), list)
+  else [yaml.safe_load(open(f).read())]) for f in glob.glob('docs/gaps/*.yaml')]
+no_date = [g for g in gaps if not g.get('opened_date')]
+print(f'Without opened_date: {len(no_date)}/{len(gaps)}')
+"
+# Output: Without opened_date: 486/540
+
+chump gap audit-priorities | grep 'FLEET-053\|INFRA-1534'
+# Output: FLEET-053 — ... (0d old)
+#         INFRA-1534 — ... (0d old)
+```
+
+FLEET-053 is 6 days old and shows "(0d old)". INFRA-1534 has 16 commits and was filed months ago; it also shows "(0d old)". The audit is returning the same age for a newly filed P0 and a chronically stale one.
+
+- evidence: python scan: 486/540 no opened_date
+- evidence: `chump gap audit-priorities` output: all 20 P0s show "(0d old)"
+- evidence: CLAUDE.md Mission Driver: "If any P0 stuck > 7 days → PM flag" — metric is undefined without date
+
+*This finding is wrong if: `chump gap show <ID>` reveals state.db carries a real creation timestamp independent of YAML `opened_date` (not observed; state.db was freshly populated via import which sets created_at to now).*
+
+---
+
+### The Reality Check
+
+**[P1/High] R1 — CHUMP_TO_CHAMP.md publicly discloses specific deltas, model names, and n-values in direct violation of RESEARCH_INTEGRITY.md:28-29**
+
+We are failing at research data privacy. `docs/strategy/CHUMP_TO_CHAMP.md` — a public file — contains specific empirical results that `docs/process/RESEARCH_INTEGRITY.md` explicitly prohibits from appearing in public documents.
+
+```
+# From docs/strategy/CHUMP_TO_CHAMP.md lines 52-56:
+| Lessons block increases fake-tool-call emission |
+  +0.14 pp mean hallucination delta (n=100 per cell, 3 fixtures) | Statistically established |
+| Effect present across model tiers |
+  haiku-4-5: +0.13–0.16; opus-4-5: +0.23–0.40 (reflection cell) | Multi-model confirmed |
+| qwen2.5:14b shows +0.10 pass-rate delta | v1 harness, n=20 | Preliminary |
+
+# From docs/process/RESEARCH_INTEGRITY.md:28-29:
+"Do not state magnitudes, model names, or per-eval IDs in public docs,
+ PRs, or external communications."
+
+# CHUMP_TO_CHAMP.md:
+last_audited: 2026-04-25  # not audited since the privacy directive
+```
+
+Three independent evidence points:
+1. `CHUMP_TO_CHAMP.md:52` contains "+0.14 pp mean hallucination delta" and "n=100" — numeric magnitudes
+2. `CHUMP_TO_CHAMP.md:53` contains "haiku-4-5" and "opus-4-5" — model names
+3. `RESEARCH_INTEGRITY.md:28-29` prohibits exactly this
+
+*This finding is wrong if: RESEARCH_INTEGRITY.md has an explicit carve-out permitting CHUMP_TO_CHAMP.md to retain these specifics — no such carve-out found after full review of RESEARCH_INTEGRITY.md.*
+
+---
+
+**[P1/Medium] R2 — EVAL-094 and RESEARCH-026 are phantom gap IDs required by RESEARCH_INTEGRITY.md for eval-awareness mechanism claims**
+
+We are failing at making our own methodology enforceable. `docs/process/RESEARCH_INTEGRITY.md:87-97` requires that mechanism analysis with |Δ|>0.05 cite the EVAL-094 or RESEARCH-026 result set for the naturalized-framing comparison. Neither gap exists in the public registry.
+
+```
+find docs/gaps -name 'EVAL-094*'
+(no output)
+
+find docs/gaps -name 'RESEARCH-026*'
+(no output)
+
+chump gap list --json | python3 -c "import json,sys; print([g['id'] for g in json.load(sys.stdin) if g['id'] in ['EVAL-094','RESEARCH-026']])"
+[]
+
+# RESEARCH_INTEGRITY.md:90:
+"must cite either (a) a paired naturalized-framing comparison from the
+ RESEARCH-026 / EVAL-094 result set on the same fixture class"
+```
+
+The eval-awareness mandate (requiring sandbagging controls on all frontier-model evals — directly relevant since Chump uses Claude as both agent and judge) names a specific gap that every mechanism claim must clear. That gap does not exist. Any agent or reviewer trying to comply with RESEARCH_INTEGRITY.md §4 cannot, because the required prior work has no tracking entry.
+
+- evidence: `find docs/gaps -name 'EVAL-094*'` → empty
+- evidence: `find docs/gaps -name 'RESEARCH-026*'` → empty  
+- evidence: `chump gap list --json`: neither ID present in canonical store
+
+*This finding is wrong if: EVAL-094 and RESEARCH-026 are tracked in `chump-proprietary` and the public RESEARCH_INTEGRITY.md reference is intentionally pointing off-repo.*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] I1 — EVAL-102 (EVAL-101 corrected protocol re-run) has zero commits: cognition stack remains unvalidated for a second cycle**
+
+We are failing at measuring whether the things we ship actually work. EVAL-102 was filed in Issue #11 (2026-05-11) as the corrected re-run of EVAL-101 (which ran on the wrong model at 40% of the required sample size). Seven days later, zero commits reference EVAL-102.
+
+```
+git log origin/main --grep='EVAL-102' --oneline
+(no output)
+```
+
+External context: The industry standard for agentic benchmarks has hardened since Issue #11. [SWE-bench Verified](https://www.swebench.com) and its successors now require reproduced multi-judge evaluations with naturalized prompts as the baseline for credibility claims. Chump's claim is that a cognitive architecture running on local hardware can match frontier API calls — a claim that requires at minimum the n=50/cell, dual-judge, deviation-locked eval that EVAL-102 specifies. Until that runs, every new cognitive-architecture PR shipped is building on an unmeasured foundation.
+
+The strategic memo (STRATEGIC_MEMO_2026Q2.md) that CLAUDE.md cites for innovation-lag anchoring has been moved to `chump-proprietary` ("This document has been moved to a private repository"). The public CLAUDE.md still references it. This is a documentation integrity failure — the reference is broken.
+
+- evidence: `git log origin/main --grep='EVAL-102' --oneline` → empty
+- evidence: `head -5 docs/strategy/STRATEGIC_MEMO_2026Q2.md` → "This document has been moved to a private repository"
+- evidence: CLAUDE.md §Innovation Lag references STRATEGIC_MEMO_2026Q2.md as a first-read anchor; that file is now inaccessible
+
+*This finding is wrong if: EVAL-102 is running in a private environment with results committed to `chump-proprietary` and a summary landing in public docs soon.*
+
+---
+
+**THE ONE BIG THING:** [P0] META-064 — We are failing at the most basic property of a priority system: P0 means something. It currently does not. `chump gap audit-priorities` returns 20 open P0 gaps against a hard CLAUDE.md budget of 5. Twelve of those 20 are OPEN-BUT-LANDED — they have git commits, the work shipped, but nobody ran `chump gap ship`. The remaining 8 have zero implementation commits, including FLEET-053 (NATS deployment, filed by Cold Water 6 days ago) and INFRA-1075 (a mobile button touch target), which have identical P0 priority. The fleet workers pick from this pool and cannot tell the difference between a genuine blocker and a stale registration. Every routing decision made by every agent this week was made against a corrupted signal. The P0 bucket must be triaged to ≤5 genuine unblockers — with OPEN-BUT-LANDED P0s closed and zero-commit P0s reviewed for downgrade — before the priority system can be trusted again. Flagged in Issue #11 (C2) as 3 open-but-landed gaps; it is now 99. The trend is the finding.
+
+---
+
+### Follow-up Gaps Filed
+
+All 5 gaps verified: YAML file present AND `chump gap list --json` confirms in state.db.
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| META-064 | ZERO-WASTE: P0 budget blown 4x — triage and close OPEN-BUT-LANDED P0s to restore priority signal | P1 | s |
+| INFRA-1610 | ZERO-WASTE: 99 OPEN-BUT-LANDED gaps — chump gap ship not called after merge; regression from 3→99 since Issue #11 | P1 | m |
+| DOC-050 | CREDIBLE: CHUMP_TO_CHAMP.md publishes prohibited deltas/model-names/n-values — violates RESEARCH_INTEGRITY.md:28-29 | P1 | xs |
+| RESEARCH-001 | CREDIBLE: EVAL-094 and RESEARCH-026 are phantom IDs cited in RESEARCH_INTEGRITY.md eval-awareness mandate | P1 | s |
+| INFRA-1611 | ZERO-WASTE: 486/540 gaps missing opened_date — P0 aging census blind; audit-priorities age column useless | P1 | s |
+
+---
+
 ## Issue #11 — 2026-05-11
 
 > Audit window: commits since 2026-04-27 (prior issue date). 51 commits to `origin/main`.
