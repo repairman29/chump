@@ -184,13 +184,10 @@ jobs:
   # docs-only, scripts-only, crate-only PRs.
   tauri-cowork-e2e:
     needs: changes
-    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: removed 'push' trigger — push events create a check run
-    # with conclusion=failure on the commit, which GitHub's statusCheckRollup
-    # aggregates into FAILURE and blocks auto-merge on ALL PRs fleet-wide, even
-    # those that pass all required checks.  Only run tauri when tauri files
-    # change (any event) or in the merge queue.  continue-on-error retained as
-    # a second layer of protection.
+    # RESILIENT-016 (2026-05-17): disabled on PR runs — moved to ci-nightly.yml
+    # (cron daily). Selenium timeouts were blocking 5+ PRs (INFRA-1529). The
+    # test-e2e aggregator treats skipped as success so no branch-protection impact.
+    if: false
     continue-on-error: true
     runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     steps:
@@ -1101,8 +1098,8 @@ jobs:
   # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
   e2e-battle-sim:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
+    # RESILIENT-016 (2026-05-17): disabled on PR runs — moved to ci-nightly.yml.
+    if: false
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -1119,8 +1116,8 @@ jobs:
   # No Ollama.  Target wall-clock: ~5 min.
   e2e-golden-path:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
+    # RESILIENT-016 (2026-05-17): disabled on PR runs — moved to ci-nightly.yml.
+    if: false
     continue-on-error: true
     runs-on: ${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     steps:
