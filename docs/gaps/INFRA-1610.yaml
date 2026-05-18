@@ -1,0 +1,44 @@
+- acceptance_criteria:
+  - 'All 99 OPEN-BUT-LANDED gaps are triaged: closed via chump gap ship or annotated
+    with why they remain open despite having commits'
+  - bot-merge.sh gap-ship failure causes hard abort (not silent continue) so future
+    lands are caught at merge time
+  - 'scripts/ci/test-open-but-landed.sh asserts: for every open gap with >=1 commits
+    on main, either the gap has a closure-rationale annotation or the commits predate
+    the gap''s opened_date'
+  - chump gap audit-priorities reports OPEN-BUT-LANDED count in its output
+  description: 'We are failing at gap closure. 99 of 353 open gaps (28%) have git
+    commits on origin/main referencing their ID but remain status:open. This count
+    has risen from 3 (noted in RED_LETTER#11) to 99 — a 33x regression in one cycle.
+
+
+    Evidence:
+
+    - python scan of chump gap list --json + git log grep: 99 open gaps with commits
+    (12 P0, 61 P1, 24 P2, 2 P3)
+
+    - INFRA-1534: 16 commits merged, still status:open/P0
+
+    - INFRA-1541, INFRA-1542: 2 commits each, still status:open/P0
+
+    - bot-merge.sh does call chump gap ship --update-yaml (line 2553) but 99 gaps
+    still landed without closure; either the bot-merge path was bypassed (7 Bot-Merge-Bypass
+    uses this cycle) or the ship step fails silently
+
+
+    RED_LETTER#11 (2026-05-11) noted 3 open-but-landed gaps; the count grew 33x in
+    7 days. RED_LETTER#12 (2026-05-18).
+
+
+    Falsifying condition: The 99 open-but-landed gaps are intentional multi-phase
+    gaps where first phase shipped but full AC is not yet met.'
+  domain: INFRA
+  effort: m
+  id: INFRA-1610
+  opened_date: '2026-05-18'
+  priority: P1
+  raised_by: cold-water
+  raised_in: RED_LETTER#12
+  status: open
+  title: 'ZERO-WASTE: 99 OPEN-BUT-LANDED gaps — chump gap ship not called after merge;
+    regression from 3→99 since Issue #11'

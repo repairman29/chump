@@ -1,0 +1,42 @@
+- acceptance_criteria:
+  - chump gap audit-priorities exits 0 with P0 count <= 5
+  - 'All OPEN-BUT-LANDED P0s (those with >=1 git commits referencing their ID) are
+    triaged: either closed via chump gap ship or explicitly kept open with a written
+    rationale in the gap description'
+  - Remaining open P0s have non-empty opened_date so age column in audit-priorities
+    is meaningful
+  - 'CI gate: scripts/ci/test-p0-budget.sh asserts chump gap list --json P0 count
+    <= 5'
+  description: 'We are failing at P0 budget discipline. Canonical chump gap list --json
+    returns 20 open P0s (CLAUDE.md limit: 5 max). Of these, 12 are OPEN-BUT-LANDED
+    (have git commits referencing them but still status:open). The remaining 8 have
+    zero implementation commits.
+
+
+    Evidence:
+
+    - chump gap audit-priorities: P0 open count: 20 (budget: 5 max per CLAUDE.md)
+
+    - python scan: OPEN-BUT-LANDED P0s include INFRA-1534 (16 commits), INFRA-1541
+    (2 commits), INFRA-1542 (2 commits)
+
+    - CLAUDE.md Mission Driver §4: "P0 budget = 5 max. Reserve P0 for true unblockers
+    across all 4 pillars; demote inflation."
+
+
+    The priority signal is destroyed. Agents cannot distinguish "needs a picker today"
+    from "shipped last Tuesday but not closed." RED_LETTER#12 (2026-05-18).
+
+
+    Falsifying condition: chump gap list --json returns <6 P0s with all OPEN-BUT-LANDED
+    P0s properly closed.'
+  domain: META
+  effort: s
+  id: META-064
+  opened_date: '2026-05-18'
+  priority: P1
+  raised_by: cold-water
+  raised_in: RED_LETTER#12
+  status: open
+  title: 'ZERO-WASTE: P0 budget blown 4x — triage and close OPEN-BUT-LANDED P0s to
+    restore priority signal'
