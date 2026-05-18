@@ -37,15 +37,15 @@ else
 fi
 
 # 3. Find binary (shared target-dir per INFRA-481, or local fallback).
-if [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-    BIN="$REPO_ROOT/target/debug/chump"
+if [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 elif [[ -x "/Users/jeffadkins/Projects/Chump/target/debug/chump" ]]; then
     BIN="/Users/jeffadkins/Projects/Chump/target/debug/chump"
 else
     echo "  [build] cargo build --bin chump..."
     cargo build --bin chump --manifest-path "$REPO_ROOT/Cargo.toml" -q 2>&1 | tail -5
-    if [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-        BIN="$REPO_ROOT/target/debug/chump"
+    if [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+        BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     elif [[ -x "/Users/jeffadkins/Projects/Chump/target/debug/chump" ]]; then
         BIN="/Users/jeffadkins/Projects/Chump/target/debug/chump"
     else

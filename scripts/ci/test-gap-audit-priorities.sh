@@ -48,7 +48,7 @@ else
 fi
 
 # 4. Functional test: build binary and run against an isolated fixture DB.
-BIN="$REPO_ROOT/target/debug/chump"
+BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 if [[ ! -f "$BIN" ]]; then
     echo "  [build] cargo build --bin chump (quiet)..."
     cargo build --bin chump --manifest-path "$REPO_ROOT/Cargo.toml" -q 2>&1 | tail -5

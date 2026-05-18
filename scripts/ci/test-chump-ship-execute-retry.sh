@@ -12,8 +12,8 @@ set -euo pipefail
 # then the workspace shared target.
 BIN="${CHUMP_BIN:-}"
 if [[ -z "$BIN" || ! -x "$BIN" ]]; then
-    if [[ -x "./target/debug/chump" ]]; then
-        BIN="./target/debug/chump"
+    if [[ -x "${CARGO_TARGET_DIR:-./target}/debug/chump" ]]; then
+        BIN="${CARGO_TARGET_DIR:-./target}/debug/chump"
     elif [[ -x "/Users/jeffadkins/Projects/Chump/target/debug/chump" ]]; then
         BIN="/Users/jeffadkins/Projects/Chump/target/debug/chump"
     fi

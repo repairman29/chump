@@ -23,7 +23,7 @@ fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
 # Locate the chump binary. Prefer a freshly built one if present in the
 # current worktree's target; fall back to the cargo-installed one.
 CHUMP_BIN=""
-for cand in "$REPO_ROOT/target/debug/chump" "$HOME/.cargo/bin/chump" "$(command -v chump || true)"; do
+for cand in "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" "$HOME/.cargo/bin/chump" "$(command -v chump || true)"; do
     if [[ -x "$cand" ]]; then CHUMP_BIN="$cand"; break; fi
 done
 if [[ -z "$CHUMP_BIN" ]]; then

@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
     for candidate in \
-        "$REPO_ROOT/target/debug/chump" \
+        "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" \
         "$REPO_ROOT/target/release/chump" \
         "$(command -v chump 2>/dev/null || true)"
     do

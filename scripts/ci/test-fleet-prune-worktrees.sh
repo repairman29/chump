@@ -55,8 +55,8 @@ fi
 
 # 5. Binary exists
 # Binary may be in shared target-dir (INFRA-481) or local target/
-if [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-    BIN="$REPO_ROOT/target/debug/chump"
+if [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+    BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 elif [[ -x "/Users/jeffadkins/Projects/Chump/target/debug/chump" ]]; then
     BIN="/Users/jeffadkins/Projects/Chump/target/debug/chump"
 else

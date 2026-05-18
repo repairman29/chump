@@ -33,8 +33,8 @@ echo
 
 CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
-    if [[ -x "$REPO_ROOT/target/debug/chump" ]]; then
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+    if [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     elif [[ -x "$REPO_ROOT/target/release/chump" ]]; then
         CHUMP_BIN="$REPO_ROOT/target/release/chump"
     else

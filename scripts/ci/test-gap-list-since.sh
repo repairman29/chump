@@ -18,14 +18,14 @@ CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
     if command -v chump &>/dev/null; then
         CHUMP_BIN="$(command -v chump)"
-    elif [[ -f "$REPO_ROOT/target/debug/chump" ]]; then
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+    elif [[ -f "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     else
         # Try building it (skips if cache is warm)
         echo "[test-gap-list-since] building chump binary..."
         cargo build -q --manifest-path "$REPO_ROOT/Cargo.toml" --bin chump 2>/dev/null \
             || { echo "[SKIP] could not build chump — skipping EFFECTIVE-018 tests"; exit 0; }
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     fi
 fi
 

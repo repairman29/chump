@@ -44,7 +44,7 @@ if ! command -v WebKitWebDriver >/dev/null 2>&1; then
 fi
 
 echo "Starting chump --web on ${PORT}…"
-CHUMP_WEB_PORT="${PORT}" CHUMP_WEB_TOKEN="" ./target/debug/chump --web &
+CHUMP_WEB_PORT="${PORT}" CHUMP_WEB_TOKEN="" ${CARGO_TARGET_DIR:-./target}/debug/chump --web &
 CHUMP_PID=$!
 for _ in $(seq 1 90); do
   if curl -sf "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then

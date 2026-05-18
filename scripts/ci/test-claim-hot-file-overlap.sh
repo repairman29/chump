@@ -24,13 +24,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # back to building.
 if [[ -z "${CHUMP_BIN:-}" ]]; then
     # target/ symlink exists in worktrees pointing at the shared target dir.
-    CANDIDATE="$REPO_ROOT/target/debug/chump"
+    CANDIDATE="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     if [[ -x "$CANDIDATE" ]]; then
         CHUMP_BIN="$CANDIDATE"
     else
         echo "Building chump binary..."
         cd "$REPO_ROOT" && cargo build --bin chump -q
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
         cd "$REPO_ROOT"
     fi
 fi

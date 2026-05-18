@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-CHUMP="${CHUMP_BIN:-./target/debug/chump}"
+CHUMP="${CHUMP_BIN:-${CARGO_TARGET_DIR:-./target}/debug/chump}"
 if [[ ! -x "$CHUMP" ]]; then
     cargo build --bin chump -q 2>&1 | tail -3
 fi

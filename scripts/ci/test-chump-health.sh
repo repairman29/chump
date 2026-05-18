@@ -108,7 +108,7 @@ fi
 
 # 11. Binary smoke test (if built).
 CHUMP="$REPO_ROOT/target/release/chump"
-[[ -f "$CHUMP" ]] || CHUMP="$REPO_ROOT/target/debug/chump"
+[[ -f "$CHUMP" ]] || CHUMP="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 if [[ -f "$CHUMP" ]]; then
     TESTDIR=$(mktemp -d)
     trap 'rm -rf "$TESTDIR"' EXIT

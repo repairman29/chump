@@ -26,7 +26,7 @@ CHUMP_BIN="${CHUMP_BIN:-}"
 # discovery rather than erroring out silently at exec-time. Surfaces on
 # self-hosted runners where CARGO_TARGET_DIR redirects cargo build output to
 # the shared cache (~/.cache/chump-runner/cargo-target/) — the legacy
-# ./target/debug/chump path is empty even after a successful build, so the
+# ${CARGO_TARGET_DIR:-./target}/debug/chump path is empty even after a successful build, so the
 # stale CHUMP_BIN env var causes a 45ms "FAIL: No output" with no diagnostic.
 if [[ -n "$CHUMP_BIN" ]] && [[ ! -x "$CHUMP_BIN" ]] && [[ ! -x "$ROOT/$CHUMP_BIN" ]]; then
   echo "WARN: \$CHUMP_BIN='$CHUMP_BIN' not executable; falling through to discovery" >&2

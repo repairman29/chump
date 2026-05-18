@@ -59,7 +59,7 @@ TARGET_DIR=$(cargo metadata --no-deps --manifest-path "$REPO_ROOT/Cargo.toml" \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('target_directory',''))" \
     2>/dev/null || echo "")
 BIN="${TARGET_DIR:+$TARGET_DIR/debug/chump}"
-BIN="${BIN:-$REPO_ROOT/target/debug/chump}"
+BIN="${BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 if [[ ! -f "$BIN" ]]; then
     echo "  [build] cargo build --bin chump (quiet)..."
     cargo build --bin chump --manifest-path "$REPO_ROOT/Cargo.toml" -q 2>&1 | tail -5
@@ -69,7 +69,7 @@ if [[ ! -f "$BIN" ]]; then
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('target_directory',''))" \
         2>/dev/null || echo "")
     BIN="${TARGET_DIR:+$TARGET_DIR/debug/chump}"
-    BIN="${BIN:-$REPO_ROOT/target/debug/chump}"
+    BIN="${BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 fi
 
 if [[ ! -f "$BIN" ]]; then

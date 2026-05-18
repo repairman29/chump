@@ -11,7 +11,7 @@
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-BIN="$REPO_ROOT/target/debug/chump"
+BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 GEN="$REPO_ROOT/scripts/setup/gen-vapid-keys.sh"
 SW="$REPO_ROOT/web/v2/sw.js"
 SUB_JS="$REPO_ROOT/web/v2/push-subscribe.js"

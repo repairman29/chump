@@ -91,7 +91,7 @@ if [[ "${CHUMP_E2E_SKIP_SERVER:-0}" != "1" ]]; then
     echo "Starting chump --web on port ${PORT} (CHUMP_WEB_TOKEN cleared; inference: ${OPENAI_MODEL})…"
     env CHUMP_WEB_PORT="${PORT}" CHUMP_WEB_TOKEN="" \
       OPENAI_API_BASE="$OPENAI_API_BASE" OPENAI_API_KEY="$OPENAI_API_KEY" OPENAI_MODEL="$OPENAI_MODEL" \
-      ./target/debug/chump --web &
+      ${CARGO_TARGET_DIR:-./target}/debug/chump --web &
     CHUMP_E2E_PID=$!
     H="${CHUMP_WEB_HOST:-127.0.0.1}"
     MARKER_ROOT="${CHUMP_REPO:-$ROOT}"

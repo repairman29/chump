@@ -19,7 +19,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ok()   { echo "ok: $*"; }
 
 # Build the binary if we don't already have one.
-CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 if [[ ! -x "$CHUMP_BIN" ]]; then
   echo "[test] building chump …"
   ( cd "$REPO_ROOT" && cargo build --bin chump --quiet ) || fail "cargo build failed"

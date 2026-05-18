@@ -15,12 +15,12 @@ fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
 CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
-    if [[ -f "$REPO_ROOT/target/debug/chump" ]]; then
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+    if [[ -f "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     else
         cargo build -q --manifest-path "$REPO_ROOT/Cargo.toml" --bin chump 2>/dev/null \
             || { echo "[SKIP] could not build chump — skipping EFFECTIVE-020 tests"; exit 0; }
-        CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+        CHUMP_BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
     fi
 fi
 
