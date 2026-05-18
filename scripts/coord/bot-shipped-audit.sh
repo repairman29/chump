@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # bot-shipped-audit.sh — daily report on autonomous bot-shipped PRs.
 # Surfaces things you'd want to spot-check WITHOUT reviewing each PR.
 #
