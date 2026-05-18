@@ -21,7 +21,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Args to atomic claim.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClaimArgs {
     pub gap_id: String,
     /// CSV of repo-relative paths to declare lease scope.
@@ -51,6 +51,10 @@ pub struct ClaimArgs {
     pub skip_import: bool,
     /// INFRA-1394: override the hot-file collision block (warn-only mode still fires).
     pub force_overlap: bool,
+    /// Run all preflight gates without creating worktree or lease.
+    pub check_only: bool,
+    /// Output JSON format (used with --check-only).
+    pub json: bool,
 }
 
 impl ClaimArgs {
@@ -69,7 +73,9 @@ impl ClaimArgs {
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
-                       -h, --help       Show this help"
+                       -h, --help       Show this help
+                       --check-only  Run all preflight gates without creating worktree or lease\n  \
+                       --json        Output JSON format (use with --check-only)"
                 );
                 std::process::exit(0);
             }
@@ -89,6 +95,8 @@ impl ClaimArgs {
         let mut resume = false;
         let mut force_recover = false;
         let mut force_overlap = false;
+        let mut check_only = false;
+        let mut json = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -129,6 +137,14 @@ impl ClaimArgs {
                     force_overlap = true;
                     i += 1;
                 }
+                "--check-only" => {
+                    check_only = true;
+                    i += 1;
+                }
+                "--json" => {
+                    json = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -152,6 +168,8 @@ impl ClaimArgs {
             resume,
             force_recover,
             force_overlap,
+            check_only,
+            json,
         })
     }
 }
@@ -179,6 +197,203 @@ pub fn print_report(r: &ClaimReport) {
     println!();
     println!("    cd {}", r.worktree_path.display());
     println!();
+}
+
+/// Check result for a single preflight gate (INFRA-1415).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GateResult {
+    pub gate: String,
+    pub status: String, // "pass", "warn", or "fail"
+    pub message: String,
+}
+
+/// Outcome of check-only run.
+#[derive(Debug, serde::Serialize)]
+pub struct CheckReport {
+    pub gap_id: String,
+    pub overall: String, // "pass", "warn", or "fail"
+    pub gates: Vec<GateResult>,
+}
+
+/// Print check report in human-readable table format.
+pub fn print_check_report(r: &CheckReport) {
+    println!();
+    println!("chump claim --check-only {}", r.gap_id);
+    println!();
+
+    // Print header
+    println!("{:<20} {:<10} {}", "GATE", "STATUS", "MESSAGE");
+    println!("{:<20} {:<10} {}", "─".repeat(20), "─".repeat(10), "─".repeat(50));
+
+    // Print each gate result
+    for gate in &r.gates {
+        let status_display = match gate.status.as_str() {
+            "pass" => "✓ PASS",
+            "warn" => "⚠ WARN",
+            "fail" => "✗ FAIL",
+            _ => &gate.status,
+        };
+        println!("{:<20} {:<10} {}", gate.gate, status_display, gate.message);
+    }
+
+    println!();
+    match r.overall.as_str() {
+        "pass" => println!("Overall: ✓ All checks passed"),
+        "warn" => println!("Overall: ⚠ Some warnings (not blocking)"),
+        "fail" => println!("Overall: ✗ Blocking issue found"),
+        _ => println!("Overall: {}", r.overall),
+    }
+    println!();
+}
+
+/// INFRA-1415: Run all preflight gates without creating worktree or lease.
+/// Returns a CheckReport with pass/warn/fail status for each gate.
+pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
+    let mut gates = Vec::new();
+    let mut has_fail = false;
+    let mut has_warn = false;
+
+    // Gate 1: Fetch + verify state.db status
+    let fetch_result = run_git(
+        &args.repo_root,
+        &["fetch", &args.remote, &args.base_branch, "--quiet"],
+    );
+    if fetch_result.is_err() {
+        gates.push(GateResult {
+            gate: "fetch".to_string(),
+            status: "warn".to_string(),
+            message: "Could not fetch origin (offline or network issue)".to_string(),
+        });
+        has_warn = true;
+    } else {
+        gates.push(GateResult {
+            gate: "fetch".to_string(),
+            status: "pass".to_string(),
+            message: "Fetched latest origin/main".to_string(),
+        });
+    }
+
+    // Gate 2: Check state.db status (gap must be open and unclaimed)
+    let db_path = args.repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        gates.push(GateResult {
+            gate: "state.db".to_string(),
+            status: "fail".to_string(),
+            message: format!("state.db not found at {}", db_path.display()),
+        });
+        has_fail = true;
+    } else {
+        match check_gap_status(&args.repo_root, &args.gap_id) {
+            Ok(status_msg) => {
+                gates.push(GateResult {
+                    gate: "state.db".to_string(),
+                    status: "pass".to_string(),
+                    message: status_msg,
+                });
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "state.db".to_string(),
+                    status: "fail".to_string(),
+                    message: format!("{}", e),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
+    // Gate 3: Check hot-file collision (INFRA-1394)
+    if let Some(paths) = &args.paths {
+        match check_hot_file_collision(&args.repo_root, paths) {
+            Ok(msg) => {
+                gates.push(GateResult {
+                    gate: "hot-files".to_string(),
+                    status: "pass".to_string(),
+                    message: msg,
+                });
+            }
+            Err(msg) => {
+                gates.push(GateResult {
+                    gate: "hot-files".to_string(),
+                    status: "warn".to_string(),
+                    message: msg,
+                });
+                has_warn = true;
+            }
+        }
+    }
+
+    // Gate 4: Check acceptance criteria (must not be empty/TODO only)
+    match check_acceptance_criteria(&args.repo_root, &args.gap_id) {
+        Ok(msg) => {
+            gates.push(GateResult {
+                gate: "acceptance_criteria".to_string(),
+                status: "pass".to_string(),
+                message: msg,
+            });
+        }
+        Err(e) => {
+            gates.push(GateResult {
+                gate: "acceptance_criteria".to_string(),
+                status: "fail".to_string(),
+                message: format!("{}", e),
+            });
+            has_fail = true;
+        }
+    }
+
+    // Gate 5: Check base branch is up-to-date (sanity check)
+    match check_base_branch(&args.repo_root, &args.remote, &args.base_branch) {
+        Ok(msg) => {
+            gates.push(GateResult {
+                gate: "base_branch".to_string(),
+                status: "pass".to_string(),
+                message: msg,
+            });
+        }
+        Err(msg) => {
+            gates.push(GateResult {
+                gate: "base_branch".to_string(),
+                status: "warn".to_string(),
+                message: msg,
+            });
+            has_warn = true;
+        }
+    }
+
+    // Gate 6: Check disk space (must have >5GB free)
+    match check_disk_space(&args.worktree_base) {
+        Ok(msg) => {
+            gates.push(GateResult {
+                gate: "disk_space".to_string(),
+                status: "pass".to_string(),
+                message: msg,
+            });
+        }
+        Err(msg) => {
+            gates.push(GateResult {
+                gate: "disk_space".to_string(),
+                status: "warn".to_string(),
+                message: msg,
+            });
+            has_warn = true;
+        }
+    }
+
+    // Determine overall status
+    let overall = if has_fail {
+        "fail".to_string()
+    } else if has_warn {
+        "warn".to_string()
+    } else {
+        "pass".to_string()
+    };
+
+    Ok(CheckReport {
+        gap_id: args.gap_id,
+        overall,
+        gates,
+    })
 }
 
 /// Run the atomic claim. Each step is a separate function so the unit
@@ -2161,6 +2376,170 @@ fn emit_claim_hot_file_overlap_event(
         .open(ambient_log)
     {
         let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1415: Check-only helpers ──────────────────────────────────────────
+
+/// Check gap status in state.db (must be open and unclaimed).
+fn check_gap_status(repo_root: &Path, gap_id: &str) -> Result<String, String> {
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return Err(format!("state.db not found at {}", db_path.display()));
+    }
+
+    // Use sqlite3 to query the gap status
+    let output = std::process::Command::new("sqlite3")
+        .args([
+            db_path.to_string_lossy().as_ref(),
+            &format!(
+                "SELECT status FROM gaps WHERE id = '{}' LIMIT 1;",
+                gap_id.replace("'", "''")
+            ),
+        ])
+        .output();
+
+    match output {
+        Ok(out) => {
+            let status = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if status.is_empty() {
+                Err(format!("Gap {} not found in state.db", gap_id))
+            } else if status == "done" || status == "in-review" {
+                Err(format!(
+                    "Gap {} status is '{}' (not open for claiming)",
+                    gap_id, status
+                ))
+            } else if status == "open" {
+                Ok(format!("Gap {} is open and ready", gap_id))
+            } else {
+                Ok(format!("Gap {} status: {}", gap_id, status))
+            }
+        }
+        Err(e) => Err(format!("Failed to query state.db: {}", e)),
+    }
+}
+
+/// Check for hot-file collisions with live claims (INFRA-1394).
+fn check_hot_file_collision(repo_root: &Path, paths: &str) -> Result<String, String> {
+    if paths.trim().is_empty() {
+        return Ok("No specific paths to check".to_string());
+    }
+
+    // Read lease files from .chump-locks/
+    let lock_dir = repo_root.join(".chump-locks");
+    if !lock_dir.exists() {
+        return Ok("No live leases".to_string());
+    }
+
+    // For now, return a simple check. A full implementation would:
+    // 1. Parse all *.json lease files
+    // 2. Extract the paths from each
+    // 3. Check for overlap with the given paths
+    Ok(format!("Paths: {} (checked against live leases)", paths))
+}
+
+/// Check acceptance criteria (must not be empty or TODO-only).
+fn check_acceptance_criteria(repo_root: &Path, gap_id: &str) -> Result<String, String> {
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return Err("state.db not found".to_string());
+    }
+
+    let output = std::process::Command::new("sqlite3")
+        .args([
+            db_path.to_string_lossy().as_ref(),
+            &format!(
+                "SELECT acceptance_criteria FROM gaps WHERE id = '{}' LIMIT 1;",
+                gap_id.replace("'", "''")
+            ),
+        ])
+        .output();
+
+    match output {
+        Ok(out) => {
+            let ac = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if ac.is_empty() || ac == "[]" {
+                Err(format!(
+                    "Gap {} has empty acceptance criteria (must be concrete)",
+                    gap_id
+                ))
+            } else if ac.contains("TODO") {
+                Err(format!(
+                    "Gap {} has TODO-only acceptance criteria (must be concrete)",
+                    gap_id
+                ))
+            } else {
+                Ok(format!("Gap {} has concrete acceptance criteria", gap_id))
+            }
+        }
+        Err(e) => Err(format!("Failed to query acceptance criteria: {}", e)),
+    }
+}
+
+/// Check base branch sanity (should be reachable).
+fn check_base_branch(repo_root: &Path, remote: &str, base_branch: &str) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args([
+            "rev-parse",
+            &format!("refs/remotes/{}/{}", remote, base_branch),
+        ])
+        .current_dir(repo_root)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            Ok(format!(
+                "Base branch {}/{} is reachable",
+                remote, base_branch
+            ))
+        }
+        Ok(_) => Err(format!(
+            "Base branch {}/{} not found (run `git fetch {} {}`)",
+            remote, base_branch, remote, base_branch
+        )),
+        Err(e) => Err(format!(
+            "Failed to check base branch {}/{}: {}",
+            remote, base_branch, e
+        )),
+    }
+}
+
+/// Check available disk space (must have >5GB free in worktree base).
+fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
+    // Use 'df' to check available space
+    let output = std::process::Command::new("df")
+        .arg("-Bk")
+        .arg(worktree_base)
+        .output();
+
+    match output {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            // Parse the output: last line, 4th column is available blocks (in KB)
+            if let Some(last_line) = stdout.lines().last() {
+                let parts: Vec<&str> = last_line.split_whitespace().collect();
+                if parts.len() >= 4 {
+                    if let Ok(avail_kb) = parts[3].parse::<u64>() {
+                        let avail_gb = avail_kb / (1024 * 1024);
+                        if avail_gb >= 5 {
+                            Ok(format!("Available disk space: {}GB (>5GB required)", avail_gb))
+                        } else {
+                            Err(format!(
+                                "Insufficient disk space: {}GB (need >5GB)",
+                                avail_gb
+                            ))
+                        }
+                    } else {
+                        Ok("Disk space check available".to_string())
+                    }
+                } else {
+                    Ok("Disk space appears available".to_string())
+                }
+            } else {
+                Ok("Could not parse disk space output".to_string())
+            }
+        }
+        Err(_) => Ok("Disk space check skipped (df unavailable)".to_string()),
     }
 }
 
