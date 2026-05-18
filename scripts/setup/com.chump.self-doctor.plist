@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.self-doctor.plist — INFRA-1595
+  Launchd user agent that runs `chump fleet doctor --heal` every 5 minutes.
+
+  This is the Wave 0b "outer loop": when paramedic dies or wasn't installed,
+  when bootstrap missed a daemon, when a stuck PR escapes its SLO — this
+  daemon catches the gap and dispatches.
+
+  Install:   scripts/setup/install-self-doctor.sh
+  Uninstall: scripts/setup/install-self-doctor.sh --uninstall
+  Status:    launchctl print gui/$(id -u)/com.chump.self-doctor
+  Logs:      ~/Library/Logs/Chump/self-doctor.out.log
+
+  Default OFF: ships as opt-in. Heal mode requires
+  CHUMP_FLEET_SELF_DOCTOR_HEAL=true env to take any auto-fix action.
+  Without that, this daemon emits self_doctor_tick (diagnose-only).
+
+  Tunable env vars:
+    CHUMP_FLEET_SELF_DOCTOR_HEAL  set to "true" to enable auto-fix mode
+    CHUMP_SELF_DOCTOR_BUDGET      max subagents per 10-min window (default 3)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.self-doctor</string>
+
+    <!-- Run immediately on load and keep running if it exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- AC §5: ThrottleInterval 300s (every 5 min). -->
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+
+    <!-- AC §5: Args are `chump fleet doctor --heal --json`. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>CHUMP_BIN_PLACEHOLDER</string>
+        <string>fleet</string>
+        <string>doctor</string>
+        <string>--heal</string>
+        <string>--json</string>
+    </array>
+
+    <!-- Inherit PATH from launchd environment so gh / git are found. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/self-doctor.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/self-doctor.err.log</string>
+
+    <!-- Re-trigger every 5 min via launchd timer. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+</dict>
+</plist>

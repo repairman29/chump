@@ -83,6 +83,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_health;
 mod fleet_resize;
+mod fleet_self_doctor;
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
@@ -4288,9 +4289,120 @@ async fn main() -> Result<()> {
                     });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            "doctor" => {
+                // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
+                //
+                // Modes:
+                //   (default)   diagnose-only (placeholder until INFRA-1427
+                //               --strict lands; emits self_doctor_tick).
+                //   --heal      auto-fix what's diagnosed. GATED on
+                //               CHUMP_FLEET_SELF_DOCTOR_HEAL=true env (opt-in
+                //               until INFRA-1541 50-PR observation phase done).
+                //   --json      machine-readable output.
+                let want_heal = args.iter().any(|a| a == "--heal");
+                let want_json = args.iter().any(|a| a == "--json");
+                let env_opt_in = std::env::var("CHUMP_FLEET_SELF_DOCTOR_HEAL")
+                    .map(|v| v == "true" || v == "1")
+                    .unwrap_or(false);
+
+                if want_heal && !env_opt_in {
+                    if want_json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "status": "skipped",
+                                "reason": "CHUMP_FLEET_SELF_DOCTOR_HEAL not set to true",
+                                "hint": "Default-off until INFRA-1541 50-PR observation done."
+                            })
+                        );
+                    } else {
+                        eprintln!(
+                            "chump fleet doctor --heal: refusing to run.\n  \
+                             Heal mode is opt-in. Set CHUMP_FLEET_SELF_DOCTOR_HEAL=true to enable.\n  \
+                             Default-off until INFRA-1541 50-PR observation phase completes."
+                        );
+                    }
+                    std::process::exit(0);
+                }
+
+                if want_heal {
+                    let cfg = fleet_self_doctor::HealConfig::default();
+                    let outcome = fleet_self_doctor::run_heal_cycle(&cfg);
+                    if want_json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "mode": "heal",
+                                "idle": outcome.idle,
+                                "daemons_installed": outcome.daemons_installed,
+                                "daemons_failed": outcome.daemons_failed,
+                                "prs_dispatched": outcome.prs_dispatched
+                                    .iter()
+                                    .map(|(n, g)| serde_json::json!({"pr": n, "gap_id": g}))
+                                    .collect::<Vec<_>>(),
+                                "prs_failed": outcome.prs_failed,
+                                "budget_hit": outcome.budget_hit,
+                            })
+                        );
+                    } else {
+                        println!("chump fleet doctor --heal:");
+                        if outcome.idle {
+                            println!("  idle — nothing to heal this cycle");
+                        }
+                        if !outcome.daemons_installed.is_empty() {
+                            println!(
+                                "  daemons installed: {}",
+                                outcome.daemons_installed.join(", ")
+                            );
+                        }
+                        if !outcome.daemons_failed.is_empty() {
+                            println!("  daemons FAILED: {}", outcome.daemons_failed.join(", "));
+                        }
+                        if !outcome.prs_dispatched.is_empty() {
+                            println!(
+                                "  PRs dispatched: {}",
+                                outcome
+                                    .prs_dispatched
+                                    .iter()
+                                    .map(|(n, g)| format!("#{n} ({g})"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                        }
+                        if outcome.budget_hit {
+                            println!(
+                                "  BUDGET HIT — operator paged via .chump-locks/operator-action-needed.json"
+                            );
+                        }
+                    }
+                    std::process::exit(0);
+                }
+
+                // Diagnose-only placeholder. Emits a tick so consumers can
+                // see the doctor ran. INFRA-1427 will replace this with the
+                // full --strict implementation.
+                let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                    kind: "self_doctor_tick".to_string(),
+                    source: Some("fleet_self_doctor".to_string()),
+                    fields: vec![("status".to_string(), "diagnose_only".to_string())],
+                    ..Default::default()
+                });
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "mode": "diagnose",
+                            "note": "--heal not requested; diagnose-only stub until INFRA-1427 strict lands"
+                        })
+                    );
+                } else {
+                    println!("chump fleet doctor: diagnose-only mode (pass --heal to auto-fix).");
+                }
+                std::process::exit(0);
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -4318,6 +4430,9 @@ async fn main() -> Result<()> {
                     "              -- broad runner-lane canary (INFRA-1568): runs full production"
                 );
                 eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
+                eprintln!(
+                    "  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)"
+                );
                 std::process::exit(2);
             }
         }
