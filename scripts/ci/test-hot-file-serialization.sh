@@ -68,28 +68,31 @@ echo "  - sentinel-path" >> "$TMP/hot-files.yaml"
 echo "warn_only: []" >> "$TMP/hot-files.yaml"
 
 # Force the helper to see the sentinel path in the diff. The cleanest way
-# is to call flock directly on the same lockfile pattern the helper would
+# is to call "$FLOCK_BIN" directly on the same lockfile pattern the helper would
 # pick, since the YAML parsing + diff logic is already covered by the
 # serialize-list assertion above.
 LOCKFILE="$LOCK_DIR/hot-file-sentinel-path.lock"
 
 # Spawn process A that takes the lock and holds it for 2s.
-( flock -x 9 && sleep 2 ) 9>"$LOCKFILE" &
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+( "$FLOCK_BIN" -x 9 && sleep 2 ) 9>"$LOCKFILE" &
 PID_A=$!
 sleep 0.2
 
 # Process B tries to acquire with a tight 5s timeout; should succeed only
 # AFTER A finishes (~2s in).
 T_START=$(date +%s)
-( flock -w 5 9 ) 9>"$LOCKFILE"
+( "$FLOCK_BIN" -w 5 9 ) 9>"$LOCKFILE"
 T_END=$(date +%s)
 wait "$PID_A" 2>/dev/null || true
 
 ELAPSED=$((T_END - T_START))
 if [[ "$ELAPSED" -lt 1 ]]; then
-  fail "second flock acquired immediately (${ELAPSED}s) — mutual exclusion is broken"
+  fail "second "$FLOCK_BIN" acquired immediately (${ELAPSED}s) — mutual exclusion is broken"
 fi
-ok "mutual exclusion verified (second flock waited ${ELAPSED}s for first to release)"
+ok "mutual exclusion verified (second "$FLOCK_BIN" waited ${ELAPSED}s for first to release)"
 
 # 5) CHUMP_HOT_FILE_LOCK_DISABLE=1 short-circuits.
 out=$(CHUMP_HOT_FILE_LOCK_DISABLE=1 bash "$HELPER" acquire 2>&1)

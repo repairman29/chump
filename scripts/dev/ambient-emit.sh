@@ -129,8 +129,11 @@ JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORK
 # ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
 if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then
     _alert_json="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"kind\":\"missing_attribution\",\"event\":\"ALERT\",\"harness\":\"$_HARNESS\",\"hint\":\"CHUMP_AGENT_HARNESS not set; defaulting to 'unknown'. Set via env var or --harness flag.\"}"
-    if command -v flock &>/dev/null; then
-        ( flock -x 200; printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG" ) 200>"${AMBIENT_LOG}.lock"
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+    if command -v "$FLOCK_BIN" &>/dev/null; then
+        ( "$FLOCK_BIN" -x 200; printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG" ) 200>"${AMBIENT_LOG}.lock"
     else
         printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG"
     fi
@@ -232,10 +235,10 @@ PYEOF
     fi
 fi
 
-# ── Atomic append (flock if available, plain >> otherwise) ───────────────────
-if command -v flock &>/dev/null; then
+# ── Atomic append ("$FLOCK_BIN" if available, plain >> otherwise) ───────────────────
+if command -v "$FLOCK_BIN" &>/dev/null; then
     (
-        flock -x 200
+        "$FLOCK_BIN" -x 200
         printf '%s\n' "$JSON_LINE" >> "$AMBIENT_LOG"
     ) 200>"${AMBIENT_LOG}.lock"
 else

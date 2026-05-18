@@ -54,7 +54,7 @@ _default_state() {
 
 # Run $@ under exclusive flock. On timeout: log warning, emit ambient event,
 # proceed without lock (fail-open) so callers don't deadlock.
-# INFRA-1068: tracks flock wait time and emits fleet_state_lock_contention
+# INFRA-1068: tracks "$FLOCK_BIN" wait time and emits fleet_state_lock_contention
 # when wait_ms > 1000 so the batch-write telemetry dashboard has a contention
 # signal to correlate against.
 _with_lock() {
@@ -67,7 +67,10 @@ _with_lock() {
         || date +%s 2>/dev/null | awk '{print $1*1000}' || echo 0)
     {
         local flock_rc=0
-        flock -w "$_lock_timeout" 9 || flock_rc=$?
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+        "$FLOCK_BIN" -w "$_lock_timeout" 9 || flock_rc=$?
         _after_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null \
             || date +%s 2>/dev/null | awk '{print $1*1000}' || echo 0)
         _wait_ms=$(( _after_ms - _before_ms ))
@@ -114,7 +117,7 @@ print(json.dumps(d))
 
 # INFRA-1068: _apply_jq_filter — read, apply a jq filter, write atomically.
 # Called under _with_lock by the update-jq subcommand so all queued batch
-# writes land in one flock acquisition.
+# writes land in one "$FLOCK_BIN" acquisition.
 _apply_jq_filter() {
     local jq_filter="$1"
     local current new_json
@@ -159,7 +162,7 @@ case "$cmd" in
         ;;
     update-jq)
         # INFRA-1068: batch-flush subcommand. Accepts a jq filter string and
-        # applies it to fleet-state.json in ONE flock acquisition. Called by
+        # applies it to fleet-state.json in ONE "$FLOCK_BIN" acquisition. Called by
         # fleet_state_flush() in scripts/coord/lib/fleet-state-writer.sh.
         jq_filter="${1:?update-jq requires a jq filter argument}"
         _with_lock _apply_jq_filter "$jq_filter"

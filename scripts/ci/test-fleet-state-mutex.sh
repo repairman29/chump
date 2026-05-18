@@ -93,8 +93,20 @@ fi
 
 # 7. kind=fleet_state_lock_timeout emitted when lock is held past timeout
 # Hold the lock externally for 3s while fast-path tries with 1s timeout
+# INFRA-1600 follow-up: self-discover flock (brew util-linux is keg-only).
+_FLOCK_BIN=""
+if command -v flock >/dev/null 2>&1; then
+    _FLOCK_BIN="flock"
+elif [[ -x /opt/homebrew/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/opt/homebrew/opt/util-linux/bin/flock"
+elif [[ -x /usr/local/opt/util-linux/bin/flock ]]; then
+    _FLOCK_BIN="/usr/local/opt/util-linux/bin/flock"
+else
+    echo "[test-fleet-state-mutex] ERROR: flock not found" >&2
+    exit 1
+fi
 (
-    flock -x 9
+    "$_FLOCK_BIN" -x 9
     sleep 3
 ) 9>"$LOCK_FILE" &
 HOLDER_PID=$!

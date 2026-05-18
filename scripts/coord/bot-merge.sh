@@ -1214,7 +1214,7 @@ _grade_rebase_clean="null"
 
 # ── INFRA-953: hot-file lock acquisition ──────────────────────────────────────
 # If our diff touches any file in scripts/coord/hot-files.yaml `serialize:`
-# list, take a flock on each (one per file). Held until this script exits.
+# list, take a "$FLOCK_BIN" on each (one per file). Held until this script exits.
 # Prevents two bot-merges from racing on the same shared file, which is what
 # drives bot_merge_hot_file emissions (META-055 audit: 71.5% of token waste).
 _HF_HELPER="${REPO_ROOT}/scripts/coord/hot-file-lock.sh"
@@ -1748,13 +1748,16 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     _bm_lock_file="${_bm_lock_dir}/bot-merge.lock"
     mkdir -p "$_bm_lock_dir" 2>/dev/null || true
     _bm_lock_start=$(date +%s)
-    # Use flock <lockfile> form (bash 3.x compatible; lock held until script exits).
+    # Use "$FLOCK_BIN" <lockfile> form (bash 3.x compatible; lock held until script exits).
     # We open FD 200 explicitly since {var} dynamic FD assignment requires bash 4.1+.
     # INFRA-1062: do NOT include 2>/dev/null on an `exec FD>file` call — bash
     # applies all redirections to the shell permanently, which would silence
     # ALL subsequent stderr output and hide set -e exits as "silent" failures.
     exec 200>"$_bm_lock_file" || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
-    if ! flock -w 60 200 2>/dev/null; then
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+    if ! "$FLOCK_BIN" -w 60 200 2>/dev/null; then
         red "[INFRA-860] bot-merge.lock: timed out waiting 60s — another bot-merge is stuck?"
         exit 2
     fi
@@ -1767,7 +1770,7 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$_bm_wait" >> "$_bm_amb" 2>/dev/null || true
     fi
 fi
-# FD 200 stays open; flock released automatically when the script process exits.
+# FD 200 stays open; "$FLOCK_BIN" released automatically when the script process exits.
 
 # ── INFRA-995: pre-push staleness gate ───────────────────────────────────────
 # Belt-and-suspenders for the CLAUDE.md rule "rebase if your branch is more than

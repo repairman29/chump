@@ -151,17 +151,20 @@ emit_to_inbox() {
     for r in "${recipients[@]}"; do
         local inbox_file="$inbox_dir/$r.jsonl"
         lock_file="$inbox_dir/.$r.lock"
-        if command -v flock >/dev/null 2>&1; then
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+        if command -v "$FLOCK_BIN" >/dev/null 2>&1; then
             (
                 exec 200>"$lock_file"
-                if flock -w 5 200; then
+                if "$FLOCK_BIN" -w 5 200; then
                     printf '%s\n' "$json" >> "$inbox_file"
                 else
                     printf '[broadcast] WARN: could not lock inbox %s within 5s; skipping inbox write (ambient retained)\n' "$inbox_file" >&2
                 fi
             )
         else
-            # No flock available — best-effort append. Single-machine fleets
+            # No "$FLOCK_BIN" available — best-effort append. Single-machine fleets
             # with one process per session rarely race here.
             printf '%s\n' "$json" >> "$inbox_file"
         fi

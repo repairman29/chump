@@ -50,10 +50,13 @@ chmod +x "$SANDBOX/bin/chump"
 # Stub flock(1) for environments without util-linux (default macOS). The
 # real script's lock is defense-in-depth around the chump SQLite counter;
 # the timeout behavior we're testing doesn't depend on the lock semantics.
-if ! command -v flock >/dev/null 2>&1; then
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+if ! command -v "$FLOCK_BIN" >/dev/null 2>&1; then
     cat > "$SANDBOX/bin/flock" <<'EOF'
 #!/usr/bin/env bash
-# Test-only flock stub. Real flock is defense-in-depth; the production
+# Test-only "$FLOCK_BIN" stub. Real "$FLOCK_BIN" is defense-in-depth; the production
 # correctness invariant is enforced by `chump gap reserve` itself
 # (BEGIN IMMEDIATE on the SQLite store). For this test we just exit 0.
 exit 0

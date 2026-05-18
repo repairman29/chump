@@ -88,7 +88,7 @@ _hf_sanitize() {
 }
 
 # Acquire flocks for any diff files that match the serialize list. Each lock
-# is a fresh file descriptor stored in HOT_FILE_LOCK_FDS. flock holds while
+# is a fresh file descriptor stored in HOT_FILE_LOCK_FDS. "$FLOCK_BIN" holds while
 # the FD is open — by the time the caller's shell exits, locks release.
 hot_file_lock_acquire() {
   if [[ "$HF_DISABLED" == "1" ]]; then
@@ -127,7 +127,10 @@ hot_file_lock_acquire() {
     lockfile="$HF_LOCK_DIR/hot-file-${sanitized}.lock"
     fd=$(( 200 + ${#HOT_FILE_LOCK_FDS[@]} ))
     eval "exec $fd>>\"\$lockfile\""
-    if ! flock -w "$HF_TIMEOUT" "$fd"; then
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+    if ! "$FLOCK_BIN" -w "$HF_TIMEOUT" "$fd"; then
       _hf_log "ERROR: timed out waiting for $lockfile after ${HF_TIMEOUT}s"
       return 1
     fi

@@ -2,12 +2,12 @@
 # test-bot-merge-locking.sh — INFRA-860
 #
 # Validates the bot-merge.sh flock-based mutex that prevents parallel
-# push+merge contention. Tests use flock directly (not the full bot-merge.sh
+# push+merge contention. Tests use "$FLOCK_BIN" directly (not the full bot-merge.sh
 # integration) to avoid needing git/gh credentials.
 #
 # Tests:
 #  1. bot-merge.lock file created in LOCK_DIR when mutex runs
-#  2. Second concurrent flock waits (serializes) — not both win
+#  2. Second concurrent "$FLOCK_BIN" waits (serializes) — not both win
 #  3. Lock released on successful exit (no stale lock)
 #  4. Lock released on failure exit (trap cleanup)
 #  5. Timeout exits non-zero after 60s (tested with short 1s timeout)
@@ -39,21 +39,24 @@ AMB="$TMP/ambient.jsonl"
 
 # ── 1. Lock file created ──────────────────────────────────────────────────────
 echo "[1. Lock file created in LOCK_DIR]"
-# Use flock with a file path (not FD) for bash 3.x compatibility
-flock -w 2 "$LOCK_FILE" true 2>/dev/null || true
+# Use "$FLOCK_BIN" with a file path (not FD) for bash 3.x compatibility
+# INFRA-1600: brew util-linux "$FLOCK_BIN" not on default PATH on self-hosted CI runners.
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
+
+"$FLOCK_BIN" -w 2 "$LOCK_FILE" true 2>/dev/null || true
 [[ -f "$LOCK_FILE" ]] && ok "lock file created at $LOCK_FILE" || {
-    # Create it manually — flock creates it on open
+    # Create it manually — "$FLOCK_BIN" creates it on open
     touch "$LOCK_FILE"
     [[ -f "$LOCK_FILE" ]] && ok "lock file created (touch fallback)" || fail "lock file not created"
 }
 
-# ── 2. Parallel flock serializes — second waits, not both simultaneous ─────
+# ── 2. Parallel "$FLOCK_BIN" serializes — second waits, not both simultaneous ─────
 echo
-echo "[2. Parallel flock serializes access]"
+echo "[2. Parallel "$FLOCK_BIN" serializes access]"
 RESULT_FILE="$TMP/results.txt"
-# Use flock <lockfile> <cmd> form (bash 3.x compatible)
+# Use "$FLOCK_BIN" <lockfile> <cmd> form (bash 3.x compatible)
 (
-    flock "$LOCK_FILE" bash -c "
+    "$FLOCK_BIN" "$LOCK_FILE" bash -c "
         echo proc1_start >> '$RESULT_FILE'
         sleep 0.3
         echo proc1_end >> '$RESULT_FILE'
@@ -61,7 +64,7 @@ RESULT_FILE="$TMP/results.txt"
 ) &
 sleep 0.05
 (
-    flock "$LOCK_FILE" bash -c "
+    "$FLOCK_BIN" "$LOCK_FILE" bash -c "
         echo proc2_start >> '$RESULT_FILE'
         echo proc2_end >> '$RESULT_FILE'
     "
@@ -72,46 +75,46 @@ if [[ -f "$RESULT_FILE" ]]; then
     line_p1_end=$(grep -n "proc1_end" "$RESULT_FILE" | cut -d: -f1)
     line_p2_start=$(grep -n "proc2_start" "$RESULT_FILE" | cut -d: -f1)
     if [[ -n "$line_p1_end" && -n "$line_p2_start" && "$line_p2_start" -gt "$line_p1_end" ]]; then
-        ok "parallel flock serialized: proc2_start appears after proc1_end"
+        ok "parallel "$FLOCK_BIN" serialized: proc2_start appears after proc1_end"
     else
-        ok "parallel flock ran (serialization via flock confirmed by file locking semantics)"
+        ok "parallel "$FLOCK_BIN" ran (serialization via "$FLOCK_BIN" confirmed by file locking semantics)"
     fi
 else
-    fail "parallel flock result file not created"
+    fail "parallel "$FLOCK_BIN" result file not created"
 fi
 rm -f "$RESULT_FILE"
 
 # ── 3. Lock released on successful exit ───────────────────────────────────────
 echo
 echo "[3. Lock released on successful exit]"
-flock "$LOCK_FILE" true 2>/dev/null  # acquire + release immediately
+"$FLOCK_BIN" "$LOCK_FILE" true 2>/dev/null  # acquire + release immediately
 # Now try to acquire immediately — should succeed quickly
 acquired=0
-flock -w 1 "$LOCK_FILE" true 2>/dev/null && acquired=1
+"$FLOCK_BIN" -w 1 "$LOCK_FILE" true 2>/dev/null && acquired=1
 [[ "$acquired" -eq 1 ]] && ok "lock released after successful exit" || fail "lock not released after exit"
 
 # ── 4. Lock released when process exits abnormally ────────────────────────────
 echo
 echo "[4. Lock released when process exits abnormally]"
-(flock "$LOCK_FILE" bash -c "exit 1") 2>/dev/null || true
+("$FLOCK_BIN" "$LOCK_FILE" bash -c "exit 1") 2>/dev/null || true
 acquired2=0
-flock -w 1 "$LOCK_FILE" true 2>/dev/null && acquired2=1
+"$FLOCK_BIN" -w 1 "$LOCK_FILE" true 2>/dev/null && acquired2=1
 [[ "$acquired2" -eq 1 ]] && ok "lock released after non-zero exit" || fail "lock not released after non-zero exit"
 
 # ── 5. Timeout exits non-zero (tested with 1s timeout against held lock) ──────
 echo
 echo "[5. Timeout exits non-zero]"
 # Hold the lock in background
-flock "$LOCK_FILE" sleep 3 &
+"$FLOCK_BIN" "$LOCK_FILE" sleep 3 &
 HOLDER_PID=$!
 sleep 0.1  # let holder acquire
 
 exit_code=0
-flock -w 1 "$LOCK_FILE" true 2>/dev/null || exit_code=$?
+"$FLOCK_BIN" -w 1 "$LOCK_FILE" true 2>/dev/null || exit_code=$?
 kill "$HOLDER_PID" 2>/dev/null || true
 wait "$HOLDER_PID" 2>/dev/null || true
 
-[[ "$exit_code" -ne 0 ]] && ok "flock -w 1 timed out with non-zero exit" || fail "flock timeout should exit non-zero; got 0"
+[[ "$exit_code" -ne 0 ]] && ok ""$FLOCK_BIN" -w 1 timed out with non-zero exit" || fail ""$FLOCK_BIN" timeout should exit non-zero; got 0"
 
 # ── 6. bot_merge_contention_avoided emitted when wait > 5s ───────────────────
 echo
@@ -135,7 +138,7 @@ ok "all required fields present (ts, kind, branch, wait_s)"
 echo
 echo "[8. CHUMP_BOT_MERGE_LOCK=0 skips mutex]"
 # When CHUMP_BOT_MERGE_LOCK=0 the if-block is skipped entirely.
-# Verify by sourcing only the guard block and checking no flock runs.
+# Verify by sourcing only the guard block and checking no "$FLOCK_BIN" runs.
 mutex_code=$(sed -n '/^# ── 4e\. INFRA-860/,/^# FD 200 stays open/p' "$BOT_MERGE")
 out=$(CHUMP_BOT_MERGE_LOCK=0 bash -c "
 LOCK_DIR='$TMP/locks2'
