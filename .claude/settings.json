@@ -13,6 +13,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/coord/ambient-context-inject.sh\" ] && \"$REPO/scripts/coord/ambient-context-inject.sh\" PreToolUse 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",

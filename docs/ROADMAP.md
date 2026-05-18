@@ -183,6 +183,24 @@ reports back) without human-typing each chump CLI command.
 
 ---
 
+## Phase 5 — Fleet quality backlog (superseded by Waves)
+
+**Superseded 2026-05-16 by [`docs/strategy/ROADMAP_WAVES.md`](strategy/ROADMAP_WAVES.md)** — the canonical ship-order discipline with explicit prerequisite gating (Waves 0 → 0b → 1 → 2 → 3 → 4 and transition tests per wave). This section was filed earlier the same day in PR #2255 as a parallel ordering; the Waves doc lands the same intent more rigorously and replaces it.
+
+**Filed-2026-05-16 gaps with wave assignments** (also stored in each gap's `notes:` field per the Waves §How-to-use rule):
+
+| Wave | Role | Gaps |
+|---|---|---|
+| **0** | Truth gates | INFRA-1548 (schema_version contract), INFRA-1550 (EVENT_REGISTRY truth), INFRA-1554 (synthesis filing-atomicity), INFRA-1562 (preregistered evals), INFRA-1576 (doc staleness markers), **INFRA-1589** (runtime-verification discipline) |
+| **0b** | Auto-recovery | INFRA-1546 (monitor plists), INFRA-1547 (war-room SessionStart), INFRA-1549 (path-level lease via PreToolUse), INFRA-1552 (FAILURE_MODES wire-up), INFRA-1563 (/api/decisions endpoint), INFRA-1564 (3 dev-script plists), INFRA-1582 (chump gap show reaped), META-051 (failure-class pattern detector) |
+| **2-3** | Capacity | INFRA-1317 (GitHub Liaison Phase 1), INFRA-1318 (Phase 2 webhook-cache) |
+| **4** | Customer-facing / agent quality | INFRA-1545 (routing-brain wire-up), INFRA-1553 (chump-mcp-lifecycle in ACP), INFRA-1555 (FLEET-048 ratings picker), INFRA-1565 (chump-xml-adapter), INFRA-1570 (/api/settings/repo), INFRA-1571 (Tauri native), INFRA-1583 (chump-mcp-code MCP server) |
+| **noise** | Do not block ship (per Mission Yield calibration) | INFRA-1551, INFRA-1569, INFRA-1572, INFRA-1573, INFRA-1574, INFRA-1577, INFRA-1578 |
+
+**Why this section stayed instead of being removed**: PR #2255 ships AGENTS.md Behaviour 4 + `scripts/dev/verify-existence.sh`. Removing the originating Phase 5 framing leaves orphan references. Cross-linking to Waves preserves audit trail without competing.
+
+---
+
 ## Explicitly out of scope (entire 30 days)
 
 - **SWARM-* proprietary work.** Lives in `~/Projects/chump-proprietary/`. Not in this repo's queue except as opaque placeholders.
