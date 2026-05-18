@@ -41,16 +41,23 @@ jobs:
           sudo apt-get install -y jq
 
       - name: Build debug binary
-        run: cargo build 2>&1
+        # INFRA-1600 follow-up: self-hosted runner launchctl PATH lacks $HOME/.cargo/bin;
+        # the shared helper restores it.
+        run: |
+          source scripts/ci/lib/ensure-cargo-on-path.sh
+          cargo build 2>&1
 
       - name: Run ACP smoke test
         env:
-          CHUMP_BIN: ./target/debug/chump
           # No model needed for initialize/session/new
           OPENAI_API_BASE: http://localhost:11434/v1
           OPENAI_API_KEY: smoke-test
           OPENAI_MODEL: smoke-model
+        # INFRA-1600 follow-up: honor $CARGO_TARGET_DIR (shared cache redirects build output).
         run: |
+          source scripts/ci/lib/ensure-cargo-on-path.sh
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-acp-smoke.sh
 
       - name: Verify snapshot fixtures were written
