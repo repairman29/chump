@@ -222,7 +222,7 @@ pub fn print_check_report(r: &CheckReport) {
     println!();
 
     // Print header
-    println!("{:<20} {:<10} {}", "GATE", "STATUS", "MESSAGE");
+    println!("{:<20} {:<10} MESSAGE", "GATE", "STATUS");
     println!(
         "{:<20} {:<10} {}",
         "─".repeat(20),
@@ -300,7 +300,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
                 gates.push(GateResult {
                     gate: "state.db".to_string(),
                     status: "fail".to_string(),
-                    message: format!("{}", e),
+                    message: e.to_string(),
                 });
                 has_fail = true;
             }
@@ -341,7 +341,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
             gates.push(GateResult {
                 gate: "acceptance_criteria".to_string(),
                 status: "fail".to_string(),
-                message: format!("{}", e),
+                message: e.to_string(),
             });
             has_fail = true;
         }
