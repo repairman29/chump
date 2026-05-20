@@ -62,8 +62,7 @@ pub struct HealOutcome {
 
 /// Configuration knobs for the heal cycle. Override via env (production) or
 /// directly in tests.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 #[allow(clippy::type_complexity)] // mock fn pointers in test-only fields
 pub struct HealConfig {
     /// Override the launchctl status check to a mock that returns true/false
@@ -83,7 +82,6 @@ pub struct HealConfig {
     /// Budget override (default reads `CHUMP_SELF_DOCTOR_BUDGET`).
     pub budget_override: Option<usize>,
 }
-
 
 /// Run one heal cycle. Iterates daemons → checks/installs; then scans for
 /// stuck PRs → dispatches up to `budget` subagents.
