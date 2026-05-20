@@ -24,7 +24,7 @@ jobs:
   acp-smoke:
     name: ACP protocol smoke test (Zed / JetBrains compatible)
     # INFRA-1535 stage 3: self-hosted routing (M4 has chromedriver + Chrome + node installed)
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_ACP != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}  # INFRA-1567: ACP lane
     steps:
       - uses: actions/checkout@v6
 

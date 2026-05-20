@@ -473,7 +473,8 @@ jobs:
     # Defaults to ubuntu-latest so this is a safe no-op until the var is flipped via
     #   gh variable set CHUMP_SELF_HOSTED_ENABLED --body true -R repairman29/chump
     # See docs/process/SELF_HOSTED_RUNNERS.md.
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_FAST_CHECKS (master + lane).
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -823,7 +824,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     # INFRA-1534/1535 stage 1: self-hosted routing
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_CLIPPY (master + lane).
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CLIPPY != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
       - uses: actions/checkout@v6
@@ -872,7 +874,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     # INFRA-1535 stage 2: self-hosted routing
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_CARGO_TEST (master + lane).
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     steps:
       - uses: actions/checkout@v6
