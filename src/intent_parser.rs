@@ -528,7 +528,10 @@ pub fn intent_llm_budget_check(repo_root: &Path) -> BudgetStatus {
 
     let spend = read_today_intent_spend(repo_root);
     if spend >= daily_cap && !confirm {
-        BudgetStatus::Exceeded { spend, cap: daily_cap }
+        BudgetStatus::Exceeded {
+            spend,
+            cap: daily_cap,
+        }
     } else {
         BudgetStatus::Ok { per_call }
     }
