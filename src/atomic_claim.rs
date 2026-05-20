@@ -222,8 +222,13 @@ pub fn print_check_report(r: &CheckReport) {
     println!();
 
     // Print header
-    println!("{:<20} {:<10} {}", "GATE", "STATUS", "MESSAGE");
-    println!("{:<20} {:<10} {}", "─".repeat(20), "─".repeat(10), "─".repeat(50));
+    println!("{:<20} {:<10} MESSAGE", "GATE", "STATUS");
+    println!(
+        "{:<20} {:<10} {}",
+        "─".repeat(20),
+        "─".repeat(10),
+        "─".repeat(50)
+    );
 
     // Print each gate result
     for gate in &r.gates {
@@ -295,7 +300,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
                 gates.push(GateResult {
                     gate: "state.db".to_string(),
                     status: "fail".to_string(),
-                    message: format!("{}", e),
+                    message: e.to_string(),
                 });
                 has_fail = true;
             }
@@ -336,7 +341,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
             gates.push(GateResult {
                 gate: "acceptance_criteria".to_string(),
                 status: "fail".to_string(),
-                message: format!("{}", e),
+                message: e.to_string(),
             });
             has_fail = true;
         }
@@ -2487,12 +2492,10 @@ fn check_base_branch(repo_root: &Path, remote: &str, base_branch: &str) -> Resul
         .output();
 
     match output {
-        Ok(out) if out.status.success() => {
-            Ok(format!(
-                "Base branch {}/{} is reachable",
-                remote, base_branch
-            ))
-        }
+        Ok(out) if out.status.success() => Ok(format!(
+            "Base branch {}/{} is reachable",
+            remote, base_branch
+        )),
         Ok(_) => Err(format!(
             "Base branch {}/{} not found (run `git fetch {} {}`)",
             remote, base_branch, remote, base_branch
@@ -2522,7 +2525,10 @@ fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
                     if let Ok(avail_kb) = parts[3].parse::<u64>() {
                         let avail_gb = avail_kb / (1024 * 1024);
                         if avail_gb >= 5 {
-                            Ok(format!("Available disk space: {}GB (>5GB required)", avail_gb))
+                            Ok(format!(
+                                "Available disk space: {}GB (>5GB required)",
+                                avail_gb
+                            ))
                         } else {
                             Err(format!(
                                 "Insufficient disk space: {}GB (need >5GB)",
