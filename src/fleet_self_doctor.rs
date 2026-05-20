@@ -83,7 +83,6 @@ pub struct HealConfig {
     pub budget_override: Option<usize>,
 }
 
-
 /// Run one heal cycle. Iterates daemons → checks/installs; then scans for
 /// stuck PRs → dispatches up to `budget` subagents.
 ///
