@@ -63,6 +63,7 @@ pub struct HealOutcome {
 /// Configuration knobs for the heal cycle. Override via env (production) or
 /// directly in tests.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct HealConfig {
     /// Override the launchctl status check to a mock that returns true/false
     /// per label. Used by smoke tests.
@@ -82,19 +83,6 @@ pub struct HealConfig {
     pub budget_override: Option<usize>,
 }
 
-impl Default for HealConfig {
-    fn default() -> Self {
-        Self {
-            mock_launchctl_loaded: None,
-            mock_install: None,
-            mock_stuck_prs: None,
-            mock_execute_gap: None,
-            dispatch_log_override: None,
-            operator_action_override: None,
-            budget_override: None,
-        }
-    }
-}
 
 /// Run one heal cycle. Iterates daemons → checks/installs; then scans for
 /// stuck PRs → dispatches up to `budget` subagents.
