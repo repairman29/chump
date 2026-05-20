@@ -64,6 +64,7 @@ pub struct HealOutcome {
 /// directly in tests.
 #[derive(Debug, Clone)]
 #[derive(Default)]
+#[allow(clippy::type_complexity)] // mock fn pointers in test-only fields
 pub struct HealConfig {
     /// Override the launchctl status check to a mock that returns true/false
     /// per label. Used by smoke tests.
