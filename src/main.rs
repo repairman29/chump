@@ -10880,9 +10880,7 @@ async fn main() -> Result<()> {
                     }
                 } else {
                     // No provider configured: print hint to stderr, still emit event.
-                    eprintln!(
-                        "hint: set ANTHROPIC_API_KEY to enable freeform intents"
-                    );
+                    eprintln!("hint: set ANTHROPIC_API_KEY to enable freeform intents");
                 }
             }
 
