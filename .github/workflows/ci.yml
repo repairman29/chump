@@ -94,6 +94,7 @@ jobs:
               - 'templates/**'
               - 'tests/**'
               - 'wasm/**'
+              - 'skills-bundle/**'
               - 'web/**'
             e2e:
               - 'src/**'
