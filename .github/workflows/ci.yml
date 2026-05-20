@@ -97,6 +97,7 @@ jobs:
               - 'recipes/**'
               - 'registry-submission/**'
               - 'repos/**'
+              - 'skills-bundle/**'
               - 'templates/**'
               - 'tests/**'
               - 'wasm/**'
