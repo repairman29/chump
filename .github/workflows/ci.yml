@@ -26,7 +26,13 @@ jobs:
   # On push-to-main and merge_group every path is considered changed so the
   # full suite always runs there.
   changes:
-    runs-on: ubuntu-latest
+    # INFRA-1537: route `changes` to self-hosted too. Without this, every CI
+    # run blocks on ubuntu-latest's path-filter dispatch before reaching the
+    # self-hosted lanes — defeating the migration's capacity gain when GH-
+    # hosted is saturated. Forward-compatible with INFRA-1567 per-lane
+    # toggle: setting CHUMP_SELF_HOSTED_CHANGES=false opts this single lane
+    # back to ubuntu-latest while leaving the others on M4.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CHANGES != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 5  # path filter only; <30s in practice
     # INFRA-1348: dorny/paths-filter can fail transiently (GitHub runner issue,
     # network blip). A FAILURE here flips rollup state and blocks auto-merge
@@ -675,6 +681,9 @@ jobs:
       - name: pr-triage-bot smoke + YAML parse (INFRA-624/648)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips pip-dependent test
         run: bash scripts/ci/test-pr-triage-bot.sh
+
+      - name: changes-job self-hosted routing (INFRA-1537)
+        run: bash scripts/ci/test-changes-job-self-hosted.sh
 
       - name: model-registry schema validation (INFRA-739)
         run: bash scripts/ci/test-model-registry.sh
