@@ -642,6 +642,9 @@ jobs:
       - name: pre-push MERGED guard (INFRA-306)
         run: bash scripts/ci/test-merged-check-guard.sh
 
+      - name: fleet-spec primitive (INFRA-1483 Marcus M-B)
+        run: bash scripts/ci/test-fleet-spec.sh
+
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 
