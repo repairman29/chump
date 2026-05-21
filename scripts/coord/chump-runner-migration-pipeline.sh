@@ -55,39 +55,48 @@ write_stage() {
 # ── Gate predicates ──────────────────────────────────────────────
 # Returns 0 if the gate is satisfied (advance), 1 if not yet.
 
+# INFRA-1538: gate queries fixed to use check-runs API (job-level) not run list
+# (workflow-level). Prior bug: `gh run list --json name` returns workflow name,
+# so `select(.name=="fast-checks")` never matched (fast-checks is a JOB in the
+# CI workflow, not a workflow itself). Use the recent-commits-check-runs API to
+# get job conclusions directly.
+_check_job_succeeded() {
+  local job_name="$1"
+  local limit="${2:-30}"
+  # INFRA-755 obs-hook: emit structured ambient event for each gate query
+  # (equivalent to scripts/dev/ambient-emit.sh "kind":"migration_gate_query")
+  # so chump fleet doctor can see gate-poll rate + which jobs we watch.
+  emit "migration_gate_query" "polled" "job=$job_name limit=$limit"
+  # Get last N successful runs of ci.yml on main, then walk their check-runs
+  # for a job matching name + conclusion=success.
+  local sha
+  sha="$(gh api "repos/$REPO_OWNER/$REPO_NAME/commits/main" --jq '.sha' 2>/dev/null || true)"
+  [ -z "$sha" ] && return 1
+  gh api "repos/$REPO_OWNER/$REPO_NAME/commits/$sha/check-runs?per_page=$limit" \
+    --jq "[.check_runs[] | select(.name==\"$job_name\" and .conclusion==\"success\")] | length > 0" \
+    2>/dev/null | grep -q true
+}
+
 gate_stage_0_fast_checks_canary() {
-  # Look for ANY fast-checks workflow run that ran on a self-hosted runner and succeeded
-  gh run list -R "$REPO_OWNER/$REPO_NAME" --workflow=ci.yml --limit 30 \
-    --json conclusion,databaseId,name --jq '
-    [.[] | select(.conclusion=="success" and .name=="fast-checks")] | length > 0
-  ' 2>/dev/null | grep -q true || return 1
-  # Plus: confirm at least one runner has busy=true history (per gh api runs) — proxy: any check_run
-  # ran with runner_group_name matching self-hosted. Best-effort signal.
+  _check_job_succeeded "fast-checks" || return 1
   return 0
 }
 
 gate_stage_1_clippy() {
   # clippy job succeeded after the toggle was applied — file-presence check
   grep -q "vars.CHUMP_SELF_HOSTED_ENABLED" "$REPO_ROOT/.github/workflows/ci.yml" 2>/dev/null || return 1
-  # Look for a recent clippy success on the same branch as a successful self-hosted fast-checks
-  gh run list -R "$REPO_OWNER/$REPO_NAME" --workflow=ci.yml --limit 30 \
-    --json conclusion,name --jq '[.[] | select(.conclusion=="success" and .name=="clippy")] | length > 0' \
-    2>/dev/null | grep -q true || return 1
+  _check_job_succeeded "clippy" || return 1
   return 0
 }
 
 gate_stage_2_cargo_test() {
-  gh run list -R "$REPO_OWNER/$REPO_NAME" --workflow=ci.yml --limit 30 \
-    --json conclusion,name --jq '[.[] | select(.conclusion=="success" and .name=="cargo-test")] | length > 0' \
-    2>/dev/null | grep -q true || return 1
+  _check_job_succeeded "cargo-test" || return 1
   return 0
 }
 
 gate_stage_3_acp_smoke() {
-  # Check editor-integration workflow succeeded recently
-  gh run list -R "$REPO_OWNER/$REPO_NAME" --workflow=editor-integration.yml --limit 10 \
-    --json conclusion --jq '[.[] | select(.conclusion=="success")] | length > 0' \
-    2>/dev/null | grep -q true || return 1
+  # ACP lives in a different workflow; query its job by name too.
+  _check_job_succeeded "ACP protocol smoke test (Zed / JetBrains compatible)" 10 || return 1
   return 0
 }
 

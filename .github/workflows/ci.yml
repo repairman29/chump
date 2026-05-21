@@ -687,6 +687,12 @@ jobs:
       - name: changes-job self-hosted routing (INFRA-1537)
         run: bash scripts/ci/test-changes-job-self-hosted.sh
 
+      - name: migration-pipeline gates smoke (INFRA-1581 / closes INFRA-1538)
+        run: bash scripts/ci/test-migration-pipeline-gates.sh
+
+      - name: autoscale decisions smoke (INFRA-1581)
+        run: bash scripts/ci/test-autoscale-decisions.sh
+
       - name: model-registry schema validation (INFRA-739)
         run: bash scripts/ci/test-model-registry.sh
 

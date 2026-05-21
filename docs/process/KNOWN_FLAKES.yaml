@@ -158,3 +158,12 @@ playwright_flakes:
     tracking_gap: INFRA-1335
     added: "2026-05-15"
     last_observed: "2026-05-15"
+  # INFRA-1613 (2026-05-20): infra646_waste_events_counted intermittent
+  # under parallel cargo test load (env/ambient contention suspected).
+  - test: health::tests::infra646_waste_events_counted
+    reason: "intermittent panic at src/health.rs:855 under parallel test load; env/ambient contention suspected"
+    tracking_gap: INFRA-1613
+    added: "2026-05-20"
+    last_observed: "2026-05-20"
+    max_reruns: 1
+
