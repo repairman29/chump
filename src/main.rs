@@ -84,6 +84,7 @@ mod fleet_db;
 mod fleet_health;
 mod fleet_resize;
 mod fleet_self_doctor;
+mod fleet_spec; // INFRA-1483: declarative chump.fleet.yaml (Marcus M-B)
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
@@ -4401,9 +4402,173 @@ async fn main() -> Result<()> {
                 }
                 std::process::exit(0);
             }
+            // INFRA-1483: declarative spec primitive (Marcus M-B). Plan
+            // shows the gap set without mutating; apply reserves; spec-status
+            // aggregates progress by spec_name.
+            "plan" => {
+                let path = match args.get(3) {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => {
+                        eprintln!("Usage: chump fleet plan <spec.yaml>");
+                        std::process::exit(2);
+                    }
+                };
+                match fleet_spec::FleetSpec::from_path(&path) {
+                    Ok(spec) => {
+                        let plan = spec.plan();
+                        if args.iter().any(|a| a == "--json") {
+                            println!("{}", serde_json::to_string_pretty(&plan).unwrap());
+                        } else {
+                            print!("{}", fleet_spec::render_plan(&plan));
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "apply" => {
+                let path = match args.get(3) {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => {
+                        eprintln!("Usage: chump fleet apply <spec.yaml> [--dry-run]");
+                        std::process::exit(2);
+                    }
+                };
+                let dry_run = args.iter().any(|a| a == "--dry-run");
+                match fleet_spec::FleetSpec::from_path(&path) {
+                    Ok(spec) => {
+                        let plan = spec.plan();
+                        println!(
+                            "fleet-spec apply: {} gap(s) would be reserved (spec={}, dry_run={dry_run})",
+                            plan.len(),
+                            spec.name
+                        );
+                        for (i, g) in plan.iter().enumerate() {
+                            if dry_run {
+                                println!("  [dry-run] {} | {}", i + 1, g.title);
+                                continue;
+                            }
+                            // Reserve via the chump CLI to keep this dispatch
+                            // single-process-friendly. spec_name lives in notes
+                            // for `chump fleet spec-status` aggregation.
+                            let notes = format!(
+                                "spec_name={}\\nvalidation: {}\\nsuccess: {}\\nbindings: {}",
+                                g.spec_name,
+                                g.validation,
+                                g.success,
+                                g
+                                    .bindings
+                                    .iter()
+                                    .map(|(k, v)| format!("{k}={v}"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                            let chump_bin =
+                                std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                            let out = std::process::Command::new(&chump_bin)
+                                .args([
+                                    "gap",
+                                    "reserve",
+                                    "--domain",
+                                    &g.domain,
+                                    "--title",
+                                    &g.title,
+                                    "--effort",
+                                    &g.effort,
+                                    "--notes",
+                                    &notes,
+                                ])
+                                .output();
+                            match out {
+                                Ok(o) if o.status.success() => {
+                                    let id = String::from_utf8_lossy(&o.stdout)
+                                        .lines()
+                                        .find(|l| l.contains("INFRA-") || l.contains("-"))
+                                        .map(|s| s.trim().to_string())
+                                        .unwrap_or_else(|| "?".to_string());
+                                    println!("  [reserved] {} → {}", g.title, id);
+                                }
+                                Ok(o) => {
+                                    eprintln!(
+                                        "  [failed] {}: {}",
+                                        g.title,
+                                        String::from_utf8_lossy(&o.stderr).trim()
+                                    );
+                                    std::process::exit(1);
+                                }
+                                Err(e) => {
+                                    eprintln!("  [failed] {}: spawn error: {e}", g.title);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "spec-status" => {
+                let name = match args.get(3) {
+                    Some(n) => n.clone(),
+                    None => {
+                        eprintln!("Usage: chump fleet spec-status <spec-name>");
+                        std::process::exit(2);
+                    }
+                };
+                // Aggregate via `chump gap list` + grep on the notes column.
+                let chump_bin =
+                    std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                let out = std::process::Command::new(&chump_bin)
+                    .args(["gap", "list", "--json"])
+                    .output();
+                let Ok(o) = out else {
+                    eprintln!("error: could not exec chump gap list");
+                    std::process::exit(1);
+                };
+                let needle = format!("spec_name={name}");
+                let body = String::from_utf8_lossy(&o.stdout);
+                let mut total = 0;
+                let mut counts = std::collections::HashMap::<String, usize>::new();
+                // Lenient parse: one JSON object per line OR a single array.
+                let entries: Vec<serde_json::Value> = if body.trim_start().starts_with('[') {
+                    serde_json::from_str(&body).unwrap_or_default()
+                } else {
+                    body
+                        .lines()
+                        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                        .collect()
+                };
+                for e in &entries {
+                    let notes = e.get("notes").and_then(|v| v.as_str()).unwrap_or("");
+                    if notes.contains(&needle) {
+                        total += 1;
+                        let status = e
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        *counts.entry(status).or_insert(0) += 1;
+                    }
+                }
+                if total == 0 {
+                    println!("no gaps found for spec {name}");
+                    std::process::exit(0);
+                }
+                println!("fleet-spec status: {name}  ({total} gap(s))");
+                for (status, n) in &counts {
+                    println!("  {status}: {n}");
+                }
+                std::process::exit(0);
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|plan|apply|spec-status>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
