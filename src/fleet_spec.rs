@@ -94,8 +94,8 @@ impl FleetSpec {
 
     /// Load from a path.
     pub fn from_path(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         Self::from_yaml(&text)
     }
 
@@ -105,7 +105,10 @@ impl FleetSpec {
         combos
             .into_iter()
             .map(|bindings| {
-                let title = format_one(&format!("{}: {}", self.name, bind_summary(&bindings)), &bindings);
+                let title = format_one(
+                    &format!("{}: {}", self.name, bind_summary(&bindings)),
+                    &bindings,
+                );
                 let intent = format_one(&self.intent, &bindings);
                 let validation = format_one(&self.validation, &bindings);
                 let success = format_one(&self.success, &bindings);
@@ -165,7 +168,10 @@ fn bind_summary(bindings: &[(String, String)]) -> String {
 /// Render a plan as a human-readable table for `chump fleet plan`.
 pub fn render_plan(plan: &[PlannedGap]) -> String {
     let mut out = String::new();
-    out.push_str(&format!("=== fleet-spec plan: {} gap(s) ===\n\n", plan.len()));
+    out.push_str(&format!(
+        "=== fleet-spec plan: {} gap(s) ===\n\n",
+        plan.len()
+    ));
     for (i, g) in plan.iter().enumerate() {
         out.push_str(&format!(
             "[{:>2}] {}\n     effort={} domain={}\n     bindings: {}\n     validation: {}\n     success:    {}\n\n",
@@ -222,7 +228,10 @@ success: "{file} is clippy-clean"
         assert!(plan[0].intent.contains("src/foo.rs"));
         assert!(plan[0].success.contains("src/foo.rs"));
         assert_eq!(plan[0].spec_name, "rust-fmt-sweep");
-        assert_eq!(plan[0].bindings, vec![("file".to_string(), "src/foo.rs".to_string())]);
+        assert_eq!(
+            plan[0].bindings,
+            vec![("file".to_string(), "src/foo.rs".to_string())]
+        );
     }
 
     #[test]
@@ -242,8 +251,12 @@ success: "{dep}@{version} builds"
         let plan = s.plan();
         assert_eq!(plan.len(), 4); // 2 × 2
         let titles: Vec<_> = plan.iter().map(|g| g.title.clone()).collect();
-        assert!(titles.iter().any(|t| t.contains("tokio") && t.contains("1.0")));
-        assert!(titles.iter().any(|t| t.contains("serde") && t.contains("1.1")));
+        assert!(titles
+            .iter()
+            .any(|t| t.contains("tokio") && t.contains("1.0")));
+        assert!(titles
+            .iter()
+            .any(|t| t.contains("serde") && t.contains("1.1")));
     }
 
     #[test]

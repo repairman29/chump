@@ -4459,8 +4459,7 @@ async fn main() -> Result<()> {
                                 g.spec_name,
                                 g.validation,
                                 g.success,
-                                g
-                                    .bindings
+                                g.bindings
                                     .iter()
                                     .map(|(k, v)| format!("{k}={v}"))
                                     .collect::<Vec<_>>()
@@ -4470,16 +4469,8 @@ async fn main() -> Result<()> {
                                 std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
                             let out = std::process::Command::new(&chump_bin)
                                 .args([
-                                    "gap",
-                                    "reserve",
-                                    "--domain",
-                                    &g.domain,
-                                    "--title",
-                                    &g.title,
-                                    "--effort",
-                                    &g.effort,
-                                    "--notes",
-                                    &notes,
+                                    "gap", "reserve", "--domain", &g.domain, "--title", &g.title,
+                                    "--effort", &g.effort, "--notes", &notes,
                                 ])
                                 .output();
                             match out {
@@ -4522,8 +4513,7 @@ async fn main() -> Result<()> {
                     }
                 };
                 // Aggregate via `chump gap list` + grep on the notes column.
-                let chump_bin =
-                    std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
                 let out = std::process::Command::new(&chump_bin)
                     .args(["gap", "list", "--json"])
                     .output();
@@ -4539,8 +4529,7 @@ async fn main() -> Result<()> {
                 let entries: Vec<serde_json::Value> = if body.trim_start().starts_with('[') {
                     serde_json::from_str(&body).unwrap_or_default()
                 } else {
-                    body
-                        .lines()
+                    body.lines()
                         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
                         .collect()
                 };
