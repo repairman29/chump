@@ -95,6 +95,7 @@ use chump_gap_store as gap_store;
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
 mod audit;
+mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod completion;
 mod gen;
 mod genai_conv;
