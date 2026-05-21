@@ -2477,6 +2477,70 @@ events:
     consumers: [fleet-brief, operator-recall, watchdog]
     fields_required: [ts, kind, gap_id, dimension, used, max, pct]
 
+  # ── INFRA-1488: merge-conflict-resolution agent (Marcus M-C) ─────────────
+  - kind: conflict_resolve_start
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: rebase landed in conflict state and the resolver is dispatching an agent
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_success
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: agent resolved + preservation guard passed + rebase continued
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_dropped
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: preservation guard caught >2 dropped lines unique to one side
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_handoff
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: agent failed after CHUMP_CONFLICT_RETRIES attempts; operator-action-needed.json written
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_skipped
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: caller invoked the resolver but no conflicts present, or feature disabled
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_attempt_failed
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: single agent dispatch attempt returned non-zero
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_validated
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: preservation guard passed; about to git add + rebase --continue
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_continue_failed
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: git rebase --continue failed after agent resolution (e.g. test gate)
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, body]
+
+  - kind: conflict_resolve_failed
+    effect_metric: marcus-daily-tax
+    emitter: scripts/coord/conflict-resolver-agent.sh (INFRA-1488)
+    trigger: structural prerequisites missing (no gap_id, etc)
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, kind, gap_id, body]
+
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
     effect_metric: self
