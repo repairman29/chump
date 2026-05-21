@@ -442,3 +442,50 @@ Today: 4 macOS-ARM64 self-hosted runners. Each heavy job takes 4-10 min cold,
 
 Don't flip all 8 at once with only 4 runners; you'll just shift the
 bottleneck from github-hosted to self-hosted.
+
+---
+
+## Per-lane toggles (INFRA-1567, 2026-05-20)
+
+The master switch `CHUMP_SELF_HOSTED_ENABLED` now combines with **per-lane**
+vars so a single broken lane no longer forces a full self-hosted rollback.
+
+### Vars
+
+| Var | Default | Effect |
+|---|---|---|
+| `CHUMP_SELF_HOSTED_ENABLED` | unset | Master kill-switch. Must be `'true'` for ANY lane to route to self-hosted. Set to `'false'` to disable all 4 lanes simultaneously (emergency stop). |
+| `CHUMP_SELF_HOSTED_FAST_CHECKS` | unset (treated as on) | `'false'` routes fast-checks to ubuntu-latest. |
+| `CHUMP_SELF_HOSTED_CLIPPY` | unset (treated as on) | `'false'` routes clippy to ubuntu-latest. |
+| `CHUMP_SELF_HOSTED_CARGO_TEST` | unset (treated as on) | `'false'` routes cargo-test to ubuntu-latest. |
+| `CHUMP_SELF_HOSTED_ACP` | unset (treated as on) | `'false'` routes ACP smoke to ubuntu-latest. |
+
+### Decision logic
+
+```
+self-hosted iff:  master == 'true'  AND  lane != 'false'
+```
+
+- Master unset/false → all four lanes → ubuntu-latest.
+- Master `'true'`, lanes unset → all four lanes → self-hosted (preserves current behavior).
+- Master `'true'`, one lane `'false'` → that lane only → ubuntu-latest.
+
+### Rollback playbook (per-lane)
+
+When lane X is broken on M4:
+
+```bash
+gh variable set CHUMP_SELF_HOSTED_<LANE> --body false -R repairman29/chump
+```
+
+The other 3 lanes continue on M4. Once root-cause is fixed:
+
+```bash
+gh variable delete CHUMP_SELF_HOSTED_<LANE> -R repairman29/chump
+# (or set to true)
+```
+
+**Why this beats the prior master-only flip:** today's session (2026-05-20)
+saw one ACP-on-M4 silent-stdout failure (INFRA-1561 in flight) force rolling
+back the master switch, forfeiting 75% of the migration value across the
+other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.

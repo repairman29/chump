@@ -254,3 +254,6 @@ self_doctor_tick               # reason: INFRA-1595 emitted from src/fleet_self_
 self_doctor_healed             # reason: INFRA-1595 same struct-init pattern as self_doctor_tick; emit-site not grep-scannable
 self_doctor_failed             # reason: INFRA-1595 only fires on action failure (install error / execute-gap spawn error); rare path not exercised in PROD_PATHS smoke
 self_doctor_budget_exceeded    # reason: INFRA-1595 only fires under stress (>3 dispatches/10min); rare path not exercised in PROD_PATHS smoke
+
+chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
+pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending

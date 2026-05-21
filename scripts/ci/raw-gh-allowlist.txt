@@ -37,3 +37,5 @@ scripts/coord/chump-runner-migration-pipeline.sh  # INFRA-1535: gh pr merge is c
 scripts/coord/chump-runner-autoscale.sh  # INFRA-1535: GitHub Actions runner API not covered by cache abstraction; new script
 scripts/coord/chump-pr-triage.sh          # operator-facing advisory tool; uses gh for read-only PR listing; migration: INFRA-1249
 scripts/coord/pr-rescue-false-close.sh    # INFRA-1406: write ops (comment+merge) in PR recovery path; migration: INFRA-1249
+
+scripts/coord/pr-failure-auto-rescue.sh # migration gap: INFRA-1618

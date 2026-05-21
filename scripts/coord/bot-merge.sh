@@ -1096,6 +1096,17 @@ if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
     printf '{"ts":"%s","kind":"botmerge_recovery_start","gap":"%s","branch":"%s","note":"INFRA-1422 fast-path retry"}\n' \
         "$_bm_ts" "$_gap_lbl" "${BRANCH:-unknown}" >> "$_bm_recover_amb" 2>/dev/null || true
 
+    # INFRA-306: pre-push MERGED check (recovery path). If a PR for this
+    # branch already merged (auto-merge fired during wedge window), skip the
+    # destructive force-push. Bypass: CHUMP_SKIP_MERGED_CHECK=1.
+    if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
+        _recover_pr_state="$(gh pr list --head "$BRANCH" --state all --json state --jq '.[0].state // empty' 2>/dev/null || true)"
+        if [[ "$_recover_pr_state" == "MERGED" ]]; then
+            info "INFRA-306: branch $BRANCH already MERGED — skipping recovery force-push"
+            exit 0
+        fi
+    fi
+
     stage_start "recovery: push"
     run git push -u origin "$BRANCH" --force-with-lease
     stage_done
