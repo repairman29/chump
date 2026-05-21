@@ -2457,6 +2457,26 @@ events:
     consumers: [operator-recall, watchdog]
     fields_required: [ts, kind, spent_usd, cap_usd, pct]
 
+  # ── INFRA-1486: per-gap execution budgets (Marcus trust gate) ────────────
+  - kind: gap_budget_warn
+    effect_metric: marcus-trust
+    emitter: src/budget_tracker.rs (INFRA-1486)
+    trigger: per-gap budget tracker crossed 75% threshold on one dimension
+      (file_touches, wallclock_minutes, dep_adds, or llm_cost_usd). Agent
+      keeps going; operator can extend via `chump nudge --extend-budget`.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, dimension, used, max, pct]
+
+  - kind: gap_budget_breach
+    effect_metric: marcus-trust
+    emitter: src/budget_tracker.rs (INFRA-1486)
+    trigger: per-gap budget tracker reached 100% on one dimension. Returns
+      BudgetAction::SoftPause to caller — agent harness must pause. The
+      structural prevention for Marcus's "Frankenstein monster" compounding
+      failure mode (2026-05-15 interview).
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, gap_id, dimension, used, max, pct]
+
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
     effect_metric: self
@@ -3875,14 +3895,3 @@ events:
       was bypassed wholesale.
     consumers: [fleet-brief, ops-audit, pr-hygiene-gate]
     fields_required: [ts, kind, pr_number]
-  # ── INFRA-1581 / INFRA-1538: migration pipeline gate-query telemetry ──
-  - kind: migration_gate_query
-    effect_metric: ci_throughput_runs_per_hour
-    emitter: scripts/coord/chump-runner-migration-pipeline.sh (INFRA-1538/1581)
-    trigger: each invocation of _check_job_succeeded() helper that polls the
-      check-runs API to see if a stage gate (fast-checks/clippy/cargo-test/ACP)
-      has been met. Lets fleet-doctor surface gate-poll rate + which jobs we
-      watch most often.
-    consumers: [fleet-brief, fleet-doctor]
-    fields_required: [ts, kind, job, limit]
-
