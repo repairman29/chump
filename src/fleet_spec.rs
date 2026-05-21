@@ -107,11 +107,13 @@ impl FleetSpec {
             .map(|bindings| {
                 let title = format_one(&format!("{}: {}", self.name, bind_summary(&bindings)), &bindings);
                 let intent = format_one(&self.intent, &bindings);
+                let validation = format_one(&self.validation, &bindings);
+                let success = format_one(&self.success, &bindings);
                 PlannedGap {
                     title,
                     intent,
-                    validation: self.validation.clone(),
-                    success: self.success.clone(),
+                    validation,
+                    success,
                     effort: self.effort.clone(),
                     domain: self.domain.clone(),
                     spec_name: self.name.clone(),
