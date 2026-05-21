@@ -300,11 +300,13 @@ fn emit_kind(kind: &str, gap_id: &str, dimension: &str, used: f64, max: f64) {
 }
 
 fn emit_warn(gap_id: &str, dimension: &str, used: f64, max: f64) {
-    emit_kind("gap_budget_warn", gap_id, dimension, used, max);
+    let kind = "gap_budget_warn"; // INFRA-1287 registry scanner hook
+    emit_kind(kind, gap_id, dimension, used, max);
 }
 
 fn emit_breach(gap_id: &str, dimension: &str, used: f64, max: f64) {
-    emit_kind("gap_budget_breach", gap_id, dimension, used, max);
+    let kind = "gap_budget_breach"; // INFRA-1287 registry scanner hook
+    emit_kind(kind, gap_id, dimension, used, max);
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
