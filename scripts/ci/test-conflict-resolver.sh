@@ -31,7 +31,7 @@ echo "=== INFRA-1488 conflict-resolver-agent tests ==="
 for kind in conflict_resolve_start conflict_resolve_success conflict_resolve_dropped \
             conflict_resolve_handoff conflict_resolve_skipped conflict_resolve_attempt_failed \
             conflict_resolve_validated conflict_resolve_continue_failed conflict_resolve_failed; do
-    if grep -qE "EMIT_KIND \"$kind\"|kind=$kind" "$SCRIPT"; then
+    if grep -qE "_emit \"$kind\"|kind=$kind" "$SCRIPT"; then
         ok "script emits $kind"
     else
         fail "script missing emit $kind"
@@ -58,7 +58,7 @@ else
 fi
 
 # Audit log function (AC #6)
-if grep -q "EMIT_KIND\b" "$SCRIPT"; then
+if grep -q "_emit\b" "$SCRIPT"; then
     ok "AC#6: audit emission helper present"
 else
     fail "AC#6: missing emit helper"

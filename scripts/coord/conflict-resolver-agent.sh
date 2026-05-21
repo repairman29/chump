@@ -39,7 +39,7 @@
 
 set -uo pipefail
 
-EMIT_KIND() {
+_emit() {
     # Light wrapper: emit a JSON line to ambient.jsonl.
     local kind="$1"
     local body="${2:-{}}"
@@ -55,7 +55,7 @@ EMIT_KIND() {
 # AC #5: per-repo enable/disable. Default OFF to ship safely; operator opts in.
 if [[ "${CHUMP_CONFLICT_RESOLVER_ENABLED:-0}" != "1" ]]; then
     echo "[conflict-resolver] disabled (set CHUMP_CONFLICT_RESOLVER_ENABLED=1 to enable)"
-    EMIT_KIND "conflict_resolve_skipped" '{"reason":"disabled"}'
+    _emit "conflict_resolve_skipped" '{"reason":"disabled"}'
     exit 0
 fi
 
@@ -65,7 +65,7 @@ RETRIES="${CHUMP_CONFLICT_RETRIES:-2}"
 
 if [[ -z "$GAP_ID" ]]; then
     echo "[conflict-resolver] FAIL: GAP_ID required (env CHUMP_GAP_ID or arg \$1)"
-    EMIT_KIND "conflict_resolve_failed" '{"reason":"no_gap_id"}'
+    _emit "conflict_resolve_failed" '{"reason":"no_gap_id"}'
     exit 2
 fi
 
@@ -131,7 +131,7 @@ preserves_both_sides() {
     done < <(conflict_files)
     # Allow up to 2 drop-candidates (formatting noise tolerance); fail above.
     if (( dropped > 2 )); then
-        EMIT_KIND "conflict_resolve_dropped" "{\"dropped_lines\":$dropped}"
+        _emit "conflict_resolve_dropped" "{\"dropped_lines\":$dropped}"
         return 1
     fi
     return 0
@@ -151,7 +151,7 @@ operator_handoff() {
   "next": "operator must resolve conflicts manually; rebase is mid-flight."
 }
 EOF
-    EMIT_KIND "conflict_resolve_handoff" "{\"reason\":\"$reason\"}"
+    _emit "conflict_resolve_handoff" "{\"reason\":\"$reason\"}"
     exit 1
 }
 
@@ -159,14 +159,14 @@ main() {
     mapfile -t files < <(conflict_files)
     if (( ${#files[@]} == 0 )); then
         echo "[conflict-resolver] no conflicts detected — nothing to do"
-        EMIT_KIND "conflict_resolve_skipped" '{"reason":"no_conflicts"}'
+        _emit "conflict_resolve_skipped" '{"reason":"no_conflicts"}'
         exit 0
     fi
     echo "[conflict-resolver] ${#files[@]} conflicted file(s): ${files[*]}"
 
     local ctx_dir="${REPO_ROOT}/.chump-locks/conflict-ctx/$$"
     snapshot_pre "$ctx_dir"
-    EMIT_KIND "conflict_resolve_start" "{\"files\":${#files[@]}}"
+    _emit "conflict_resolve_start" "{\"files\":${#files[@]}}"
 
     local attempt=0
     while (( attempt < RETRIES )); do
@@ -181,23 +181,23 @@ main() {
         if "$chump_bin" --execute-gap "$GAP_ID" --task "resolve merge conflicts in: ${files[*]}" >/dev/null 2>&1; then
             # AC #3: preservation guard
             if preserves_both_sides "$ctx_dir"; then
-                EMIT_KIND "conflict_resolve_validated" "{\"attempt\":$attempt}"
+                _emit "conflict_resolve_validated" "{\"attempt\":$attempt}"
                 # AC #6: audit-log the post-state diff
                 git -C "$REPO_ROOT" diff > "$ctx_dir/post.diff" 2>/dev/null || true
                 git -C "$REPO_ROOT" add -- "${files[@]}"
                 if git -C "$REPO_ROOT" rebase --continue >/dev/null 2>&1; then
-                    EMIT_KIND "conflict_resolve_success" "{\"attempt\":$attempt,\"files\":${#files[@]}}"
+                    _emit "conflict_resolve_success" "{\"attempt\":$attempt,\"files\":${#files[@]}}"
                     echo "[conflict-resolver] resolved + rebase continued"
                     exit 0
                 fi
-                EMIT_KIND "conflict_resolve_continue_failed" "{\"attempt\":$attempt}"
+                _emit "conflict_resolve_continue_failed" "{\"attempt\":$attempt}"
             else
                 echo "[conflict-resolver] attempt $attempt failed preservation guard"
                 git -C "$REPO_ROOT" checkout -- "${files[@]}" 2>/dev/null || true
             fi
         else
             echo "[conflict-resolver] attempt $attempt: agent dispatch failed"
-            EMIT_KIND "conflict_resolve_attempt_failed" "{\"attempt\":$attempt}"
+            _emit "conflict_resolve_attempt_failed" "{\"attempt\":$attempt}"
         fi
     done
 
