@@ -654,6 +654,19 @@ events:
       2 `chump health --slo-check` alive 11+ h.
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, pid, comm, class, etime_secs, expected_secs, action, dry_run]
+  - kind: main_red_detected
+    effect_metric: self
+    emitter: scripts/ops/main-health-watchdog.sh (INFRA-1656)
+    trigger: >
+      Daily launchd watchdog at 02:00 local queries the latest CI run on main.
+      Each sweep emits exactly one event: on success it is a heartbeat
+      (status=success, gap_id=none) proving the watchdog is alive; on failure
+      it carries status=filed plus the freshly-reserved gap_id (or
+      status=deduped if a P0 INFRA-NEW-MAIN-RED-* gap already references the
+      same head_sha). Closes the 2026-05-20 24h-red-main feedback gap where
+      every PR's CI burned silently until an operator noticed.
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, gate, sha, run_url, head_sha, gap_id, dry_run, status]
 
   - kind: target_artifact_reaped
     effect_metric: self
