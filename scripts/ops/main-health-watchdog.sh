@@ -91,7 +91,7 @@ trap 'rm -f "$RUN_JSON_FILE" "${PARSE_OUT:-}" "${DEDUP_IN:-}" "${DEDUP_OUT:-}"' 
 
 if [[ ! -s "$RUN_JSON_FILE" ]] || [[ "$(cat "$RUN_JSON_FILE")" == "[]" ]]; then
     echo "[main-health-watchdog] no recent CI run on main; nothing to do"
-    emit_ambient main_red_detected gate=none sha=none run_url=none head_sha=none gap_id=none dry_run=0 status=no_runs
+    emit_ambient "main_red_detected" gate=none sha=none run_url=none head_sha=none gap_id=none dry_run=0 status=no_runs
     exit 0
 fi
 
@@ -142,7 +142,7 @@ PARSED="$(cat "$PARSE_OUT")"
 
 if [[ "$PARSED" == "NO_RUNS" ]]; then
     echo "[main-health-watchdog] gh returned empty run list"
-    emit_ambient main_red_detected gate=none sha=none run_url=none head_sha=none gap_id=none dry_run=0 status=no_runs
+    emit_ambient "main_red_detected" gate=none sha=none run_url=none head_sha=none gap_id=none dry_run=0 status=no_runs
     exit 0
 fi
 
@@ -154,7 +154,7 @@ echo "[main-health-watchdog] latest CI run on main: conclusion=$CONCLUSION sha=$
 if [[ "$CONCLUSION" != "failure" ]]; then
     # Heartbeat — emit on success too so consumers can prove the watchdog is
     # alive (same pattern as orphan-reaper count=0 events).
-    emit_ambient main_red_detected \
+    emit_ambient "main_red_detected" \
         gate=none \
         sha="${HEAD_SHA:0:12}" \
         run_url="$RUN_URL" \
@@ -206,7 +206,7 @@ DEDUP_HIT="$(cat "$DEDUP_OUT" 2>/dev/null | tr -d '[:space:]')"
 
 if [[ -n "$DEDUP_HIT" ]]; then
     echo "[main-health-watchdog] dedup hit: $DEDUP_HIT already filed for sha ${HEAD_SHA:0:12}; not re-filing"
-    emit_ambient main_red_detected \
+    emit_ambient "main_red_detected" \
         gate="$GATE" \
         sha="${HEAD_SHA:0:12}" \
         run_url="$RUN_URL" \
@@ -243,7 +243,7 @@ else
     GAP_ID="$(printf '%s\n' "$RESERVE_OUT" | tail -1 | tr -d '[:space:]')"
     if [[ -z "$GAP_ID" || ! "$GAP_ID" =~ ^[A-Z]+-[0-9]+$ ]]; then
         echo "[main-health-watchdog] reserve failed; output: $RESERVE_OUT" >&2
-        emit_ambient main_red_detected \
+        emit_ambient "main_red_detected" \
             gate="$GATE" \
             sha="${HEAD_SHA:0:12}" \
             run_url="$RUN_URL" \
@@ -263,7 +263,7 @@ else
     echo "[main-health-watchdog] filed $GAP_ID for $TITLE"
 fi
 
-emit_ambient main_red_detected \
+emit_ambient "main_red_detected" \
     gate="$GATE" \
     sha="${HEAD_SHA:0:12}" \
     run_url="$RUN_URL" \
