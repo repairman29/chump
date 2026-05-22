@@ -373,6 +373,25 @@ impl GapStore {
                   AND (closed_date IS NULL OR closed_date = '')",
             [],
         );
+
+        // INFRA-1682: heal closed_at rows that hold TEXT instead of INTEGER.
+        // Discovery 2026-05-22: one rogue row (INFRA-1390) with
+        // closed_at='2026-05-17 03:16:05' broke every audit-priorities query
+        // ("Invalid column type Text at index: 12, name: closed_at"). The
+        // SELECT-side now uses `CASE WHEN typeof(closed_at)='integer' THEN
+        // closed_at ELSE NULL END` so the same class of bad row can't crash
+        // future queries; this migration heals existing bad rows by coercing
+        // text-encoded datetimes to unix-epoch integers. Idempotent: only
+        // touches rows where typeof != integer/null.
+        let _ = self.conn.execute(
+            "UPDATE gaps
+                SET closed_at = CASE
+                    WHEN closed_at GLOB '[0-9]*' THEN CAST(closed_at AS INTEGER)
+                    ELSE strftime('%s', closed_at)
+                END
+                WHERE typeof(closed_at) NOT IN ('integer', 'null')",
+            [],
+        );
         // INFRA-112: drop any pre-existing rows with NULL/empty/whitespace id.
         // Such rows survive `INSERT OR IGNORE` (PRIMARY KEY on TEXT permits empty
         // strings in legacy SQLite) but vanish from the YAML mirror because
@@ -488,7 +507,7 @@ impl GapStore {
         if let Some(s) = status_filter {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                        acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
+                        acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                         preferred_machine,estimated_minutes,required_model
                  FROM gaps WHERE status=?1 ORDER BY id",
@@ -498,7 +517,7 @@ impl GapStore {
         } else {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                        acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
+                        acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                         preferred_machine,estimated_minutes,required_model
                  FROM gaps ORDER BY id",
@@ -651,7 +670,7 @@ impl GapStore {
 
         let mut stmt = self.conn.prepare(
             "SELECT id,domain,title,description,priority,effort,status,
-                    acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
+                    acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                     preferred_machine,estimated_minutes,required_model
              FROM gaps WHERE id=?1",
@@ -690,7 +709,7 @@ impl GapStore {
             let pattern = format!("{}%", gap_id.to_lowercase());
             let mut pfx_stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
+                         acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                          opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                          preferred_machine,estimated_minutes,required_model
                   FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
