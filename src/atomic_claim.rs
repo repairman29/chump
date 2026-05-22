@@ -656,6 +656,15 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.7. INFRA-1692: pre-flight team-nugget search.
+    //
+    // Marcus M-D arc: when an operator runs `chump claim GAP-ID`, surface
+    // relevant team-shared knowledge BEFORE the worktree spins up, so the
+    // operator doesn't repeat known failure modes that a teammate already
+    // hit. Best-effort: graceful degrade on missing CHUMP_TEAM_URL or
+    // unreachable endpoint; bypass via CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1.
+    nugget_prefetch::prefetch_and_print(&args.repo_root, &args.gap_id, &session_id);
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,
@@ -2624,6 +2633,290 @@ fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
             }
         }
         Err(_) => Ok("Disk space check skipped (df unavailable)".to_string()),
+    }
+}
+
+// ── INFRA-1692: team-nugget pre-flight ──────────────────────────────────────
+//
+// Surface relevant team-shared knowledge BEFORE the worktree spins up.
+// The fleet has a vector-indexed registry of "nuggets" — gotchas, patterns,
+// dead-ends, failure modes, conventions — recorded by prior sessions.
+// When an operator (or fleet worker) runs `chump claim GAP-ID`, we
+// search the substrate for the top-K most similar nuggets to this gap's
+// title + description and print them as a brief table.
+//
+// Design notes:
+//   * Pure best-effort. CHUMP_TEAM_URL unset → silent skip. Network error
+//     → silent skip. The actual claim must NEVER fail because of a nugget
+//     lookup glitch.
+//   * Bypass via CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1 (offline / CI sandbox).
+//   * Each printed nugget triggers log_nugget_read so the audit trail
+//     (INFRA-1473 AC #6) captures pre-claim reads.
+//   * Top-K defaults to 3; override with CHUMP_CLAIM_NUGGET_TOP_K.
+mod nugget_prefetch {
+    use std::path::Path;
+
+    /// Entry point — runs the full pre-flight search + print + audit log.
+    /// Best-effort: any internal failure is swallowed so the claim proceeds.
+    pub fn prefetch_and_print(repo_root: &Path, gap_id: &str, session_id: &str) {
+        // AC #4: bypass.
+        if env_truthy("CHUMP_CLAIM_SKIP_NUGGET_SEARCH") {
+            return;
+        }
+        // AC #5: graceful degrade when team substrate is not configured.
+        if std::env::var("CHUMP_TEAM_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .is_none()
+        {
+            return;
+        }
+
+        let (title, description) = read_gap_title_desc(repo_root, gap_id);
+        // No useful query material — skip silently rather than spam the substrate.
+        if title.trim().is_empty() && description.trim().is_empty() {
+            return;
+        }
+        let query_text = format!("{title}\n{description}").trim().to_string();
+
+        let top_k: usize = std::env::var("CHUMP_CLAIM_NUGGET_TOP_K")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|k: &usize| *k > 0 && *k <= 25)
+            .unwrap_or(3);
+
+        // `chump claim` is invoked from within `#[tokio::main]`, so a fresh
+        // current-thread runtime would panic ("Cannot start a runtime from
+        // within a runtime"). Use the ambient runtime when present
+        // (multi-threaded; we use block_in_place to release the worker thread
+        // for the sync caller), or build a fresh runtime if no ambient is
+        // available (CI / unit tests).
+        let async_block = async {
+            let team = match chump_team::ChumpTeam::from_env() {
+                Ok(t) => t,
+                Err(_) => return Vec::new(),
+            };
+            let query = chump_team::nuggets::NuggetQuery {
+                query_text,
+                repo_url: None,
+                kinds: vec![],
+                limit: top_k,
+                min_similarity: 0.5,
+            };
+            match team.search_nuggets(query).await {
+                Ok(matches) => {
+                    // AC #3: log_nugget_read for every surfaced nugget.
+                    // The reader's UUID comes from CHUMP_TEAM_USER_ID (set by
+                    // `chump team login` in the operator's daily-driver path).
+                    // When absent, we skip the audit write — the search still
+                    // ran and the operator still saw the table; the audit
+                    // trail is best-effort by design.
+                    if let Some(user_id) = read_user_id_env() {
+                        for m in &matches {
+                            let _ = team
+                                .log_nugget_read(
+                                    m.nugget.id,
+                                    user_id,
+                                    session_id,
+                                    Some(gap_id),
+                                    m.similarity,
+                                )
+                                .await;
+                        }
+                    }
+                    matches
+                }
+                Err(_) => Vec::new(),
+            }
+        };
+
+        // Execute the async block on whichever runtime is reachable.
+        //
+        //   1. If we're inside a multi-thread runtime (the `#[tokio::main]`
+        //      production path), use `block_in_place` to release the current
+        //      worker thread, then drive the future on the same runtime via
+        //      `Handle::current().block_on()`.
+        //   2. If we're inside a single-thread runtime (unlikely; covered for
+        //      safety), `block_in_place` would panic — drop into best-effort
+        //      mode by emitting "no nuggets" and returning.
+        //   3. If no ambient runtime exists (unit tests, sync callers), build
+        //      a fresh current-thread runtime and run there.
+        let matches = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                let rt_flavor = handle.runtime_flavor();
+                if matches!(rt_flavor, tokio::runtime::RuntimeFlavor::MultiThread) {
+                    tokio::task::block_in_place(|| handle.block_on(async_block))
+                } else {
+                    // current_thread runtime: can't block, and we don't want to
+                    // monopolize the executor. Skip silently.
+                    return;
+                }
+            }
+            Err(_) => match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt.block_on(async_block),
+                Err(_) => return,
+            },
+        };
+
+        // AC #2: print a brief table even when 0 results, so the operator
+        // sees the system tried. (Skip if explicitly silent: 0 matches AND
+        // CHUMP_CLAIM_NUGGET_QUIET=1 — useful for fleet workers.)
+        if matches.is_empty() {
+            if !env_truthy("CHUMP_CLAIM_NUGGET_QUIET") {
+                eprintln!(
+                    "[claim] INFRA-1692: no team nuggets matched {} (substrate empty or no similarity ≥ 0.5)",
+                    gap_id
+                );
+            }
+            return;
+        }
+
+        eprintln!("[claim] INFRA-1692: team-shared knowledge for {gap_id}");
+        eprintln!(
+            "[claim]   {:<12} {:<6} {:<40} body (first 80)",
+            "kind", "sim", "title"
+        );
+        for m in &matches {
+            let kind = format!("{:?}", m.nugget.kind);
+            let sim = format!("{:.2}", m.similarity);
+            let title_trunc = truncate(&m.nugget.title, 40);
+            let body_trunc = truncate(&single_line(&m.nugget.body), 80);
+            eprintln!(
+                "[claim]   {:<12} {:<6} {:<40} {}",
+                kind, sim, title_trunc, body_trunc
+            );
+        }
+    }
+
+    /// Read (title, description) from the gap registry. Description is read
+    /// from the `description` column if present; otherwise we fall back to
+    /// acceptance_criteria (still richer than title alone).
+    fn read_gap_title_desc(repo_root: &Path, gap_id: &str) -> (String, String) {
+        let db_path = repo_root.join(".chump/state.db");
+        if !db_path.exists() {
+            return (String::new(), String::new());
+        }
+        let Ok(conn) = rusqlite::Connection::open(&db_path) else {
+            return (String::new(), String::new());
+        };
+        // Some installations of state.db don't have the `description` column
+        // (older schema). Try the rich query first; fall back to title-only.
+        let row = conn
+            .query_row(
+                "SELECT COALESCE(title, ''), COALESCE(description, ''), COALESCE(acceptance_criteria, '') FROM gaps WHERE id = ?1",
+                [gap_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            )
+            .ok();
+        if let Some((title, desc, ac)) = row {
+            let body = if !desc.trim().is_empty() { desc } else { ac };
+            return (title, body);
+        }
+        // Fallback to title-only schema.
+        let title = conn
+            .query_row(
+                "SELECT COALESCE(title, '') FROM gaps WHERE id = ?1",
+                [gap_id],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_default();
+        (title, String::new())
+    }
+
+    fn read_user_id_env() -> Option<uuid::Uuid> {
+        let raw = std::env::var("CHUMP_TEAM_USER_ID").ok()?;
+        uuid::Uuid::parse_str(raw.trim()).ok()
+    }
+
+    fn env_truthy(key: &str) -> bool {
+        std::env::var(key)
+            .map(|v| {
+                let t = v.trim();
+                !t.is_empty() && t != "0" && !t.eq_ignore_ascii_case("false")
+            })
+            .unwrap_or(false)
+    }
+
+    fn truncate(s: &str, n: usize) -> String {
+        let s = s.trim();
+        if s.chars().count() <= n {
+            return s.to_string();
+        }
+        let head: String = s.chars().take(n.saturating_sub(1)).collect();
+        format!("{head}…")
+    }
+
+    fn single_line(s: &str) -> String {
+        s.replace(['\n', '\r', '\t'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn truncate_short_string_unchanged() {
+            assert_eq!(truncate("hello", 40), "hello");
+        }
+
+        #[test]
+        fn truncate_long_string_with_ellipsis() {
+            let out = truncate(&"a".repeat(50), 10);
+            assert_eq!(out.chars().count(), 10);
+            assert!(out.ends_with('…'));
+        }
+
+        #[test]
+        fn single_line_collapses_whitespace() {
+            assert_eq!(single_line("hello\n  world\t\tthere"), "hello world there");
+        }
+
+        #[test]
+        fn env_truthy_recognizes_one() {
+            std::env::set_var("CHUMP_TEST_NUG_T", "1");
+            assert!(env_truthy("CHUMP_TEST_NUG_T"));
+            std::env::remove_var("CHUMP_TEST_NUG_T");
+        }
+
+        #[test]
+        fn env_truthy_recognizes_zero_as_false() {
+            std::env::set_var("CHUMP_TEST_NUG_F", "0");
+            assert!(!env_truthy("CHUMP_TEST_NUG_F"));
+            std::env::remove_var("CHUMP_TEST_NUG_F");
+        }
+
+        #[test]
+        fn env_truthy_empty_is_false() {
+            std::env::remove_var("CHUMP_TEST_NUG_X");
+            assert!(!env_truthy("CHUMP_TEST_NUG_X"));
+        }
+
+        #[test]
+        fn prefetch_silent_when_bypassed() {
+            // Bypass should short-circuit even if CHUMP_TEAM_URL is set.
+            std::env::set_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH", "1");
+            std::env::set_var("CHUMP_TEAM_URL", "http://127.0.0.1:1");
+            // No panic, no hang — just an immediate return. We can't assert on
+            // stdout from inside the same process easily, but exercising the
+            // path catches obvious regressions.
+            prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+            std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
+            std::env::remove_var("CHUMP_TEAM_URL");
+        }
+
+        #[test]
+        fn prefetch_silent_when_team_url_unset() {
+            std::env::remove_var("CHUMP_TEAM_URL");
+            std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
+            // Must not panic or hang, even with no env / no DB.
+            prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+        }
     }
 }
 
