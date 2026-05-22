@@ -652,6 +652,9 @@ jobs:
       - name: conflict-resolver-agent (INFRA-1488 Marcus M-C)
         run: bash scripts/ci/test-conflict-resolver.sh
 
+      - name: bot-merge conflict-resolver wiring (INFRA-1657)
+        run: bash scripts/ci/test-bot-merge-conflict-wiring.sh
+
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 

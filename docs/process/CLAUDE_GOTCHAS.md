@@ -1563,3 +1563,32 @@ ls .chump-locks/curator-filed-*.json | wc -l       # curator markers (noise; sho
 
 If real lease count is 0 but the digest reports leases, regression —
 re-open as a follow-up to INFRA-1664.
+
+## Conflict-resolver in bot-merge.sh (INFRA-1488 + INFRA-1657)
+
+`scripts/coord/bot-merge.sh` invokes `scripts/coord/conflict-resolver-agent.sh`
+when `git rebase origin/main` exits non-zero with unmerged paths in the
+worktree. The agent is **default-OFF** and opt-in via env flag.
+
+**Enable (per-operator or per-fleet):**
+```bash
+export CHUMP_CONFLICT_RESOLVER_ENABLED=1   # opt in
+export CHUMP_CONFLICT_RETRIES=2            # default; bumps reattempts
+```
+
+**Behavior matrix:**
+
+| Flag | Rebase result | What bot-merge does |
+|---|---|---|
+| unset / `0` | conflict | agent self-skips (exit 0); bot-merge falls through to existing handoff (`_bm_fail "rebase" 11`) |
+| `1` | conflict, agent resolves | agent runs `git rebase --continue`; bot-merge resumes normal flow |
+| `1` | conflict, agent hands off | agent writes `.chump-locks/operator-action-needed.json`; bot-merge runs `git rebase --abort` + exits 11 |
+
+**Rollback:**
+```bash
+unset CHUMP_CONFLICT_RESOLVER_ENABLED      # back to manual-resolve default
+```
+
+**Audit trail:** `kind=conflict_resolve_*` events in `ambient.jsonl`
+(`_start`, `_validated`, `_success`, `_dropped`, `_attempt_failed`,
+`_continue_failed`, `_handoff`, `_skipped`, `_failed`).
