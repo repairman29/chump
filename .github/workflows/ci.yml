@@ -691,6 +691,9 @@ jobs:
       - name: gap-store proof-of-merge guard (INFRA-1392)
         run: bash scripts/ci/test-status-flip-proof-of-merge.sh
 
+      - name: paramedic stale-branch auto-rebase (INFRA-1429)
+        run: bash scripts/ci/test-stale-branch-rebase.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 

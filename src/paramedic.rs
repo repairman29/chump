@@ -144,6 +144,9 @@ struct PrInfo {
     mergeable_state: Option<String>,
     merge_state_status: Option<String>,
     raw_payload: Option<String>,
+    // INFRA-1429: time-gate + label-skip for auto-rebase.
+    updated_at: Option<String>,
+    labels: Vec<String>,
 }
 
 // ── public entry points ───────────────────────────────────────────────────────
@@ -169,16 +172,29 @@ pub fn triage(repo_root: &Path, dry_run: bool) -> Result<ActionPlan> {
         }
 
         // REBASE_DIRTY — PR is behind main (merge_state_status = BEHIND).
+        // INFRA-1429 added a TIME GATE (default 30min) so paramedic
+        // doesn't waste API budget rebasing PRs that may merge as-is, plus
+        // a `do-not-paramedic` label skip so operators can park PRs.
         let mss = pr
             .merge_state_status
             .as_deref()
             .or(pr.mergeable_state.as_deref())
             .unwrap_or("");
-        if mss.eq_ignore_ascii_case("BEHIND") || mss.eq_ignore_ascii_case("behind") {
+        if (mss.eq_ignore_ascii_case("BEHIND") || mss.eq_ignore_ascii_case("behind"))
+            && !has_do_not_paramedic_label(&pr.labels)
+            && is_stale_by_age(
+                pr.updated_at.as_deref(),
+                chrono::Utc::now().timestamp(),
+                stale_branch_max_age_min(),
+            )
+        {
             items.push(ActionItem {
                 pr_number: pr.number,
                 action: ParamedicAction::RebaseDirty.as_str().to_string(),
-                reason: format!("mergeable_state={mss}"),
+                reason: format!(
+                    "mergeable_state={mss} stale>{}min",
+                    stale_branch_max_age_min()
+                ),
                 gap_id: extract_gap_id(&pr.head_ref),
             });
         }
@@ -795,19 +811,55 @@ fn emit_keystone_cascade_event(
     }
 }
 
-fn action_rebase_dirty(pr_number: u64, _repo_root: &Path, dry_run: bool) -> Result<()> {
+fn action_rebase_dirty(pr_number: u64, repo_root: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
         return Ok(());
     }
-    let out = std::process::Command::new("gh")
+    // INFRA-1429: try --rebase first; on failure (rebase rejected by GitHub
+    // because the PR has merge conflicts or the rebase produces a
+    // surprising diff), fall back to plain merge. The result tag is
+    // recorded in ambient so we can audit how often merge fires.
+    let try_rebase = std::process::Command::new("gh")
         .args(["pr", "update-branch", &pr_number.to_string(), "--rebase"])
         .output()
-        .context("gh pr update-branch")?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        anyhow::bail!("gh pr update-branch failed: {stderr}");
+        .context("gh pr update-branch --rebase")?;
+    if try_rebase.status.success() {
+        emit_stale_branch_event(repo_root, pr_number, "rebase");
+        return Ok(());
     }
-    Ok(())
+    let stderr_rebase = String::from_utf8_lossy(&try_rebase.stderr).to_string();
+    let try_merge = std::process::Command::new("gh")
+        .args(["pr", "update-branch", &pr_number.to_string()])
+        .output()
+        .context("gh pr update-branch (merge fallback)")?;
+    if try_merge.status.success() {
+        emit_stale_branch_event(repo_root, pr_number, "merge");
+        return Ok(());
+    }
+    let stderr_merge = String::from_utf8_lossy(&try_merge.stderr);
+    emit_stale_branch_event(repo_root, pr_number, "failed");
+    anyhow::bail!(
+        "gh pr update-branch failed (rebase: {stderr_rebase}; merge fallback: {stderr_merge})"
+    );
+}
+
+fn emit_stale_branch_event(repo_root: &Path, pr_number: u64, result: &str) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"stale_branch_auto_rebased\",\"pr\":{pr_number},\"result\":\"{result}\"}}\n"
+    );
+    if let Some(parent) = amb.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 fn action_rerun_flake(pr_number: u64, _repo_root: &Path, dry_run: bool) -> Result<()> {
@@ -1201,6 +1253,12 @@ fn read_from_cache_db(db_path: &Path) -> Result<Vec<PrInfo>> {
                 mergeable_state: row.get(3)?,
                 merge_state_status: row.get(4)?,
                 raw_payload: row.get(5)?,
+                // INFRA-1429: cache path doesn't store these yet; conservative
+                // defaults: no updated_at → is_stale_by_age fails open (treats
+                // as stale), no labels → no skip. Tighten in a follow-up if
+                // the cache adds these columns.
+                updated_at: None,
+                labels: Vec::new(),
             })
         })?
         .flatten()
@@ -1218,7 +1276,7 @@ fn read_from_gh() -> Result<Vec<PrInfo>> {
             "--limit",
             "100",
             "--json",
-            "number,headRefName,headRefOid,mergeable,mergeStateStatus",
+            "number,headRefName,headRefOid,mergeable,mergeStateStatus,updatedAt,labels",
         ])
         .output()
         .context("gh pr list")?;
@@ -1228,15 +1286,69 @@ fn read_from_gh() -> Result<Vec<PrInfo>> {
     let arr: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout)?;
     Ok(arr
         .into_iter()
-        .map(|v| PrInfo {
-            number: v["number"].as_u64().unwrap_or(0),
-            head_ref: v["headRefName"].as_str().unwrap_or("").to_string(),
-            head_sha: v["headRefOid"].as_str().unwrap_or("").to_string(),
-            mergeable_state: v["mergeable"].as_str().map(str::to_lowercase),
-            merge_state_status: v["mergeStateStatus"].as_str().map(str::to_lowercase),
-            raw_payload: None,
+        .map(|v| {
+            let labels: Vec<String> = v["labels"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|l| l.get("name").and_then(|n| n.as_str()))
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
+            PrInfo {
+                number: v["number"].as_u64().unwrap_or(0),
+                head_ref: v["headRefName"].as_str().unwrap_or("").to_string(),
+                head_sha: v["headRefOid"].as_str().unwrap_or("").to_string(),
+                mergeable_state: v["mergeable"].as_str().map(str::to_lowercase),
+                merge_state_status: v["mergeStateStatus"].as_str().map(str::to_lowercase),
+                raw_payload: None,
+                updated_at: v["updatedAt"].as_str().map(String::from),
+                labels,
+            }
         })
         .collect())
+}
+
+// INFRA-1429: TIME-GATE for auto-rebase. Today's REBASE_DIRTY rule fires
+// the moment a PR turns BEHIND, which spends API calls on PRs that may
+// be about to merge anyway. The age gate defers the rebase until the
+// PR has been behind long enough that the operator clearly isn't about
+// to merge it as-is. Default 30 min; configurable via env.
+fn stale_branch_max_age_min() -> u64 {
+    std::env::var("CHUMP_PARAMEDIC_STALE_BRANCH_MAX_AGE_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(30)
+}
+
+/// True when the PR's `updatedAt` is older than `max_age_min` minutes.
+/// Treats a missing `updatedAt` as "old enough" (fail-open: better to
+/// rebase than to leave it sitting). Pure function — testable with a
+/// fixed `now_unix` for determinism.
+pub(crate) fn is_stale_by_age(updated_at: Option<&str>, now_unix: i64, max_age_min: u64) -> bool {
+    let Some(ts) = updated_at else {
+        return true;
+    };
+    match chrono::DateTime::parse_from_rfc3339(ts) {
+        Ok(dt) => {
+            let then = dt.timestamp();
+            let age_secs = now_unix.saturating_sub(then).max(0);
+            age_secs as u64 / 60 >= max_age_min
+        }
+        Err(_) => true,
+    }
+}
+
+/// True when any of `labels` matches the do-not-paramedic skip label
+/// (case-insensitive; we accept the underscore and hyphen variants
+/// because operators have applied both in the wild).
+pub(crate) fn has_do_not_paramedic_label(labels: &[String]) -> bool {
+    labels.iter().any(|l| {
+        let lo = l.to_lowercase();
+        lo == "do-not-paramedic" || lo == "do_not_paramedic" || lo == "skip-paramedic"
+    })
 }
 
 // ── ambient emit ──────────────────────────────────────────────────────────────
@@ -1418,5 +1530,86 @@ mod keystone_cascade_tests {
             ParamedicAction::KeystoneCascade.as_str(),
             "KEYSTONE_CASCADE"
         );
+    }
+}
+
+#[cfg(test)]
+mod stale_branch_tests {
+    //! INFRA-1429: unit tests for the time-gate + label-skip helpers
+    //! around the REBASE_DIRTY rule. Pure-function targets so we can run
+    //! deterministically without network or filesystem.
+    use super::*;
+
+    #[test]
+    fn is_stale_by_age_returns_true_when_updated_at_missing() {
+        // Fail-open: missing timestamp means "old enough" so paramedic
+        // can still rebase. Wrong direction is a no-op cost; right
+        // direction prevents a PR sitting forever because GraphQL
+        // forgot to return updatedAt.
+        assert!(is_stale_by_age(None, 1_000_000_000, 30));
+    }
+
+    #[test]
+    fn is_stale_by_age_returns_true_for_unparseable_timestamp() {
+        // Same fail-open behaviour for a malformed timestamp.
+        assert!(is_stale_by_age(Some("not-rfc3339"), 1_000_000_000, 30));
+    }
+
+    #[test]
+    fn is_stale_by_age_respects_threshold() {
+        // 2026-05-22T22:00:00Z → unix 1779487200
+        let now: i64 = 1_779_487_200 + 31 * 60; // 31 minutes later
+        assert!(is_stale_by_age(Some("2026-05-22T22:00:00Z"), now, 30));
+        let now: i64 = 1_779_487_200 + 29 * 60; // 29 minutes later
+        assert!(!is_stale_by_age(Some("2026-05-22T22:00:00Z"), now, 30));
+    }
+
+    #[test]
+    fn is_stale_by_age_handles_now_in_the_past() {
+        // If clock skew puts now before updated_at, treat as "not stale"
+        // rather than negative-age weirdness.
+        let now: i64 = 1_779_487_200;
+        let ts = "2026-05-22T22:30:00Z"; // 30min in the future from `now`
+        assert!(!is_stale_by_age(Some(ts), now, 30));
+    }
+
+    #[test]
+    fn has_do_not_paramedic_label_matches_variants_case_insensitive() {
+        assert!(has_do_not_paramedic_label(&["do-not-paramedic".into()]));
+        assert!(has_do_not_paramedic_label(&["DO-NOT-PARAMEDIC".into()]));
+        assert!(has_do_not_paramedic_label(&["do_not_paramedic".into()]));
+        assert!(has_do_not_paramedic_label(&["skip-paramedic".into()]));
+        assert!(!has_do_not_paramedic_label(&[
+            "bug".into(),
+            "needs-review".into()
+        ]));
+        assert!(!has_do_not_paramedic_label(&[]));
+    }
+
+    #[test]
+    fn stale_branch_max_age_min_env_override() {
+        // Each test mutates a private env var; serialize with --test-threads=1.
+        let key = "CHUMP_PARAMEDIC_STALE_BRANCH_MAX_AGE_MIN";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert_eq!(stale_branch_max_age_min(), 30);
+        unsafe {
+            std::env::set_var(key, "5");
+        }
+        assert_eq!(stale_branch_max_age_min(), 5);
+        unsafe {
+            std::env::set_var(key, "not-a-number");
+        }
+        assert_eq!(stale_branch_max_age_min(), 30);
+        unsafe {
+            std::env::set_var(key, "0");
+        }
+        // Zero is rejected (would mean "rebase every PR every cycle");
+        // default of 30 wins.
+        assert_eq!(stale_branch_max_age_min(), 30);
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 }
