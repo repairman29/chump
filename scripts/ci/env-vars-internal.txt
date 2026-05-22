@@ -381,3 +381,6 @@ REPO_ROOT
 
 # INFRA-1670: preflight subcommand
 CHUMP_PREFLIGHT_SKIP
+
+# INFRA-1437: chump session-summary subcommand
+CHUMP_SESSION_SUMMARY_GH_STUB
