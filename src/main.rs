@@ -16,9 +16,10 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
-mod ambient_emit;
-mod ambient_rotate;
-mod ambient_stream;
+// EFFECTIVE-023: ambient_emit/rotate/stream live in crates/ambient-cli/ now.
+// Re-exported at the crate root so existing `crate::ambient_emit::*` callers
+// (18+ across the binary) keep working without churn.
+pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
 mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;

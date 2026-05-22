@@ -1323,6 +1323,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chump-agent-lease",
+ "chump-ambient-cli",
  "chump-cancel-registry",
  "chump-cost-tracker",
  "chump-gap-store",
@@ -1392,6 +1393,18 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid 1.23.1",
+]
+
+[[package]]
+name = "chump-ambient-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
 ]
 
 [[package]]

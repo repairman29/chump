@@ -1,11 +1,10 @@
-//! INFRA-1048: harness-agnostic event-emit CLI.
+//! INFRA-1048 / EFFECTIVE-023: harness-agnostic event-emit primitive.
 //!
-//! `chump ambient emit <kind> [--gap ID] [--source S] [--harness H] [--field key=value]...`
+//! `ambient emit <kind> [--gap ID] [--source S] [--harness H] [--field key=value]...`
 //!
-//! Writes one JSON line to `.chump-locks/ambient.jsonl` with the same shape
-//! `scripts/dev/ambient-emit.sh` produces. The Rust port exists so non-Claude
-//! harnesses (opencode-bigpickle, codex, manual) can invoke the chump binary
-//! directly instead of depending on the shell script + python + flock chain.
+//! Writes one JSON line to `.chump-locks/ambient.jsonl` (or `$CHUMP_AMBIENT_LOG`).
+//! Originally lived inside the chump binary; extracted to its own crate so any
+//! local-first app can depend on it without pulling chump's full surface in.
 //!
 //! Contract:
 //!   - `ts` (RFC3339 UTC) is added automatically
@@ -14,7 +13,7 @@
 //!   - `harness` resolves --harness flag > CHUMP_AGENT_HARNESS > "unknown"
 //!   - `event` is the positional `<kind>` arg
 //!   - Extra fields from `--field key=value` arrive as string-valued JSON keys
-//!   - Atomic append via advisory file lock (flock on POSIX; best-effort on Win)
+//!   - Atomic append via POSIX O_APPEND + PIPE_BUF guarantee (<4096-byte lines)
 
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
@@ -100,7 +99,7 @@ impl EmitArgs {
 }
 
 pub fn emit(args: &EmitArgs) -> Result<PathBuf> {
-    let repo_root = crate::repo_path::repo_root();
+    let repo_root = local_repo_root();
     let main_repo = main_repo_root(&repo_root);
 
     let ambient = args
@@ -163,29 +162,15 @@ pub fn emit(args: &EmitArgs) -> Result<PathBuf> {
 
 /// Check ambient.jsonl size after each write; emit `kind=ambient_rotation_lagging`
 /// and rotate in-process when the file exceeds the configured threshold.
-///
-/// This ensures rotation is not deferred until `chump ambient-rotate` is invoked
-/// manually or via fleet_health — it fires automatically on every emit call once
-/// the file crosses the threshold (INFRA-1468).
-///
-/// Thread-safety: `metadata` + `rename` are each individually atomic on POSIX.
-/// Two concurrent callers racing at the threshold may both try to rename; the
-/// second rename is a no-op on the fresh (tiny) file. Acceptable at production
-/// emit rates.
 fn maybe_warn_and_rotate(ambient: &std::path::Path) {
-    // Re-use ambient_rotate's threshold so both subsystems stay in sync.
     let threshold = crate::ambient_rotate::max_bytes();
     let size = match std::fs::metadata(ambient) {
         Ok(m) => m.len(),
-        Err(_) => return, // file may not exist yet (race with O_CREAT); ignore
+        Err(_) => return,
     };
     if size < threshold {
         return;
     }
-
-    // Write the lagging alert as a raw direct append — NOT via emit() to avoid
-    // recursion. This lands in the file *before* rotation so it's visible in
-    // the archived .1 copy.
     let ts = current_iso8601();
     let warn_line = format!(
         "{{\"ts\":\"{ts}\",\"kind\":\"ambient_rotation_lagging\",\"size_bytes\":{size},\"threshold_bytes\":{threshold}}}\n",
@@ -193,14 +178,38 @@ fn maybe_warn_and_rotate(ambient: &std::path::Path) {
     if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(ambient) {
         let _ = std::io::Write::write_all(&mut f, warn_line.as_bytes());
     }
-
-    // Rotate: rename ambient.jsonl → .1 (→ .2 cascade). After the rename the
-    // next O_CREAT|O_APPEND open in append_atomic() creates a fresh file.
     crate::ambient_rotate::rotate_if_needed(ambient);
 }
 
-/// Resolve the main-repo root (linked-worktree-safe). Mirrors the shell
-/// script's `git rev-parse --git-common-dir` logic.
+/// Discover the current repo root.
+///
+/// Precedence matches the original `crate::repo_path::repo_root()` it
+/// replaces: `CHUMP_REPO` → `CHUMP_HOME` → `git rev-parse --show-toplevel`
+/// → current working directory. Honoring `CHUMP_REPO`/`CHUMP_HOME` is
+/// load-bearing for chump-main tests that point the binary at a tempdir.
+fn local_repo_root() -> PathBuf {
+    for var in &["CHUMP_REPO", "CHUMP_HOME"] {
+        if let Ok(v) = std::env::var(var) {
+            if !v.is_empty() {
+                return PathBuf::from(v);
+            }
+        }
+    }
+    if let Ok(o) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if o.status.success() {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !s.is_empty() {
+                return PathBuf::from(s);
+            }
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Resolve the main-repo root (linked-worktree-safe).
 fn main_repo_root(repo_root: &std::path::Path) -> PathBuf {
     let out = std::process::Command::new("git")
         .args(["rev-parse", "--git-common-dir"])
@@ -256,9 +265,6 @@ fn current_iso8601() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    // Reuse the formatter from atomic_claim (Hinnant civil_from_days). We
-    // shell out to `date -u` only as a last resort; in-process is cleaner
-    // and faster for the hot path.
     let days = (unix / 86_400) as i64;
     let sod = (unix % 86_400) as u32;
     let h = sod / 3600;
@@ -317,16 +323,8 @@ fn json_escape(s: &str) -> String {
 }
 
 /// Atomic append. POSIX guarantees that writes to an O_APPEND fd with
-/// length < PIPE_BUF (4096 bytes) are atomic — the kernel handles the
-/// seek+write as one operation, so concurrent emitters never interleave
-/// as long as each call writes a single line under the buffer cap.
-///
-/// Our event lines are well under 4096 (the longest realistic events
-/// in EVENT_REGISTRY are ~500 bytes including all extra fields). If a
-/// caller ever generates a line >= PIPE_BUF, that's a registry-shape
-/// problem worth fixing at the schema layer, not papering over here.
+/// length < PIPE_BUF (4096 bytes) are atomic.
 fn append_atomic(path: &std::path::Path, line: &str) -> Result<()> {
-    // Sanity check — surface the schema-shape bug rather than risk torn writes.
     const PIPE_BUF_MIN: usize = 4096;
     if line.len() >= PIPE_BUF_MIN {
         return Err(anyhow!(
@@ -345,8 +343,6 @@ fn append_atomic(path: &std::path::Path, line: &str) -> Result<()> {
     Ok(())
 }
 
-/// Builder helper for tests (also keeps the BTreeMap import alive even when
-/// the binary path doesn't use it).
 #[allow(dead_code)]
 fn collect_fields(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
     let _bt: BTreeMap<&str, &str> = pairs.iter().copied().collect();
@@ -499,8 +495,6 @@ mod tests {
 
     #[test]
     fn emit_concurrent_appends_dont_interleave() {
-        // Spawn 8 threads each emitting 50 events. Verify the file has
-        // exactly 400 lines and each parses as valid JSON.
         let tmp = mk_tmp("concurrent");
         let ambient = tmp.join("ambient.jsonl");
         let ambient_c = ambient.clone();
@@ -545,7 +539,6 @@ mod tests {
         let ambient = tmp.join("ambient.jsonl");
         let prev = std::env::var("CHUMP_AGENT_HARNESS").ok();
 
-        // (1) env set, no flag → env wins.
         std::env::set_var("CHUMP_AGENT_HARNESS", "opencode-bigpickle");
         let a = EmitArgs {
             kind: "k".into(),
@@ -555,7 +548,6 @@ mod tests {
         };
         emit(&a).unwrap();
 
-        // (2) flag set, env set → flag wins.
         std::fs::write(&ambient, "").unwrap();
         let a2 = EmitArgs {
             kind: "k".into(),
@@ -569,7 +561,6 @@ mod tests {
             serde_json::from_str(std::fs::read_to_string(&ambient).unwrap().trim_end()).unwrap();
         assert_eq!(v["harness"], "explicit");
 
-        // (3) no env, no flag → unknown.
         std::env::remove_var("CHUMP_AGENT_HARNESS");
         std::fs::write(&ambient, "").unwrap();
         let a3 = EmitArgs {

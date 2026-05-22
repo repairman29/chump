@@ -1,0 +1,16 @@
+- id: EFFECTIVE-024
+  domain: EFFECTIVE
+  title: Extract kpi_report into chump-ambient-cli (sequel to EFFECTIVE-023)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Sequel to EFFECTIVE-023. The initial ambient-cli extraction deferred src/kpi_report.rs (1791 LOC) because it has 3 crate-internal dependencies that are not cleanly importable from outside chump-main: crate::gap_store::GapStore (open + read), crate::session_ledger::cost_usd_from_tokens (read), crate::waste_tally::WASTE_KINDS (test-only). Until these surfaces stabilize as importable APIs, kpi cannot move out of chump-main without code duplication or a feature-flag dance. This gap captures the layering decision (re-export, dependency injection, or wait for upstream extraction) and the work to execute it. Filed 2026-05-22 alongside EFFECTIVE-023 shipping.
+  acceptance_criteria:
+    - "Decision documented in the gap notes: which layering path (a) re-export gap_store/session_ledger surfaces through chump-ambient-cli as feature-gated optional deps, (b) restructure kpi_report to accept its inputs via dependency injection rather than crate-internal references, or (c) wait until gap_store and session_ledger themselves become cleanly extractable"
+    - kpi_report moved to crates/ambient-cli/src/kpi_report.rs (or another crate per chosen path); main chump binary continues to use the canonical KPI codepaths unchanged
+    - "'ambient kpi' subcommand exists on the ambient binary and produces output compatible with 'chump kpi-report' for the same inputs"
+    - crates/ambient-cli/README.md updated to document the kpi subcommand
+    - cargo test --workspace passes; cargo install --path crates/ambient-cli still succeeds (kpi addition does not regress emit/tail)
+  depends_on: [EFFECTIVE-023]
+
