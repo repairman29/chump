@@ -4038,3 +4038,36 @@ events:
     consumers: [synthesis-truth-validator, fleet-brief, ops-audit]
     fields_required: [ts, kind, synthesis_path, gap_id, title, source_note]
 
+  # ── INFRA-1695 / META-066: Content Bots Suite dispatch telemetry ──
+  - kind: content_bot_invoked
+    effect_metric: self
+    emitter: scripts/content-bots/run-bot.sh (INFRA-1695)
+    trigger: >
+      Content-bot dispatcher invoked for a specific bot_id after the toggle
+      resolver (INFRA-1700) confirmed it is enabled per CHUMP_CONTENT_BOTS
+      env or .chump-config.toml. Emitted before the LLM call so partial
+      failures (LLM timeout, claude-cli missing) still leave a trace.
+    consumers: [fleet-brief, ops-audit, content-bots-pipeline-orchestrator]
+    fields_required: [ts, kind, bot_id, run_id, model_tier]
+
+  - kind: content_bot_output
+    effect_metric: self
+    emitter: scripts/content-bots/run-bot.sh (INFRA-1695)
+    trigger: >
+      Content-bot LLM call completed. Status may be "ok" with output bytes
+      written or "failed" with reason (claude-cli-missing | llm-nonzero +
+      exit_code). Pairs with content_bot_invoked via shared run_id.
+    consumers: [fleet-brief, ops-audit, content-bots-pipeline-orchestrator]
+    fields_required: [ts, kind, bot_id, run_id, status]
+
+  - kind: content_bot_pipeline_step
+    effect_metric: self
+    emitter: scripts/content-bots/run-bot.sh (INFRA-1695, when --predecessor-output is passed)
+    trigger: >
+      A downstream bot is consuming an upstream bot's output. Records the
+      from_bot → to_bot edge so the pipeline-orchestrator (INFRA-1698) can
+      reconstruct the DAG execution from ambient.jsonl. Pairs with
+      content_bot_invoked via shared run_id.
+    consumers: [content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
+    fields_required: [ts, kind, from_bot, to_bot, output_path, run_id]
+
