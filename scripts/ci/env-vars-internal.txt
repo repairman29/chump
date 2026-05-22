@@ -408,3 +408,7 @@ CHUMP_AGENT_SANDBOX
 
 # INFRA-1454: agent-bash sandbox operator escape hatch
 CHUMP_AGENT_UNSAFE_HOST_EXEC
+# INFRA-1692: chump claim pre-flight nugget search (Marcus M-D Phase 2)
+CHUMP_CLAIM_NUGGET_TOP_K
+CHUMP_TEAM_URL
+CHUMP_TEAM_USER_ID
