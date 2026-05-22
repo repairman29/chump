@@ -174,6 +174,15 @@ emitted |= extract_kinds(
     grep_lines(r'emit_reaper_event\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
     r'emit_reaper_event\s+"([a-zA-Z0-9_]+)"',
 )
+# Pattern 8: EMIT_KIND "kind_name" — uppercase shell helper variant.
+# INFRA-1659: conflict-resolver-agent (INFRA-1488) originally shipped with this
+# uppercase helper; scanner missed all 8 of its kinds until the helper was
+# renamed to _emit. Accepting both casings is more permissive than enforcing
+# a naming convention by silent failure.
+emitted |= extract_kinds(
+    grep_lines(r'EMIT_KIND\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
+    r'EMIT_KIND\s+"([a-zA-Z0-9_]+)"',
+)
 
 # Allowlist — kinds exempt from BOTH directions.
 allowlist = set()

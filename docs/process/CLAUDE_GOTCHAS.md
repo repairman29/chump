@@ -1443,13 +1443,14 @@ into `grep -q`, `awk` with early-exit, `head -1`, etc., under a
 
 `scripts/ci/test-event-registry-coverage.sh` scans production paths for
 emit sites and verifies each registered kind has a matching emit. The
-scanner has 7 grep patterns; Pattern 4 specifically matches lowercase
-`_emit "name"` shell helpers.
+scanner has 8 grep patterns; Pattern 4 matches lowercase `_emit "name"`
+shell helpers, Pattern 8 matches uppercase `EMIT_KIND "name"` shell
+helpers.
 
 **Convention:**
 - ✅ `_emit "kind_name" '{"...":...}'` — Pattern 4 matches
-- ⚠️ `EMIT_KIND "kind_name" '{"...":...}'` — currently NOT matched until
-  INFRA-1659 adds Pattern 8
+- ✅ `EMIT_KIND "kind_name" '{"...":...}'` — Pattern 8 matches
+  (shipped in INFRA-1659)
 - ❌ Any other casing (`emit_kind`, `Emit`, mixed) — invisible to scanner
 
 **Symptom:** registered kinds show as `register-without-emit (orphans)`
@@ -1457,11 +1458,11 @@ in the audit job, even though the emit site exists. Audit FAILS in
 `strict` mode; the PR is BLOCKED until you rename or add to
 `scripts/ci/event-registry-reserved.txt`.
 
-**Fastest fix:** rename helper to `_emit` (one-line sed). Adding to the
-reserved list works but accumulates lint debt.
+**Fastest fix:** rename helper to `_emit` or `EMIT_KIND` (one-line sed).
+Adding to the reserved list works but accumulates lint debt.
 
-**Pattern 8 add-on:** see INFRA-1659 — once that ships, `EMIT_KIND` will
-also be valid. Until then, default to `_emit`.
+**Pattern 8 add-on:** ✅ shipped in INFRA-1659 — `EMIT_KIND` (uppercase)
+is now valid alongside `_emit` (lowercase). Avoid any other casings.
 
 ## Cron-loop `claude` subprocess leak (INFRA-1662, 2026-05-22)
 
