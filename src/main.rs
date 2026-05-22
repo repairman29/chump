@@ -132,6 +132,7 @@ mod model_overlay;
 mod model_probe;
 mod neuromodulation;
 mod notify_tool;
+mod nugget; // INFRA-1691: chump nugget CLI — Marcus M-D Phase 2 surface
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
@@ -889,6 +890,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump nugget` (INFRA-1691) — Marcus M-D Phase 2 CLI surface.
+    // Wraps chump_team::nuggets for add/list/search/keep/delete. Reads
+    // CHUMP_TEAM_URL + CHUMP_TEAM_API_KEY + (for add) CHUMP_TEAM_ID +
+    // CHUMP_USER_ID from env; OPENAI_API_KEY drives semantic search.
+    if args.get(1).map(String::as_str) == Some("nugget") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(nugget::run(&sub_args));
     }
 
     // `chump completion [zsh|bash|fish]` (EFFECTIVE-010) — print shell completion script.

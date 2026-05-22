@@ -1332,6 +1332,7 @@ dependencies = [
  "chump-perception",
  "chump-planner",
  "chump-ship",
+ "chump-team",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
