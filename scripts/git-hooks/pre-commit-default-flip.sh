@@ -46,6 +46,13 @@ if [[ -z "$DIFF" ]]; then
     exit 0
 fi
 
+# INFRA-1658: materialize DIFF once to a tempfile to dodge the
+# printf|grep -q pipefail race (grep -q early-closes stdin → printf
+# SIGPIPE → pipeline non-zero under set -o pipefail even on a match).
+_DIFF_TMP=$(mktemp)
+trap 'rm -f "$_DIFF_TMP"' EXIT
+printf '%s\n' "$DIFF" > "$_DIFF_TMP"
+
 # Find pairs of (-line, +line) where unwrap_or arg flipped.
 # Approach: walk the diff, track the last `-` line; when the next line
 # is `+` with the same prefix but opposite literal, record the function.
@@ -90,11 +97,11 @@ while IFS= read -r line; do
     # Detect flip: this line is `+` with unwrap_or(<X>) where prior `-` had unwrap_or(<!X>).
     # Use grep with -- separator since the opposite-pattern starts with `-`.
     if echo "$line" | grep -qE '^\+.*unwrap_or\(true\)'; then
-        if printf '%s\n' "$DIFF" | grep -qE -- '^-.*unwrap_or\(false\)'; then
+        if grep -qE -- '^-.*unwrap_or\(false\)' "$_DIFF_TMP"; then
             FLIPPED_FNS+=("$CUR_FILE::${CUR_FN:-?}")
         fi
     elif echo "$line" | grep -qE '^\+.*unwrap_or\(false\)'; then
-        if printf '%s\n' "$DIFF" | grep -qE -- '^-.*unwrap_or\(true\)'; then
+        if grep -qE -- '^-.*unwrap_or\(true\)' "$_DIFF_TMP"; then
             FLIPPED_FNS+=("$CUR_FILE::${CUR_FN:-?}")
         fi
     fi
@@ -110,7 +117,7 @@ while IFS= read -r line; do
             else
                 opp="true"
             fi
-            if printf '%s\n' "$DIFF" | grep -qE -- "^-.*\bconst[[:space:]]+${const_name}:[[:space:]]*bool[[:space:]]*=[[:space:]]*${opp}"; then
+            if grep -qE -- "^-.*\bconst[[:space:]]+${const_name}:[[:space:]]*bool[[:space:]]*=[[:space:]]*${opp}" "$_DIFF_TMP"; then
                 FLIPPED_FNS+=("$CUR_FILE::$const_name")
             fi
         fi

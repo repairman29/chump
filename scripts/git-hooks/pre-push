@@ -638,13 +638,18 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                     if [[ -n "$_FAILED" && -f "$_CATALOG" ]]; then
                         _CATALOG_TESTS=$(grep -E '^[[:space:]]*-[[:space:]]*test:' "$_CATALOG" \
                             | sed -E 's/^[[:space:]]*-[[:space:]]*test:[[:space:]]+//; s/"//g; s/[[:space:]]*$//')
+                        # INFRA-1658: materialize to tempfile to dodge printf|grep -q
+                        # pipefail race (set -o pipefail is in effect).
+                        _CAT_TMP=$(mktemp)
+                        printf '%s\n' "$_CATALOG_TESTS" > "$_CAT_TMP"
                         while IFS= read -r _tname; do
                             [[ -z "$_tname" ]] && continue
-                            if ! printf '%s\n' "$_CATALOG_TESTS" | grep -qxF "$_tname"; then
+                            if ! grep -qxF "$_tname" "$_CAT_TMP"; then
                                 _ALL_KNOWN=0
                                 _UNKNOWN_TESTS+=("$_tname")
                             fi
                         done <<< "$_FAILED"
+                        rm -f "$_CAT_TMP"
                     else
                         # No parseable failures (compile error?) or no catalog — treat as real failure.
                         _ALL_KNOWN=0
