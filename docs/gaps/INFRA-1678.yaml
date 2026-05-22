@@ -1,0 +1,15 @@
+- id: INFRA-1678
+  domain: INFRA
+  title: "EFFECTIVE: Custodian Phase 6.2 — promote repairman29.github.io/chump from single-repo docs to federated multi-repo discovery hub"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Custodian Phase 6.2 — federated developer hub. Today the site is docs-from-chump-repo; Phase 6 promotes it to docs-from-org. Builds on the manifest from INFRA-1677.
+  acceptance_criteria:
+    - repairman29.github.io/chump landing page lists at least 3 Chump-pattern repos (current Chump itself, homebrew-chump tap, PWA repo) with utility-vectors + quickstarts from each
+    - "each listed repo shows: 5-min quickstart link, AGENTS.md link, gap-registry health badge (from federate scan in INFRA-1677)"
+    - static site generator config (mdBook or similar) updated to consume docs/federation/topology.json from INFRA-1677
+    - deploy via existing GitHub Pages workflow .github/workflows/docs.yml
+    - "smoke test: curl https://repairman29.github.io/chump returns 200 with all 3 repos listed in DOM"
+

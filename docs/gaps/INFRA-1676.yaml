@@ -1,0 +1,15 @@
+- id: INFRA-1676
+  domain: INFRA
+  title: "EFFECTIVE: Custodian Phase 5.2 — docs-drift auto-drafter posts inline review comments suggesting docs/process updates on PRs introducing new tools"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Custodian Phase 5.2 — auto docs-drift mitigation. Builds on Phase 5.1: where the gate FAILS the PR, the drafter SUGGESTS what to write so it's a 5-line copy-edit instead of a blank-page block. Adjacent to INFRA-1146 (roadmap drift inject) which already proves the pattern works.
+  acceptance_criteria:
+    - GitHub Action workflow .github/workflows/docs-drift-drafter.yml triggers on PR opened/synchronize
+    - workflow runs scripts/ci/docs-drift-suggest.sh which diffs the PR vs main, detects new tools/services without docs/process/ index entry
+    - when drift detected, posts a single review comment with a 5-line draft of the suggested documentation (filename to create, one-paragraph description, suggested location)
+    - "dedup: comment is updated in place on PR sync, not re-posted"
+    - "smoke test: PR adding scripts/coord/widget.sh without docs receives a single review comment within 60s of opening, suggesting docs/process/widget.md"
+

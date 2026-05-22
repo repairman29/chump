@@ -1,0 +1,15 @@
+- id: INFRA-1675
+  domain: INFRA
+  title: "EFFECTIVE: Custodian Phase 5.1 — architectural-pattern-drift CI gate flagging PRs adding modules/services without topology manifest update"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Custodian Phase 5.1 — structural drift PR gate. Today chump has rich CI (CREDIBLE-001 shellcheck, gaps-integrity, audit-required, pr-hygiene, etc.) but these enforce syntax/test correctness, not architectural-pattern drift. This gate complements them by asking 'did you document the new thing you added?' Sibling pattern: META-064 Rust-first bypass trailer.
+  acceptance_criteria:
+    - scripts/ci/test-architectural-drift-gate.sh exists and runs as a required CI lane on every PR
+    - the gate parses git diff for new files matching scripts/*.{sh,py,rs}, src/*.rs, or services/* patterns
+    - "when new module/service introduced AND no corresponding docs/process/ entry exists, gate fails with explicit error: 'PR adds <file> — update docs/process/ or docs/observability/EVENT_REGISTRY.yaml'"
+    - "bypass via Architectural-Drift-Bypass: <reason> commit trailer (audit-logged)"
+    - "smoke test: a PR adding scripts/coord/foo.sh without docs entry fails the gate; same PR with the trailer or with a docs/process/foo.md entry passes"
+
