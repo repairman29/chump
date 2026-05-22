@@ -151,6 +151,7 @@ mod pr_coupling_cost;
 mod pr_fix_clippy;
 mod pr_triage;
 mod precision_controller;
+mod preflight; // INFRA-1670: local CI mirror — chump preflight subcommand
 mod provider_bandit;
 mod provider_cascade;
 mod provider_quality;
@@ -877,6 +878,17 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump preflight` (INFRA-1670) — local CI mirror.
+    // Runs cargo fmt --check, clippy -D warnings, check; optionally
+    // selected scripts/ci/test-*.sh with --with-tests. Catches the
+    // failure classes that bit us most often on GH Actions (cargo fmt
+    // drift, clippy dead_code, INFRA-682 path-filter, INFRA-1287
+    // registry-orphan, etc.) in <60s warm instead of ~15 min round-trip.
+    if args.get(1).map(String::as_str) == Some("preflight") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(preflight::run(&sub_args));
     }
 
     // `chump completion [zsh|bash|fish]` (EFFECTIVE-010) — print shell completion script.
