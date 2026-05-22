@@ -22,7 +22,7 @@ fn print_help() {
                   Show this message.\n\n\
          ENV:\n\
            CHUMP_AMBIENT_LOG    Override the ambient log path.\n\
-           CHUMP_REPO_ROOT      Override repo discovery (else `git rev-parse --show-toplevel`).\n\
+           CHUMP_REPO/CHUMP_HOME  Override repo discovery (else `git rev-parse --show-toplevel`).\n\
            CHUMP_SESSION_ID     Override session ID (otherwise auto-resolved).\n\
            CHUMP_AGENT_HARNESS  Default harness when --harness not given."
     );

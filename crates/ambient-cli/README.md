@@ -103,7 +103,7 @@ A stress test in `tests/` spawns 8 threads × 50 emits and verifies the resultin
 | Variable | Purpose |
 |---|---|
 | `CHUMP_AMBIENT_LOG` | Override the ambient log path. |
-| `CHUMP_REPO_ROOT` | Override repo discovery (else `git rev-parse --show-toplevel`). |
+| `CHUMP_REPO` / `CHUMP_HOME` | Override repo discovery (else `git rev-parse --show-toplevel`). |
 | `CHUMP_SESSION_ID` | Override session ID (otherwise auto-resolved). |
 | `CHUMP_AGENT_HARNESS` | Default harness name when `--harness` is not passed. |
 

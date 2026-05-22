@@ -183,13 +183,16 @@ fn maybe_warn_and_rotate(ambient: &std::path::Path) {
 
 /// Discover the current repo root.
 ///
-/// `CHUMP_REPO_ROOT` (env) wins — chump main can set this before calling
-/// `emit()` to honor a working-repo-profile override. Otherwise we fall back
-/// to `git rev-parse --show-toplevel`. Last resort: current working directory.
+/// Precedence matches the original `crate::repo_path::repo_root()` it
+/// replaces: `CHUMP_REPO` → `CHUMP_HOME` → `git rev-parse --show-toplevel`
+/// → current working directory. Honoring `CHUMP_REPO`/`CHUMP_HOME` is
+/// load-bearing for chump-main tests that point the binary at a tempdir.
 fn local_repo_root() -> PathBuf {
-    if let Ok(v) = std::env::var("CHUMP_REPO_ROOT") {
-        if !v.is_empty() {
-            return PathBuf::from(v);
+    for var in &["CHUMP_REPO", "CHUMP_HOME"] {
+        if let Ok(v) = std::env::var(var) {
+            if !v.is_empty() {
+                return PathBuf::from(v);
+            }
         }
     }
     if let Ok(o) = std::process::Command::new("git")
