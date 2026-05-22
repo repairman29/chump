@@ -4083,3 +4083,15 @@ events:
     consumers: [content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
     fields_required: [ts, kind, from_bot, to_bot, output_path, run_id]
 
+
+  - kind: gap_yaml_written
+    effect_metric: self
+    emitter: src/main.rs (chump gap reserve handler — INFRA-1428)
+    trigger: >
+      `chump gap reserve` successfully wrote a docs/gaps/<id>.yaml mirror.
+      Fields capture where it landed (main repo vs fallback worktree) so
+      fleet-brief and the orphan-PR-closer can distinguish "yaml visible
+      to all workers" from "yaml stuck in one linked worktree" (#2063
+      cascade pattern).
+    consumers: [fleet-brief, orphan-pr-closer, ops-audit]
+    fields_required: [ts, kind, gap_id, path, target]
