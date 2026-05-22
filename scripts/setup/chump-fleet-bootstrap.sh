@@ -39,6 +39,7 @@ REQUIRED_DAEMONS=(
     "com.chump.paramedic|scripts/setup/install-paramedic.sh"
     "com.chump.bot-merge-watchdog|scripts/setup/install-bot-merge-watchdog.sh"
     "com.chump.claude-reaper|scripts/setup/install-claude-reaper.sh"
+    "com.chump.stale-process-watchdog|scripts/setup/install-stale-process-watchdog.sh"
 )
 UID_VAL="$(id -u)"
 

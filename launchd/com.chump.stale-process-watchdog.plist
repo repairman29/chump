@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.stale-process-watchdog — INFRA-1663
+
+  Generalizes the INFRA-1662 claude-binary reaper to the long tail of leaked
+  fleet subprocesses (rustc, cargo, chump health, worker.sh, bot-merge.sh,
+  run-fleet.sh). Discovery: 2026-05-22 cleanup found 5 rustc processes alive
+  1.5+ days and 2 `chump health --slo-check` alive 11+ h.
+
+  Runs scripts/ops/stale-process-watchdog.sh every 30 minutes (1800s).
+  Emits kind=stale_process_reaped to ambient.jsonl on each sweep.
+
+  INSTALLATION:
+    scripts/setup/install-stale-process-watchdog.sh
+
+  Bypass at runtime: export CHUMP_STALE_PROC_WATCHDOG=0 in the agent's
+  environment, or set it on the EnvironmentVariables block below.
+
+  LOGS:
+    stdout: /tmp/chump-stale-process-watchdog.out.log
+    stderr: /tmp/chump-stale-process-watchdog.err.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.stale-process-watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/stale-process-watchdog.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 30 minutes (1800s). Less frequent than the claude-reaper
+       (5min) because the long-tail leaks (rustc/cargo/health) accumulate
+       slowly and the sweep itself does a 30s SIGTERM grace + SIGKILL pass,
+       so a tighter interval is wasted budget. -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Do NOT run at load — wait for the first interval. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-stale-process-watchdog.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-stale-process-watchdog.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>

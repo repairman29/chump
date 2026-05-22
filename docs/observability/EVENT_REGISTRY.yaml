@@ -638,6 +638,23 @@ events:
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, count, oldest_etime_secs, total_rss_kb, reap_age_secs, fg_pid, dry_run]
 
+  - kind: stale_process_reaped
+    effect_metric: self
+    emitter: scripts/ops/stale-process-watchdog.sh (INFRA-1663)
+    trigger: >
+      launchd watchdog (every 30 min) swept the process table for long-tail
+      fleet leaks — rustc (10m), cargo (15m), `chump health` (2m), worker.sh
+      (4h), bot-merge.sh (20m), run-fleet.sh (24h). Any matching process whose
+      etime exceeds its class's expected lifetime is SIGTERMed with 30s grace,
+      then SIGKILLed if still alive. One per-kill event is emitted (action =
+      sigterm or sigkill) plus one heartbeat sweep record per invocation
+      (sweep=true, count=N) so the watchdog's liveness is always visible.
+      Generalizes INFRA-1662 (claude-only) to the rest of the fleet.
+      Discovery: 2026-05-22 cleanup found 5 rustc procs alive 1.5+ days and
+      2 `chump health --slo-check` alive 11+ h.
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, pid, comm, class, etime_secs, expected_secs, action, dry_run]
+
   - kind: target_artifact_reaped
     effect_metric: self
     emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
