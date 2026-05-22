@@ -151,6 +151,7 @@ mod plugin;
 mod policy_override;
 mod pr_ac_coverage;
 mod pr_coupling_cost;
+mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
 mod pr_triage;
 mod precision_controller;
@@ -1840,6 +1841,32 @@ async fn main() -> Result<()> {
             print!("{}", report.render_text());
         }
         return Ok(());
+    }
+
+    // `chump pr explain-block <PR#> [--json]` (INFRA-1416) — reads the
+    // status-check rollup + cross-refs other open PRs failing the same
+    // checks, then names the next mechanical action per row. Replaces
+    // the ~6× manual `gh pr view ... statusCheckRollup` digging the
+    // operator was doing per stuck PR.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("explain-block")
+    {
+        let pr_number: Option<u64> = args.get(3).and_then(|s| s.parse().ok());
+        let pr_number = match pr_number {
+            Some(n) => n,
+            None => {
+                eprintln!("Usage: chump pr explain-block <PR#> [--json]");
+                std::process::exit(2);
+            }
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+        match pr_explain::run(pr_number, json_out) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("chump pr explain-block: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump pr fix-clippy <PR#> [--dry-run]`
