@@ -49,6 +49,7 @@ mod cluster_mesh;
 mod codebase_digest_tool;
 mod config_validation;
 mod consciousness_traits;
+mod content_bots;
 mod context_assembly;
 mod context_engine;
 mod context_firewall;
