@@ -241,3 +241,13 @@ reports back) without human-typing each chump CLI command.
   5. **5-minute screencast on clean Mac.** Final June 6 deliverable; operator-action.
   6. **PWA cockpit PRs** (#2063 + #2066 + #2083) — already auto-merge armed, riding through CI; no further action needed.
   7. **PRODUCT-133 (right-zone treatment)** — gated on #2063 landing first.
+
+## Latent levers (audited 2026-05-22)
+
+Three architectural maneuvers surfaced during the 2026-05-22 "Ordnance Engine" structural audit. Each repurposes an existing Chump primitive at an unexpected target. **Filed here as future levers, not active gaps.** Promote to a gap only when concrete demand-pull appears — these are options held in reserve, not work scheduled.
+
+1. **Webhook mirror generalization → offline-first SaaS layer.** Re-aim `scripts/ops/github-webhook-receiver.py` + `.chump/github_cache.db` schema + `scripts/coord/lib/github_cache.sh` (`cache_lookup_*` helpers) at Linear / Stripe / Notion / Slack. One process per source, table-per-resource, same read-through API. Agents query the full SaaS stack offline; REST fallback on miss. Promote when a concrete agent workflow hits a polling-rate wall on a non-GitHub API.
+2. **Provider cascade re-aim → tier-ranked failover for non-LLM resources.** `src/provider_cascade.rs`'s `ProviderSlot` trait, RPD ledger, and circuit breaker describe *any* tiered resource. Candidates: internet uplink (fiber / 5G / Starlink), payment processors (Stripe / Paddle / LemonSqueezy), GPU rental tiers. Promote when off-grid use-case or payment redundancy becomes a real operator need.
+3. **Adversary as continuous resilience drill.** `src/adversary.rs` already injects failure modes. A launchd-scheduled drill that picks a rule, injects into one worker, watches `ambient.jsonl` for a `fleet_recovered` event within SLO, and auto-files a P1 `RESILIENT:` gap if the recovery breaches — self-evolving chaos engineering. Promote *only* if RESILIENT pillar coverage drops below the META-046 floor; currently 69 %, healthy.
+
+Companion gap: **EFFECTIVE-023** extracts the `ambient-cli` substrate that maneuvers (1) and (3) both consume; landing that crate is the architectural prerequisite for those two maneuvers.
