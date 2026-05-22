@@ -55,7 +55,7 @@ pub use claims::{Claim, ClaimResult, ReleaseReason};
 pub use config::ChumpTeamConfig;
 pub use errors::{ChumpTeamError, Result};
 pub use gaps::{Effort, GapFilter, GapPatch, GapStatus, Priority, SharedGap};
-pub use nuggets::{Nugget, NuggetKind, NuggetQuery};
+pub use nuggets::{Confidence, EmbedMode, Nugget, NuggetKind, NuggetMatch, NuggetQuery};
 pub use quotas::OperatorQuota;
 
 use postgrest::Postgrest;
