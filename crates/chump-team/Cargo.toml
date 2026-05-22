@@ -1,0 +1,24 @@
+[package]
+name = "chump-team"
+version = "0.1.0"
+edition = "2021"
+description = "INFRA-1665: thin client for the Chump team-shared substrate (Supabase-backed)."
+license = "MIT"
+
+[dependencies]
+# Explicit versions (matching workspace convention; this workspace doesn't use
+# [workspace.dependencies] inheritance).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+# postgrest = official Supabase REST client for Rust
+postgrest = "1.6"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util", "rt-multi-thread", "macros"] }
+mockito = "1"
