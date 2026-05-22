@@ -679,6 +679,9 @@ jobs:
       - name: fan-out rollup --semantic (INFRA-1455 Marcus M-B converge)
         run: bash scripts/ci/test-rollup-semantic.sh
 
+      - name: chump pr explain-block (INFRA-1416 stuck-PR diagnostic)
+        run: bash scripts/ci/test-pr-explain-block.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
