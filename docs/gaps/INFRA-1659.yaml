@@ -1,7 +1,8 @@
 - id: INFRA-1659
   domain: INFRA
   title: "CREDIBLE: registry scanner Pattern 8 — accept EMIT_KIND uppercase emit helper"
-  status: open
+  status: done
+  closed_pr: 2308
   priority: P2
   effort: xs
   description: |
