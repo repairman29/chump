@@ -68,6 +68,11 @@ pub struct ChumpTeam {
 }
 
 struct Inner {
+    // Held by the client even though Phase 0 only reads it via the (unused-here)
+    // `config()` method below. INFRA-1473 + INFRA-1475 implementations will
+    // read `config.user_jwt` and `config.active_team_slug`. Suppress dead-code
+    // until then.
+    #[allow(dead_code)]
     config: ChumpTeamConfig,
     postgrest: Postgrest,
 }
@@ -101,6 +106,7 @@ impl ChumpTeam {
         &self.inner.postgrest
     }
 
+    #[allow(dead_code)] // wired by INFRA-1473 / INFRA-1475 implementations
     pub(crate) fn config(&self) -> &ChumpTeamConfig {
         &self.inner.config
     }
