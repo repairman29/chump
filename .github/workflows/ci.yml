@@ -685,6 +685,9 @@ jobs:
       - name: agent-bash sandbox pilot (INFRA-1454)
         run: bash scripts/ci/test-sandbox-isolation.sh
 
+      - name: paramedic keystone-cascade (INFRA-1420)
+        run: bash scripts/ci/test-keystone-cascade.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
