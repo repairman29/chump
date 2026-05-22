@@ -1,0 +1,51 @@
+# Content Bots Suite — registry / manifest
+# Tracked: META-066 (productization umbrella) + INFRA-1690 (this foundation).
+#
+# Every bot is DEFAULT-DISABLED so this manifest landing produces zero behavior
+# change. Operators opt-in per-repo via .chump-config.toml [content_bots] or
+# globally via CHUMP_CONTENT_BOTS=<csv> env var.
+#
+# Schema (each entry):
+#   bot_id: str — unique key referenced by toggle config + dispatcher
+#   prompt_path: str — repo-relative path to the bot's system prompt manifest
+#   tier: str — one of: marketing | docs | community | conversion
+#   model_tier: str — haiku | sonnet | opus (defaults vary by complexity of output)
+#   default_enabled: bool — always false for the foundation; operator opts in
+#   pipeline_predecessors: [str] — bot_ids whose output this bot consumes
+#                                   (asynchronous; bots read upstream output via ambient events)
+#   pipeline_role: str — "leaf" | "fanout" | "join" | "terminus"
+#                        leaf=no upstream; fanout=branch point; join=merge; terminus=final
+
+version: 1
+bots:
+  - bot_id: pmm
+    prompt_path: docs/agents/content-bots/pmm.md
+    tier: marketing
+    model_tier: sonnet
+    default_enabled: false
+    pipeline_predecessors: []        # consumes Code Custodian output directly
+    pipeline_role: leaf
+
+  - bot_id: docubot
+    prompt_path: docs/agents/content-bots/docubot.md
+    tier: docs
+    model_tier: sonnet
+    default_enabled: false
+    pipeline_predecessors: [pmm]
+    pipeline_role: fanout            # PMM → DocuBot + Evangelist in parallel
+
+  - bot_id: evangelist
+    prompt_path: docs/agents/content-bots/evangelist.md
+    tier: community
+    model_tier: sonnet
+    default_enabled: false
+    pipeline_predecessors: [pmm]
+    pipeline_role: fanout            # PMM → DocuBot + Evangelist in parallel
+
+  - bot_id: copybot
+    prompt_path: docs/agents/content-bots/copybot.md
+    tier: conversion
+    model_tier: haiku                # short, punchy output — smaller model is fine
+    default_enabled: false
+    pipeline_predecessors: [pmm, docubot, evangelist]
+    pipeline_role: terminus          # last bot in the pipeline
