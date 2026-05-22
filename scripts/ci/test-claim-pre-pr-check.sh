@@ -45,9 +45,13 @@ grep -q "args.resume" "$SRC" \
     || fail "missing --resume bypass for legitimate re-claims"
 ok "guard wired with --resume + CHUMP_ALLOW_STOMP=1 bypasses"
 
-# 5. Guard runs BEFORE git worktree add (line of open_pr_on_branch call <
-#    line of `git worktree add`).
-guard_line=$(grep -n "open_pr_on_branch" "$SRC" | grep -v "^//" | head -1 | cut -d: -f1)
+# 5. Guard runs BEFORE git worktree add (line of the open-PR helper CALL
+#    site < line of the worktree CLI invocation). INFRA-1503 split the
+#    helper into open_pr_info (with author) — match either call site.
+guard_line=$(grep -nE "open_pr_(on_branch|info)\(" "$SRC" \
+    | grep -v "^[^:]*:[0-9]*://" \
+    | grep -v "fn open_pr_" \
+    | head -1 | cut -d: -f1)
 worktree_line=$(grep -n '"worktree",$' "$SRC" | head -1 | cut -d: -f1)
 if [[ -z "$guard_line" || -z "$worktree_line" ]]; then
     fail "could not locate guard / worktree lines for ordering check"
@@ -57,8 +61,8 @@ if (( guard_line >= worktree_line )); then
 fi
 ok "guard runs before worktree create (line $guard_line < $worktree_line) — cheap fail path"
 
-# 6. Refusal message names INFRA-1328 + lists the override paths
-grep -q "INFRA-1328: open PR" "$SRC" \
+# 6. Refusal message names the gap chain (1328 superseded by 1503) + lists override paths
+grep -qE "INFRA-(1328|1503).*open PR" "$SRC" \
     || fail "refusal message must name the gap + describe the situation"
 grep -q "CHUMP_ALLOW_STOMP" "$SRC" \
     || fail "refusal message must point at CHUMP_ALLOW_STOMP escape hatch"

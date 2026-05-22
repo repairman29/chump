@@ -313,6 +313,18 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, branch, actions]
 
+  - kind: claim_aborted_pr_in_flight
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_aborted_pr_in_flight_event (INFRA-1503)
+    trigger: chump claim refused because a non-draft OPEN PR already exists on
+      the canonical claim branch `chump/<gap>-claim` — prevents the "2 sessions
+      wasted creating duplicate worktrees" failure mode observed 2026-05-16.
+      Overrides logged separately:  --allow-duplicate-pr / CHUMP_CLAIM_ALLOW_OPEN_PR
+      (rescue), --resume (continue same work), CHUMP_ALLOW_STOMP (abandoned PR
+      takeover).
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, existing_pr, existing_author]
+
   - kind: gap_claim_nats_conflict
     effect_metric: self
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
