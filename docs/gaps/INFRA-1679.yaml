@@ -1,0 +1,16 @@
+- id: INFRA-1679
+  domain: INFRA
+  title: "EFFECTIVE: Custodian Phase 6.3 — chump repo-init command scaffolds new projects with CUSTODIAN_BLUEPRINT artifact layout pre-baked"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Custodian Phase 6.3 — repo-init template engine. The blueprint's how-to-apply workflow becomes executable: instead of 'follow these 14 steps,' it's 'chump repo-init my-project.' This is the highest-leverage deliverable in Phase 6 — turns the blueprint into a one-shot scaffolder. Adjacent: chump init already exists for operator-state setup; this is the project-state analogue.
+  acceptance_criteria:
+    - chump repo-init <project-name> command added to src/main.rs (new repo-init subcommand)
+    - scaffolds new directory <project-name>/ containing AGENTS.md template, scripts/README.md skeleton, docs/process/ index with placeholder for ONBOARDING/USER_GUIDE/FRICTION_LOG, .gitignore with proprietary/ exclusion, docs/ROADMAP.md template, README.md with quickstart placeholder
+    - generated AGENTS.md references the Custodian Blueprint as the framework being applied
+    - optional --with-fleet flag adds .chump/ skeleton for full Chump-style coordination
+    - "smoke test: chump repo-init test-proj && ls test-proj/ produces all Phase 1-3 artifact checklist files"
+    - docs/process/CUSTODIAN_BLUEPRINT.md Phase 6.3 section documents the command
+

@@ -162,9 +162,87 @@ When applying this blueprint to a new repo, work top-to-bottom in **one focused 
 - [ ] Audit cadence (weekly/monthly)
 - [ ] Lessons-retro doc per major incident
 
+**Phase 5 (CI/CD Gatekeeper) — 1-2 weeks per gate:**
+- [ ] Structural-drift PR gate (new module/service → docs entry required)
+- [ ] Inline docs-drift drafter (review-bot suggests the doc to write)
+- [ ] DRY-line auto-reviewer (similarity check + Rust-first-style scope gates)
+- [ ] Audit-logged bypass trailer (escape hatches that don't rot)
+
+**Phase 6 (Federated Network) — multi-week, only if org has 2+ repos:**
+- [ ] Cross-repo topology manifest (`<tool> federate scan` writes a JSON map)
+- [ ] Federated discovery hub (one site listing all blueprint-following repos)
+- [ ] `repo-init` template engine (Day-1 scaffolding with Phase 1-4 baked in)
+
 ### The meta-loop
 
 Run a **quarterly custodian audit**: walk the enforcement test in each phase. Surface enforcement leaks. File gaps for each. The framework is healthy if every enforcement test passes within a 30-second sweep; unhealthy if any test requires grep, multi-file reads, or memory.
+
+---
+
+## Phase 5 — CI/CD Gatekeeper (Continuous Custodianship)
+
+**Mission:** turn the blueprint from a one-time audit into a continuous PR-time quality gate. Phase 4's quarterly audit catches drift after the fact; Phase 5 prevents it from landing.
+
+### Questions to ask first
+
+1. Which Phase 1–4 enforcement tests can be automated as PR gates?
+2. When a gate fails, can it suggest the fix inline (review comment with draft text) rather than just block?
+3. Are bypass mechanisms audit-logged so escape hatches don't rot into "the gate everyone disables"?
+
+### Artifacts to produce
+
+| Artifact | Purpose | Chump example |
+|---|---|---|
+| Structural-drift gate | Fail PRs that add modules/services without docs entries | INFRA-1675 (planned) — `scripts/ci/test-architectural-drift-gate.sh` |
+| Inline docs-drift drafter | Auto-suggest the doc to write (review comment, not just refusal) | INFRA-1676 (planned) — `.github/workflows/docs-drift-drafter.yml` |
+| DRY-line auto-reviewer | Reject duplicate utilities/scripts at PR time | Partial — META-063 (no dupes), META-064 (Rust-first), META-065 (curator auto-prioritization), INFRA-1149 (title similarity) |
+| Audit-logged bypass trailer | Allow escape hatches that don't rot | `Rust-First-Bypass:` trailer already in use; pattern to replicate |
+
+### Enforcement test
+
+Open a PR that adds `scripts/coord/foo.sh` with no corresponding `docs/process/` entry. Does CI fail with an actionable message naming the missing doc? Does the same PR with a one-line `docs/process/foo.md` pass? Does the bypass trailer work and end up in an audit log queryable later?
+
+If the answer to any is "no," Phase 5 isn't enforcing yet — it's just documented.
+
+### Chump's current state (Phase 5)
+
+✓ 35 CI lanes exist; CREDIBLE-001 shellcheck + gaps-integrity + pr-hygiene + audit-required all enforce code/structure correctness.
+✓ META-063/064/065 cluster + INFRA-1149 similarity check cover the DRY-line partially.
+⚠ **No structural-drift gate yet** — adding a new `scripts/coord/*.sh` doesn't fail CI even with zero docs. Tracked: INFRA-1675.
+⚠ **No inline docs-drift drafter** — the gate would refuse without suggesting; INFRA-1146 (roadmap drift inject) proves the pattern is feasible. Tracked: INFRA-1676.
+
+---
+
+## Phase 6 — Federated Network (Scaling the Blueprint)
+
+**Mission:** turn one well-curated repo into a network effect across an org. The blueprint's value compounds when applied to siblings; a single curated repo is an island.
+
+### Questions to ask first
+
+1. Which other repos in the org should adopt this blueprint?
+2. Where do they intersect (shared scripts, shared deployment, shared on-call)?
+3. Can a single discovery hub aggregate utility-vectors across all of them?
+4. Can a `repo-init` command make Phases 1–4 free for Day 1 of any new project?
+
+### Artifacts to produce
+
+| Artifact | Purpose | Chump example |
+|---|---|---|
+| Cross-repo topology manifest | Macro-map of org's software ecosystem | INFRA-1677 (planned) — `chump federate scan` writing `docs/federation/topology.json` |
+| Federated discovery hub | One site listing all blueprint-following repos with utility-vectors | INFRA-1678 (planned) — promote `repairman29.github.io/chump` from docs-from-this-repo to docs-from-org |
+| `repo-init` template engine | Day-1 scaffolding with Phase 1–4 baked in | INFRA-1679 (planned) — `chump repo-init <name>` |
+
+### Enforcement test
+
+A new engineer joins an adjacent repo (not Chump itself). Measure time-to-first-meaningful-contribution. With `repo-init` and the federated hub, they should get a working AGENTS.md, gap registry, ONBOARDING, and ROADMAP on Day 1 by running one command. Without them, they grep Stack Overflow.
+
+A second test: pick a Chump-pattern repo other than Chump itself. Run the Phase 1–4 enforcement tests against it. Does it pass? If not, Phase 6 hasn't actually propagated the framework — it's only printed it on the discovery hub.
+
+### Chump's current state (Phase 6)
+
+⚠ **No federation manifest yet.** `repairman29` org has at least three Chump-pattern repos (Chump itself, `repairman29/homebrew-chump` tap, PWA repo per INFRA-1015) but no manifest binds them. Tracked: INFRA-1677.
+⚠ **`repairman29.github.io/chump` is single-repo docs.** Phase 6 promotes it. Tracked: INFRA-1678.
+⚠ **No `repo-init` command.** `chump init` scaffolds operator state (`~/.chump/`), not project state. The highest-leverage Phase 6 deliverable — turns the blueprint into a one-shot scaffolder. Tracked: INFRA-1679.
 
 ---
 
@@ -194,6 +272,14 @@ Applying a "discover and clean this unmapped repo" prompt to a mature, heavily-c
 
 Chump has 70 process docs. The entry doc (CLAUDE.md) links to ~12 of them. The other 58 are discoverable only via grep. **Every process doc should be linked from at least one entry doc**, or be marked archive/lessons (not canonical guidance).
 
+### 7. CI gates that lint syntax but not architecture
+
+Chump's 35 CI lanes enforce code-correctness (shellcheck, cargo-test, clippy, audit-required, gaps-integrity, pr-hygiene). They do NOT enforce "did you add a new tool and forget to document it" — a PR adding `scripts/coord/foo.sh` with no `docs/process/foo.md` passes today. Code stays clean, docs decay. **Phase 5 gates close this loop** by treating documentation as part of the diff under review, not a separate quarterly audit.
+
+### 8. Single-repo curation that doesn't compose across an org
+
+A well-curated single repo creates an island. Engineers joining adjacent repos in the same org (Chump itself, `homebrew-chump` tap, the PWA repo) get no benefit from the artifacts you built. The blueprint's structural-layout victories live entirely in this repo's `docs/process/`. **Phase 6 makes the framework reusable**: a federated hub publishes the artifacts cross-repo, and `repo-init` ensures the structural layout is the default on Day 1, not a thing you have to remember.
+
 ---
 
 ## How to apply this blueprint to a new repo
@@ -218,6 +304,16 @@ This is read-only assessment first, then targeted action. Do not start by writin
 - [ONBOARDING.md](ONBOARDING.md) — Phase 3 worked example
 - [EVENT_REGISTRY.yaml](../observability/EVENT_REGISTRY.yaml) — Phase 2 observability schema
 
+## Implementation gaps (Phase 5 + Phase 6)
+
+- [INFRA-1675](../gaps/INFRA-1675.yaml) — Phase 5.1 structural-drift CI gate
+- [INFRA-1676](../gaps/INFRA-1676.yaml) — Phase 5.2 docs-drift auto-drafter
+- [INFRA-1677](../gaps/INFRA-1677.yaml) — Phase 6.1 cross-repo topology mapper
+- [INFRA-1678](../gaps/INFRA-1678.yaml) — Phase 6.2 federated discovery hub
+- [INFRA-1679](../gaps/INFRA-1679.yaml) — Phase 6.3 `chump repo-init` template engine
+
 ## Provenance
 
-Authored 2026-05-22 during a custodian-prompt session against Chump itself. The session surfaced 3 real fleet bugs (INFRA-1666 superseded as duplicate of INFRA-1664, INFRA-1667 opus-curator daemon failure, INFRA-1668 oauth-token-critical missing) and concluded that Chump's custodian framework is mature — the gap is enforcement. The anti-patterns section above is the actual deliverable; the phase checklists exist to make the anti-patterns concrete.
+**2026-05-22 (initial, Phases 1-4).** Authored during a custodian-prompt session against Chump itself. The session surfaced 3 real fleet bugs (INFRA-1666 superseded as duplicate of INFRA-1664, INFRA-1667 opus-curator daemon failure, INFRA-1668 oauth-token-critical missing) and concluded that Chump's custodian framework is mature — the gap is enforcement. The anti-patterns section is the actual deliverable; the phase checklists exist to make the anti-patterns concrete.
+
+**2026-05-22 (extension, Phases 5+6).** Same session, evening. Operator extended the original prompt with two additional phases — CI/CD Gatekeeper (continuous custodianship at PR time) and Federated Network (scaling the blueprint across an org). Phase 5 documents the gates that would prevent the drift Phases 1-4 audit catches after the fact. Phase 6 turns the blueprint from a how-to-doc into an executable scaffolder via `repo-init`. Both phases are framework-only here; implementation is tracked in INFRA-1675 through INFRA-1679 above.
