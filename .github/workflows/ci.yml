@@ -673,6 +673,9 @@ jobs:
       - name: fleet-spec primitive (INFRA-1483 Marcus M-B)
         run: bash scripts/ci/test-fleet-spec.sh
 
+      - name: fleet-fanout primitive (INFRA-1484 Marcus M-B)
+        run: bash scripts/ci/test-fleet-fanout.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 

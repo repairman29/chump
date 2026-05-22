@@ -81,6 +81,7 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
+mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
 mod fleet_resize;
 mod fleet_self_doctor;
@@ -1354,6 +1355,200 @@ async fn main() -> Result<()> {
         let snap = fleet_velocity::snapshot(&repo_root);
         print!("{}", snap.render_text());
         return Ok(());
+    }
+
+    // `chump fanout <plan|apply|status>` (INFRA-1484) — cross-repo fan-out
+    // primitive (Marcus M-B continuation). Sibling of `chump fleet plan/apply`
+    // from INFRA-1483: where that fans out by parameter inside one repo, this
+    // fans out across N repos. One repo = one reserved gap. AC#4 sandboxing
+    // graceful-degrades in v1 (env hints surfaced, not enforced) — lands as
+    // real container isolation under INFRA-1454.
+    if args.get(1).map(String::as_str) == Some("fanout") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("");
+        if sub.is_empty() || sub == "help" || sub == "--help" {
+            println!(
+                "Usage: chump fanout <plan|apply|status> <spec.yaml | name> [--dry-run] [--json]"
+            );
+            println!();
+            println!("Cross-repo fan-out (INFRA-1484, Marcus M-B). One operator command,");
+            println!("N repos, N isolated gaps. Spec format:");
+            println!();
+            println!("  name: shared-lib-bump");
+            println!("  intent: |");
+            println!("    Bump shared-lib to v2.0 in this service.");
+            println!("  repos:");
+            println!("    - path: ../service-a");
+            println!("    - path: ../service-b");
+            println!("  validation: ./scripts/test-integration.sh");
+            println!("  success: integration suite passes");
+            println!();
+            println!("Subcommands:");
+            println!("  plan   <spec.yaml>             dry-run; render the per-repo gap set");
+            println!(
+                "  apply  <spec.yaml> [--dry-run] reserve one gap per repo (fanout_group=<name>)"
+            );
+            println!("  status <name>                  aggregate reserved gaps by fanout_group");
+            return Ok(());
+        }
+        match sub {
+            "plan" => {
+                let path = match args.get(3) {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => {
+                        eprintln!("Usage: chump fanout plan <spec.yaml>");
+                        std::process::exit(2);
+                    }
+                };
+                let spec_dir = path
+                    .parent()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("."));
+                match fleet_fanout::FanoutSpec::from_path(&path) {
+                    Ok(spec) => {
+                        let plan = spec.plan(&spec_dir);
+                        if args.iter().any(|a| a == "--json") {
+                            println!("{}", serde_json::to_string_pretty(&plan).unwrap());
+                        } else {
+                            print!("{}", fleet_fanout::render_plan(&plan));
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "apply" => {
+                let path = match args.get(3) {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => {
+                        eprintln!("Usage: chump fanout apply <spec.yaml> [--dry-run]");
+                        std::process::exit(2);
+                    }
+                };
+                let spec_dir = path
+                    .parent()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("."));
+                let dry_run = args.iter().any(|a| a == "--dry-run");
+                match fleet_fanout::FanoutSpec::from_path(&path) {
+                    Ok(spec) => {
+                        let plan = spec.plan(&spec_dir);
+                        println!(
+                            "fanout apply: {} repo(s) (group={}, dry_run={dry_run})",
+                            plan.len(),
+                            spec.name
+                        );
+                        for (i, g) in plan.iter().enumerate() {
+                            if dry_run {
+                                println!(
+                                    "  [dry-run] {} | {} → {}",
+                                    i + 1,
+                                    g.repo_label,
+                                    g.target_repo
+                                );
+                                for w in &g.env_isolation_warnings {
+                                    println!("            ⚠ {w}");
+                                }
+                                continue;
+                            }
+                            if !std::path::Path::new(&g.target_repo).exists() {
+                                eprintln!(
+                                    "  [failed] {}: target_repo not found: {} (v1: clone the repo first; auto-clone lands with a follow-up)",
+                                    g.repo_label, g.target_repo
+                                );
+                                std::process::exit(1);
+                            }
+                            let notes = fleet_fanout::build_gap_notes(g);
+                            let chump_bin =
+                                std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                            let out = std::process::Command::new(&chump_bin)
+                                .args([
+                                    "gap", "reserve", "--domain", &g.domain, "--title", &g.title,
+                                    "--effort", &g.effort, "--notes", &notes,
+                                ])
+                                .output();
+                            match out {
+                                Ok(o) if o.status.success() => {
+                                    let body = String::from_utf8_lossy(&o.stdout);
+                                    let id = body
+                                        .lines()
+                                        .find_map(|l| {
+                                            let t = l.trim();
+                                            // gap reserve prints lines like:
+                                            //   "Reserved INFRA-NNN" or "INFRA-NNN"
+                                            t.split_whitespace()
+                                                .find(|w| {
+                                                    w.contains('-')
+                                                        && w.split('-').nth(1).is_some_and(|n| {
+                                                            n.chars().all(|c| c.is_ascii_digit())
+                                                        })
+                                                })
+                                                .map(String::from)
+                                        })
+                                        .unwrap_or_else(|| "?".to_string());
+                                    println!(
+                                        "  [reserved] {} ({}) → {}",
+                                        g.repo_label, g.target_repo, id
+                                    );
+                                    for w in &g.env_isolation_warnings {
+                                        println!("             ⚠ {w}");
+                                    }
+                                }
+                                Ok(o) => {
+                                    eprintln!(
+                                        "  [failed] {}: {}",
+                                        g.repo_label,
+                                        String::from_utf8_lossy(&o.stderr).trim()
+                                    );
+                                    std::process::exit(1);
+                                }
+                                Err(e) => {
+                                    eprintln!("  [failed] {}: spawn error: {e}", g.repo_label);
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "status" => {
+                let name = match args.get(3) {
+                    Some(n) => n.clone(),
+                    None => {
+                        eprintln!("Usage: chump fanout status <name>");
+                        std::process::exit(2);
+                    }
+                };
+                let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                let out = std::process::Command::new(&chump_bin)
+                    .args(["gap", "list", "--json"])
+                    .output();
+                let Ok(o) = out else {
+                    eprintln!("error: could not exec chump gap list");
+                    std::process::exit(1);
+                };
+                let body = String::from_utf8_lossy(&o.stdout);
+                let report = fleet_fanout::aggregate_status(&body, &name);
+                if args.iter().any(|a| a == "--json") {
+                    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+                } else {
+                    print!("{}", report.render_text());
+                }
+                std::process::exit(0);
+            }
+            other => {
+                eprintln!("chump fanout: unknown subcommand '{other}'");
+                eprintln!("Try: chump fanout <plan|apply|status> [args…]");
+                std::process::exit(2);
+            }
+        }
     }
 
     // `chump waste-tally [--since 24h|7d|...] [--json]`
