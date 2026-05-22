@@ -283,9 +283,9 @@ Message:
 4. Manual work board (post a JSON, agents read and claim)
 
 **Acceptance:**
-- Agent A (claude-haiku-4-5 on Pi-1) claims gap DEMO-001
+- Agent A (frontier-tier cloud substrate on Pi-1) claims gap DEMO-001
 - Agent A discovers DEMO-001 is too large, posts SUBTASK-001
-- Agent B (qwen3:14b on Pi-2) sees SUBTASK-001, checks fit (matches task class), claims it
+- Agent B (mid-tier local substrate on Pi-2) sees SUBTASK-001, checks fit (matches task class), claims it
 - SUBTASK-001 completes on Agent B; result merged back into DEMO-001
 - Ambient stream shows full timeline (session_start, bash_calls, commits, help_request, help_completion)
 

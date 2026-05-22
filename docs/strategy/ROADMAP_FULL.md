@@ -1,8 +1,9 @@
 ---
 doc_tag: log
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-05-22
 ---
+<!-- research-privacy-exempt: gap-registry status doc — bare COG/EVAL gap IDs are explicit public-allowed status references per docs/agents/RESEARCH_PRIVACY.md "What you CAN write in public docs" -->
 
 # Full Roadmap
 
@@ -21,7 +22,7 @@ Complete multi-horizon view of all gaps — open backlog and completed work. Nea
 | EVAL-026 | Cognitive-layer U-curve at 32B — extend 1B-14B sweep upward | M |
 | EVAL-027 | SAKE knowledge anchoring — apply Feb 2026 KID paper findings | M |
 | EVAL-030 | Task-class-aware lessons block — fix neuromod harm at its root | M |
-| COG-023 | Sonnet carve-out from COG-016 directive — confirmed at n=100 | M |
+| COG-023 | Frontier-tier carve-out from the model-tier-aware injection directive — confirmed at preregistered power | M |
 | RESEARCH-001 | Public research narrative — "2000+ A/B trials" blog post | M |
 | INFRA-MERGE-QUEUE | Enable GitHub merge queue — serialize auto-merges atomically | S |
 | INFRA-PUSH-LOCK | Pre-push hook blocks pushes to PRs with auto-merge armed | S |
@@ -103,7 +104,7 @@ Complete multi-horizon view of all gaps — open backlog and completed work. Nea
 | COG-013 | Social cognition sensor — user intent + affect |
 | COG-014 | Task-specific lessons content per fixture |
 | COG-015 | Entity-keyed blackboard injection |
-| COG-016 | Model-tier-aware lessons block injection (COG-016 directive, n=100 validated) |
+| COG-016 | Model-tier-aware lessons block injection (directive validated at preregistered power) |
 | COG-017 | Generation layer scaffold — text + code + tool outputs |
 | COG-018 | Metacognition layer — self-assessment of tool call quality |
 | COG-019 | Introspection ring buffer (chump_tool_health) |
@@ -114,13 +115,13 @@ Complete multi-horizon view of all gaps — open backlog and completed work. Nea
 | ID | Title |
 |----|-------|
 | EVAL-001..009 | A/B harness foundation: judge, runner, cost ledger, multi-axis scoring |
-| EVAL-010 | Single-judge bias study — 38–63% agreement at chance |
-| EVAL-011..015 | Cross-model, cross-family judge, n=100 sweeps |
-| EVAL-016 | COG-016 candidate validation at n=100 |
+| EVAL-010 | Single-judge bias study — judge agreement near chance |
+| EVAL-011..015 | Cross-model, cross-family judge sweeps |
+| EVAL-016 | Candidate validation for the model-tier-aware injection directive |
 | EVAL-017..022 | Tool integration A/B, multi-turn, multi-judge (median-of-3) |
 | EVAL-023 | Cross-family judge via Ollama integration |
-| EVAL-024 | A/A controls — 10.7× A/B vs A/A noise floor ratio established |
-| EVAL-025 | COG-016 directive validation: **+0.14 pp mean fake-tool-call reduction** (≈ 0.0014 absolute rate), Wilson 95% CI non-overlapping, p < 0.05, 3 task types, n=100 each |
+| EVAL-024 | A/A controls — A/B vs A/A noise floor ratio established |
+| EVAL-025 | Model-tier-aware injection directive validated (Wilson 95% CIs non-overlapping; specifics private) |
 
 ### Infrastructure — INFRA (17 done)
 

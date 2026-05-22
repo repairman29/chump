@@ -26,7 +26,7 @@ Today's META-025 measurement (2026-05-03) is the empirical validation:
 - **75%** measured self-ship rate (4 of 4 measurable subagents) after
   Tier 3 shipping-epilogue (INFRA-332 / `docs/process/SUBAGENT_DISPATCH.md`)
   was injected into every Agent-tool prompt.
-- **Same model** (claude-opus-4-7), **same task class** (small INFRA/META
+- **Same model** (frontier-tier substrate), **same task class** (small INFRA/META
   gaps with well-defined acceptance criteria), **same repo state**.
 - The **only changed variable** was the briefing template structure.
 
@@ -87,7 +87,7 @@ Chump:
   Agent-tool prompt. Documents bot-merge.sh canonical path, chump-doctor
   heal, INFRA-028 manual recovery, the `do NOT silently fall back to
   YAML writes` discipline.
-- **The lessons pool** (INFRA-330 + COG-024 / COG-032 path) — 15
+- **The lessons pool** (INFRA-330 + cognition-track lessons-OFF gap path) — 15
   actionable directives in `chump_improvement_targets`, surfaced via
   `CHUMP_LESSONS_AT_SPAWN_N=N` + the `format_lessons_block()` helper.
 - **`chump --briefing <GAP-ID>`** (MEM-007) — per-gap context bundle
@@ -205,13 +205,13 @@ adopting the methodology get measurable agent-quality improvement
 WITHOUT needing the chump-specific Tier 1 / Tier 2 tooling — they just
 need their own Tier 3 epilogue and lessons pool.
 
-### N substrates (model classes — opus / sonnet / haiku / qwen3 / etc.)
+### N substrates (model classes — frontier / mid-tier / weak / local-quantized / etc.)
 
-Tier 3 is **substrate-portable**. The 75% measured rate was on
-claude-opus-4-7; the same epilogue should work on smaller substrates
-because it's about constraining behavior, not augmenting capability.
-[RESEARCH-032](../gaps/RESEARCH-032.yaml) measures whether qwen3:14b
-can compose Chump's full agent loop; if it can, the same Tier 3
+Tier 3 is **substrate-portable**. The measured rate was on a frontier-tier
+substrate; the same epilogue should work on smaller substrates because it's
+about constraining behavior, not augmenting capability.
+[RESEARCH-032](../gaps/RESEARCH-032.yaml) measures whether a mid-tier local
+substrate can compose Chump's full agent loop; if it can, the same Tier 3
 discipline applies. If it can't, the failure mode is substrate ceiling,
 not Tier 3 design.
 

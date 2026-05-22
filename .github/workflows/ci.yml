@@ -477,6 +477,17 @@ jobs:
         if: github.event_name == 'pull_request'
         run: bash scripts/ci/test-pwa-parse-gate.sh || true
 
+      # DOC-050 + DOC-051: research-privacy gate for docs/strategy/ and docs/product/.
+      # Scans public docs for RESEARCH_INTEGRITY.md:28-29 violations (magnitudes,
+      # versioned model names, per-eval gap IDs). DOC-051 cleared the backlog of
+      # 195 violations; this advisory wiring is the next-step from the AC
+      # ("scripts/ci/test-public-doc-privacy.sh wired into pr-hygiene job as
+      # advisory"). Flip from advisory to blocking by removing `|| true` once
+      # the gate has run clean on 5 consecutive PRs (per DOC-051 AC #7).
+      - name: Research-privacy gate (DOC-050/DOC-051, advisory)
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/test-public-doc-privacy.sh || true
+
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
   # `cargo clippy --workspace --all-targets`. A handful of guards build

@@ -1,8 +1,9 @@
 ---
 doc_tag: log
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-05-22
 ---
+<!-- research-privacy-exempt: gap-registry status doc — bare COG/EVAL gap IDs are explicit public-allowed status references per docs/agents/RESEARCH_PRIVACY.md "What you CAN write in public docs" -->
 
 # Sprint Roadmap
 
@@ -15,7 +16,7 @@ Two-week sprints for near-term execution. Feeds into [ROADMAP.md](ROADMAP.md) (c
 | Gap | Title | Owner | Status |
 |-----|-------|--------|--------|
 | COG-016 | Model-tier-aware lessons gate | auto | done |
-| EVAL-025 | COG-016 directive validation (n=100) | auto | done |
+| EVAL-025 | Model-tier-aware injection directive validation | auto | done |
 | INFRA-MERGE-QUEUE | GitHub merge queue | auto | done |
 | INFRA-PUSH-LOCK | Pre-push hook | auto | done |
 | AUTO-013 (steps 1–2) | Chump-orchestrator MVP scaffold | auto | done |

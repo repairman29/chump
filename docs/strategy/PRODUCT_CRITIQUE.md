@@ -26,12 +26,12 @@ Quarterly pass over Chump's product quality — launch gates, onboarding experie
 **Shipped:**
 - Multi-surface (Discord, PWA, CLI, Slack, Telegram)
 - ACP (Zed/JetBrains) with 96 unit tests
-- Consciousness framework A/B validated (n=100, 10.7× noise floor)
+- Consciousness framework A/B validated at preregistered power (specifics private)
 - Multi-agent coordination (lease files, gap-claim, bot-merge pipeline)
 - Provider cascade (8 providers, ~72k free RPD)
 
 **Critical gaps at Q1 close:**
-- COG-016 lessons block: +0.14 fake-tool-call amplification on weak models — patch P1 but not yet shipped (EVAL-030, COG-023 in progress)
+- Lessons-block fake-tool-call amplification on weak-tier substrates — patch P1 but not yet shipped (task-class-aware lessons + frontier-tier carve-out in progress; specifics private)
 - Published benchmarks: empty table in BENCHMARKS.md
 - 946 `unwrap()` calls in production code
 - Credential leak in git history (Together.ai key)
@@ -39,9 +39,9 @@ Quarterly pass over Chump's product quality — launch gates, onboarding experie
 ## Quarterly critique (Q2 2026 — in progress)
 
 **Focus for Q2:**
-- Ship COG-023 Sonnet carve-out and EVAL-030 task-class-aware lessons
+- Ship the frontier-tier carve-out and the task-class-aware lessons gap
 - Run and publish BENCHMARKS.md results
-- Cross-family judge EVAL-023+ validation
+- Cross-family judge validation (Ollama integration onward)
 - Adversary-mode-lite (COMP-011a)
 - Fix cost ledger $0.00 bug (COMP-014)
 
