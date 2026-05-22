@@ -184,6 +184,7 @@ pub mod session_compact;
 mod session_export;
 mod session_ledger;
 mod session_search_tool;
+mod session_summary; // INFRA-1437: chump session-summary subcommand
 mod set_working_repo_tool;
 mod ship_quality;
 mod skill_db;
@@ -451,6 +452,9 @@ fn print_help() {
     println!();
     println!("ANALYTICS");
     println!("  health  (alias: h)  current gap-registry health snapshot");
+    println!(
+        "  session-summary    merged + armed + filed PRs in current session window (INFRA-1437)"
+    );
     println!("  health-digest      markdown digest with P0/P1 counts + warnings");
     println!("  fleet-status       per-worker throughput + lease state");
     println!("  fleet-velocity     PRs/day and ship-rate trend");
@@ -889,6 +893,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump session-summary` (INFRA-1437) — list merged + armed + filed PRs
+    // in the current session window. Replaces the manual ambient.jsonl + gh
+    // pr list scrape that PM-curator + operator were doing at every session
+    // end (~5 min of work).
+    if args.get(1).map(String::as_str) == Some("session-summary") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(session_summary::run(&sub_args));
     }
 
     // `chump completion [zsh|bash|fish]` (EFFECTIVE-010) — print shell completion script.
