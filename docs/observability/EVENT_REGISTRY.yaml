@@ -4095,3 +4095,16 @@ events:
       cascade pattern).
     consumers: [fleet-brief, orphan-pr-closer, ops-audit]
     fields_required: [ts, kind, gap_id, path, target]
+  # ── INFRA-1698 / INFRA-1702: pipeline-abort terminus event ──
+  - kind: content_bot_pipeline_aborted
+    effect_metric: self
+    emitter: scripts/content-bots/orchestrate-pipeline.sh (INFRA-1698 — abort_pipeline helper)
+    trigger: >
+      Any stage failure in the Content Bots pipeline DAG (PMM → DocuBot
+      || Evangelist → CopyBot). Downstream-of-failed bots are marked
+      skipped in state.json before this event fires, so the run_id can
+      be resumed via orchestrate-pipeline.sh --resume <run_id> once the
+      operator addresses the root cause (LLM timeout, claude-cli auth,
+      registry-state drift). Closes the bypass-debt from PR #2348.
+    consumers: [content-bots-pipeline-orchestrator, fleet-brief, ops-audit]
+    fields_required: [ts, kind, run_id, reason]
