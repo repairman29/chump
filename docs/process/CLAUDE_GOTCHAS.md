@@ -1350,3 +1350,115 @@ CHUMP_GH_CALL_CRITICALITY=background <noisy-command>
 ```
 
 **Call-criticality tagging:** see `CLAUDE.md § Call criticality (INFRA-1080)`.
+
+## Tangled-stack rebase recipe (INFRA-1660, 2026-05-21)
+
+When a PR has been open for hours through multiple sibling-PR merges and a
+straight `git rebase origin/main` produces a wall of cross-file conflicts
+that aren't really conflicts (sibling PRs touched the same main-state files
+you also touched, but the changes ARE the right answer in main now), don't
+fight the rebase. Use the soft-reset recipe:
+
+```bash
+cd /tmp/chump-<gap>  # PR worktree, NOT main checkout
+git fetch origin main --quiet
+git rebase --abort 2>/dev/null  # if mid-rebase
+git reset --soft origin/main    # one commit "ahead" containing your real changes
+
+# Inspect what's staged. Anything that's "main-state churn you don't own"
+# should be restored from main:
+git status --short
+git checkout origin/main -- <files-other-PRs-modified>
+
+# Verify staged diff is ONLY your PR's intent:
+git diff --staged --stat
+
+# Single-commit force-push:
+git commit -m "feat(GAP-ID): <single-line intent>"
+git push --force-with-lease
+```
+
+**When to use:**
+- PR has 4+ commits including fmt-drift / sibling-cherry-picks / retries
+- `git rebase origin/main` reports conflicts in files YOU touched but main's
+  version is now the canonical answer (because a sibling PR already
+  reconciled them)
+
+**When NOT to use:**
+- Routine 2-commit rebase — `git rebase origin/main` is fine
+- Conflicts in your own NEW code — those need real review, not a reset
+- When you have unpushed commits you actually want to keep separately
+
+**Risk:** `reset --soft` flattens commit history, losing per-commit
+attribution. Acceptable because PRs squash-merge anyway, but be deliberate
+about the single commit message. Don't lose meaningful context in the
+rollup.
+
+Discovered during 2026-05-20 Marcus cron-loop session, used 4× in one
+afternoon to unblock #2296/#2297/#2298/#2303/#2304 after the sibling-PR
+merge cascade.
+
+## `printf … | grep -q` pipefail race (INFRA-755 / INFRA-1658, 2026-05-21)
+
+Under `set -o pipefail`, this idiom is racy and produces false-negative
+matches that fail loudly elsewhere:
+
+```bash
+# BUG — under pipefail, the pipeline can exit non-zero EVEN ON A MATCH
+if printf '%s\n' "$LINES" | grep -qE "pattern"; then
+    HIT=1
+fi
+```
+
+**Why:** `grep -q` closes stdin as soon as it finds the first match. If
+`printf` is still writing when grep closes, printf gets `SIGPIPE` and
+exits non-zero. With `pipefail`, the whole pipeline reports failure even
+though grep DID find the pattern. The `if` branch silently skips.
+
+**Symptom:** obs-budget script claimed no observability hooks were
+present in a diff that contained them. Six hours of false-negative
+debugging before locating the race.
+
+**Fix — materialize to a tempfile, then grep:**
+
+```bash
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+printf '%s\n' "$LINES" > "$TMP"
+if grep -qE "pattern" "$TMP"; then
+    HIT=1
+fi
+```
+
+**Audit gap:** INFRA-1658 sweeps `scripts/` for sibling occurrences.
+Hot-path scripts (`scripts/coord/`, `scripts/dispatch/`,
+`scripts/git-hooks/`) are most likely to be affected because they run
+per-PR and per-cycle.
+
+**Tell-tale signature in code review:** any `printf` (or `echo`) piped
+into `grep -q`, `awk` with early-exit, `head -1`, etc., under a
+`pipefail`-enabled shell.
+
+## Ambient emit helper naming — `_emit` vs `EMIT_KIND` (INFRA-1659, 2026-05-21)
+
+`scripts/ci/test-event-registry-coverage.sh` scans production paths for
+emit sites and verifies each registered kind has a matching emit. The
+scanner has 7 grep patterns; Pattern 4 specifically matches lowercase
+`_emit "name"` shell helpers.
+
+**Convention:**
+- ✅ `_emit "kind_name" '{"...":...}'` — Pattern 4 matches
+- ⚠️ `EMIT_KIND "kind_name" '{"...":...}'` — currently NOT matched until
+  INFRA-1659 adds Pattern 8
+- ❌ Any other casing (`emit_kind`, `Emit`, mixed) — invisible to scanner
+
+**Symptom:** registered kinds show as `register-without-emit (orphans)`
+in the audit job, even though the emit site exists. Audit FAILS in
+`strict` mode; the PR is BLOCKED until you rename or add to
+`scripts/ci/event-registry-reserved.txt`.
+
+**Fastest fix:** rename helper to `_emit` (one-line sed). Adding to the
+reserved list works but accumulates lint debt.
+
+**Pattern 8 add-on:** see INFRA-1659 — once that ships, `EMIT_KIND` will
+also be valid. Until then, default to `_emit`.
