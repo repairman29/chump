@@ -51,6 +51,11 @@ pub struct ClaimArgs {
     pub skip_import: bool,
     /// INFRA-1394: override the hot-file collision block (warn-only mode still fires).
     pub force_overlap: bool,
+    /// INFRA-1503: bypass the open-PR-in-flight abort (step 5b). Mirrors
+    /// `CHUMP_CLAIM_ALLOW_OPEN_PR=1`. Distinct from `CHUMP_ALLOW_STOMP`/`--resume`:
+    /// this is the operator-explicit "I know there's an open PR; let me work
+    /// alongside it (rescue scenario)" path. Default false.
+    pub allow_duplicate_pr: bool,
     /// Run all preflight gates without creating worktree or lease.
     pub check_only: bool,
     /// Output JSON format (used with --check-only).
@@ -73,6 +78,7 @@ impl ClaimArgs {
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
+                       --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -95,6 +101,7 @@ impl ClaimArgs {
         let mut resume = false;
         let mut force_recover = false;
         let mut force_overlap = false;
+        let mut allow_duplicate_pr = false;
         let mut check_only = false;
         let mut json = false;
 
@@ -137,6 +144,10 @@ impl ClaimArgs {
                     force_overlap = true;
                     i += 1;
                 }
+                "--allow-duplicate-pr" => {
+                    allow_duplicate_pr = true;
+                    i += 1;
+                }
                 "--check-only" => {
                     check_only = true;
                     i += 1;
@@ -168,6 +179,7 @@ impl ClaimArgs {
             resume,
             force_recover,
             force_overlap,
+            allow_duplicate_pr,
             check_only,
             json,
         })
@@ -538,16 +550,29 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     let stomp_bypass = std::env::var("CHUMP_ALLOW_STOMP")
         .map(|v| !v.trim().is_empty() && v.trim() != "0")
         .unwrap_or(false);
-    if !args.resume && !stomp_bypass {
-        if let Some(pr_num) = open_pr_on_branch(&args.repo_root, &branch) {
+    // INFRA-1503: separate operator-explicit bypass for the "rescue an in-flight
+    // open PR" workflow. Distinct from CHUMP_ALLOW_STOMP so audit logs can tell
+    // intentional rescue (this) apart from abandoned-PR takeover (stomp).
+    let allow_open_pr_bypass = args.allow_duplicate_pr
+        || std::env::var("CHUMP_CLAIM_ALLOW_OPEN_PR")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+    if !args.resume && !stomp_bypass && !allow_open_pr_bypass {
+        if let Some((pr_num, author)) = open_pr_info(&args.repo_root, &branch) {
+            // INFRA-1503: emit ambient event BEFORE bail so the waste signal is
+            // captured even when the operator dismisses the diagnostic and
+            // moves on (this is the "2 sessions wasted" failure mode we want to
+            // count).
+            let ambient_log = args.repo_root.join(".chump-locks/ambient.jsonl");
+            emit_claim_aborted_pr_in_flight_event(&ambient_log, &args.gap_id, pr_num, &author);
             bail!(
-                "INFRA-1328: open PR #{} exists on branch `{}` upstream — \
-                 refusing to stomp.\n  \
-                 Either (a) wait for it to land/close, (b) pass --resume to \
-                 continue that PR's work, or (c) set CHUMP_ALLOW_STOMP=1 if \
-                 the PR is genuinely abandoned and you're taking it over \
-                 (with comment closing the prior PR).",
+                "INFRA-1503 (was INFRA-1328): open PR #{} already exists for {} by {} on branch `{}` — gap is in-flight.\n  \
+                 Pick a different gap, or wait for the PR to land/close.\n  \
+                 Overrides: --allow-duplicate-pr | CHUMP_CLAIM_ALLOW_OPEN_PR=1 (rescue) | \
+                 --resume (continue same work) | CHUMP_ALLOW_STOMP=1 (abandoned PR takeover).",
                 pr_num,
+                args.gap_id,
+                if author.is_empty() { "unknown" } else { author.as_str() },
                 branch,
             );
         }
@@ -800,8 +825,17 @@ fn remote_branch_exists(repo_root: &Path, remote: &str, branch: &str) -> bool {
 /// false-negative — but the worst case is the same as today's behavior, while
 /// the success case prevents the stomp class entirely.
 pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
-    // GH expects head as `<owner>:<branch>` — derive owner from the repo's
-    // git remote (the same path bot-merge.sh and pr-stuck-cluster use).
+    open_pr_info(repo_root, branch).map(|(n, _)| n)
+}
+
+/// INFRA-1503: same as `open_pr_on_branch` but also returns the PR author's
+/// GitHub login. Used to surface the in-flight author in the abort diagnostic
+/// and in the `claim_aborted_pr_in_flight` ambient event so the fleet can
+/// distinguish "my own prior session" from "sibling already on it".
+///
+/// Best-effort: any failure returns `None`. Author may be empty string if the
+/// PR has no `user.login` (rare; some GitHub Apps).
+pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, String)> {
     let owner_repo = gh_owner_repo(repo_root)?;
     let owner = owner_repo.split('/').next()?;
     let head = format!("{}:{}", owner, branch);
@@ -815,7 +849,8 @@ pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
                 owner_repo, head
             ),
             "--jq",
-            ".[0].number // empty",
+            // tab-separated number\tauthor; empty if no PR found
+            r#".[0] | if . == null then empty else "\(.number)\t\(.user.login // "")" end"#,
         ])
         .current_dir(repo_root)
         .output()
@@ -824,7 +859,14 @@ pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
         return None;
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
-    stdout.trim().parse::<u64>().ok()
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.splitn(2, '\t');
+    let num = parts.next()?.parse::<u64>().ok()?;
+    let author = parts.next().unwrap_or("").to_string();
+    Some((num, author))
 }
 
 /// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
@@ -1054,6 +1096,42 @@ fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, action
         .create(true)
         .append(true)
         .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1503: emit `claim_aborted_pr_in_flight` to ambient.jsonl. Fired right
+/// before we bail in step 5b so we count the waste-prevention signal even
+/// though the claim itself is refused. `existing_author` may be empty when
+/// the PR was opened by a GitHub App or `user.login` is unavailable.
+fn emit_claim_aborted_pr_in_flight_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    existing_pr: u64,
+    existing_author: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_aborted_pr_in_flight\",\
+         \"gap_id\":\"{}\",\"existing_pr\":{},\"existing_author\":\"{}\"}}\n",
+        json_escape(gap_id),
+        existing_pr,
+        json_escape(existing_author),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
         .and_then(|mut f| {
             use std::io::Write;
             f.write_all(line.as_bytes())
