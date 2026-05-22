@@ -1,0 +1,28 @@
+- id: INFRA-1688
+  domain: INFRA
+  title: "RESILIENT: lease-as-advisory + auto-conflict-resolver on every merge — leap-frog the lease-wall model"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Strategic followup from 2026-05-22 collision-scaling conversation. The
+    current claim/lease model rations file access; at 10+ workers it crushes
+    velocity. Alternative: leases become advisory (warn, don't block),
+    INFRA-1488 conflict-resolver-agent runs automatically on every conflicting
+    push, humans see only escalations. Today's model assumes conflicts are
+    exceptions; this model assumes they are routine and budgets for them.
+  acceptance_criteria:
+    - "CHUMP_CLAIM_MODE env var (default=blocking; opt-in=advisory): in advisory mode, chump claim emits warning on path overlap but allows the claim — no exit-1"
+    - "bot-merge.sh auto-invokes INFRA-1488 conflict-resolver-agent on merge-conflict detection (no --opt-in flag required); resolver runs unattended for textual/AST scenarios it has a confidence pattern for"
+    - "Test suite scripts/ci/test-conflict-resolver-scenarios.sh: 10+ synthetic conflict scenarios with known-correct resolutions (rust func-add, yaml row-add, ci.yml step-insert, EVENT_REGISTRY kind-add, etc.); each scenario asserts the resolver produces the expected merged file"
+    - "Telemetry: emit kind=conflict_auto_resolved {pr, files, scenario_match, confidence} on success; kind=conflict_escalated_to_operator {pr, reason} when below confidence threshold or no scenario match"
+    - "Rollout gate: default-flip from blocking → advisory after 100 consecutive auto-resolutions without operator-reported regression; auto-revert to blocking on any operator-reported bad resolution within 24h"
+    - "PWA surface: auto-resolution rate per 24h on /pwa/cockpit; escalation queue with one-click approve / revert / edit per resolution"
+    - "Backward-compat: bare chump claim under default CHUMP_CLAIM_MODE=blocking keeps current semantics; existing sibling-lease alerts unchanged"
+    - "Honest-failure mode: if 3+ operator-rejected resolutions land in a 7d window, kind=conflict_resolver_trust_breach emits and the default flips back to blocking automatically"
+  notes: |
+    Leap-frog play from 2026-05-22 architectural review. Right north star
+    at 10+ worker scale. Pairs with INFRA-1687 (deletes the most common
+    contention class first) and INFRA-1689 (sub-file claims as hedge).
+    Pillar RESILIENT — embraces concurrent edits as a budgeted failure
+    class rather than rationing the resource.
