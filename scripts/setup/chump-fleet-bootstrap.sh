@@ -38,6 +38,7 @@ MANIFEST="$REPO_ROOT/scripts/setup/bootstrap-manifest.yaml"
 REQUIRED_DAEMONS=(
     "com.chump.paramedic|scripts/setup/install-paramedic.sh"
     "com.chump.bot-merge-watchdog|scripts/setup/install-bot-merge-watchdog.sh"
+    "com.chump.claude-reaper|scripts/setup/install-claude-reaper.sh"
 )
 UID_VAL="$(id -u)"
 

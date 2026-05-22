@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.claude-reaper — INFRA-1662: launchd watchdog that reaps orphan
+  `claude` binary subprocesses leaked by long-running autonomous loops
+  (/loop, ScheduleWakeup, CronCreate). Cron 6249a56f leaked 354 wedged
+  subprocesses over 60h on 2026-05-20→22.
+
+  Runs scripts/ops/reap-orphan-claude-procs.sh every 5 minutes (300s).
+  Emits kind=orphan_subprocess_reaped to ambient.jsonl on each sweep.
+
+  INSTALLATION:
+    scripts/setup/install-claude-reaper.sh
+
+  Manual:
+    1. Edit this file: replace /path/to/Chump with your actual repo path.
+    2. cp launchd/com.chump.claude-reaper.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.claude-reaper.plist
+    4. launchctl list | grep chump.claude-reaper      # verify
+    5. launchctl start com.chump.claude-reaper        # test immediately
+    6. launchctl unload ~/Library/LaunchAgents/com.chump.claude-reaper.plist  # disable
+
+  Bypass at runtime (without unloading): export CHUMP_REAPER_DISABLED=1
+  in the agent's environment, or set it on the plist EnvironmentVariables
+  block below.
+
+  LOGS:
+    stdout: /tmp/chump-claude-reaper.out.log
+    stderr: /tmp/chump-claude-reaper.err.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.claude-reaper</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/reap-orphan-claude-procs.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 5 minutes (300s). Short cadence is fine: the script is
+       idempotent and cheap (one ps call, in-memory walk). -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <!-- Guard against rapid restarts if the watchdog crashes. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Do NOT run at load — wait for the first interval. Prevents a thundering
+       herd of reapers right after `launchctl load`. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-claude-reaper.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-claude-reaper.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>
