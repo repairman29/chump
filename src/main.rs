@@ -109,6 +109,7 @@ mod health;
 mod health_server;
 mod hitl_escalation;
 mod hooks;
+mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
 mod introspect_tool;
@@ -173,6 +174,7 @@ mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
 mod rescue_tally;
+mod resume_cmd; // INFRA-1456: chump resume <gap-id> — reattach wedged gap
 mod revert_pr;
 mod review_handoff;
 mod roadmap_status;
@@ -185,6 +187,7 @@ mod sandbox; // INFRA-1454: agent bash syscall-restriction layer (macOS sandbox-
 mod sandbox_tool;
 mod schedule_db;
 mod schedule_tool;
+mod scrap_cmd; // INFRA-1456: chump scrap <gap-id> — clean teardown
 mod screen_vision_tool;
 mod session;
 pub mod session_compact;
@@ -909,6 +912,85 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("session-summary") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(session_summary::run(&sub_args));
+    }
+
+    // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.
+    // Opens a 3-pane tmux session (or text snapshot if --no-tmux) for the
+    // active lease of the given gap: worktree shell, live ambient tail, and
+    // recent ambient events. Marcus's Saturday-morning-uninstall scenario.
+    if args.get(1).map(String::as_str) == Some("inspect") {
+        let gap_id = match args.get(2) {
+            Some(id) => id.clone(),
+            None => {
+                eprintln!("Usage: chump inspect <gap-id> [--no-tmux]");
+                std::process::exit(2);
+            }
+        };
+        let no_tmux = args.iter().any(|a| a == "--no-tmux");
+        let repo_root = repo_path::repo_root();
+        match inspect_cmd::run(&repo_root, &gap_id, !no_tmux) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("chump inspect: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump resume <gap-id>` (INFRA-1456) — validate worktree recoverability.
+    // Checks lease present, worktree on disk, no dangling rebase/merge state,
+    // no uncommitted churn. Prints verdict and emits kind=gap_resumed.
+    if args.get(1).map(String::as_str) == Some("resume") {
+        let gap_id = match args.get(2) {
+            Some(id) => id.clone(),
+            None => {
+                eprintln!("Usage: chump resume <gap-id>");
+                std::process::exit(2);
+            }
+        };
+        let repo_root = repo_path::repo_root();
+        match resume_cmd::run(&repo_root, &gap_id) {
+            Ok(verdict) => {
+                println!("{}", verdict.summary());
+                let exit_code = if verdict == resume_cmd::ResumeVerdict::Ready {
+                    0
+                } else {
+                    1
+                };
+                std::process::exit(exit_code);
+            }
+            Err(e) => {
+                eprintln!("chump resume: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump scrap <gap-id>` (INFRA-1456) — clean teardown of a wedged gap.
+    // Removes the worktree, deletes the lease JSON, deletes the local branch,
+    // prunes dangling refs. Emits kind=gap_scrapped to ambient.jsonl.
+    if args.get(1).map(String::as_str) == Some("scrap") {
+        let gap_id = match args.get(2) {
+            Some(id) => id.clone(),
+            None => {
+                eprintln!("Usage: chump scrap <gap-id>");
+                std::process::exit(2);
+            }
+        };
+        let repo_root = repo_path::repo_root();
+        match scrap_cmd::run(&repo_root, &gap_id) {
+            Ok(outcome) => {
+                println!(
+                    "scrap: worktree_removed={} lease_removed={} branch_deleted={}",
+                    outcome.worktree_removed, outcome.lease_removed, outcome.branch_deleted
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump scrap: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump pr-rescue` (INFRA-1714) — closed-loop PR rescue. v0 handles two
