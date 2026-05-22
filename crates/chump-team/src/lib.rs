@@ -50,11 +50,11 @@ pub mod nuggets;
 pub mod quotas;
 
 pub use auth::{TeamApiKey, TeamAuth};
-pub use capabilities::WorkerCapability;
-pub use claims::{Claim, ClaimResult};
+pub use capabilities::{Backend, WorkerCapability};
+pub use claims::{Claim, ClaimResult, ReleaseReason};
 pub use config::ChumpTeamConfig;
 pub use errors::{ChumpTeamError, Result};
-pub use gaps::{Effort, GapStatus, Priority, SharedGap};
+pub use gaps::{Effort, GapFilter, GapPatch, GapStatus, Priority, SharedGap};
 pub use nuggets::{Nugget, NuggetKind, NuggetQuery};
 pub use quotas::OperatorQuota;
 
