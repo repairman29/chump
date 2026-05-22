@@ -1,8 +1,9 @@
 ---
 doc_tag: log
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-05-22
 ---
+<!-- research-privacy-exempt: gap-registry status doc — bare COG/EVAL gap IDs are explicit public-allowed status references per docs/agents/RESEARCH_PRIVACY.md "What you CAN write in public docs" -->
 
 # Evaluation Plan — 2026 Q2
 

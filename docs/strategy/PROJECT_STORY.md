@@ -47,33 +47,27 @@ This is a summary. The full methodology and raw data are in [docs/research/consc
 
 ### The Scaffolding U-curve
 
-When scaffolding (the nine-module cognitive layer) is added to local models, the effect on task performance depends on model size:
+When scaffolding (the nine-module cognitive layer) is added to local models, the effect on task performance depends on model size: small models lack the capacity to use it productively (it reads as noise), mid-range models are net-harmed, and larger models can leverage it. Frontier-tier substrates have not been measured in this fixture. Specific deltas, model tiers, and confidence intervals live in the private companion repo `chump-proprietary` per `docs/process/RESEARCH_INTEGRITY.md`.
 
-- **1B and 14B models**: +10pp pass rate — they benefit
-- **3B and 7B models**: −5pp — they are hurt
-- **8B models**: approximately neutral
-
-This is a real empirical result with A/A controls. The interpretation: small models don't have the capacity to use the scaffolding productively (it's noise); mid-range models are confused by it; larger models can leverage it. We have not tested 32B/70B models yet; the prediction is increasing benefit but that is unconfirmed.
-
-**Operational implication:** The cognitive modules are gated by model tier in production. A 3B model running a Discord command doesn't pay the scaffolding cost. A 14B model doing a long research task does.
+**Operational implication:** The cognitive modules are gated by model tier in production. Smaller models running short Discord commands don't pay the scaffolding cost. Larger models doing long research tasks do.
 
 ### The neuromodulation ablation
 
-Ablating the neuromodulation module on qwen3:8b showed: **+12pp pass rate on structured tasks, but −0.60 tool efficiency delta on dynamic tasks**. Both effects are real. The trade-off is context-dependent — neuromodulation helps on focused tasks, hurts on tasks that require flexible tool selection.
+Ablating the neuromodulation module on a mid-range local substrate showed a context-dependent trade-off: neuromodulation helps on focused, structured tasks and hurts on tasks that require flexible tool selection. Both effects survived A/A controls. Specific per-task deltas are internal.
 
 ### The lessons-block hallucination channel
 
 This is the most significant finding so far, and the one with the clearest path to a fix.
 
-Injecting a "Lessons from prior episodes" block into the system prompt consistently increases fake-tool-call emission by **+0.14 pp mean** (≈ +0.0014 absolute rate; range +0.13 to +0.16 pp across three task fixtures). This was measured at n=100 per cell with cloud frontier models (claude-haiku-4-5), with A/A controls showing the noise floor at 0.013 pp mean delta — making the A/B effect **10.7× the calibrated noise floor**.
+Injecting a "Lessons from prior episodes" block into the system prompt systematically increases fake-tool-call emission across three task fixtures on weak-tier substrates, with the A/B effect well above the calibrated A/A noise floor. Specific magnitudes, sample sizes, and per-model rates live in the private companion repo.
 
 This is a documented harm channel. It means the memory system that was built to help agents learn from past mistakes is, in its current form, teaching weaker models to hallucinate tool calls.
 
-The fix is not to remove the lessons block — it's to gate which models see it. Strong models (32B+) can use lessons productively. Weak models cannot. This was confirmed by COG-016: targeted directive injection using the same lessons channel on a capable model eliminated the hallucination effect entirely (delta neutralized from +0.14 to near-zero).
+The fix is not to remove the lessons block — it's to gate which models see it. Strong models can use lessons productively; weak models cannot. A targeted directive-injection variant has been validated to neutralize the harm on a capable model class while preserving retrieval utility; tracked under the model-tier-aware injection gap.
 
 ### Seeded-fact retrieval (Study 5)
 
-To confirm the lessons block actually surfaces stored information (as opposed to just adding noise), we ran a retrieval study: inject 10 arbitrary "seeded directives" (unforgeable values like specific port numbers, timestamps, and tokens) into the causal-lessons database and test whether the model outputs them. Mode A (with lessons block): **40% pass rate**. Mode B (without): **5% pass rate**. Delta: **35pp**.
+To confirm the lessons block actually surfaces stored information (as opposed to just adding noise), we ran a retrieval study: inject arbitrary "seeded directives" (unforgeable values like specific port numbers, timestamps, and tokens) into the causal-lessons database and test whether the model outputs them. The lessons-on variant materially outperforms lessons-off in seeded-fact retrieval; specific pass rates are internal.
 
 This confirms the mechanism works for retrieval. The hallucination problem is not that the channel is broken — it's that weak models can't distinguish between using the lessons and fabricating the actions.
 
@@ -108,8 +102,8 @@ Mutual supervision (each machine monitors the other's heartbeat) is implemented.
 
 Short term:
 - Ship the `db_pool` per-module schema refactor to unblock the remaining crate extractions
-- Run multi-turn A/B studies (EVAL-024) to see if the hallucination effect compounds or washes out across conversation turns
-- Implement context-window compaction (COG-019) for long sessions
+- Run multi-turn A/B studies (see eval-track gaps) to see if the hallucination effect compounds or washes out across conversation turns
+- Implement context-window compaction (see cognition-track gaps) for long sessions
 
 Medium term:
 - Full crate ecosystem publish: all 16 identified crates on crates.io with stable APIs

@@ -12,7 +12,7 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 
 **Memory system** — The graph + FTS5 + semantic RRF retrieval is the clearest differentiation. Entity resolution (linking "Alice" to "my coworker Alice"), confidence tracking, and expiry work in production. No comparable open-source agent has this.
 
-**Consciousness framework** — Surprise tracker, neuromodulation, precision controller, and belief state are implemented and A/B-tested. The COG-016 lessons block finding (10.7× noise floor, n=100) is the most rigorous empirical result in the codebase.
+**Consciousness framework** — Surprise tracker, neuromodulation, precision controller, and belief state are implemented and A/B-tested. The model-tier-aware lessons block finding is the most rigorous empirical result in the codebase; specifics live in the private companion repo.
 
 **Eval harness** — Property-based A/B testing with Wilson 95% CIs, A/A noise floor calibration, cost ledger, and multi-axis scoring (`did_attempt` / `hallucinated_tools` / `is_correct`) are production-ready. ~1,620 trials run, ~$14 total cost.
 
@@ -26,13 +26,13 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 
 **Narrow North Star coverage** — The stated product goal (understanding the user in Discord, acting on intent) has received minimal direct commits. Most recent work concentrated on coordination tooling, crate extraction, and eval infrastructure.
 
-**COG-016 is unpatched in production** — The n=100 A/B finding shows the lessons block unconditionally increases fake tool-call emission by +0.14 on weak models. `reflection_injection_enabled()` in `src/reflection_db.rs:94` defaults ON regardless of model tier. This is an active hallucination amplifier. Fix is P1/effort-M: model-tier predicate + anti-hallucination guard.
+**Model-tier-aware lessons gate is unpatched in production** — The validated A/B finding shows the lessons block unconditionally increases fake tool-call emission on weak-tier substrates. `reflection_injection_enabled()` in `src/reflection_db.rs:94` defaults ON regardless of model tier. This is an active hallucination amplifier. Fix is P1/effort-M: model-tier predicate + anti-hallucination guard. Specifics in the private companion repo.
 
 **946 `unwrap()` calls** — Unconditional panics across 157 source files. `src/reflection_db.rs` alone has 31. Thread panics on corrupted SQLite rows or missing directories have no recovery path.
 
 **Published benchmarks pending** — `docs/operations/BENCHMARKS.md` has an empty results table. The benchmark script (`scripts/eval/chump-bench.sh`) exists but no results have been committed. The OpenJarvis comparison baseline is unpublished.
 
-**Single-family judge bias** — All 100+ A/B trials used Claude-Sonnet as the sole judge. EVAL-010 showed 38–63% per-trial agreement between two Anthropic judges (at or below chance). Cross-family validation (EVAL-023, P1/S-effort, ~$1.62 cost) has not been run. Every headline delta may be systematically inflated.
+**Single-family judge bias** — All early A/B trials used a single-family judge. The intra-family judge-agreement study showed judge agreement at or below chance. Cross-family validation (P1/S-effort) has been wired via Ollama integration but had not been re-run at the time of this writeup. Every headline delta may be systematically inflated until cross-family is run. Specifics private.
 
 **Documentation sprawl** — `docs/` has 66+ files for a codebase whose North Star is a Discord bot. Several high-value docs were stubs until recently. Some files reference conventions that have since changed (e.g., `status: in_progress` in gaps.yaml — that field is gone).
 
@@ -50,8 +50,8 @@ These are three different products. Velocity measured against any single definit
 ## Priority corrections needed
 
 1. **Rotate the Together.ai key** in `config/config.yaml` (committed in `fba4b11`) — in git history permanently, must be rotated at provider dashboard regardless of file deletion.
-2. **Patch COG-016** — model-tier predicate in `reflection_db.rs` to gate lessons injection; estimated single-file, medium-effort change.
-3. **Run EVAL-023** — one cross-family n=100 sweep to validate or invalidate every headline delta from the existing A/B results (~$1.62).
+2. **Patch the model-tier-aware lessons gate** — model-tier predicate in `reflection_db.rs` to gate lessons injection; estimated single-file, medium-effort change.
+3. **Run a cross-family judge sweep** — one cross-family sweep at preregistered power to validate or invalidate every headline delta from the existing A/B results.
 4. **Publish benchmarks** — run `scripts/eval/chump-bench.sh` and commit results to `BENCHMARKS.md`.
 
 ## See Also

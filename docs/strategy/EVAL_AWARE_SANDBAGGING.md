@@ -1,8 +1,9 @@
 ---
 doc_tag: canonical
 owner_gap: EVAL-094
-last_audited: 2026-05-02
+last_audited: 2026-05-22
 ---
+<!-- research-privacy-exempt: methodology position doc citing published external literature (arXiv, IAPS, Muse Spark) — citation of published external magnitudes is per docs/agents/RESEARCH_PRIVACY.md "What you CAN write in public docs"; internal numbers have been removed -->
 
 # Position: Evaluation-Aware Sandbagging Risk in Chump
 
