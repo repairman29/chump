@@ -683,18 +683,34 @@ if [[ -x "$SCRIPT_DIR/fleet-autorestart-daemon.sh" ]]; then
     echo "[run-fleet] INFRA-611 autorestart daemon spawned (pid $_daemon_pid)"
 fi
 
-# INFRA-1622: the first two workers in the fleet are PWA-tagged so
+# INFRA-1622: the first PWA_WORKER_COUNT workers are PWA-tagged so
 # _pick_and_claim_gap.py:492 can match them against PWA-prefixed gaps via the
 # skills_required affinity. Without this, every worker is general-purpose and
 # PWA gaps compete for attention with INFRA/CREDIBLE/RESILIENT work. Override
 # the default by setting CHUMP_PWA_WORKERS=N at fleet launch (N=0 disables).
 PWA_WORKER_COUNT="${CHUMP_PWA_WORKERS:-2}"
 
+# INFRA-1697 (META-066 phase 4): immediately AFTER the PWA pool, tag the next
+# CONTENT_BOT_WORKER_COUNT workers with WORKER_SKILLS=content-bot,pmm,docubot,
+# evangelist,copybot so content-bot gaps (those with skills_required containing
+# any of the bot IDs) preferentially route to dedicated workers. The Content
+# Bots Suite is the productization layer (META-066) that runs alongside the
+# engineering custodian on customer repos. Override default of 1 via
+# CHUMP_CONTENT_BOT_WORKERS=N (0 disables, recommended for repos that haven't
+# opted in to any content bots).
+CONTENT_BOT_WORKER_COUNT="${CHUMP_CONTENT_BOT_WORKERS:-1}"
+CONTENT_BOT_FIRST=$((PWA_WORKER_COUNT + 1))
+CONTENT_BOT_LAST=$((PWA_WORKER_COUNT + CONTENT_BOT_WORKER_COUNT))
+
 for i in $(seq 1 "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
     worker_skills_env=""
     if [[ "$PWA_WORKER_COUNT" -gt 0 && "$i" -le "$PWA_WORKER_COUNT" ]]; then
         worker_skills_env="WORKER_SKILLS=pwa,frontend,javascript "
+    elif [[ "$CONTENT_BOT_WORKER_COUNT" -gt 0 \
+         && "$i" -ge "$CONTENT_BOT_FIRST" \
+         && "$i" -le "$CONTENT_BOT_LAST" ]]; then
+        worker_skills_env="WORKER_SKILLS=content-bot,pmm,docubot,evangelist,copybot "
     fi
     cmd="${env_prefix}${worker_skills_env}AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
     tmux split-window -t "$FLEET_SESSION:fleet" -c "$REPO_ROOT" "$cmd"
