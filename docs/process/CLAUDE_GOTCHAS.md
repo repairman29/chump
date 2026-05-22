@@ -1599,3 +1599,23 @@ unset CHUMP_CONFLICT_RESOLVER_ENABLED      # back to manual-resolve default
 **Audit trail:** `kind=conflict_resolve_*` events in `ambient.jsonl`
 (`_start`, `_validated`, `_success`, `_dropped`, `_attempt_failed`,
 `_continue_failed`, `_handoff`, `_skipped`, `_failed`).
+
+## Local CI discipline — `chump preflight` (INFRA-1670, INFRA-1672, INFRA-1673)
+
+Before pushing, run `chump preflight` to mirror CI locally and skip the
+~15-minute round-trip on dumb failures (fmt drift, clippy regressions, the
+cheap registry-coverage gates). Bypass via `CHUMP_PREFLIGHT_SKIP=1` plus a
+`Preflight-Skip-Reason: <why>` trailer in the commit body (audit-logged).
+
+**Scope flag (INFRA-1672)** — `chump preflight --scope <auto|all|rust|scripts|docs>`
+runs only the gate buckets relevant to the staged diff:
+
+- `chump preflight --scope docs` for doc-only PRs (~5s — no cargo at all)
+- `chump preflight --scope scripts` for shell/ci.yml-only PRs (~15s)
+- `chump preflight --scope rust` for code-only PRs (~60s warm cargo)
+- `chump preflight --scope all` for paranoia / pre-release sweeps
+- `chump preflight` (no flag) auto-detects from `git diff --cached --name-only`
+
+Auto-scoping mirrors the `changes:` path-filter section of
+`.github/workflows/ci.yml`. Unrecognized paths fall back to `--scope all`
+so we never ship a regression because an exotic path was misclassified.
