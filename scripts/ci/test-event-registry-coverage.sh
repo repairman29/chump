@@ -65,6 +65,11 @@ PROD_PATHS = [
     'src/', 'crates/',
     'scripts/coord/', 'scripts/dispatch/', 'scripts/ops/',
     'scripts/dev/', 'scripts/setup/',
+    # INFRA-1695 / META-066: Content Bots Suite dispatcher + orchestrator
+    # emit content_bot_invoked / content_bot_output / content_bot_pipeline_step
+    # from scripts/content-bots/. Same production-emit semantics as the
+    # other scripts/ paths above.
+    'scripts/content-bots/',
 ]
 # Also skip per-file patterns that may live inside PROD_PATHS but are tests
 # or fixtures (e.g. `src/foo/tests/bar.rs`).
@@ -158,6 +163,14 @@ emitted |= extract_kinds_no_prefix_emit(
     grep_lines(r'emit_ambient\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
     r'emit_ambient\s+"([a-zA-Z0-9_]+)"',
 )
+
+# Pattern 5c: emit_event "kind_name" — Content Bots Suite dispatcher +
+# orchestrator (INFRA-1695, INFRA-1698) use this shell-function form.
+emitted |= extract_kinds_no_prefix_emit(
+    grep_lines(r'emit_event\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
+    r'emit_event\s+"([a-zA-Z0-9_]+)"',
+)
+
 # Pattern 6: known alert_kind= variable assignments.
 # Narrowly scoped to `alert_kind=` (reaper-heartbeat-watchdog.sh, watchdogs).
 # Avoids the noise from broader `*kind*=` patterns that catch internal state

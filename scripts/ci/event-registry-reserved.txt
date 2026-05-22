@@ -258,3 +258,15 @@ self_doctor_budget_exceeded    # reason: INFRA-1595 only fires under stress (>3 
 
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
 pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
+
+# INFRA-1695 / META-066: pre-existing lease-reaper telemetry surfaced after
+# scripts/content-bots/ was added to PROD_PATHS — these were always emitted
+# but the scan paths missed scripts/coord/*reaper*.sh; reserved with reason.
+lease_reaper_deleted  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_dry_run  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_error  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_active  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_in_progress  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_invalid  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+reaper_self_paused  # reason: reaper telemetry, pre-existing
+restart  # reason: daemon-restart telemetry, pre-existing — too generic to register without scope
