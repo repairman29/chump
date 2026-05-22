@@ -107,6 +107,7 @@ chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.1.0" }
 chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
 chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
+chump-team = { path = "crates/chump-team", version = "0.1.0" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
