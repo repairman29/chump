@@ -1236,10 +1236,7 @@ async fn main() -> Result<()> {
                 if !cur.bot_id.is_empty() {
                     bots.push(std::mem::take(&mut cur));
                 }
-                cur.bot_id = trimmed
-                    .trim_start_matches("- bot_id:")
-                    .trim()
-                    .to_string();
+                cur.bot_id = trimmed.trim_start_matches("- bot_id:").trim().to_string();
             } else if let Some(v) = trimmed.strip_prefix("tier:") {
                 cur.tier = v.trim().to_string();
             } else if let Some(v) = trimmed.strip_prefix("model_tier:") {
@@ -1270,10 +1267,7 @@ async fn main() -> Result<()> {
                     }
                     println!("]");
                 } else {
-                    println!(
-                        "{:<14} {:<12} {:<6} {}",
-                        "BOT_ID", "TIER", "MODEL", "ENABLED"
-                    );
+                    println!("{:<14} {:<12} {:<6} ENABLED", "BOT_ID", "TIER", "MODEL");
                     for b in &bots {
                         let en = enabled.contains(&b.bot_id) || b.default_enabled;
                         let mark = if en { "✓" } else { "·" };
