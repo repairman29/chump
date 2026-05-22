@@ -143,6 +143,49 @@ cargo clippy --all-targets --all-features -- -D warnings
 The pre-commit hook auto-runs `cargo fmt` on staged `.rs` files and re-stages
 the result, so manual `cargo fmt` is rarely required before committing.
 
+## Local CI discipline — mandatory (INFRA-1673)
+
+**Run local CI before every push that touches Rust or scripts.** The same
+failure caught locally costs <60s; caught on GitHub Actions it costs ~15
+minutes round-trip. Long-term direction: **fully local execution, GitHub
+Actions as opt-in fallback only**.
+
+```bash
+chump preflight              # INFRA-1670 (once shipped): single command that
+                             # runs cargo fmt --check, clippy -D warnings, check,
+                             # and any scripts/ci/test-*.sh that match the diff.
+                             # Target: <60s warm, <120s cold.
+```
+
+Until INFRA-1670 ships, do it manually:
+
+```bash
+PATH=$HOME/.cargo/bin:$PATH cargo fmt --all -- --check
+PATH=$HOME/.cargo/bin:$PATH cargo clippy --workspace --all-targets -- -D warnings
+PATH=$HOME/.cargo/bin:$PATH cargo check --workspace
+# Then any scripts/ci/test-*.sh that match the files you touched.
+```
+
+**Bypass discipline:** if you must push without preflight (emergency, agent
+sandbox without cargo, etc.), set `CHUMP_PREFLIGHT_SKIP=1` AND add a
+commit-body trailer:
+
+```
+Preflight-Skip-Reason: <one sentence why>
+```
+
+Each bypass emits `kind=preflight_bypassed` to `ambient.jsonl` for audit.
+Routine bypasses surface in retrospectives.
+
+**Why mandatory:** 2026-05-20→22 surfaced 6 distinct CI failure classes
+(cargo fmt drift, clippy dead_code, INFRA-682 path-filter, INFRA-1274
+raw-gh allowlist, INFRA-1287 registry-orphan, INFRA-755 obs-budget) — every
+one a 1-line fix that would have taken <30s locally. Slow round-trips are
+discipline failures, not CI bugs.
+
+**Pairs with:** INFRA-1670 (the tool), INFRA-1671 (pre-push hook),
+INFRA-1672 (smart scoping for speed).
+
 ## Code style
 
 - **Edition:** Rust 2024 across the workspace.

@@ -2541,6 +2541,17 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, gap_id, body]
 
+  # ── INFRA-1673: local-CI discipline audit (preflight bypass) ─────────────
+  - kind: preflight_bypassed
+    effect_metric: self
+    emitter: scripts/coord/chump-commit.sh (INFRA-1673)
+    trigger: commit fires with CHUMP_PREFLIGHT_SKIP=1 while staged paths
+      touch Rust or scripts (where local CI catches the bulk of failures).
+      Each emit is one bypass — retrospectives sum these to surface
+      patterns that warrant tooling or process changes.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, session, files]
+
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
     effect_metric: self

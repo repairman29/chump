@@ -171,6 +171,36 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
 - **`chump gap reserve` applies title similarity check (INFRA-1149).** Jaccard similarity >= `CHUMP_GAP_RESERVE_SIMILARITY_WARN` (default 0.65) prompts y/N to continue; >= `CHUMP_GAP_RESERVE_SIMILARITY_BLOCK` (default 0.85) blocks the reserve. Thresholds are tunable via env. Bypass: `--force-duplicate` flag or `CHUMP_GAP_RESERVE_NO_SIMILARITY=1`.
 
+## Local CI discipline (mandatory, INFRA-1673)
+
+**Run local CI before every push that touches Rust or scripts.**
+
+Operator philosophy: every push that fails CI on GitHub costs ~15 minutes round-trip. The same failure caught locally costs <60 seconds. Multiply over a day of work and the difference is hours. Long-term direction is **fully local execution, no GH dependencies** — local CI is the first step.
+
+```bash
+# Before EVERY push that touches Rust or scripts:
+chump preflight              # INFRA-1670; runs cargo fmt/clippy/check + relevant test-*.sh
+                             # Target: <60s warm, <120s cold.
+                             # Bypass: CHUMP_PREFLIGHT_SKIP=1 + add a body trailer:
+                             #   Preflight-Skip-Reason: <one sentence why>
+```
+
+Until INFRA-1670 ships the tool, manually run these in sequence — they're what the tool will wrap:
+
+```bash
+cd <worktree>
+PATH=$HOME/.cargo/bin:$PATH cargo fmt --all -- --check
+PATH=$HOME/.cargo/bin:$PATH cargo clippy --workspace --all-targets -- -D warnings
+PATH=$HOME/.cargo/bin:$PATH cargo check --workspace
+# Then any scripts/ci/test-*.sh that match files you touched.
+```
+
+**Why this is mandatory, not advisory:** the last 48h surfaced 6 different CI failure classes (cargo fmt drift, clippy dead_code, INFRA-682 path-filter missing, INFRA-1274 raw-gh allowlist missing, INFRA-1287 registry-orphan, INFRA-755 obs-budget) — every one a 1-line fix that would have taken <30s locally. The slow round-trip is a discipline failure, not a CI failure.
+
+**Bypass discipline:** `--no-verify` and `CHUMP_PREFLIGHT_SKIP=1` are operator escape hatches. Each use emits `kind=preflight_bypassed` to `ambient.jsonl` for audit. Don't skip routinely; the audit log will show patterns and force a conversation.
+
+**Pairs with:** INFRA-1670 (the tool), INFRA-1671 (pre-push hook enforcement), INFRA-1672 (smart scoping for speed).
+
 ## Rust-first vs. shell-OK (META-064, 2026-05-14)
 
 When you reach for `nano scripts/coord/foo.sh`, pause and check the criteria
