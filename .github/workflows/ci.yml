@@ -671,6 +671,15 @@ jobs:
       - name: bot-merge conflict-resolver wiring (INFRA-1657)
         run: bash scripts/ci/test-bot-merge-conflict-wiring.sh
 
+      - name: pipefail race sweep (INFRA-1658)
+        run: bash scripts/ci/test-pipefail-race-sweep.sh
+
+      - name: claude orphan reaper (INFRA-1662)
+        run: bash scripts/ci/test-claude-reaper.sh
+
+      - name: stale-process watchdog (INFRA-1663)
+        run: bash scripts/ci/test-stale-process-watchdog.sh
+
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 
