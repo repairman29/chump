@@ -1462,3 +1462,94 @@ reserved list works but accumulates lint debt.
 
 **Pattern 8 add-on:** see INFRA-1659 — once that ships, `EMIT_KIND` will
 also be valid. Until then, default to `_emit`.
+
+## Cron-loop `claude` subprocess leak (INFRA-1662, 2026-05-22)
+
+Long-running autonomous loops (`/loop`, `ScheduleWakeup` cycles,
+`CronCreate` schedules) spawn a fresh Claude Code subprocess on every
+firing. The harness historically does **not** waitpid the child between
+firings — leaked subprocesses pin RAM and CPU.
+
+**Empirical:** the 2026-05-20→22 Marcus cron-loop (job `6249a56f`, fired
+every ~12 min for ~60 hours) leaked **354 wedged `claude` subprocesses**
+pinning **8.5 GB RAM** and pushing 1-min load avg to **262** on an
+M-series Mac. SIGTERM didn't reach them (wedged); SIGKILL required.
+
+**Symptom:** Mac becomes unresponsive after 24–48 h of autonomous-loop
+operation. Cursor lags, terminal stalls, Spotlight freezes.
+
+**Diagnose:**
+```bash
+ps -A | grep -c "claude --output-format"    # should be < 5; >100 = leak
+ps -Ao rss,comm | awk '/claude --output/{sum+=$1} END {printf "%.1fGB\n", sum/1024/1024}'
+uptime                                       # load > 50 on M-series = bad
+```
+
+**Manual reap (preserve current session):**
+```bash
+MY=$$; CHAIN=""
+p=$MY; while [[ "$p" != "1" ]]; do CHAIN="$CHAIN $p"; p=$(ps -o ppid= -p $p | tr -d ' '); done
+ps -Ao pid,comm | awk '/claude --output-format/{print $1}' \
+  | grep -vxFf <(echo "$CHAIN" | tr ' ' '\n') \
+  | xargs kill -9
+```
+
+**Prevention (tracking):** INFRA-1662 will add a launchd watchdog that
+reaps `claude` binaries older than 1 h whose ppid chain doesn't lead
+to the foreground Claude.app. Until that ships, **manually reap before
+starting any new autonomous loop** if you've been running one for >24 h.
+
+## Stale-process classes to watch (INFRA-1663, 2026-05-22)
+
+Beyond the `claude` leak, the 2026-05-22 cleanup found two other
+classes of leaked workers — same root cause (parent died, child kept
+running), different signature:
+
+| Class | Expected lifetime | Symptom of stale |
+|---|---|---|
+| `rustc` | ≤ 10 min | etime > 1 h |
+| `cargo` | ≤ 15 min | etime > 1 h |
+| `chump health --slo-check` | ≤ 2 min | etime > 30 min |
+| `worker.sh` | ≤ 4 h | etime > 8 h |
+| `bot-merge.sh` | ≤ 20 min | etime > 1 h |
+
+**Empirical (2026-05-22 cleanup):** 5 `rustc` processes alive 1.5 days
+(legacy worker cargo builds whose parent died), 2 `chump health` alive
+11+ hours.
+
+**Diagnose:**
+```bash
+ps -Ao pid,etime,comm | awk '$3 ~ /rustc|cargo|chump|worker\.sh|bot-merge/' \
+  | awk '$2 ~ /-/'   # any process with day-level elapsed time
+```
+
+**Prevention (tracking):** INFRA-1663 — daily launchd cron with an
+expected-lifetime table; SIGKILL stale entries + emit
+`kind=stale_process_reaped`. Until then, run the diagnose snippet
+weekly during high-throughput periods.
+
+## SessionStart digest false-positive on INFRA-1149 (INFRA-1664, 2026-05-22)
+
+The FLEET-019 SessionStart + PreToolUse ambient-digest hooks report
+**"47 active sibling leases" with 37× INFRA-1149**. Almost always a
+false positive: there are usually **0 actual gap-claim leases**.
+
+**Cause:** the digest parser greps `gap_id` substring across every
+`.chump-locks/*.json`, but the META-065 curator daemon writes
+`curator-filed-*.json` idempotence markers that reference INFRA-1149
+(the gap that built the duplicate-detection system) in their content.
+The grep matches the substring, not the real `claim-*.json` lease
+file convention.
+
+**Diagnose:**
+```bash
+ls .chump-locks/claim-*.json 2>/dev/null | wc -l   # real lease count
+ls .chump-locks/curator-filed-*.json | wc -l       # curator markers (noise)
+```
+
+**If real lease count is 0**, ignore the SessionStart "active leases"
+digest entirely. Real leases use the `claim-<gap-id>-<pid>-<unix-ts>`
+session-id format.
+
+**Prevention (tracking):** INFRA-1664 — restrict the digest's lease
+enumeration to `claim-*.json` prefix. Quick xs-effort fix.
