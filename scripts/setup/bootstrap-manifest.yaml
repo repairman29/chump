@@ -69,6 +69,14 @@ installers:
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.self-doctor.plist + 5-min cycle
 
+  - id: queue-health-monitor-launchd
+    why: INFRA-052 — hourly queue-health-monitor.sh writes .chump/health.jsonl + alerts.log + ambient ALERTs. Plist exists at launchd/com.chump.queue-health-monitor.plist but was never wired into the bootstrap manifest — fleet self-healing has no signal until this is loaded (INFRA-1546 narrow-split 1/3).
+    priority: P1
+    install: bash scripts/setup/install-queue-health-monitor-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.queue-health-monitor
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.queue-health-monitor.plist + hourly run
+
   - id: ambient-hooks
     why: FLEET-023 — claude SessionStart / PreToolUse / Stop hooks emit ambient events. Without these, the audit stream is silent.
     priority: P2
