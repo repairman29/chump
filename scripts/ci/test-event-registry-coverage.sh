@@ -163,6 +163,14 @@ emitted |= extract_kinds_no_prefix_emit(
     grep_lines(r'emit_ambient\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
     r'emit_ambient\s+"([a-zA-Z0-9_]+)"',
 )
+
+# Pattern 5c: emit_event "kind_name" — Content Bots Suite dispatcher +
+# orchestrator (INFRA-1695, INFRA-1698) use this shell-function form.
+emitted |= extract_kinds_no_prefix_emit(
+    grep_lines(r'emit_event\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
+    r'emit_event\s+"([a-zA-Z0-9_]+)"',
+)
+
 # Pattern 6: known alert_kind= variable assignments.
 # Narrowly scoped to `alert_kind=` (reaper-heartbeat-watchdog.sh, watchdogs).
 # Avoids the noise from broader `*kind*=` patterns that catch internal state
