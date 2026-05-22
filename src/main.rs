@@ -173,6 +173,7 @@ mod rescue_tally;
 mod revert_pr;
 mod review_handoff;
 mod roadmap_status;
+mod rollup_cmd; // INFRA-1455: chump rollup --semantic (Marcus M-B converge)
 mod routes;
 mod rpc_mode;
 mod run_test_tool;
@@ -1472,6 +1473,37 @@ async fn main() -> Result<()> {
     // fans out across N repos. One repo = one reserved gap. AC#4 sandboxing
     // graceful-degrades in v1 (env hints surfaced, not enforced) — lands as
     // real container isolation under INFRA-1454.
+    // `chump rollup <fanout-group> [--semantic] [--json]` (INFRA-1455) —
+    // Marcus M-B converge step. Takes the fanout_group name set by
+    // `chump fanout apply` (INFRA-1484), pulls the closed PR per gap, and
+    // clusters by file-list Jaccard into named "Strategy A/B/..." classes
+    // so the operator sees "12 PRs converged on Strategy A" instead of a
+    // 40-PR firehose.
+    if args.get(1).map(String::as_str) == Some("rollup") {
+        let name = match args.get(2) {
+            Some(n) => n.clone(),
+            None => {
+                eprintln!("Usage: chump rollup <fanout-group> [--semantic] [--json]");
+                eprintln!();
+                eprintln!("  Converges PRs from a chump fanout group into named strategy classes.");
+                eprintln!(
+                    "  --semantic enables Jaccard-similarity clustering across touched files."
+                );
+                eprintln!("  --json emits structured output.");
+                std::process::exit(2);
+            }
+        };
+        let semantic = args.iter().any(|a| a == "--semantic");
+        let json_out = args.iter().any(|a| a == "--json");
+        match rollup_cmd::run(&name, semantic, json_out) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("chump rollup: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     if args.get(1).map(String::as_str) == Some("fanout") {
         let sub = args.get(2).map(String::as_str).unwrap_or("");
         if sub.is_empty() || sub == "help" || sub == "--help" {
