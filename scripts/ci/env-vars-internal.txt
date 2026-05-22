@@ -386,4 +386,5 @@ CHUMP_PREFLIGHT_SKIP
 CHUMP_SESSION_SUMMARY_GH_STUB
 
 # INFRA-1503: chump claim early-abort on open PR (operator escape hatch)
+# INFRA-1503: chump claim aborts early on open PR (rescue override)
 CHUMP_CLAIM_ALLOW_OPEN_PR
