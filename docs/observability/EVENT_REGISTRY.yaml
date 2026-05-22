@@ -4024,3 +4024,17 @@ events:
     consumers: [fleet-brief, fleet-doctor]
     fields_required: [ts, kind, job, limit]
 
+  # ── INFRA-1554 / INFRA-1686: synthesis-pass atomic-filing telemetry ──
+  - kind: synthesis_gap_filed
+    effect_metric: self
+    emitter: scripts/dev/synthesis-pass.sh (INFRA-1554 AC #1 — atomic filing arm)
+    trigger: >
+      Synthesis daemon ran, identified a recommendation, invoked `chump gap
+      reserve` (capturing the returned ID), and wrote the synthesis markdown
+      with the actual filed gap ID inline. Without this telemetry path, the
+      synthesis-truth validator (scripts/ci/test-synthesis-truth.sh, from
+      INFRA-1684) can detect orphan references but cannot distinguish
+      "synthesis hallucinated the ID" from "gap was reaped after filing."
+    consumers: [synthesis-truth-validator, fleet-brief, ops-audit]
+    fields_required: [ts, kind, synthesis_path, gap_id, title, source_note]
+
