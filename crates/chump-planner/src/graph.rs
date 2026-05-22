@@ -57,7 +57,7 @@ impl CycleError {
         ids.sort();
         let joined = ids.join(",");
         let digest = Sha256::digest(joined.as_bytes());
-        format!("{digest:x}")
+        hex::encode(digest)
     }
 }
 
