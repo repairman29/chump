@@ -10,7 +10,23 @@
 #   scripts/dev/war-room.sh --json    # machine-readable JSON
 #   scripts/dev/war-room.sh --short   # one-line-per-agent summary
 #
+# Requirements: bash >= 4 (uses associative arrays via `declare -A`).
+#   macOS default bash is 3.2.57. Install via Homebrew (`brew install bash`)
+#   and re-run; the script's shebang picks up whatever `bash` is first in PATH.
+#
 # The output is designed to be read by both humans and agents in their context.
+
+# INFRA-1685: clear-error precondition for bash < 4. Without this check, the
+# script ran 50+ lines deep before failing on `declare: -A: invalid option`,
+# burying the actual cause. SessionStart hooks that invoke war-room.sh on
+# macOS default bash hit this every time (INFRA-1547 SessionStart integration
+# is blocked by this requirement). The full associative-array rewrite to
+# bash 3.2 compat is tracked as a separate gap.
+if (( BASH_VERSINFO[0] < 4 )); then
+    printf 'war-room.sh: requires bash >= 4 (got %s). On macOS, install via:\n    brew install bash\nthen ensure /opt/homebrew/bin/bash (or /usr/local/bin/bash) is first in PATH.\n' \
+        "${BASH_VERSION:-unknown}" >&2
+    exit 64  # EX_USAGE — operator can act on the message
+fi
 
 set -euo pipefail
 
