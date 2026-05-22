@@ -1375,7 +1375,45 @@ if [[ "$BEHIND" -gt 0 ]]; then
     if ! run_timed_hb "git rebase" 60 git rebase "${_rebase_args[@]}"; then
         red "git rebase failed or timed out — resolve conflicts or retry."
         _grade_rebase_clean="false"
-        _bm_fail "rebase" 11 "merge conflict or timeout"
+
+        # ── INFRA-1657: dispatch conflict-resolver-agent (closes INFRA-1488 loop) ──
+        # If we detect conflict markers in the worktree (i.e. rebase failed because
+        # of a true merge conflict, not a timeout / fetch error), invoke the
+        # opt-in conflict-resolver-agent. Default OFF: the agent script self-skips
+        # with exit 0 when CHUMP_CONFLICT_RESOLVER_ENABLED!=1, in which case we
+        # fall through to the original `_bm_fail "rebase"` handoff path below.
+        #
+        # Exit-code contract from conflict-resolver-agent.sh:
+        #   0 — resolved + `git rebase --continue` already ran; resume normal flow
+        #   1 — handoff (agent wrote operator-action-needed.json); abort rebase
+        #   2 — usage error (no GAP_ID); treat as handoff
+        _cr_agent="$REPO_ROOT/scripts/coord/conflict-resolver-agent.sh"
+        _cr_gap="${GAP_IDS[0]:-${GAP_ID:-}}"
+        _cr_conflicted_count="$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -d ' ')"
+        if [[ -x "$_cr_agent" && -n "$_cr_gap" && "$_cr_conflicted_count" -gt 0 ]]; then
+            info "Dispatching conflict-resolver-agent (gap=$_cr_gap, files=$_cr_conflicted_count) — CHUMP_CONFLICT_RESOLVER_ENABLED=${CHUMP_CONFLICT_RESOLVER_ENABLED:-0}"
+            if "$_cr_agent" "$_cr_gap"; then
+                # Agent returned 0: either feature-flag-off (rebase still mid-flight,
+                # fall through to _bm_fail) or resolved-and-continued (rebase done,
+                # carry on with the rest of bot-merge). Distinguish via .git/rebase-*
+                # state directories.
+                if [[ -d "$REPO_ROOT/.git/rebase-merge" || -d "$REPO_ROOT/.git/rebase-apply" ]]; then
+                    info "conflict-resolver-agent skipped (disabled) — falling through to existing handoff."
+                else
+                    info "conflict-resolver-agent resolved + continued rebase — resuming bot-merge flow."
+                    # Fall through to the existing post-rebase success block
+                    # (lines below set _grade_rebase_clean="true" + stage_done).
+                    _CR_RESOLVED=1
+                fi
+            else
+                red "conflict-resolver-agent failed or handed off — aborting rebase."
+                git rebase --abort >/dev/null 2>&1 || true
+            fi
+        fi
+
+        if [[ "${_CR_RESOLVED:-0}" != "1" ]]; then
+            _bm_fail "rebase" 11 "merge conflict or timeout"
+        fi
     fi
     _grade_rebase_clean="true"
     stage_done
