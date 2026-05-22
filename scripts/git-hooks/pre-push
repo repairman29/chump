@@ -82,6 +82,64 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# Guard 0a: chump preflight (INFRA-1671)
+#
+# The single-command local CI mirror (INFRA-1670). When the `chump` binary
+# is available and the push includes Rust or scripts changes, run preflight
+# upfront. It catches the same failure classes as Guards 0/0b/0c (fmt,
+# clippy, check) PLUS the structural test-*.sh classes (DOC-026 env-var
+# coverage, INFRA-682 path-filter, INFRA-1287 registry-orphan, etc.) that
+# the downstream guards don't cover.
+#
+# Order matters: preflight is INTENTIONALLY before Guards 0/0b/0c. If
+# preflight passes, the downstream guards are running on already-validated
+# code (cheap on warm cache). If preflight catches something, the operator
+# gets the comprehensive diagnostic without waiting for individual guards.
+#
+# Skip conditions (preflight is opt-out, not mandatory):
+#   - CHUMP_PREFLIGHT_SKIP=1   — explicit bypass; emits preflight_bypassed
+#                                via chump-commit.sh on the next commit
+#   - `chump` binary not on PATH (early bootstrap; rely on downstream guards)
+#   - Push has zero rust/scripts content (doc-only PR; preflight has nothing useful)
+#
+# Bypass: CHUMP_PREFLIGHT_SKIP=1 git push  (auditable via ambient.jsonl)
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
+   && command -v chump &>/dev/null \
+   && chump preflight --help &>/dev/null; then
+    preflight_has_targets=0
+    while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
+        [[ -z "$local_sha" ]] && continue
+        if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
+        if [[ "$remote_sha" =~ ^0+$ ]]; then
+            range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
+            [[ -z "$range_base" ]] && range_base="origin/main"
+        else
+            range_base="$remote_sha"
+        fi
+        # Match what preflight cares about: Rust + scripts + Cargo manifests.
+        if git diff --name-only "$range_base..$local_sha" 2>/dev/null \
+            | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/'; then
+            preflight_has_targets=1
+            break
+        fi
+    done <<<"$(cat 2>/dev/null || true)"
+
+    if [[ "$preflight_has_targets" -eq 1 ]]; then
+        echo "[pre-push] INFRA-1671: running chump preflight ..." >&2
+        if ! chump preflight 2>&1; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: chump preflight failed (INFRA-1671)." >&2
+            echo "[pre-push] Fix the failing gate and try again, or bypass with:" >&2
+            echo "[pre-push]   CHUMP_PREFLIGHT_SKIP=1 git push" >&2
+            echo "[pre-push]   (plus 'Preflight-Skip-Reason: <why>' in your commit body)" >&2
+            echo "" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0: cargo fmt --check (INFRA-749)
 #
 # Fleet workers can bypass the pre-commit hook (--no-verify) or skip
