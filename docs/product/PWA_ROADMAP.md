@@ -368,3 +368,93 @@ says the cockpit-MVP works.
    but might be too low or too high.
 4. Demo mode: is a synthetic fixture acceptable, or should demos always run
    against a real (sandboxed) fleet for credibility?
+
+---
+
+## How we work (PWA team — 2026-05-17)
+
+> **Origin.** 2026-05-14 commit c64ddd676 silently shipped 5 truncated PWA
+> classes; bug went unnoticed for 3 days because the PWA had no domain
+> owner + no CI gate parsing `web/v2/app.js`. INFRA-1620 / 1621 / 1622 / 1623
+> are the durable fix. This section documents how the team works going forward.
+
+### Naming convention (every PWA gap)
+
+Title prefix names the slice:
+
+| Prefix | Means |
+|---|---|
+| `PWA-FRONTEND:` | Touches `web/v2/*.js` / `web/v2/*.css` / `web/v2/*.html` |
+| `PWA-BACKEND:` | Adds or changes `/api/...` endpoint in `src/web_server.rs` |
+| `PWA-TEST:` | Smoke / e2e / parse-gate work under `scripts/ci/test-pwa-*.sh` or `e2e/` |
+| `PWA-INFRA:` | CI gates, build, deploy, runner-routing for PWA work |
+| `PWA-DESIGN:` | Updates to `docs/design/OPERATOR_CONSOLE_V2.md` or component-level UX spec |
+
+### Decomposition pattern
+
+Every PWA epic (effort `m` or larger) decomposes at **claim time**, not at
+filing time. File the epic with a rough shape in the `description` field:
+
+```
+Rough shape:
+  (a) Backend: /api/audit endpoint returns {rows: [...]} from .chump/decisions.db
+  (b) Frontend: <chump-view-audit> component + nav entry + filter chips
+  (c) Test: scripts/ci/test-pwa-audit-view.sh smoke + e2e/audit.spec.ts
+  (d) Infra: parse gate already in pr-hygiene (PWA-INFRA INFRA-1621)
+```
+
+When a worker claims, they run `chump gap decompose <ID>`. It reads the
+description as context and produces concrete sub-gaps against the *current*
+codebase. Better than pre-slicing because the codebase shifts between filing
+and pickup.
+
+### Worker pool
+
+Run 1–2 fleet workers with `WORKER_SKILLS=pwa,frontend,javascript`. The
+picker (`scripts/dispatch/_pick_and_claim_gap.py`) already filters gaps by
+`skills_required` against `WORKER_SKILLS`. PWA gaps tagged with the right
+skills route to PWA-tagged workers naturally.
+
+| Worker pool | `WORKER_SKILLS` | Picks up |
+|---|---|---|
+| general (default) | unset / "any" | any gap without specialty skills |
+| PWA-tagged (1-2 workers) | `pwa,frontend,javascript` | PWA-* prefixed gaps + skill-tagged |
+| backend-tagged (existing) | `rust,axum,sqlite` | server gaps |
+
+INFRA-1622 wires up the worker config + backfills existing PWA gaps with
+the right `skills_required`.
+
+### Gates that protect PWA work
+
+Three layers, all required-checks once stable (per `ROADMAP_WAVES.md`):
+
+1. **Parse gate** (`node --check web/v2/app.js`) — INFRA-1621.
+   Catches the c64ddd676 truncation class of bug in 1 PR.
+2. **AC coverage gate** — INFRA-1541.
+   Blocks merge when PR diff doesn't cover the gap's AC bullets.
+3. **Broad canary** — INFRA-1568.
+   Only fires when a PWA change touches a new runner lane.
+
+### Ownership rule
+
+Until the PWA team is more than 1-2 workers, PRs touching `web/v2/*` need:
+- Either auto-approval via the Wave-0 gates (parse + AC + broad canary), OR
+- A PWA-tagged worker as the picker (which the picker enforces automatically
+  via `skills_required`)
+
+This prevents the "non-PWA worker picks a PWA gap, ships broken JS, gates
+don't catch a subtle bug" mode.
+
+### Related gaps (live "team backlog")
+
+- **INFRA-1620** — rebuild 5 truncated PWA classes (audit / network-audit / fleet-health / coord / roadmap)
+- **INFRA-1621** — parse gate in pr-hygiene
+- **INFRA-1622** — wire WORKER_SKILLS + backfill `skills_required`
+- **INFRA-1623** — formalize this section into `docs/process/PWA_TEAM_CONTRACT.md` if it grows
+
+### Cross-references
+
+- [`docs/design/OPERATOR_CONSOLE_V2.md`](../design/OPERATOR_CONSOLE_V2.md) — UX spec
+- [`docs/process/PWA_DEPLOYMENT.md`](../process/PWA_DEPLOYMENT.md) — deploy runbook
+- [`docs/strategy/ROADMAP_WAVES.md`](../strategy/ROADMAP_WAVES.md) — what wave PWA gaps belong to
+- [`CLAUDE.md` → Mission Driver](../../CLAUDE.md#mission-driver--every-session-not-just-when-asked) — pillar balance + EFFECTIVE bias when plumbing is healthy
