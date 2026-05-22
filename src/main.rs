@@ -1190,6 +1190,120 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // INFRA-1696 (META-066 phase 3): `chump content-bots <subcmd>` operator
+    // surface for the Content Bots Suite (PMM, DocuBot, Evangelist, CopyBot).
+    // Reads docs/agents/content-bots/bots.yaml + the toggle resolver from
+    // INFRA-1700 (src/content_bots.rs).
+    if args.get(1).map(String::as_str) == Some("content-bots") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("list");
+        let json = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let bots_yaml = repo_root.join("docs/agents/content-bots/bots.yaml");
+
+        if !bots_yaml.exists() {
+            eprintln!(
+                "chump content-bots: bots.yaml not found at {}",
+                bots_yaml.display()
+            );
+            eprintln!("  Foundation gap INFRA-1690 must ship before this command works.");
+            std::process::exit(2);
+        }
+
+        // Minimal bots.yaml reader — parse `bot_id:`, `tier:`, `model_tier:`,
+        // `default_enabled:` per entry. Avoid pulling serde_yaml dep just for
+        // this read; bots.yaml is operator-curated and small.
+        let raw = std::fs::read_to_string(&bots_yaml).unwrap_or_default();
+        #[derive(Debug, Default)]
+        struct BotEntry {
+            bot_id: String,
+            tier: String,
+            model_tier: String,
+            default_enabled: bool,
+        }
+        let mut bots: Vec<BotEntry> = Vec::new();
+        let mut cur = BotEntry::default();
+        let mut in_bots = false;
+        for line in raw.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("bots:") {
+                in_bots = true;
+                continue;
+            }
+            if !in_bots {
+                continue;
+            }
+            if trimmed.starts_with("- bot_id:") {
+                if !cur.bot_id.is_empty() {
+                    bots.push(std::mem::take(&mut cur));
+                }
+                cur.bot_id = trimmed
+                    .trim_start_matches("- bot_id:")
+                    .trim()
+                    .to_string();
+            } else if let Some(v) = trimmed.strip_prefix("tier:") {
+                cur.tier = v.trim().to_string();
+            } else if let Some(v) = trimmed.strip_prefix("model_tier:") {
+                cur.model_tier = v.split_whitespace().next().unwrap_or("").to_string();
+            } else if let Some(v) = trimmed.strip_prefix("default_enabled:") {
+                cur.default_enabled = v.split_whitespace().next() == Some("true");
+            }
+        }
+        if !cur.bot_id.is_empty() {
+            bots.push(cur);
+        }
+
+        match subcmd {
+            "list" => {
+                let enabled = content_bots::enabled_set(&repo_root);
+                if json {
+                    println!("[");
+                    for (i, b) in bots.iter().enumerate() {
+                        let en = enabled.contains(&b.bot_id) || b.default_enabled;
+                        println!(
+                            "  {{\"bot_id\": \"{}\", \"tier\": \"{}\", \"model_tier\": \"{}\", \"enabled\": {}}}{}",
+                            b.bot_id,
+                            b.tier,
+                            b.model_tier,
+                            en,
+                            if i + 1 == bots.len() { "" } else { "," }
+                        );
+                    }
+                    println!("]");
+                } else {
+                    println!(
+                        "{:<14} {:<12} {:<6} {}",
+                        "BOT_ID", "TIER", "MODEL", "ENABLED"
+                    );
+                    for b in &bots {
+                        let en = enabled.contains(&b.bot_id) || b.default_enabled;
+                        let mark = if en { "✓" } else { "·" };
+                        let src = if enabled.contains(&b.bot_id) {
+                            " (config|env)"
+                        } else if b.default_enabled {
+                            " (default)"
+                        } else {
+                            ""
+                        };
+                        println!(
+                            "{:<14} {:<12} {:<6} {}{}",
+                            b.bot_id, b.tier, b.model_tier, mark, src
+                        );
+                    }
+                    println!();
+                    println!(
+                        "Toggle: CHUMP_CONTENT_BOTS=<csv> (env) or [content_bots] enabled in .chump-config.toml"
+                    );
+                }
+                return Ok(());
+            }
+            _ => {
+                eprintln!("chump content-bots: unknown subcommand '{}'", subcmd);
+                eprintln!("  Available: list [--json]");
+                std::process::exit(2);
+            }
+        }
+    }
+
     // `chump roadmap-status [--json] [--exit-on-drift] [--top-starved N]`
     // INFRA-606: reads docs/ROADMAP.md, shows 🟢/🟡/🔴 progress per weekly outcome.
     // INFRA-1145: adds starved_outcomes, untraced_p0, pillar_coverage, --exit-on-drift.
