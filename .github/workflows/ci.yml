@@ -461,6 +461,22 @@ jobs:
         # smoke itself is pure awk so it works anywhere.
         run: bash scripts/ci/test-workflow-linux-guard.sh
 
+      # INFRA-1621: PWA JavaScript parse gate (advisory initially).
+      # Runs `node --check` on every web/v2/*.js file. Catches truncation /
+      # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off
+      # 5 PWA classes in app.js — bug sat on main for 3 days because no
+      # CI lane parsed the PWA's main JS file. The gate also self-verifies
+      # via a fixture so it can't rot silently.
+      #
+      # ADVISORY-ONLY by default (`|| true` swallows failures). The gate
+      # will surface signal in CI output and emit a kind=pwa_parse_gate_fail
+      # ambient event (via the script). Flip to blocking by removing the
+      # `|| true` once INFRA-1620 (the actual app.js truncation) is fixed
+      # AND the gate has run clean on 5 consecutive PRs.
+      - name: PWA JS parse gate (INFRA-1621, advisory)
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/test-pwa-parse-gate.sh || true
+
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
   # `cargo clippy --workspace --all-targets`. A handful of guards build
