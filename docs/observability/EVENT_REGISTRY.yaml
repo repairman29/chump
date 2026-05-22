@@ -625,6 +625,19 @@ events:
     consumers: [fleet-brief]
     fields_required: [lock, session]
 
+  - kind: orphan_subprocess_reaped
+    effect_metric: self
+    emitter: scripts/ops/reap-orphan-claude-procs.sh (INFRA-1662)
+    trigger: >
+      launchd watchdog swept the process table for `claude` binary subprocesses
+      whose ppid chain does not reach the foreground Claude.app PID and whose
+      etime exceeds REAP_AGE (default 3600s). Each sweep emits exactly one
+      event, including count=0 to prove the watchdog is alive (steady state).
+      Prevents the 60h cron-loop leak that pinned 8.5GB RAM with 354 wedged
+      subprocesses on 2026-05-22.
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, count, oldest_etime_secs, total_rss_kb, reap_age_secs, fg_pid, dry_run]
+
   - kind: target_artifact_reaped
     effect_metric: self
     emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
