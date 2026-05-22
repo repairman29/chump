@@ -390,3 +390,21 @@ CHUMP_SESSION_SUMMARY_GH_STUB
 CHUMP_CLAIM_ALLOW_OPEN_PR
 # INFRA-1700 / META-066: Content Bots Suite toggle resolver
 CHUMP_CONTENT_BOTS
+
+# INFRA-1429: paramedic stale-branch rebase time-gate (minutes)
+CHUMP_PARAMEDIC_STALE_BRANCH_MAX_AGE_MIN
+
+# INFRA-1420: paramedic keystone-cascade lookback window (seconds)
+CHUMP_PARAMEDIC_KEYSTONE_LOOKBACK_SECS
+
+# INFRA-1442: claim-time fuzzy-match jaccard threshold
+CHUMP_CLAIM_FUZZY_THRESHOLD
+
+# INFRA-1442: claim-time fuzzy-match disable
+CHUMP_CLAIM_NO_FUZZY
+
+# INFRA-1454: agent-bash sandbox opt-in (macOS sandbox-exec wrap)
+CHUMP_AGENT_SANDBOX
+
+# INFRA-1454: agent-bash sandbox operator escape hatch
+CHUMP_AGENT_UNSAFE_HOST_EXEC
