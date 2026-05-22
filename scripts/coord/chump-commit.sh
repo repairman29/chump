@@ -27,6 +27,7 @@ set -euo pipefail
 
 # INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
 # shellcheck source=../lib/discover-flock.sh
+# shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 
@@ -542,7 +543,7 @@ _inject_trailer() {
                     if ! grep -qE "^${trailer}:" <<<"$msg"; then
                         # Append a blank line + trailer (trailer block convention).
                         msg="${msg}"$'\n\n'"${trailer}: ${_bypass_reason}"
-                        GIT_ARGS[$idx]="$msg"
+                        GIT_ARGS[idx]="$msg"
                         echo "[chump-commit] INFRA-1467: auto-injected ${trailer}: (${var}=${cur})" >&2
                     fi
                 fi
@@ -586,6 +587,32 @@ for _ga in "${GIT_ARGS[@]}"; do
     esac
 done
 unset _next_is_inline_msg _ga _GIT_COMMON_DIR
+
+# INFRA-1673: warn if preflight was skipped without an audit trailer.
+# Only fires when the commit touches Rust or scripts (where local CI matters).
+# Bypass: CHUMP_PREFLIGHT_AUDIT=0.
+if [[ "${CHUMP_PREFLIGHT_AUDIT:-1}" == "1" && "${CHUMP_PREFLIGHT_SKIP:-0}" == "1" ]]; then
+    _staged_paths=$(git diff --cached --name-only 2>/dev/null)
+    if echo "$_staged_paths" | grep -qE '^(src/|crates/|scripts/|chump-tool-macro/|build\.rs|Cargo\.(toml|lock))'; then
+        _gcd="$(git rev-parse --git-common-dir 2>/dev/null)"
+        _msg_file="$_gcd/COMMIT_EDITMSG"
+        if [[ -f "$_msg_file" ]] && ! grep -qiE '^Preflight-Skip-Reason:' "$_msg_file"; then
+            echo "" >&2
+            echo "⚠  INFRA-1673: CHUMP_PREFLIGHT_SKIP=1 set but no audit trailer in commit body." >&2
+            echo "   Add to the commit message body:" >&2
+            echo "       Preflight-Skip-Reason: <one sentence why>" >&2
+            echo "   This is a soft warning, not a block. Bypass: CHUMP_PREFLIGHT_AUDIT=0" >&2
+            echo "" >&2
+        fi
+        # Emit an ambient event for retrospectives regardless.
+        _ambient="${CHUMP_AMBIENT_LOG:-$(git rev-parse --show-toplevel)/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"preflight_bypassed","session":"%s","files":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}" \
+            "$(echo "$_staged_paths" | wc -l | tr -d ' ')" \
+            >> "$_ambient" 2>/dev/null || true
+    fi
+fi
 
 # Commit with the passed-through git args.
 # Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
