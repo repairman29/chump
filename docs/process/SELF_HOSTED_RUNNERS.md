@@ -489,3 +489,77 @@ gh variable delete CHUMP_SELF_HOSTED_<LANE> -R repairman29/chump
 saw one ACP-on-M4 silent-stdout failure (INFRA-1561 in flight) force rolling
 back the master switch, forfeiting 75% of the migration value across the
 other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.
+
+## Current state — degraded ubuntu-only mode (2026-05-21, INFRA-1655)
+
+**Repo variable state as of 2026-05-21T06:00Z:**
+
+| Variable | Value | Effect |
+|---|---|---|
+| `CHUMP_SELF_HOSTED_ENABLED` | `false` | Master kill-switch flipped off |
+| `RUNNER_AUDIT` | (deleted) | audit lane → ubuntu-latest |
+| `RUNNER_COVERAGE` | (deleted) | coverage lane → ubuntu-latest |
+| `RUNNER_E2E_PWA` | (deleted) | e2e-pwa lane → ubuntu-latest |
+| `RUNNER_E2E_GOLDEN_PATH` | (deleted) | golden-path lane → ubuntu-latest |
+| `RUNNER_TAURI_COWORK_E2E` | (deleted) | tauri lane → ubuntu-latest |
+
+**All CI runs on github-hosted ubuntu-latest. M4 hardware is idle.**
+
+### Why this was done
+
+During the 2026-05-20 Marcus cron-loop session, the self-hosted runners
+`jeffs-macbook-air-10-2/-10-3` repeatedly failed `actions/checkout@v6` in
+<30s. Pattern: 0-step jobs ending in `CANCELLED` or `FAILURE` with no
+visible failed step. This pattern recurred across multiple PRs over
+several hours, blocking the queue.
+
+The INFRA-1567 per-lane toggle was meant to be the precise rollback tool
+for exactly this scenario, but #2297 (the PR that shipped INFRA-1567) was
+itself stuck in the same loop. Master-toggle bypass was used to escape
+the chicken-and-egg.
+
+### Required steps to restore self-hosted routing
+
+Don't blindly flip the variables back. Follow this order:
+
+1. **Diagnose** `jeffs-macbook-air-10-X` (INFRA-1655). Likely root causes:
+   - Stale runner-token registration (verify `gh api repos/.../actions/runners`)
+   - Disk full (the M4 cache may have grown unbounded)
+   - macOS keychain auth desync (gh CLI loses creds)
+   - Network blip on `git clone` against a saturated upstream
+
+2. **One-lane canary first.** Pick the lowest-risk lane (suggest
+   `RUNNER_E2E_PWA` — non-required gate, failure won't block PRs):
+   ```bash
+   gh variable set RUNNER_E2E_PWA --body '["self-hosted","macos-arm64","chump-fleet"]'
+   ```
+   Watch one PR cycle. Confirm checkout succeeds, no 0-step CANCELLED.
+
+3. **Restore the rest, one at a time.** Don't batch — if one fails, you
+   want to know which.
+   ```bash
+   gh variable set RUNNER_AUDIT --body '["self-hosted","macos-arm64","chump-fleet"]'
+   # wait one PR cycle
+   gh variable set RUNNER_COVERAGE --body '["self-hosted","macos-arm64","chump-fleet"]'
+   # wait one PR cycle
+   gh variable set RUNNER_E2E_GOLDEN_PATH --body '["self-hosted","macos-arm64","chump-fleet"]'
+   gh variable set RUNNER_TAURI_COWORK_E2E --body '["self-hosted","macos-arm64","chump-fleet"]'
+   ```
+
+4. **Flip master last.** Only after all 5 lane-vars have passed a clean
+   PR cycle:
+   ```bash
+   gh variable set CHUMP_SELF_HOSTED_ENABLED --body true
+   ```
+   Emit ambient event:
+   ```bash
+   printf '{"ts":"%s","kind":"runner_health_restored"}\n' \
+     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
+   ```
+
+### Operator note
+
+Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
+predicated on local compute being load-bearing. Every day the M4 lanes
+are off is a day the runner-cost migration value is lost. Treat
+INFRA-1655 as a P1 unblocker, not a parking-lot item.
