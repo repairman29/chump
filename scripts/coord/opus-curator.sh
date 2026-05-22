@@ -39,6 +39,7 @@ fi
 _TICK_HELPER="$REPO_ROOT/scripts/coord/system-gap-tick.sh"
 if [[ -r "$_TICK_HELPER" ]]; then
   # shellcheck source=./system-gap-tick.sh
+  # shellcheck disable=SC1091  # dynamic path; runtime-checked above
   source "$_TICK_HELPER"
 fi
 
@@ -171,9 +172,11 @@ audit_slo() {
   # opposite edge so consumers can pair the two.
   command -v chump &>/dev/null || return 0
 
-  local slo_output rc
+  local slo_output
   slo_output="$(chump health --slo-check 2>&1)"
-  rc=$?
+  # SC2034 was here on `rc=$?` — removed: rc was set but never consulted.
+  # The relevant signal is whether $breached_names is non-empty (computed
+  # from the awk below), not chump's exit code.
 
   # Parse breach lines: "  ✗ BREACH  L2-SLO-4  [4 under target]  pillar balance …"
   # Build a sorted, comma-joined name list as the change-detection key.
@@ -229,9 +232,11 @@ _to_int() {
 }
 
 audit_waste() {
-  # Run: chump waste-tally --window 2h
+  # Run: chump waste-tally --since 2h --json
+  # INFRA-1667: --json required so jq parses successfully. Without it, jq
+  # exits 5 on the text-format report header and set -e kills the curator.
   if command -v chump &> /dev/null; then
-    WASTE_RATE=$(chump waste-tally --window 2h 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null | head -1)
+    WASTE_RATE=$(chump waste-tally --since 2h --json 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null || echo 0)
     WASTE_RATE="${WASTE_RATE:-0}"
     echo "Waste rate: ${WASTE_RATE}%"
 
@@ -285,7 +290,7 @@ audit_pr_stuck() {
 
     if [[ "${STUCK_COUNT:-0}" -gt 0 ]]; then
       echo "  WARNING: $STUCK_COUNT PR(s) stuck (>2h, failing checks)"
-      log_ambient "pr_stuck_cluster" '"count":'$STUCK_COUNT',"threshold":1'
+      log_ambient "pr_stuck_cluster" '"count":'"$STUCK_COUNT"',"threshold":1'
       return 1
     fi
   fi
@@ -307,7 +312,7 @@ audit_pillar_balance() {
 
     if [[ "${EFFECTIVE:-0}" -lt 2 ]] || [[ "${CREDIBLE:-0}" -lt 2 ]] || [[ "${RESILIENT:-0}" -lt 2 ]] || [[ "${ZERO_WASTE:-0}" -lt 2 ]]; then
       echo "  WARNING: some pillar has < 2 pickable gaps"
-      log_ambient "pillar_imbalance" '{"effective":'${EFFECTIVE:-0}',"credible":'${CREDIBLE:-0}',"resilient":'${RESILIENT:-0}',"zero_waste":'${ZERO_WASTE:-0}'}'
+      log_ambient "pillar_imbalance" '{"effective":'"${EFFECTIVE:-0}"',"credible":'"${CREDIBLE:-0}"',"resilient":'"${RESILIENT:-0}"',"zero_waste":'"${ZERO_WASTE:-0}"'}'
       return 1
     fi
   fi
@@ -608,7 +613,12 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
   # Decision 5 (INFRA-979): Waste rate spike — file ONE tracking gap when
   # rate > 20%. Dedup: max 1 per day.
   if command -v chump &>/dev/null; then
-    _waste_rate=$(chump waste-tally --window 2h 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null | head -1)
+    # INFRA-1667: --json is required so jq receives parseable input. Without it,
+    # chump waste-tally prints the "═══ Zero Waste Report ═══" text header, jq
+    # exits 5 (parse error), pipefail propagates it, and set -e kills the entire
+    # curator tick — turning the daemon_tick stream into exit_code=5 noise every
+    # 10 min. Defensive `|| echo 0` keeps future schema drift from re-recurring.
+    _waste_rate=$(chump waste-tally --since 2h --json 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null || echo 0)
     _waste_rate="${_waste_rate:-0}"
     if (( $(echo "$_waste_rate > 20" | bc -l 2>/dev/null || echo 0) )); then
       if _curator_already_filed_today "waste_investigation"; then
@@ -710,7 +720,19 @@ main() {
   fi
 
   # Decision phase
-  curator_decisions
+  # INFRA-1667: fail-soft. Any decision can fail under set -euo pipefail
+  # (Decision 2 calls `claude -p` which exits non-zero if not logged in;
+  # Decision 5 was the original jq parse failure; Decisions 1/3/4 call
+  # `chump gap set/reserve` which exit non-zero on staleness/registry
+  # health errors). Without the wrapper, a single decision failure kills
+  # the entire daemon tick and emits exit_code=N to the daemon_tick
+  # stream, drowning real signals. The audit phase already ran (audits
+  # use `|| true`); flagging the decision-phase failure via curator_error
+  # preserves visibility without poisoning the tick stream.
+  if ! curator_decisions; then
+    log_ambient "curator_error" \
+      '"phase":"decisions","note":"a decision failed; see prior stdout"'
+  fi
 
   echo ""
   echo "=== CURATOR AUDIT COMPLETE ==="
