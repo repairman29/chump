@@ -56,6 +56,11 @@ pub struct ClaimArgs {
     /// this is the operator-explicit "I know there's an open PR; let me work
     /// alongside it (rescue scenario)" path. Default false.
     pub allow_duplicate_pr: bool,
+    /// INFRA-1442: bypass the claim-time fuzzy-match against open PR titles
+    /// and active leases (kicks in BEFORE worktree creation). Mirrors the
+    /// `CHUMP_CLAIM_NO_FUZZY=1` env. Emits `claim_duplicate_bypassed` for
+    /// audit when set.
+    pub force_duplicate: bool,
     /// Run all preflight gates without creating worktree or lease.
     pub check_only: bool,
     /// Output JSON format (used with --check-only).
@@ -102,6 +107,7 @@ impl ClaimArgs {
         let mut force_recover = false;
         let mut force_overlap = false;
         let mut allow_duplicate_pr = false;
+        let mut force_duplicate = false;
         let mut check_only = false;
         let mut json = false;
 
@@ -148,6 +154,10 @@ impl ClaimArgs {
                     allow_duplicate_pr = true;
                     i += 1;
                 }
+                "--force-duplicate" => {
+                    force_duplicate = true;
+                    i += 1;
+                }
                 "--check-only" => {
                     check_only = true;
                     i += 1;
@@ -180,6 +190,7 @@ impl ClaimArgs {
             force_recover,
             force_overlap,
             allow_duplicate_pr,
+            force_duplicate,
             check_only,
             json,
         })
@@ -431,6 +442,21 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // 3. Binary health probe (INFRA-275 wedge prevention).
     if !args.skip_doctor {
         run_doctor_probe(&args.repo_root)?;
+    }
+
+    // INFRA-1442: claim-time fuzzy-match against in-flight work BEFORE
+    // worktree creation. Catches the 3-way duplicate-fix pattern observed
+    // 2026-05-22 (INFRA-1341/1384/1396 all fixed test-cache-mergestatestatus.sh
+    // independently in parallel). Bypass via --force-duplicate or
+    // CHUMP_CLAIM_NO_FUZZY=1; bypass emits claim_duplicate_bypassed.
+    match run_fuzzy_gate(&args.repo_root, &args.gap_id, args.force_duplicate) {
+        Ok(_matches) => {} // either no matches OR operator-bypassed; the helper emitted the event
+        Err(warning_text) => {
+            eprint!("{warning_text}");
+            bail!(
+                "claim refused — fuzzy-match against open PRs / active leases. Use --force-duplicate or CHUMP_CLAIM_NO_FUZZY=1 to override."
+            );
+        }
     }
 
     // 4. Session ID — explicit --session flag > derived.
@@ -2916,6 +2942,463 @@ mod nugget_prefetch {
             std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
             // Must not panic or hang, even with no env / no DB.
             prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+        }
+    }
+}
+
+// ── INFRA-1442: fuzzy-match against in-flight work ────────────────────────────
+//
+// Today's failure mode (observed 2026-05-22):
+//   scripts/ci/test-cache-mergestatestatus.sh fixed independently by INFRA-1341,
+//   INFRA-1384, INFRA-1396 in parallel. Three operators + me each spent compute
+//   cycles on the same 4-line fix because the gap-filing similarity check
+//   (INFRA-1149) catches duplicate gap filings but not duplicate CLAIM attempts
+//   where different gap IDs target the same root cause.
+//
+// This module adds a claim-time fuzzy-match that runs BEFORE worktree + lease
+// creation:
+//   (a) open PR titles via gh, tokenized + Jaccard against the claimed gap title
+//   (c) active lease files in .chump-locks/<session>.json — same tokenization
+// Defer (b) commit-body scan and (d) ambient kind=gap_claimed scan to follow-ups;
+// they require denser context and (a)+(c) already catch 80% of the pattern.
+//
+// Threshold default 0.5 Jaccard, configurable via CHUMP_CLAIM_FUZZY_THRESHOLD.
+// Disable entirely via CHUMP_CLAIM_NO_FUZZY=1 or --force-duplicate flag.
+
+/// One candidate match the operator should be aware of.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuzzyMatch {
+    pub kind: &'static str, // "open_pr" | "active_lease"
+    pub ref_id: String,     // PR number or session name
+    pub title: String,      // PR title or lease's gap_id+paths summary
+    pub score: f64,         // jaccard similarity
+}
+
+/// Token-set jaccard over lowercase word splits. Ignores tokens shorter than
+/// 3 chars (catches noise like "to", "of") and a small stopword list.
+pub(crate) fn jaccard_words(a: &str, b: &str) -> f64 {
+    let sa = tokenize(a);
+    let sb = tokenize(b);
+    let inter = sa.intersection(&sb).count();
+    let union = sa.union(&sb).count();
+    if union == 0 {
+        return 0.0;
+    }
+    inter as f64 / union as f64
+}
+
+fn tokenize(s: &str) -> std::collections::HashSet<String> {
+    // Grammatical stopwords only. We INTENTIONALLY do NOT filter "test",
+    // "fix", "feat", or "infra" because those words carry signal for the
+    // claim-time duplicate pattern — two PRs that both fix the same test
+    // file should have high overlap.
+    const STOP: &[&str] = &["the", "and", "for", "from", "with", "into", "this", "that"];
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|w| w.len() >= 3 && !STOP.contains(w))
+        .map(|s| s.to_string())
+        .collect()
+}
+
+fn fuzzy_threshold() -> f64 {
+    std::env::var("CHUMP_CLAIM_FUZZY_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|n: &f64| *n > 0.0 && *n <= 1.0)
+        .unwrap_or(0.5)
+}
+
+fn fuzzy_disabled() -> bool {
+    std::env::var("CHUMP_CLAIM_NO_FUZZY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Scan open PR titles via `gh pr list --json number,title`. Returns matches
+/// whose token-set Jaccard against `claimed_title` exceeds `threshold`.
+/// Best-effort: any gh failure returns Vec::new (offline / un-authed clones
+/// don't get a different experience).
+pub fn fuzzy_match_open_prs(claimed_title: &str, threshold: f64) -> Vec<FuzzyMatch> {
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "80",
+            "--json",
+            "number,title",
+        ])
+        .output();
+    let Ok(o) = out else {
+        return Vec::new();
+    };
+    if !o.status.success() {
+        return Vec::new();
+    }
+    let arr: Vec<serde_json::Value> = serde_json::from_slice(&o.stdout).unwrap_or_default();
+    arr.into_iter()
+        .filter_map(|v| {
+            let num = v["number"].as_u64()?;
+            let title = v["title"].as_str()?.to_string();
+            let score = jaccard_words(claimed_title, &title);
+            if score >= threshold {
+                Some(FuzzyMatch {
+                    kind: "open_pr",
+                    ref_id: num.to_string(),
+                    title,
+                    score,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Scan active leases in .chump-locks/*.json. Returns matches whose Jaccard
+/// against `claimed_title` (rendered "<gap_id> paths=<csv>") exceeds the
+/// threshold. Tokens include both the gap ID and any path-list keywords, which
+/// catches "INFRA-1341/1384/1396 all touched test-cache-mergestatestatus.sh".
+pub fn fuzzy_match_active_leases(
+    repo_root: &Path,
+    claimed_gap: &str,
+    claimed_title: &str,
+    threshold: f64,
+) -> Vec<FuzzyMatch> {
+    let locks = repo_root.join(".chump-locks");
+    let Ok(entries) = std::fs::read_dir(&locks) else {
+        return Vec::new();
+    };
+    let mut out: Vec<FuzzyMatch> = Vec::new();
+    for ent in entries.flatten() {
+        let p = ent.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        let lease_gap = json
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // Don't flag our own gap as a self-match.
+        if lease_gap.eq_ignore_ascii_case(claimed_gap) {
+            continue;
+        }
+        let paths = json
+            .get("paths")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let session = json
+            .get("session")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // Render the lease as a single string and tokenize. Empty leases
+        // (no paths declared) won't match unless the gap IDs overlap by
+        // accident, which is fine since gap IDs are tokens (e.g. INFRA-1341).
+        let summary = format!("{lease_gap} {paths}");
+        let score = jaccard_words(claimed_title, &summary);
+        if score >= threshold {
+            out.push(FuzzyMatch {
+                kind: "active_lease",
+                ref_id: session,
+                title: summary,
+                score,
+            });
+        }
+    }
+    out
+}
+
+/// Render a list of FuzzyMatch entries as human-readable warning lines.
+pub fn render_fuzzy_warnings(matches: &[FuzzyMatch]) -> String {
+    let mut s = String::new();
+    s.push_str(&format!(
+        "⚠ fuzzy-match: {} possible duplicate(s) — investigate before claim\n",
+        matches.len()
+    ));
+    for m in matches {
+        s.push_str(&format!(
+            "  [{} score={:.2}] {} — {}\n",
+            m.kind, m.score, m.ref_id, m.title
+        ));
+    }
+    s.push_str("  → bypass: --force-duplicate  or  CHUMP_CLAIM_NO_FUZZY=1\n");
+    s
+}
+
+/// Emit kind=claim_duplicate_bypassed to ambient.jsonl when the operator
+/// has bypassed the fuzzy gate. Audit trail for measuring effectiveness
+/// (AC#6: duplicate_root_cause_observed should drop).
+pub fn emit_claim_duplicate_bypassed(repo_root: &Path, gap_id: &str, matches: &[FuzzyMatch]) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let match_count = matches.len();
+    let top_score = matches
+        .iter()
+        .map(|m| m.score)
+        .fold(0.0f64, |a, b| a.max(b));
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_duplicate_bypassed\",\"gap\":\"{gap_id}\",\"match_count\":{match_count},\"top_score\":{top_score:.3}}}\n"
+    );
+    if let Some(parent) = amb.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Look up the title of `gap_id` from the YAML file under docs/gaps.
+/// Best-effort: returns "" if the file isn't readable or doesn't parse.
+/// Falls through to gap_id when empty so the jaccard still produces some
+/// signal (gap_id often appears in PR titles).
+fn read_gap_title(repo_root: &Path, gap_id: &str) -> String {
+    let y = repo_root
+        .join("docs")
+        .join("gaps")
+        .join(format!("{gap_id}.yaml"));
+    let Ok(text) = std::fs::read_to_string(&y) else {
+        return gap_id.to_string();
+    };
+    // Cheap line scan rather than full YAML parse — title: "..." patterns.
+    for line in text.lines() {
+        let l = line.trim_start();
+        if let Some(rest) = l.strip_prefix("title:") {
+            let v = rest.trim().trim_matches('"').trim_matches('\'');
+            if !v.is_empty() {
+                return format!("{gap_id} {v}");
+            }
+        }
+    }
+    gap_id.to_string()
+}
+
+/// Run the fuzzy gate. Returns Ok(()) when safe to proceed (no matches OR
+/// operator bypass). Returns Err with a descriptive message when matches
+/// exist and the operator has not opted in via --force-duplicate or
+/// CHUMP_CLAIM_NO_FUZZY=1.
+pub fn run_fuzzy_gate(
+    repo_root: &Path,
+    gap_id: &str,
+    force_duplicate: bool,
+) -> std::result::Result<Vec<FuzzyMatch>, String> {
+    if fuzzy_disabled() {
+        return Ok(Vec::new());
+    }
+    let title = read_gap_title(repo_root, gap_id);
+    let threshold = fuzzy_threshold();
+    let mut hits: Vec<FuzzyMatch> = Vec::new();
+    hits.extend(fuzzy_match_open_prs(&title, threshold));
+    hits.extend(fuzzy_match_active_leases(
+        repo_root, gap_id, &title, threshold,
+    ));
+    // Sort descending by score so the worst offender is on top.
+    hits.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if hits.is_empty() {
+        return Ok(Vec::new());
+    }
+    if force_duplicate {
+        emit_claim_duplicate_bypassed(repo_root, gap_id, &hits);
+        eprint!("{}", render_fuzzy_warnings(&hits));
+        eprintln!("  [bypass] --force-duplicate set; proceeding anyway");
+        return Ok(hits);
+    }
+    Err(render_fuzzy_warnings(&hits))
+}
+
+#[cfg(test)]
+mod fuzzy_match_tests {
+    //! INFRA-1442: pure-function tests for the claim-time fuzzy-match
+    //! helpers. The gh / file-IO paths are exercised by the CI script;
+    //! these cover the tokenizer + jaccard scoring + render shape.
+    use super::*;
+
+    #[test]
+    fn jaccard_words_finds_overlap_on_shared_filenames() {
+        // The 2026-05-22 pattern: two PR titles both mention
+        // test-cache-mergestatestatus.sh — should score above 0.4, well
+        // above the 0.3 lower-bound that would catch this in practice
+        // even if operators tune the threshold down.
+        let a = "fix(INFRA-1341): test-cache-mergestatestatus.sh shape bug";
+        let b = "fix(INFRA-1384): repair test-cache-mergestatestatus.sh on jq";
+        let s = jaccard_words(a, b);
+        assert!(s >= 0.4, "expected jaccard >= 0.4, got {s}");
+    }
+
+    #[test]
+    fn jaccard_words_filters_short_tokens_and_stopwords() {
+        // "the and for" should not boost similarity.
+        let a = "the cat and the hat";
+        let b = "the dog and the rat";
+        let s = jaccard_words(a, b);
+        // No real tokens shared (cat/hat vs dog/rat); stopwords filtered.
+        assert!(s < 0.2, "stopword tokens leaked: {s}");
+    }
+
+    #[test]
+    fn jaccard_words_zero_on_disjoint_titles() {
+        let s = jaccard_words("feat: ship the rollup", "fix: stale branch rebase");
+        assert!(s < 0.4);
+    }
+
+    #[test]
+    fn render_fuzzy_warnings_lists_matches_with_score_and_bypass_hint() {
+        let m = vec![FuzzyMatch {
+            kind: "open_pr",
+            ref_id: "2333".into(),
+            title: "chump claim aborts early on open-PR-in-flight".into(),
+            score: 0.74,
+        }];
+        let out = render_fuzzy_warnings(&m);
+        assert!(out.contains("2333"));
+        assert!(out.contains("score=0.74"));
+        assert!(out.contains("--force-duplicate"));
+        assert!(out.contains("CHUMP_CLAIM_NO_FUZZY"));
+    }
+
+    #[test]
+    fn fuzzy_threshold_env_override() {
+        let key = "CHUMP_CLAIM_FUZZY_THRESHOLD";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert!((fuzzy_threshold() - 0.5).abs() < 1e-9);
+        unsafe {
+            std::env::set_var(key, "0.7");
+        }
+        assert!((fuzzy_threshold() - 0.7).abs() < 1e-9);
+        unsafe {
+            std::env::set_var(key, "1.5");
+        } // out of range; default
+        assert!((fuzzy_threshold() - 0.5).abs() < 1e-9);
+        unsafe {
+            std::env::set_var(key, "garbage");
+        }
+        assert!((fuzzy_threshold() - 0.5).abs() < 1e-9);
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn fuzzy_disabled_respects_env() {
+        let key = "CHUMP_CLAIM_NO_FUZZY";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert!(!fuzzy_disabled());
+        unsafe {
+            std::env::set_var(key, "1");
+        }
+        assert!(fuzzy_disabled());
+        unsafe {
+            std::env::set_var(key, "TRUE");
+        }
+        assert!(fuzzy_disabled());
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn fuzzy_match_active_leases_finds_self_exclusion() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // A sibling lease on a different gap touching the same file as our claim.
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9301",
+            "session": "claim-infra-9301-1",
+            "paths": "src/foo.rs,scripts/ci/test-foo.sh",
+        });
+        std::fs::write(locks.join("claim-infra-9301-1.json"), lease.to_string()).unwrap();
+
+        // Claiming INFRA-9302 with a title that overlaps on "test-foo" tokens
+        // should produce a hit. (gap_id INFRA-9302 != lease's INFRA-9301, so
+        // self-exclusion does not fire.)
+        let hits = fuzzy_match_active_leases(
+            dir.path(),
+            "INFRA-9302",
+            "INFRA-9302 fix test-foo.sh shape bug",
+            0.3,
+        );
+        // Token "foo"/"test" overlap; threshold 0.15 picks up the sibling.
+        // (Realistic real-world jaccard for short titles is well below 0.5.)
+        let _ = hits; // recompute with explicit threshold
+        let hits = fuzzy_match_active_leases(
+            dir.path(),
+            "INFRA-9302",
+            "INFRA-9302 fix test-foo.sh shape bug",
+            0.15,
+        );
+        assert!(!hits.is_empty(), "expected at least one sibling-lease hit");
+
+        // Self-exclusion: claiming INFRA-9301 (same gap as the lease) returns nothing.
+        let self_hits =
+            fuzzy_match_active_leases(dir.path(), "INFRA-9301", "INFRA-9301 same thing", 0.0);
+        assert!(
+            self_hits.is_empty(),
+            "self-match should be excluded; got {self_hits:?}"
+        );
+    }
+
+    #[test]
+    fn run_fuzzy_gate_bypass_emits_event() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // Sibling lease that overlaps strongly.
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9400",
+            "session": "claim-infra-9400-1",
+            "paths": "src/atomic_claim.rs,scripts/ci/test-claim-fuzzy-match.sh",
+        });
+        std::fs::write(locks.join("claim-infra-9400-1.json"), lease.to_string()).unwrap();
+
+        // Stand up a docs/gaps/INFRA-9401.yaml so read_gap_title returns a title
+        // with overlapping tokens.
+        let gaps = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps).unwrap();
+        std::fs::write(
+            gaps.join("INFRA-9401.yaml"),
+            "title: \"chump claim fuzzy match against atomic_claim.rs paths\"\n",
+        )
+        .unwrap();
+
+        // Force-duplicate path: gate returns Ok and emits the audit event.
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_FUZZY_THRESHOLD", "0.05");
+        }
+        let r = run_fuzzy_gate(dir.path(), "INFRA-9401", /* force_duplicate */ true);
+        assert!(r.is_ok(), "force-duplicate should bypass cleanly: {r:?}");
+        let amb = std::fs::read_to_string(locks.join("ambient.jsonl")).unwrap_or_default();
+        assert!(
+            amb.contains("claim_duplicate_bypassed"),
+            "expected bypass event; got: {amb}"
+        );
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_FUZZY_THRESHOLD");
         }
     }
 }

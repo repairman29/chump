@@ -700,6 +700,9 @@ jobs:
       - name: inspect/resume/scrap surface (INFRA-1456)
         run: bash scripts/ci/test-inspect-resume-scrap.sh
 
+      - name: claim-time fuzzy-match (INFRA-1442 duplicate-claim prevention)
+        run: bash scripts/ci/test-claim-fuzzy-match.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
