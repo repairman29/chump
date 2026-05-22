@@ -215,6 +215,8 @@ pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-re
 
 fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
 synthesis_gap_filed     # reason: declared kind awaiting emitter (INFRA-1684 synthesis-truth audit wip); allowlist orphan to unblock audit cluster (#2337, et al.)
+merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
+queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
 
 merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
 gap_dup_archived       # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
