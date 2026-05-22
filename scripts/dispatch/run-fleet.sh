@@ -683,9 +683,20 @@ if [[ -x "$SCRIPT_DIR/fleet-autorestart-daemon.sh" ]]; then
     echo "[run-fleet] INFRA-611 autorestart daemon spawned (pid $_daemon_pid)"
 fi
 
+# INFRA-1622: the first two workers in the fleet are PWA-tagged so
+# _pick_and_claim_gap.py:492 can match them against PWA-prefixed gaps via the
+# skills_required affinity. Without this, every worker is general-purpose and
+# PWA gaps compete for attention with INFRA/CREDIBLE/RESILIENT work. Override
+# the default by setting CHUMP_PWA_WORKERS=N at fleet launch (N=0 disables).
+PWA_WORKER_COUNT="${CHUMP_PWA_WORKERS:-2}"
+
 for i in $(seq 1 "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
-    cmd="${env_prefix} AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
+    worker_skills_env=""
+    if [[ "$PWA_WORKER_COUNT" -gt 0 && "$i" -le "$PWA_WORKER_COUNT" ]]; then
+        worker_skills_env="WORKER_SKILLS=pwa,frontend,javascript "
+    fi
+    cmd="${env_prefix}${worker_skills_env}AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
     tmux split-window -t "$FLEET_SESSION:fleet" -c "$REPO_ROOT" "$cmd"
     # INFRA-581: capture the newly-created pane's shell PID so teardown can
     # cascade-kill worker.sh → timeout → claude subtrees on FLEET_SIZE=0.

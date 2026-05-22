@@ -410,19 +410,53 @@ and pickup.
 
 ### Worker pool
 
-Run 1–2 fleet workers with `WORKER_SKILLS=pwa,frontend,javascript`. The
-picker (`scripts/dispatch/_pick_and_claim_gap.py`) already filters gaps by
-`skills_required` against `WORKER_SKILLS`. PWA gaps tagged with the right
-skills route to PWA-tagged workers naturally.
+`scripts/dispatch/run-fleet.sh` automatically tags the first 2 workers in any
+fleet launch with `WORKER_SKILLS=pwa,frontend,javascript` (the picker at
+`scripts/dispatch/_pick_and_claim_gap.py:492` reads `WORKER_SKILLS` and filters
+gaps by `skills_required` affinity). PWA-tagged workers preferentially pick
+PWA-tagged gaps; non-PWA workers stay clear unless the PWA pool is idle.
 
 | Worker pool | `WORKER_SKILLS` | Picks up |
 |---|---|---|
 | general (default) | unset / "any" | any gap without specialty skills |
-| PWA-tagged (1-2 workers) | `pwa,frontend,javascript` | PWA-* prefixed gaps + skill-tagged |
+| **PWA-tagged (workers 1-2)** | `pwa,frontend,javascript` | PWA-* prefixed gaps + skill-tagged |
 | backend-tagged (existing) | `rust,axum,sqlite` | server gaps |
 
-INFRA-1622 wires up the worker config + backfills existing PWA gaps with
-the right `skills_required`.
+**Operational knob:** `CHUMP_PWA_WORKERS=N` at fleet launch overrides the
+default of 2. Set to `0` to disable PWA tagging entirely (e.g. when the PWA
+backlog is empty and you want all workers as general).
+
+**Skills mapping for new PWA gaps** (set at filing time via
+`chump gap reserve ... --skills-required <csv>` or after via
+`chump gap set <ID> --skills-required <csv>`):
+
+| Title prefix | `skills_required` |
+|---|---|
+| `PWA-FRONTEND:` | `pwa,frontend` |
+| `PWA-BACKEND:` | `pwa,backend,rust` |
+| `PWA-TEST:` | `pwa,test` |
+| `PWA-INFRA:` | `pwa,ci` |
+| `PWA-DESIGN:` | `pwa,frontend` (designer-flavored) |
+
+**Fallback behavior:** when no PWA-tagged worker is available and a PWA gap
+sits in queue >30 min, the picker relaxes the skill filter and any worker
+can pick it up. This keeps the queue moving when the PWA pool is offline.
+
+### Verifying PWA routing in flight
+
+```bash
+# Confirm the picker sees the skills affinity (use any open PWA gap)
+WORKER_SKILLS=pwa,frontend,javascript python3 scripts/dispatch/_pick_and_claim_gap.py \
+    --dry-run --owner test-worker 2>&1 | head -20
+
+# Confirm fleet workers 1-2 carry the tag (after run-fleet.sh has spun up)
+tmux capture-pane -p -t fleet-chump:fleet.0 | grep WORKER_SKILLS
+
+# Count PWA gaps by skills coverage
+chump gap list --status open --json | jq '[.[] | select(.title | test("PWA"; "i")) |
+    {id, skills: (.skills_required // "(unset)")}] | group_by(.skills) |
+    map({skill: .[0].skill, count: length})'
+```
 
 ### Gates that protect PWA work
 
