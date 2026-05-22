@@ -600,13 +600,15 @@ PYEOF_YAMLLINT
         added=$(git diff --cached --unified=0 -- 'docs/gaps.yaml' 'docs/gaps/*.yaml' \
             | grep -E '^\+[^+]' | sed 's/^\+//')
         offending=""
-        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*status:[[:space:]]*in_progress[[:space:]]*$'; then
+        # INFRA-1658: scripts/git-hooks/pre-commit uses `set -e` (no pipefail),
+        # so the printf|grep -q pipefail race doesn't apply here. Allowlisted.
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*status:[[:space:]]*in_progress[[:space:]]*$'; then  # pipefail-sweep-allowed
             offending="${offending}  - adds 'status: in_progress' (put claim in .chump-locks/ instead)"$'\n'
         fi
-        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_by:[[:space:]]*'; then
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_by:[[:space:]]*'; then  # pipefail-sweep-allowed
             offending="${offending}  - adds 'claimed_by:' (put claim in .chump-locks/ instead)"$'\n'
         fi
-        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_at:[[:space:]]*'; then
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_at:[[:space:]]*'; then  # pipefail-sweep-allowed
             offending="${offending}  - adds 'claimed_at:' (put claim in .chump-locks/ instead)"$'\n'
         fi
         if [ -n "$offending" ]; then

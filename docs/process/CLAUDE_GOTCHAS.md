@@ -1435,6 +1435,13 @@ Hot-path scripts (`scripts/coord/`, `scripts/dispatch/`,
 `scripts/git-hooks/`) are most likely to be affected because they run
 per-PR and per-cycle.
 
+**Ongoing enforcement:** `scripts/ci/test-pipefail-race-sweep.sh` (added
+in INFRA-1658) re-greps those three hot-path directories on every CI
+run and fails the PR if a new `printf … | grep -q …` occurrence
+appears. Intentional exceptions (script doesn't set `pipefail`, or
+producer is a one-line literal) are allowlisted by appending
+`# pipefail-sweep-allowed` to the same line.
+
 **Tell-tale signature in code review:** any `printf` (or `echo`) piped
 into `grep -q`, `awk` with early-exit, `head -1`, etc., under a
 `pipefail`-enabled shell.

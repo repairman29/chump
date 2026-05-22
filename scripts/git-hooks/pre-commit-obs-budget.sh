@@ -78,10 +78,18 @@ DIFF_BODY=$(git diff --cached --no-color --diff-filter=ACM -U0 -- \
 ADDED_LINES=$(printf '%s\n' "$DIFF_BODY" | grep -E '^\+[^+]' || true)
 
 OBS_HITS=0
-if printf '%s\n' "$ADDED_LINES" | grep -qE \
-    'tracing::(info|warn|error|debug|trace)!|^[+][[:space:]]*(info|warn|error|debug|trace)!\(|"kind"[[:space:]]*:[[:space:]]*"|\\"kind\\"[[:space:]]*:[[:space:]]*\\"|ambient-emit\.sh|chump_improvement_targets|metric_record|metric_inc'; then
+# INFRA-1658: tempfile materialization to avoid printf|grep -qE pipefail race.
+# Under set -o pipefail, grep -q closes stdin on first match → printf gets
+# SIGPIPE → pipeline exits non-zero even when the pattern matched. See
+# docs/process/CLAUDE_GOTCHAS.md "printf | grep -q pipefail race".
+_OBS_TMP=$(mktemp)
+printf '%s\n' "$ADDED_LINES" > "$_OBS_TMP"
+if grep -qE \
+    'tracing::(info|warn|error|debug|trace)!|^[+][[:space:]]*(info|warn|error|debug|trace)!\(|"kind"[[:space:]]*:[[:space:]]*"|\\"kind\\"[[:space:]]*:[[:space:]]*\\"|ambient-emit\.sh|chump_improvement_targets|metric_record|metric_inc' \
+    "$_OBS_TMP"; then
     OBS_HITS=1
 fi
+rm -f "$_OBS_TMP"
 
 if [[ "$OBS_HITS" -gt 0 ]]; then
     exit 0

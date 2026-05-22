@@ -268,7 +268,10 @@ while _fleet_alive; do
             skip_lines=$(( _last_processed_line + 1 ))
             while IFS= read -r _line; do
                 # ── Trigger (d): auth storm ──────────────────────────────────
-                if printf '%s' "$_line" | grep -q '"kind":"fleet_auth_storm"'; then
+                # INFRA-1658: case-match dodges printf|grep -q pipefail race.
+                # `_line` is one JSON record; substring match is sufficient and
+                # avoids the grep-q-early-closes-stdin → printf-SIGPIPE pipeline.
+                if [[ "$_line" == *'"kind":"fleet_auth_storm"'* ]]; then
                     (( _auth_storm_count++ )) || true
                     _log "fleet_auth_storm event #${_auth_storm_count}/${_auth_storm_threshold}"
                     if [[ "$_auth_storm_count" -ge "$_auth_storm_threshold" ]]; then
@@ -290,7 +293,8 @@ while _fleet_alive; do
                 fi
 
                 # ── Trigger (b): wedge cluster ───────────────────────────────
-                if printf '%s' "$_line" | grep -q '"kind":"fleet_wedge"'; then
+                # INFRA-1658: case-match dodges printf|grep -q pipefail race.
+                if [[ "$_line" == *'"kind":"fleet_wedge"'* ]]; then
                     _record_wedge_now
                     local wcount
                     wcount="$(_wedge_count_recent)"
