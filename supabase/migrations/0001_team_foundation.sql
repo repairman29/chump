@@ -24,7 +24,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ─── teams ─────────────────────────────────────────────────────────────────
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,  -- url-friendly identifier
@@ -40,7 +40,7 @@ CREATE TABLE teams (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX teams_slug_idx ON teams (slug) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS teams_slug_idx ON teams (slug) WHERE deleted_at IS NULL;
 
 COMMENT ON TABLE teams IS
     'Top-level team grouping. All other tables join through team_id.';
@@ -49,7 +49,7 @@ COMMENT ON TABLE teams IS
 -- Membership uses Supabase's built-in auth.users table for user_id. When
 -- running against vanilla Postgres (e.g. local dev without Supabase auth),
 -- user_id is just an opaque UUID the application manages.
-CREATE TABLE team_members (
+CREATE TABLE IF NOT EXISTS team_members (
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
     -- role gates what the member can do within the team
@@ -65,7 +65,7 @@ CREATE TABLE team_members (
     PRIMARY KEY (team_id, user_id)
 );
 
-CREATE INDEX team_members_user_idx ON team_members (user_id)
+CREATE INDEX IF NOT EXISTS team_members_user_idx ON team_members (user_id)
     WHERE removed_at IS NULL;
 
 COMMENT ON TABLE team_members IS
@@ -75,7 +75,7 @@ COMMENT ON TABLE team_members IS
 -- API keys are how the `chump` CLI authenticates without an interactive
 -- login. Each operator's laptop gets at least one key. We store only the
 -- bcrypt hash; the plaintext is shown ONCE at creation time.
-CREATE TABLE team_api_keys (
+CREATE TABLE IF NOT EXISTS team_api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,  -- which member this key represents
@@ -94,7 +94,7 @@ CREATE TABLE team_api_keys (
     revoked_by_user_id UUID
 );
 
-CREATE INDEX team_api_keys_team_user_idx ON team_api_keys (team_id, user_id)
+CREATE INDEX IF NOT EXISTS team_api_keys_team_user_idx ON team_api_keys (team_id, user_id)
     WHERE revoked_at IS NULL;
 
 COMMENT ON TABLE team_api_keys IS

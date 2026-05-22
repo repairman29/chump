@@ -12,7 +12,7 @@
 -- ─── shared_gaps ───────────────────────────────────────────────────────────
 -- Mirror of the local state.db `gaps` table, scoped to a team. Operators
 -- reserve work here; their fleet workers pull from this queue.
-CREATE TABLE shared_gaps (
+CREATE TABLE IF NOT EXISTS shared_gaps (
     -- Gap ID format: "DOMAIN-NNNN" (matches local convention)
     id TEXT PRIMARY KEY,
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
@@ -41,8 +41,8 @@ CREATE TABLE shared_gaps (
     closed_pr INT
 );
 
-CREATE INDEX shared_gaps_team_status_idx ON shared_gaps (team_id, status);
-CREATE INDEX shared_gaps_priority_idx ON shared_gaps (team_id, priority)
+CREATE INDEX IF NOT EXISTS shared_gaps_team_status_idx ON shared_gaps (team_id, status);
+CREATE INDEX IF NOT EXISTS shared_gaps_priority_idx ON shared_gaps (team_id, priority)
     WHERE status = 'open';
 
 COMMENT ON TABLE shared_gaps IS
@@ -51,7 +51,7 @@ COMMENT ON TABLE shared_gaps IS
 -- ─── shared_claims ─────────────────────────────────────────────────────────
 -- One active claim per gap, enforced via partial UNIQUE index. Workers
 -- competing for the same gap will race on INSERT; the database picks one.
-CREATE TABLE shared_claims (
+CREATE TABLE IF NOT EXISTS shared_claims (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     gap_id TEXT NOT NULL REFERENCES shared_gaps(id) ON DELETE CASCADE,
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
@@ -71,11 +71,11 @@ CREATE TABLE shared_claims (
 
 -- THE CAS GUARANTEE: at most one active claim per gap.
 -- Index is partial — only enforces uniqueness while released_at IS NULL.
-CREATE UNIQUE INDEX shared_claims_active_unique
+CREATE UNIQUE INDEX IF NOT EXISTS shared_claims_active_unique
     ON shared_claims (gap_id)
     WHERE released_at IS NULL;
 
-CREATE INDEX shared_claims_team_active_idx
+CREATE INDEX IF NOT EXISTS shared_claims_team_active_idx
     ON shared_claims (team_id, claimed_at DESC)
     WHERE released_at IS NULL;
 
@@ -86,7 +86,7 @@ COMMENT ON TABLE shared_claims IS
 -- Each operator's machine advertises its skills/backend so push-routing
 -- (FLEET-034 style) can dispatch matching gaps. Mirrors the local
 -- worker.sh's WORKER_SKILLS env var.
-CREATE TABLE worker_capabilities (
+CREATE TABLE IF NOT EXISTS worker_capabilities (
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
     machine TEXT NOT NULL,  -- hostname
@@ -101,7 +101,7 @@ CREATE TABLE worker_capabilities (
     PRIMARY KEY (team_id, user_id, machine)
 );
 
-CREATE INDEX worker_capabilities_team_idx ON worker_capabilities (team_id);
+CREATE INDEX IF NOT EXISTS worker_capabilities_team_idx ON worker_capabilities (team_id);
 
 COMMENT ON TABLE worker_capabilities IS
     'Per-machine capability registry. Push-routing matches gaps to capable workers.';
@@ -109,7 +109,7 @@ COMMENT ON TABLE worker_capabilities IS
 -- ─── operator_quotas ───────────────────────────────────────────────────────
 -- Per-operator monthly spend cap. Predecessor to a full billing system;
 -- enforces "Operator A cannot exhaust the team budget" (INFRA-1475 AC #6).
-CREATE TABLE operator_quotas (
+CREATE TABLE IF NOT EXISTS operator_quotas (
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
     -- USD cap per calendar month; null = no cap

@@ -21,7 +21,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ─── nuggets ───────────────────────────────────────────────────────────────
-CREATE TABLE nuggets (
+CREATE TABLE IF NOT EXISTS nuggets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     -- which gap surfaced this nugget; null = free-floating discovery
@@ -68,16 +68,16 @@ CREATE TABLE nuggets (
     deleted_by_user_id UUID
 );
 
-CREATE INDEX nuggets_team_repo_idx ON nuggets (team_id, repo_url)
+CREATE INDEX IF NOT EXISTS nuggets_team_repo_idx ON nuggets (team_id, repo_url)
     WHERE deleted_at IS NULL;
 
-CREATE INDEX nuggets_team_kind_idx ON nuggets (team_id, kind)
+CREATE INDEX IF NOT EXISTS nuggets_team_kind_idx ON nuggets (team_id, kind)
     WHERE deleted_at IS NULL;
 
 -- The similarity-search index. HNSW (hierarchical navigable small worlds)
 -- is the modern default; trades a small amount of recall for fast queries.
 -- Tune `m` (graph density) and `ef_construction` (build quality) per workload.
-CREATE INDEX nuggets_embedding_idx
+CREATE INDEX IF NOT EXISTS nuggets_embedding_idx
     ON nuggets
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
@@ -88,7 +88,7 @@ COMMENT ON TABLE nuggets IS
 -- ─── nugget_reads ──────────────────────────────────────────────────────────
 -- Audit: which session read which nugget, when. This is what INFRA-1473
 -- AC #6 ("agent reports having read it before starting") joins against.
-CREATE TABLE nugget_reads (
+CREATE TABLE IF NOT EXISTS nugget_reads (
     nugget_id UUID NOT NULL REFERENCES nuggets(id) ON DELETE CASCADE,
     -- which team member's session read this
     user_id UUID NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE nugget_reads (
     PRIMARY KEY (nugget_id, session_id)
 );
 
-CREATE INDEX nugget_reads_user_idx ON nugget_reads (user_id, read_at DESC);
+CREATE INDEX IF NOT EXISTS nugget_reads_user_idx ON nugget_reads (user_id, read_at DESC);
 
 COMMENT ON TABLE nugget_reads IS
     'Read audit: which session retrieved which nugget. Joins prove cross-pollination.';
