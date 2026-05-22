@@ -1609,6 +1609,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "hex",
  "once_cell",
  "petgraph 0.8.3",
  "regex",

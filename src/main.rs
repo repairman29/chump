@@ -6060,14 +6060,31 @@ async fn main() -> Result<()> {
                                 "reserved {id} — why: collision-free atomic ID pick from domain {domain} pool (INFRA-216 verification window)"
                             );
                         }
-                        let per_file_dir = worktree_root.join("docs").join("gaps");
-                        if !per_file_dir.exists() {
+                        // INFRA-1428: write YAML to MAIN repo's docs/gaps/, not the current
+                        // linked worktree. `repo_root` resolves via CHUMP_REPO / CHUMP_HOME /
+                        // git common-dir to the main checkout. Writing to `worktree_root` (the
+                        // previous behaviour) means the YAML is only visible in that one
+                        // linked worktree; other workers and origin/main never see it
+                        // (#2063 cascade pattern: 840 LOC of cockpit work + 2 rescue PRs lost).
+                        // Fallback to worktree_root only if main repo's docs/gaps/ doesn't
+                        // exist (detached operator, fresh clone, etc.).
+                        let main_gaps_dir = repo_root.join("docs").join("gaps");
+                        let wt_gaps_dir = worktree_root.join("docs").join("gaps");
+                        let (per_file_dir, yaml_git_root, yaml_target) = if main_gaps_dir.exists() {
+                            (main_gaps_dir, repo_root.clone(), "main_repo")
+                        } else if wt_gaps_dir.exists() {
+                            eprintln!(
+                                "[reserve] WARNING (INFRA-1428): main repo docs/gaps/ not found at {}; falling back to linked worktree. Set CHUMP_REPO/CHUMP_HOME to avoid this.",
+                                repo_root.display()
+                            );
+                            (wt_gaps_dir, worktree_root.clone(), "worktree_fallback")
+                        } else {
                             // No-op path. state.db is canonical, state.sql is
                             // the tracked mirror. Use 'chump gap show <ID>'
                             // for per-gap human-readable rendering.
                             println!("{}", id);
                             return Ok(());
-                        }
+                        };
                         match store.dump_per_file_single(&id, &per_file_dir) {
                             Ok(true) => {
                                 let yaml_path = per_file_dir.join(format!("{id}.yaml"));
@@ -6098,9 +6115,12 @@ async fn main() -> Result<()> {
                                 // of discovering it via orphan-PR-closer.
                                 if std::env::var("CHUMP_RESERVE_NO_AUTOSTAGE").as_deref() != Ok("1")
                                 {
+                                    // INFRA-1428: git -C points at yaml_git_root (main repo or
+                                    // worktree fallback) so the YAML is staged in the right
+                                    // index, not the linked worktree's separate index.
                                     match std::process::Command::new("git")
                                         .arg("-C")
-                                        .arg(&worktree_root)
+                                        .arg(&yaml_git_root)
                                         .arg("add")
                                         .arg(&yaml_path)
                                         .status()
@@ -6126,6 +6146,26 @@ async fn main() -> Result<()> {
                                             );
                                         }
                                     }
+                                }
+                                // INFRA-1428: emit gap_yaml_written so fleet-brief and the
+                                // orphan-PR-closer can see where the YAML landed (main_repo vs
+                                // worktree_fallback). Direct append; the EmitArgs path would
+                                // double-resolve repo_root here.
+                                let ts =
+                                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                let yaml_event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_yaml_written\",\"gap_id\":\"{id}\",\"path\":\"{}\",\"target\":\"{yaml_target}\"}}\n",
+                                    yaml_path.display()
+                                );
+                                let ambient_path =
+                                    worktree_root.join(".chump-locks").join("ambient.jsonl");
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(&ambient_path)
+                                {
+                                    use std::io::Write;
+                                    let _ = f.write_all(yaml_event.as_bytes());
                                 }
                             }
                             Ok(false) => {} // no-op write
