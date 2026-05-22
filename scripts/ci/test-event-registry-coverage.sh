@@ -65,6 +65,11 @@ PROD_PATHS = [
     'src/', 'crates/',
     'scripts/coord/', 'scripts/dispatch/', 'scripts/ops/',
     'scripts/dev/', 'scripts/setup/',
+    # INFRA-1695 / META-066: Content Bots Suite dispatcher + orchestrator
+    # emit content_bot_invoked / content_bot_output / content_bot_pipeline_step
+    # from scripts/content-bots/. Same production-emit semantics as the
+    # other scripts/ paths above.
+    'scripts/content-bots/',
 ]
 # Also skip per-file patterns that may live inside PROD_PATHS but are tests
 # or fixtures (e.g. `src/foo/tests/bar.rs`).
