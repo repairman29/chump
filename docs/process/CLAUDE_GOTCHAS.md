@@ -1528,28 +1528,37 @@ expected-lifetime table; SIGKILL stale entries + emit
 `kind=stale_process_reaped`. Until then, run the diagnose snippet
 weekly during high-throughput periods.
 
-## SessionStart digest false-positive on INFRA-1149 (INFRA-1664, 2026-05-22)
+## SessionStart digest false-positive on INFRA-1149 (INFRA-1664, 2026-05-22 — FIXED)
 
-The FLEET-019 SessionStart + PreToolUse ambient-digest hooks report
-**"47 active sibling leases" with 37× INFRA-1149**. Almost always a
-false positive: there are usually **0 actual gap-claim leases**.
+**Status:** fixed in INFRA-1664. Historical context preserved below
+because the symptom may resurface if any new lease-enumeration code
+path is added without filtering by the `claim-*.json` prefix.
 
-**Cause:** the digest parser greps `gap_id` substring across every
+The FLEET-019 SessionStart + PreToolUse ambient-digest hooks used to
+report **"47 active sibling leases" with 37× INFRA-1149**. This was
+always a false positive: there were 0 actual gap-claim leases — the
+parser was matching the `gap_id` substring inside curator-filed
+markers.
+
+**Original cause:** the digest parser (in
+`scripts/coord/ambient-context-inject.sh`) globbed every
 `.chump-locks/*.json`, but the META-065 curator daemon writes
 `curator-filed-*.json` idempotence markers that reference INFRA-1149
 (the gap that built the duplicate-detection system) in their content.
-The grep matches the substring, not the real `claim-*.json` lease
+The grep matched the substring, not the real `claim-*.json` lease
 file convention.
 
-**Diagnose:**
+**Fix (INFRA-1664):** the lease enumeration now globs
+`claim-*.json` only. Curator-filed markers, bot-merge step files, and
+any other `.chump-locks/*.json` are skipped. Real gap-claim leases use
+the `claim-<gap-id>-<pid>-<unix-ts>.json` naming convention emitted by
+`chump claim`.
+
+**Diagnose (if you ever see >0 phantom leases again):**
 ```bash
 ls .chump-locks/claim-*.json 2>/dev/null | wc -l   # real lease count
-ls .chump-locks/curator-filed-*.json | wc -l       # curator markers (noise)
+ls .chump-locks/curator-filed-*.json | wc -l       # curator markers (noise; should be ignored)
 ```
 
-**If real lease count is 0**, ignore the SessionStart "active leases"
-digest entirely. Real leases use the `claim-<gap-id>-<pid>-<unix-ts>`
-session-id format.
-
-**Prevention (tracking):** INFRA-1664 — restrict the digest's lease
-enumeration to `claim-*.json` prefix. Quick xs-effort fix.
+If real lease count is 0 but the digest reports leases, regression —
+re-open as a follow-up to INFRA-1664.

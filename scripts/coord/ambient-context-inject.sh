@@ -263,8 +263,14 @@ for line in lines[-(n + 200):]:
 events = events[-n:]
 
 # Active leases (exclude ours)
+# INFRA-1664: restrict to claim-*.json — real gap-claim leases use the
+# `claim-<gap-id>-<pid>-<unix-ts>.json` naming convention. Other files in
+# .chump-locks/ (notably curator-filed-*.json idempotence markers from
+# META-065, plus bot-merge-*.log/step) must NOT count as sibling leases —
+# they were causing the digest to report 47 phantom "active sibling leases"
+# every session with 37x INFRA-1149 (the gap that built the curator).
 leases = []
-for p in sorted(lock_dir.glob("*.json")):
+for p in sorted(lock_dir.glob("claim-*.json")):
     try:
         data = json.loads(p.read_text())
         if data.get("session_id") == session_id:
