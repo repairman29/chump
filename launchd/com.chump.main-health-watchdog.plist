@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.main-health-watchdog — INFRA-1656: launchd watchdog that detects
+  red main-branch CI and files a P0 INFRA-NEW-MAIN-RED-<date> gap so the next
+  operator session inherits the diagnostic.
+
+  Background: 2026-05-20 → main was red for ~24h across 6 distinct failure
+  classes. Each blocked every PR's CI until manually fixed. No watchdog
+  flagged main itself.
+
+  Runs scripts/ops/main-health-watchdog.sh once a day at 02:00 local.
+  Emits kind=main_red_detected to ambient.jsonl on each sweep (heartbeat on
+  success, diagnostic-with-gap-id on failure).
+
+  INSTALLATION:
+    scripts/setup/install-main-health-watchdog.sh
+
+  Manual:
+    1. Edit this file: replace /path/to/Chump with your actual repo path.
+    2. cp launchd/com.chump.main-health-watchdog.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.main-health-watchdog.plist
+    4. launchctl list | grep chump.main-health-watchdog       # verify
+    5. launchctl start com.chump.main-health-watchdog         # test immediately
+    6. launchctl unload ~/Library/LaunchAgents/com.chump.main-health-watchdog.plist  # disable
+
+  Bypass at runtime (without unloading): export CHUMP_MAIN_HEALTH_DISABLED=1
+  in the agent's environment, or set it on the plist EnvironmentVariables
+  block below.
+
+  LOGS:
+    stdout: /tmp/chump-main-health-watchdog.out.log
+    stderr: /tmp/chump-main-health-watchdog.err.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.main-health-watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/main-health-watchdog.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Fires once a day at 02:00 local. Daily cadence is right: main-red is
+       a slow-burn failure mode (24h is the empirical pain window). Hourly
+       polls just burn gh quota without changing the response time. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Guard against rapid restarts if the watchdog crashes. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Do NOT run at load — wait for the scheduled time. Prevents a
+       gh-rate-limit storm right after `launchctl load`. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-main-health-watchdog.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-main-health-watchdog.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>
