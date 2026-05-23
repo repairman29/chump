@@ -153,6 +153,7 @@ mod pr_ac_coverage;
 mod pr_coupling_cost;
 mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
+mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 mod preflight; // INFRA-1670: local CI mirror — chump preflight subcommand
@@ -908,6 +909,71 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("session-summary") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(session_summary::run(&sub_args));
+    }
+
+    // `chump pr-rescue` (INFRA-1714) — closed-loop PR rescue. v0 handles two
+    // mechanical failure patterns (orphan-allowlist, env-var-coverage) that
+    // accounted for ~6 manual rescues in the 2026-05-22 ship session. See
+    // src/pr_rescue.rs for the classifier + fixer logic.
+    if args.get(1).map(String::as_str) == Some("pr-rescue") {
+        let mut once = false;
+        let mut dry_run = false;
+        let mut pr: Option<u32> = None;
+        let mut explain: Option<u32> = None;
+        let mut i = 2;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--once" => once = true,
+                "--dry-run" => dry_run = true,
+                "--pr" => {
+                    i += 1;
+                    if i < args.len() {
+                        pr = args[i].parse().ok();
+                    }
+                }
+                "--explain" => {
+                    i += 1;
+                    if i < args.len() {
+                        explain = args[i].parse().ok();
+                    }
+                }
+                "--help" | "-h" => {
+                    println!("chump pr-rescue [--once] [--pr N] [--dry-run] [--explain N]");
+                    println!();
+                    println!("Closed-loop PR rescue (INFRA-1714 v0). Auto-fixes two patterns:");
+                    println!(
+                        "  - orphan-allowlist: server-side rebase via gh pr update-branch --rebase"
+                    );
+                    println!(
+                        "  - env-var-coverage: append missing vars to env-vars-internal.txt + push"
+                    );
+                    println!();
+                    println!("Safety: CHUMP_PR_RESCUE_MAX_AGE_HOURS (default 24h), per-PR 5min cooldown,");
+                    println!(
+                        "        --force-with-lease only, never touches main, never touches DRAFT."
+                    );
+                    return Ok(());
+                }
+                _ => {
+                    eprintln!("pr-rescue: unknown arg: {}", args[i]);
+                    std::process::exit(2);
+                }
+            }
+            i += 1;
+        }
+        let opts = pr_rescue::RescueOpts {
+            once,
+            pr,
+            dry_run,
+            explain,
+        };
+        match pr_rescue::run(opts) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("pr-rescue: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump completion [zsh|bash|fish]` (EFFECTIVE-010) — print shell completion script.
