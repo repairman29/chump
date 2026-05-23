@@ -2617,6 +2617,30 @@ events:
       bot-merge.sh, etc.) land in follow-up gaps.
     consumers: [operator-recall, audit-log, fleet-brief]
     fields_required: [ts, kind, bypass_kind, would_have_skipped, session]
+  # ── INFRA-1828 / META-061: A2A Layer 2b RPC v0 (bash wrappers) ───────────
+  - kind: a2a_rpc_sent
+    effect_metric: self
+    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)
+    trigger: an ask-* bash wrapper sent an RPC request to a peer session
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, method, target, request_id]
+
+  - kind: a2a_rpc_timeout
+    effect_metric: self
+    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)
+    trigger: client deadline (default 10s, CHUMP_RPC_TIMEOUT_S override)
+      expired before a reply with corr_id=<request_id> landed in inbox.
+      Per INFRA-1759 / INFRA-1119 design, no blocking RPC call ever
+      exceeds its deadline; this kind announces the dropped call.
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, request_id, timeout_s]
+
+  - kind: a2a_rpc_send_failed
+    effect_metric: self
+    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)
+    trigger: broadcast.sh invocation rc != 0 when sending an RPC request
+    consumers: [audit-log]
+    fields_required: [ts, kind, method, target, request_id]
 
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
