@@ -291,3 +291,5 @@ prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-pu
 tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
 tool_approval_escalated  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
 tool_approval_policy_changed  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
+# INFRA-1456: test fixture placeholder kind in src/inspect_cmd.rs::tests — not a real emit
+x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
