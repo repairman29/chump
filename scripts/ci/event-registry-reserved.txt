@@ -329,3 +329,4 @@ auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit
 auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
 inbox_auto_poll_surfaced  # reason: INFRA-1860 emitted by scripts/coord/inbox-poll.sh PostToolUse hook helper, ambient-emit positional-arg form not grep-scannable as kind=X literal
 audit_no_verify  # reason: INFRA-1834 emitted from chump-commit.sh + bot-merge.sh when --no-verify bypass used; reason field is operator-supplied, kind name stable for daily audit grep
+liaison_cache_stale  # reason: INFRA-1874 emitted from scripts/coord/lib/github_cache.sh::cache_lookup_pr when age_s > CHUMP_LIAISON_CACHE_STALE_S (default 600); operator-visible 'cache degraded' signal separate from per-call cache_miss
