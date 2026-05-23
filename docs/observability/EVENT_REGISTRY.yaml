@@ -2607,6 +2607,17 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, session, files]
 
+  - kind: no_bypass_violation
+    effect_metric: self
+    emitter: scripts/coord/lib/chump-strict-mode.sh (INFRA-1836 phase 1)
+    trigger: CHUMP_NO_BYPASS=1 strict mode is active AND a script
+      attempted to honor a bypass env (CHUMP_FMT_CHECK=0,
+      CHUMP_PREFLIGHT_SKIP=1, --no-verify, etc.). Helper emits this
+      audit line + exits 1. Call-site wires (chump-commit.sh,
+      bot-merge.sh, etc.) land in follow-up gaps.
+    consumers: [operator-recall, audit-log, fleet-brief]
+    fields_required: [ts, kind, bypass_kind, would_have_skipped, session]
+
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
     effect_metric: self
