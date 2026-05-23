@@ -754,6 +754,31 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1792: pr-scope sanity gate (CREDIBLE-026). Runs
+        // scripts/ci/check-pr-scope.sh against the staged delta to catch:
+        //   - chore(gaps)/docs(gaps) PRs leaking src/** or scripts/** edits
+        //   - silent reverts (delete of recently-merged file w/o Revert: tag)
+        //   - unrelated-gap bundling (multi-gap title without depends_on)
+        // Runs in --warn-only mode locally since the gate is heuristic.
+        // Skip via CHUMP_PREFLIGHT_SKIP_PRSCOPE=1 with audit-trail emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_PRSCOPE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping pr-scope sanity (CHUMP_PREFLIGHT_SKIP_PRSCOPE=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_prscope_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_PRSCOPE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "pr-scope-sanity",
+                &["bash", "scripts/ci/check-pr-scope.sh", "--warn-only"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
