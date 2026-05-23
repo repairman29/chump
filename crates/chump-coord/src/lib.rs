@@ -58,6 +58,7 @@
 
 pub mod assign;
 pub mod capability;
+pub mod events;
 pub mod help_request;
 pub mod work_board;
 
