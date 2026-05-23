@@ -368,3 +368,4 @@ pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh 
 auto_capability_bypassed  # reason: INFRA-1825 — capability-publish.sh CHUMP_AUTO_CAPABILITY=0 opt-out; printf-direct JSON not grep-scannable as kind=X literal
 capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
 hidden_gems_refreshed  # reason: INFRA-1727 — emitted by scripts/dev/build-hidden-gems.sh after rebuild; python3 heredoc write to ambient.jsonl, not grep-scannable as kind=X literal
+ INFRA-1872 — emitted by scripts/ops/ci-qa-score.sh daily; rollup telemetry kind
