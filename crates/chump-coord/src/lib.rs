@@ -57,6 +57,7 @@
 //! - [`help_request`] — FLEET-010 help-seeking protocol (post / claim / complete).
 
 pub mod assign;
+pub mod capability;
 pub mod help_request;
 pub mod work_board;
 

@@ -439,3 +439,23 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 CHUMP_PREFLIGHT_SKIP_ACGATE
 # INFRA-1719: AST crawler typed inputs
 CHUMP_DECOMPOSE_AST
+# INFRA-1760: A2A Layer 2c CapabilityManifest opt-in hardware fields.
+# When set to "1", current_manifest() populates gpu + ip fields by reading
+# CHUMP_GPU_LABEL + CHUMP_IP_LABEL respectively. Default OFF for privacy —
+# operators opt into publishing hardware specs to the chump_capabilities
+# NATS KV bucket.
+CHUMP_PUBLISH_HARDWARE
+
+# INFRA-1760: operator-assigned machine label override for the manifest's
+# `machine` field. Falls back to /etc/hostname when unset.
+CHUMP_MACHINE_LABEL
+
+# INFRA-1760: GPU label string the CapabilityManifest reads when
+# CHUMP_PUBLISH_HARDWARE=1. Operator-supplied (e.g. "M4-pro" or
+# "RTX-6000-ada"); no auto-discovery in slice 1/4 of Layer 2c.
+CHUMP_GPU_LABEL
+
+# INFRA-1760: IP address string the CapabilityManifest reads when
+# CHUMP_PUBLISH_HARDWARE=1. Operator-supplied; no auto-discovery in slice
+# 1/4 of Layer 2c.
+CHUMP_IP_LABEL

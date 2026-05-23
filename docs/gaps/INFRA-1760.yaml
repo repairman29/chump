@@ -5,8 +5,11 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+    1. New crates/chump-coord/src/capability.rs with pub struct CapabilityManifest {schema_version, session_id, harness, model_tier, skills: Vec<String>, machine: Option<String>, gpu: Option<String>, ip: Option<String>, started_at, heartbeat_at, ttl_seconds}
+    2. schema_version constant: const CAPABILITY_SCHEMA_VERSION: &str = "chump-capability-v1"
+    3. Hardware fields (gpu, ip) only populated when env CHUMP_PUBLISH_HARDWARE=1; serialized as None otherwise
+    4. Add CHUMP_PUBLISH_HARDWARE=0 entry to .env.example with one-line comment about privacy gate
+    5. Add CHUMP_PUBLISH_HARDWARE to scripts/ci/env-vars-internal.txt
+    6. pub fn current_manifest() -> CapabilityManifest reads env + git + current worker session to build the struct
+    7. Integration test stub at crates/chump-coord/tests/a2a_layer2c_schema.rs validates JSON round-trip via serde
+    8. Sets up Layer 2c foundation; slices 2-4 (KV publish + heartbeat, picker integration, list_capabilities API) consume this struct
