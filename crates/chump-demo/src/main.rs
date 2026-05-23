@@ -149,7 +149,7 @@ fn seed_gaps(n: usize, dry_run: bool) -> Result<usize> {
 
 /// Scan ambient.jsonl for events emitted between [start_unix, end_unix] and
 /// produce the metrics tallies. Resilient to malformed lines.
-fn collect_metrics(
+pub fn collect_metrics(
     ambient_path: &Path,
     start_unix: u64,
     end_unix: u64,
@@ -313,27 +313,10 @@ mod tests {
         assert!(parse_duration("").is_err());
     }
 
-    #[test]
-    fn collect_metrics_counts_kinds() {
-        // Build a synthetic ambient log + verify the tallies match the
-        // schema we promise. Keep this test self-contained — no I/O.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("amb.jsonl");
-        let lines = [
-            r#"{"ts":"2026-05-23T22:00:00Z","kind":"pr_merged","session":"x"}"#,
-            r#"{"ts":"2026-05-23T22:00:30Z","kind":"bash_call","session":"chump-Chump-abc"}"#,
-            r#"{"ts":"2026-05-23T22:01:00Z","kind":"bash_call","session":"worker-sonnet-1"}"#,
-            r#"{"ts":"2026-05-23T22:01:30Z","kind":"keystone_candidate","session":"opus-x"}"#,
-            r#"{"ts":"2026-05-23T22:02:00Z","kind":"random_alert","session":"opus-y"}"#,
-            r#"{"ts":"2026-05-23T22:03:00Z","kind":"pr_merged","session":"y"}"#,
-        ];
-        std::fs::write(&path, lines.join("\n")).unwrap();
-        // Bounds bracket the synthetic event timestamps above (2026-05-23 22:00-22:03 UTC).
-        let (prs, op, alerts, keys) =
-            collect_metrics(&path, 1779573600, 1779573800, "chump-Chump-*");
-        assert_eq!(prs, 2, "pr_merged events counted");
-        assert_eq!(op, 1, "only operator-session bash_calls counted");
-        assert_eq!(alerts, 1, "*_alert kind counted");
-        assert_eq!(keys, 1, "keystone_candidate counted");
-    }
+    // NOTE: collect_metrics has a self-contained synthetic test in
+    // crates/chump-demo/tests/collect_metrics.rs (Cargo's integration-test
+    // directory, which the EVENT_REGISTRY scanner skips). Inline unit
+    // tests here would scan the synthetic "kind":"X" literals as emit
+    // sites and trip the audit gate — see the docs/process/EVENT_REGISTRY
+    // notes in this repo for the scanner pattern.
 }
