@@ -230,7 +230,12 @@ mod tests {
         let res = subscribe_events(EventFilter::All).await;
         match res {
             Err(SubscribeError::NotImplemented) => {}
-            other => panic!("expected NotImplemented, got {:?}", other),
+            // INFRA-1832: cannot debug-print the Ok arm because the trait
+            // object `dyn EventStreamPlaceholder + Send + Unpin` doesn't
+            // impl Debug; split arms instead so the SubscribeError error
+            // (which does impl Debug) prints when we hit a non-stub variant.
+            Ok(_) => panic!("expected NotImplemented, got Ok(stream)"),
+            Err(e) => panic!("expected NotImplemented, got {e:?}"),
         }
     }
 }
