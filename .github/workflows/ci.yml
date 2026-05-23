@@ -688,6 +688,9 @@ jobs:
       - name: paramedic keystone-cascade (INFRA-1420)
         run: bash scripts/ci/test-keystone-cascade.sh
 
+      - name: gap-store proof-of-merge guard (INFRA-1392)
+        run: bash scripts/ci/test-status-flip-proof-of-merge.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
