@@ -84,16 +84,28 @@ if [[ -z "$PRS_JSON" || "$PRS_JSON" == "[]" ]]; then
     exit 0
 fi
 
-# Targets: armed + (DIRTY|BEHIND).
+# Targets: armed + (DIRTY|BEHIND|BLOCKED).
+# INFRA-1838: BLOCKED added to handle the case where CI ran against an older
+# main and is now stale (today's 2026-05-23 cascade: 13 PRs sat BLOCKED for
+# hours because the old filter only caught DIRTY/BEHIND). Cooldown
+# (MAX_PER_HOUR) prevents runaway nudging of PRs that are BLOCKED for genuine
+# CI failure reasons.
+#
+# Bypass: CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED=1 reverts to pre-INFRA-1838
+#         filter (DIRTY|BEHIND only) — for forensic debugging.
+STATE_FILTER='.mergeStateStatus == "DIRTY" or .mergeStateStatus == "BEHIND" or .mergeStateStatus == "BLOCKED"'
+if [[ "${CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED:-0}" == "1" ]]; then
+    STATE_FILTER='.mergeStateStatus == "DIRTY" or .mergeStateStatus == "BEHIND"'
+fi
 TARGETS="$(printf '%s' "$PRS_JSON" | jq -r '
     .[]
     | select(.autoMergeRequest != null)
-    | select(.mergeStateStatus == "DIRTY" or .mergeStateStatus == "BEHIND")
+    | select('"$STATE_FILTER"')
     | "\(.number)\t\(.mergeStateStatus)"
 ')"
 
 if [[ -z "$TARGETS" ]]; then
-    echo "[pr-auto-rebase] no armed PRs behind main"
+    echo "[pr-auto-rebase] no armed PRs needing rebase (DIRTY/BEHIND/BLOCKED)"
     exit 0
 fi
 
