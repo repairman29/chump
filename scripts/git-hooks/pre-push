@@ -593,9 +593,16 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # INFRA-1403: prefer cargo-test-with-rerun.sh when available; it handles
             # KNOWN_FLAKES auto-rerun and structured ambient telemetry internally,
             # superseding the RESILIENT-012 manual bypass logic in the fallback path.
+            # INFRA-1744: timeout-wrap the test invocation. Multiple worktrees
+            # pushing concurrently produced 30+min cargo test hangs (sccache
+            # / fingerprint contention). Without a bound, every sibling stalls
+            # the entire fleet. 10 min is well above warm-cache full suite
+            # (~3-5 min observed) but below the indefinite-hang failure mode.
+            _PREPUSH_TEST_TIMEOUT_S="${CHUMP_PREPUSH_TEST_TIMEOUT_S:-600}"
             _RERUN_SCRIPT="$REPO_ROOT_T/scripts/ci/cargo-test-with-rerun.sh"
             if [[ -x "$_RERUN_SCRIPT" ]]; then
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     bash "$_RERUN_SCRIPT" -- \
                         cargo test --bin chump --tests --no-fail-fast --quiet \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}); then
@@ -603,6 +610,25 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                     date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
                     echo "[pre-push] INFRA-761: ✓ full suite green; cached for tree $TREE_SHA" >&2
                 else
+                    _rc=$?
+                    # INFRA-1744: rc=124 from `timeout` = exceeded budget; emit
+                    # structured ambient event and give the operator a specific
+                    # diagnostic (worktree contention) vs generic test failure.
+                    if [[ $_rc -eq 124 ]]; then
+                        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT_T/.chump-locks/ambient.jsonl}"
+                        mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                        printf '{"ts":"%s","kind":"prepush_test_timeout","worktree":"%s","timeout_s":%s}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                            "$REPO_ROOT_T" "$_PREPUSH_TEST_TIMEOUT_S" \
+                            >> "$_amb" 2>/dev/null || true
+                        echo "" >&2
+                        echo "[pre-push] BLOCKED: cargo test exceeded ${_PREPUSH_TEST_TIMEOUT_S}s (INFRA-1744)." >&2
+                        echo "[pre-push] Likely worktree contention — multiple sibling pushes share sccache/target." >&2
+                        echo "[pre-push] Try again with: CHUMP_TEST_GATE=0 git push  (with 'Test-Gate-Bypass: timeout-under-contention' trailer)" >&2
+                        echo "[pre-push] OR raise the budget: CHUMP_PREPUSH_TEST_TIMEOUT_S=1200 git push" >&2
+                        echo "" >&2
+                        exit 1
+                    fi
                     echo "" >&2
                     echo "[pre-push] BLOCKED: test suite failed after flake auto-rerun (INFRA-761/1403)." >&2
                     echo "[pre-push] Classify new flakes in docs/process/KNOWN_FLAKES.yaml (see INFRA-764)." >&2
@@ -615,7 +641,9 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             else
                 # Fallback (RESILIENT-012): direct cargo test with post-failure parse
                 # against KNOWN_FLAKES.yaml for auto-bypass when wrapper is absent.
+                # INFRA-1744: same timeout protection as the rerun-script path above.
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     cargo test --bin chump --tests --no-fail-fast --quiet \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \
                     | tee "$_TEST_LOG" | tail -200; then
