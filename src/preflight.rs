@@ -725,7 +725,6 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
-<<<<<<< HEAD
         // INFRA-1831: gaps-integrity local gate (META-070). Validates that
         // every docs/gaps/*.yaml parses as YAML, has a non-empty id, and
         // ids are unique across the registry. Would have caught both
@@ -740,7 +739,6 @@ pub fn run(argv: &[String]) -> i32 {
                 fields: vec![(
                     "reason".to_string(),
                     "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
-=======
         // INFRA-1790: markdown intra-doc-links audit (DOC-039). Catches
         // broken relative links in .md files modified by the current PR
         // (vs origin/main). The underlying script defaults to "changed"
@@ -756,13 +754,11 @@ pub fn run(argv: &[String]) -> i32 {
                 fields: vec![(
                     "reason".to_string(),
                     "CHUMP_PREFLIGHT_SKIP_MDLINKS=1".to_string(),
->>>>>>> 39c97b5d1 (feat(INFRA-1790): ZERO-WASTE — chump preflight runs markdown-intra-doc-links gate (DOC-039))
                 )],
                 ..Default::default()
             });
         } else {
             steps.push(step(
-<<<<<<< HEAD
                 "gaps-integrity",
                 &[
                     "python3",
@@ -770,10 +766,8 @@ pub fn run(argv: &[String]) -> i32 {
                     "--per-file",
                     "docs/gaps/",
                 ],
-=======
                 "markdown-intra-doc-links",
                 &["bash", "scripts/ci/test-markdown-intra-doc-links.sh"],
->>>>>>> 39c97b5d1 (feat(INFRA-1790): ZERO-WASTE — chump preflight runs markdown-intra-doc-links gate (DOC-039))
                 GateKind::Rust,
             ));
         }
