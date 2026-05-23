@@ -1,0 +1,61 @@
+# CAPABILITIES_OVERLAY.yaml — INFRA-1729
+#
+# Hand-curated overlay merged on top of the auto-detected CAPABILITIES_REGISTRY.json
+# by `scripts/dev/build-capabilities-registry.sh`. The generator can extract
+# primitive IDs, file paths, and example invocations mechanically; the
+# `when_to_use` field is *prose*, so it needs a human (or operator-grade LLM)
+# to write it once and the overlay keeps that effort durable across re-runs.
+#
+# Lookup key: primitive_id (kebab-case, exact match against the auto-generated
+# id). On collision, overlay values WIN over auto-detected ones.
+#
+# Shape:
+#   primitives:
+#     - primitive_id: <kebab-case-id>
+#       when_to_use: <one-sentence trigger>
+#       example_invocation: <copy-pasteable command>
+#       purpose_one_line: <optional override of auto-detected purpose>
+#
+# Maintenance: add an entry when a primitive's auto-detected `flags_summary`
+# or `purpose_one_line` is too cryptic to read at a glance.
+
+primitives:
+  - primitive_id: cli-gap
+    when_to_use: "Atomic gap registry mutations (list, show, reserve, ship, audit)."
+    example_invocation: "chump gap list --status open"
+
+  - primitive_id: cli-claim
+    when_to_use: "Start work on an open gap — fetches main, runs preflight, creates worktree, takes a lease — all atomic."
+    example_invocation: "chump claim INFRA-1729 --paths 'scripts/dev/build-capabilities-registry.sh'"
+
+  - primitive_id: cli-ship
+    when_to_use: "Mark a gap as shipped after the PR merges; updates state.db and docs/gaps/*.yaml."
+    example_invocation: "chump ship INFRA-1729 --update-yaml --closed-pr 9999"
+
+  - primitive_id: cli-fleet
+    when_to_use: "Operator control plane for the worker fleet (up/down/doctor/status)."
+    example_invocation: "chump fleet status"
+
+  - primitive_id: cli-health
+    when_to_use: "Snapshot of gap-registry pillar grades and SLO check."
+    example_invocation: "chump health --slo-check"
+
+  - primitive_id: event-session_start
+    when_to_use: "Emitted by every harness at session start; consume to track fleet activity."
+    example_invocation: "scripts/dev/ambient-emit.sh session_start gap=INFRA-1729"
+
+  - primitive_id: event-capabilities_registry_refreshed
+    when_to_use: "Emitted by build-capabilities-registry.sh after a successful regen. Watch for delta_count > 0 to know a new primitive surfaced."
+    example_invocation: "scripts/dev/build-capabilities-registry.sh --quiet"
+
+  - primitive_id: crate-chump-ast-crawler
+    when_to_use: "Deterministic codebase-shape extractor — call before LLM prompts to swap raw-grep context for typed symbols."
+    example_invocation: "use chump_ast_crawler::crawl_repo;"
+
+  - primitive_id: mcp-filesystem
+    when_to_use: "MCP server for sandboxed read/write of files; spawned by Claude Code via chump-mcp.json."
+    example_invocation: "chump-mcp-filesystem (managed by Claude Code)"
+
+  - primitive_id: mcp-gaps
+    when_to_use: "MCP server that exposes the chump gap registry to MCP-aware clients."
+    example_invocation: "chump-mcp-gaps (managed by Claude Code)"

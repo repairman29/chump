@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/repairman29/chump/blob/main/docs/schemas/capabilities-registry.schema.json",
+  "title": "Chump CAPABILITIES_REGISTRY.json schema (INFRA-1729)",
+  "description": "Machine-readable inventory of repository primitives (CLI commands, ambient event kinds, public crate APIs, MCP tools, skills, scripts). Produced by scripts/dev/build-capabilities-registry.sh against the current repo, or by scripts/ops/generate-capabilities-registry.sh <repo-path> against an arbitrary repo (the Column A `chump ingest` Quartermaster artifact). External agents (Cannon, Choreographer, Content Bots) declare this file as their tool-discovery input — replaces grep-and-pray primitive discovery.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "repo",
+    "generated_at",
+    "primitives"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump on breaking schema changes."
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repository identifier (e.g. 'repairman29/chump' or basename of the target path when no GitHub remote is configured)."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC timestamp when this registry was generated."
+    },
+    "generator_version": {
+      "type": "string",
+      "description": "Generator commit SHA or version tag — lets consumers detect stale registries after a generator-format bump."
+    },
+    "cli_commands": {
+      "type": "array",
+      "description": "Top-level CLI commands exposed by the repo's main binary (parsed from --help recursively).",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "subcommands": {"type": "array", "items": {"type": "string"}},
+          "flags_summary": {"type": "string"}
+        }
+      }
+    },
+    "event_kinds": {
+      "type": "array",
+      "description": "Ambient event kinds registered in docs/observability/EVENT_REGISTRY.yaml.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "emitter": {"type": "string"},
+          "consumers": {"type": "array", "items": {"type": "string"}},
+          "fields_required": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "crate_apis": {
+      "type": "array",
+      "description": "Public APIs of every top-level crate (extracted from crates/*/src/lib.rs via the chump-ast-crawler).",
+      "items": {
+        "type": "object",
+        "required": ["crate_name"],
+        "additionalProperties": true,
+        "properties": {
+          "crate_name": {"type": "string", "minLength": 1},
+          "crate_path": {"type": "string"},
+          "public_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "kind"],
+              "additionalProperties": true,
+              "properties": {
+                "name": {"type": "string"},
+                "kind": {"type": "string", "description": "fn / struct / enum / trait / mod / const / type"},
+                "line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "mcp_tools": {
+      "type": "array",
+      "description": "MCP tools — sourced from chump-mcp.json server descriptors plus #[chump_tool] macro annotations in src/.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "description": {"type": "string"},
+          "schema": {"type": "string"},
+          "source": {"type": "string", "description": "chump-mcp.json | chump_tool_macro | inventory_registration"}
+        }
+      }
+    },
+    "primitives": {
+      "type": "array",
+      "description": "Flattened canonical list (AC #1). Every CLI/MCP-tool/skill/crate/script entry is also represented here with the canonical schema. Consumers that want a single iteration target read this; consumers that want kind-specific lists read cli_commands/event_kinds/crate_apis/mcp_tools.",
+      "items": {
+        "type": "object",
+        "required": ["primitive_id", "kind", "file_paths", "purpose_one_line"],
+        "additionalProperties": true,
+        "properties": {
+          "primitive_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "description": "kebab-case stable id, e.g. 'cli-gap-list', 'mcp-filesystem', 'crate-ast-crawler'."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["cli", "mcp_tool", "skill", "crate", "script", "event"]
+          },
+          "file_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 0
+          },
+          "purpose_one_line": {"type": "string"},
+          "when_to_use": {"type": "string", "description": "One-line trigger hint, curated via docs/CAPABILITIES_OVERLAY.yaml."},
+          "example_invocation": {"type": "string", "description": "Copy-pasteable invocation."},
+          "version": {"type": "string", "description": "semver or git-sha when the primitive's contract last changed."}
+        }
+      }
+    }
+  }
+}
