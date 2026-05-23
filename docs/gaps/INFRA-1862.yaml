@@ -1,0 +1,49 @@
+- id: INFRA-1862
+  domain: INFRA
+  title: "A2A WORLD-CLASS: extend INFRA-1115 broadcast/inbox into a real coordination mesh with delivery guarantees + role-typed routing (META-074 child B)"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Child B of META-074. Operator priority #2: "A2A world class."
+
+    Today's pain (concrete):
+      - My STUCK broadcast at 18:54Z used reason=unspecified (broadcast.sh
+        positional-arg confusion) — orchestrator had to ask for the
+        actual reason. Delivery worked; semantic correctness didn't.
+      - When the daily-driver-session closed 3 of my PRs at 21:29Z while
+        my fixes were in flight, no advance signal. The closure was an
+        automated action with no broadcast.
+      - curator-opus-ci-audit dispatched INFRA-1834 to me at 21:33Z —
+        cross-curator routing worked, but there's no role-based
+        capability discovery (it could have routed to curator-opus-handoff
+        instead and I'd never know).
+      - No delivery guarantees: I check my inbox manually each turn.
+        At 50 workers, every agent polling every turn = wasted compute.
+
+    What "world class" means concretely:
+      a) Typed events with strict schemas (today's broadcast.sh accepts
+         INTENT/HANDOFF/STUCK/DONE/WARN/ALERT but the field shapes drift)
+      b) Role-based capability discovery (Opus instances publish their
+         role-skills; routers dispatch to best-fit owner not to whoever
+         claimed first)
+      c) Delivery guarantees (push notifications via NATS — already partly
+         in INFRA-1118 A2A Layer 1a — replace polling inboxes)
+      d) Atomic claim-handoff (handing off a gap mid-stream shouldn't
+         require the receiver to re-claim; current pattern leaves a 10-30s
+         hand-over gap)
+      e) Audit trail: every send/receive logged for post-hoc analysis
+  acceptance_criteria:
+    - "Schema validation: scripts/coord/broadcast.sh rejects malformed events with a clear error pointing at the expected shape (today's --to-recipient + STUCK reason field defaulted to 'unspecified' on positional-arg misuse)"
+    - "Capability manifest: each curator session publishes role + skills (e.g. role=curator, skills=[rust,docs,sql,a2a]) to a known KV; routers query by skill match BEFORE dispatching"
+    - "Delivery guarantees Tier 1: NATS-backed delivery (extends INFRA-1118 Layer 1a) for high-priority events (STUCK, ALERT, dispatch). Tier 2: file inbox as fallback for low-priority"
+    - "Push notifications: agents subscribe to their session's inbox via NATS push (not poll). Reduces polling overhead by 100×"
+    - "Atomic handoff: chump gap handoff <gap> --to <session> atomically transfers the lease + claim record + worktree pointer in a single transaction; receiver auto-resumes without manual re-claim"
+    - "Audit trail: every broadcast logged to ambient.jsonl with sender/recipient/event/correlation_id; nightly digest summarises mesh health (delivery rate, response latency, dead-letter count)"
+    - "Backward-compat: existing broadcast.sh callers continue to work; new typed-schema is opt-in via --strict flag; flip to default after 7-day clean window"
+    - "Smoke: scripts/ci/test-a2a-mesh.sh spawns 3 ephemeral sessions, exchanges messages across all 6 pair-directions, asserts 100% delivery + <100ms median latency"
+  notes: |
+    P1 EFFECTIVE. Child B of META-074. Ship after child A (CI/QA) is
+    at ≥95% because A2A needs trustworthy success/failure signal to
+    coordinate. Suggested owner role: curator-opus-a2a (new role; can
+    promote from existing curator-opus-handoff session).

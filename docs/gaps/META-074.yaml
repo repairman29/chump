@@ -1,0 +1,47 @@
+- id: META-074
+  domain: META
+  title: "ROLE-SCOPED FLEET: migrate from file-leased to role/skill-typed agents; A2A as spine + CI/QA 100% gate"
+  status: open
+  priority: P0
+  effort: l
+  description: |
+    Strategic umbrella from 2026-05-23 operator conversation. Operator
+    stated three explicit goals, in priority order:
+      1. CI/QA = 100% — every required check accurate, no flakes,
+         zero false-positive failures, full local-vs-CI parity
+      2. A2A world-class — agent-to-agent coordination spine matures
+         from emergent (INFRA-1115 broadcast/inbox) to first-class
+         delivery + routing layer
+      3. Owner-by-scope — agents claim by role/skill/concern, NOT by
+         file path; file-leases retire in favour of conflict-resolver
+         budgeting (INFRA-1488 already shipped)
+
+    Why now: tonight's session surfaced N²/F lease-collision math at
+    6 workers. Three of my 90-minute work blocks were stopped cold by
+    lease overlaps on append-only metadata files (event-registry-
+    reserved.txt, chump-commit.sh) and broad-scoped META-071 leases
+    (docs/gaps, scripts/ci). At the roadmap's 50-worker target, the
+    file-lease model is mathematically dead. The emergent
+    curator-opus-target / -ci-audit / -handoff role split from today's
+    sprint IS the answer pattern; this gap formalises it.
+
+    Decomposition (3 child gaps):
+      - INFRA-1861 — CI/QA 100% (child A)
+      - INFRA-1862 — A2A world-class (child B)
+      - INFRA-1863 — Owner-by-scope claims (child C)
+
+    Vision doc: docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md
+  acceptance_criteria:
+    - "docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md ships in PR #1: names the 3 children, defines the migration order, gives the 6-week timeline, captures operator's 3-priority statement verbatim"
+    - "Three child gaps (INFRA-1861/1862/1863) filed with real AC (not TODO boilerplate); each has its own ship plan + owning curator role"
+    - "Migration order documented and respected: CI/QA hardening (child A) → A2A spine (child B) → owner-by-scope (child C). Reason: child C depends on the conflict-resolver running reliably, which needs CI/QA at 100% AND A2A spine in place to coordinate the conflict-resolver outputs"
+    - "META-074 closes when all 3 children close. No early-close. Audit gate scripts/ci/test-meta-074-children.sh asserts all 3 child statuses are 'done' before allowing META-074 status flip"
+    - "Honest sunset clause: if at the 6-week mark <2 children are done, file META-NEXT to re-scope and demote META-074 to P2 — don't let it haunt the roadmap as a perpetual P0"
+    - "Operator priority preserved verbatim in the vision doc: 'CI/QA to be 100%, a2a world class, owner by scope and role type/skill etc.' (2026-05-23)"
+  notes: |
+    P0 META. Top-of-pillar strategic priority per operator 2026-05-23.
+    Pairs with the 'agents-on-same-files' conversation thread that
+    produced INFRA-1687/1688/1689 the prior day — those gaps are
+    file-level tactical fixes; META-074 is the role-level strategic
+    rewrite. Both layers ship; META-074 ensures we don't keep filing
+    file-level tactical patches forever.
