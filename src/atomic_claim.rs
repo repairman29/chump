@@ -351,6 +351,32 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
+    // Gate 3b: INFRA-1885: Check lease-breadth (broad top-level dir rejection)
+    if let Some(paths) = &args.paths {
+        let ambient_log_co = args.repo_root.join(".chump-locks/ambient.jsonl");
+        let session_co = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        match check_lease_breadth(paths, &args.gap_id, &session_co, &ambient_log_co) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "lease-breadth".to_string(),
+                    status: "pass".to_string(),
+                    message: "paths are specific enough (no broad top-level dirs)".to_string(),
+                });
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "lease-breadth".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
     // Gate 4: Check acceptance criteria (must not be empty/TODO only)
     match check_acceptance_criteria(&args.repo_root, &args.gap_id) {
         Ok(msg) => {
@@ -457,6 +483,28 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 "claim refused — fuzzy-match against open PRs / active leases. Use --force-duplicate or CHUMP_CLAIM_NO_FUZZY=1 to override."
             );
         }
+    }
+
+    // INFRA-1885: lease-breadth cap — reject claims of exact top-level dirs
+    // without a more specific sub-path. Forces file-level granularity so
+    // broad leases don't block other sessions from filing event-registry
+    // entries or touching adjacent sub-paths.
+    //
+    // Bypass: CHUMP_LEASE_ALLOW_BROAD_DIRS=1 + commit-message trailer
+    //   Broad-Lease-Reason: <one sentence>
+    // Bypass emits kind=lease_broad_dir_claim to ambient.jsonl for audit.
+    if let Some(paths_csv) = &args.paths {
+        let early_session_id = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let ambient_log_early = args.repo_root.join(".chump-locks/ambient.jsonl");
+        check_lease_breadth(
+            paths_csv,
+            &args.gap_id,
+            &early_session_id,
+            &ambient_log_early,
+        )?;
     }
 
     // 4. Session ID — explicit --session flag > derived.
@@ -833,6 +881,120 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+// ── INFRA-1885: lease-breadth cap ───────────────────────────────────────────
+
+/// Top-level directory names that are too broad to hold as a lease path.
+/// Operators must supply a more specific sub-path (e.g. `src/foo.rs` instead
+/// of `src`) to avoid blocking sibling sessions for entire directory trees.
+const BROAD_LEASE_DIRS: &[&str] = &["src", "scripts/ci", "docs/gaps", "src/lib", "app"];
+
+/// INFRA-1885: Check that no path in `paths_csv` is an exact match against a
+/// broad top-level directory. Returns `Ok(())` when all paths are sufficiently
+/// specific, or when the operator override is active. Returns `Err(...)` with
+/// a human-readable message when a broad path is detected and no override is
+/// present.
+///
+/// Override: set `CHUMP_LEASE_ALLOW_BROAD_DIRS=1`. Every bypass emits
+/// `kind=lease_broad_dir_claim` to ambient.jsonl for audit.
+fn check_lease_breadth(
+    paths_csv: &str,
+    gap_id: &str,
+    session_id: &str,
+    ambient_log: &Path,
+) -> Result<()> {
+    let broad_dirs: Vec<&str> = paths_csv
+        .split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .filter(|p| BROAD_LEASE_DIRS.contains(p))
+        .collect();
+
+    if broad_dirs.is_empty() {
+        return Ok(());
+    }
+
+    // Check override env var.
+    let allow_broad = std::env::var("CHUMP_LEASE_ALLOW_BROAD_DIRS")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false);
+
+    if allow_broad {
+        // Operator override active — emit audit event and continue.
+        emit_lease_broad_dir_claim(
+            ambient_log,
+            gap_id,
+            session_id,
+            &broad_dirs,
+            "CHUMP_LEASE_ALLOW_BROAD_DIRS=1",
+        );
+        eprintln!(
+            "[claim] INFRA-1885: broad-dir override active for {} (paths: {}). \
+             Remember to add 'Broad-Lease-Reason: <one sentence>' to your commit message.",
+            gap_id,
+            broad_dirs.join(", ")
+        );
+        return Ok(());
+    }
+
+    // No override — reject the claim.
+    bail!(
+        "INFRA-1885: broad lease path(s) rejected: {broad}.\n  \
+         Specify a more specific sub-path (e.g. `src/foo.rs` instead of `src`).\n  \
+         Override: set CHUMP_LEASE_ALLOW_BROAD_DIRS=1 AND add commit trailer:\n    \
+         Broad-Lease-Reason: <one sentence why a broad lease is necessary>",
+        broad = broad_dirs.join(", ")
+    );
+}
+
+/// INFRA-1885: emit `kind=lease_broad_dir_claim` to ambient.jsonl.
+/// Fields: session_id, gap, paths (JSON array), reason.
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_lease_broad_dir_claim(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    broad_paths: &[&str],
+    reason: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    // Build paths JSON array manually (no serde dependency here).
+    let paths_json = {
+        let parts: Vec<String> = broad_paths
+            .iter()
+            .map(|p| format!("\"{}\"", json_escape(p)))
+            .collect();
+        format!("[{}]", parts.join(","))
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_broad_dir_claim\",\
+         \"session_id\":\"{sid}\",\"gap\":\"{gap}\",\
+         \"paths\":{paths},\"reason\":\"{reason}\"}}\n",
+        ts = ts,
+        sid = json_escape(session_id),
+        gap = json_escape(gap_id),
+        paths = paths_json,
+        reason = json_escape(reason),
+    );
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── end INFRA-1885 ───────────────────────────────────────────────────────────
 
 /// INFRA-1025 AC6: check whether <remote>/<branch> exists on the remote.
 /// Uses `git ls-remote --exit-code` which exits 2 when the ref is absent.
