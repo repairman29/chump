@@ -8115,12 +8115,10 @@ async fn main() -> Result<()> {
                     content: user_msg,
                 }];
 
-                let resp = match tokio::runtime::Handle::current().block_on(provider.complete(
-                    messages,
-                    None,
-                    Some(4096),
-                    Some(system_prompt),
-                )) {
+                let resp = match provider
+                    .complete(messages, None, Some(4096), Some(system_prompt))
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) => {
                         eprintln!("chump gap decompose: LLM call failed: {e:#}");
@@ -8282,12 +8280,10 @@ async fn main() -> Result<()> {
                                     content: verify_msg,
                                 }];
 
-                                match tokio::runtime::Handle::current().block_on(vp.complete(
-                                    vmsg,
-                                    None,
-                                    Some(1024),
-                                    Some(verify_system),
-                                )) {
+                                match vp
+                                    .complete(vmsg, None, Some(1024), Some(verify_system))
+                                    .await
+                                {
                                     Ok(vresp) => {
                                         let vtext = vresp.text.unwrap_or_default();
                                         let vj_start = vtext.find('{').unwrap_or(0);
