@@ -754,6 +754,31 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1793: no-claude-leak audit (INFRA-1051). Catches NEW
+        // Claude-specific references in product-layer code (src/,
+        // scripts/coord/, scripts/dispatch/, scripts/ops/). Today CI runs
+        // this warn-only (INFRA-1053 backfill in progress); local gate
+        // mirrors. Both flip to strict together once the long-tail closes.
+        // Skip via CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 with audit-trail emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CLAUDELEAK").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping no-claude-leak (CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_claudeleak_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "no-claude-leak",
+                &["bash", "scripts/ci/test-no-claude-leak.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit

@@ -310,6 +310,7 @@ auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh
 auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
 preflight_gapsint_bypassed # reason: INFRA-1831 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_GAPSINT=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+preflight_claudeleak_bypassed # reason: INFRA-1793 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
 
 # INFRA-1729: false-positive "kind":"<value>" literals inside the
 # CAPABILITIES_REGISTRY generator. These are NOT ambient event kinds —
