@@ -99,8 +99,7 @@ pub fn current_manifest(skills: Vec<String>) -> CapabilityManifest {
     let session_id = std::env::var("CHUMP_SESSION_ID")
         .unwrap_or_else(|_| format!("unknown-{}", std::process::id()));
     let harness = std::env::var("CHUMP_AGENT_HARNESS").unwrap_or_else(|_| "manual".to_string());
-    let model_tier =
-        std::env::var("FLEET_MODEL").unwrap_or_else(|_| "unknown".to_string());
+    let model_tier = std::env::var("FLEET_MODEL").unwrap_or_else(|_| "unknown".to_string());
     let machine = hostname_or_label();
 
     let publish_hw = std::env::var("CHUMP_PUBLISH_HARDWARE").as_deref() == Ok("1");
@@ -184,8 +183,7 @@ mod tests {
             ttl_seconds: DEFAULT_TTL_SECONDS,
         };
         let json = serde_json::to_string(&m).expect("serialize");
-        let back: CapabilityManifest =
-            serde_json::from_str(&json).expect("deserialize");
+        let back: CapabilityManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(m, back);
     }
 
@@ -219,8 +217,14 @@ mod tests {
         // current_manifest() with no env opt-in should have no hardware
         std::env::remove_var("CHUMP_PUBLISH_HARDWARE");
         let m = current_manifest(vec!["test".to_string()]);
-        assert_eq!(m.gpu, None, "gpu should be absent without CHUMP_PUBLISH_HARDWARE=1");
-        assert_eq!(m.ip, None, "ip should be absent without CHUMP_PUBLISH_HARDWARE=1");
+        assert_eq!(
+            m.gpu, None,
+            "gpu should be absent without CHUMP_PUBLISH_HARDWARE=1"
+        );
+        assert_eq!(
+            m.ip, None,
+            "ip should be absent without CHUMP_PUBLISH_HARDWARE=1"
+        );
         assert!(!m.has_hardware_fields());
     }
 }

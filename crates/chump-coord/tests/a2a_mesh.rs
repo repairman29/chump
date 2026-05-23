@@ -6,7 +6,7 @@
 // round-trip, and the stub returns NotImplemented across the surface.
 
 use chump_coord::mesh::{
-    channels, AckMessage, Channel, Message, MeshError, MeshTransport, StubMesh,
+    channels, AckMessage, Channel, MeshError, MeshTransport, Message, StubMesh,
 };
 
 #[test]
@@ -19,10 +19,19 @@ fn channel_construction() {
 fn channel_namespace_helpers_pinned() {
     // If any of these change, downstream subscribers need migration.
     let pairs: Vec<(Channel, &'static str)> = vec![
-        (channels::gap_claimed("INFRA-9999"), "gap/claimed/INFRA-9999"),
-        (channels::session_heartbeat("opus-x"), "session/heartbeat/opus-x"),
+        (
+            channels::gap_claimed("INFRA-9999"),
+            "gap/claimed/INFRA-9999",
+        ),
+        (
+            channels::session_heartbeat("opus-x"),
+            "session/heartbeat/opus-x",
+        ),
         (channels::opus_dm("recipient-1"), "dm/recipient-1"),
-        (channels::fleet_consensus("scale-up"), "fleet/consensus/scale-up"),
+        (
+            channels::fleet_consensus("scale-up"),
+            "fleet/consensus/scale-up",
+        ),
         (channels::pr_progress(2406), "pr/progress/2406"),
         (channels::ambient_broadcast(), "ambient/broadcast"),
     ];
@@ -73,7 +82,10 @@ fn message_with_signature_round_trip() {
         signature: Some(vec![0xde, 0xad, 0xbe, 0xef]),
     };
     let j = serde_json::to_string(&m).unwrap();
-    assert!(j.contains("\"signature\""), "signature must round-trip when Some");
+    assert!(
+        j.contains("\"signature\""),
+        "signature must round-trip when Some"
+    );
     let back: Message = serde_json::from_str(&j).unwrap();
     assert_eq!(back.signature.unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
 }
@@ -122,7 +134,10 @@ async fn stub_await_ack_returns_not_implemented() {
 fn mesh_error_display_references_slice() {
     let e = MeshError::NotImplemented;
     let s = format!("{e}");
-    assert!(s.contains("INFRA-1758"), "stub error should reference slice 2/4 gap");
+    assert!(
+        s.contains("INFRA-1758"),
+        "stub error should reference slice 2/4 gap"
+    );
 }
 
 #[test]
@@ -132,5 +147,8 @@ fn ack_timeout_error_carries_context() {
         timeout_ms: 5000,
     };
     let s = format!("{e}");
-    assert!(s.contains("msg-1") && s.contains("5000"), "AckTimeout should carry id + ms in Display");
+    assert!(
+        s.contains("msg-1") && s.contains("5000"),
+        "AckTimeout should carry id + ms in Display"
+    );
 }

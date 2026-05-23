@@ -6,8 +6,7 @@
 // bucket name, stub behaviour for get/set/cas.
 
 use chump_coord::scratchpad::{
-    bucket_name, cas, get, seed_key_lookup, seed_keys, set, ConflictPolicy,
-    ScratchError,
+    bucket_name, cas, get, seed_key_lookup, seed_keys, set, ConflictPolicy, ScratchError,
 };
 use serde_json::json;
 
@@ -147,5 +146,8 @@ async fn cas_rejects_unknown_key() {
 fn error_display_mentions_slice() {
     let e = ScratchError::NotImplemented;
     let s = format!("{e}");
-    assert!(s.contains("INFRA-1121"), "error Display should reference slice 2/4 (INFRA-1121)");
+    assert!(
+        s.contains("INFRA-1121"),
+        "error Display should reference slice 2/4 (INFRA-1121)"
+    );
 }

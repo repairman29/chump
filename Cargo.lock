@@ -1443,6 +1443,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-nats",
+ "async-trait",
  "bytes",
  "chrono",
  "chump-gap-store",
@@ -1502,22 +1503,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
-]
-
-[[package]]
-name = "chump-handoff"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
- "serial_test",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]

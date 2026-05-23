@@ -116,18 +116,12 @@ pub trait MeshTransport: Send + Sync {
 
     /// Subscribe to a channel. Returns a receiver that delivers messages
     /// as they arrive.
-    async fn subscribe(
-        &self,
-        channel: &Channel,
-    ) -> Result<broadcast::Receiver<Message>, MeshError>;
+    async fn subscribe(&self, channel: &Channel)
+        -> Result<broadcast::Receiver<Message>, MeshError>;
 
     /// Wait for an ack on a previously-published message. Times out after
     /// `timeout_ms` milliseconds.
-    async fn await_ack(
-        &self,
-        message_id: &str,
-        timeout_ms: u32,
-    ) -> Result<AckMessage, MeshError>;
+    async fn await_ack(&self, message_id: &str, timeout_ms: u32) -> Result<AckMessage, MeshError>;
 }
 
 /// Error type for mesh operations.
@@ -141,10 +135,7 @@ pub enum MeshError {
     /// Wire-format decode error.
     Deserialize(serde_json::Error),
     /// Ack window expired without ack receipt.
-    AckTimeout {
-        message_id: String,
-        timeout_ms: u32,
-    },
+    AckTimeout { message_id: String, timeout_ms: u32 },
 }
 
 impl std::fmt::Display for MeshError {
@@ -156,7 +147,10 @@ impl std::fmt::Display for MeshError {
             ),
             MeshError::BrokerUnreachable => write!(f, "NATS broker unreachable"),
             MeshError::Deserialize(e) => write!(f, "deserialize failed: {e}"),
-            MeshError::AckTimeout { message_id, timeout_ms } => write!(
+            MeshError::AckTimeout {
+                message_id,
+                timeout_ms,
+            } => write!(
                 f,
                 "ack timeout for message_id={message_id} after {timeout_ms}ms"
             ),
@@ -220,7 +214,10 @@ mod tests {
 
     #[test]
     fn channel_helpers_match_documented_paths() {
-        assert_eq!(channels::gap_claimed("INFRA-1802").name, "gap/claimed/INFRA-1802");
+        assert_eq!(
+            channels::gap_claimed("INFRA-1802").name,
+            "gap/claimed/INFRA-1802"
+        );
         assert_eq!(
             channels::session_heartbeat("opus-1").name,
             "session/heartbeat/opus-1"
