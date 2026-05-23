@@ -437,6 +437,8 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
 # INFRA-1791: skip gap-preflight-ac-gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ACGATE
+# INFRA-1867: emergency bypass for preflight-vs-CI parity smoke check
+CHUMP_SKIP_PARITY_CHECK
 # INFRA-1719: AST crawler typed inputs
 CHUMP_DECOMPOSE_AST
 # INFRA-1760: A2A Layer 2c CapabilityManifest opt-in hardware fields.

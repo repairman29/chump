@@ -3367,6 +3367,15 @@ events:
     trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, path, reason]
+  # ── INFRA-1867: preflight-vs-CI parity drift ──────────────────────────────
+  - kind: ci_parity_drift
+    effect_metric: self
+    emitter: scripts/ci/test-preflight-ci-parity.sh (INFRA-1867)
+    trigger: a CI gate in .github/workflows/ci.yml is not mirrored in src/preflight.rs
+      and is not listed as Tier-D in CI_GATES_INVENTORY.md or allowlisted in
+      preflight-ci-parity-exceptions.txt.
+    consumers: [fleet-brief, operator-recall, ops-audit]
+    fields_required: [ts, kind, gate_name, ci_path]
   # ── INFRA-1199: ci-yml merge driver abort ─────────────────────────────────
   - kind: ci_yml_merge_driver_abort
     effect_metric: self
