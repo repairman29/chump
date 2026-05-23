@@ -504,6 +504,84 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1787: env-var-coverage local gate. Catches CHUMP_* env vars
+        // referenced in Rust/scripts but not documented in
+        // scripts/ci/env-vars-internal.txt — the #1 most-frequent CI audit
+        // fail class (5+ failures/week pre-mirror). Skip via
+        // CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit (mirrors the
+        // INFRA-1731 pattern shipped at #2377).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_envvars_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "env-var-coverage",
+                &["bash", "scripts/ci/test-env-var-coverage.sh"],
+                GateKind::Rust,
+            ));
+        }
+        // INFRA-1789: chump-subcommand-help regression gate. Catches the
+        // class of failures where a subcommand registers but `chump <subcmd>
+        // --help` falls through to the LLM agent or fails on "missing
+        // positional" (INFRA-1238 shipped 2× this quarter). The CI script
+        // skips cleanly if chump binary isn't on PATH, so this gate is safe
+        // to run unconditionally in the Rust-scope branch.
+        // Skip via CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1 with audit-trail emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_SUBCMDHELP").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping chump-subcommand-help (CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_subcmdhelp_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "chump-subcommand-help",
+                &["bash", "scripts/ci/test-chump-subcommand-help.sh"],
+                GateKind::Rust,
+            ));
+        }
+        // INFRA-1791: gap-preflight-ac-gate audit. Surfaces open gaps with
+        // vague/empty AC (TODO placeholders) before the operator tries to
+        // claim them — INFRA-1259's "every open gap must have concrete AC"
+        // discipline. Skip via CHUMP_PREFLIGHT_SKIP_ACGATE=1 with audit-trail
+        // emit (mirrors INFRA-1731 #2377 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ACGATE").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping gap-preflight-ac-gate (CHUMP_PREFLIGHT_SKIP_ACGATE=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_acgate_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ACGATE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "gap-preflight-ac-gate",
+                &["bash", "scripts/ci/test-gap-preflight-ac-gate.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
