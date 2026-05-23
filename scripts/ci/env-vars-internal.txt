@@ -421,3 +421,12 @@ CHUMP_TOOL_POLICY_FILE
 
 # INFRA-1731: skip the local event-registry-audit step in chump preflight
 CHUMP_PREFLIGHT_SKIP_REGISTRY
+
+# INFRA-1787: skip the env-vars-internal-coverage step in chump preflight
+CHUMP_PREFLIGHT_SKIP_ENVVARS
+
+# INFRA-1789: skip the subcommand --help regression check in chump preflight
+CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
+
+# INFRA-1791: skip the gap-preflight-ac-gate step in chump preflight
+CHUMP_PREFLIGHT_SKIP_ACGATE

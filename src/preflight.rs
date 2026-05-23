@@ -511,9 +511,7 @@ pub fn run(argv: &[String]) -> i32 {
         // CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit (mirrors the
         // INFRA-1731 pattern shipped at #2377).
         if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
-            eprintln!(
-                "[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)"
-            );
+            eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
             let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
                 kind: "preflight_envvars_bypassed".to_string(),
                 source: Some("chump-preflight".to_string()),
@@ -563,9 +561,7 @@ pub fn run(argv: &[String]) -> i32 {
         // discipline. Skip via CHUMP_PREFLIGHT_SKIP_ACGATE=1 with audit-trail
         // emit (mirrors INFRA-1731 #2377 pattern).
         if std::env::var("CHUMP_PREFLIGHT_SKIP_ACGATE").as_deref() == Ok("1") {
-            eprintln!(
-                "[preflight] skipping gap-preflight-ac-gate (CHUMP_PREFLIGHT_SKIP_ACGATE=1)"
-            );
+            eprintln!("[preflight] skipping gap-preflight-ac-gate (CHUMP_PREFLIGHT_SKIP_ACGATE=1)");
             let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
                 kind: "preflight_acgate_bypassed".to_string(),
                 source: Some("chump-preflight".to_string()),

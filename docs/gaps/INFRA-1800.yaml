@@ -1,0 +1,15 @@
+- id: INFRA-1800
+  domain: INFRA
+  title: "EFFECTIVE: retarget INFRA-1796/1797/1798 opus-message work at canonical INFRA-1115 (broadcast.sh + chump-inbox.sh) — close redundancy loop Opus #3 flagged 2026-05-23"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Opus #3 self-flagged on 2026-05-23 that INFRA-1796/1797/1798 (opus-message v0 stack) duplicate the canonical INFRA-1115 mechanism (broadcast.sh + chump-inbox.sh + .chump-locks/inbox/<sid>.jsonl) we have been using all 2026-05-23 session for the orchestrator-curator mesh. The 3 PRs (#2391/#2392/#2393) were auto-reaped by stale-PR-reaper during the 5h time-gap on 2026-05-23 ~06:50-10:54Z. This gap captures the actual remaining work — wire the new SessionStart hook addendum + CLAUDE.md mandate at the canonical INFRA-1115 channel instead of the parallel opus-message stack.
+  acceptance_criteria:
+    - INFRA-1797 SessionStart hook addendum points at .chump-locks/inbox/SESSION-ID.jsonl (the INFRA-1115 file) NOT .chump-locks/opus-inbox/SESSION-ID.jsonl (the parallel stack) — same shape, canonical location
+    - INFRA-1798 CLAUDE.md mandate documents broadcast.sh + chump-inbox.sh as the canonical orchestrator-curator messaging primitive, with the pre-push checklist from META-069 referencing it
+    - scripts/coord/opus-message.sh is renamed or absorbed into scripts/coord/chump-inbox.sh + broadcast.sh — single CLI surface, no duplicate parser
+    - smoke test asserts the SessionStart hook surfaces a synthetic broadcast.sh --to MY-SESSION message in the digest
+    - "note: do NOT re-open #2391/#2392/#2393 (Opus #3 correctly flagged them redundant); this gap is the consolidation work"
+
