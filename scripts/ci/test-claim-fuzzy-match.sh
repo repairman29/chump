@@ -24,7 +24,7 @@ for sym in \
     "CHUMP_CLAIM_NO_FUZZY" \
     "claim_duplicate_bypassed" \
     "--force-duplicate"; do
-    if grep -q "$sym" "$SRC"; then ok "atomic_claim.rs contains $sym"; else fail "missing $sym"; fi
+    if grep -qF -- "$sym" "$SRC"; then ok "atomic_claim.rs contains $sym"; else fail "missing $sym"; fi
 done
 
 # Unit tests
