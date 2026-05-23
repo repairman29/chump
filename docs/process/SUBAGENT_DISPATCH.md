@@ -6,6 +6,61 @@
 > (2) clarifying-question hesitation (fixed by the no-clarifying-questions
 > directive below). **Every subagent prompt must include both.**
 
+## Dispatch defaults by model (META-069, 2026-05-23)
+
+The orchestrator's job is to pick the right model for the work. Empirical
+default after the 2026-05-23 session that found Opus-instance time was the
+actual bottleneck:
+
+| Role | Model | Use for |
+|---|---|---|
+| **Orchestrator** | Opus | Planning, synthesis, real-talk, architectural calls, reviewing subagent output, PR queue triage |
+| **Per-gap implementer** | Sonnet | Single-gap implementation, smoke tests, the actual diff. Default for `xs`/`s`/`m` gaps |
+| **Mechanical sweeper** | Haiku | Yaml regeneration, gap-status updates, gardening passes, batch fixups |
+
+**Rule**: when an Opus instance picks an `xs` or `s` gap, the default move
+is to dispatch a Sonnet subagent rather than hand-implement. Hand-implement
+only when the work requires architectural judgment Sonnet won't have.
+
+## Pre-push checklist (META-069, 2026-05-23 — paste into every Sonnet brief)
+
+Today's session shipped ~6 PRs that failed deterministic CI gates on first
+push (orphan event kinds, env-var coverage misses, malformed AC yaml, format
+lints). Each round-trip costs 5-10 min of CI time. Every Sonnet brief should
+include this checklist for the subagent to run **before** `git push`:
+
+```
+[ ] New event kinds in EVENT_REGISTRY.yaml? → grep YOUR diff for new
+    `kind:` entries. For each, verify the emit site contains a literal
+    `"X"` or `"X".to_string()` pattern the audit grep can detect.
+    If your emit uses struct-field syntax (e.g.
+    EmitArgs { kind: "X".to_string(), ...}), preemptively add to
+    scripts/ci/event-registry-reserved.txt with a reason note.
+
+[ ] New CHUMP_* env vars introduced? → grep your diff for
+    `std::env::var("CHUMP_*")` or shell `${CHUMP_*}` usage. For each NEW
+    var, append a documented entry under the gap header in
+    scripts/ci/env-vars-internal.txt.
+
+[ ] Any docs/gaps/*.yaml touched? → run:
+      python3 -c "import yaml; yaml.safe_load(open('docs/gaps/<file>.yaml'))"
+    If errors, the chump gap set --acceptance-criteria parser broke on
+    a special char (especially '|'). Repair by hand. (See INFRA-1799 for
+    the underlying fix to the gap-set parser.)
+
+[ ] Any Usage:/--help strings added? → must be literal command names,
+    not templated `{sub}` substitutions. Lint rejects templating.
+
+[ ] `chump preflight` GREEN — fmt + clippy + check + event-registry-audit.
+    Don't push without this.
+```
+
+5 checks, ~30 seconds total. Catches ~60-70% of today's deterministic failure
+classes. As INFRA-1787 (env-var coverage), INFRA-1788 (docs-delta), INFRA-1790
+(markdown intra-doc-links), and the rest of Opus #3's CI-gates inventory
+follow-ups ship, this checklist gets gradually absorbed into `chump preflight`
+proper and shrinks.
+
 ## The no-clarifying-questions directive (paste into every subagent prompt)
 
 Add this as the **first section** of every subagent prompt, before the task
