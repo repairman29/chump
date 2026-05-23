@@ -73,7 +73,10 @@ impl std::fmt::Display for SubscribeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SubscribeError::NotImplemented => {
-                write!(f, "subscribe_events stub — real impl ships in INFRA-1118 slice 2/4")
+                write!(
+                    f,
+                    "subscribe_events stub — real impl ships in INFRA-1118 slice 2/4"
+                )
             }
             SubscribeError::Deserialize(e) => write!(f, "deserialize failed: {e}"),
         }
@@ -107,9 +110,7 @@ impl From<serde_json::Error> for SubscribeError {
 /// (Layer 2b RPC, Layer 2c manifest publish, Layer 3d scratchpad) all
 /// depend on the EventFilter + CoordEvent types being stable, not on the
 /// real delivery semantics existing yet.
-pub async fn subscribe_events(
-    filter: EventFilter,
-) -> Result<EventStream, SubscribeError> {
+pub async fn subscribe_events(filter: EventFilter) -> Result<EventStream, SubscribeError> {
     // Emit ambient event so the audit log shows the stub is being invoked
     // (signals which sites need wiring to the real impl in slice 2/4).
     let ts = chrono::Utc::now().to_rfc3339();
@@ -227,10 +228,15 @@ mod tests {
 
     #[tokio::test]
     async fn stub_returns_not_implemented() {
+        // Cannot {:?}-format the whole Result because EventStreamPlaceholder
+        // (the trait object inside Ok) doesn't implement Debug — the stub
+        // file ships only the wire-types, real Debug-bearing impls land in
+        // INFRA-1118 slice 2/4. Match Ok/Err separately so the test compiles.
         let res = subscribe_events(EventFilter::All).await;
         match res {
             Err(SubscribeError::NotImplemented) => {}
-            other => panic!("expected NotImplemented, got {:?}", other),
+            Ok(_) => panic!("expected NotImplemented, got Ok(EventStream)"),
+            Err(e) => panic!("expected NotImplemented, got Err({e:?})"),
         }
     }
 }
