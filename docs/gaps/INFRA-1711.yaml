@@ -1,0 +1,12 @@
+- id: INFRA-1711
+  domain: INFRA
+  title: "EFFECTIVE: PWA web/v2/content-bots.js view — 4 toggles wired to /api/content-bots endpoints (INFRA-1699 slice 3/4, META-066 phase 6c)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
