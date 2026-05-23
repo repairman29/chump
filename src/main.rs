@@ -6817,10 +6817,18 @@ async fn main() -> Result<()> {
                     eprintln!("Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]");
                     eprintln!("                          [--effort E] [--status S] [--notes N] [--add-note TEXT]");
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
-                    eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
+                    eprintln!("                          [--closed-pr N] [--acceptance-criteria BULLET ...] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
                     eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
                     eprintln!("  Note: --add-note TEXT appends '[ISO-timestamp] TEXT' to existing notes; --notes OVERWRITES.");
+                    eprintln!("  INFRA-1799: --acceptance-criteria accepts repeated flags — one AC bullet per occurrence.");
+                    eprintln!("              Example (preferred, no escape needed for pipes):");
+                    eprintln!("                chump gap set X --acceptance-criteria 'recipient <gap-id|session-id|all-opus> resolves'\\");
+                    eprintln!(
+                        "                              --acceptance-criteria 'second bullet'"
+                    );
+                    eprintln!("              Legacy single-flag delimiter form (deprecated, emits ambient warning):");
+                    eprintln!("                chump gap set X --acceptance-criteria 'a|b|c'");
                 };
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
                     gap_set_usage();
@@ -6834,10 +6842,57 @@ async fn main() -> Result<()> {
                     gap_set_usage();
                     std::process::exit(2);
                 }
-                let acceptance_criteria = flag("--acceptance-criteria").map(|raw| {
+                // INFRA-1799: --acceptance-criteria parsing has two forms:
+                //   (preferred) repeated `--acceptance-criteria BULLET` flags
+                //               → each value is one AC bullet, NO pipe-splitting,
+                //                 so literal '|' in a bullet survives intact.
+                //   (legacy)    single `--acceptance-criteria "a|b|c"` value
+                //               → pipe-split into multiple bullets, with
+                //                 kind=chump_gap_set_legacy_delim emitted so the
+                //                 curator can migrate callers gradually.
+                // Backward compat: a single occurrence with no pipe is identical
+                // under both forms (one bullet either way), so no warning fires.
+                let ac_flag_values: Vec<String> = {
+                    let mut vals = Vec::new();
+                    let mut i = 0usize;
+                    while i < args.len() {
+                        if args[i] == "--acceptance-criteria" {
+                            if let Some(v) = args.get(i + 1) {
+                                vals.push(v.clone());
+                                i += 2;
+                                continue;
+                            }
+                        }
+                        i += 1;
+                    }
+                    vals
+                };
+                let acceptance_criteria = if ac_flag_values.is_empty() {
+                    None
+                } else if ac_flag_values.len() == 1 && ac_flag_values[0].contains('|') {
+                    // Legacy single-flag delimited form — split + emit deprecation event.
+                    let raw = &ac_flag_values[0];
                     let parts: Vec<&str> = raw.split('|').collect();
-                    serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
-                });
+                    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                        kind: "chump_gap_set_legacy_delim".to_string(),
+                        source: Some("chump_gap_set".to_string()),
+                        gap: Some(gap_id.clone()),
+                        fields: vec![
+                            ("bullet_count".to_string(), parts.len().to_string()),
+                            (
+                                "note".to_string(),
+                                "use repeated --acceptance-criteria flags to avoid pipe-split"
+                                    .to_string(),
+                            ),
+                        ],
+                        ..Default::default()
+                    });
+                    Some(serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into()))
+                } else {
+                    // Repeated-flag form (or a single value with no pipe): each
+                    // flag occurrence is exactly one bullet, no splitting.
+                    Some(serde_json::to_string(&ac_flag_values).unwrap_or_else(|_| "[]".into()))
+                };
                 let depends_on = flag("--depends-on").map(|raw| {
                     let parts: Vec<&str> = raw
                         .split(',')
