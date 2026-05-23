@@ -928,6 +928,16 @@ jobs:
       - name: apalis-poc (standalone, --locked)
         run: cargo build --locked --manifest-path examples/apalis-poc/Cargo.toml
 
+      # INFRA-1867: preflight-vs-CI parity smoke.
+      # Asserts every required-check CI gate is EITHER mirrored in
+      # `chump preflight` (src/preflight.rs) OR Tier-D in
+      # docs/process/CI_GATES_INVENTORY.md OR allowlisted in
+      # scripts/ci/preflight-ci-parity-exceptions.txt.
+      # Exits non-zero on unmirrored + non-allowlisted gate; emits
+      # kind=ci_parity_drift for each violating gate to ambient.jsonl.
+      - name: preflight-vs-CI parity smoke (INFRA-1867)
+        run: bash scripts/ci/test-preflight-ci-parity.sh
+
   # ── Shard 2: clippy ───────────────────────────────────────────────────────
   # Workspace-wide clippy with -D warnings. Runs in parallel with cargo-test
   # and fast-checks. Target wall-clock: 3-5 min.

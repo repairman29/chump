@@ -60,6 +60,7 @@ change_approved            # reason: planned for operator change-approval workfl
 change_rolled_back         # reason: planned for automated rollback on regression
 
 # ── CI / gate ──────────────────────────────────────────────────────────────────
+ci_parity_drift            # reason: emitted by scripts/ci/test-preflight-ci-parity.sh (INFRA-1867); scripts/ci/ is outside PROD_PATHS grep scan
 ci_yml_merge_driver_abort  # reason: planned for merge-driver failure detection in CI
 gate_check_result          # reason: planned for chump gate --check result emission
 gate_check_start           # reason: planned for chump gate --check start emission
