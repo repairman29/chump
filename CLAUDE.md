@@ -38,7 +38,7 @@ git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 bash scripts/setup/chump-fleet-bootstrap.sh --check  # META-066, must exit 0
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
-scripts/coord/opus-message.sh list --unread      # INFRA-1796: cross-Opus inbox; process per OPUS_MESSAGE_PROTOCOL.md
+scripts/coord/chump-inbox.sh read --unread       # INFRA-1115: addressed-async inbox; process per OPUS_MESSAGE_PROTOCOL.md
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
 chump gap list --status open                     # canonical .chump/state.db
 chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so

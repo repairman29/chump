@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # scripts/ci/test-opus-message-protocol.sh — INFRA-1798
 #
-# Verifies docs/process/OPUS_MESSAGE_PROTOCOL.md exists and consistently
-# cross-references the rest of the opus-message v0 stack. Pairs with the
-# CLAUDE.md addendum that mandates the protocol in MANDATORY pre-flight.
+# Verifies docs/process/OPUS_MESSAGE_PROTOCOL.md exists + consistently
+# cross-references the canonical INFRA-1115 channel (broadcast.sh +
+# chump-inbox.sh). Pairs with the CLAUDE.md addendum that mandates the
+# inbox check in MANDATORY pre-flight.
 #
-# Static-only assertions; no runtime behavior to verify here (the runtime
-# is covered by test-opus-message.sh + test-opus-message-hook.sh).
+# Static-only assertions; runtime is covered by test-opus-message-hook.sh
+# (INFRA-1797) and INFRA-1115's own tests.
 
 set -euo pipefail
 
@@ -32,45 +33,44 @@ if [[ ! -f "$DOC" ]]; then
     exit 1
 fi
 
-# ── 2. doc references the CLI by path ───────────────────────────────────────
+# ── 2. doc references the CANONICAL CLI by path ────────────────────────────
 assert_grep "$DOC" \
-    "scripts/coord/opus-message.sh" \
-    "protocol doc references the CLI script path"
+    "scripts/coord/broadcast.sh" \
+    "protocol doc references broadcast.sh"
+assert_grep "$DOC" \
+    "scripts/coord/chump-inbox.sh" \
+    "protocol doc references chump-inbox.sh"
 
-# ── 3. doc names the three send modes ───────────────────────────────────────
-assert_grep "$DOC" \
-    "session:<sender-id>|session:<me>" \
-    "protocol doc names session: addressing"
-assert_grep "$DOC" \
-    "gap:<X>|gap:INFRA-" \
-    "protocol doc names gap: addressing"
-assert_grep "$DOC" \
-    "all-opus" \
-    "protocol doc names all-opus broadcast"
+# ── 3. doc names canonical INFRA-1115 + cites it ────────────────────────────
+assert_grep "$DOC" "INFRA-1115" "protocol doc cites INFRA-1115 (canonical channel)"
 
-# ── 4. doc cites the foundation gap IDs ─────────────────────────────────────
-assert_grep "$DOC" "INFRA-1796" "protocol doc cites INFRA-1796 (CLI gap)"
+# ── 4. doc names the addressing modes (per broadcast.sh --to convention) ────
+assert_grep "$DOC" "gap:" "protocol doc names gap: addressing"
+assert_grep "$DOC" "session" "protocol doc names session-id addressing"
+
+# ── 5. doc cites the related foundation gap IDs ─────────────────────────────
 assert_grep "$DOC" "INFRA-1797" "protocol doc cites INFRA-1797 (hook gap)"
 assert_grep "$DOC" "INFRA-1759" "protocol doc cites INFRA-1759 (RPC successor)"
 
-# ── 5. doc includes all three send patterns ─────────────────────────────────
+# ── 6. doc includes all three send patterns ─────────────────────────────────
 assert_grep "$DOC" "hand-off" "protocol doc shows Pattern 1: hand-off"
 assert_grep "$DOC" "broadcast warning" "protocol doc shows Pattern 2: broadcast warning"
 assert_grep "$DOC" "RFC" "protocol doc shows Pattern 3: RFC/design review"
 
-# ── 6. doc documents the read/process/mark-read sequence ────────────────────
-assert_grep "$DOC" "mark-read" "protocol doc documents mark-read step"
-assert_grep "$DOC" "never .*mark-read.* before processing" \
-    "protocol doc enforces never-mark-read-before-processing rule"
+# ── 7. doc documents the read+cursor-advance sequence ──────────────────────
+assert_grep "$DOC" "chump-inbox.sh read" \
+    "protocol doc documents the read step"
+assert_grep "$DOC" "cursor" \
+    "protocol doc explains cursor-based unread tracking"
 
-# ── 7. CLAUDE.md mandates the inbox check in pre-flight ─────────────────────
+# ── 8. CLAUDE.md mandates the inbox check in pre-flight ─────────────────────
 if [[ ! -f "$CLAUDE" ]]; then
     echo "FAIL: $CLAUDE not found"
     failures=$((failures + 1))
 else
     assert_grep "$CLAUDE" \
-        "opus-message.sh list --unread" \
-        "CLAUDE.md pre-flight includes opus-message.sh inbox check"
+        "chump-inbox.sh read --unread" \
+        "CLAUDE.md pre-flight includes chump-inbox.sh inbox check"
     assert_grep "$CLAUDE" \
         "OPUS_MESSAGE_PROTOCOL.md" \
         "CLAUDE.md references the protocol doc"
@@ -82,4 +82,4 @@ if [[ $failures -gt 0 ]]; then
     exit 1
 fi
 
-echo "OK INFRA-1798: opus-message protocol doc + CLAUDE.md mandate consistent"
+echo "OK INFRA-1798: protocol doc + CLAUDE.md mandate consistent (canonical INFRA-1115)"
