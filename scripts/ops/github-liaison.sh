@@ -261,6 +261,15 @@ case "$MODE" in
         exit 0
         ;;
     once|daemon)
+        # INFRA-1876: offline-mode hard gate. When CHUMP_GITHUB_MODE=offline
+        # the daemon refuses to start — no lock acquisition, no REST cycle.
+        # Exits 0 because "offline" is a deliberate operator stance, not a fault.
+        if [[ "$MODE" == "daemon" ]] && [[ "${CHUMP_GITHUB_MODE:-}" == "offline" ]]; then
+            echo "github-liaison: offline mode — Liaison disabled" >&2
+            _emit_ambient liaison_offline_mode_gated "pid=$$" "mode=$MODE"
+            exit 0
+        fi
+
         # daemon mode requires opt-in; --once is unguarded (used by CI tests
         # and chump-fleet-bootstrap dry-runs).
         if [[ "$MODE" == "daemon" ]] && [[ "${CHUMP_LIAISON_ENABLED:-0}" != "1" ]]; then
