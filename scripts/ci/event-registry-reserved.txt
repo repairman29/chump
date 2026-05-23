@@ -327,3 +327,4 @@ skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capa
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
 auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when new CHUMP_* env refs were auto-appended to env-vars-internal.txt (default path)
 auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
+inbox_auto_poll_surfaced  # reason: INFRA-1860 emitted by scripts/coord/inbox-poll.sh PostToolUse hook helper, ambient-emit positional-arg form not grep-scannable as kind=X literal
