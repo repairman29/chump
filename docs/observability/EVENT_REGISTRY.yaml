@@ -4424,3 +4424,36 @@ events:
       liaison_polling_fallback_active.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pid, poll_interval_s, url]
+  # INFRA-1892: curator-jit-scheduler daemon. Replaces the
+  # orchestrator-as-pebble-scheduler antipattern by auto-broadcasting
+  # next-gap assignments to curator-opus-* sessions on DONE events.
+  - kind: curator_jit_scheduled
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      A curator-opus-* session emitted a DONE event (or kind=gap_shipped).
+      The daemon called the existing _pick_gap.py with priority filter
+      P0,P1 (default), selected the top candidate, and broadcast a JIT
+      ASSIGNMENT to that curator's inbox via broadcast.sh.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, priority]
+
+  - kind: curator_jit_skipped
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Skipped a JIT broadcast — either dedup-window hit (same curator+gap
+      within CHUMP_JIT_DEDUP_WINDOW_S, default 3600s) or the broadcast.sh
+      call itself failed. Reason field discriminates.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, reason]
+
+  - kind: curator_jit_no_gap
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Curator finished a gap but _pick_gap.py returned no candidate
+      matching the priority filter (P0/P1 default). The daemon logs and
+      stands by; the curator will idle until a new pickable gap appears.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator]
