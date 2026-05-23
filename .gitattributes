@@ -77,6 +77,20 @@ Cargo.toml merge=cargo-toml-append
 # new VIEWS map entries, new CHUMP_CADENCES subtab entries.
 web/v2/app.js merge=js-append
 
-# src/main.rs — new route handlers / match arms / use declarations appended
-# at the bottom of the file (Axum router additions pattern).
-src/main.rs merge=rust-main-append
+# src/main.rs — REMOVED from append-only driver (2026-05-23 P0 fix).
+#
+# Tonight's pattern (5+ PRs across #2350 #2351 #2356 silently dropped
+# mod declarations during auto-rebase): the append-only driver assumes
+# both sides are pure appends. main.rs gets internal edits regularly
+# (bug fixes, dispatch refactors), which fails the pure-append check.
+# When the driver falls back to standard 3-way merge, line content near
+# the conflict boundary gets silently dropped instead of producing
+# conflict markers.
+#
+# Removing the merge=rust-main-append attribute restores standard
+# 3-way merge for main.rs — produces clear conflict markers when the
+# operator needs to resolve, instead of silent data loss.
+#
+# Real fix: INFRA-1687 / INFRA-1748 (decompose main.rs into
+# inventory-style self-registration; kills the hot-file class entirely).
+# Until that lands, plain 3-way merge is the lesser evil.
