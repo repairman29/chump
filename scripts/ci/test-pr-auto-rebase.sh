@@ -84,9 +84,16 @@ else
     fail "dry-run did not pick #9001; got: $OUT"
 fi
 if echo "$OUT" | grep -q "would rebase #9002"; then
-    fail "dry-run incorrectly selected #9002 (BLOCKED, not DIRTY/BEHIND)"
+    ok "dry-run selects #9002 (BLOCKED+armed, INFRA-1838)"
 else
-    ok "dry-run skips #9002 (not DIRTY/BEHIND)"
+    fail "dry-run did NOT select #9002 — INFRA-1838 regression (BLOCKED+armed must be picked up)"
+fi
+# INFRA-1838: bypass env var should restore pre-1838 behavior (skip BLOCKED)
+OUT_BYPASS="$(PATH="$TMP/bin:$PATH" CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED=1 bash "$TARGET" --dry-run 2>&1)"
+if echo "$OUT_BYPASS" | grep -q "would rebase #9002"; then
+    fail "CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED=1 should have excluded #9002 (BLOCKED) but didn't"
+else
+    ok "CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED=1 restores pre-1838 filter (skips #9002)"
 fi
 if echo "$OUT" | grep -q "would rebase #9003"; then
     fail "dry-run incorrectly selected #9003 (no auto-merge)"
