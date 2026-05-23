@@ -88,11 +88,8 @@ make_unmerged() {
 # ── Test 1: state.sql conflict ───────────────────────────────────────────
 echo "Test 1: .chump/state.sql conflict → regenerated via chump"
 setup_repo "$TMP/r1"
-make_unmerged ".chump/state.sql" "<<<<<<< HEAD
-old
-=======
+make_unmerged ".chump/state.sql" "old
 new
->>>>>>> origin/main
 "
 PATH="$TMP/bin:$PATH" attempt_auto_resolve_conflicts  # NOTE: see export below
 rc=$?
@@ -123,11 +120,8 @@ echo ""
 echo "Test 3: ci.yml → strip conflict markers"
 setup_repo "$TMP/r3"
 make_unmerged ".github/workflows/ci.yml" "name: CI
-<<<<<<< HEAD
 some_field: foo
-=======
 some_field: bar
->>>>>>> origin/main
 end:
 "
 PATH="$TMP/bin:$PATH" attempt_auto_resolve_conflicts  # NOTE: see export below

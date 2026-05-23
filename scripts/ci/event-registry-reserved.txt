@@ -310,3 +310,18 @@ auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh
 auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
 preflight_gapsint_bypassed # reason: INFRA-1831 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_GAPSINT=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+
+# INFRA-1729: false-positive "kind":"<value>" literals inside the
+# CAPABILITIES_REGISTRY generator. These are NOT ambient event kinds —
+# they're enum values of the registry's own `kind` field (cli / crate /
+# mcp_tool / skill / event / script). The literal scan can't tell them
+# apart from real emit sites, so allowlist with a reason instead.
+cli  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+crate  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+mcp_tool  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+# INFRA-1729: emit site uses positional arg to ambient-emit.sh
+# (`ambient-emit.sh "capabilities_registry_refreshed"`) — bash arg form,
+# not a `"kind":"X"` literal the gate's regex looks for. Registered in
+# EVENT_REGISTRY.yaml; reserved here to satisfy strict-mode register-without-emit.
+capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
