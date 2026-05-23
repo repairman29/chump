@@ -2660,6 +2660,52 @@ events:
     consumers: [audit-log, operator-recall]
     fields_required: [ts, kind, request_id, timeout_s]
 
+  - kind: a2a_rpc_started
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs (INFRA-1119)
+    trigger: typed call_rpc() entered after writing request to peer inbox.
+      Pairs with a2a_rpc_finished for round-trip latency measurement.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, target, method, request_id]
+
+  - kind: a2a_rpc_finished
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs (INFRA-1119)
+    trigger: typed call_rpc() returned with a successful response.
+      latency_ms captures full round-trip including queue + handler.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, target, method, request_id, latency_ms]
+
+  - kind: a2a_rpc_handler_crashed
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs serve_rpc_n + call_rpc (INFRA-1119)
+    trigger: server-side handler panicked inside the catch_unwind boundary
+      OR client-side saw a HANDLER_CRASHED: sentinel in the reply error.
+      Distinct from a2a_rpc_timeout (AC #5) so consumers can distinguish
+      'peer died' from 'peer slow'.
+    consumers: [audit-log, operator-recall, fleet-brief]
+    fields_required: [ts, kind, method, request_id]
+
+  - kind: a2a_rpc_request
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs call_rpc (INFRA-1119)
+    trigger: INTERNAL envelope kind for the file-backed RPC transport.
+      Written to the target session's rpc-inbox JSONL with embedded
+      RpcRequest. Not an ambient consumer event — registered here so the
+      INFRA-754 event-registry guard sees it.
+    consumers: [chump-coord rpc serve loop]
+    fields_required: [kind, from, request]
+
+  - kind: a2a_rpc_reply
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs serve_rpc_n (INFRA-1119)
+    trigger: INTERNAL envelope kind for the file-backed RPC transport.
+      Written to the requester session's rpc-inbox JSONL with embedded
+      RpcResponse. Not an ambient consumer event — registered here so the
+      INFRA-754 event-registry guard sees it.
+    consumers: [chump-coord rpc call_rpc poll loop]
+    fields_required: [kind, from, response]
+
   - kind: a2a_rpc_send_failed
     effect_metric: self
     emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)

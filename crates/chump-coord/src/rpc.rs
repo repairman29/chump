@@ -55,24 +55,35 @@ pub struct RpcResponse {
     pub latency_ms: u64,
 }
 
-/// Error type for `call_rpc`. Stub returns NotImplemented; real impl will
-/// add Timeout (rc=124 equivalent), HandlerCrashed (distinct from Timeout
-/// per slice-3 chaos test), and Network (transport failure) variants.
+/// Error type for `call_rpc`. INFRA-1119 v1 file-backed transport (mirrors
+/// the INFRA-1828 bash wrappers' on-wire shape). NATS subject routing is a
+/// later swap that preserves these variants.
 #[derive(Debug)]
 pub enum RpcError {
-    /// Stub-only — real impl lands in INFRA-1119 slice 2/4.
+    /// Reserved — caller will not see this variant in v1; kept for
+    /// API stability with the stub-era code.
+    #[allow(dead_code)]
     NotImplemented,
     /// Wire-format decode error.
     Deserialize(serde_json::Error),
+    /// Client deadline (`timeout_ms`) elapsed before a reply landed.
+    /// Emits `kind=a2a_rpc_timeout` to ambient. AC #4.
+    Timeout,
+    /// Server-side handler panicked OR otherwise crashed mid-call. Distinct
+    /// from Timeout per AC #5 — emits `kind=a2a_rpc_handler_crashed`.
+    HandlerCrashed(String),
+    /// Transport-layer failure (could not write request OR poll inbox).
+    Network(String),
 }
 
 impl std::fmt::Display for RpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RpcError::NotImplemented => {
-                write!(f, "RPC stub — real impl ships in INFRA-1119 slice 2/4")
-            }
+            RpcError::NotImplemented => write!(f, "RPC v1 reserves this variant for API stability"),
             RpcError::Deserialize(e) => write!(f, "deserialize failed: {e}"),
+            RpcError::Timeout => write!(f, "RPC timeout (no reply within deadline)"),
+            RpcError::HandlerCrashed(s) => write!(f, "RPC handler crashed: {s}"),
+            RpcError::Network(s) => write!(f, "RPC transport error: {s}"),
         }
     }
 }
@@ -80,8 +91,8 @@ impl std::fmt::Display for RpcError {
 impl std::error::Error for RpcError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            RpcError::NotImplemented => None,
             RpcError::Deserialize(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -89,6 +100,12 @@ impl std::error::Error for RpcError {
 impl From<serde_json::Error> for RpcError {
     fn from(e: serde_json::Error) -> Self {
         RpcError::Deserialize(e)
+    }
+}
+
+impl From<std::io::Error> for RpcError {
+    fn from(e: std::io::Error) -> Self {
+        RpcError::Network(e.to_string())
     }
 }
 
@@ -151,12 +168,70 @@ pub fn new_request_id() -> String {
     format!("{:x}-{:x}-{}", nanos, std::process::id(), c)
 }
 
-/// Send an RPC to a peer session. Stub returns NotImplemented + emits
-/// `a2a_rpc_stub_called` to ambient.
-///
-/// Real impl (slice 2/4): publishes RpcRequest to NATS subject
-/// `chump.rpc.<target_session>.<method>`, awaits response on
-/// `chump.rpc.reply.<request_id>` with `tokio::time::timeout(timeout_ms)`.
+/// Resolve the current session id for self-inbox addressing.
+fn self_session() -> String {
+    std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("SESSION_ID"))
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| format!("rust-{}", std::process::id()))
+}
+
+/// Resolve the rpc-inbox dir. Honors CHUMP_LOCK_DIR for test isolation.
+fn rpc_inbox_dir() -> std::path::PathBuf {
+    let lock_dir = std::env::var("CHUMP_LOCK_DIR")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(".chump-locks"));
+    lock_dir.join("rpc-inbox")
+}
+
+fn inbox_path_for(session: &str) -> std::path::PathBuf {
+    let safe = session.replace(['/', ':'], "_");
+    rpc_inbox_dir().join(format!("{safe}.jsonl"))
+}
+
+fn write_envelope_to_inbox(target_session: &str, payload: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let inbox = inbox_path_for(target_session);
+    if let Some(parent) = inbox.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&inbox)?;
+    writeln!(f, "{}", payload)?;
+    Ok(())
+}
+
+fn poll_for_reply(self_sess: &str, needle: &str) -> Option<serde_json::Value> {
+    let inbox = inbox_path_for(self_sess);
+    let content = std::fs::read_to_string(&inbox).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || !line.contains(needle) {
+            continue;
+        }
+        let env: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if env.get("kind") != Some(&serde_json::Value::String("a2a_rpc_reply".into())) {
+            continue;
+        }
+        let response = env.get("response").cloned()?;
+        if response.get("request_id") == Some(&serde_json::Value::String(needle.into())) {
+            return Some(response);
+        }
+    }
+    None
+}
+
+/// Send an RPC to a peer session. INFRA-1119 v1 — file-backed transport
+/// (mirrors INFRA-1828 bash wrappers). Writes a [`RpcRequest`] JSON to
+/// the target's inbox, then polls our own inbox for a matching reply
+/// within `timeout_ms`. Emits `a2a_rpc_started`, `a2a_rpc_finished`,
+/// `a2a_rpc_timeout`, and `a2a_rpc_handler_crashed` (AC #4 + #5 + #7).
 pub async fn call_rpc(
     target_session: &str,
     method: &str,
@@ -164,30 +239,212 @@ pub async fn call_rpc(
     timeout_ms: u64,
 ) -> Result<RpcResponse, RpcError> {
     let request_id = new_request_id();
-    let ts = chrono::Utc::now().to_rfc3339();
-    let line = format!(
-        r#"{{"ts":"{ts}","kind":"a2a_rpc_stub_called","target":"{target_session}","method":"{method}","request_id":"{request_id}","timeout_ms":{timeout_ms}}}"#
-    );
-    let _ = append_ambient(&line);
-    let _ = args; // accept but ignore for stub
-    Err(RpcError::NotImplemented)
+    let started = std::time::Instant::now();
+    let ts_started = chrono::Utc::now().to_rfc3339();
+    let from = self_session();
+
+    let req = RpcRequest {
+        request_id: request_id.clone(),
+        method: method.to_string(),
+        args,
+        sent_at: ts_started.clone(),
+    };
+    let envelope_json = serde_json::to_string(&serde_json::json!({
+        "kind": "a2a_rpc_request",
+        "from": from,
+        "request": req,
+    }))?;
+
+    write_envelope_to_inbox(target_session, &envelope_json).map_err(|e| {
+        let _ = append_ambient(&format!(
+            r#"{{"ts":"{ts_started}","kind":"a2a_rpc_send_failed","target":"{target_session}","method":"{method}","request_id":"{request_id}","error":"{}"}}"#,
+            e.to_string().replace('"', "'")
+        ));
+        e
+    })?;
+
+    let _ = append_ambient(&format!(
+        r#"{{"ts":"{ts_started}","kind":"a2a_rpc_started","target":"{target_session}","method":"{method}","request_id":"{request_id}"}}"#
+    ));
+
+    let self_sess = self_session();
+    let deadline = std::time::Duration::from_millis(timeout_ms);
+    let poll_interval = std::time::Duration::from_millis(50);
+    let poll_result = tokio::time::timeout(deadline, async {
+        loop {
+            if let Some(reply) = poll_for_reply(&self_sess, &request_id) {
+                return reply;
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+    })
+    .await;
+
+    let latency_ms = started.elapsed().as_millis() as u64;
+    let ts_done = chrono::Utc::now().to_rfc3339();
+
+    match poll_result {
+        Ok(reply_value) => {
+            let response: RpcResponse = serde_json::from_value(reply_value)?;
+            if let Some(err) = &response.error {
+                if err.starts_with("HANDLER_CRASHED:") {
+                    let _ = append_ambient(&format!(
+                        r#"{{"ts":"{ts_done}","kind":"a2a_rpc_handler_crashed","target":"{target_session}","method":"{method}","request_id":"{request_id}","latency_ms":{latency_ms}}}"#
+                    ));
+                    return Err(RpcError::HandlerCrashed(err.clone()));
+                }
+            }
+            let _ = append_ambient(&format!(
+                r#"{{"ts":"{ts_done}","kind":"a2a_rpc_finished","target":"{target_session}","method":"{method}","request_id":"{request_id}","latency_ms":{latency_ms}}}"#
+            ));
+            Ok(response)
+        }
+        Err(_) => {
+            let _ = append_ambient(&format!(
+                r#"{{"ts":"{ts_done}","kind":"a2a_rpc_timeout","target":"{target_session}","method":"{method}","request_id":"{request_id}","timeout_ms":{timeout_ms}}}"#
+            ));
+            Err(RpcError::Timeout)
+        }
+    }
 }
 
-/// Server-side handler registration. Stub returns NotImplemented; real
-/// impl in slice 2/4 will register the handler against a NATS subject
-/// subscription and serialize responses through a tokio task.
+/// Server-side handler — polls our own inbox for requests targeting
+/// `method`, invokes `handler`, writes replies to the requester's inbox.
+/// Per-request_id de-dup within DEDUP_WINDOW_SECONDS (AC #3) makes retries
+/// idempotent. Panics inside `handler` are caught and surfaced as
+/// `a2a_rpc_handler_crashed` (AC #5 — distinct kind from Timeout).
+///
+/// `iterations: Some(N)` makes integration tests deterministic; `None`
+/// loops forever.
+pub async fn serve_rpc_n<F>(
+    method: &str,
+    handler: F,
+    iterations: Option<usize>,
+) -> Result<(), RpcError>
+where
+    F: Fn(serde_json::Value) -> Result<serde_json::Value, String>
+        + std::panic::RefUnwindSafe
+        + Send
+        + Sync
+        + 'static,
+{
+    let dedup = DedupTable::new();
+    let self_sess = self_session();
+    let poll_interval = std::time::Duration::from_millis(50);
+    let mut seek_offset: usize = 0;
+    let mut tick: usize = 0;
+
+    loop {
+        if let Some(n) = iterations {
+            if tick >= n {
+                break;
+            }
+        }
+        tick += 1;
+        let inbox = inbox_path_for(&self_sess);
+        if let Ok(content) = std::fs::read_to_string(&inbox) {
+            let from = std::cmp::min(seek_offset, content.len());
+            for line in content[from..].lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let env: serde_json::Value = match serde_json::from_str(line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if env.get("kind") != Some(&serde_json::Value::String("a2a_rpc_request".into())) {
+                    continue;
+                }
+                let req_method = env
+                    .pointer("/request/method")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if req_method != method {
+                    continue;
+                }
+                let request_id = env
+                    .pointer("/request/request_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let from_session = env
+                    .get("from")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !dedup.record(&request_id) {
+                    continue;
+                }
+                let args = env
+                    .pointer("/request/args")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let started = std::time::Instant::now();
+
+                let handler_ref = &handler;
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler_ref(args)));
+                let latency_ms = started.elapsed().as_millis() as u64;
+
+                let response = match result {
+                    Ok(Ok(v)) => RpcResponse {
+                        request_id: request_id.clone(),
+                        result: Some(v),
+                        error: None,
+                        latency_ms,
+                    },
+                    Ok(Err(e)) => RpcResponse {
+                        request_id: request_id.clone(),
+                        result: None,
+                        error: Some(e),
+                        latency_ms,
+                    },
+                    Err(panic_payload) => {
+                        let crash_msg = panic_payload
+                            .downcast_ref::<&str>()
+                            .map(|s| s.to_string())
+                            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                            .unwrap_or_else(|| "(panic, no message)".to_string());
+                        let ts = chrono::Utc::now().to_rfc3339();
+                        let _ = append_ambient(&format!(
+                            r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crashed","method":"{method}","request_id":"{request_id}","panic":"{}"}}"#,
+                            crash_msg.replace('"', "'")
+                        ));
+                        RpcResponse {
+                            request_id: request_id.clone(),
+                            result: None,
+                            error: Some(format!("HANDLER_CRASHED: {}", crash_msg)),
+                            latency_ms,
+                        }
+                    }
+                };
+
+                let reply_envelope = serde_json::json!({
+                    "kind": "a2a_rpc_reply",
+                    "from": self_sess,
+                    "response": response,
+                });
+                let _ = write_envelope_to_inbox(&from_session, &reply_envelope.to_string());
+            }
+            seek_offset = content.len();
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+    Ok(())
+}
+
+/// Forever-loop variant of `serve_rpc_n`. AC #1's canonical public API;
+/// integration tests use `serve_rpc_n` with bounded iterations.
 pub async fn serve_rpc<F>(method: &str, handler: F) -> Result<(), RpcError>
 where
-    F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
+    F: Fn(serde_json::Value) -> Result<serde_json::Value, String>
+        + std::panic::RefUnwindSafe
+        + Send
+        + Sync
+        + 'static,
 {
-    let _ = method;
-    let _ = handler;
-    let ts = chrono::Utc::now().to_rfc3339();
-    let line = format!(
-        r#"{{"ts":"{ts}","kind":"a2a_rpc_stub_called","method":"{method}","mode":"serve"}}"#
-    );
-    let _ = append_ambient(&line);
-    Err(RpcError::NotImplemented)
+    serve_rpc_n(method, handler, None).await
 }
 
 fn append_ambient(line: &str) -> std::io::Result<()> {
