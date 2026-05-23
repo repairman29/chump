@@ -36,7 +36,11 @@ if [ "$count" -eq 0 ]; then
 fi
 
 # Build a JSON array of the first 10 samples for evidence.
-samples_json="$(printf '%s\n' "${undoc[@]}" | head -10 | python3 -c '
+# INFRA-1801: slice the array to 10 elements BEFORE printf to avoid a SIGPIPE
+# race. The prior form `printf '%s\n' "${undoc[@]}" | head -10 | python3 ...`
+# would trigger `printf: write error: Broken pipe` whenever the undoc array
+# held >10 entries, failing fast-checks across the fleet with a transient.
+samples_json="$(printf '%s\n' "${undoc[@]:0:10}" | python3 -c '
 import json, sys
 print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))
 ')"
