@@ -2667,6 +2667,19 @@ events:
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
 
+  # ── INFRA-1809: chump CLI startup wallclock budget ──────────────────────
+  - kind: chump_startup_timeout
+    effect_metric: self
+    emitter: src/main.rs watchdog (INFRA-1809)
+    trigger: chump binary startup exceeded CHUMP_STARTUP_TIMEOUT_MS
+      (default 5000ms) before any subsystem reached operational state.
+      Watchdog kills the process with exit code 4 to break shell-script
+      hang cascades (pre-push hook, scripts/coord/*). Pairs with
+      RESILIENT-001 (stale binary detection) — that catches build drift,
+      this catches runtime init drift.
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, cmd, elapsed_ms, suspected_subsystem]
+
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
     effect_metric: self
