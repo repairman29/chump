@@ -725,6 +725,37 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1831: gaps-integrity local gate (META-070). Validates that
+        // every docs/gaps/*.yaml parses as YAML, has a non-empty id, and
+        // ids are unique across the registry. Would have caught both
+        // 2026-05-23 cascade keystones (#2417 + #2419) — 3 yaml files with
+        // malformed AC that blocked the merge queue for ~2.5h.
+        // Mirrors INFRA-1731 #2377 pattern: skip via env + audit emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_GAPSINT").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping gaps-integrity (CHUMP_PREFLIGHT_SKIP_GAPSINT=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_gapsint_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "gaps-integrity",
+                &[
+                    "python3",
+                    "scripts/coord/check-gaps-integrity.py",
+                    "--per-file",
+                    "docs/gaps/",
+                ],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
