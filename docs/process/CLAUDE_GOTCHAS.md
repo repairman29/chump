@@ -1134,6 +1134,34 @@ investigation.
 
 **Test fixture:** `scripts/ci/test-rollup-cascade-cancel.sh` (7 assertions).
 
+## Audit job concurrency policy — per-SHA scoping (INFRA-1852, 2026-05-23)
+
+**Symptom:** `audit` CI job repeatedly cancelled by GH Actions; operator works around with empty-commit retriggers. Hit 10+ times on 2026-05-23.
+
+**Root cause:** `ci.yml` workflow-level `concurrency` block previously keyed PR events on `pull_request.number`, so every fixup push on the same PR cancelled the in-flight CI — including `audit`, which is a required-status check. Branch protection then blocked merge until `audit` was green, forcing the operator to push empty commits specifically to re-trigger it.
+
+**Fix (INFRA-1852):** two layers of defense.
+
+1. **Workflow-level group keyed on `github.sha`** (not PR number): each unique commit gets its own concurrency group, so commit B doesn't cancel commit A's run. Cost: an operator who force-pushes 3 fixups in quick succession may now run CI on all 3 (modest runner-pool consumption). Tradeoff is correct — paying for a few extra runs beats 10+ false-failures per session.
+2. **Job-level `concurrency` override on `audit`** with `cancel-in-progress: false` + the same per-SHA group. Belt-and-suspenders: even if the workflow-level group is later widened back to per-PR (e.g. someone reverts the change for cost reasons), the audit job still completes for the SHA it started on.
+
+| Behavior | Workflow-level (all jobs) | `audit` (job-level override) |
+|---|---|---|
+| Group scope | per-SHA (`github.sha`) | per-SHA (`pull_request.head.sha`) |
+| `cancel-in-progress` | `true` | `false` |
+| Fixup push cancels prior run? | No (different SHA → different group) | No (different SHA → different group AND no-cancel) |
+| Same-SHA retry dedupes? | Yes | Yes |
+| Push to main | Unique per-run via `github.run_id` | Unique per-run via `github.run_id` |
+
+**Why per-SHA is the right scope for audit:** audit is cheap (~5 min since INFRA-503 moved cargo audit to nightly). One audit per commit is acceptable cost. The job runs the INFRA-431 chump-gap test suite + smoke-test gauntlet — these are SHA-specific (testing the actual code state at that commit), so finishing the prior run rather than cancelling+restarting is closer to "actually audit each commit."
+
+**What to do if you see audit cancellations come back:**
+1. Check `ci.yml` workflow-level `concurrency:` block — confirm group still resolves to `github.sha` for PR/merge_group events.
+2. Check the `audit:` job (line ~1321) — confirm its job-level `concurrency:` block is still present with `cancel-in-progress: false`.
+3. If you legitimately need to cancel an in-flight audit (e.g. you know the code is broken and want to save runner-minutes), close+reopen the PR or push to a different branch.
+
+**Do not "fix" this by widening the workflow-level group back to per-PR-number** — that re-introduces the failure class. If cost is the concern, set `cancel-in-progress: true` at workflow level (already is) and trust the per-SHA group to dedupe same-SHA re-runs; the job-level override on audit will still hold.
+
 ## e2e-pwa shadow DOM traversal — `#msg-input` locator pattern (INFRA-817, INFRA-1018, INFRA-1066)
 
 **Symptom:** Five e2e-pwa Playwright tests time out waiting for `page.locator("#msg-input")`.

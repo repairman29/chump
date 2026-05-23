@@ -1,7 +1,7 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-05-22
 ---
 
 # The Chump-to-Champ Roadmap
@@ -46,13 +46,15 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 ### What we know
 
-| Finding | Evidence | Status |
-|---------|----------|--------|
-| Lessons block increases fake-tool-call emission | +0.14 pp mean hallucination delta (≈ +0.0014 absolute rate on a 0–1 indicator), 10.7× A/A noise floor; n=100 per cell, 3 fixtures, non-overlapping Wilson 95% CIs | **Statistically established** |
-| Effect present across model tiers | haiku-4-5: +0.13–0.16; opus-4-5: +0.23–0.40 (reflection cell) | **Multi-model confirmed** |
-| Effect invisible to single-axis binary scoring | Binary pass-rate delta: −0.07 mean (within noise) | **Confirmed — multi-axis required** |
-| LLM judge (sonnet-4-5) rewards hallucinated tool execution | 38–63% per-trial agreement with second-LLM grader; judge scores fake `<function_calls>` blocks as PASS | **Confirmed — EVAL-010 needed** |
-| qwen2.5:14b (production target) shows +0.10 pass-rate delta | v1 harness, n=20 — not yet v2 multi-axis tested | **Preliminary, needs confirmation** |
+> **Specific magnitudes, model names, and n-values are tracked in the private companion repo (`chump-proprietary`)** per [RESEARCH_INTEGRITY.md](../process/RESEARCH_INTEGRITY.md). The summary below describes only the *shape* of the findings; contact the project owner for access to the underlying data.
+
+| Finding | Status |
+|---------|--------|
+| Lessons block has a measurable effect on fake-tool-call emission rate, above the A/A noise floor | **Statistically established** |
+| Effect direction is stable across model tiers, with magnitude variation | **Multi-model confirmed** |
+| Effect is invisible to single-axis binary pass-rate scoring | **Confirmed — multi-axis required** |
+| Within-family LLM judges reward hallucinated tool execution | **Confirmed — non-family judge needed** |
+| Smaller open-weight production-target models show a directionally consistent effect | **Preliminary, awaiting v2 confirmation** |
 
 ### What this means for the framework
 
@@ -60,20 +62,22 @@ The lessons block, as currently authored (generic directives injected via system
 
 This is **not a reason to revert or disable** the cognitive architecture. It is exactly what a rigorous eval framework should find — a specific failure mode with a specific fix path:
 
-1. **COG-014** (filed): task-specific lessons content rather than a generic block; explicit anti-hallucination guardrail ("if you do not have actual tool access, do not emit `<function_calls>` markup")
-2. **COG-016** (proposed): model-tier-aware injection — disable lessons block for agent models below a configurable capability threshold
-3. **EVAL-010** (filed): human-graded calibration labels to break LLM-judge circularity
+1. **Task-specific lessons content** rather than a generic block; explicit anti-hallucination guardrail ("if you do not have actual tool access, do not emit `<function_calls>` markup")
+2. **Model-tier-aware injection** — disable lessons block for agent models below a configurable capability threshold
+3. **Human-graded calibration labels** to break LLM-judge circularity
+
+Per-eval gap IDs and remediation tracker links live in the private companion repo.
 
 The architecture itself — the blackboard, the surprise tracker, the belief state, the counterfactual reasoning — is not implicated in the hallucination finding. The harm channel is specifically the lessons block content injection.
 
 ### What the eval infrastructure has validated
 
-The A/B harness work (COG-011 through EVAL-022) produced these durable contributions regardless of whether the lessons block helps or hurts:
+The A/B harness work produced these durable contributions regardless of whether the lessons block helps or hurts (gap IDs in the private companion repo):
 
 - **Multi-axis scoring** (`score.py` v2): `is_correct` + `hallucinated_tools` + `did_attempt` — binary pass/fail misses the most important failure mode
 - **A/A controls**: required to calibrate noise floor before any A/B delta is interpretable
-- **Wilson 95% CIs**: n=20 results at ±0.22 are not science; n=100 with non-overlapping CIs are
-- **Multi-judge cross-check**: within-family judge bias (sonnet judging haiku) is shared, not idiosyncratic — a non-Anthropic judge is needed to break it (EVAL-014)
+- **Wilson 95% CIs**: under-powered single-cell results aren't science; the harness uses cell sizes that produce non-overlapping CIs before any delta is claimed
+- **Multi-judge cross-check**: within-family judge bias is shared, not idiosyncratic — a non-family judge is needed to break it
 
 See [CONSCIOUSNESS_AB_RESULTS.md](https://github.com/repairman29/chump/blob/main/docs/research/CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
 
@@ -216,7 +220,7 @@ Move from text heuristics to **formal counterfactual reasoning**.
 
 - [x] **Episode causal graph**: `CausalGraph` with nodes (Action/Outcome/Observation) and edges; `build_causal_graph_heuristic()` constructs DAG from episode tool calls; `paths_from()` for traversal; JSON serialization. Note: the graph builder is heuristic (sequential chain), not LLM-produced.
 - [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
-- [x] **Lesson upgrade**: `lesson_from_graph_paths()` derives lesson text and `causal_confidence` from `CausalGraph.paths_from()` path analysis; `analyze_episode()` builds graph first, falls back to heuristic; `causal_confidence` stored in `chump_causal_lessons.causal_confidence REAL` column; confidence blended as `(sentiment_conf + graph_conf) / 2` when graph-derived. (COG-004)
+- [x] **Lesson upgrade**: `lesson_from_graph_paths()` derives lesson text and `causal_confidence` from `CausalGraph.paths_from()` path analysis; `analyze_episode()` builds graph first, falls back to heuristic; `causal_confidence` stored in `chump_causal_lessons.causal_confidence REAL` column; confidence blended as `(sentiment_conf + graph_conf) / 2` when graph-derived.
 - [x] **Human review loop**: `claims_for_review()` surfaces high-confidence frequently-applied lessons; `review_causal_claim()` boosts or reduces confidence based on user confirmation.
 
 ---
