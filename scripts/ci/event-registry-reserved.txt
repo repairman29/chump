@@ -277,3 +277,8 @@ lease_reaper_skipped_in_progress  # reason: stale-lease-reaper telemetry (script
 lease_reaper_skipped_invalid  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
 reaper_self_paused  # reason: reaper telemetry, pre-existing
 restart  # reason: daemon-restart telemetry, pre-existing — too generic to register without scope
+
+# INFRA-1744: pre-push test gate timeout — emitted from scripts/git-hooks/pre-push
+# when cargo test exceeds CHUMP_PREPUSH_TEST_TIMEOUT_S budget under sibling
+# worktree contention; one-off operator-facing signal, not a steady-state event.
+prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-push timeout branch; printf-formatted from bash, not via emit_event helper
