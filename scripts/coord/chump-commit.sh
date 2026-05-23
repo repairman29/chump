@@ -650,6 +650,81 @@ if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
     fi
 fi
 
+# INFRA-1853: auto-append new CHUMP_* env refs to scripts/ci/env-vars-internal.txt.
+# Same auto-fix philosophy as INFRA-1833: detect drift at commit-time, fix it
+# silently, agent can't bypass what they don't see. Caught ~5× today
+# (CHUMP_PREFLIGHT_SKIP_GAPSINT/PRSCOPE/CLAUDELEAK/ENVVARS forgotten allowlists
+# → CI env-var-coverage failures).
+#
+# Scope: only fires when staged delta has .rs/.sh/.py changes (skip docs-only).
+# Bypass: CHUMP_AUTO_ENVVAR=0 emits auto_envvar_bypassed audit event.
+_envvar_file="${REPO_ROOT}/scripts/ci/env-vars-internal.txt"
+_has_code_staged=0
+if echo "$_staged_paths" | grep -qE '\.(rs|sh|py)$' 2>/dev/null; then
+    _has_code_staged=1
+fi
+if [[ "$_has_code_staged" -eq 1 ]] && [[ -f "$_envvar_file" ]]; then
+    _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+    if [[ "${CHUMP_AUTO_ENVVAR:-1}" == "0" ]]; then
+        printf '{"ts":"%s","kind":"auto_envvar_bypassed","session":"%s","reason":"CHUMP_AUTO_ENVVAR=0"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "${CHUMP_SESSION_ID:-${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}}" \
+            >> "$_amb" 2>/dev/null || true
+        echo "[chump-commit] INFRA-1853: skipping auto-envvar-append (CHUMP_AUTO_ENVVAR=0); audit emitted" >&2
+    else
+        # Extract CHUMP_* refs from staged diff hunks only (not whole files).
+        # Restrict to .rs/.sh/.py to avoid noise from docs/comments in markdown.
+        _new_envvars=$(
+            git diff --cached --no-color -U0 -- '*.rs' '*.sh' '*.py' 2>/dev/null \
+              | grep -oE '\bCHUMP_[A-Z][A-Z0-9_]+\b' \
+              | sort -u \
+              | while read -r ev; do
+                    # Skip if already in env-vars-internal.txt (exact-line match
+                    # to avoid substring false positives — entries are typically
+                    # "CHUMP_FOO" on their own line, possibly trailing comment).
+                    if ! grep -qE "^${ev}\b" "$_envvar_file" 2>/dev/null; then
+                        echo "$ev"
+                    fi
+                done
+        )
+        if [[ -n "$_new_envvars" ]]; then
+            # Find which staged file(s) introduce each new env (breadcrumb).
+            {
+                echo ""
+                echo "# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs."
+                echo "# Replace the AUTO marker with a real description on the next commit."
+                while read -r ev; do
+                    [[ -z "$ev" ]] && continue
+                    _origin=$(git diff --cached --no-color -- '*.rs' '*.sh' '*.py' 2>/dev/null \
+                        | grep -lE "\b${ev}\b" 2>/dev/null \
+                        | head -1 || true)
+                    # `git diff -l` gives paths — fall back to grep-on-diff if not.
+                    if [[ -z "$_origin" ]]; then
+                        _origin=$(git diff --cached --name-only --no-color 2>/dev/null \
+                            | while read -r f; do
+                                git diff --cached --no-color -- "$f" 2>/dev/null \
+                                    | grep -q "\b${ev}\b" && echo "$f" && break
+                              done | head -1)
+                    fi
+                    [[ -z "$_origin" ]] && _origin="(unknown)"
+                    echo "# detected in: ${_origin}"
+                    echo "${ev}"
+                done <<<"$_new_envvars"
+            } >> "$_envvar_file"
+            git add "$_envvar_file" 2>/dev/null || true
+            _count=$(echo "$_new_envvars" | grep -c '.' || echo 0)
+            printf '{"ts":"%s","kind":"auto_envvar_applied","session":"%s","count":%s}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "${CHUMP_SESSION_ID:-${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}}" \
+                "$_count" \
+                >> "$_amb" 2>/dev/null || true
+            echo "[chump-commit] INFRA-1853: auto-appended $_count new CHUMP_* env(s) to env-vars-internal.txt" >&2
+            echo "  $(echo "$_new_envvars" | tr '\n' ' ')" >&2
+        fi
+    fi
+fi
+
 # Commit with the passed-through git args.
 # Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
 # closed and the lock released after git exits. With exec the FD is also
