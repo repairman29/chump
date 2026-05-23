@@ -8,6 +8,8 @@
 #
 # Algorithm:
 #   1. Find the foreground Claude.app PID (parent of all legitimate sessions).
+#      Uses a multi-probe strategy (pgrep → ps|awk → launchctl) to handle
+#      macOS pgrep quirks with dotted bundle paths (INFRA-1786).
 #   2. List every `claude` binary process (the `claude --output-format stream-json`
 #      ones, NOT the desktop Claude.app itself).
 #   3. For each, walk the ppid chain. If the chain reaches the foreground
@@ -16,18 +18,28 @@
 #      SIGKILL it (SIGTERM has been empirically observed not to reach these).
 #   5. Emit `kind=orphan_subprocess_reaped` with count + age + RSS aggregates.
 #
+# Safety gate (INFRA-1786):
+#   If fg_pid cannot be determined AND CHUMP_REAPER_HEADLESS is NOT set to "1",
+#   the script REFUSES to operate (exits 3). On a developer workstation this
+#   protects active fleet workers that would otherwise be mass-reaped.
+#   Set CHUMP_REAPER_HEADLESS=1 to restore the old reap-everything behaviour
+#   for CI/headless environments.
+#
 # Idempotent: safe to run every minute.
 #
 # Env:
 #   REAP_AGE                   default 3600   minimum etime in seconds before kill
 #   CHUMP_REAPER_DISABLED      set to 1 to no-op (bypass)
+#   CHUMP_REAPER_HEADLESS      set to 1 to allow reap-all when fg_pid is empty
 #   CHUMP_AMBIENT_LOG          override ambient.jsonl path
 #   REPO_ROOT                  override repo root (default: derived)
+#   CHUMP_REAPER_PGREP_BIN     override pgrep binary for tests
 #
 # Exit codes:
 #   0  normal (whether or not anything was killed)
 #   0  bypass via CHUMP_REAPER_DISABLED
 #   2  internal failure (ps unavailable, etc.)
+#   3  safety gate: fg_pid=none on macOS without CHUMP_REAPER_HEADLESS=1
 
 set -euo pipefail
 
@@ -47,19 +59,54 @@ REAP_AGE="${REAP_AGE:-3600}"
 # PATH cleanly).
 PS_BIN="${CHUMP_REAPER_PS_BIN:-ps}"
 KILL_BIN="${CHUMP_REAPER_KILL_BIN:-kill}"
+PGREP_BIN="${CHUMP_REAPER_PGREP_BIN:-pgrep}"
 # CHUMP_REAPER_DRY_RUN=1 → identify orphans, emit event, but do not actually
 # SIGKILL. Used by the test harness so it can stub `ps` output without needing
 # real PIDs to exist.
 DRY_RUN="${CHUMP_REAPER_DRY_RUN:-0}"
 
 # ── 1. Foreground Claude.app PID ─────────────────────────────────────────────
-# We use pgrep against the macOS app bundle path. If absent (e.g. headless
-# Linux CI), FG_PID is empty and *every* claude binary becomes a candidate
-# for reaping (which is fine on a headless host — there's no foreground
-# Claude to protect).
+# Multi-probe strategy to handle macOS pgrep quirks with dotted bundle paths
+# (INFRA-1786). Tries three approaches in order; first non-empty result wins.
+#
+# Probe A: pgrep -f (may silently fail on macOS with bundle paths)
+# Probe B: ps -A | awk  (more reliable for bundle-path matching)
+# Probe C: launchctl print  (reads service registry directly)
+#
+# If all probes return empty AND CHUMP_REAPER_HEADLESS != "1", we refuse to
+# operate to avoid mass-reaping active fleet workers (safety gate, INFRA-1786).
+CLAUDE_APP_PATH='/Applications/Claude.app/Contents/MacOS/Claude'
 FG_PID=""
-if command -v pgrep >/dev/null 2>&1; then
-    FG_PID="$(pgrep -f '/Applications/Claude.app/Contents/MacOS/Claude' 2>/dev/null | head -1 || true)"
+
+# Probe A: pgrep -f
+if [[ -z "$FG_PID" ]] && command -v "$PGREP_BIN" >/dev/null 2>&1; then
+    FG_PID="$("$PGREP_BIN" -f "$CLAUDE_APP_PATH" 2>/dev/null | head -1 || true)"
+fi
+
+# Probe B: ps -A -o pid,command | awk (matches the literal path in the command column)
+if [[ -z "$FG_PID" ]]; then
+    FG_PID="$("$PS_BIN" -A -o pid=,command= 2>/dev/null \
+        | awk -v path="$CLAUDE_APP_PATH" '$0 ~ path {print $1; exit}' \
+        || true)"
+fi
+
+# Probe C: launchctl print — reads the service registry and extracts the PID
+# Only available on macOS (launchctl with print subcommand).
+if [[ -z "$FG_PID" ]] && command -v launchctl >/dev/null 2>&1; then
+    FG_PID="$(launchctl print gui/"$(id -u)" 2>/dev/null \
+        | awk '/Claude/ && /pid/ {match($0, /pid = ([0-9]+)/, a); if (a[1]) {print a[1]; exit}}' \
+        || true)"
+fi
+
+# Safety gate: if we still have no fg_pid and we're not in headless mode,
+# refuse to operate to avoid mass-reaping active fleet workers.
+if [[ -z "$FG_PID" && "${CHUMP_REAPER_HEADLESS:-0}" != "1" ]]; then
+    TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    mkdir -p "$(dirname "$AMBIENT_LOG")"
+    printf '{"ts":"%s","kind":"reaper_safety_gate_triggered","reason":"fg_pid_none","headless":false}\n' \
+        "$TS" >> "$AMBIENT_LOG"
+    echo "fg_pid=none on macOS without CHUMP_REAPER_HEADLESS=1 — refusing to reap everything" >&2
+    exit 3
 fi
 
 # ── 2. Build ppid table: child_pid<TAB>parent_pid<TAB>etime_secs<TAB>rss ─────

@@ -173,6 +173,7 @@ premature_closure_auto_fixed # reason: planned for premature-closure auto-fix em
 
 # ── Reaper observability ──────────────────────────────────────────────────────
 reaper_run                 # reason: planned for reaper start/stop lifecycle emit
+reaper_safety_gate_triggered  # reason: INFRA-1786 — emitted by reap-orphan-claude-procs.sh when fg_pid=none on non-headless macOS; safety gate refuses reap-all
 
 # ── Review handoff ────────────────────────────────────────────────────────────
 review_handoff_escalated   # reason: planned for review handoff escalation emit
