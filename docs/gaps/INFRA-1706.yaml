@@ -1,0 +1,12 @@
+- id: INFRA-1706
+  domain: INFRA
+  title: "RESILIENT: external subagent watchdog SIGKILLs on INFRA-1486 budget breach (active enforcement layer above soft-pause)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

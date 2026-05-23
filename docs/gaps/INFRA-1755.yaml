@@ -1,0 +1,9 @@
+- id: INFRA-1755
+  domain: INFRA
+  title: "RESILIENT: idle-detector watchdog for hung claude subprocesses"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - New daemon (scripts/ops/claude-process-watchdog.sh) that every 10s polls active leases, checks if their claude subprocess is silent (no stderr/stdout) for > WATCHDOG_STALL_THRESHOLD (default 120s), emits kind=claude_process_stalled to ambient.jsonl; on second silent period, escalates to kill -15; on third, kill -9. Runs via launchd, exits gracefully if NATS unavailable.
+

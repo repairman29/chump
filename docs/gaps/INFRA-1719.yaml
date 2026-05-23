@@ -1,0 +1,12 @@
+- id: INFRA-1719
+  domain: INFRA
+  title: "EFFECTIVE: tree-sitter AST pre-step in chump gap decompose — pass structured codebase shape to LLM instead of subprocess walks"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

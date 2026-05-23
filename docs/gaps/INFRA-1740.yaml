@@ -1,0 +1,12 @@
+- id: INFRA-1740
+  domain: INFRA
+  title: "RESILIENT: adversary as continuous resilience drill — launchd-scheduled chaos injection (from 2026-05-22 audit, gate on RESILIENT pillar breach)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
