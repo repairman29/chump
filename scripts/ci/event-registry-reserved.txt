@@ -333,3 +333,12 @@ liaison_cache_stale  # reason: INFRA-1874 emitted from scripts/coord/lib/github_
  INFRA-1866 — audit-flake-catalog.sh CHUMP_AUDIT_FLAKE_CATALOG=0 opt-out
 flake_catalog_orphan  # reason: INFRA-1866 — audit-flake-catalog.sh orphan catalog entry
 inbox_session_derived  # reason: INFRA-1879 — emitted by scripts/coord/inbox-poll.sh on session-id derivation; positional-arg form
+
+# INFRA-1875: github-liaison.sh webhook-health probe + polling fallback.
+# Emit sites use the local `_emit_ambient KIND ...` helper (underscore-prefixed,
+# positional bare-string kind arg) which doesn't match Pattern 5b's regex
+# (emit_ambient "KIND" — no leading underscore, quoted arg). Registered in
+# EVENT_REGISTRY.yaml; reserved here to satisfy register-without-emit.
+liaison_webhook_unhealthy  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle when probe fails CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS times; _emit_ambient helper not grep-scannable
+liaison_polling_fallback_active  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle alongside liaison_webhook_unhealthy; same helper-not-scannable issue
+liaison_webhook_recovered  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle on first successful probe after fallback; same helper-not-scannable issue
