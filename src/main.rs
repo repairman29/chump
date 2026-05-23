@@ -904,8 +904,13 @@ fn main() -> Result<()> {
                 "✖  chump: startup exceeded {}ms budget — likely subsystem init hang.",
                 startup_timeout_ms
             );
-            eprintln!("   Audit: kind=chump_startup_timeout (see {})", ambient_path);
-            eprintln!("   Recovery: CHUMP_STARTUP_TIMEOUT_MS=0 to disable; pin subsystem via --debug.");
+            eprintln!(
+                "   Audit: kind=chump_startup_timeout (see {})",
+                ambient_path
+            );
+            eprintln!(
+                "   Recovery: CHUMP_STARTUP_TIMEOUT_MS=0 to disable; pin subsystem via --debug."
+            );
             std::process::exit(4);
         });
     }
@@ -920,7 +925,6 @@ fn main() -> Result<()> {
 }
 
 async fn async_main(args: Vec<String>) -> Result<()> {
-
     if args.iter().any(|a| a == "--desktop") {
         desktop_launcher::launch_and_wait(&args);
     }
