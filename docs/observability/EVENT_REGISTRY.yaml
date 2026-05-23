@@ -4226,3 +4226,15 @@ events:
       with the next liaison_elected to confirm clean handoff.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pid, reason]
+
+  - kind: opus_message_sent
+    effect_metric: opus_messages_sent_24h
+    emitter: scripts/coord/opus-message.sh (INFRA-1796)
+    trigger: >
+      A v0 addressed-async DM was sent between Opus sessions via the
+      .chump-locks/opus-inbox/ inbox channel. Bridge primitive until
+      INFRA-1759 (full A2A Layer 2b RPC) lands. Recipient can be
+      session:<id>, gap:<GAP-ID> (routed to current lease holder), or
+      all-opus (broadcast). Operator can inspect via opus-message.sh list.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, to, from, ref, msg_id]
