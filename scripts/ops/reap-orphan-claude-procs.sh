@@ -54,6 +54,49 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 REAP_AGE="${REAP_AGE:-3600}"
 
+# ── INFRA-1851: PTY-pressure urgent mode ─────────────────────────────────────
+# When the count of allocated /dev/ttys??? device files exceeds 80% of the
+# kernel limit (kern.tty.ptmx_max), the operator's machine is minutes away
+# from refusing new shells / tmux panes / SSH sessions. The 3600s age
+# threshold means a fresh leak takes up to ~65 min to drain on the next
+# regular sweep — too slow once we're already near the cap.
+#
+# Behaviour: detect pressure at the top of the run; if pressured AND no
+# operator-supplied REAP_AGE override is in play, drop the effective age
+# floor to CHUMP_REAPER_PRESSURE_AGE (default 600s = 10 min) so this sweep
+# catches anything started in the last hour, not just the last hour-plus.
+#
+# Tunables:
+#   CHUMP_REAPER_PRESSURE_THRESHOLD  default 80  percent of ptmx_max
+#   CHUMP_REAPER_PRESSURE_AGE        default 600 fallback REAP_AGE when pressured
+#   CHUMP_REAPER_PRESSURE_DISABLED   set to 1 to skip pressure check entirely
+#
+# Emits kind=reaper_pty_pressure (with allocated/limit/threshold/new_age)
+# so dashboards can see when the urgent mode trips. Safe-by-default: if
+# the detection probes fail (missing sysctl / ls), no pressure assumption
+# is made and REAP_AGE stays at its operator-supplied value.
+if [ "${CHUMP_REAPER_PRESSURE_DISABLED:-0}" != "1" ]; then
+    _pty_limit=$(sysctl -n kern.tty.ptmx_max 2>/dev/null || echo "")
+    _pty_alloc=$(ls /dev/ttys??? 2>/dev/null | wc -l | awk '{print $1}')
+    _pty_threshold_pct="${CHUMP_REAPER_PRESSURE_THRESHOLD:-80}"
+    _pty_pressure_age="${CHUMP_REAPER_PRESSURE_AGE:-600}"
+    if [ -n "$_pty_limit" ] && [ "$_pty_limit" -gt 0 ] && [ "$_pty_alloc" -gt 0 ]; then
+        # integer percent — avoids bc dependency on shells without it
+        _pty_pct=$(( _pty_alloc * 100 / _pty_limit ))
+        if [ "$_pty_pct" -ge "$_pty_threshold_pct" ]; then
+            # only override if operator did NOT explicitly set REAP_AGE
+            if [ -z "${REAP_AGE_OVERRIDE_SOURCE:-}" ] && [ -z "${_REAP_AGE_SET:-}" ]; then
+                REAP_AGE="$_pty_pressure_age"
+            fi
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"reaper_pty_pressure","allocated":%d,"limit":%d,"pct":%d,"threshold":%d,"new_reap_age":%d}\n' \
+                "$_ts" "$_pty_alloc" "$_pty_limit" "$_pty_pct" "$_pty_threshold_pct" "$REAP_AGE" \
+                >> "$AMBIENT_LOG" 2>/dev/null || true
+        fi
+    fi
+fi
+
 # Allow tests to override the `ps` binary (PATH shim is the cleaner way; this
 # is a belt-and-braces fallback for cases where the test runner can't manipulate
 # PATH cleanly).

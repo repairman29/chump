@@ -4325,3 +4325,19 @@ events:
       meaningful changes filter on delta_count > 0.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, repo, items_count, delta_count]
+  # INFRA-1851: PTY-pressure urgent mode for the claude-reaper. Fires when
+  # the count of allocated /dev/ttys??? device files crosses 80% of
+  # kern.tty.ptmx_max — the threshold past which new shells/tmux panes/SSH
+  # sessions start to fail. The reaper response is to lower REAP_AGE to
+  # 600s (10 min) for that sweep so a fresh leak drains in 10 min instead
+  # of the 60-min default.
+  - kind: reaper_pty_pressure
+    effect_metric: self
+    emitter: scripts/ops/reap-orphan-claude-procs.sh (INFRA-1851)
+    trigger: >
+      Pre-reap PTY-allocation probe found ≥80% of kern.tty.ptmx_max
+      consumed (default threshold; tunable via CHUMP_REAPER_PRESSURE_THRESHOLD).
+      Reaper lowers its effective age floor for this sweep only; the next
+      sweep re-evaluates pressure from scratch.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, allocated, limit, pct, threshold, new_reap_age]
