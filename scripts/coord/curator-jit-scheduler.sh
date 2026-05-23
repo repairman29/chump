@@ -173,10 +173,12 @@ handle_done() {
     local next_gap
     next_gap=$(pick_next_gap "$curator")
     if [ -z "$next_gap" ]; then
+        # scanner-anchor: "kind":"curator_jit_no_gap"
         emit "curator_jit_no_gap" "\"curator\":\"$curator\""
         return
     fi
     if already_scheduled_recently "$curator" "$next_gap"; then
+        # scanner-anchor: "kind":"curator_jit_skipped"
         emit "curator_jit_skipped" "\"curator\":\"$curator\",\"gap_id\":\"$next_gap\",\"reason\":\"dedup_window\""
         return
     fi
@@ -188,6 +190,7 @@ handle_done() {
     body="JIT ASSIGNMENT: $next_gap $title ($pri) — your lane match. Spec at docs/gaps/$next_gap.yaml. Reply STUCK if blocked."
     if "$BROADCAST_SH" --to "$curator" WARN "$body" >/dev/null 2>&1; then
         mark_scheduled "$curator" "$next_gap"
+        # scanner-anchor: "kind":"curator_jit_scheduled"
         emit "curator_jit_scheduled" "\"curator\":\"$curator\",\"gap_id\":\"$next_gap\",\"priority\":\"$pri\""
     else
         emit "curator_jit_skipped" "\"curator\":\"$curator\",\"gap_id\":\"$next_gap\",\"reason\":\"broadcast_failed\""
