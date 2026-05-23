@@ -739,6 +739,22 @@ pub fn run(argv: &[String]) -> i32 {
                 fields: vec![(
                     "reason".to_string(),
                     "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "gaps-integrity",
+                &[
+                    "python3",
+                    "scripts/coord/check-gaps-integrity.py",
+                    "--per-file",
+                    "docs/gaps/",
+                ],
+                GateKind::Rust,
+            ));
+        }
+
         // INFRA-1793: no-claude-leak audit (INFRA-1051). Catches NEW
         // Claude-specific references in product-layer code (src/,
         // scripts/coord/, scripts/dispatch/, scripts/ops/). Today CI runs
@@ -758,13 +774,6 @@ pub fn run(argv: &[String]) -> i32 {
             });
         } else {
             steps.push(step(
-                "gaps-integrity",
-                &[
-                    "python3",
-                    "scripts/coord/check-gaps-integrity.py",
-                    "--per-file",
-                    "docs/gaps/",
-                ],
                 "no-claude-leak",
                 &["bash", "scripts/ci/test-no-claude-leak.sh"],
                 GateKind::Rust,
