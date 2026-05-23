@@ -4238,3 +4238,13 @@ events:
       all-opus (broadcast). Operator can inspect via opus-message.sh list.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, to, from, ref, msg_id]
+  - kind: handoff_contract_violation
+    effect_metric: subagent_contract_failures_24h
+    emitter: crates/chump-handoff/src/lib.rs (INFRA-1720)
+    trigger: >
+      Subagent handoff failed schema validation, semantic validation, or
+      response parsing. Indicates prompt refinement or contract definition
+      needed. Routes violations by `contract_name` so authors can identify
+      broken patterns per contract.
+    consumers: [fleet-brief, subagent-prompt-feedback]
+    fields_required: [ts, kind, contract_name, error, raw_output_first_100]
