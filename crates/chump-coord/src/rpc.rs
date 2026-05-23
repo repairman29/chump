@@ -69,10 +69,9 @@ pub enum RpcError {
 impl std::fmt::Display for RpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RpcError::NotImplemented => write!(
-                f,
-                "RPC stub — real impl ships in INFRA-1119 slice 2/4"
-            ),
+            RpcError::NotImplemented => {
+                write!(f, "RPC stub — real impl ships in INFRA-1119 slice 2/4")
+            }
             RpcError::Deserialize(e) => write!(f, "deserialize failed: {e}"),
         }
     }
@@ -177,10 +176,7 @@ pub async fn call_rpc(
 /// Server-side handler registration. Stub returns NotImplemented; real
 /// impl in slice 2/4 will register the handler against a NATS subject
 /// subscription and serialize responses through a tokio task.
-pub async fn serve_rpc<F>(
-    method: &str,
-    handler: F,
-) -> Result<(), RpcError>
+pub async fn serve_rpc<F>(method: &str, handler: F) -> Result<(), RpcError>
 where
     F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
 {

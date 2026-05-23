@@ -115,22 +115,10 @@ pub struct ConsensusRecord {
 impl ConsensusRecord {
     /// Compute the decision from a set of votes against the request's
     /// quorum.
-    pub fn finalize(
-        request: VoteRequest,
-        votes: HashMap<String, VoteProof>,
-    ) -> Self {
-        let committed_count = votes
-            .values()
-            .filter(|p| p.vote.is_committed())
-            .count();
-        let approval_count = votes
-            .values()
-            .filter(|p| p.vote == Vote::Approve)
-            .count();
-        let abort_count = votes
-            .values()
-            .filter(|p| p.vote == Vote::Abort)
-            .count();
+    pub fn finalize(request: VoteRequest, votes: HashMap<String, VoteProof>) -> Self {
+        let committed_count = votes.values().filter(|p| p.vote.is_committed()).count();
+        let approval_count = votes.values().filter(|p| p.vote == Vote::Approve).count();
+        let abort_count = votes.values().filter(|p| p.vote == Vote::Abort).count();
 
         let decision = if committed_count < request.quorum {
             ConsensusDecision::Inconclusive
