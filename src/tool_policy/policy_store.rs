@@ -219,6 +219,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn upsert_then_active_policy() {
         let _d = isolated_env();
         let _ = upsert_policy("run_cli", "15min", 900, Some("test"));
@@ -229,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn upsert_replaces_same_scope_extends_expiry() {
         let _d = isolated_env();
         let a = upsert_policy("write_file", "15min", 60, None);
@@ -244,6 +246,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn remove_tool_clears_all_scopes() {
         let _d = isolated_env();
         upsert_policy("bash", "15min", 900, None);
@@ -254,6 +257,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn expired_policy_returns_none() {
         let _d = isolated_env();
         // Write directly to bypass clamp, then re-read.
@@ -276,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn ttl_clamped_lower_bound() {
         let _d = isolated_env();
         let e = upsert_policy("calc", "burst", 1, None);
@@ -292,6 +297,7 @@ mod tests {
     // policy_store::active_policy() at the moment of tool dispatch — that's
     // the exact predicate we exercise here.
     #[test]
+    #[serial_test::serial]
     fn ac6_15min_policy_fires_then_expires() {
         let _d = isolated_env();
 
