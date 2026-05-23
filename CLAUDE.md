@@ -104,8 +104,15 @@ chump gap ship <ID> --update-yaml
 
 > Uses Claude Code's `Agent` tool. Non-Claude harnesses parallelize via the fleet (multiple workers) — see harness contract doc §Out-of-scope.
 
-When spawning via the `Agent` tool, paste the full shipping epilogue from
-`docs/process/SUBAGENT_DISPATCH.md` into every subagent prompt.
+When spawning via the `Agent` tool, paste the full shipping epilogue **AND** the
+pre-push checklist from `docs/process/SUBAGENT_DISPATCH.md` into every subagent
+prompt. The checklist (META-069, 2026-05-23) catches the 5 most common
+deterministic CI-fail classes locally — saves ~5-10 min CI round-trip per push.
+
+**Dispatch defaults by model** (per SUBAGENT_DISPATCH.md):
+Opus orchestrates and reviews; Sonnet implements per-gap; Haiku does mechanical
+sweeps. When an Opus instance picks an `xs` or `s` gap, the default move is to
+dispatch a Sonnet rather than hand-implement.
 
 **Wall-clock budget:** `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S` (default 900s = 15 min).
 If `bot-merge.sh` has been running for 15 min without progress markers, the
