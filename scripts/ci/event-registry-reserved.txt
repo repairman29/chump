@@ -332,3 +332,4 @@ audit_no_verify  # reason: INFRA-1834 emitted from chump-commit.sh + bot-merge.s
 liaison_cache_stale  # reason: INFRA-1874 emitted from scripts/coord/lib/github_cache.sh::cache_lookup_pr when age_s > CHUMP_LIAISON_CACHE_STALE_S (default 600); operator-visible 'cache degraded' signal separate from per-call cache_miss
  INFRA-1866 — audit-flake-catalog.sh CHUMP_AUDIT_FLAKE_CATALOG=0 opt-out
 flake_catalog_orphan  # reason: INFRA-1866 — audit-flake-catalog.sh orphan catalog entry
+inbox_session_derived  # reason: INFRA-1879 — emitted by scripts/coord/inbox-poll.sh on session-id derivation; positional-arg form

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/coord/inbox-poll.sh — INFRA-1860
+# scripts/coord/inbox-poll.sh — INFRA-1860 / INFRA-1879
 #
 # PostToolUse hook helper. Polls the curator's inbox for unread messages and
 # outputs them to stdout (which Claude Code surfaces as a system-reminder
@@ -26,16 +26,59 @@ INBOX_DIR="$LOCKS/inbox"
 COUNTER="$LOCKS/inbox-poll-counter"
 THROTTLE_N="${CHUMP_INBOX_POLL_N:-20}"
 
-# Need a session id to know which inbox to poll. Curators set this via env
-# (CHUMP_SESSION_ID) or it's derivable from .chump-locks/claim-*.json.
-SESSION="${CHUMP_SESSION_ID:-}"
-if [[ -z "$SESSION" ]]; then
-    # Try to find from any active claim lease this process owns.
-    # Use find -printf for portability (shellcheck SC2012: don't parse ls).
-    SESSION="$(find "$LOCKS" -maxdepth 1 -name 'claim-*.json' -type f 2>/dev/null \
-        | head -1 | xargs -I{} basename {} .json | head -c 256 || echo)"
+# Need a session id to know which inbox to poll. INFRA-1879 derivation order:
+#   1. CHUMP_SESSION_ID env (explicit)
+#   2. CLAUDE_SESSION_ID env (Claude Code provides for free)
+#   3. tmux pane title (curators run inside tmux panes named curator-opus-*)
+#   4. most-recent .chump-locks/claim-*.json (worker sessions with active claim)
+#   5. .chump/operator_id file (single-curator-per-machine fallback)
+# Path that succeeded is emitted to ambient for observability.
+SESSION=""
+DERIVATION=""
+
+# Path 1: CHUMP_SESSION_ID
+if [[ -n "${CHUMP_SESSION_ID:-}" ]]; then
+    SESSION="$CHUMP_SESSION_ID"
+    DERIVATION="env_chump"
 fi
-[[ -z "$SESSION" ]] && exit 0  # no session id, nothing to poll
+
+# Path 2: CLAUDE_SESSION_ID (free from Claude Code)
+if [[ -z "$SESSION" && -n "${CLAUDE_SESSION_ID:-}" ]]; then
+    # Curator sessions tend to be named curator-opus-<role>-<date>; if the
+    # CLAUDE_SESSION_ID happens to match an existing inbox file, use it.
+    if [[ -f "$INBOX_DIR/${CLAUDE_SESSION_ID}.jsonl" ]]; then
+        SESSION="$CLAUDE_SESSION_ID"
+        DERIVATION="env_claude"
+    fi
+fi
+
+# Path 3: tmux pane title (curators run in tmux panes titled like the session)
+if [[ -z "$SESSION" ]] && command -v tmux >/dev/null 2>&1; then
+    pane_title="$(tmux display-message -p '#W' 2>/dev/null || echo)"
+    if [[ -n "$pane_title" && -f "$INBOX_DIR/${pane_title}.jsonl" ]]; then
+        SESSION="$pane_title"
+        DERIVATION="tmux_pane"
+    fi
+fi
+
+# Path 4: most-recent active claim
+if [[ -z "$SESSION" ]]; then
+    SESSION="$(find "$LOCKS" -maxdepth 1 -name 'claim-*.json' -type f 2>/dev/null \
+        | head -1 | xargs -I{} basename {} .json 2>/dev/null | head -c 256 || echo)"
+    [[ -n "$SESSION" ]] && DERIVATION="claim_lease"
+fi
+
+# Path 5: single-curator-per-machine fallback via .chump/operator_id
+if [[ -z "$SESSION" && -f "$REPO/.chump/operator_id" ]]; then
+    op_id="$(head -c 256 "$REPO/.chump/operator_id" 2>/dev/null | tr -d '[:space:]')"
+    if [[ -n "$op_id" && -f "$INBOX_DIR/${op_id}.jsonl" ]]; then
+        SESSION="$op_id"
+        DERIVATION="operator_id"
+    fi
+fi
+
+# No-op if no derivation matched
+[[ -z "$SESSION" ]] && exit 0
 
 INBOX="$INBOX_DIR/${SESSION}.jsonl"
 CURSOR="$INBOX_DIR/${SESSION}.cursor"
@@ -66,8 +109,11 @@ echo ""
 bash "$INBOX_TOOL" read --session "$SESSION" --limit 5 --no-advance 2>&1 || true
 echo "</system-reminder>"
 
-# Audit emit
+# Audit emit (INFRA-1879: include derivation path for observability)
 "$REPO/scripts/dev/ambient-emit.sh" inbox_auto_poll_surfaced \
-    "session=$SESSION" "tool_calls_since_last_poll=$THROTTLE_N" 2>/dev/null || true
+    "session=$SESSION" "tool_calls_since_last_poll=$THROTTLE_N" \
+    "derivation_path=$DERIVATION" 2>/dev/null || true
+"$REPO/scripts/dev/ambient-emit.sh" inbox_session_derived \
+    "session=$SESSION" "derivation_path=$DERIVATION" 2>/dev/null || true
 
 exit 0
