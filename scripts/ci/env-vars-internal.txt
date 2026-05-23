@@ -462,3 +462,4 @@ CHUMP_IP_LABEL
 # INFRA-1788: skip the local docs-delta-trailer step in chump preflight --pre-commit
 CHUMP_PREFLIGHT_SKIP_DOCSDELTA
 CHUMP_PREFLIGHT_SKIP_GAPSINT
+CHUMP_PREFLIGHT_SKIP_MDLINKS
