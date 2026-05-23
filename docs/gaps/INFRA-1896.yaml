@@ -1,0 +1,16 @@
+- id: INFRA-1896
+  domain: INFRA
+  title: "CREDIBLE: repo-health.yml warnings-as-failure rollup bug — annotations cause job FAILURE conclusion when underlying steps SUCCEED (split from INFRA-1859 scope)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    PR #2416 was blocked because repo-health.yml fast-checks job rolled up annotations to a FAILURE job conclusion even though every step logged success. Pre-existing repo-state (528 broken md-links + 1067 undocumented CHUMP_ env vars) flagged as WARNINGS, not introduced by the PR. Split from INFRA-1859 scope since the fix is a workflow yaml change, not a preflight gate.
+  acceptance_criteria:
+    - "repo-health.yml fast-checks job: annotations emitted via WARNING level MUST NOT roll up to job conclusion FAILURE"
+    - "If only ##[warning] outputs exist (no ##[error]), step exits 0 AND job conclusion is success"
+    - "scripts/ci/test-repo-health-warnings-only.sh smoke test: fixture step that emits only warnings, assert job conclusion success; fixture with actual error, assert non-zero exit"
+    - Documented in docs/process/CLAUDE_GOTCHAS.md (separate section on warnings vs errors in CI annotations)
+  notes: |
+    Pillar: CREDIBLE — false-positive PR blocks are credibility hits. Split from INFRA-1859 to keep that gap focused on preflight gate work.
+
