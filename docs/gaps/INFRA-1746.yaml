@@ -2,11 +2,34 @@
   domain: INFRA
   title: "EFFECTIVE: chump ingest <repo-path> — existing-repo takeover entrypoint that emits ARCHITECTURE.md + CAPABILITIES_REGISTRY.json + first 5 PRs within 24hr (goal-2 enabler)"
   status: open
-  priority: P2
+  priority: P1
   effort: m
+  description: |
+    2026 Outcome Goal 2 enabler. chump ingest <repo-path> runs the full multi-agent-factory ingestion engine against an existing target repo (Phase 1 Librarian + Phase 2 Cartographer + Phase 3 Evangelist + Phase 4 Systematizer from the 2026-05-22 design conversation). Emits structured deliverables that prove Chump understood the repo. Demo recipe: chump ingest ~/code/some-axum-app → within 24hr emits ARCHITECTURE.md + CAPABILITIES_REGISTRY.json + HIDDEN_GEMS.md + first 5 PRs (first attempt, merge not required). Rough shape: (a) read-only path until operator confirms mutations; (b) Phase 1 Librarian via src/audit.rs (INFRA-1370) writes triage report; (c) Phase 2 Cartographer writes ARCHITECTURE.md per INFRA-1675/1676 spec; (d) Phase 3 Evangelist writes HIDDEN_GEMS.md per INFRA-1727; (e) Phase 4 Systematizer writes CAPABILITIES_REGISTRY.json per INFRA-1729; (f) takeover certificate as structured JSON proving understanding; (g) cost-bounded.
+
+    **DECOMPOSED into ship-sized sub-gaps (2026-05-23 Week 4 prep):**
+    - INFRA-1780: CLI + repo validation + read-only safety (s, P1)
+    - INFRA-1781: Phase 1 Librarian audit + triage report (s, P1, depends=1780)
+    - INFRA-1782: Phase 2 Cartographer ARCHITECTURE.md (s, P1, depends=1780)
+    - INFRA-1783: Phases 3 & 4 HIDDEN_GEMS + CAPABILITIES_REGISTRY (s, P1, depends=1780)
+    - INFRA-1784: Orchestration + certificate + auto-gaps/PRs + cost-bounding (m, P1, depends=1781,1782,1783)
+    - INFRA-1785: Demo recipe + smoke tests (s, P2, depends=1784)
+
+    These 5 slices allow 3-5 parallel workers to operate during Week 4. Parent gap (this one) can be marked complete once all sub-gaps ship.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - chump ingest /path/to/existing/repo treats target as read-only until operator confirms mutations; safety prompt before any write
+    - "Phase 1 Librarian sweep: src/audit.rs (INFRA-1370 \"ah-ha\" sweep) identifies dead code and redundant scripts; writes triage report to <target>/.chump-ingest/triage.md"
+    - "Phase 2 Cartographer: writes <target>/docs/ARCHITECTURE.md with topology + module map + entry points + hot paths (per INFRA-1675/1676 Custodian Phase 5 spec)"
+    - "Phase 3 Evangelist: writes <target>/docs/HIDDEN_GEMS.md per INFRA-1727 spec (auto-detected primitives, structured sections)"
+    - "Phase 4 Systematizer: writes <target>/docs/CAPABILITIES_REGISTRY.json per INFRA-1729 spec (machine-readable, validates against schema)"
+    - "Takeover certificate <target>/.chump-ingest/certificate.json: structured proof Chump understood the repo — entry_points list, hot_paths list, test_surface map, dependency_graph DAG, ingestion_cost_usd_cents, ingestion_elapsed_min"
+    - First 5 gaps auto-filed against target repo within 1 hour of ingest start (use the LLM-generated triage as input)
+    - First 5 PRs opened against target repo within 24 hours (first attempt — merge not required for ingest success; ambient kind=ingest_pr_attempted recorded with first-pass CI result)
+    - "Cost-bounded: ingestion total caps at CHUMP_INGEST_BUDGET_USD (default $10) for repos under 100k LOC; emits warning if repo larger than 100k LOC with proportional cap suggestion"
+    - "Emits kind=ingest_complete with fields: target_repo_path, phases_completed (array), prs_attempted, prs_green_first_pass, total_cost_usd_cents, elapsed_min"
+    - "Demo recipe docs/demos/ingest-axum.md (or similar against a known target): reproducible end-to-end with expected certificate output"
+    - "CI test scripts/ci/test-ingest-smoke.sh: ingest a tiny fixture repo, assert all 4 phase deliverables emitted, certificate JSON validates against schema, kind=ingest_complete event fires"
+    - cargo fmt/clippy clean per CLAUDE.md local-CI discipline
+  notes: |
+    2026-05-23 design constraints (from operator real-talk): (1) operator-owned repos only — verify push permission via gh api before any work (see INFRA-1778 pre-flight); (2) gh-app install is OPTIONAL for first demo (user-OAuth via gh CLI sufficient), REQUIRED for webhook-driven artifact regen in subsequent runs; (3) language-agnostic from day 1 — day-1 supported list: Rust, Python, JavaScript/TypeScript, Go, Bash, YAML; unsupported languages get a graceful {language:'unknown', supported:false} entry that artifact generators acknowledge but don't analyze; (4) language coverage extension is a per-customer-repo follow-up gap pattern, not a pre-build-everything-day-1 design.
 
