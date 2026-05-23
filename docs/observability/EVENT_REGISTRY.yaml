@@ -4184,3 +4184,45 @@ events:
       PRs skipped the local registry check before push.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
+  - kind: liaison_elected
+    effect_metric: github_api_calls_24h
+    emitter: scripts/ops/github-liaison.sh (INFRA-1317)
+    trigger: >
+      Process acquired the .chump-locks/github-liaison.lock lockdir on a
+      fresh start. Marks the start of a liaison reign — this process is
+      now the sole reader of the GitHub API for the fleet (Phase 1 of
+      docs/design/GITHUB_LIAISON.md).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, stale_takeover]
+
+  - kind: liaison_heartbeat
+    effect_metric: github_api_calls_24h
+    emitter: scripts/ops/github-liaison.sh (INFRA-1317)
+    trigger: >
+      Per-cycle heartbeat from the elected liaison after each refresh
+      pass (default 60s). Indicates the cache reconcile loop is alive and
+      reconcile_ok=true means the underlying github-cache-reconcile.sh
+      one-REST-call refresh succeeded.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, interval_s, reconcile_ok]
+
+  - kind: liaison_takeover
+    effect_metric: github_api_calls_24h
+    emitter: scripts/ops/github-liaison.sh (INFRA-1317)
+    trigger: >
+      Liaison lock heartbeat was stale (older than CHUMP_LIAISON_STALE_S,
+      default 90s) so this process forcibly reclaimed it. Indicates the
+      prior liaison died without releasing — rising frequency is a warning
+      that liaison processes are crashing rather than yielding cleanly.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, prev_holder, stale_age_s]
+
+  - kind: liaison_yielded
+    effect_metric: github_api_calls_24h
+    emitter: scripts/ops/github-liaison.sh (INFRA-1317)
+    trigger: >
+      Liaison voluntarily released the lock via signal (SIGTERM/INT/HUP),
+      EXIT trap on daemon shutdown, or operator-invoked `--release`. Pair
+      with the next liaison_elected to confirm clean handoff.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, reason]
