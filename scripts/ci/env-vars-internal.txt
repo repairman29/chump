@@ -462,3 +462,8 @@ CHUMP_IP_LABEL
 # INFRA-1788: skip the local docs-delta-trailer step in chump preflight --pre-commit
 CHUMP_PREFLIGHT_SKIP_DOCSDELTA
 CHUMP_PREFLIGHT_SKIP_GAPSINT
+
+# INFRA-1834: --no-verify audit guard — require explicit reason when bypassing hooks
+CHUMP_NO_VERIFY_REASON
+# INFRA-1834: bot-merge.sh env-controlled --no-verify push escape hatch
+CHUMP_BOT_MERGE_NO_VERIFY

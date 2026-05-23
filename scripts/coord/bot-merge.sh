@@ -2059,9 +2059,37 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-none}" "$BRANCH")"
 fi
 
+# INFRA-1834: --no-verify audit guard. bot-merge currently never passes
+# --no-verify on git push, but the env-controlled escape hatch
+# CHUMP_BOT_MERGE_NO_VERIFY=1 routes through the same audit-mandate as
+# chump-commit.sh: require CHUMP_NO_VERIFY_REASON='<text>' AND emit
+# kind=audit_no_verify to ambient + .chump-locks/no-verify-audit.jsonl.
+# This is the operator's escape hatch when a pre-push hook is genuinely
+# wedged; we don't block, we just demand a reason and log it.
+_bm_no_verify_arg=""
+if [[ "${CHUMP_BOT_MERGE_NO_VERIFY:-0}" == "1" ]]; then
+    _bm_nv_reason="${CHUMP_NO_VERIFY_REASON:-}"
+    _bm_nv_trim="${_bm_nv_reason#"${_bm_nv_reason%%[![:space:]]*}"}"
+    _bm_nv_trim="${_bm_nv_trim%"${_bm_nv_trim##*[![:space:]]}"}"
+    if [[ -z "$_bm_nv_trim" ]]; then
+        red "INFRA-1834: CHUMP_BOT_MERGE_NO_VERIFY=1 requires CHUMP_NO_VERIFY_REASON='<text>' env (empty/whitespace rejected)."
+        echo "Example: CHUMP_BOT_MERGE_NO_VERIFY=1 CHUMP_NO_VERIFY_REASON='pre-push hook hung 90s; emergency push for INFRA-XXXX rescue' bash scripts/coord/bot-merge.sh ..." >&2
+        exit 14
+    fi
+    _bm_no_verify_arg="--no-verify"
+    _bm_nv_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _bm_nv_session="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
+    _bm_nv_reason_esc="${_bm_nv_trim//\\/\\\\}"
+    _bm_nv_reason_esc="${_bm_nv_reason_esc//\"/\\\"}"
+    _bm_nv_line="{\"ts\":\"$_bm_nv_ts\",\"kind\":\"audit_no_verify\",\"session\":\"$_bm_nv_session\",\"branch\":\"$BRANCH\",\"caller\":\"bot-merge.sh\",\"gap_id\":\"${GAP_IDS[0]:-none}\",\"reason\":\"$_bm_nv_reason_esc\"}"
+    printf '%s\n' "$_bm_nv_line" >> "${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+    printf '%s\n' "$_bm_nv_line" >> "${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/no-verify-audit.jsonl"
+    yellow "INFRA-1834: --no-verify bypass logged (reason: $_bm_nv_trim)"
+fi
+
 _bm_push_exit=0
 run_timed_hb "git push" "$_BM_PUSH_TIMEOUT_S" \
-    git push "$REMOTE" "$BRANCH" --force-with-lease || _bm_push_exit=$?
+    git push "$REMOTE" "$BRANCH" --force-with-lease $_bm_no_verify_arg || _bm_push_exit=$?
 
 if [[ "$_bm_push_exit" -eq 124 ]]; then
     # Timeout — the pre-push hook (fmt or other gate) stalled longer than
