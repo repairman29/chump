@@ -823,6 +823,32 @@ pub fn run(argv: &[String]) -> i32 {
     }
     // else: bare `chump preflight` — gate is silently skipped (AC #6).
 
+    // INFRA-1854: pr-hygiene local gate. Mirrors ci.yml pr-hygiene job —
+    // wraps CREDIBLE-027 mass-deletion + INFRA-1568 broad-canary sub-checks
+    // via scripts/ci/check-pr-hygiene.sh. (check-pr-scope CREDIBLE-026 is
+    // already covered by INFRA-1792 pr-scope-sanity gate.) Skip via
+    // CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1 with audit-trail emit.
+    if scope.includes(GateKind::Scripts) {
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_PRHYGIENE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping pr-hygiene (CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_prhygiene_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "pr-hygiene",
+                &["bash", "scripts/ci/check-pr-hygiene.sh"],
+                GateKind::Scripts,
+            ));
+        }
+    }
+
     if args.with_tests && scope.includes(GateKind::Scripts) {
         for script in discover_test_scripts(&repo_root) {
             let path = script.to_string_lossy().into_owned();
