@@ -725,6 +725,7 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+<<<<<<< HEAD
         // INFRA-1831: gaps-integrity local gate (META-070). Validates that
         // every docs/gaps/*.yaml parses as YAML, has a non-empty id, and
         // ids are unique across the registry. Would have caught both
@@ -739,11 +740,30 @@ pub fn run(argv: &[String]) -> i32 {
                 fields: vec![(
                     "reason".to_string(),
                     "CHUMP_PREFLIGHT_SKIP_GAPSINT=1".to_string(),
+=======
+        // INFRA-1793: no-claude-leak audit (INFRA-1051). Catches NEW
+        // Claude-specific references in product-layer code (src/,
+        // scripts/coord/, scripts/dispatch/, scripts/ops/). Today CI runs
+        // this warn-only (INFRA-1053 backfill in progress); local gate
+        // mirrors. Both flip to strict together once the long-tail closes.
+        // Skip via CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 with audit-trail emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CLAUDELEAK").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping no-claude-leak (CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_claudeleak_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1".to_string(),
+>>>>>>> e26e5fd1e (feat(INFRA-1793): ZERO-WASTE — chump preflight runs no-claude-leak gate (INFRA-1051))
                 )],
                 ..Default::default()
             });
         } else {
             steps.push(step(
+<<<<<<< HEAD
                 "gaps-integrity",
                 &[
                     "python3",
@@ -751,6 +771,10 @@ pub fn run(argv: &[String]) -> i32 {
                     "--per-file",
                     "docs/gaps/",
                 ],
+=======
+                "no-claude-leak",
+                &["bash", "scripts/ci/test-no-claude-leak.sh"],
+>>>>>>> e26e5fd1e (feat(INFRA-1793): ZERO-WASTE — chump preflight runs no-claude-leak gate (INFRA-1051))
                 GateKind::Rust,
             ));
         }
