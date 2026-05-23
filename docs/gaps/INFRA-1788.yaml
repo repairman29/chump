@@ -1,0 +1,14 @@
+- id: INFRA-1788
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs docs-delta-trailer audit locally — INFRA-124 catches missing Net-new-docs trailer (INFRA-1762 Tier C #2)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs gains a docs-delta-trailer gate, runs only when staged diff includes any docs/**/*.md AND the operator is preparing a commit (preflight invoked with --pre-commit flag, mirrored from chump-commit.sh)
+    - "Gate invokes scripts/ci/test-infra-124-docs-delta-trailer.sh logic; expects HEAD commit body to carry 'Net-new-docs: +N' trailer when md count delta > 0"
+    - Exit non-zero with INFRA-124 error message format
+    - "Bypass: CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1 + emit preflight_docsdelta_bypassed"
+    - "Smoke test scripts/ci/test-preflight-docsdelta-gate.sh: synthetic doc-add commit without trailer, assert non-zero + bypass passes"
+    - If preflight is invoked without --pre-commit (the bare 'chump preflight'), the gate is silently skipped — only fires when checking a commit ready to ship
+

@@ -1,0 +1,14 @@
+- id: INFRA-1794
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs broad-canary-coverage check locally — CLAUDE_GOTCHAS.md update reminder (INFRA-1762 Tier C #8)"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - src/preflight.rs gains a broad-canary-coverage check, runs only when staged diff touches a known-failure-mode file listed in docs/process/CLAUDE_GOTCHAS.md
+    - Gate invokes scripts/ci/test-broad-canary-coverage.sh logic; expects the gotcha doc to be modified in the same staged diff (operator should update the gotcha)
+    - Exit non-zero with broad-canary error format (file=X touched but CLAUDE_GOTCHAS.md not updated)
+    - "Bypass: CHUMP_PREFLIGHT_SKIP_CANARY=1 + emit preflight_canary_bypassed"
+    - "Smoke test scripts/ci/test-preflight-canary-gate.sh: stub touch of a canary file without doc update, assert gate fires"
+    - Soft P3 because operator-discipline beats automation here — most touches of canary files are legitimate without doc update
+

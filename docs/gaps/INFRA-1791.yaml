@@ -1,0 +1,16 @@
+- id: INFRA-1791
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs gap-preflight-ac-gate locally — INFRA-1259 surfaces vague-AC gaps before claim (INFRA-1762 Tier C #5)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs gains a gap-preflight-ac-gate audit, runs only when staged diff touches docs/gaps/*.yaml
+    - Gate invokes scripts/ci/test-gap-preflight-ac-gate.sh logic + chump gap audit-ac --open
+    - Exit non-zero with INFRA-1259 error format (gap=X reason=empty-ac
+    - todo-ac
+    - missing-deps-ref)
+    - "Bypass: CHUMP_PREFLIGHT_SKIP_ACGATE=1 + emit preflight_acgate_bypassed"
+    - "Smoke test scripts/ci/test-preflight-acgate-gate.sh: synthetic gap yaml with TODO AC, assert gate catches it"
+    - "Note: differs from existing chump gap preflight CLI — that's per-gap pickability; this is staged-diff AC quality"
+
