@@ -459,3 +459,5 @@ CHUMP_GPU_LABEL
 # CHUMP_PUBLISH_HARDWARE=1. Operator-supplied; no auto-discovery in slice
 # 1/4 of Layer 2c.
 CHUMP_IP_LABEL
+# INFRA-1788: skip the local docs-delta-trailer step in chump preflight --pre-commit
+CHUMP_PREFLIGHT_SKIP_DOCSDELTA
