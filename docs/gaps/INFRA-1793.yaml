@@ -1,0 +1,14 @@
+- id: INFRA-1793
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs no-claude-leak audit on changed product files — INFRA-1051 (INFRA-1762 Tier C #7)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs gains a no-claude-leak audit on changed product-layer files, runs only when staged diff touches src/, scripts/coord/, scripts/dispatch/, or scripts/ops/
+    - Gate invokes scripts/ci/test-no-claude-leak.sh in changed-only mode
+    - Exit non-zero (matches CI behavior post-INFRA-1053-cleanup) with INFRA-1051 error format
+    - "Bypass: CHUMP_PREFLIGHT_SKIP_CLAUDELEAK=1 + emit preflight_claudeleak_bypassed; or per-line opt-out '# chump-harness-ok: claude-mention'"
+    - "Smoke test scripts/ci/test-preflight-claudeleak-gate.sh: synthetic src/foo.rs with new 'claude -p' invocation, assert gate catches it"
+    - Today CI runs this warn-only; the preflight version should also warn-only until INFRA-1053 backfill closes the long-tail; then flip both to strict
+
