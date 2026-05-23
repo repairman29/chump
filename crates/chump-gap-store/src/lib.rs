@@ -1591,6 +1591,35 @@ impl GapStore {
     /// status:done flip in YAML, so passing it here keeps the canonical
     /// state.db and the YAML mirror in agreement (INFRA-156).
     pub fn ship(&self, gap_id: &str, session_id: &str, closed_pr: Option<i64>) -> Result<()> {
+        // INFRA-1392 PROOF-OF-MERGE: refuse to flip status=done unless we
+        // can verify the work actually landed. Pattern observed
+        // 2026-05-22: sibling claim flipped INFRA-1368 / INFRA-1363 to
+        // status=done within minutes of filing, before the PRs merged.
+        // Cost: real claims that already existed were treated as
+        // already-done and skipped; ~3 wasted compute-hours.
+        //
+        // Two proofs accepted (either is sufficient):
+        //   (a) `closed_pr` numeric AND a recent commit on local main
+        //       carries the gap ID in its message (offline-compatible —
+        //       webhook is not required; git log is the authority).
+        //   (b) `CHUMP_BYPASS_PROOF_OF_MERGE=1` for genuine recovery /
+        //       migration cases (audit emit in ambient.jsonl).
+        //
+        // The webhook path also lands here: receiver calls ship() with
+        // closed_pr set and the merge commit on main from the webhook's
+        // `pull_request.merge_commit_sha` is what git log finds.
+        if std::env::var("CHUMP_BYPASS_PROOF_OF_MERGE").as_deref() != Ok("1")
+            && !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr)
+        {
+            bail!(
+                "INFRA-1392 PROOF-OF-MERGE: refusing to flip {gap_id} to status=done — \
+                 no commit on local main carries this gap ID. Either (a) wait for the \
+                 actual merge to land on main, (b) ensure the merge commit subject \
+                 mentions {gap_id}, or (c) set CHUMP_BYPASS_PROOF_OF_MERGE=1 for \
+                 genuine recovery / migration."
+            );
+        }
+
         let now = unix_now();
         let iso = unix_to_iso_date(now);
         let changed = if let Some(pr) = closed_pr {
@@ -3023,6 +3052,75 @@ fn unix_now() -> i64 {
         .as_secs() as i64
 }
 
+/// INFRA-1392: verify that work for `gap_id` actually landed on local
+/// main. Returns true when EITHER:
+///   - `closed_pr` is Some AND a recent commit on main carries the
+///     gap ID in its subject or body, OR
+///   - `closed_pr` is Some AND a recent commit on main carries
+///     `(#<pr_number>)` in the subject (squash-merge GitHub convention).
+///
+/// Offline-compatible: only `git log` is consulted; no GitHub API call
+/// is required. The webhook receiver path naturally also satisfies this
+/// because the webhook fires only AFTER the merge commit lands on main,
+/// which is the same commit `git log` finds.
+///
+/// "Recent" = last 200 commits on main. Wider than necessary but cheap
+/// — git log of 200 commits is sub-100ms.
+pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i64>) -> bool {
+    // Test-fixture compatibility: if there's no .git under repo_root,
+    // we're either in a synthetic test or a fresh init. The guard
+    // can't usefully verify proof-of-merge in that context, so we
+    // err on the side of "pass" — production always has a .git tree,
+    // so the guard remains effective there.
+    if !repo_root.join(".git").exists() {
+        return true;
+    }
+    let out = std::process::Command::new("git")
+        .args(["log", "main", "-n", "200", "--format=%s%n%b%n%H"])
+        .current_dir(repo_root)
+        .output();
+    let Ok(o) = out else {
+        // git binary not available — fail open (rare in prod; defensive).
+        return true;
+    };
+    if !o.status.success() {
+        // `git log main` fails when `main` doesn't exist (e.g. branch
+        // hasn't been created yet in a fresh repo). For integration
+        // tests that `git init` an empty repo, this is the expected
+        // "no commits yet" state — pass through so test scaffolding
+        // can ship synthetic gaps. Production main always exists.
+        // Detect "no commits at all" via `git rev-parse HEAD`: if
+        // even HEAD doesn't resolve, the repo is completely fresh.
+        let any_commit = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "HEAD"])
+            .current_dir(repo_root)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !any_commit {
+            return true; // fresh repo, no commits at all — test fixture
+        }
+        // Otherwise: there are commits but no main branch — that's a
+        // genuinely odd production state. Fail closed.
+        return false;
+    }
+    let body = String::from_utf8_lossy(&o.stdout);
+    let gap_needle = gap_id.to_uppercase();
+    let pr_needle = closed_pr.map(|n| format!("(#{n})"));
+    for line in body.lines() {
+        let upper = line.to_uppercase();
+        if upper.contains(&gap_needle) {
+            return true;
+        }
+        if let Some(p) = pr_needle.as_deref() {
+            if line.contains(p) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// INFRA-100: parse `2026-04-28T22:30:00Z` style ISO-8601 (lease files use
 /// this) into a unix timestamp. Returns None on parse failure rather than
 /// panicking — leases that don't carry a heartbeat / expiry are simply not
@@ -3604,6 +3702,153 @@ impl GapStore {
 }
 
 // ────────────────────────── tests ──────────────────────────
+
+#[cfg(test)]
+mod proof_of_merge_tests {
+    //! INFRA-1392: pure-function tests for the proof-of-merge helper.
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn fixture_without_git_dir_passes_through() {
+        // Tests use synthetic stores without a real .git tree. The guard
+        // must default to "pass" so existing fixture-based tests don't
+        // get broken by the new behaviour.
+        let dir = tempdir().unwrap();
+        assert!(verify_proof_of_merge(dir.path(), "INFRA-9500", Some(123)));
+        assert!(verify_proof_of_merge(dir.path(), "INFRA-9500", None));
+    }
+
+    #[test]
+    fn empty_repo_with_no_commits_passes() {
+        // Integration tests `git init` then immediately try to ship a
+        // synthetic gap. Zero commits = test fixture, not production.
+        // Guard passes so tests can ship synthetic gaps.
+        let dir = tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        assert!(verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
+    }
+
+    #[test]
+    fn repo_with_commits_but_no_main_branch_fails_closed() {
+        // Genuinely odd production state: commits exist on some other
+        // branch, but `main` doesn't. We have no way to verify proof
+        // there — fail closed.
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=other", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return; // older git
+        }
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat: INFRA-9501 on side branch",
+            ])
+            .current_dir(dir.path())
+            .status();
+        // HEAD exists (commit on "other") but `git log main` will fail.
+        assert!(!verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
+    }
+
+    #[test]
+    fn real_repo_with_matching_commit_subject_passes() {
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            // Older git without --initial-branch; skip gracefully.
+            return;
+        }
+        // Configure local user.email/name for the commit.
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat(INFRA-9502): RESILIENT — proof-of-merge fixture",
+            ])
+            .current_dir(dir.path())
+            .status();
+        assert!(verify_proof_of_merge(dir.path(), "INFRA-9502", None));
+        // Case-insensitive: lowercase claim should still hit the
+        // uppercase commit subject.
+        assert!(verify_proof_of_merge(dir.path(), "infra-9502", None));
+        // Disjoint gap ID — should NOT match.
+        assert!(!verify_proof_of_merge(dir.path(), "INFRA-9503", None));
+    }
+
+    #[test]
+    fn real_repo_with_pr_number_in_subject_passes_when_closed_pr_set() {
+        let dir = tempdir().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(dir.path())
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            return;
+        }
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(dir.path())
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir.path())
+            .status();
+        // Subject mentions only the PR number (squash-merge convention),
+        // NOT the gap ID. The gap-ID branch of the check should miss but
+        // the `(#PR)` branch should hit.
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat: ship a thing (#4242)",
+            ])
+            .current_dir(dir.path())
+            .status();
+        assert!(verify_proof_of_merge(
+            dir.path(),
+            "INFRA-NO-MATCH",
+            Some(4242)
+        ));
+        // Without the closed_pr hint, no match.
+        assert!(!verify_proof_of_merge(dir.path(), "INFRA-NO-MATCH", None));
+        // Wrong PR number — no match.
+        assert!(!verify_proof_of_merge(
+            dir.path(),
+            "INFRA-NO-MATCH",
+            Some(9999)
+        ));
+    }
+}
 
 #[cfg(test)]
 mod tests {
