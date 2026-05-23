@@ -5,8 +5,9 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+    1. New pub async fn subscribe_events(filter: EventFilter) -> Result<Stream<CoordEvent>> in crates/chump-coord/src/lib.rs (stub returns empty Stream + emits ambient kind=a2a_subscribe_stub_invoked when called)
+    2. pub enum EventFilter with variants: All, Kind(String), Session(String), Kinds(Vec<String>) — derive Debug/Clone
+    3. pub struct CoordEvent {ts, kind, session_id, payload: serde_json::Value} — wire-format compatible with .chump-locks/ambient.jsonl line shape (so consumers can switch between sources without struct changes)
+    4. Integration test stub at crates/chump-coord/tests/a2a_layer1a.rs: subscribe_events(All).next() returns within 100ms (placeholder, real impl in slice 2)
+    5. Register kind=a2a_subscribe_stub_invoked in docs/observability/EVENT_REGISTRY.yaml
+    6. Sets up Layer 1a foundation; slices 2-4 (NATS push consumer, fallback, chaos test) depend on these types existing

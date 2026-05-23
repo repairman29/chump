@@ -5,8 +5,11 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+    1. New crates/chump-coord/src/scratchpad.rs with pub enum ConflictPolicy {LastWriterWins, CASRequired, MergeWithFn(Arc<dyn Fn(Value, Value) -> Value + Send + Sync>)}
+    2. pub struct SeedKey {key: &'static str, conflict_policy: ConflictPolicy, ttl_seconds: u32, prompt_inject: bool}
+    3. const SEED_KEYS: [SeedKey; 5] for: main.head.sha (CAS, 86400s, inject), fleet.size (LWW, 300s, inject), pillar.focus (LWW, 3600s, inject), last_known_good.chump_binary (CAS, 86400s, inject), red_letter.last_ts (LWW, 86400s, inject)
+    4. pub fn bucket_name() -> &'static str returns "chump_scratch"
+    5. Conflict-policy enforcement is a stub (returns NotImplemented from get/set/cas); real impl in slice 2
+    6. Integration test stub at crates/chump-coord/tests/a2a_layer3d_seeds.rs asserts SEED_KEYS has exactly 5 entries with the documented keys
+    7. New docs/design/A2A_SCRATCHPAD_KEYS.md briefly documents each key + its conflict policy + injection role
+    8. Sets up Layer 3d foundation; slices 2-4 (NATS KV ops, prompt injection, bash wrapper) depend on these types
