@@ -5,8 +5,10 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+    - "New pub async fn call_rpc(target_session, method, args (serde_json::Value), timeout_ms) -> Result<Response> in crates/chump-coord/src/rpc.rs (stub returns NotImplemented + emits ambient a2a_rpc_stub_called)"
+    - "New pub async fn serve_rpc(method, handler: Box<dyn Fn(Value) -> Result<Value> + Send>) -> Result<()> stub"
+    - "pub struct RpcRequest with fields request_id (String), method, args, sent_at — plus RpcResponse with request_id, result, error, latency_ms"
+    - "request_id is uuid v4; server-side dedup table is a tokio Mutex<HashMap<String, Instant>> with 60s expiry — implemented as in-memory stub here"
+    - "Register kind a2a_rpc_stub_called in EVENT_REGISTRY.yaml"
+    - "Integration test stub at crates/chump-coord/tests/a2a_layer2b.rs"
+    - "Sets up Layer 2b foundation; the 5 use-case wrappers (ask-eta/ask-overlap/ask-handoff/ask-progress/ask-capability) ship in slice 2"
