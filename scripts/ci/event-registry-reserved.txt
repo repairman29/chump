@@ -259,6 +259,7 @@ pr_stuck_exempt                    # reason: INFRA-1410 emitted via respawn_emit
 pr_triage_run  # reason: emitted from scripts/coord/chump-pr-triage.sh (shell); not in PROD_PATHS
 pre_commit_ac_test_missing  # reason: emitted by scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401); git-hooks/ outside PROD_PATHS grep scan
 preflight_acgate_bypassed # reason: INFRA-1791 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ACGATE=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+preflight_chumpfirst_bypassed  # reason: INFRA-1858 — emitted by src/preflight.rs when CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1 (CREDIBLE-046 cascade-prevention gate; mirrors INFRA-1731 pattern)
 preflight_docsdelta_bypassed # reason: INFRA-1788 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1; struct-field emit (EmitArgs { kind: "..." }) not detected by Pattern 1 grep — allowlisted while orphan-warn lands
 preflight_dupe_pr          # reason: planned for gap-preflight duplicate PR warning emit
 preflight_dupe_worktree    # reason: planned for gap-preflight duplicate worktree warning emit

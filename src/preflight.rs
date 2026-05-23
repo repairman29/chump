@@ -780,6 +780,35 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1858: chump-first contract gate (CREDIBLE-046). Mirrors
+        // .github/workflows/no-anthropic-smoke.yml — proves the coordination
+        // layer (gap list/reserve/show/ship) works without ANTHROPIC_API_KEY
+        // or CLAUDE_CODE_OAUTH_TOKEN. Today's CREDIBLE-046 regression cost
+        // ~3h of throughput before #2404 fixed it; this gate would have
+        // caught it locally. Skip via CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1
+        // with audit-trail emit (mirrors INFRA-1731 #2377 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CHUMPFIRST").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping chump-first-contract (CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_chumpfirst_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "chump-first-contract",
+                &[
+                    "bash",
+                    "scripts/ci/check-chump-first-contract.sh",
+                ],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
