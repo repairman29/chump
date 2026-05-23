@@ -4238,3 +4238,14 @@ events:
       all-opus (broadcast). Operator can inspect via opus-message.sh list.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, to, from, ref, msg_id]
+  - kind: ast_crawler_unsupported_language
+    effect_metric: self
+    emitter: crates/ast-crawler/src/lib.rs (INFRA-1719 tree-sitter AST crawler)
+    trigger: >
+      `chump_ast_crawler::crawl_paths` encountered a file with an extension
+      not in the day-1 supported set (rust, python, javascript, typescript,
+      go, bash, yaml). Debounced per-extension per invocation so a large asset
+      tree doesn't flood the stream. Helps the fleet identify languages that
+      should be promoted to first-class support next.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, path, ext]

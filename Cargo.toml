@@ -24,6 +24,7 @@ members = [
     "crates/chump-gh-app",
     "crates/chump-team",
     "crates/ambient-cli",
+    "crates/ast-crawler",
 ]
 resolver = "2"
 
@@ -108,6 +109,7 @@ chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
 chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
+chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
