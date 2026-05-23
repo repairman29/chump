@@ -1,0 +1,19 @@
+- id: INFRA-1786
+  domain: INFRA
+  title: "RESILIENT: INFRA-1662 reap-orphan-claude-procs.sh fg_pid=none falls through to reap-all mode on macOS — pgrep for Claude.app fails, scripts kills 64 procs in dry-run including active sessions"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Observed 2026-05-23 while investigating INFRA-1756 duplicate: ran scripts/ops/reap-orphan-claude-procs.sh manually on a healthy workstation with Claude.app running (PID 15517 in launchctl list). Output: "candidates=100 orphans=64 killed=64 oldest_etime=14247s total_rss_kb=2507712 fg_pid=none". fg_pid=none means the pgrep against the Claude.app bundle path failed. Per script comment: "If absent (e.g. headless Linux CI), FG_PID is empty and *every* claude binary becomes a candidate for reaping (which is fine on a headless host — there is no foreground Claude to protect)." On a workstation this is dangerous — every claude subagent without a ppid chain back to the desktop GUI gets killed even if it is mid-task. Rough shape: (a) fix the pgrep query that fails (likely a path-mismatch with newer Claude.app versions); (b) add a SAFETY GATE that refuses to operate in reap-all mode unless CHUMP_REAPER_HEADLESS=1 is explicitly set; (c) on macOS without that env, hard-fail with diagnostic when fg_pid lookup fails; (d) smoke test that asserts fg_pid is detected when Claude.app is running.
+  acceptance_criteria:
+    - "Repro: run scripts/ops/reap-orphan-claude-procs.sh manually on macOS workstation with Claude.app running; assert fg_pid is detected (NOT \"none\")"
+    - Fix the pgrep query — current attempt fails silently when Claude.app path moved (likely /Applications/Claude.app/Contents/MacOS/Claude vs the path the script greps for); try multiple known paths and use launchctl print PID if pgrep returns empty
+    - "Safety gate: if fg_pid resolves to empty AND CHUMP_REAPER_HEADLESS env is NOT set, refuse to operate in reap-all mode; exit 3 with diagnostic \"fg_pid=none on macOS without CHUMP_REAPER_HEADLESS=1 — refusing to reap everything\""
+    - Emit kind=reaper_safety_gate_triggered ambient event when the safety gate fires
+    - CHUMP_REAPER_HEADLESS=1 env (explicit operator opt-in) restores the old reap-everything behavior for headless CI use
+    - "Smoke test scripts/ci/test-reap-orphan-fg-detection.sh: mocks Claude.app presence via fake pgrep PATH shim, asserts fg_pid detected; second test asserts safety gate refuses reap-all when neither fg_pid nor CHUMP_REAPER_HEADLESS present"
+    - "Documented in docs/process/CLAUDE_GOTCHAS.md alongside INFRA-1662 reaper docs — section: \"what happens when fg_pid detection fails\""
+  notes: |
+    Pillar: RESILIENT. Follow-up to INFRA-1662 (shipped PR #2323) discovered 2026-05-23 by manual run during INFRA-1756 dup investigation. Without this fix, INFRA-1662 reaper on a workstation can wipe out 60+ legitimate claude subagent processes including active fleet workers and operator subagents — exactly the failure mode the reaper was supposed to PREVENT. Tier: P1 effort xs because the fix is narrow (one pgrep query + one env gate). Smoke test mocks Claude.app via PATH shim so works in CI.
+
