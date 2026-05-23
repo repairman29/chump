@@ -63,6 +63,11 @@ pub enum Classification {
     /// fast-checks env-var coverage failed; named vars need to be appended to
     /// scripts/ci/env-vars-internal.txt.
     EnvVarCoverage { vars: Vec<String> },
+    /// PR's mergeable_state is "dirty" (merge conflict with main). v1b handler
+    /// attempts `git fetch origin main && git rebase origin/main` in a temp
+    /// worktree and force-pushes-with-lease on clean apply. If rebase has
+    /// conflicts the rescuer emits pr_rescue_conflict_needs_human and skips.
+    DirtyConflict,
     /// All required checks passed and PR is mergeable — no rescue needed.
     Healthy,
     /// Classifier matched none of the known patterns. Logged for human review.
@@ -225,6 +230,44 @@ fn rescue_one(pr: u32, dry_run: bool) -> RescueOutcome {
             );
             RescueOutcome::Skipped
         }
+        Classification::DirtyConflict => {
+            mark_attempt(pr);
+            match fix_dirty_conflict(pr, dry_run) {
+                Ok(()) => {
+                    emit_ambient(
+                        "pr_rescue_applied",
+                        serde_json::json!({
+                            "pr": pr,
+                            "class": "dirty-conflict",
+                            "dry_run": dry_run,
+                        }),
+                    );
+                    RescueOutcome::Applied
+                }
+                Err(e) => {
+                    // Conflict-on-rebase is a "needs human" path, not a tool
+                    // failure — emit a distinct kind so dashboards can route it.
+                    let msg = e.to_string();
+                    if msg.contains("rebase produced conflicts") || msg.contains("CONFLICT") {
+                        emit_ambient(
+                            "pr_rescue_conflict_needs_human",
+                            serde_json::json!({"pr": pr, "error": msg}),
+                        );
+                        RescueOutcome::Skipped
+                    } else {
+                        emit_ambient(
+                            "pr_rescue_failed",
+                            serde_json::json!({
+                                "pr": pr,
+                                "class": "dirty-conflict",
+                                "error": msg,
+                            }),
+                        );
+                        RescueOutcome::Failed
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -232,6 +275,14 @@ fn rescue_one(pr: u32, dry_run: bool) -> RescueOutcome {
 
 /// Pure classifier — no mutation. Reads PR check_runs and fails over patterns.
 pub fn classify_pr(pr: u32) -> Result<Classification> {
+    // INFRA-1751 v1b: dirty-conflict gate runs FIRST. A PR can be DIRTY with
+    // zero failing checks (merge conflict against main); v0's "no failures →
+    // Healthy" path mis-classifies those as nothing-to-do. Checking the merge
+    // state up-front catches that class.
+    if is_dirty(pr) {
+        return Ok(Classification::DirtyConflict);
+    }
+
     let runs = list_failing_checks(pr)?;
     if runs.is_empty() {
         return Ok(Classification::Healthy);
@@ -484,6 +535,108 @@ fn fix_env_var_coverage(pr: u32, vars: &[String], dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+// ── INFRA-1751 v1b: dirty-conflict handler ────────────────────────────────
+
+/// Check `mergeable_state` via gh api. Returns true iff GitHub considers the
+/// PR to have a merge conflict with the base branch.
+///
+/// We use `gh api` (REST) rather than `gh pr view` so the rate-limit cost
+/// shows up under the REST bucket (the GraphQL bucket is the hot one).
+pub fn is_dirty(pr: u32) -> bool {
+    let out = run_gh_or_empty(&[
+        "api",
+        &format!("repos/:owner/:repo/pulls/{pr}"),
+        "--jq",
+        ".mergeable_state",
+    ]);
+    out.trim() == "dirty"
+}
+
+/// Rebase the PR's branch onto origin/main in a throwaway worktree and
+/// force-push-with-lease. On rebase conflict, abort + bubble up — the caller
+/// emits pr_rescue_conflict_needs_human.
+fn fix_dirty_conflict(pr: u32, dry_run: bool) -> Result<()> {
+    println!("[pr-rescue] #{pr}: dirty-conflict → rebase onto origin/main + force-push-with-lease");
+    if dry_run {
+        return Ok(());
+    }
+
+    // 1. Determine PR's head branch.
+    let branch = run_gh(&["pr", "view", &pr.to_string(), "--json", "headRefName"])?;
+    let v: serde_json::Value = serde_json::from_str(&branch)?;
+    let head_ref = v["headRefName"]
+        .as_str()
+        .ok_or_else(|| anyhow!("headRefName missing"))?
+        .to_string();
+
+    let repo_root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let wt = format!("/tmp/chump-pr-rescue-{pr}");
+
+    // 2. Create / reuse a worktree on the branch. Same pattern as
+    // fix_env_var_coverage.
+    if !PathBuf::from(&wt).exists() {
+        let status = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["worktree", "add", &wt, &head_ref])
+            .status()
+            .context("git worktree add")?;
+        if !status.success() {
+            bail!("git worktree add failed for {head_ref}");
+        }
+    } else {
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["fetch", "origin", &head_ref])
+            .status();
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["reset", "--hard", &format!("origin/{head_ref}")])
+            .status();
+    }
+
+    // 3. Fetch latest main + attempt rebase.
+    let fetch = Command::new("git")
+        .current_dir(&wt)
+        .args(["fetch", "origin", "main"])
+        .status()
+        .context("git fetch origin main")?;
+    if !fetch.success() {
+        bail!("git fetch origin main failed");
+    }
+    let rebase = Command::new("git")
+        .current_dir(&wt)
+        .args(["rebase", "origin/main"])
+        .output()
+        .context("git rebase origin/main")?;
+    if !rebase.status.success() {
+        // Abort the half-applied rebase to leave the worktree clean for next
+        // attempt. The caller routes the error to pr_rescue_conflict_needs_human.
+        let _ = Command::new("git")
+            .current_dir(&wt)
+            .args(["rebase", "--abort"])
+            .status();
+        let stderr = String::from_utf8_lossy(&rebase.stderr);
+        bail!("rebase produced conflicts: {stderr}");
+    }
+
+    // 4. Force-push-with-lease. Never bare --force.
+    let push = Command::new("git")
+        .current_dir(&wt)
+        .args([
+            "push",
+            "--force-with-lease",
+            "--no-verify",
+            "origin",
+            &format!("HEAD:{head_ref}"),
+        ])
+        .status()
+        .context("git push --force-with-lease")?;
+    if !push.success() {
+        bail!("force-push-with-lease failed");
+    }
+    Ok(())
+}
+
 // ── safety: age + cooldown ───────────────────────────────────────────────
 
 fn pr_too_old(pr: u32) -> bool {
@@ -627,6 +780,16 @@ mod tests {
         let j = serde_json::to_string(&c).unwrap();
         assert!(j.contains("\"class\":\"OrphanAllowlist\""));
         assert!(j.contains("synthesis_gap_filed"));
+    }
+
+    #[test]
+    fn dirty_conflict_serializes_as_unit_variant() {
+        // INFRA-1751 v1b: the new DirtyConflict variant carries no fields;
+        // it still ships under the "class" tag so downstream JSON consumers
+        // can route on it identically to the other variants.
+        let c = Classification::DirtyConflict;
+        let j = serde_json::to_string(&c).unwrap();
+        assert!(j.contains("\"class\":\"DirtyConflict\""));
     }
 
     #[test]
