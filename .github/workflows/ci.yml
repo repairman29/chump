@@ -694,6 +694,9 @@ jobs:
       - name: pr-auto-rebase daemon (INFRA-1777)
         run: bash scripts/ci/test-pr-auto-rebase.sh
 
+      - name: pr-auto-rebase plist installer (INFRA-1779)
+        run: bash scripts/ci/test-install-pr-auto-rebase.sh
+
       - name: paramedic stale-branch auto-rebase (INFRA-1429)
         run: bash scripts/ci/test-stale-branch-rebase.sh
 
