@@ -225,6 +225,96 @@ impl<'de> Deserialize<'de> for Status {
     }
 }
 
+/// Accept `acceptance_criteria` as a list of strings OR as a single scalar
+/// string that we then split on numbered-list markers.
+///
+/// **INFRA-1265:** YAML treats this snippet as a *single multi-line scalar*,
+/// not a block sequence, because the items lack `- ` prefixes:
+/// ```yaml
+/// acceptance_criteria:
+///   1. First
+///   2. Second
+/// ```
+/// serde_yaml gives us `"1. First 2. Second"`. The historic deserializer
+/// rejected the type mismatch (`expected sequence, got string`) and the
+/// whole gap was silently dropped from planner output. We now split the
+/// scalar on the `\d+\.\s+` boundary and reconstruct the bullet list.
+fn deserialize_acceptance_criteria<'de, D>(
+    d: D,
+) -> std::result::Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let v = serde_yaml::Value::deserialize(d)?;
+    match v {
+        serde_yaml::Value::Null => Ok(None),
+        serde_yaml::Value::Sequence(seq) => {
+            // Canonical bullet form — `- text`.
+            let items: std::result::Result<Vec<String>, _> = seq
+                .into_iter()
+                .map(|item| match item {
+                    serde_yaml::Value::String(s) => Ok(s),
+                    // Numbers / booleans / nulls inside an AC list are
+                    // unexpected but we render them rather than drop the gap.
+                    other => serde_yaml::to_string(&other)
+                        .map(|s| s.trim().to_string())
+                        .map_err(|e| D::Error::custom(format!("ac stringify: {e}"))),
+                })
+                .collect();
+            Ok(Some(items?))
+        }
+        serde_yaml::Value::String(s) => {
+            // INFRA-1265 recovery path. Split on `<digits>. ` markers.
+            let bullets = split_numbered_scalar(&s);
+            if bullets.is_empty() {
+                // Whole field was something like "TODO" — keep as single AC.
+                Ok(Some(vec![s.trim().to_string()]))
+            } else {
+                Ok(Some(bullets))
+            }
+        }
+        other => Err(D::Error::custom(format!(
+            "acceptance_criteria must be list or string, got {other:?}"
+        ))),
+    }
+}
+
+/// Split a YAML-collapsed numbered-AC scalar back into its bullets.
+/// Returns an empty vec if the scalar contains no numbered markers — the
+/// caller decides whether to keep the original scalar as a single bullet.
+fn split_numbered_scalar(s: &str) -> Vec<String> {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    // Marker: start-of-string OR whitespace, then digits, then `. ` and the
+    // bullet text. We split, not match, so the first segment becomes the
+    // pre-marker remainder (usually empty).
+    static MARKER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?:^|\s)(\d+)\.\s+").unwrap());
+    if !MARKER.is_match(s) {
+        return Vec::new();
+    }
+    let mut bullets: Vec<String> = Vec::new();
+    let mut last_end = 0usize;
+    let mut last_was_marker = false;
+    for m in MARKER.find_iter(s) {
+        if last_was_marker {
+            let chunk = s[last_end..m.start()].trim();
+            if !chunk.is_empty() {
+                bullets.push(chunk.to_string());
+            }
+        }
+        last_end = m.end();
+        last_was_marker = true;
+    }
+    if last_was_marker {
+        let chunk = s[last_end..].trim();
+        if !chunk.is_empty() {
+            bullets.push(chunk.to_string());
+        }
+    }
+    bullets
+}
+
 /// Accept `depends_on` as a list, a single string, or a JSON-string-of-list
 /// (the historic double-encoded import bug — CLAUDE.md flags it).
 fn deserialize_depends_on<'de, D>(d: D) -> std::result::Result<Vec<GapId>, D::Error>
@@ -284,7 +374,7 @@ pub struct Gap {
     pub notes: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_acceptance_criteria")]
     pub acceptance_criteria: Option<Vec<String>>,
 
     #[serde(default, deserialize_with = "deserialize_depends_on")]
@@ -392,6 +482,80 @@ mod tests {
 "#;
         let g = load_str(yaml).unwrap();
         assert_eq!(g.domain, Domain::Other);
+    }
+
+    #[test]
+    fn parses_numbered_acceptance_criteria_no_description() {
+        // INFRA-1265: when acceptance_criteria is written as a numbered list
+        // (`1. text` / `2. text`) without a sibling description block, YAML
+        // collapses the whole field into a single multi-line scalar string.
+        // The planner used to silently drop the gap (deserialize failure) —
+        // we now recover by splitting the scalar back into bullets.
+        let yaml = r#"
+- id: TEST-NUMBERED-1
+  domain: INFRA
+  title: test numbered AC
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    1. First AC item
+    2. Second AC item
+    3. Third AC item
+"#;
+        let g = load_str(yaml).expect("numbered-form AC must parse, not drop the gap");
+        let ac = g
+            .acceptance_criteria
+            .expect("numbered-form AC must not collapse to None");
+        assert_eq!(ac.len(), 3, "expected 3 AC bullets, got {ac:?}");
+        assert_eq!(ac[0], "First AC item");
+        assert_eq!(ac[1], "Second AC item");
+        assert_eq!(ac[2], "Third AC item");
+    }
+
+    #[test]
+    fn parses_numbered_acceptance_criteria_with_description() {
+        // Coverage matrix (c): both description: and numbered AC present —
+        // no regression in the bullet recovery path.
+        let yaml = r#"
+- id: TEST-NUMBERED-2
+  domain: INFRA
+  title: numbered AC plus description
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Some prose context.
+  acceptance_criteria:
+    1. Alpha
+    2. Beta
+"#;
+        let g = load_str(yaml).unwrap();
+        let ac = g.acceptance_criteria.unwrap();
+        assert_eq!(ac, vec!["Alpha".to_string(), "Beta".to_string()]);
+        assert!(g.description.is_some());
+    }
+
+    #[test]
+    fn parses_bullet_acceptance_criteria_baseline() {
+        // Coverage matrix (a): canonical bullet form still works.
+        let yaml = r#"
+- id: TEST-BULLET-1
+  domain: INFRA
+  title: bullet AC
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "First bullet"
+    - "Second bullet"
+"#;
+        let g = load_str(yaml).unwrap();
+        let ac = g.acceptance_criteria.unwrap();
+        assert_eq!(
+            ac,
+            vec!["First bullet".to_string(), "Second bullet".to_string()]
+        );
     }
 
     #[test]
