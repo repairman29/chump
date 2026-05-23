@@ -60,6 +60,7 @@ pub mod assign;
 pub mod capability;
 pub mod events;
 pub mod help_request;
+pub mod mesh;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;
