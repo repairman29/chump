@@ -1,15 +1,19 @@
 - id: INFRA-1317
   domain: INFRA
   title: "ZERO-WASTE: GitHub Liaison — elect one worker as sole GitHub read client, all others cache-only (Phase 1 of GITHUB_LIAISON.md)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "scripts/ops/github-liaison.sh implements lockdir-based election (.chump-locks/github-liaison.lock/) with 90s stale-heartbeat takeover; opt-in via CHUMP_LIAISON_ENABLED=1 (default OFF)."
-    - "Refresh loop runs every CHUMP_LIAISON_POLL_INTERVAL_S seconds (default 60); each cycle calls scripts/ops/github-cache-reconcile.sh once and renews heartbeat."
-    - "Emits kind=liaison_elected on lock acquisition, kind=liaison_heartbeat each cycle, kind=liaison_yielded on graceful exit, kind=liaison_takeover on stale-lock reclamation. All registered in docs/observability/EVENT_REGISTRY.yaml."
-    - "Second concurrent invocation detects existing fresh liaison and exits 0 cleanly without emitting liaison_elected."
-    - "scripts/setup/install-github-liaison.sh installs idempotent launchd plist (dev.chump.github-liaison); --check exits 0 iff loaded, --uninstall removes."
-    - "Installer is registered in scripts/setup/bootstrap-manifest.yaml as P1 with --check idempotency."
-    - "scripts/ci/test-github-liaison.sh: (a) lock acquisition succeeds; (b) second invocation refuses + exits 0; (c) stale-heartbeat lock is reclaimed; (d) refresh loop renews heartbeat; (e) graceful exit removes lockdir."
+    - "New src/github_liaison.rs implements liaison election: workers compete via NATS-KV (fallback: atomic .chump-locks claim) and one wins liaison role for a 5-minute TTL"
+    - Non-liaison workers' chump_gh helper reads only from .chump/github_cache.db on the read path; cache misses route via NATS subject chump.gh.fetch.<req_id> to the elected liaison
+    - Liaison emits kind=gh_liaison_elected on win, kind=gh_liaison_lost on TTL miss, kind=gh_liaison_fetch per remote call to ambient.jsonl with script_name origin tag
+    - Liaison aggregates hourly cost report and emits kind=gh_liaison_cost with fields script_name, call_count, error_count, secondary_throttle_count for operator visibility
+    - Failure-class taxonomy in src/github_liaison.rs distinguishes TRANSIENT (5xx, secondary rate-limit, network) which retry with backoff vs PERMANENT (4xx auth, 404, malformed query) which fail-fast and emit kind=gh_liaison_permanent_failure
+    - scripts/ci/test-github-liaison-smoke.sh spawns three mock workers, kills the elected liaison mid-run, and asserts failover completes within 10 seconds with no dropped fetch requests
+    - "Post-merge SLO: gh_self_throttled events drop by >=80% in the 24h window following deploy vs the prior 24h baseline (captured via fleet-metrics-snapshot)"
+  notes: |
+    wave: 2-3 (GitHub Liaison; Wave 2 if folded into chump runners Rust port, Wave 3 if standalone capacity work)
+  closed_date: '2026-05-23'
+  closed_pr: 2373
 
