@@ -430,3 +430,5 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
 # INFRA-1791: skip the gap-preflight-ac-gate step in chump preflight
 CHUMP_PREFLIGHT_SKIP_ACGATE
+# INFRA-1719: AST crawler typed inputs
+CHUMP_DECOMPOSE_AST
