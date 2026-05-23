@@ -1,0 +1,17 @@
+- id: INFRA-1717
+  domain: INFRA
+  title: "RESILIENT: worker.sh auto-detect missing OAUTH path — falls through to chump-local when only ~/.chump/oauth-token.json exists (CLAUDE.md docs are right, code is wrong)"
+  status: open
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "Reproduce: unset ANTHROPIC_API_KEY; ensure CLAUDE_CODE_OAUTH_TOKEN unset but ~/.chump/oauth-token.json exists; run FLEET_SIZE=1 scripts/dispatch/run-fleet.sh; worker logs show FLEET_BACKEND=chump-local. Expected: FLEET_BACKEND=claude (subscription OAUTH works for claude -p)"
+    - "Fix scripts/dispatch/worker.sh:72: change condition to 'if [[ -z ANTHROPIC_API_KEY && -z CLAUDE_CODE_OAUTH_TOKEN && ! -s ~/.chump/oauth-token.json ]]; then chump-local; else claude'"
+    - Also fix run-fleet.sh INFRA-621 auth probe to test OAUTH path before declaring auth failure
+    - Emit ambient kind=fleet_auth_path_resolved with which path (api_key
+    - oauth_env
+    - oauth_file
+    - local_fallback) at startup
+    - "Smoke test scripts/ci/test-fleet-backend-auto-detect.sh: 4 scenarios (api_key set, oauth_env set, oauth_file present, all absent) — assert correct default"
+    - Pairs with INFRA-1716 (default value) but this is the CORRECTNESS half; that's the UX half
+

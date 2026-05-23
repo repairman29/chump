@@ -68,8 +68,14 @@ FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
-# INFRA-738: auto-detect backend based on ANTHROPIC_API_KEY.
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+# INFRA-738 + INFRA-1717: auto-detect backend by checking all claude auth paths.
+# Pre-INFRA-1717 only ANTHROPIC_API_KEY was checked, so OAUTH-subscription
+# sessions (token in env CLAUDE_CODE_OAUTH_TOKEN or refreshed to
+# ~/.chump/oauth-token.json by parent app) mis-routed to chump-local even
+# though `claude -p` would have worked fine via the OAUTH path.
+if [[ -z "${ANTHROPIC_API_KEY:-}" \
+   && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
+   && ! -s "${HOME}/.chump/oauth-token.json" ]]; then
     FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
 else
     FLEET_BACKEND="${FLEET_BACKEND:-claude}"

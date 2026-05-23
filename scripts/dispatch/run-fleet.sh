@@ -161,12 +161,20 @@ fi
 # tell workers to re-read from that file before each spawn.
 _fleet_auth_mode="unknown"
 _fleet_auth_path="none"
+# INFRA-1717: detect OAUTH path via file too — Claude Code refreshes the
+# token to ~/.chump/oauth-token.json every 5min (per CLAUDE.md auth modes);
+# the env var is only populated when the parent app exports it. Sessions
+# that source .env into a fresh shell will see the file but not the var.
+_oauth_token_file="${HOME}/.chump/oauth-token.json"
 if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
     _fleet_auth_mode="api_key"
     _fleet_auth_path="ANTHROPIC_API_KEY"
 elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
     _fleet_auth_mode="subscription"
     _fleet_auth_path="CLAUDE_CODE_OAUTH_TOKEN"
+elif [[ -s "$_oauth_token_file" ]]; then
+    _fleet_auth_mode="subscription"
+    _fleet_auth_path="oauth-token.json"
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
@@ -193,11 +201,14 @@ fi
 # INFRA-581: per-session PID file so teardown can cascade-kill orphaned workers.
 FLEET_PIDS_FILE="${FLEET_PIDS_FILE:-$HOME/.chump/fleet-pids-${FLEET_SESSION}.txt}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
-# INFRA-738: auto-detect backend based on ANTHROPIC_API_KEY.
-#   - Key set   → FLEET_BACKEND defaults to claude (preserves current behavior)
-#   - Key unset → FLEET_BACKEND defaults to chump-local (Ollama/local LLM)
+# INFRA-738 + INFRA-1717: auto-detect backend based on any working claude auth.
+#   - Any auth path resolved (api_key | subscription via env | oauth-token.json file)
+#       → FLEET_BACKEND defaults to claude
+#   - No auth path resolvable → FLEET_BACKEND defaults to chump-local
 #   - Explicit FLEET_BACKEND override always wins.
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+# Pre-INFRA-1717 the check was ANTHROPIC_API_KEY-only, which mis-routed
+# OAUTH-subscription sessions to the exhausted chump-local cascade.
+if [[ "$_fleet_auth_mode" == "unknown" ]]; then
     FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
 else
     FLEET_BACKEND="${FLEET_BACKEND:-claude}"
