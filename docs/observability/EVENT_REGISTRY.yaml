@@ -4184,6 +4184,17 @@ events:
       PRs skipped the local registry check before push.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
+  - kind: preflight_docsdelta_bypassed
+    effect_metric: self
+    emitter: src/preflight.rs (INFRA-1788 docs-delta-trailer gate bypass)
+    trigger: >
+      Operator ran `chump preflight --pre-commit` with
+      CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1 set, skipping the local
+      docs-delta-trailer gate (INFRA-1788, mirrors INFRA-124). The bypass
+      is intentional but recorded so post-hoc audits can see which PRs
+      shipped without local validation of the Net-new-docs trailer.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
   - kind: liaison_elected
     effect_metric: github_api_calls_24h
     emitter: scripts/ops/github-liaison.sh (INFRA-1317)

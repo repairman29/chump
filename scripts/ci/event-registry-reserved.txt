@@ -222,6 +222,7 @@ gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cm
 gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
 claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
 preflight_registry_bypassed # reason: INFRA-1731 #2377 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_REGISTRY=1; allowlist while EVENT_REGISTRY entry catches up
+preflight_docsdelta_bypassed # reason: INFRA-1788 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1; struct-field emit (EmitArgs { kind: "..." }) not detected by Pattern 1 grep — allowlisted while orphan-warn lands
 liaison_elected            # reason: INFRA-1317 #2373 GitHub Liaison election event from scripts/ops/github-liaison.sh; printf emit not grep-scannable
 liaison_heartbeat          # reason: INFRA-1317 #2373 GitHub Liaison heartbeat from scripts/ops/github-liaison.sh
 liaison_takeover           # reason: INFRA-1317 #2373 GitHub Liaison takeover event

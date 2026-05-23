@@ -298,6 +298,11 @@ struct Args {
     scope: ScopeArg,
     /// True if `--scope <bad>` was passed; main loop errors out.
     bad_scope: Option<String>,
+    /// INFRA-1788: enables pre-commit-only gates (docs-delta-trailer audit).
+    /// When false, those gates are silently skipped — the bare `chump preflight`
+    /// invocation stays under its speed target and doesn't fail-close on a diff
+    /// that hasn't yet had its commit message authored.
+    pre_commit: bool,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -308,6 +313,7 @@ fn parse_args(argv: &[String]) -> Args {
         help: false,
         scope: ScopeArg::Auto,
         bad_scope: None,
+        pre_commit: false,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -316,6 +322,7 @@ fn parse_args(argv: &[String]) -> Args {
             "--with-tests" => a.with_tests = true,
             "--keep-going" => a.keep_going = true,
             "--json" => a.json = true,
+            "--pre-commit" => a.pre_commit = true,
             "-h" | "--help" => a.help = true,
             "--scope" => {
                 if i + 1 >= argv.len() {
@@ -363,23 +370,163 @@ OPTIONS:
                     (slower; off by default to keep the fast path under 60s)
     --keep-going    Don't exit on the first failure; run all gates
     --json          Emit one JSON object per gate to stdout (machine-readable)
+    --pre-commit    Enable pre-commit-only gates (e.g. docs-delta-trailer audit
+                    against HEAD's COMMIT_EDITMSG, INFRA-1788). Mirrored from
+                    scripts/coord/chump-commit.sh on the path leading to a
+                    real commit; the bare 'chump preflight' silently skips
+                    these so it stays fast for ad-hoc validation runs.
     -h, --help      This message
 
 BYPASS:
     CHUMP_PREFLIGHT_SKIP=1   Skip everything (with audit warning).
                              Add 'Preflight-Skip-Reason: <why>' to commit body.
+    CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
+    CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
 
 GATES (in order):
     1. cargo fmt --check               (scope: rust)
     2. cargo clippy -- -D warnings     (scope: rust)
     3. cargo check                     (scope: rust)
-    4. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
+    4. event-registry-audit            (scope: rust, INFRA-1731)
+    5. docs-delta-trailer              (--pre-commit only, INFRA-1788)
+    6. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
 
 EXIT CODES:
     0   all gates passed
     1   one or more gates failed (see stdout)
     2   bad usage"
     );
+}
+
+/// INFRA-1788: docs-delta-trailer audit. Mirrors the block in
+/// scripts/git-hooks/pre-commit (INFRA-009 + INFRA-124) so operators catch a
+/// missing or understated `Net-new-docs: +N` trailer BEFORE the pre-commit
+/// hook fires — same fail-fast experience without paying a hook round-trip on
+/// every commit attempt.
+///
+/// Inputs come from the staged diff (`git diff --cached --diff-filter=A|D
+/// -- docs/*.md`) and from HEAD's `COMMIT_EDITMSG` (the message the operator
+/// is about to commit). When invoked outside `--pre-commit` mode the gate is
+/// silently skipped — there's no commit message to validate yet.
+///
+/// Returns a `Step`-shaped outcome string for the status line and a non-zero
+/// `should_fail` to drive exit semantics. The check is implemented inline
+/// rather than spawning bash so the operator sees the INFRA-124 diagnostic
+/// in the same terminal stream as the rest of preflight's output.
+struct DocsDeltaOutcome {
+    /// Human-readable result line (the same lines the bash hook prints).
+    message: String,
+    /// True if the gate should fail-close. False on accept / advisory.
+    should_fail: bool,
+    /// True if the gate ran a real check (i.e. there were docs/*.md adds).
+    /// When false the caller logs "skipped (no docs/*.md adds)".
+    ran: bool,
+}
+
+fn run_docs_delta_check(repo_root: &std::path::Path) -> DocsDeltaOutcome {
+    // 1. Count staged adds + deletes under docs/*.md.
+    let count_paths = |filter: &str| -> usize {
+        let out = Command::new("git")
+            .args([
+                "diff",
+                "--cached",
+                "--name-only",
+                &format!("--diff-filter={}", filter),
+                "--",
+                "docs/*.md",
+            ])
+            .current_dir(repo_root)
+            .output();
+        let Ok(o) = out else { return 0 };
+        if !o.status.success() {
+            return 0;
+        }
+        String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    };
+    let added = count_paths("A");
+    let deleted = count_paths("D");
+
+    if added == 0 || added <= deleted {
+        return DocsDeltaOutcome {
+            message: String::new(),
+            should_fail: false,
+            ran: false,
+        };
+    }
+
+    let net = added - deleted;
+
+    // 2. Find HEAD's COMMIT_EDITMSG. We resolve it via `git rev-parse
+    //    --git-dir` rather than assuming `.git/` so worktrees Just Work.
+    let git_dir = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(repo_root)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        });
+    let mut trailer_val: Option<usize> = None;
+    if let Some(gd) = git_dir.as_deref() {
+        let msg_path = std::path::PathBuf::from(gd).join("COMMIT_EDITMSG");
+        if let Ok(content) = std::fs::read_to_string(&msg_path) {
+            for line in content.lines() {
+                // Mirror the bash regex: `^Net-new-docs:[[:space:]]*\+?[0-9]+`
+                // case-insensitive, first match wins.
+                let lower = line.to_ascii_lowercase();
+                if let Some(rest) = lower.strip_prefix("net-new-docs:") {
+                    // Skip leading spaces + optional '+', then read digits.
+                    let bytes = rest.trim_start().trim_start_matches('+');
+                    let digits: String = bytes.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if !digits.is_empty() {
+                        if let Ok(n) = digits.parse::<usize>() {
+                            trailer_val = Some(n);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    match trailer_val {
+        None => DocsDeltaOutcome {
+            message: format!(
+                "✖  docs-delta (INFRA-124): commit adds {} docs/*.md, deletes {} (net +{})\n   \
+                 Red Letter #3 counter-pressure: either delete/archive a comparable doc,\n   \
+                 or add a commit-message trailer:    Net-new-docs: +{}\n   \
+                 Bypass: CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1 chump preflight --pre-commit",
+                added, deleted, net, net
+            ),
+            should_fail: true,
+            ran: true,
+        },
+        Some(v) if v < net => DocsDeltaOutcome {
+            message: format!(
+                "✖  docs-delta (INFRA-124): trailer claims Net-new-docs: +{}\n   \
+                 but commit actually adds {} docs/*.md, deletes {} (net +{}).\n   \
+                 Trailer must equal or exceed the computed delta. Update to:\n   \
+                 \x20\x20\x20\x20\x20\x20Net-new-docs: +{}\n   \
+                 Bypass: CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1 chump preflight --pre-commit",
+                v, added, deleted, net, net
+            ),
+            should_fail: true,
+            ran: true,
+        },
+        Some(_) => DocsDeltaOutcome {
+            // Trailer present and >= NET — accept silently.
+            message: String::new(),
+            should_fail: false,
+            ran: true,
+        },
+    }
 }
 
 /// Discover scripts/ci/test-*.sh files. The MVP returns a tight whitelist of
@@ -580,6 +727,47 @@ pub fn run(argv: &[String]) -> i32 {
         }
     }
 
+    // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
+    // (we're on the path to a real commit and HEAD's COMMIT_EDITMSG is
+    // populated). The gate doesn't go through the generic step runner —
+    // it executes inline because its diagnostic message needs to flow
+    // through preflight's terminal output, not be captured-and-truncated.
+    let mut docs_delta_failed = false;
+    if args.pre_commit {
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_DOCSDELTA").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping docs-delta-trailer (CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_docsdelta_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            let started_dd = Instant::now();
+            eprint!("[preflight] docs-delta-trailer ... ");
+            let dd = run_docs_delta_check(&repo_root);
+            let elapsed_dd = started_dd.elapsed().as_millis();
+            let symbol = if !dd.ran {
+                "·"
+            } else if dd.should_fail {
+                "✗"
+            } else {
+                "✓"
+            };
+            eprintln!("{} ({}ms)", symbol, elapsed_dd);
+            if !dd.message.is_empty() {
+                eprintln!("{}", dd.message);
+            }
+            if dd.should_fail {
+                docs_delta_failed = true;
+            }
+        }
+    }
+    // else: bare `chump preflight` — gate is silently skipped (AC #6).
+
     if args.with_tests && scope.includes(GateKind::Scripts) {
         for script in discover_test_scripts(&repo_root) {
             let path = script.to_string_lossy().into_owned();
@@ -646,6 +834,11 @@ pub fn run(argv: &[String]) -> i32 {
     let total_ms = started.elapsed().as_millis();
     if args.json {
         println!("[{}]", json_results.join(","));
+    }
+    // INFRA-1788: fold the inline docs-delta-trailer outcome into the
+    // overall pass/fail decision (it runs outside the generic step loop).
+    if docs_delta_failed {
+        any_failed = true;
     }
     if any_failed {
         eprintln!(
