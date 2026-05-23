@@ -60,6 +60,22 @@ POLL_INTERVAL_S="${CHUMP_LIAISON_POLL_INTERVAL_S:-60}"
 STALE_S="${CHUMP_LIAISON_STALE_S:-90}"
 RECONCILE_SCRIPT="$REPO/scripts/ops/github-cache-reconcile.sh"
 
+# ── INFRA-1875: webhook-health probe + polling fallback ────────────────────
+# Each refresh cycle, POST a heartbeat ping to the local
+# github-webhook-receiver. If it fails CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS
+# times consecutively, drop the poll interval to CHUMP_LIAISON_POLL_FALLBACK_S
+# and emit liaison_webhook_unhealthy + liaison_polling_fallback_active. On the
+# next successful probe, restore the original interval + emit liaison_webhook_recovered.
+WEBHOOK_HEALTH_URL="${CHUMP_LIAISON_WEBHOOK_HEALTH_URL:-http://127.0.0.1:8765/health}"
+WEBHOOK_HEALTH_MAX_FAILS="${CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS:-3}"
+POLL_FALLBACK_S="${CHUMP_LIAISON_POLL_FALLBACK_S:-30}"
+WEBHOOK_HEALTH_DISABLED="${CHUMP_LIAISON_WEBHOOK_HEALTH_DISABLED:-0}"
+# Internal runtime state (NOT operator-tunable; tracks consecutive-fail count
+# + whether we are currently in fallback mode).
+_LIAISON_WEBHOOK_FAILS=0
+_LIAISON_IN_FALLBACK=0
+_LIAISON_ORIGINAL_INTERVAL_S="$POLL_INTERVAL_S"
+
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
 
 _now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -154,6 +170,48 @@ _release_lock() {
 _refresh_cycle() {
     # Renew heartbeat first (so any peer checking sees us alive).
     _now_utc > "$HEARTBEAT" 2>/dev/null || true
+
+    # INFRA-1875: probe the webhook receiver before reconcile. The probe is
+    # cheap (a localhost GET); failure → consecutive-fail counter; on threshold
+    # cross → drop poll interval to fallback + emit unhealthy event. On
+    # recovery, restore interval + emit recovered event.
+    if [[ "$WEBHOOK_HEALTH_DISABLED" != "1" ]]; then
+        local probe_err=""
+        # Use curl with strict timeout; -fsS hides progress but surfaces HTTP errors.
+        if probe_err=$(curl -fsS --max-time 5 "$WEBHOOK_HEALTH_URL" -o /dev/null 2>&1); then
+            # Probe succeeded.
+            if [[ "$_LIAISON_IN_FALLBACK" == "1" ]]; then
+                # Recovery path: restore the operator's original interval + announce.
+                POLL_INTERVAL_S="$_LIAISON_ORIGINAL_INTERVAL_S"
+                _LIAISON_IN_FALLBACK=0
+                _emit_ambient liaison_webhook_recovered \
+                    "pid=$$" \
+                    "poll_interval_s=$POLL_INTERVAL_S" \
+                    "url=$WEBHOOK_HEALTH_URL"
+            fi
+            _LIAISON_WEBHOOK_FAILS=0
+        else
+            _LIAISON_WEBHOOK_FAILS=$((_LIAISON_WEBHOOK_FAILS + 1))
+            if [[ "$_LIAISON_WEBHOOK_FAILS" -ge "$WEBHOOK_HEALTH_MAX_FAILS" ]] \
+               && [[ "$_LIAISON_IN_FALLBACK" != "1" ]]; then
+                # Threshold crossed for the first time this run. Sanitize the
+                # error message for the JSON field (truncate, strip quotes).
+                local last_err
+                last_err=$(printf '%s' "$probe_err" | tr -d '"' | head -c 200)
+                _emit_ambient liaison_webhook_unhealthy \
+                    "pid=$$" \
+                    "consecutive_failures=$_LIAISON_WEBHOOK_FAILS" \
+                    "url=$WEBHOOK_HEALTH_URL" \
+                    "last_error=$last_err"
+                POLL_INTERVAL_S="$POLL_FALLBACK_S"
+                _LIAISON_IN_FALLBACK=1
+                _emit_ambient liaison_polling_fallback_active \
+                    "pid=$$" \
+                    "poll_interval_s=$POLL_INTERVAL_S" \
+                    "reason=webhook_unhealthy_after_${WEBHOOK_HEALTH_MAX_FAILS}_failures"
+            fi
+        fi
+    fi
 
     # One batch reconcile — this is the existing one-REST-call refresh that
     # already migrates pr_state for all open PRs.

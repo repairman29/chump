@@ -4391,3 +4391,36 @@ events:
       sweep re-evaluates pressure from scratch.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, allocated, limit, pct, threshold, new_reap_age]
+
+  # INFRA-1875: GitHub Liaison webhook-health probe + polling fallback.
+  # Closes INFRA-1318 Phase 2 AC #5/#6.
+  - kind: liaison_webhook_unhealthy
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Webhook-receiver health probe (default http://127.0.0.1:8765/health)
+      failed CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS times in a row (default 3).
+      Liaison drops poll interval to fallback value and emits
+      liaison_polling_fallback_active on the same cycle.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, consecutive_failures, url, last_error]
+
+  - kind: liaison_polling_fallback_active
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Companion to liaison_webhook_unhealthy — emitted on the cycle the
+      liaison switches from normal interval to fallback (default 30s). Pairs
+      with liaison_webhook_recovered which fires on the next successful probe.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, poll_interval_s, reason]
+
+  - kind: liaison_webhook_recovered
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Successful webhook-health probe after the liaison had been in
+      polling-fallback mode. Original poll interval restored. Pairs with
+      liaison_polling_fallback_active.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, poll_interval_s, url]
