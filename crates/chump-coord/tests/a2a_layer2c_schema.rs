@@ -48,8 +48,7 @@ fn json_round_trip_full_fields() {
     assert!(json.contains("\"harness\":\"claude\""));
     assert!(json.contains("\"ttl_seconds\":300"));
 
-    let back: CapabilityManifest =
-        serde_json::from_str(&json).expect("deserialize");
+    let back: CapabilityManifest = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(m, back, "round-trip should be lossless");
 }
 
@@ -71,8 +70,7 @@ fn json_round_trip_minimal_fields() {
         ttl_seconds: 60,
     };
     let json = serde_json::to_string(&m).expect("serialize");
-    let back: CapabilityManifest =
-        serde_json::from_str(&json).expect("deserialize");
+    let back: CapabilityManifest = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(m, back);
     assert!(!back.has_hardware_fields());
 }
@@ -91,8 +89,14 @@ fn hardware_fields_gated_by_env() {
     std::env::set_var("CHUMP_GPU_LABEL", "fake-gpu");
     std::env::set_var("CHUMP_IP_LABEL", "10.0.0.99");
     let m = current_manifest(vec!["test".to_string()]);
-    assert_eq!(m.gpu, None, "gpu must be absent without CHUMP_PUBLISH_HARDWARE=1");
-    assert_eq!(m.ip, None, "ip must be absent without CHUMP_PUBLISH_HARDWARE=1");
+    assert_eq!(
+        m.gpu, None,
+        "gpu must be absent without CHUMP_PUBLISH_HARDWARE=1"
+    );
+    assert_eq!(
+        m.ip, None,
+        "ip must be absent without CHUMP_PUBLISH_HARDWARE=1"
+    );
 
     // Opt-in
     std::env::set_var("CHUMP_PUBLISH_HARDWARE", "1");
