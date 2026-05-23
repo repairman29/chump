@@ -429,6 +429,13 @@ CHUMP_PREFLIGHT_SKIP_ENVVARS
 CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
 # INFRA-1791: skip the gap-preflight-ac-gate step in chump preflight
+# INFRA-1787: skip env-vars-internal-coverage gate in chump preflight
+CHUMP_PREFLIGHT_SKIP_ENVVARS
+
+# INFRA-1789: skip subcommand-help regression gate in chump preflight
+CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
+
+# INFRA-1791: skip gap-preflight-ac-gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ACGATE
 # INFRA-1719: AST crawler typed inputs
 CHUMP_DECOMPOSE_AST

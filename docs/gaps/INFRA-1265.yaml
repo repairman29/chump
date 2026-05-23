@@ -1,13 +1,15 @@
 - id: INFRA-1265
   domain: INFRA
   title: "CREDIBLE: chump-planner silently drops gaps whose acceptance_criteria uses numbered '1. text' YAML form when no description: block exists"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "Root cause confirmed: `chump-planner` (or the YAML parser feeding `--briefing`) silently discards `acceptance_criteria` when the field uses numbered YAML block-sequence form (`1. text`, `2. text`) without a sibling `description:` block; a test fixture in `scripts/ci/test-planner-ac-parsing.sh` reproduces the drop before the fix"
-    - "Fix applied: parser handles both list-item forms — `- text` bullet form AND `1. text` numbered block-sequence form — as equivalent; `--briefing` output for a numbered-form AC gap includes the full AC list"
-    - "Regression guard: `scripts/ci/test-planner-ac-parsing.sh` covers (a) bullet-form gap → AC present in briefing, (b) numbered-form gap → AC present in briefing, (c) gap with both description: and numbered AC → no regression"
-    - "No silent drops: any gap that has `acceptance_criteria` in its YAML must have those bullets present in `chump --briefing <ID>` output; CI gate fails if any AC bullet count in briefing < AC bullet count in YAML"
-    - "INFRA-1265 is the specific bug; INFRA-1599 batch-AC-fix is the mitigation (all vague gaps now use bullet form only, eliminating the numbered form going forward)"
+    - "Root cause confirmed: chump-planner (or the YAML parser feeding --briefing) silently discards acceptance_criteria when the field uses numbered YAML block-sequence form (1. text) without a sibling description: block; a test fixture in scripts/ci/test-planner-ac-parsing.sh reproduces the drop before the fix"
+    - "Fix applied: parser handles both list-item forms — bullet form AND numbered block-sequence form — as equivalent; --briefing output for a numbered-form AC gap includes the full AC list"
+    - "Regression guard: scripts/ci/test-planner-ac-parsing.sh covers (a) bullet-form gap -> AC present in briefing, (b) numbered-form gap -> AC present in briefing, (c) gap with both description: and numbered AC -> no regression"
+    - "No silent drops: any gap that has acceptance_criteria in its YAML must have those bullets present in chump --briefing <ID> output; CI gate fails if any AC bullet count in briefing < AC bullet count in YAML"
+    - INFRA-1265 is the specific bug; INFRA-1599 batch-AC-fix is the mitigation (all vague gaps now use bullet form only, eliminating the numbered form going forward)
+  closed_date: '2026-05-23'
+  closed_pr: 2370
 

@@ -1,0 +1,12 @@
+- id: INFRA-1797
+  domain: INFRA
+  title: "EFFECTIVE: SessionStart hook surfaces opus-message inbox — unread count + 3 latest previews alongside ambient digest (completes INFRA-1796 hook integration)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
