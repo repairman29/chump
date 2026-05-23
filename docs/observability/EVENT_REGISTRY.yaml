@@ -4272,3 +4272,17 @@ events:
       malformed work.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, contract_name, error, raw_output_first_100]
+  # INFRA-1722: ARCHITECTURE.md auto-generator. Emitted on each generation so
+  # operators (and the fleet-brief consumer) see when a repo's architecture
+  # snapshot was refreshed and how much the AST-derived shape changed.
+  - kind: architecture_doc_regenerated
+    effect_metric: self
+    emitter: scripts/ops/generate-architecture-doc.sh (INFRA-1722)
+    trigger: >
+      The ARCHITECTURE.md generator finished a run against a repo (the chump
+      repo itself or a takeover-demo target like echeo). Fires whether or not
+      the regenerated output differed from the previous file — operators want
+      both the "ran-but-unchanged" and "ran-and-changed-N-lines" signals to
+      detect silent regressions in the AST crawler.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo, lines_changed, sections_touched]
