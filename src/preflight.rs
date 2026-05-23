@@ -557,6 +557,31 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1791: gap-preflight-ac-gate audit. Surfaces open gaps with
+        // vague/empty AC (TODO placeholders) before the operator tries to
+        // claim them — INFRA-1259's "every open gap must have concrete AC"
+        // discipline. Skip via CHUMP_PREFLIGHT_SKIP_ACGATE=1 with audit-trail
+        // emit (mirrors INFRA-1731 #2377 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ACGATE").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping gap-preflight-ac-gate (CHUMP_PREFLIGHT_SKIP_ACGATE=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_acgate_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ACGATE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "gap-preflight-ac-gate",
+                &["bash", "scripts/ci/test-gap-preflight-ac-gate.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
