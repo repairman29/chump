@@ -1507,6 +1507,10 @@ reaps `claude` binaries older than 1 h whose ppid chain doesn't lead
 to the foreground Claude.app. Until that ships, **manually reap before
 starting any new autonomous loop** if you've been running one for >24 h.
 
+## What happens when fg_pid detection fails (INFRA-1786, 2026-05-23)
+
+`scripts/ops/reap-orphan-claude-procs.sh` uses a three-probe strategy to find the foreground Claude.app PID (pgrep → ps|awk → launchctl). If all three probes return empty **and** `CHUMP_REAPER_HEADLESS` is not set to `1`, the script refuses to operate and exits with code 3, printing `"fg_pid=none on macOS without CHUMP_REAPER_HEADLESS=1 — refusing to reap everything"` to stderr. It also emits `kind=reaper_safety_gate_triggered` to `ambient.jsonl`. This prevents the reaper from mass-killing active fleet workers on a developer workstation when the GUI app is running but the PID lookup fails. To restore the old reap-everything behaviour in CI or headless environments, set `CHUMP_REAPER_HEADLESS=1`.
+
 ## Stale-process classes to watch (INFRA-1663, 2026-05-22)
 
 Beyond the `claude` leak, the 2026-05-22 cleanup found two other
