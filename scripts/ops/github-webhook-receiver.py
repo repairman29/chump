@@ -37,7 +37,9 @@ import hmac
 import json
 import logging
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -238,6 +240,111 @@ def _auto_release_sibling_leases(pr: dict, payload: dict) -> int:
     return released
 
 
+def _auto_prune_worktree_on_merge(pr: dict, payload: dict) -> int:
+    """INFRA-1705: on a merged PR, prune the corresponding /tmp/chump-<slug>/
+    worktree immediately instead of waiting for the periodic prune-worktrees.sh
+    sweep.
+
+    Fires AFTER _auto_release_sibling_leases (which clears the lease entry for
+    this gap), so the lease-check safety condition is already satisfied. Other
+    safety checks:
+      - head_ref must match chump/<slug>-claim convention (otherwise we don't
+        know where the worktree lives)
+      - worktree directory must exist under /tmp/
+      - no uncommitted changes (git diff --quiet HEAD)
+
+    Emits kind=worktree_orphan_pruned (success) or kind=worktree_orphan_skipped
+    (safety-check blocked) — same kinds the periodic sweep emits — with an
+    extra `trigger: pr_merge_webhook` field so consumers can distinguish.
+
+    Returns 1 if pruned, 0 otherwise.
+
+    Bypass: CHUMP_NO_AUTO_PRUNE_WORKTREE=1
+    """
+    if os.environ.get("CHUMP_NO_AUTO_PRUNE_WORKTREE") == "1":
+        return 0
+    if payload.get("action") != "closed" or not pr.get("merged"):
+        return 0
+    head_ref = (pr.get("head") or {}).get("ref") or ""
+    if not (head_ref.startswith("chump/") and head_ref.endswith("-claim")):
+        return 0
+    slug = head_ref[len("chump/"):-len("-claim")]
+    if not slug:
+        return 0
+    worktree_path = Path("/tmp") / f"chump-{slug}"
+    if not worktree_path.is_dir():
+        return 0
+    pr_number = pr.get("number")
+    repo_root = _repo_root()
+
+    # Safety: skip if there are uncommitted changes in the worktree.
+    try:
+        diff = subprocess.run(
+            ["git", "-C", str(worktree_path), "diff", "--quiet", "HEAD"],
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+        if diff.returncode != 0:
+            _emit_ambient({
+                "ts": _now_iso(),
+                "kind": "worktree_orphan_skipped",
+                "path": str(worktree_path),
+                "branch": head_ref,
+                "reason": "uncommitted_changes",
+                "trigger": "pr_merge_webhook",
+                "merged_pr": pr_number,
+            })
+            log.info("INFRA-1705: skipped prune of %s — uncommitted changes (PR #%s)",
+                     worktree_path, pr_number)
+            return 0
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("INFRA-1705: git diff check failed for %s: %s", worktree_path, e)
+        return 0
+
+    # Primary path: git worktree remove --force (also prunes the linked-worktree
+    # gitdir back-reference under .git/worktrees/).
+    method = "git_worktree_remove"
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree_path)],
+            cwd=str(repo_root),
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            # Fallback: rm + git worktree prune. Mirrors the bash sweep's
+            # fallback path for worktrees whose gitdir back-ref is corrupt.
+            method = "rm_fallback"
+            shutil.rmtree(worktree_path, ignore_errors=True)
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=str(repo_root),
+                check=False,
+                timeout=10,
+            )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("INFRA-1705: worktree remove failed for %s: %s", worktree_path, e)
+        return 0
+
+    if worktree_path.exists():
+        log.warning("INFRA-1705: worktree %s still present after prune attempt", worktree_path)
+        return 0
+
+    _emit_ambient({
+        "ts": _now_iso(),
+        "kind": "worktree_orphan_pruned",
+        "path": str(worktree_path),
+        "branch": head_ref,
+        "trigger": "pr_merge_webhook",
+        "merged_pr": pr_number,
+        "method": method,
+    })
+    log.info("INFRA-1705: pruned worktree %s after PR #%s merge", worktree_path, pr_number)
+    return 1
+
+
 def _verify_signature(secret: str, payload: bytes, header: str | None) -> bool:
     """Verify GitHub's X-Hub-Signature-256 header. Constant-time compare."""
     if not secret or not header or not header.startswith("sha256="):
@@ -400,6 +507,14 @@ class Handler(BaseHTTPRequestHandler):
                         if released > 0:
                             log.info("INFRA-1444: auto-released %d orphaned lease(s) for PR #%s",
                                      released, pr.get("number"))
+                        # INFRA-1705: on PR merge, prune the corresponding
+                        # /tmp/chump-<slug>/ worktree immediately so the
+                        # 5-10min "orphan window" before the next periodic
+                        # prune sweep is closed.
+                        pruned = _auto_prune_worktree_on_merge(pr, payload)
+                        if pruned > 0:
+                            log.info("INFRA-1705: auto-pruned worktree for PR #%s",
+                                     pr.get("number"))
                 elif event_type in ("check_suite", "workflow_run"):
                     # Touch fetched_at_local for referenced PRs so consumers re-fetch.
                     suite = payload.get(event_type) or {}
