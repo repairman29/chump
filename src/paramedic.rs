@@ -32,6 +32,11 @@ pub enum ParamedicAction {
     AllowlistEmitNoReg,
     SquashInitLeak,
     FileClusterRescue,
+    /// INFRA-1420: when a "keystone-fix" merges (commit subject carries
+    /// `unblocks-cluster: <check-name>` trailer), update-branch every open
+    /// PR that's red on that check. Replaces the manual cascade I ran by
+    /// hand during the #2065 landing (18 PRs rebased one-by-one).
+    KeystoneCascade,
 }
 
 impl ParamedicAction {
@@ -42,8 +47,76 @@ impl ParamedicAction {
             Self::AllowlistEmitNoReg => "ALLOWLIST_EMIT_NO_REG",
             Self::SquashInitLeak => "SQUASH_INIT_LEAK",
             Self::FileClusterRescue => "FILE_CLUSTER_RESCUE",
+            Self::KeystoneCascade => "KEYSTONE_CASCADE",
         }
     }
+}
+
+/// INFRA-1420: parse the `unblocks-cluster: <check-name>` trailer from a
+/// commit message body. Returns the check name (trimmed) when present,
+/// or None. Case-insensitive on the trailer key; the value is returned
+/// as-is to preserve job-name capitalization.
+pub fn extract_unblocks_cluster_trailer(msg: &str) -> Option<String> {
+    for line in msg.lines() {
+        let t = line.trim();
+        if let Some(rest) = strip_prefix_ci(t, "unblocks-cluster:") {
+            let v = rest.trim().to_string();
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    if s.len() < prefix.len() {
+        return None;
+    }
+    let (head, tail) = s.split_at(prefix.len());
+    if head.eq_ignore_ascii_case(prefix) {
+        Some(tail)
+    } else {
+        None
+    }
+}
+
+/// INFRA-1420: list keystone-fix merge subjects from `git log` on the
+/// configured base branch since `since`. v1 returns the touched check
+/// names; the cascade caller intersects them with open-PR failure
+/// names. Best-effort: any git failure returns empty.
+pub fn recent_keystone_check_names(repo_root: &Path, since_seconds: u64) -> Vec<String> {
+    let since_arg = format!("--since={since_seconds} seconds ago");
+    let out = std::process::Command::new("git")
+        .args(["log", "-z", "--format=%B", "main", &since_arg])
+        .current_dir(repo_root)
+        .output();
+    let Ok(o) = out else {
+        return Vec::new();
+    };
+    if !o.status.success() {
+        return Vec::new();
+    }
+    let body = String::from_utf8_lossy(&o.stdout);
+    let mut hits: Vec<String> = Vec::new();
+    for raw_msg in body.split('\0') {
+        if let Some(name) = extract_unblocks_cluster_trailer(raw_msg) {
+            hits.push(name);
+        }
+    }
+    hits
+}
+
+/// INFRA-1420: how recent the `unblocks-cluster:` trailer must be to
+/// trigger a cascade. Default 600s (10 min) — long enough that paramedic
+/// running on a 10-min loop won't miss a keystone, short enough that
+/// re-runs after fleet failure don't replay yesterday's cascade.
+pub fn keystone_lookback_seconds() -> u64 {
+    std::env::var("CHUMP_PARAMEDIC_KEYSTONE_LOOKBACK_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(600)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +235,21 @@ pub fn triage(repo_root: &Path, dry_run: bool) -> Result<ActionPlan> {
                 gap_id: None,
             });
         }
+    }
+
+    // INFRA-1420: KEYSTONE_CASCADE — scan recent commits on main for the
+    // `unblocks-cluster: <check>` trailer. Each matching trailer emits one
+    // cascade item; the action_keystone_cascade runner fans out to every
+    // open PR failing that check. Lookback default 10 min so paramedic's
+    // 10-min triage cycle doesn't miss a keystone but also doesn't replay
+    // yesterday's cascade.
+    for check_name in recent_keystone_check_names(repo_root, keystone_lookback_seconds()) {
+        items.push(ActionItem {
+            pr_number: 0,
+            action: ParamedicAction::KeystoneCascade.as_str().to_string(),
+            reason: check_name,
+            gap_id: None,
+        });
     }
 
     Ok(ActionPlan {
@@ -589,7 +677,121 @@ fn run_action(item: &ActionItem, repo_root: &Path, dry_run: bool, _skips: &SkipL
         "ALLOWLIST_EMIT_NO_REG" => action_allowlist_emit(item.pr_number, repo_root, dry_run),
         "SQUASH_INIT_LEAK" => action_squash_init_leak(item.pr_number, repo_root, dry_run),
         "FILE_CLUSTER_RESCUE" => action_file_cluster_rescue(item, repo_root, dry_run),
+        "KEYSTONE_CASCADE" => action_keystone_cascade(item, repo_root, dry_run),
         other => anyhow::bail!("unknown action: {other}"),
+    }
+}
+
+/// INFRA-1420: KEYSTONE_CASCADE action. `item.reason` carries the check
+/// name. Fan out: query open PRs failing that check, run `gh pr update-branch
+/// --rebase` on each (skip DIRTY ones — those need manual conflict resolution),
+/// emit `kind=keystone_cascade_fired` with the fan-out count.
+fn action_keystone_cascade(item: &ActionItem, repo_root: &Path, dry_run: bool) -> Result<()> {
+    let check_name = &item.reason;
+    let targets = open_prs_failing_check(check_name);
+    if dry_run {
+        info!(
+            target_check = %check_name,
+            fanout = targets.len(),
+            "KEYSTONE_CASCADE dry-run: would update-branch on these PRs"
+        );
+        return Ok(());
+    }
+    let mut ok_count = 0;
+    let mut skipped: Vec<u64> = Vec::new();
+    for pr in &targets {
+        let out = std::process::Command::new("gh")
+            .args(["pr", "update-branch", &pr.to_string(), "--rebase"])
+            .output();
+        match out {
+            Ok(o) if o.status.success() => {
+                ok_count += 1;
+            }
+            _ => {
+                skipped.push(*pr);
+            }
+        }
+    }
+    emit_keystone_cascade_event(repo_root, item.pr_number, check_name, ok_count, &skipped);
+    Ok(())
+}
+
+/// List open PRs that have FAILURE conclusion on the given check name.
+/// Best-effort gh call; returns Vec::new on any failure.
+fn open_prs_failing_check(check_name: &str) -> Vec<u64> {
+    let out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,statusCheckRollup",
+        ])
+        .output();
+    let Ok(o) = out else {
+        return Vec::new();
+    };
+    if !o.status.success() {
+        return Vec::new();
+    }
+    let arr: Vec<serde_json::Value> = serde_json::from_slice(&o.stdout).unwrap_or_default();
+    let mut out_prs: Vec<u64> = Vec::new();
+    for pr in arr {
+        let n = pr.get("number").and_then(|v| v.as_u64()).unwrap_or(0);
+        if n == 0 {
+            continue;
+        }
+        let Some(rollup) = pr.get("statusCheckRollup").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for entry in rollup {
+            let conclusion = entry
+                .get("conclusion")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !matches!(conclusion, "FAILURE" | "CANCELLED" | "TIMED_OUT") {
+                continue;
+            }
+            let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if name == check_name {
+                out_prs.push(n);
+                break;
+            }
+        }
+    }
+    out_prs
+}
+
+fn emit_keystone_cascade_event(
+    repo_root: &Path,
+    keystone_pr: u64,
+    check_name: &str,
+    fanout_count: usize,
+    skipped: &[u64],
+) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let skipped_str = skipped
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"keystone_cascade_fired\",\"keystone_pr\":{keystone_pr},\"target_check\":\"{check_name}\",\"fanout_count\":{fanout_count},\"skipped\":\"{skipped_str}\"}}\n"
+    );
+    if let Some(parent) = amb.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -1131,4 +1333,90 @@ fn epoch_to_parts(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     }
     let day = rem + 1;
     (years, month, day, h, m, s)
+}
+
+#[cfg(test)]
+mod keystone_cascade_tests {
+    //! INFRA-1420: unit tests for keystone-fix detector + trailer parser.
+    use super::*;
+
+    #[test]
+    fn extract_unblocks_cluster_trailer_finds_value() {
+        let msg = "feat(INFRA-1234): some keystone fix\n\nbody body\n\nunblocks-cluster: audit-required\nCo-Authored-By: claude\n";
+        assert_eq!(
+            extract_unblocks_cluster_trailer(msg),
+            Some("audit-required".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_unblocks_cluster_trailer_case_insensitive() {
+        let msg = "feat: x\n\nUnblocks-Cluster: fast-checks\n";
+        assert_eq!(
+            extract_unblocks_cluster_trailer(msg),
+            Some("fast-checks".to_string())
+        );
+        let msg = "feat: x\n\nUNBLOCKS-CLUSTER: clippy-required\n";
+        assert_eq!(
+            extract_unblocks_cluster_trailer(msg),
+            Some("clippy-required".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_unblocks_cluster_trailer_returns_none_when_absent() {
+        let msg = "feat: routine fix with no keystone marker\n\nCo-Authored-By: claude\n";
+        assert_eq!(extract_unblocks_cluster_trailer(msg), None);
+    }
+
+    #[test]
+    fn extract_unblocks_cluster_trailer_ignores_empty_value() {
+        let msg = "feat: x\n\nunblocks-cluster:   \n";
+        assert_eq!(extract_unblocks_cluster_trailer(msg), None);
+    }
+
+    #[test]
+    fn extract_unblocks_cluster_trailer_handles_first_line() {
+        // Even if the trailer is on the first line (unusual), still parse.
+        let msg = "unblocks-cluster: test-foo\n";
+        assert_eq!(
+            extract_unblocks_cluster_trailer(msg),
+            Some("test-foo".to_string())
+        );
+    }
+
+    #[test]
+    fn keystone_lookback_seconds_env_override() {
+        let key = "CHUMP_PARAMEDIC_KEYSTONE_LOOKBACK_SECS";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert_eq!(keystone_lookback_seconds(), 600);
+        unsafe {
+            std::env::set_var(key, "120");
+        }
+        assert_eq!(keystone_lookback_seconds(), 120);
+        unsafe {
+            std::env::set_var(key, "0");
+        }
+        // Zero rejected (would be a never-firing cascade); default wins.
+        assert_eq!(keystone_lookback_seconds(), 600);
+        unsafe {
+            std::env::set_var(key, "garbage");
+        }
+        assert_eq!(keystone_lookback_seconds(), 600);
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn paramedic_action_keystone_cascade_tag() {
+        // The action's stable tag must remain "KEYSTONE_CASCADE" — the
+        // run_action dispatcher and the ambient telemetry both key off it.
+        assert_eq!(
+            ParamedicAction::KeystoneCascade.as_str(),
+            "KEYSTONE_CASCADE"
+        );
+    }
 }
