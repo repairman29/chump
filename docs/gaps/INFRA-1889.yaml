@@ -1,0 +1,15 @@
+- id: INFRA-1889
+  domain: INFRA
+  title: "CREDIBLE: ambient.jsonl emit gates 'kind' field against EVENT_REGISTRY.yaml — reject lines whose kind is free-text instead of a registered event-kind slug (found 1 in 24h: curator-opus-handoff wrote a full sentence into kind=)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - 1. ambient emit path (chump-coord ambient module or equivalent) loads EVENT_REGISTRY.yaml + scripts/ci/event-registry-reserved.txt at startup into an in-memory HashSet of valid kind slugs
+    - "2. On every emit_event call: if 'kind' field is not in the set AND is not a slug-shaped string (regex ^[a-z][a-z0-9_]+$) → quarantine the event to .chump-locks/ambient-rejected.jsonl AND emit kind=ambient_kind_rejected with bad_kind=<original> for forensics"
+    - 3. Quarantined events are NOT written to ambient.jsonl (prevents downstream consumers from seeing malformed data); the kind=ambient_kind_rejected replacement IS written so the audit trail is preserved
+    - "4. Bypass: CHUMP_AMBIENT_KIND_LAX=1 env restores the current accept-anything behavior (migration safety); when bypass is active emit kind=ambient_schema_lax once per process"
+    - "5. Backfill report: scripts/dev/ambient-kind-audit.sh scans last 30d of ambient.jsonl, prints count of distinct kinds NOT in registry — used to size the migration before turning on enforcement"
+    - "6. Unit test scripts/ci/test-ambient-kind-schema.sh: emit one valid kind + one free-text-sentence kind, assert valid passes through to ambient.jsonl, invalid is quarantined + replacement event fires with bad_kind field intact"
+    - "7. Real-world trigger: 2026-05-23 curator-opus-handoff session emitted a 25-word English sentence as the kind field (full event preserved in ambient.jsonl ~19:01:06Z)"
+
