@@ -4297,3 +4297,16 @@ events:
       detect silent regressions in the AST crawler.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, repo, lines_changed, sections_touched]
+  - kind: chump_gap_set_legacy_delim
+    effect_metric: self
+    emitter: src/main.rs `chump gap set --acceptance-criteria` (INFRA-1799)
+    trigger: >
+      Operator invoked `chump gap set --acceptance-criteria "a|b|c"` with a
+      single flag whose value contains '|' — the legacy pipe-delimiter
+      form. The preferred path is repeated `--acceptance-criteria BULLET`
+      flags, which avoids splitting AC values that legitimately contain
+      pipes (Rust generics, recipient syntax <gap-id|session-id|all-opus>,
+      regex alternation). Emit lets the curator migrate callers gradually
+      before removing the delimiter path.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, bullet_count, note]

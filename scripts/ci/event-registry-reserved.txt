@@ -308,3 +308,4 @@ a2a_subscribe_stub_invoked  # reason: INFRA-1758 stub diagnostic emitted from cr
 a2a_rpc_stub_called  # reason: INFRA-1759 stub diagnostic emitted from crates/chump-coord/src/rpc.rs::call_rpc + serve_rpc while real impl (NATS subject routing) is unwired; allowlist until INFRA-1119 slice 2/4 lands
 auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when cargo fmt --all was run pre-commit (default path)
 auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
+chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
