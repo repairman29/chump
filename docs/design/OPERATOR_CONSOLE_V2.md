@@ -225,9 +225,29 @@ detail.
 
 ### First-run experience
 
+**Canonical surface: `<chump-first-run-wizard>` (PRODUCT-108, `web/v2/app.js`).**
+
+As of INFRA-1585 (2026-05-23) the PWA ships exactly ONE first-run surface.
+The two legacy surfaces have been removed:
+
+| Surface | Outcome |
+|---------|---------|
+| `<chump-welcome>` (PRODUCT-082, `web/v2/welcome.js`) | **Deleted.** The `welcome.js` module is now a <30 LOC stub that only runs the localStorage migration and defines no custom element. The body element and script tag are gone from `index.html`. |
+| `<chump-ootb-wizard>` (`web/v2/ootb-wizard.js`) | **Tauri-specific steps folded** into `<chump-first-run-wizard>` via a `window.__TAURI__` detection branch. The Tauri-only rows (Ollama detection, native notification permission) render only when the Tauri runtime is present. The `<chump-ootb-wizard>` element tag is retained in `index.html` for Tauri's own full-screen OOTB setup flow (binary sidecar start), which runs before the PWA shell is interactive. |
+
+**localStorage migration.** Users who completed the old `<chump-welcome>` flow
+(`chump_first_visit` / `chump_first_visit_completed` keys set) are automatically
+migrated: `ChumpFirstRunWizard#migrateLegacyWelcomeKeys()` runs on every
+`connectedCallback` and writes `chump.firstrun.dismissed=true` so they never
+see the new wizard again.
+
+**`?welcome=force` override.** Appending `?welcome=force` to any `/v2/` URL
+bypasses the dismissed flag. Useful for QA, demos, and the Playwright dedup
+test (`e2e/tests/pwa-onboarding-consolidation.spec.ts`).
+
 When the brain / heartbeat / repo trio is empty (no `chump-brain/`, no ship
 heartbeat lines, no `current_repo`), the NOW view replaces its normal panels
-with a **golden-path runner**:
+with the **golden-path runner**:
 
 ```
 WELCOME — let's get Chump ready.
@@ -236,12 +256,14 @@ WELCOME — let's get Chump ready.
 [ ] Brain not initialized → [INIT BRAIN] one-click
 [ ] No ship heartbeat → [START AUTOPILOT] one-click
 [ ] No claimed gap yet → [BROWSE QUEUE]
+[  Tauri only  ] Ollama ready → auto-detected via IPC
+[  Tauri only  ] Native notifications → [Allow]
 ```
 
 Each row links the relevant doc + offers a single-click action where safe.
-When the trio is non-empty, the checklist self-hides and stays accessible
-via Config → Setup. Closes the brick-wall complaint where the Dashboard
-today is "empty by design."
+When all steps are done or skipped, the checklist self-hides and stays
+accessible via Config → Setup. Closes the brick-wall complaint where the
+Dashboard today is "empty by design."
 
 ## Three strategic decisions
 

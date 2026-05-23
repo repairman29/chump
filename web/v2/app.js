@@ -949,6 +949,51 @@ const FIRSTRUN_STEPS = [
     cta: { action: 'open-queue', label: 'Browse queue' },
     optional: true,
   },
+  // INFRA-1585: Tauri-specific steps folded from <chump-ootb-wizard>.
+  // These rows only render when window.__TAURI__ is present.
+  {
+    id: 'tauri_ollama',
+    title: 'Ollama ready (Tauri)',
+    detail: 'Detect Ollama for Tauri-native Chump desktop',
+    tauriOnly: true,
+    detect: async () => {
+      if (!window.__TAURI__) return { ok: true, label: 'n/a (browser)' };
+      try {
+        const w = window.__TAURI__;
+        const invoke = w.core?.invoke?.bind(w.core) ?? w.invoke?.bind(w) ?? null;
+        if (!invoke) return { ok: false, hint: 'Tauri IPC unavailable' };
+        const j = await invoke('ootb_detect_ollama');
+        if (j && j.installed) {
+          return { ok: true, label: (j.version || 'installed').replace(/\s+/g, ' ').trim() };
+        }
+        return { ok: false, hint: 'Ollama not found — install it or use LM Studio / MLX / a custom API base' };
+      } catch { return null; }
+    },
+    cta: { action: 'tauri-open-ollama-download', label: 'Download Ollama' },
+    optional: true,
+  },
+  {
+    id: 'tauri_notif_perms',
+    title: 'Native notifications (Tauri)',
+    detail: 'System-tray alerts require notification permission on macOS',
+    tauriOnly: true,
+    detect: async () => {
+      if (!window.__TAURI__) return { ok: true, label: 'n/a (browser)' };
+      try {
+        const w = window.__TAURI__;
+        const invoke = w.core?.invoke?.bind(w.core) ?? w.invoke?.bind(w) ?? null;
+        if (!invoke) return { ok: false, hint: 'Tauri IPC unavailable' };
+        const result = await invoke('check_notification_permission');
+        if (result && result.granted) return { ok: true, label: 'granted' };
+        return { ok: false, hint: 'Click "Allow" to enable tray alerts' };
+      } catch {
+        // If the command is not registered (older builds), treat as optional pass.
+        return { ok: true, label: 'skipped (command unavailable)' };
+      }
+    },
+    cta: { action: 'tauri-request-notif-perms', label: 'Allow' },
+    optional: true,
+  },
 ];
 
 class ChumpFirstRunWizard extends HTMLElement {
@@ -956,21 +1001,53 @@ class ChumpFirstRunWizard extends HTMLElement {
   #state = {};
 
   connectedCallback() {
+    // INFRA-1585: migrate legacy chump_first_visit keys from the old <chump-welcome>
+    // component so users who completed that flow are not shown the new wizard.
+    this.#migrateLegacyWelcomeKeys();
+
+    // ?welcome=force overrides the dismissed flag for QA / demos.
+    const forceShow = new URLSearchParams(location.search).get('welcome') === 'force';
+
     // Hide-permanently flag — if dismissed, never render until chumpPrefs is reset.
-    if (window.chumpPrefs?.get('firstrun.dismissed', false) === true) {
+    if (!forceShow && window.chumpPrefs?.get('firstrun.dismissed', false) === true) {
       this.hidden = true;
       return;
     }
+
+    // INFRA-1585: filter out Tauri-only steps when not running in Tauri.
+    const isTauri = !!window.__TAURI__;
+    const activeSteps = FIRSTRUN_STEPS.filter((s) => !s.tauriOnly || isTauri);
+
     this.#state = {
-      steps: FIRSTRUN_STEPS.map((s) => ({
+      steps: activeSteps.map((s) => ({
         id: s.id,
         status: window.chumpPrefs?.get(`firstrun.step.${s.id}`, null) || 'pending', // 'pending' | 'detected' | 'skipped' | 'completed'
         result: null,
       })),
+      activeSteps,
     };
     this.#render();
     this.#detectAll();
     this.#pollTimer = setInterval(() => this.#detectAll(), 5000);
+  }
+
+  // INFRA-1585: one-way migration — if the old chump-welcome localStorage keys exist,
+  // treat the user as having already completed first-run and suppress the new wizard.
+  #migrateLegacyWelcomeKeys() {
+    const seen = localStorage.getItem('chump_first_visit');
+    const done = localStorage.getItem('chump_first_visit_completed');
+    if (seen || done) {
+      // Write via chumpPrefs if available, else directly with the same key format.
+      if (window.chumpPrefs) {
+        if (!window.chumpPrefs.get('firstrun.dismissed', false)) {
+          window.chumpPrefs.set('firstrun.dismissed', true);
+        }
+      } else {
+        if (!localStorage.getItem('chump.firstrun.dismissed')) {
+          localStorage.setItem('chump.firstrun.dismissed', 'true');
+        }
+      }
+    }
   }
 
   disconnectedCallback() {
@@ -986,14 +1063,14 @@ class ChumpFirstRunWizard extends HTMLElement {
     const total = this.#state.steps.length;
     const done = this.#state.steps.filter((s) => s.status === 'detected' || s.status === 'skipped' || s.status === 'completed').length;
     this.innerHTML = `
-      <section class="frw-shell" role="region" aria-label="First-run setup">
+      <section class="frw-shell" data-onboarding="first-run-wizard" role="region" aria-label="First-run setup">
         <header class="frw-header">
           <h2 class="frw-title">Welcome — let's get Chump ready.</h2>
           <p class="frw-subtitle">${done} of ${total} steps complete. Each row auto-checks every 5 seconds.</p>
           <button type="button" class="frw-dismiss" aria-label="Dismiss the setup wizard (re-open from Config → Setup)">Dismiss</button>
         </header>
         <ol class="frw-steps">
-          ${this.#state.steps.map((s, i) => this.#renderStep(s, FIRSTRUN_STEPS[i])).join('')}
+          ${this.#state.steps.map((s, i) => this.#renderStep(s, this.#state.activeSteps[i])).join('')}
         </ol>
       </section>
     `;
@@ -1007,7 +1084,7 @@ class ChumpFirstRunWizard extends HTMLElement {
   }
 
   #renderStep(state, def) {
-    const idx = FIRSTRUN_STEPS.findIndex((s) => s.id === state.id);
+    const idx = this.#state.activeSteps.findIndex((s) => s.id === state.id);
     const isCurrent = state.status === 'pending' && this.#state.steps.slice(0, idx).every((s) => s.status !== 'pending');
     const checkIcon = state.status === 'detected' ? '✓'
                     : state.status === 'completed' ? '✓'
@@ -1045,8 +1122,8 @@ class ChumpFirstRunWizard extends HTMLElement {
 
   async #detectAll() {
     let dirty = false;
-    for (let i = 0; i < FIRSTRUN_STEPS.length; i++) {
-      const def = FIRSTRUN_STEPS[i];
+    for (let i = 0; i < this.#state.activeSteps.length; i++) {
+      const def = this.#state.activeSteps[i];
       const state = this.#state.steps[i];
       if (state.status === 'detected' || state.status === 'completed' || state.status === 'skipped') continue;
       const result = await def.detect();
@@ -1082,6 +1159,21 @@ class ChumpFirstRunWizard extends HTMLElement {
       document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
     } else if (kind === 'init-repo') {
       void this.#doRepoInit(stepId);
+    } else if (kind === 'tauri-open-ollama-download') {
+      // INFRA-1585: Tauri-folded step — open Ollama download via Tauri IPC.
+      const w = window.__TAURI__;
+      if (w) {
+        const invoke = w.core?.invoke?.bind(w.core) ?? w.invoke?.bind(w) ?? null;
+        if (invoke) invoke('ootb_open_ollama_download').catch(() => {});
+      }
+      setTimeout(() => this.#detectAll(), 3000);
+    } else if (kind === 'tauri-request-notif-perms') {
+      // INFRA-1585: Tauri-folded step — request notification permission via IPC.
+      const w = window.__TAURI__;
+      if (w) {
+        const invoke = w.core?.invoke?.bind(w.core) ?? w.invoke?.bind(w) ?? null;
+        if (invoke) invoke('request_notification_permission').catch(() => {}).then(() => this.#detectAll());
+      }
     }
     // 'link' kind — the <a> handles navigation natively.
   }
