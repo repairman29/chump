@@ -1,0 +1,258 @@
+# OPERATOR PLAYBOOK — running a Chump fleet
+
+**Audience:** any operator (you) who wants to drive Chump as a self-organizing
+agent fleet, not as a manual claude-code session. **Time to wizard-running:**
+~30 min. **Time to wizard-retired (fully autonomous):** ~24h of curator
+shipping after first wizard burst.
+
+This doc is the **single entry point** for new operators. Replaces the
+scattered process notes in docs/process/ that don't compose. If you're a
+new operator and you've never run a fleet, start here.
+
+---
+
+## 1. The Hierarchy
+
+```mermaid
+graph TD
+  Op[Operator -- human, weekly cadence after retirement]
+  Wiz[Wizard Opus -- /loop 2m today, 4h cadence retired]
+  C1[Curator opus -- target]
+  C2[Curator opus -- handoff]
+  C3[Curator opus -- ci-audit]
+  C4[Curator opus -- shepherd]
+  C5[Curator opus -- decompose]
+  C6[Curator opus -- md-links]
+  SA[Sonnet sub-agents -- one per gap implementation]
+  PRs[GitHub PRs]
+  Amb[ambient.jsonl -- single event bus]
+
+  Op -->|tracks + outcomes| Wiz
+  Wiz -->|broadcast.sh WARN| C1
+  Wiz -->|broadcast.sh WARN| C2
+  Wiz -->|broadcast.sh WARN| C3
+  Wiz -->|broadcast.sh WARN| C4
+  Wiz -->|broadcast.sh WARN| C5
+  Wiz -->|broadcast.sh WARN| C6
+  C1 -->|Agent tool: sonnet| SA
+  C2 -->|Agent tool: sonnet| SA
+  C3 -->|Agent tool: sonnet| SA
+  SA --> PRs
+  PRs --> Amb
+  Amb -->|tail-follow| Wiz
+  Amb -->|JIT scheduler| C1
+```
+
+**Roles in one line each:**
+- **Operator** (you): picks tracks, makes strategy calls, occasionally
+  intervenes when wizard escalates. Daily-to-weekly cadence after retirement.
+- **Wizard** (one Opus session): maintains `THE_PATH.md` (the ranked
+  program), dispatches gaps to lane-matched curators, handles meta-fixes
+  only Opus can synthesize. Today's 2-min cron loop; post-retirement: 4h
+  Oracle-refresh cadence.
+- **Curators** (6 Opus sessions, role-tagged): claim gaps from their lane,
+  decide self-implement vs Sonnet-delegate, ship PRs. Always running.
+- **Sub-agents** (Sonnet, one-per-gap): implement Rust/tests/>150 LOC of
+  code. Spawned by curator via `Agent` tool, ship clean per pre-push
+  checklist, exit.
+- **PRs** (GitHub): the atomic shippable unit.
+- **Ambient bus** (`.chump-locks/ambient.jsonl`): single event stream
+  everyone publishes to + everyone tails for coordination.
+
+## 2. The 5-Track Program
+
+See `docs/process/THE_PATH.md` for the LIVE per-track ranked program.
+This section is the META-explanation. Tracks are ranked top-to-bottom by
+impact-per-effort.
+
+1. **Track 1 — META-070 quality firewall:** every CI gate has a local
+   preflight mirror. Substrate; without it, every PR is CI roulette.
+2. **Track 2 — Self-improvement:** the daemons that retire the wizard
+   (JIT scheduler, Oracle refresh, auto-rescue triad).
+3. **Track 3 — META-073 forward coord:** predictive collision, skill-aware
+   routing, lesson propagation. The fleet's coordination intelligence.
+4. **Track 4 — META-061 A2A real-impl:** the 6 A2A coordination layers
+   (NATS delivery, RPC, manifest, scratchpad, deliberation, provenance).
+   Stubs shipped; real impls pending.
+5. **Track 5 — META-067 demo polish:** the autonomy-cascade writeup,
+   demo loop CLI, recorded session for first-customer pitch.
+
+**Rule:** anything not in one of these tracks is noise. Demote or close.
+
+## 3. The Oracle Role
+
+The wizard's primary architectural duty. Outputs `docs/process/THE_PATH.md`.
+
+- **Cadence:** every 4h (via `scripts/coord/oracle-refresh.sh`,
+  META-088). Today: manual; post-retirement: cron.
+- **Inputs:** state.db open gaps, recent ambient trends, recent ships,
+  pillar starve signals.
+- **Output:** ranked next-actions per track. State.db priorities must
+  converge to this ranking.
+- **Drift signals:** Oracle emits `kind=oracle_refresh_drift` with
+  `{gaps_demoted, gaps_promoted, tracks_added, tracks_collapsed}` so
+  operator sees what changed.
+
+## 4. The JIT Scheduler (INFRA-1892)
+
+A bash daemon that tails ambient.jsonl for curator `DONE` events. On
+detection: looks up next-best gap from THE_PATH and broadcasts assignment
+via `broadcast.sh --to <curator> WARN`.
+
+Without this, the wizard burns Opus context every 2 min doing pebble JIT
+work. With this, the wizard fires only on architectural events.
+
+## 5. Curator Dispatch Defaults (META-069)
+
+| Model | Role |
+|---|---|
+| **Opus** | Curators: claim, decide, review, ship |
+| **Sonnet** | Sub-agents: implement Rust/tests/>150 LOC, ship clean |
+| **Haiku** | Mechanical sweeps (find-grep, formatting batches) |
+
+**Threshold rule (operator memorize this):**
+- Pure bash / markdown / yaml / <100 LOC: curator self-implements (Opus)
+- Rust / tests / >150 LOC: curator dispatches Sonnet via `Agent` tool
+- Cross-repo mechanical sweep: dispatch Haiku
+
+## 6. Sub-Agent Dispatch Hygiene
+
+Curators DELEGATE to Sonnet for code. They don't burn their Opus context
+on bash. Measurement gap: CREDIBLE-074 tracks per-curator dispatch ratio
+via `kind=sub_agent_dispatched` ambient emits.
+
+**Sonnet dispatch template** (curator copy-pastes when claiming a code gap):
+```
+Agent({
+  description: "Ship INFRA-NNNN",
+  subagent_type: "general-purpose",
+  prompt: "<paste docs/process/SUBAGENT_DISPATCH.md shipping epilogue>
+           <paste docs/process/SUBAGENT_DISPATCH.md pre-push checklist>
+           Gap spec: docs/gaps/INFRA-NNNN.yaml
+           Files in scope: <list>
+           Done definition: <copy from gap AC>"
+})
+```
+
+See `docs/process/SUBAGENT_DISPATCH.md` for the full dispatch contract
+(META-069).
+
+## 7. The 4 Auto-Rescue Daemons
+
+When the fleet is running clean, you need 4 daemons working in concert
+so the queue self-regulates without operator intervention:
+
+| Daemon | Gap | What it does | Status |
+|---|---|---|---|
+| **pr-auto-rebase** | INFRA-1838 | Auto-`update-branch` BLOCKED+armed PRs when main moves | ✅ shipped today |
+| **pr-pulse + consumer** | INFRA-1897 + INFRA-1898 | Emit queue health; alert on WEDGED | pulse ✅; consumer pending |
+| **transient-retrigger** | INFRA-1899 | Empty-commit-retry known transient classes (audit-cancel etc) | pending |
+| **inbox-poll** | INFRA-1860 + INFRA-1879 | PostToolUse hook surfaces inbox to long-running curators | ✅ shipped today |
+
+Install via `scripts/setup/install-operator-fleet.sh` (next sub-gap,
+filed as META-NEW). Verify via `chump fleet doctor` reporting HEALTHY.
+
+## 8. Wizard Retirement Criteria
+
+The wizard can drop from /loop 2m to weekly cadence when ALL FIVE hold:
+
+1. **INFRA-1892 JIT scheduler shipped** — auto-dispatches next gap on
+   curator DONE
+2. **META-088 Oracle refresh cron shipped** — auto-refreshes THE_PATH.md
+   every 4h
+3. **INFRA-1898 pulse consumer shipped** — auto-acts on WEDGED/SATURATED
+   verdicts
+4. **INFRA-1899 transient-retrigger shipped** — auto-handles known CI
+   transient classes
+5. **pr-pulse verdict HEALTHY sustained 12h** — queue self-regulates
+
+When all 5 hold: operator wakes wizard only for new tracks / strategy
+pivots / first-customer pitch decisions.
+
+---
+
+## Operator Onboarding (30-min target)
+
+**Prereqs:** macOS, Claude Code, gh CLI authed, repo cloned, Rust toolchain.
+
+1. `bash scripts/setup/chump-fleet-bootstrap.sh` — installs all 14
+   launchd plists (paramedic, watchdogs, queue-health, etc.)
+2. `bash scripts/setup/install-operator-fleet.sh` — installs the wizard +
+   curators + 4 auto-rescue daemons (META-089 followup, file as sub-gap)
+3. Open 6 Claude Code session windows, one per curator role; each runs
+   `export CHUMP_SESSION_ID=curator-opus-<role>-$(date +%Y-%m-%d)` then
+   reads `docs/process/SUBAGENT_DISPATCH.md`
+4. Open 1 Claude Code session window for the wizard; `/loop 2m` with
+   the orchestration prompt (see CLAUDE.md → wizard section)
+5. Operator session: `chump fleet doctor`, verify HEALTHY
+6. Wait 1 hour. PRs should start landing. If not, check `chump fleet
+   pr-pulse` for queue health + ambient.jsonl for stuck signals
+
+## Concrete examples (copy-paste-ready)
+
+**Wizard dispatching a gap:**
+```bash
+bash scripts/coord/broadcast.sh --to curator-opus-shepherd-2026-05-23 WARN \
+  "P1 ASSIGNMENT: INFRA-NNNN (one-line description, ~30min effort).
+   Spec at docs/gaps/INFRA-NNNN.yaml. Pattern reference: <related shipped gap>."
+```
+
+**Curator dispatching a sub-agent (within their session):**
+```
+Agent({
+  description: "Ship INFRA-1838",
+  subagent_type: "general-purpose",
+  prompt: "[paste shipping epilogue + pre-push checklist from
+           docs/process/SUBAGENT_DISPATCH.md]
+           Gap: docs/gaps/INFRA-1838.yaml
+           Worktree: /tmp/chump-infra-1838
+           Done: pr-auto-rebase.sh handles BLOCKED+armed; smoke + preflight green; push + arm auto-merge."
+})
+```
+
+**Sub-agent emitting DONE:**
+```bash
+bash scripts/coord/broadcast.sh --to orchestrator-opus-$(date +%Y-%m-%d) DONE \
+  INFRA-1838 <commit-sha>
+```
+
+**Operator strategy pivot (rare, post-retirement):**
+```
+"Pivot: deprioritize META-067 demo polish until we have a first customer
+ on the hook. Promote MISSION launch playbook (INFRA-1500/1501) from P2
+ to P1."
+```
+(Wizard reads this on next Oracle refresh + re-ranks accordingly.)
+
+## Anti-patterns (learned 2026-05-23 — don't repeat)
+
+1. **Wizard burning Opus context on JIT scheduler work.** Solution:
+   INFRA-1892 daemon. Symptom: wizard /loop every 2 min for hours.
+2. **Curator burning Opus context on bash implementation.** Solution:
+   threshold rule + Sonnet dispatch (Section 5). Symptom: curator does
+   shellcheck, cargo fmt, git rebase manually.
+3. **Operator as inbox-relay between sessions.** Solution: INFRA-1860
+   PostToolUse inbox poll + INFRA-1879 5-path session derivation. Symptom:
+   "tell curator-X they need to check their inbox."
+4. **Filing > shipping ratio.** Solution: every filed gap should have
+   concrete AC + clear lane assignment within 1 hour. Symptom: 192-gap
+   firehose (today's snapshot) with no curated ranking.
+5. **Firefighting one cascade while three other failure classes accumulate.**
+   Solution: pr-pulse + consumer daemon (INFRA-1897 + 1898). Symptom:
+   operator stuck on audit-cancel for an hour while yaml-integrity quietly
+   breaks main.
+6. **Wizard re-doing Oracle work manually.** Solution: META-088 cron.
+   Symptom: operator-opus session re-writes THE_PATH.md every 4h by hand.
+
+---
+
+## When to wake the wizard (post-retirement)
+
+- A new STRATEGIC PIVOT (e.g. "we have first customer on the hook")
+- A track collapses (no Next actions left in THE_PATH track section)
+- Pulse verdict has been WEDGED for >2h sustained
+- Operator wants a fresh Oracle pass before some demo / pitch
+- New curator joins (assign their lane, update operator playbook)
+
+Otherwise: wizard sleeps. Curators self-organize via THE_PATH + JIT.
+Operator watches one daily digest via `chump fleet brief`.
