@@ -70,9 +70,7 @@ pub use validate::{Validate, ValidationError};
 /// for synthesis where Sonnet routinely hallucinates shape, and
 /// [`ModelTier::Haiku`] for fully-deterministic conversions (e.g. format-only
 /// transforms with no judgement).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelTier {
     /// Cheapest tier — good for mechanical transforms with no judgement.
