@@ -965,6 +965,21 @@ events:
     trigger: flake-class CI failure → gh run rerun --failed
     consumers: [audit-log, fleet-brief]
 
+  - kind: flake_catalog_orphan
+    effect_metric: self
+    emitter: scripts/ops/audit-flake-catalog.sh (INFRA-1866 / parent INFRA-1861 slice a)
+    trigger: daily audit finds a KNOWN_FLAKES.yaml entry with no
+      tracking_gap: INFRA-NNNN. Entry is masking failures forever
+      without a fix-owner. One emit per orphan per day.
+    consumers: [operator-recall, audit-log, fleet-brief]
+    fields_required: [ts, kind, test, last_observed, added]
+
+  - kind: audit_flake_catalog_bypassed
+    effect_metric: self
+    emitter: scripts/ops/audit-flake-catalog.sh (INFRA-1866)
+    trigger: CHUMP_AUDIT_FLAKE_CATALOG=0 silences the daily audit
+    consumers: [audit-log]
+
   - kind: flake_rerun
     effect_metric: self
     emitter: pr-triage-bot
