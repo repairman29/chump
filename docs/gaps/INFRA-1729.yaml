@@ -1,0 +1,12 @@
+- id: INFRA-1729
+  domain: INFRA
+  title: "EFFECTIVE: docs/CAPABILITIES_REGISTRY.json — machine-readable inventory of repo primitives (Quartermaster artifact, auto-generated from RUST_MODULE_MAP + MCP servers + skills)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

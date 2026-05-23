@@ -1,0 +1,12 @@
+- id: INFRA-1770
+  domain: INFRA
+  title: "ZERO-WASTE: routing_outcomes gets cost_usd field; INFRA-1764 router scores by (success_rate * value) divided by cost_per_attempt"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

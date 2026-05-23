@@ -1,0 +1,12 @@
+- id: INFRA-1764
+  domain: INFRA
+  title: "EFFECTIVE: skill-aware routing via reflection_db at claim time — route gap to historical-best-performer for its task class (Initiative 2)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

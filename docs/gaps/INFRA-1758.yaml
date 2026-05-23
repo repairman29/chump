@@ -1,0 +1,12 @@
+- id: INFRA-1758
+  domain: INFRA
+  title: "EFFECTIVE: chump-coord subscribe_events() Rust API stub + EventFilter enum (META-061 Layer 1a slice 1/4, INFRA-1118 foundation)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

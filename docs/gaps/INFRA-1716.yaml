@@ -1,0 +1,12 @@
+- id: INFRA-1716
+  domain: INFRA
+  title: "EFFECTIVE: fleet launcher should default FLEET_BACKEND to 'claude' (current default chump-local + INFRA-459 exhausted cascade = silent 15min timeouts × N workers)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
