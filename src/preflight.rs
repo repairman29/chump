@@ -780,6 +780,30 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
+        // .github/workflows/ci.yml `integration-test` job — runs the synthetic
+        // state.db fixture + chump CLI smoke via existing
+        // scripts/ci/test-system-integration.sh. Skip via
+        // CHUMP_PREFLIGHT_SKIP_INTEGRATION=1 (mirrors INFRA-1731 #2377 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_INTEGRATION").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping integration-test (CHUMP_PREFLIGHT_SKIP_INTEGRATION=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_integration_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_INTEGRATION=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "integration-test",
+                &["bash", "scripts/ci/test-system-integration.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
