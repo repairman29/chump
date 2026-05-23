@@ -530,6 +530,33 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1789: chump-subcommand-help regression gate. Catches the
+        // class of failures where a subcommand registers but `chump <subcmd>
+        // --help` falls through to the LLM agent or fails on "missing
+        // positional" (INFRA-1238 shipped 2× this quarter). The CI script
+        // skips cleanly if chump binary isn't on PATH, so this gate is safe
+        // to run unconditionally in the Rust-scope branch.
+        // Skip via CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1 with audit-trail emit.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_SUBCMDHELP").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping chump-subcommand-help (CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_subcmdhelp_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "chump-subcommand-help",
+                &["bash", "scripts/ci/test-chump-subcommand-help.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
