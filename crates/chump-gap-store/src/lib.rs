@@ -3755,7 +3755,12 @@ mod proof_of_merge_tests {
             .current_dir(dir.path())
             .status();
         let _ = std::process::Command::new("git")
-            .args(["commit", "--allow-empty", "-m", "feat: INFRA-9501 on side branch"])
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat: INFRA-9501 on side branch",
+            ])
             .current_dir(dir.path())
             .status();
         // HEAD exists (commit on "other") but `git log main` will fail.
