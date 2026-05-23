@@ -116,6 +116,17 @@ cache_lookup_pr() {
     # Stale — emit cache_miss event + re-fetch.
     printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr","target":"%s","reason":"stale","age_s":%s,"ttl_s":%s}\n' \
         "$ts" "$number" "$age" "$ttl" >> "$amb" 2>/dev/null || true
+    # INFRA-1874: emit liaison_cache_stale when age exceeds the
+    # Liaison-level stale threshold (default 600s per INFRA-1318 AC#3).
+    # This is the operator-visible 'cache is degraded' signal — separate
+    # from the per-call cache_miss/stale (which fires whenever age > ttl,
+    # often 60s). Dashboards subscribe to this kind to surface a
+    # 'fleet running degraded' message; cache_miss is too noisy for that.
+    local liaison_threshold="${CHUMP_LIAISON_CACHE_STALE_S:-600}"
+    if [[ "$age" -gt "$liaison_threshold" ]]; then
+        printf '{"ts":"%s","kind":"liaison_cache_stale","helper":"cache_lookup_pr","target":"%s","age_s":%s,"threshold_s":%s,"last_webhook_at":null}\n' \
+            "$ts" "$number" "$age" "$liaison_threshold" >> "$amb" 2>/dev/null || true
+    fi
     _cache_fetch_and_store "$number"
 }
 
