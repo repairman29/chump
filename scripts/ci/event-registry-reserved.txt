@@ -220,6 +220,11 @@ keystone_cascade_fired     # reason: INFRA-1420 #2361 emitted from src/paramedic
 gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
 gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
 claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
+preflight_registry_bypassed # reason: INFRA-1731 #2377 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_REGISTRY=1; allowlist while EVENT_REGISTRY entry catches up
+liaison_elected            # reason: INFRA-1317 #2373 GitHub Liaison election event from scripts/ops/github-liaison.sh; printf emit not grep-scannable
+liaison_heartbeat          # reason: INFRA-1317 #2373 GitHub Liaison heartbeat from scripts/ops/github-liaison.sh
+liaison_takeover           # reason: INFRA-1317 #2373 GitHub Liaison takeover event
+liaison_yielded            # reason: INFRA-1317 #2373 GitHub Liaison yield event
 merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
 queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
 

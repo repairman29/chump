@@ -507,7 +507,7 @@ impl GapStore {
         if let Some(s) = status_filter {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                        acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                        CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                         preferred_machine,estimated_minutes,required_model
                  FROM gaps WHERE status=?1 ORDER BY id",
@@ -517,7 +517,7 @@ impl GapStore {
         } else {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                        acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                        CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                         preferred_machine,estimated_minutes,required_model
                  FROM gaps ORDER BY id",
@@ -670,7 +670,7 @@ impl GapStore {
 
         let mut stmt = self.conn.prepare(
             "SELECT id,domain,title,description,priority,effort,status,
-                    acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                    CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                     preferred_machine,estimated_minutes,required_model
              FROM gaps WHERE id=?1",
@@ -709,7 +709,7 @@ impl GapStore {
             let pattern = format!("{}%", gap_id.to_lowercase());
             let mut pfx_stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
-                         acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                          opened_date,closed_date,closed_pr,skills_required,preferred_backend,
                          preferred_machine,estimated_minutes,required_model
                   FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
@@ -4159,6 +4159,46 @@ mod tests {
         assert_eq!(open.len(), 1);
         let all = store.list(None).unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    /// INFRA-1776 P0: regression. INFRA-1751 (pr-rescue v1b, merged
+    /// 2026-05-23 03:50Z) wrote `acceptance_criteria` as BLOB into the
+    /// gaps table — the next `chump gap list` call exploded with
+    /// `Invalid column type Blob at index: 7, name: acceptance_criteria`
+    /// and the picker saw 0 pickable gaps fleet-wide, stalling every
+    /// worker. The CAST(... AS TEXT) coercion in all 4 SELECT paths
+    /// must absorb both type-tags transparently.
+    #[test]
+    fn list_tolerates_blob_acceptance_criteria_column() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "blob-ac gap", "P1", "s").unwrap();
+        // Manually downgrade the column to BLOB to simulate the
+        // INFRA-1751 write path. The picker must still surface the row.
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET acceptance_criteria = CAST(?1 AS BLOB) WHERE id=?2",
+                params!["AC1\nAC2", id],
+            )
+            .unwrap();
+        // Confirm storage type is genuinely blob now.
+        let stored_type: String = store
+            .conn
+            .query_row(
+                "SELECT typeof(acceptance_criteria) FROM gaps WHERE id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_type, "blob");
+        // The fix must keep `list` working AND `get` working.
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            open.iter().any(|g| g.id == id),
+            "BLOB-typed acceptance_criteria must not stall list()"
+        );
+        let row = store.get(&id).unwrap().expect("row exists");
+        assert_eq!(row.acceptance_criteria, "AC1\nAC2");
     }
 
     #[test]

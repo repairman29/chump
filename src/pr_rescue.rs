@@ -328,23 +328,54 @@ struct FailingCheck {
 }
 
 fn list_failing_checks(pr: u32) -> Result<Vec<FailingCheck>> {
-    let out = run_gh(&["pr", "view", &pr.to_string(), "--json", "statusCheckRollup"])?;
-    let v: serde_json::Value = serde_json::from_str(&out)
-        .with_context(|| format!("parse gh pr view --json statusCheckRollup for #{pr}"))?;
-    let arr = v["statusCheckRollup"]
+    // INFRA-1759: gh pr view --json statusCheckRollup returns
+    // databaseId=null for every entry, so the v0 classifier filtered them
+    // all out and saw zero failing checks (false-Healthy). Fix: use the
+    // REST commits/SHA/check-runs endpoint, which returns real IDs.
+    //
+    // Step 1: get the head SHA from the PR (cheap, single REST hit).
+    let head_out = run_gh(&["pr", "view", &pr.to_string(), "--json", "headRefOid"])?;
+    let head_v: serde_json::Value =
+        serde_json::from_str(&head_out).with_context(|| format!("parse headRefOid for #{pr}"))?;
+    let sha = head_v["headRefOid"]
+        .as_str()
+        .ok_or_else(|| anyhow!("headRefOid missing"))?
+        .to_string();
+
+    // Step 2: pull check-runs for that SHA. The REST endpoint paginates;
+    // 100 per page is the max and covers every PR's check set we ship.
+    let runs_json = run_gh(&[
+        "api",
+        &format!("repos/:owner/:repo/commits/{sha}/check-runs?per_page=100"),
+    ])?;
+    let runs_v: serde_json::Value = serde_json::from_str(&runs_json)
+        .with_context(|| format!("parse check-runs for sha {sha}"))?;
+    let arr = runs_v["check_runs"]
         .as_array()
-        .ok_or_else(|| anyhow!("statusCheckRollup not array"))?;
-    let mut out = vec![];
+        .ok_or_else(|| anyhow!("check_runs not array"))?;
+
+    // Step 3: collapse to unique (name → most-recent-id) so a repeated check
+    // (e.g. after a rebase) doesn't double-classify. The check-runs response
+    // is sorted by started_at DESC so first-seen wins.
+    let mut seen: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     for entry in arr {
-        if entry["conclusion"].as_str() == Some("FAILURE") {
-            let id = entry["databaseId"].as_u64().unwrap_or(0);
-            let name = entry["name"].as_str().unwrap_or("").to_string();
-            if id != 0 && !name.is_empty() {
-                out.push(FailingCheck { id, name });
-            }
+        if entry["conclusion"].as_str() != Some("failure") {
+            continue;
         }
+        let id = match entry["id"].as_u64() {
+            Some(n) => n,
+            None => continue,
+        };
+        let name = match entry["name"].as_str() {
+            Some(s) if !s.is_empty() => s.to_string(),
+            _ => continue,
+        };
+        seen.entry(name).or_insert(id);
     }
-    Ok(out)
+    Ok(seen
+        .into_iter()
+        .map(|(name, id)| FailingCheck { id, name })
+        .collect())
 }
 
 fn grep_orphan_kind(job_id: u64) -> Option<String> {
