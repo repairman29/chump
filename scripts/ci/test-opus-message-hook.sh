@@ -2,16 +2,12 @@
 # scripts/ci/test-opus-message-hook.sh — INFRA-1797
 #
 # Verifies the SessionStart hook (ambient-context-inject.sh) surfaces unread
-# opus-message inbox entries with the documented shape:
-#   ═══ Opus inbox (N unread) ═══
+# entries from the canonical INFRA-1115 inbox (.chump-locks/inbox/<session>.jsonl
+# + .cursor) with the documented shape:
+#   ═══ Inbox (N unread) ═══
 #   <up to 3 latest previews>
 #
-# Assertions:
-#   1. 0 unread → block absent
-#   2. 2 unread session-targeted → block shows "2 unread", both previews
-#   3. all-opus broadcast picked up alongside session inbox
-#   4. read messages (read_at != null) excluded from count
-#   5. CHUMP_OPUS_INBOX_HOOK=0 disables the block
+# Unread = lines past the byte offset stored in <session>.cursor.
 
 set -euo pipefail
 
@@ -27,10 +23,10 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-export CHUMP_OPUS_INBOX_DIR="$TMP/inbox"
+export CHUMP_INBOX_DIR="$TMP/inbox"
 export CHUMP_AMBIENT_LOG="$TMP/ambient.jsonl"
-export REPO_ROOT="$TMP"   # hook reads REPO_ROOT for fallback paths
-mkdir -p "$CHUMP_OPUS_INBOX_DIR" "$TMP/.chump-locks"
+export REPO_ROOT="$TMP"
+mkdir -p "$CHUMP_INBOX_DIR" "$TMP/.chump-locks"
 touch "$CHUMP_AMBIENT_LOG"
 
 failures=0
@@ -51,7 +47,6 @@ assert_not_contains() {
     fi
 }
 
-# ── Helper: extract the additionalContext string from the hook's JSON output ─
 run_hook() {
     local hook_session_id="${1:-test-session-1}"
     CHUMP_SESSION_ID="$hook_session_id" \
@@ -61,43 +56,45 @@ run_hook() {
 
 # ── 1. zero unread → block absent ───────────────────────────────────────────
 out="$(run_hook test-session-1)"
-assert_not_contains "block absent when 0 unread" "$out" "Opus inbox"
+assert_not_contains "block absent when 0 unread" "$out" "Inbox ("
 
-# ── 2. seed 2 unread session-targeted messages → block shows 2 ──────────────
-mkdir -p "$CHUMP_OPUS_INBOX_DIR"
-cat > "$CHUMP_OPUS_INBOX_DIR/session_test-session-1.jsonl" <<'JSONL'
-{"id":"msg001","ts":"2026-05-23T01:00:00Z","from":"session:sender-A","to":"session:test-session-1","body":"hand-off note: continue at §3 of inventory","ref":"pr:2386","read_at":null}
-{"id":"msg002","ts":"2026-05-23T02:00:00Z","from":"session:sender-B","to":"session:test-session-1","body":"flagging audit drift on INFRA-1717","ref":"gap:INFRA-1717","read_at":null}
+# ── 2. 2 messages in inbox + no cursor → both unread ───────────────────────
+cat > "$CHUMP_INBOX_DIR/test-session-1.jsonl" <<'JSONL'
+{"event":"WARN","session":"orchestrator-opus-2026-05-23","ts":"2026-05-23T01:00:00Z","corr_id":"branch:foo","reason":"hand-off note: continue at section 3 of inventory","to":"test-session-1"}
+{"event":"INTENT","session":"curator-opus-handoff-2026-05-23","ts":"2026-05-23T02:00:00Z","corr_id":"gap:INFRA-1717","reason":"flagging audit drift on INFRA-1717","to":"test-session-1"}
 JSONL
 out="$(run_hook test-session-1)"
-assert_contains "block shows 2 unread" "$out" "Opus inbox (2 unread)"
+assert_contains "block shows 2 unread" "$out" "Inbox (2 unread)"
 assert_contains "preview 1 body present" "$out" "hand-off note"
 assert_contains "preview 2 body present" "$out" "flagging audit drift"
-assert_contains "preview includes msg-id" "$out" "msg002"
+assert_contains "shows event kind" "$out" "WARN"
+assert_contains "shows sender session" "$out" "orchestrator-opus-2026-05-23"
 
-# ── 3. all-opus broadcast picked up alongside session inbox ─────────────────
-cat > "$CHUMP_OPUS_INBOX_DIR/all-opus.jsonl" <<'JSONL'
-{"id":"msg003","ts":"2026-05-23T03:00:00Z","from":"session:sender-C","to":"all-opus","body":"broadcast: rebasing main in 5min","ref":"","read_at":null}
-JSONL
+# ── 3. cursor at end-of-file → 0 unread ─────────────────────────────────────
+file_size=$(wc -c < "$CHUMP_INBOX_DIR/test-session-1.jsonl" | tr -d ' ')
+echo "$file_size" > "$CHUMP_INBOX_DIR/test-session-1.cursor"
 out="$(run_hook test-session-1)"
-assert_contains "block now shows 3 unread" "$out" "Opus inbox (3 unread)"
-assert_contains "broadcast body present" "$out" "broadcast: rebasing main"
+assert_not_contains "block absent when cursor at EOF" "$out" "Inbox ("
 
-# ── 4. read messages excluded ───────────────────────────────────────────────
-cat > "$CHUMP_OPUS_INBOX_DIR/session_test-session-2.jsonl" <<'JSONL'
-{"id":"msg004","ts":"2026-05-23T04:00:00Z","from":"session:sender-D","to":"session:test-session-2","body":"already-read message","ref":"","read_at":"2026-05-23T04:30:00Z"}
-{"id":"msg005","ts":"2026-05-23T05:00:00Z","from":"session:sender-E","to":"session:test-session-2","body":"actually unread","ref":"","read_at":null}
-JSONL
-out="$(run_hook test-session-2)"
-# Should count only the 1 unread (msg005) plus the 1 unread broadcast (msg003)
-assert_contains "read messages excluded from count" "$out" "Opus inbox (2 unread)"
-assert_contains "unread message body present" "$out" "actually unread"
-assert_not_contains "read message body excluded" "$out" "already-read message"
+# ── 4. cursor at byte 0 → all messages unread ───────────────────────────────
+echo "0" > "$CHUMP_INBOX_DIR/test-session-1.cursor"
+out="$(run_hook test-session-1)"
+assert_contains "cursor=0 shows all 2 unread" "$out" "Inbox (2 unread)"
 
-# ── 5. CHUMP_OPUS_INBOX_HOOK=0 disables ─────────────────────────────────────
+# ── 5. cursor mid-file → only later messages unread ────────────────────────
+# Set cursor just after the first line (before the second)
+first_line_bytes=$(head -1 "$CHUMP_INBOX_DIR/test-session-1.jsonl" | wc -c | tr -d ' ')
+echo "$first_line_bytes" > "$CHUMP_INBOX_DIR/test-session-1.cursor"
+out="$(run_hook test-session-1)"
+assert_contains "cursor past line 1 shows 1 unread" "$out" "Inbox (1 unread)"
+assert_contains "remaining message body present" "$out" "flagging audit drift"
+assert_not_contains "consumed message body absent" "$out" "hand-off note"
+
+# ── 6. CHUMP_OPUS_INBOX_HOOK=0 disables ─────────────────────────────────────
+echo "0" > "$CHUMP_INBOX_DIR/test-session-1.cursor"
 CHUMP_OPUS_INBOX_HOOK=0 CHUMP_SESSION_ID=test-session-1 \
     bash "$HOOK" SessionStart 2>/dev/null \
-    | python3 -c 'import json,sys; out=json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; sys.exit(0 if "Opus inbox" not in out else 1)' \
+    | python3 -c 'import json,sys; out=json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; sys.exit(0 if "Inbox (" not in out else 1)' \
     || { echo "FAIL: CHUMP_OPUS_INBOX_HOOK=0 did not disable block"; failures=$((failures + 1)); }
 
 if [[ $failures -gt 0 ]]; then
@@ -106,4 +103,4 @@ if [[ $failures -gt 0 ]]; then
     exit 1
 fi
 
-echo "OK INFRA-1797: SessionStart hook surfaces opus-message inbox correctly"
+echo "OK INFRA-1797: SessionStart hook surfaces canonical INFRA-1115 inbox correctly"

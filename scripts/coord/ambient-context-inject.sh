@@ -330,57 +330,69 @@ if _inbox_file:
     except Exception:
         pass
 
-# INFRA-1797: surface opus-message inbox (INFRA-1796 CLI) — unread count + 3
-# latest previews so cross-Opus DMs aren't missed. Read-only here; explicit
-# mark-read remains the operator's responsibility (so a restart mid-read
-# doesn't accidentally consume an unprocessed message).
+# INFRA-1797: surface canonical addressed-async inbox (INFRA-1115:
+# broadcast.sh + chump-inbox.sh + .chump-locks/inbox/<session>.jsonl) at
+# SessionStart — unread count + 3 latest previews so cross-Opus DMs aren't
+# missed. Read-only here; explicit advance (chump-inbox.sh read) remains
+# the operator's responsibility (so a restart mid-read doesn't accidentally
+# consume an unprocessed message).
+#
+# Unread = lines past the byte offset stored in
+# .chump-locks/inbox/<session>.cursor (chump-inbox.sh advances the cursor
+# after a successful read).
 if hook == "SessionStart" and os.environ.get("CHUMP_OPUS_INBOX_HOOK", "1") != "0":
     _opus_repo = os.environ.get("REPO_ROOT", ".")
     _opus_inbox_dir = os.environ.get(
-        "CHUMP_OPUS_INBOX_DIR",
-        os.path.join(_opus_repo, ".chump-locks", "opus-inbox"),
+        "CHUMP_INBOX_DIR",
+        os.path.join(_opus_repo, ".chump-locks", "inbox"),
     )
     _opus_session = os.environ.get("CHUMP_SESSION_ID", "")
-    _opus_candidates = []
-    if _opus_session:
-        _safe = _opus_session.replace(":", "_").replace("/", "_")
-        _opus_candidates.append(os.path.join(_opus_inbox_dir, "session_" + _safe + ".jsonl"))
-    _opus_candidates.append(os.path.join(_opus_inbox_dir, "all-opus.jsonl"))
     _opus_unread = []
-    for _path in _opus_candidates:
-        if not os.path.isfile(_path):
-            continue
-        try:
-            with open(_path) as _f:
-                for _line in _f:
-                    _line = _line.strip()
-                    if not _line:
-                        continue
+    if _opus_session:
+        _inbox_path = os.path.join(_opus_inbox_dir, _opus_session + ".jsonl")
+        _cursor_path = os.path.join(_opus_inbox_dir, _opus_session + ".cursor")
+        if os.path.isfile(_inbox_path):
+            try:
+                # Read cursor offset (0 if cursor absent — treat all as unread)
+                _offset = 0
+                if os.path.isfile(_cursor_path):
                     try:
-                        _m = json.loads(_line)
+                        _offset = int(Path(_cursor_path).read_text().strip() or "0")
                     except Exception:
-                        continue
-                    if not _m.get("read_at"):
+                        _offset = 0
+                with open(_inbox_path, "rb") as _f:
+                    _f.seek(_offset)
+                    for _raw in _f:
+                        try:
+                            _line = _raw.decode("utf-8").strip()
+                        except Exception:
+                            continue
+                        if not _line:
+                            continue
+                        try:
+                            _m = json.loads(_line)
+                        except Exception:
+                            continue
                         _opus_unread.append(_m)
-        except Exception:
-            pass
+            except Exception:
+                pass
     if _opus_unread:
         _opus_unread.sort(key=lambda m: m.get("ts", ""))
         _opus_lines = [
-            "═══ Opus inbox (" + str(len(_opus_unread)) + " unread) ═══",
-            "  Read with: scripts/coord/opus-message.sh list --unread",
-            "  Mark read: scripts/coord/opus-message.sh mark-read <msg-id>",
+            "═══ Inbox (" + str(len(_opus_unread)) + " unread) ═══",
+            "  Read: scripts/coord/chump-inbox.sh read --unread",
+            "  Reply: scripts/coord/broadcast.sh --to <sender-session> WARN \"<reply>\"",
         ]
         for _m in _opus_unread[-3:]:
-            _body = (_m.get("body", "") or "").splitlines()
+            # Canonical INFRA-1115 wire shape: {event, session, ts, reason, to, corr_id, ...}
+            _body = (_m.get("reason", "") or _m.get("body", "") or "").splitlines()
             _preview = (_body[0] if _body else "")[:100]
             _opus_lines.append(
-                "  [{ts}] {mid}  from={src}  to={dst}  ref={ref}".format(
+                "  [{ts}] {event}  from={src}  corr={corr}".format(
                     ts=_m.get("ts", ""),
-                    mid=_m.get("id", "?"),
-                    src=_m.get("from", "?"),
-                    dst=_m.get("to", "?"),
-                    ref=_m.get("ref", "") or "-",
+                    event=_m.get("event", "?"),
+                    src=_m.get("session", "?"),
+                    corr=_m.get("corr_id", "") or "-",
                 )
             )
             _opus_lines.append("    " + _preview)
