@@ -1,0 +1,12 @@
+- id: INFRA-1760
+  domain: INFRA
+  title: "EFFECTIVE: CapabilityManifest schema chump-capability-v1 + .env.example entry (META-061 Layer 2c slice 1/4, INFRA-1120 foundation — answers 'is agent online' Q)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

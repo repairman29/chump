@@ -1,0 +1,12 @@
+- id: INFRA-1761
+  domain: INFRA
+  title: "EFFECTIVE: NATS KV chump_scratch bucket + 5 seed keys schema (META-061 Layer 3d slice 1/4, INFRA-1121 foundation)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
