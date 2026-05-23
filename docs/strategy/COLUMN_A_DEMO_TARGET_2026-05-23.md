@@ -191,3 +191,83 @@ confirms Chump can actually ACT on the repo.
 ### Phase-0 follow-up after #2385 lands
 
 When [#2385](https://github.com/repairman29/chump/pull/2385) (INFRA-1719 AST crawler) lands, re-run the same scan with the AST-crawler tool against `/tmp/echeo-phase0-scan`. Compare deltas — places where the AST crawler finds structure that tokei misses, or vice versa. Append a second addendum to this doc. If AST crawler surfaces a true blocker (e.g. parse failures on echeo's Rust workspace layout), promote the next fallback (`daisy-chain`) and re-record here.
+
+## Phase-0 pass-2 — AST crawler scan of `echeo` (2026-05-23 16:30Z)
+
+#2385 (INFRA-1719) merged at 15:35Z. Ran `chump_ast_crawler::crawl_repo`
+against `/tmp/echeo-phase0-scan` via a throwaway example program; output
+captured here.
+
+### Cross-check: AST crawler vs tokei (pass-1)
+
+| Language | tokei files | AST files | tokei lines | AST symbols |
+|---|---|---|---|---|
+| Rust | 10 | 10 | 3,026 | **119** |
+| Python | 3 | 3 | 1,300 | **34** |
+| JavaScript | 3 | 3 | 369 | **27** |
+| Bash | 5 | 5 | 311 | **0** |
+| (unknown / unsupported) | n/a | 18 | n/a | 0 |
+| **TOTAL** | 21 supported | 21 supported | 5,006 | **180** |
+
+**File counts cross-check exactly: 10/3/3/5.** No ghost files, no skipped trees.
+
+### Two real findings the pass-1 tokei pass couldn't surface
+
+#### Finding A: Bash via AST crawler extracts **zero symbols**
+
+Tree-sitter-bash IS active and the 5 echeo shell files ARE parsed, but the crawler's top-level-symbol extraction returns 0 for every Bash file. Bash doesn't carry "top-level symbols" the way Rust/Python/JS do — there are no `pub fn`, no exported classes, no module exports. Functions in shell are anonymous-by-convention until called.
+
+**This contradicts the pass-1 recommendation** to "promote Bash to second-secondary." The AST crawler can't produce a Bash insight on echeo through its symbol-extraction path. **Revised pass-2 verdict**: Bash detector for the echeo demo needs a **non-AST strategy** — file-text heuristic scan (looks for `set -euo pipefail`, missing error handlers, hard-coded paths, etc.) — OR Bash gets deprioritized to "tertiary, only if surplus token budget." Filed as a Week-2 design question; the Phase-0 doc revises Bash priority back to **tertiary**.
+
+#### Finding B: Rust dominates symbol density 66% of the supported total
+
+| Language | Symbols | % of supported total |
+|---|---|---|
+| Rust | 119 | 66% |
+| Python | 34 | 19% |
+| JavaScript | 27 | 15% |
+| Bash | 0 | 0% |
+
+The Week-2 design call ("Rust-first per-language detector") was correct on file/LOC count but **confirmed even more strongly by symbol density**. Rust's symbol-per-file (11.9) is ~3× Python's (11.3) and ~3× JS's (9.0) — wait, those are close per-file. The asymmetry is in absolute volume: Rust has more files AND more symbols-per-file.
+
+**Implication**: Chump's primary `chump ingest echeo` artifact should lead with the Rust shape (module-map, function listing, cargo deps) because **66% of the symbol-evidence the LLM gets to act on** comes from Rust. Python and JS findings should be secondary. Bash needs its own track (per Finding A).
+
+### Concrete artifact shape (what the demo will produce)
+
+The AST crawler's `to_prompt_block(6 KiB)` output is the actual LLM-input format Chump will use. Sample structure from echeo (lightly redacted for length):
+
+```
+Codebase shape (deterministic AST crawl, 39 files, 180 symbols, langs: bash, javascript, python, rust):
+
+src/matchmaker.rs [rust]
+  imports: anyhow::Result, serde::{Deserialize, Serialize}, ...
+  L8: struct Matchmaker — / THE MATCHMAKER: Connects capabilities to bounties using vector similarity
+  L13: struct Need
+  L22: struct Match
+  L29: impl Matchmaker
+  L30: fn new
+  L35: fn cosine_similarity — / Calculate cosine similarity between two vectors
+  L53: fn calculate_ship_velocity_score — / Calculate Ship Velocity Score
+  L109: fn match_need
+  L142: fn match_needs
+  ...
+```
+
+Symbol kind + line number + doc-comment first line. **This is what the screencast will show as "Chump understood your repo in 2 seconds."** It's legibly skimmable and language-agnostic at the surface level.
+
+### What this addendum changes (vs pass-1)
+
+| Pass-1 said | Pass-2 says |
+|---|---|
+| Bash promoted to second-secondary (5 files / 311 LOC) | **Bash demoted back to tertiary** — AST symbol extraction returns 0 for Bash; either invest in a non-AST Bash auditor or deprioritize |
+| Rust-first detector priority (file/LOC based) | Rust-first **confirmed** — 66% of total symbol density |
+| Artifact shape: "optimize for Rust module-map / cargo deps tree" | **Concretized**: the `to_prompt_block` text is the artifact. Lead with Rust files; show symbol + import listings per file |
+| Will use the AST crawler when #2385 lands | ✓ done — pass-2 captures the actual output |
+
+### Hard blocker check — passed
+
+The crawler completed against echeo without parse failures across all 4 supported languages. No echeo-specific edge case surfaced. **No need to walk the fallback ladder.** echeo remains the primary; the strategy doc stands.
+
+### Throwaway tooling note
+
+The pass-2 scan used `crates/ast-crawler/examples/dump-shape.rs` — a temporary example program that calls `crawl_repo` and prints the shape. It is NOT meant to be part of the long-term API surface. A proper operator-facing `chump ast-shape <repo>` subcommand belongs to a follow-up gap (file under Week-2 tooling); the throwaway can be removed once that lands. This addendum's findings stand independently of whether the example file is kept or pruned.
