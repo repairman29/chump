@@ -4174,3 +4174,13 @@ events:
       The `action` field is "upsert" or "delete".
     consumers: [fleet-brief, ops-audit, approval-audit-dashboard]
     fields_required: [ts, kind, action, tool_name]
+  - kind: preflight_registry_bypassed
+    effect_metric: self
+    emitter: src/preflight.rs (INFRA-1731 event-registry-audit gate bypass)
+    trigger: >
+      Operator ran `chump preflight` with CHUMP_PREFLIGHT_SKIP_REGISTRY=1
+      set, skipping the local event-registry-audit gate (INFRA-1731). The
+      bypass is intentional but recorded so post-hoc audits can see which
+      PRs skipped the local registry check before push.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
