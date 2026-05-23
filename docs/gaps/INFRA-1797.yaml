@@ -1,0 +1,14 @@
+- id: INFRA-1797
+  domain: INFRA
+  title: "EFFECTIVE: SessionStart hook surfaces opus-message inbox — unread count + 3 latest previews alongside ambient digest (completes INFRA-1796 hook integration)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    1. scripts/setup/install-ambient-hooks.sh OR equivalent SessionStart hook reads .chump-locks/opus-inbox/session_<my-id>.jsonl + .chump-locks/opus-inbox/all-opus.jsonl on every Claude Code session start
+    2. If unread count > 0, prepends to the existing FLEET-019 ambient digest block: '═══ Opus inbox (N unread) ═══' header + first-line body preview of latest 3 unread messages with msg_id + from-session + ref
+    3. Recipient discovery: CHUMP_SESSION_ID env (set by chump claim) is the primary key; falls back to derived hostname-pid if unset (operators running ad-hoc without a claim)
+    4. Read-only: hook does NOT mark messages read — that's an explicit operator action via opus-message.sh mark-read (prevents missed messages when an Opus session restarts mid-read)
+    5. Smoke test scripts/ci/test-opus-message-hook.sh: stub 4 messages (2 unread, 2 read) in fixture inbox, invoke hook, assert digest shows '2 unread' header + 2 previews
+    6. Bypass: CHUMP_OPUS_INBOX_HOOK=0 env disables the hook output (for operator-quiet sessions); emits preflight_inbox_disabled (or skip emit if quiet)
+    7. Pairs with INFRA-1796 (the CLI itself, shipping in #2391)
