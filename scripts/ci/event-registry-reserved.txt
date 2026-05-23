@@ -300,3 +300,4 @@ tool_approval_policy_changed  # reason: INFRA-1340 PRODUCT-109; emission wiring 
 # INFRA-1456: test fixture placeholder kind in src/inspect_cmd.rs::tests — not a real emit
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
 preflight_envvars_bypassed # reason: INFRA-1787 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ENVVARS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
+preflight_subcmdhelp_bypassed # reason: INFRA-1789 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
