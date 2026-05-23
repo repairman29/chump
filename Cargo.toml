@@ -23,6 +23,7 @@ members = [
     "crates/mcp-servers/chump-mcp-memory",
     "crates/chump-gh-app",
     "crates/chump-team",
+    "crates/chump-demo",
     "crates/ambient-cli",
     "crates/ast-crawler",
 ]
