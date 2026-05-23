@@ -732,9 +732,7 @@ pub fn run(argv: &[String]) -> i32 {
         // malformed AC that blocked the merge queue for ~2.5h.
         // Mirrors INFRA-1731 #2377 pattern: skip via env + audit emit.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_GAPSINT").as_deref() == Ok("1") {
-            eprintln!(
-                "[preflight] skipping gaps-integrity (CHUMP_PREFLIGHT_SKIP_GAPSINT=1)"
-            );
+            eprintln!("[preflight] skipping gaps-integrity (CHUMP_PREFLIGHT_SKIP_GAPSINT=1)");
             let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
                 kind: "preflight_gapsint_bypassed".to_string(),
                 source: Some("chump-preflight".to_string()),
