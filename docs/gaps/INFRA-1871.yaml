@@ -1,0 +1,13 @@
+- id: INFRA-1871
+  domain: INFRA
+  title: "CI/QA: pre-push hard timeout regression smoke — verify INFRA-1744 #2372 timeout still in force; CI guard prevents removal (INFRA-1861 slice f)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Regression test scripts/ci/test-pre-push-cargo-test-timeout.sh: parses scripts/git-hooks/pre-push; asserts BOTH the cargo-test-with-rerun.sh invocation AND the fallback cargo test path are wrapped in 'timeout ${_PREPUSH_TEST_TIMEOUT_S}s'"
+    - Asserts CHUMP_PREPUSH_TEST_TIMEOUT_S default = 600 (or via env)
+    - "If either path is missing the timeout wrapper, exit non-zero with diagnostic referencing INFRA-1744 #2372"
+    - Add to audit job in ci.yml (or fast-checks if quick) so a future PR can't accidentally remove the timeout
+    - "Parent: INFRA-1861 slice (f); guards the INFRA-1744 fix against regression"
+
