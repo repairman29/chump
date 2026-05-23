@@ -83,3 +83,10 @@ installers:
     install: bash scripts/setup/install-ambient-hooks.sh
     check: grep -q chump-ambient ~/.claude/settings.json 2>/dev/null
     adds: ~/.claude/settings.json hooks entries
+
+  - id: github-liaison-launchd
+    why: INFRA-1317 — Phase 1 of GITHUB_LIAISON.md. One process refreshes .chump/github_cache.db every 60s instead of N workers each polling GitHub independently. Plist sets CHUMP_LIAISON_ENABLED=1; the script itself defaults OFF for safety in manual contexts. Cuts the secondary-rate-limit pressure that hit 44k self-throttle events / 23h on 2026-05-14.
+    priority: P1
+    install: bash scripts/setup/install-github-liaison.sh
+    check: bash scripts/setup/install-github-liaison.sh --check
+    adds: ~/Library/LaunchAgents/dev.chump.github-liaison.plist + KeepAlive daemon

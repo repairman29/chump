@@ -5,8 +5,11 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "scripts/ops/github-liaison.sh implements lockdir-based election (.chump-locks/github-liaison.lock/) with 90s stale-heartbeat takeover; opt-in via CHUMP_LIAISON_ENABLED=1 (default OFF)."
+    - "Refresh loop runs every CHUMP_LIAISON_POLL_INTERVAL_S seconds (default 60); each cycle calls scripts/ops/github-cache-reconcile.sh once and renews heartbeat."
+    - "Emits kind=liaison_elected on lock acquisition, kind=liaison_heartbeat each cycle, kind=liaison_yielded on graceful exit, kind=liaison_takeover on stale-lock reclamation. All registered in docs/observability/EVENT_REGISTRY.yaml."
+    - "Second concurrent invocation detects existing fresh liaison and exits 0 cleanly without emitting liaison_elected."
+    - "scripts/setup/install-github-liaison.sh installs idempotent launchd plist (dev.chump.github-liaison); --check exits 0 iff loaded, --uninstall removes."
+    - "Installer is registered in scripts/setup/bootstrap-manifest.yaml as P1 with --check idempotency."
+    - "scripts/ci/test-github-liaison.sh: (a) lock acquisition succeeds; (b) second invocation refuses + exits 0; (c) stale-heartbeat lock is reclaimed; (d) refresh loop renews heartbeat; (e) graceful exit removes lockdir."
 
