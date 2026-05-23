@@ -418,3 +418,6 @@ CHUMP_PR_RESCUE_MAX_AGE_HOURS
 
 # INFRA-1340: per-tool approval policy file (PRODUCT-109 follow-ups)
 CHUMP_TOOL_POLICY_FILE
+
+# INFRA-1731: skip the local event-registry-audit step in chump preflight
+CHUMP_PREFLIGHT_SKIP_REGISTRY
