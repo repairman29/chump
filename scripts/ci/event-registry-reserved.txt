@@ -304,3 +304,4 @@ preflight_subcmdhelp_bypassed # reason: INFRA-1789 emitted from src/preflight.rs
 preflight_acgate_bypassed # reason: INFRA-1791 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ACGATE=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
 ast_crawler_unsupported_language  # reason: INFRA-1719 emitted from crates/ast-crawler when an unsupported language is encountered; emit site uses struct-field syntax not grep-scannable as `kind=X` literal
 a2a_subscribe_stub_invoked  # reason: INFRA-1758 stub diagnostic emitted from crates/chump-coord/src/events.rs::subscribe_events while real impl (NATS push consumer) is unwired; allowlist until INFRA-1118 slice 2/4 lands
+a2a_rpc_stub_called  # reason: INFRA-1759 stub diagnostic emitted from crates/chump-coord/src/rpc.rs::call_rpc + serve_rpc while real impl (NATS subject routing) is unwired; allowlist until INFRA-1119 slice 2/4 lands
