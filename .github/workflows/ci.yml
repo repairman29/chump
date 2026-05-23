@@ -10,10 +10,26 @@ on:
 concurrency:
   # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
   # we need every main push to complete for the green-main signal (ship_quality grades, bisect, regression diagnosis).
-  # PR / merge_group share a group per branch so cancel-in-progress dedupes redundant fixup pushes.
+  #
+  # INFRA-1852 (2026-05-23): PR events previously keyed the group on the PR
+  # number, which meant consecutive pushes to the same PR cancelled each
+  # other's in-flight `audit` job. The `audit-required` aggregator (which
+  # requires audit == SUCCESS) flipped to FAILURE because cancelled != success.
+  # We hit this 10+ times in a single session — operator workaround was empty-
+  # commit retrigger, costing ~5 min per occurrence.
+  #
+  # Fix: PR / merge_group events now key the group on github.sha (the commit
+  # being CI'd), not the PR number. Each unique commit gets its own group, so
+  # a fixup push of commit B does NOT cancel the in-flight CI for commit A —
+  # both complete, both report. Costs: when an operator force-pushes 3 fixup
+  # commits within ~30s, GH may run CI on all 3 (rather than just the latest),
+  # so runner-pool consumption goes up modestly. Tradeoff is correct: paying
+  # a few extra runs beats 10+ false-failures requiring manual retrigger.
+  #
+  # Prior form: `github.event.pull_request.number || github.ref` for non-push.
   # Prior form used `cancel-in-progress: ${{ <expr> }}` which evaluates to the string "false" for push events,
   # and Actions treats any non-empty string as truthy — so main runs were silently cancelled. (INFRA-1001)
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -1320,6 +1336,17 @@ jobs:
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
     needs: changes
+    # INFRA-1852 (2026-05-23): job-level concurrency override scopes audit per-SHA so
+    # follow-up commits do NOT cancel an in-flight audit run on the prior SHA. Workflow-
+    # level concurrency (cancel-in-progress: true, scoped per-PR) still dedupes the other
+    # gates (test rollup, e2e, etc.) on fixup pushes — those are cost-sensitive. Audit is
+    # cheap (~5min, no cargo-audit since INFRA-503) and branch protection treats it as
+    # required, so a cancelled audit forces operators to push empty commits as a workaround
+    # (hit 10+ times on 2026-05-23). Per-SHA group keeps same-SHA dedupe intact (e.g. retries
+    # of the exact commit don't double-run) but lets each new commit's audit complete.
+    concurrency:
+      group: ci-audit-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: false
     # INFRA-1379: skip audit for docs-only PRs (gap YAMLs, .md edits) — audit-stub
     # satisfies the required check. Always runs on push/merge_group to keep main green.
     if: |
