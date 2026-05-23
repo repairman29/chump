@@ -4247,4 +4247,28 @@ events:
       needed. Routes violations by `contract_name` so authors can identify
       broken patterns per contract.
     consumers: [fleet-brief, subagent-prompt-feedback]
+  - kind: ast_crawler_unsupported_language
+    effect_metric: self
+    emitter: crates/ast-crawler/src/lib.rs (INFRA-1719 tree-sitter AST crawler)
+    trigger: >
+      `chump_ast_crawler::crawl_paths` encountered a file with an extension
+      not in the day-1 supported set (rust, python, javascript, typescript,
+      go, bash, yaml). Debounced per-extension per invocation so a large asset
+      tree doesn't flood the stream. Helps the fleet identify languages that
+      should be promoted to first-class support next.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, path, ext]
+  # INFRA-1720: chump-handoff typed-contract dispatch pipeline. Emitted at
+  # every error boundary so dashboards can route violations back to the
+  # owning contract for prompt refinement.
+  - kind: handoff_contract_violation
+    effect_metric: self
+    emitter: crates/chump-handoff/src/lib.rs (HandoffContract::dispatch)
+    trigger: >
+      Subagent returned a payload that failed the contract's typed boundary —
+      JSON schema mismatch (missing/extra field, parse error), Output::validate()
+      rejection (semantic rule violated), or transport-level dispatch error.
+      Parent rejects the payload and emits this rather than proceeding with
+      malformed work.
+    consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, contract_name, error, raw_output_first_100]
