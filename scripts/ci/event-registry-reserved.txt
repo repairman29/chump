@@ -215,6 +215,11 @@ pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-re
 
 fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
 synthesis_gap_filed     # reason: declared kind awaiting emitter (INFRA-1684 synthesis-truth audit wip); allowlist orphan to unblock audit cluster (#2337, et al.)
+stale_branch_auto_rebased  # reason: INFRA-1429 #2356 emitted from src/paramedic.rs action_rebase_dirty; allowlist while EVENT_REGISTRY entry catches up
+keystone_cascade_fired     # reason: INFRA-1420 #2361 emitted from src/paramedic.rs action_keystone_cascade; allowlist while EVENT_REGISTRY entry catches up
+gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
+gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
+claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
 merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
 queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
 
