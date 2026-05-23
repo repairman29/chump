@@ -780,6 +780,30 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1859: acp-smoke gate. Mirrors editor-integration.yml acp-smoke job —
+        // runs the ACP protocol smoke test via existing scripts/ci/test-acp-smoke.sh.
+        // Heavy because the underlying script may need node + chromedriver; the
+        // script handles its own missing-dep skip-gracefully. Skip via
+        // CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1 (mirrors INFRA-1731 #2377 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ACPSMOKE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping acp-smoke (CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_acpsmoke_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "acp-smoke",
+                &["bash", "scripts/ci/test-acp-smoke.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
