@@ -922,6 +922,14 @@ jobs:
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-cli-integration.sh
 
+      - name: CI gate promotion no-regression (INFRA-1869)
+        # Asserts every gate listed in docs/process/CI_GATE_PROMOTION_LOG.md is
+        # currently strict-fail in .github/workflows/ci.yml. A promoted gate that
+        # regresses to --warn-only or `|| true` fails this check.
+        # No bypass env var by design — demoting a gate requires editing the log AND
+        # adding `CI-Promotion-Reverted: <reason>` to the commit body.
+        run: bash scripts/ci/test-gate-promotion-no-regression.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
