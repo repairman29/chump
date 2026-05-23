@@ -188,6 +188,53 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
   exit 2
 fi
 
+# INFRA-1834: --no-verify audit guard. When the caller passes --no-verify
+# (or short form -n), require CHUMP_NO_VERIFY_REASON='<non-empty text>' env
+# and emit an audit event so the bypass is auditable. The hook bypass IS
+# the operator's escape hatch (CLAUDE.md hard rule: "--no-verify is the
+# reason most regressions ship") — we don't block it, we just demand a
+# reason and log it. Run this check BEFORE the git commit fires so a
+# reasonless --no-verify exits fast.
+_chump_no_verify_used=0
+for _a in "${GIT_ARGS[@]}"; do
+  if [[ "$_a" == "--no-verify" || "$_a" == "-n" ]]; then
+    _chump_no_verify_used=1
+    break
+  fi
+done
+if [[ "$_chump_no_verify_used" == "1" ]]; then
+  _reason="${CHUMP_NO_VERIFY_REASON:-}"
+  # Trim leading whitespace (the trailing trim happens naturally in the test).
+  _reason_trimmed="${_reason#"${_reason%%[![:space:]]*}"}"
+  _reason_trimmed="${_reason_trimmed%"${_reason_trimmed##*[![:space:]]}"}"
+  if [[ -z "$_reason_trimmed" ]]; then
+    echo "[chump-commit] INFRA-1834: --no-verify requires CHUMP_NO_VERIFY_REASON='<text>' env (empty/whitespace rejected)." >&2
+    echo "[chump-commit] Example: CHUMP_NO_VERIFY_REASON='hook hung 90s; emergency push for INFRA-XXXX rescue' bash scripts/coord/chump-commit.sh ..." >&2
+    exit 3
+  fi
+  # Emit audit event to BOTH the ambient stream and the dedicated audit log
+  # so the operator's daily reviewer (planned in INFRA-1834 AC #6) can grep
+  # one file and a dashboards can subscribe to the kind on ambient.
+  _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _session="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
+  _branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  _root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  _gitdir="$(git rev-parse --git-common-dir 2>/dev/null || echo .git)"
+  if [[ "$_gitdir" == ".git" ]]; then
+    _main="$_root"
+  else
+    _main="$(cd "$_gitdir/.." 2>/dev/null && pwd)"
+  fi
+  _locks="$_main/.chump-locks"
+  mkdir -p "$_locks" 2>/dev/null || true
+  _reason_esc="${_reason_trimmed//\\/\\\\}"
+  _reason_esc="${_reason_esc//\"/\\\"}"
+  _line="{\"ts\":\"$_ts\",\"kind\":\"audit_no_verify\",\"session\":\"$_session\",\"branch\":\"$_branch\",\"caller\":\"chump-commit.sh\",\"reason\":\"$_reason_esc\"}"
+  printf '%s\n' "$_line" >> "$_locks/ambient.jsonl"
+  printf '%s\n' "$_line" >> "$_locks/no-verify-audit.jsonl"
+  echo "[chump-commit] INFRA-1834: --no-verify bypass logged (reason: $_reason_trimmed)" >&2
+fi
+
 # INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
 # Note: cd "$REPO_ROOT" below is intentional — chump-commit.sh stages files
 # in the CURRENT worktree (whatever the caller's checkout is), not the main
