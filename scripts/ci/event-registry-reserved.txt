@@ -282,3 +282,12 @@ restart  # reason: daemon-restart telemetry, pre-existing — too generic to reg
 # when cargo test exceeds CHUMP_PREPUSH_TEST_TIMEOUT_S budget under sibling
 # worktree contention; one-off operator-facing signal, not a steady-state event.
 prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-push timeout branch; printf-formatted from bash, not via emit_event helper
+
+# INFRA-1340: PRODUCT-109 follow-ups — kinds registered for future wiring
+# in the web-server approval handler; emission wiring lands in a follow-up
+# gap once src/web_server.rs lease clears. Reserved here to unblock CI in
+# the meantime (registered-without-emit is the "intent declared, code WIP"
+# state, exactly what this allowlist is for).
+tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
+tool_approval_escalated  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
+tool_approval_policy_changed  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap

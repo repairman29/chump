@@ -2391,6 +2391,10 @@
   <script src="daily-brief.js" type="module"></script>
   <script src="impact.js" type="module"></script>
   <script src="gap-list.js" type="module"></script>
+  <!-- INFRA-1340: per-tool policy dropdown (15min / 1h / session) augments the
+       <chump-tool-approval-tray> defined in app.js. Order matters: app.js must
+       have registered the tray before this script runs. -->
+  <script src="approval.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));

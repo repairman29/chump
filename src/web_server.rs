@@ -495,6 +495,113 @@ async fn handle_approve(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+// ── INFRA-1340: per-tool persistent auto-approve policies ─────────────────
+//
+// Operators choose an auto-approve TTL in the PWA approval-tray dropdown
+// (15min / 1h / session). The choice is persisted to `.chump/tool-policies.json`
+// keyed by `{tool_name, scope}` with an `expires_at_unix` timestamp.
+//
+// GET    /api/tool-policy            — list active (non-expired) policies
+// POST   /api/tool-policy            — upsert one  {tool_name, scope, ttl_secs?}
+// DELETE /api/tool-policy/{tool}     — remove all policies for the given tool
+//
+// Each successful POST/DELETE emits kind=tool_approval_policy_changed to
+// ambient.jsonl so fleet observability can audit policy churn.
+
+#[derive(serde::Deserialize)]
+struct ToolPolicyBody {
+    tool_name: String,
+    scope: String,
+    /// Optional explicit TTL; if omitted we infer from `scope`:
+    /// "15min" → 900, "1h" → 3600, "session" → 7d (max).
+    #[serde(default)]
+    ttl_secs: Option<u64>,
+}
+
+fn scope_to_ttl(scope: &str) -> u64 {
+    match scope.trim().to_lowercase().as_str() {
+        "15min" | "15m" | "15" => 900,
+        "1h" | "60min" | "60m" => 3_600,
+        "session" => 7 * 24 * 3_600,
+        _ => 900, // safe default
+    }
+}
+
+async fn handle_tool_policy_list(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let policies = crate::tool_policy::policy_store::list_active();
+    Ok(Json(serde_json::json!({
+        "policies": policies,
+        "escalation": {
+            "enabled": crate::tool_policy::approval_escalation_enabled(),
+            "secs": crate::tool_policy::approval_escalation_secs(),
+        },
+        "audio_cue_enabled": crate::tool_policy::approval_audio_enabled(),
+    })))
+}
+
+async fn handle_tool_policy_upsert(
+    headers: HeaderMap,
+    Json(body): Json<ToolPolicyBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let tool = body.tool_name.trim();
+    let scope = body.scope.trim();
+    if tool.is_empty() || scope.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let ttl = body.ttl_secs.unwrap_or_else(|| scope_to_ttl(scope));
+    let entry = crate::tool_policy::policy_store::upsert_policy(tool, scope, ttl, Some("operator"));
+    crate::tool_policy::emit_ambient_json(
+        "tool_approval_policy_changed",
+        serde_json::json!({
+            "action": "upsert",
+            "tool_name": entry.tool_name,
+            "scope": entry.scope,
+            "expires_at_unix": entry.expires_at_unix,
+            "ttl_secs": ttl,
+        }),
+    );
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "policy": entry,
+    })))
+}
+
+async fn handle_tool_policy_delete(
+    headers: HeaderMap,
+    Path(tool): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let trimmed = tool.trim();
+    if trimmed.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let removed = crate::tool_policy::policy_store::remove_tool(trimmed);
+    if removed > 0 {
+        crate::tool_policy::emit_ambient_json(
+            "tool_approval_policy_changed",
+            serde_json::json!({
+                "action": "delete",
+                "tool_name": trimmed.to_lowercase(),
+                "removed_count": removed,
+            }),
+        );
+    }
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "removed": removed,
+    })))
+}
+
 /// POST /api/inject-hint — operator injects a targeted hint into the blackboard.
 /// Used by the causal timeline UI when the agent is stuck in a failing verification loop.
 /// The hint is posted with high urgency + goal relevance so it surfaces in the next turn's context.
@@ -8212,6 +8319,12 @@ fn build_api_router() -> Router {
         )
         .route("/api/inbox/{session}/ack", post(handle_inbox_ack))
         .route("/api/approve", post(handle_approve))
+        // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)
+        .route(
+            "/api/tool-policy",
+            get(handle_tool_policy_list).post(handle_tool_policy_upsert),
+        )
+        .route("/api/tool-policy/{tool}", delete(handle_tool_policy_delete))
         .route(
             "/api/policy-override",
             post(handle_policy_override_register),

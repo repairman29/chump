@@ -31,6 +31,16 @@ pub fn resolve_approval(request_id: &str, allowed: bool) {
     crate::pending_peer_approval::clear_pending_peer_approval(request_id);
 }
 
+/// True when `request_id` is still awaiting a decision (not yet resolved/expired).
+/// Used by the INFRA-1340 Web Push escalation worker to skip pushing when the
+/// operator already responded.
+pub fn is_pending(request_id: &str) -> bool {
+    if let Ok(guard) = pending().lock() {
+        return guard.contains_key(request_id);
+    }
+    false
+}
+
 /// Default timeout for waiting for approval (seconds). Env CHUMP_APPROVAL_TIMEOUT_SECS.
 pub fn approval_timeout_secs() -> u64 {
     std::env::var("CHUMP_APPROVAL_TIMEOUT_SECS")

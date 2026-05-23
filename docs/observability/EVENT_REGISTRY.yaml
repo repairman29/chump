@@ -4136,3 +4136,41 @@ events:
       frequency of this event indicates GitHub API degradation.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, note]
+
+  # ── INFRA-1340: per-tool auto-approve policies + escalation ─────────────────
+
+  - kind: tool_auto_approved
+    effect_metric: self
+    emitter: src/task_executor.rs (INFRA-1340)
+    trigger: >
+      An incoming tool call matched an active per-tool auto-approve policy
+      (PWA dropdown choice persisted in .chump/tool-policies.json keyed by
+      {tool_name, scope}). The approval gate skipped the human-wait and let
+      the tool execute. Distinct from the env-var-based
+      auto_approved_tools_env / auto_approved_static_low_risk paths — the
+      `source` field disambiguates ("persistent_policy" for this kind).
+    consumers: [fleet-brief, ops-audit, approval-audit-dashboard]
+    fields_required: [ts, kind, tool_name, scope, expires_at_unix, risk_level, source]
+
+  - kind: tool_approval_escalated
+    effect_metric: self
+    emitter: src/task_executor.rs (INFRA-1340)
+    trigger: >
+      An approval request has been pending for longer than
+      CHUMP_APPROVAL_ESCALATION_SECS (default 60s) without an operator
+      decision. The server dispatches a Web Push notification to all
+      subscribed endpoints and records the (ok, fail) counts here.
+      Disabled when CHUMP_APPROVAL_ESCALATION=0 or there are no
+      subscriptions / VAPID key configured.
+    consumers: [fleet-brief, ops-audit, operator-attention]
+    fields_required: [ts, kind, request_id, tool_name, risk_level, idle_secs, push_ok, push_fail]
+
+  - kind: tool_approval_policy_changed
+    effect_metric: self
+    emitter: src/web_server.rs (INFRA-1340)
+    trigger: >
+      Operator created, refreshed, or deleted a per-tool auto-approve policy
+      via POST/DELETE /api/tool-policy (PWA dropdown in the approval tray).
+      The `action` field is "upsert" or "delete".
+    consumers: [fleet-brief, ops-audit, approval-audit-dashboard]
+    fields_required: [ts, kind, action, tool_name]
