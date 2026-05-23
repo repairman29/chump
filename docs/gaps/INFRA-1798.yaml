@@ -1,0 +1,14 @@
+- id: INFRA-1798
+  domain: INFRA
+  title: "EFFECTIVE: cron-loop autopilot prompt reads opus-message inbox at iter start — 'Glance' phase addendum (INFRA-1796 dogfood)"
+  status: open
+  priority: P2
+  effort: xs
+  depends_on: [["INFRA-1796"]]
+  acceptance_criteria:
+    1. Update the cron-loop autopilot prompt pattern documented in CLAUDE.md or memory: between step 1 'Glance' (tail ambient + chump gap list) and step 2 'Babysit my PRs', add a new sub-step: 'Inbox: opus-message.sh list --unread; process each addressed message before continuing'
+    2. Operator-facing change is small: 1 line added to the loop prompt template the user uses with /loop
+    3. If unread inbox has any --to session:<my-id> messages: process them inline (act on the request) and mark-read; if --to gap:<X> messages: only act if I currently hold the lease; if --to all-opus: read + acknowledge unless redundant
+    4. Document the read/process/reply pattern in docs/process/OPUS_MESSAGE_PROTOCOL.md (new) with 3 example interactions: hand-off, broadcast warning, RFC
+    5. Smoke test scripts/ci/test-opus-message-protocol.sh: assert the new doc exists + references opus-message.sh CLI + cites INFRA-1796
+    6. No code changes to the CLI itself; this is purely documentation + operator-discipline
