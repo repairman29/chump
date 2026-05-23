@@ -8195,6 +8195,9 @@ fn build_api_router() -> Router {
             "/api/fleet/health",
             get(routes::health::handle_fleet_health),
         )
+        // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
+        // INFRA-1207 client-side fallback).
+        .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))

@@ -2623,7 +2623,7 @@ class ChumpViewCoord extends HTMLElement {
         window: this.#window,
         ts: new Date().toISOString(),
 
-// ── <chump-view-roadmap> (INFRA-1207) ───────────────────────────────────────
+// ── <chump-view-roadmap> (INFRA-1207, INFRA-1338) ───────────────────────────
 // Apex situational-awareness view per docs/design/OPERATOR_CONSOLE_V2.md
 // (archetype 2 fleet operator). Answers "where does today's gap fit in the
 // long arc?" — by rendering docs/ROADMAP.md milestones with completion %
@@ -2631,12 +2631,10 @@ class ChumpViewCoord extends HTMLElement {
 //
 // Routes via 'roadmap' in LIBRARY cadence.
 //
-// Data: /api/roadmap (endpoint not yet shipped — file backend follow-up).
-// MVP renders three states:
-//   1. Endpoint live + parsed → vertical timeline with milestone cards
-//   2. Endpoint 404 → manual fallback "open docs/ROADMAP.md" + raw file
-//      fetch from /docs/ROADMAP.md (served by chump --web static path)
-//   3. Both fail → friendly error
+// Data: /api/roadmap (INFRA-1338 — server-side parser + 60s in-process
+// cache). The endpoint always returns 200 + JSON; on parse/IO failure the
+// response includes a `roadmap_error` string and an empty `milestones` array
+// so the UI degrades gracefully rather than disappearing.
 class ChumpViewRoadmap extends HTMLElement {
   #data = null;
 
@@ -2853,58 +2851,27 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
     if (!list) return;
     list.setAttribute('aria-busy', 'true');
     try {
-      // First try the structured endpoint.
+      // INFRA-1338: /api/roadmap is now the canonical structured endpoint.
+      // It always returns 200; on parse/IO failure the body includes
+      // `roadmap_error` + empty `milestones`. No client-side markdown
+      // parsing fallback — the server is the source of truth.
       const r = await fetch('/api/roadmap');
       if (r.ok) {
         this.#data = await r.json();
+        if (this.#data && this.#data.roadmap_error) {
+          list.innerHTML = `<p class="placeholder">Roadmap could not be parsed: ${this.#esc(String(this.#data.roadmap_error))}</p>`;
+          list.setAttribute('aria-busy', 'false');
+          return;
+        }
         this.#render();
+        list.setAttribute('aria-busy', 'false');
         return;
       }
-      // Fall back to raw markdown if the static dir serves it.
-      const raw = await fetch('/docs/ROADMAP.md').catch(() => null);
-      if (raw && raw.ok) {
-        const text = await raw.text();
-        this.#data = this.#parseMarkdown(text);
-        this.#render();
-        return;
-      }
-      list.innerHTML = `<p class="placeholder">
-        Roadmap endpoint pending (<code>/api/roadmap</code> not implemented yet).<br>
-        Read the source: <a href="https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">docs/ROADMAP.md on GitHub</a>
-        or run <code>chump roadmap-status</code> in a terminal.
-      </p>`;
+      list.innerHTML = `<p class="placeholder">Roadmap endpoint returned ${r.status}. Read the source: <a href="https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">docs/ROADMAP.md on GitHub</a>.</p>`;
     } catch (err) {
       list.innerHTML = `<p class="placeholder">Could not load roadmap: ${this.#esc(String(err))}</p>`;
     }
     list.setAttribute('aria-busy', 'false');
-  }
-
-  #parseMarkdown(text) {
-    // Minimal parser for ROADMAP.md milestones. Heuristic: each "## Milestone"
-    // heading starts a milestone block; "status:", "Gaps:", "Blockers:" are
-    // optional fields. This is good-enough for the MVP shell; the real
-    // /api/roadmap endpoint will do this server-side properly.
-    const milestones = [];
-    const lines = text.split('\n');
-    let current = null;
-    for (const line of lines) {
-      if (/^##\s+/.test(line)) {
-        if (current) milestones.push(current);
-        const m = line.match(/^##\s+(.+)$/);
-        current = { id: '', title: m ? m[1] : 'untitled', status: 'unknown', progress_pct: null, gaps: [], blockers: [], target_date: null };
-      } else if (current) {
-        if (/^status:\s*/i.test(line)) {
-          current.status = line.replace(/^status:\s*/i, '').trim().toLowerCase();
-        } else if (/^target[_ -]?date:\s*/i.test(line)) {
-          current.target_date = line.replace(/^target[_ -]?date:\s*/i, '').trim();
-        } else if (/^- ([A-Z]+-\d+)/.test(line)) {
-          const gm = line.match(/^- ([A-Z]+-\d+)\s*[—-]?\s*(.+)?$/);
-          if (gm) current.gaps.push({ id: gm[1], title: gm[2] || '' });
-        }
-      }
-    }
-    if (current) milestones.push(current);
-    return { milestones };
   }
 
   #render() {

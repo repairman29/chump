@@ -384,6 +384,65 @@ Aggregate fleet mission-health snapshot — the single data source for PRODUCT-1
 
 **GraphQL budget source:** scans `$CHUMP_REPO/.chump-locks/ambient.jsonl` in reverse for the most recent `graphql_exhausted` event. Returns `null` when no event found — this is expected on fresh deployments or when the fleet has not exhausted the quota.
 
+## GET /api/roadmap (INFRA-1338)
+
+Server-side parser for `docs/ROADMAP.md` with a 60-second in-process cache.
+Replaces the client-side markdown parsing fallback in
+`<chump-view-roadmap>` (INFRA-1207).
+
+**Response (always `200`):**
+
+```json
+{
+  "milestones": [
+    {
+      "id": "week-1",
+      "title": "Week 1 — User-facing front door (May 6 → 13) ✅ SHIPPED",
+      "status": "done",
+      "target_date": null,
+      "progress_pct": 100,
+      "done_ratio": 1.0,
+      "gaps": [
+        {"id": "INFRA-593", "title": "", "status": "shipped", "is_placeholder": false}
+      ],
+      "blockers": [],
+      "outcome": "A solo dev with Ollama can run `chump gen <task>` and get a working PR."
+    }
+  ],
+  "generated_at_iso": "2026-05-22T23:30:00Z",
+  "cache_age_secs": 0,
+  "roadmap_error": null
+}
+```
+
+**Fields:**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `milestones` | array | One entry per `## Week N — title` heading in ROADMAP.md. |
+| `milestones[].id` | string | Stable slug, e.g. `week-1`, `week-3`. |
+| `milestones[].title` | string | "Week N — <week_title>" reproduced from the heading. |
+| `milestones[].status` | string | `done` \| `active` \| `next` \| `blocked` \| `unknown` — derived from title emoji tags (✅ → done, 🏗️ → active) then from gap-mix when no tag. |
+| `milestones[].done_ratio` | number | `[0.0, 1.0]` — shipped real gaps / total real gaps (placeholders excluded). |
+| `milestones[].progress_pct` | int \| null | `round(done_ratio * 100)`, or `null` when there are no real gaps. |
+| `milestones[].gaps[].id` | string | Gap identifier (e.g. `INFRA-593`). |
+| `milestones[].gaps[].status` | string | `shipped` \| `open` \| `in_flight` \| `not_filed` — resolved against `state.db`. |
+| `milestones[].gaps[].is_placeholder` | bool | `true` for `*-NEW` / `*-XXX` IDs that have not been filed yet. |
+| `milestones[].outcome` | string | Plain-text outcome statement extracted from `**Outcome.**`. |
+| `generated_at_iso` | string | ISO 8601 UTC timestamp the snapshot was built. |
+| `cache_age_secs` | int | Seconds since `generated_at_iso`. `0` on a cache miss; non-zero on a cache hit. |
+| `roadmap_error` | string \| null | Populated when the file is missing or unparseable; `null` on success. |
+
+**Caching:** 60-second in-process `OnceLock<RwLock<Snapshot>>`. A second call
+within the TTL returns the same `generated_at_iso` (CI test
+`scripts/ci/test-api-roadmap.sh` asserts this).
+
+**Failure mode:** if `docs/ROADMAP.md` is missing or contains no parseable
+milestones the endpoint still returns `200` with `milestones: []` plus a
+`roadmap_error` string. The frontend renders this gracefully — returning
+`500` here would make the Roadmap tab disappear on the first transient FS
+error.
+
 ## Static
 
 The server serves the PWA from the static directory (default `CHUMP_WEB_STATIC_DIR` or repo `web/`). All non-API routes fall through to static files (e.g. `index.html`, `manifest.json`, `sw.js`).
