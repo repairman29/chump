@@ -415,3 +415,6 @@ CHUMP_TEAM_USER_ID
 
 # INFRA-1714: chump pr-rescue safety cap (max PR age in hours before skip)
 CHUMP_PR_RESCUE_MAX_AGE_HOURS
+
+# INFRA-1340: per-tool approval policy file (PRODUCT-109 follow-ups)
+CHUMP_TOOL_POLICY_FILE
