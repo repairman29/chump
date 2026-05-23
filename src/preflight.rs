@@ -504,6 +504,32 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // INFRA-1787: env-var-coverage local gate. Catches CHUMP_* env vars
+        // referenced in Rust/scripts but not documented in
+        // scripts/ci/env-vars-internal.txt — the #1 most-frequent CI audit
+        // fail class (5+ failures/week pre-mirror). Skip via
+        // CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit (mirrors the
+        // INFRA-1731 pattern shipped at #2377).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_envvars_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "env-var-coverage",
+                &["bash", "scripts/ci/test-env-var-coverage.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {

@@ -5,11 +5,10 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - src/preflight.rs gains an env-vars-internal-coverage gate (extends INFRA-1731 pattern), invoked after the existing event-registry-audit step
-    - Gate invokes the same logic scripts/ci/test-env-vars-internal-coverage.sh uses (or a thin wrapper sharing it) so local + CI diagnostics are byte-identical
-    - "Scope-gated: skipped unless staged diff touches a .rs/.sh/.py file under PROD_PATHS OR scripts/ci/env-vars-internal.txt"
-    - Exit non-zero with the same FAIL message format the CI script emits (CHUMP_FOO env referenced in src/bar.rs but not in scripts/ci/env-vars-internal.txt)
-    - "Bypass: CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit kind=preflight_envvars_bypassed; register in EVENT_REGISTRY.yaml or event-registry-reserved.txt"
-    - "Smoke test scripts/ci/test-preflight-envvars-gate.sh: synthetic env-var ref in a stubbed src/foo.rs, run preflight, assert non-zero + bypass-env produces 0 with audit emit"
-    - "Pattern reference: INFRA-1731 (event-registry mirror, shipped #2377)"
-
+    1. src/preflight.rs gains an env-vars-internal-coverage gate (extends INFRA-1731 pattern), invoked after the existing event-registry-audit step
+    2. Gate invokes the same logic scripts/ci/test-env-vars-internal-coverage.sh uses (or a thin wrapper sharing it) so local + CI diagnostics are byte-identical
+    3. Scope-gated: skipped unless staged diff touches a .rs/.sh/.py file under PROD_PATHS OR scripts/ci/env-vars-internal.txt
+    4. Exit non-zero with the same FAIL message format the CI script emits (CHUMP_FOO env referenced in src/bar.rs but not in scripts/ci/env-vars-internal.txt)
+    5. Bypass: CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit kind=preflight_envvars_bypassed; register in EVENT_REGISTRY.yaml or event-registry-reserved.txt
+    6. Smoke test scripts/ci/test-preflight-envvars-gate.sh: synthetic env-var ref in a stubbed src/foo.rs, run preflight, assert non-zero + bypass-env produces 0 with audit emit
+    7. Pattern reference: INFRA-1731 (event-registry mirror, shipped #2377)
