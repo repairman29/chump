@@ -7,9 +7,17 @@
 //!   static risk tier (from `classify_tool_risk`) is Low.
 //! - `CHUMP_AUTO_APPROVE_TOOLS=read_file,calc` — skip approval for those tool names when they
 //!   also appear in `CHUMP_TOOLS_ASK`.
+//!
+//! Per-tool persistent auto-approve policies (INFRA-1340, PRODUCT-109 follow-up):
+//! Operators select an auto-approve TTL (15m / 1h / session) in the approval UI dropdown;
+//! the choice is persisted to `.chump/tool-policies.json` keyed by `{tool_name, scope}` with
+//! an `expires_at_unix` timestamp. The `policy_store` submodule owns the JSON file format and
+//! exposes `active_policy(tool_name) -> Option<ActivePolicy>` for the approval gate.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
+
+pub mod policy_store;
 
 static TOOLS_ASK: OnceLock<HashSet<String>> = OnceLock::new();
 
@@ -96,6 +104,96 @@ pub fn auto_approve_low_risk_cli() -> bool {
     std::env::var("CHUMP_AUTO_APPROVE_LOW_RISK")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
+}
+
+/// True when `CHUMP_APPROVAL_AUDIO=1`: play an OS-level chime each time an approval
+/// request is raised. Default off. Independent of dropdown + push-escalation features.
+pub fn approval_audio_enabled() -> bool {
+    std::env::var("CHUMP_APPROVAL_AUDIO")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("yes")
+        })
+        .unwrap_or(false)
+}
+
+/// Best-effort macOS chime via `osascript -e "beep 1"`. Silently no-ops on non-macOS
+/// or when `osascript` is missing. Override sound: `CHUMP_APPROVAL_AUDIO_CMD` (full
+/// shell command). Never blocks the approval flow.
+pub fn play_approval_audio_cue() {
+    if !approval_audio_enabled() {
+        return;
+    }
+    let custom = std::env::var("CHUMP_APPROVAL_AUDIO_CMD")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    std::thread::spawn(move || {
+        if let Some(cmd) = custom {
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd)
+                .status();
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", "beep 1"])
+                .status();
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            // No-op on non-macOS unless CHUMP_APPROVAL_AUDIO_CMD is set.
+        }
+    });
+}
+
+/// Web Push escalation threshold (seconds). After this idle gap with no
+/// operator decision, the approval handler dispatches a Web Push notification.
+/// Default 60s; override via `CHUMP_APPROVAL_ESCALATION_SECS`. Clamp [5, 600].
+pub fn approval_escalation_secs() -> u64 {
+    std::env::var("CHUMP_APPROVAL_ESCALATION_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60u64)
+        .clamp(5, 600)
+}
+
+/// True when escalation is enabled. Defaults on; opt-out via
+/// `CHUMP_APPROVAL_ESCALATION=0`.
+pub fn approval_escalation_enabled() -> bool {
+    std::env::var("CHUMP_APPROVAL_ESCALATION")
+        .map(|v| {
+            let t = v.trim();
+            !(t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("no"))
+        })
+        .unwrap_or(true)
+}
+
+/// Append a JSON event to `.chump-locks/ambient.jsonl`. Best-effort; never blocks.
+/// The caller passes the kind and an object payload; ts/kind are filled in if absent.
+pub(crate) fn emit_ambient_json(kind: &str, mut payload: serde_json::Value) {
+    if let Some(obj) = payload.as_object_mut() {
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        obj.entry("ts").or_insert(serde_json::Value::String(ts));
+        obj.entry("kind")
+            .or_insert(serde_json::Value::String(kind.to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", payload);
+    }
 }
 
 /// Record a tool approval decision to `chump_approval_stats` (AUTO-005).

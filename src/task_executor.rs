@@ -188,7 +188,36 @@ pub async fn execute_tool_calls_sequential<'a>(
             let auto_list = auto_tools.contains(&tc.name.to_lowercase());
             let skip_session_override = policy_override::session_relax_active_for_tool(&tc.name);
 
-            if auto_cli_low || auto_static_low || auto_list {
+            // INFRA-1340: per-tool persistent auto-approve policy (PWA dropdown).
+            // Takes precedence over the manual approval wait; emits kind=tool_auto_approved.
+            let policy_match = tool_policy::policy_store::active_policy(&tc.name);
+
+            if let Some(ap) = policy_match.as_ref() {
+                tracing::info!(
+                    tool = %tc.name,
+                    scope = %ap.scope,
+                    expires_at = ap.expires_at_unix,
+                    "skipping human approval (INFRA-1340 per-tool policy)"
+                );
+                chump_log::log_tool_approval_audit(
+                    &tc.name,
+                    &args_preview,
+                    &risk_level,
+                    "auto_approved_persistent_policy",
+                    chump_log::get_request_id().as_deref(),
+                );
+                tool_policy::record_approval_stat(&tc.name, "auto_approved", &risk_level);
+                tool_policy::emit_ambient_json(
+                    "tool_auto_approved",
+                    serde_json::json!({
+                        "tool_name": tc.name,
+                        "scope": ap.scope,
+                        "expires_at_unix": ap.expires_at_unix,
+                        "risk_level": risk_level,
+                        "source": "persistent_policy",
+                    }),
+                );
+            } else if auto_cli_low || auto_static_low || auto_list {
                 let result_label = if auto_cli_low {
                     "auto_approved_cli_low"
                 } else if auto_static_low {
@@ -247,6 +276,46 @@ pub async fn execute_tool_calls_sequential<'a>(
                         expires_at_secs,
                     },
                 );
+
+                // INFRA-1340 (audio cue): fire-and-forget OS chime when the
+                // operator has CHUMP_APPROVAL_AUDIO=1. Independent of dropdown
+                // and push escalation.
+                tool_policy::play_approval_audio_cue();
+
+                // INFRA-1340 (web push escalation): spawn a background task that,
+                // after CHUMP_APPROVAL_ESCALATION_SECS (default 60s), checks if
+                // the request is still pending and dispatches Web Push if so.
+                if tool_policy::approval_escalation_enabled() {
+                    let escalation_secs = tool_policy::approval_escalation_secs();
+                    let req_id_for_push = request_id.clone();
+                    let tool_for_push = tc.name.clone();
+                    let risk_for_push = risk_level.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(escalation_secs)).await;
+                        if !approval_resolver::is_pending(&req_id_for_push) {
+                            return; // operator already decided.
+                        }
+                        let title = format!("Chump: approve {}?", tool_for_push);
+                        let body = format!(
+                            "{} request pending for {}s (risk={})",
+                            tool_for_push, escalation_secs, risk_for_push
+                        );
+                        let (ok, fail) =
+                            crate::web_push_send::broadcast_json_notification(&title, &body).await;
+                        tool_policy::emit_ambient_json(
+                            "tool_approval_escalated",
+                            serde_json::json!({
+                                "request_id": req_id_for_push,
+                                "tool_name": tool_for_push,
+                                "risk_level": risk_for_push,
+                                "idle_secs": escalation_secs,
+                                "push_ok": ok,
+                                "push_fail": fail,
+                            }),
+                        );
+                    });
+                }
+
                 let approval_result =
                     tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
                 let (allowed, result_label) = match approval_result {
