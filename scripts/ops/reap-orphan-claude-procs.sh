@@ -77,7 +77,12 @@ REAP_AGE="${REAP_AGE:-3600}"
 # is made and REAP_AGE stays at its operator-supplied value.
 if [ "${CHUMP_REAPER_PRESSURE_DISABLED:-0}" != "1" ]; then
     _pty_limit=$(sysctl -n kern.tty.ptmx_max 2>/dev/null || echo "")
-    _pty_alloc=$(ls /dev/ttys??? 2>/dev/null | wc -l | awk '{print $1}')
+    # `ls /dev/ttys???` returns non-zero when no glob matches (Linux CI has
+    # no such device files — uses /dev/pts/N instead). The script's
+    # `set -euo pipefail` would otherwise kill on the failed pipeline; the
+    # `|| true` makes the count 0 on no-match without aborting the sweep.
+    _pty_alloc=$(ls /dev/ttys??? 2>/dev/null | wc -l | awk '{print $1}' || true)
+    _pty_alloc="${_pty_alloc:-0}"
     _pty_threshold_pct="${CHUMP_REAPER_PRESSURE_THRESHOLD:-80}"
     _pty_pressure_age="${CHUMP_REAPER_PRESSURE_AGE:-600}"
     if [ -n "$_pty_limit" ] && [ "$_pty_limit" -gt 0 ] && [ "$_pty_alloc" -gt 0 ]; then
