@@ -37,7 +37,9 @@ pub fn bucket_name() -> &'static str {
 pub enum ConflictPolicy {
     LastWriterWins,
     CASRequired,
-    MergeWithFn(Arc<dyn Fn(serde_json::Value, serde_json::Value) -> serde_json::Value + Send + Sync>),
+    MergeWithFn(
+        Arc<dyn Fn(serde_json::Value, serde_json::Value) -> serde_json::Value + Send + Sync>,
+    ),
 }
 
 impl std::fmt::Debug for ConflictPolicy {
@@ -54,8 +56,10 @@ impl PartialEq for ConflictPolicy {
     fn eq(&self, other: &Self) -> bool {
         matches!(
             (self, other),
-            (ConflictPolicy::LastWriterWins, ConflictPolicy::LastWriterWins)
-                | (ConflictPolicy::CASRequired, ConflictPolicy::CASRequired)
+            (
+                ConflictPolicy::LastWriterWins,
+                ConflictPolicy::LastWriterWins
+            ) | (ConflictPolicy::CASRequired, ConflictPolicy::CASRequired)
         )
         // MergeWithFn equality is undefined (closures aren't comparable);
         // tests should compare LastWriterWins/CASRequired only.
@@ -135,8 +139,14 @@ pub fn seed_keys() -> Vec<SeedKey> {
 pub enum ScratchError {
     NotImplemented,
     UnknownKey(String),
-    CASConflict { key: String, expected: String, actual: String },
-    InfiniteTtlMissingReview { key: String },
+    CASConflict {
+        key: String,
+        expected: String,
+        actual: String,
+    },
+    InfiniteTtlMissingReview {
+        key: String,
+    },
 }
 
 impl std::fmt::Display for ScratchError {
@@ -147,7 +157,11 @@ impl std::fmt::Display for ScratchError {
                 "scratchpad stub — real NATS KV impl ships in INFRA-1121 slice 2/4"
             ),
             ScratchError::UnknownKey(k) => write!(f, "unknown scratchpad key: {k}"),
-            ScratchError::CASConflict { key, expected, actual } => write!(
+            ScratchError::CASConflict {
+                key,
+                expected,
+                actual,
+            } => write!(
                 f,
                 "CAS conflict on '{key}': expected '{expected}', got '{actual}'"
             ),
@@ -176,8 +190,7 @@ pub async fn get(key: &str) -> Result<Option<serde_json::Value>, ScratchError> {
 
 /// Stub `set` (LWW path) — real impl in slice 2/4 publishes to NATS KV.
 pub async fn set(key: &str, value: serde_json::Value) -> Result<(), ScratchError> {
-    let sk = seed_key_lookup(key)
-        .ok_or_else(|| ScratchError::UnknownKey(key.to_string()))?;
+    let sk = seed_key_lookup(key).ok_or_else(|| ScratchError::UnknownKey(key.to_string()))?;
     if matches!(sk.conflict_policy, ConflictPolicy::CASRequired) {
         // CAS-required keys reject bare set() — caller must use cas().
         // For the stub, surface as NotImplemented so callers see the

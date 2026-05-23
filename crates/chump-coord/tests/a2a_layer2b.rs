@@ -3,8 +3,8 @@
 // Integration test for the A2A Layer 2b foundation slice (1/4) — RPC.
 
 use chump_coord::rpc::{
-    call_rpc, new_request_id, serve_rpc, DedupTable, RpcError, RpcRequest,
-    RpcResponse, DEDUP_WINDOW_SECONDS, DEFAULT_RPC_TIMEOUT_MS,
+    call_rpc, new_request_id, serve_rpc, DedupTable, RpcError, RpcRequest, RpcResponse,
+    DEDUP_WINDOW_SECONDS, DEFAULT_RPC_TIMEOUT_MS,
 };
 use serde_json::json;
 
@@ -92,5 +92,8 @@ async fn serve_rpc_stub_returns_not_implemented() {
 fn error_display_mentions_slice() {
     let e = RpcError::NotImplemented;
     let s = format!("{e}");
-    assert!(s.contains("INFRA-1119"), "error display should reference slice 2/4");
+    assert!(
+        s.contains("INFRA-1119"),
+        "error display should reference slice 2/4"
+    );
 }

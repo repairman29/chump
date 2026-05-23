@@ -8,9 +8,7 @@
 //   - subscribe_events stub returns NotImplemented (compile-time check that
 //     the async signature exists with the right type)
 
-use chump_coord::events::{
-    subscribe_events, CoordEvent, EventFilter, SubscribeError,
-};
+use chump_coord::events::{subscribe_events, CoordEvent, EventFilter, SubscribeError};
 use serde_json::json;
 
 #[test]
@@ -50,7 +48,10 @@ fn coord_event_missing_session_id_omitted_in_json() {
     let j = serde_json::to_string(&e).expect("serialize");
     // skip_serializing_if drops the key entirely when None — matches the
     // ambient.jsonl convention of omitting absent fields.
-    assert!(!j.contains("session_id"), "None session_id should be omitted in JSON: {j}");
+    assert!(
+        !j.contains("session_id"),
+        "None session_id should be omitted in JSON: {j}"
+    );
 }
 
 #[test]
@@ -87,5 +88,8 @@ async fn subscribe_events_stub_returns_not_implemented() {
 fn error_display_contains_marker() {
     let e = SubscribeError::NotImplemented;
     let s = format!("{e}");
-    assert!(s.contains("INFRA-1118"), "error display should reference slice 2/4 (INFRA-1118)");
+    assert!(
+        s.contains("INFRA-1118"),
+        "error display should reference slice 2/4 (INFRA-1118)"
+    );
 }
