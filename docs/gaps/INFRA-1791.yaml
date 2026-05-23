@@ -5,12 +5,11 @@
   priority: P2
   effort: s
   acceptance_criteria:
-    - src/preflight.rs gains a gap-preflight-ac-gate audit, runs only when staged diff touches docs/gaps/*.yaml
-    - Gate invokes scripts/ci/test-gap-preflight-ac-gate.sh logic + chump gap audit-ac --open
-    - Exit non-zero with INFRA-1259 error format (gap=X reason=empty-ac
-    - todo-ac
-    - missing-deps-ref)
-    - "Bypass: CHUMP_PREFLIGHT_SKIP_ACGATE=1 + emit preflight_acgate_bypassed"
-    - "Smoke test scripts/ci/test-preflight-acgate-gate.sh: synthetic gap yaml with TODO AC, assert gate catches it"
-    - "Note: differs from existing chump gap preflight CLI — that's per-gap pickability; this is staged-diff AC quality"
-
+    1. src/preflight.rs gains a gap-preflight-ac-gate audit, runs only when staged diff touches docs/gaps/*.yaml
+    2. Gate invokes scripts/ci/test-gap-preflight-ac-gate.sh logic + chump gap audit-ac --open
+    3. Exit non-zero with INFRA-1259 error format (gap=X reason=empty-ac
+    4. WARN: todo-ac
+    5. missing-deps-ref)
+    6. Bypass: CHUMP_PREFLIGHT_SKIP_ACGATE=1 + emit preflight_acgate_bypassed
+    7. WARN: Smoke test scripts/ci/test-preflight-acgate-gate.sh: synthetic gap yaml with TODO AC, assert gate catches it
+    8. Note: differs from existing chump gap preflight CLI — that's per-gap pickability; this is staged-diff AC quality
