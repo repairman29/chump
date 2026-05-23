@@ -5,15 +5,14 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    1. New scripts/coord/opus-message.sh CLI: opus-message.sh send --to <gap-id
-    2. session-id
-    3. all-opus> --from <my-session-id> --body "<text>" [--ref <pr-or-gap>] writes one JSONL line to .chump-locks/opus-inbox/<recipient>.jsonl with fields {ts, from, to, body, ref, read_at:null}
-    4. opus-message.sh list [--unread] [--for <session-id>] reads the recipient's inbox and prints addressed messages, oldest first
-    5. opus-message.sh mark-read <message-id> sets read_at on the message in-place via atomic rewrite (tempfile + rename)
-    6. Recipient resolution: --to gap:INFRA-NNN routes to whoever currently holds the lease for that gap (look up in .chump-locks/*.json); --to session:claim-X routes to a specific session; --to all-opus broadcasts to .chump-locks/opus-inbox/all-opus.jsonl which every session reads
-    7. SessionStart hook addendum: read .chump-locks/opus-inbox/<my-session-id>.jsonl + .chump-locks/opus-inbox/all-opus.jsonl; print unread count + first-line preview of latest 3 unread messages alongside the ambient digest
-    8. Hook lookup discovers my-session-id via  env (set by chump claim) OR falls back to hostname-pid
-    9. Emit kind=opus_message_sent {to, from, ref} to ambient; register in EVENT_REGISTRY.yaml
-    10. Smoke test scripts/ci/test-opus-message.sh: send a message gap-addressed, assert recipient's inbox has the JSON line, list --unread shows it, mark-read flips read_at, second list --unread shows it gone
-    11. No CHUMP_OPUS_MESSAGE_SKIP bypass needed (this IS the lightweight escape hatch); operators can ignore inbox entries entirely if they choose
-    12. Bridge gap: paved-cow path until INFRA-1759 (full RPC Layer 2b) lands; this gives addressed async TODAY for ~50 LOC instead of waiting on the full A2A stack
+    1. New scripts/coord/opus-message.sh CLI - opus-message.sh send --to RECIPIENT (where RECIPIENT is one of gap:INFRA-NNN, session:claim-X, or all-opus) --from MY-SESSION-ID --body TEXT [--ref PR-OR-GAP] writes one JSONL line to .chump-locks/opus-inbox/RECIPIENT.jsonl with fields ts, from, to, body, ref, read_at=null
+    2. opus-message.sh list [--unread] [--for SESSION-ID] reads the recipient's inbox and prints addressed messages, oldest first
+    3. opus-message.sh mark-read MESSAGE-ID sets read_at on the message in-place via atomic rewrite (tempfile + rename)
+    4. Recipient resolution - gap:INFRA-NNN routes to whoever currently holds the lease for that gap (look up in .chump-locks/*.json); session:claim-X routes to a specific session; all-opus broadcasts to .chump-locks/opus-inbox/all-opus.jsonl which every session reads
+    5. SessionStart hook addendum - read .chump-locks/opus-inbox/MY-SESSION-ID.jsonl + .chump-locks/opus-inbox/all-opus.jsonl; print unread count + first-line preview of latest 3 unread messages alongside the ambient digest
+    6. Hook lookup discovers my-session-id via CHUMP_SESSION_ID env (set by chump claim) OR falls back to hostname-pid
+    7. Emit kind=opus_message_sent with fields to, from, ref to ambient; register in EVENT_REGISTRY.yaml
+    8. Smoke test scripts/ci/test-opus-message.sh - send a message gap-addressed, assert recipient inbox has the JSON line, list --unread shows it, mark-read flips read_at, second list --unread shows it gone
+    9. No CHUMP_OPUS_MESSAGE_SKIP bypass needed (this IS the lightweight escape hatch); operators can ignore inbox entries entirely if they choose
+    10. Bridge gap - paved-cow path until INFRA-1759 (full RPC Layer 2b) lands; this gives addressed async TODAY for about 50 LOC instead of waiting on the full A2A stack
+    11. NOTE 2026-05-23 - INFRA-1115 (broadcast.sh --to plus chump-inbox.sh read) already provides this primitive; Opus #3 self-flagged INFRA-1796/1797/1798 as redundant. This gap is repurposed as the yaml-repair vehicle for the gaps-integrity cascade; actual opus-message work should target INFRA-1115 conventions per 2026-05-23 session conclusions
