@@ -23,6 +23,7 @@ members = [
     "crates/mcp-servers/chump-mcp-memory",
     "crates/chump-gh-app",
     "crates/chump-team",
+    "crates/chump-handoff",
     "crates/ambient-cli",
 ]
 resolver = "2"
