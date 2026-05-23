@@ -325,3 +325,5 @@ skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capa
 # not a `"kind":"X"` literal the gate's regex looks for. Registered in
 # EVENT_REGISTRY.yaml; reserved here to satisfy strict-mode register-without-emit.
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
+auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when new CHUMP_* env refs were auto-appended to env-vars-internal.txt (default path)
+auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
