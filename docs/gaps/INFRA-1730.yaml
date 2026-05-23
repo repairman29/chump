@@ -1,0 +1,12 @@
+- id: INFRA-1730
+  domain: INFRA
+  title: "ZERO-WASTE: chump claim auto-detects orphan branches from closed PRs and offers --rename or --resume in one step (hit 3 times in session 2026-05-22)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

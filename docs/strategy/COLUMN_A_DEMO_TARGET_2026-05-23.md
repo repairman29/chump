@@ -123,3 +123,71 @@ If pre-flight reports a hard blocker, walk down the fallback ladder. Re-record t
 Sonnet ran the per-repo data gather (`gh repo list` + per-repo `gh api repos/.../languages`, scored against the 6-criterion rubric, returned a top-5 matrix). Opus did the synthesis: validated the scoring against the criterion definitions (caught that `olive` legitimately fails the 3-language gate because JS/TS is one criterion-category), surfaced concerns Sonnet hadn't (the embarrassing-finding framing), picked the winner, ordered the fallbacks.
 
 META-069 discipline: implementation-grade data work delegated; judgment-grade picks held by Opus.
+
+## Phase-0 addendum — manual language scan of `echeo` (2026-05-23 06:35Z)
+
+Per orchestrator suggestion, ran a fast `tokei` pass against the cloned
+`repairman29/echeo` working copy ahead of INFRA-1719 (AST crawler)
+landing. Goal: surface language-coverage blind spots before the full
+`chump ingest` flow lights up. Findings rewrite three claims from the
+body above; one new policy question opens up.
+
+### Real language distribution (tokei against the working tree)
+
+| Language | Files | Code lines |
+|---|---|---|
+| JSON | 7 | **175,187** |
+| Rust | 10 | 3,026 |
+| Markdown | 8 | 0 (1,420 comments) |
+| Python | 3 | 1,300 |
+| JavaScript | 3 | 369 |
+| Shell (Bash) | 5 | 311 |
+| TOML | 1 | 37 |
+| Dockerfile | 1 | 9 |
+| **YAML** | **0** | **0** |
+
+**Source-code total (Rust + Python + JS + Shell + TOML + Dockerfile): ~5,052 lines.** Still inside the 2k-15k window the rubric called for.
+
+### Three corrections to the body
+
+1. **The body said "5 languages."** Reality is **4 of Chump's 6 supported languages** present (Rust, Python, JavaScript, Bash via Shell — no YAML, no Go). Plus TOML, Dockerfile, Markdown, JSON as non-supported but present formats. The 3+ language-mix gate still passes (4 of 6 > 3), so the 15/15 score holds — but the per-language detector strategy needs to drop YAML emphasis entirely.
+
+2. **The body said LOC = 6,319.** Tokei's source-line count (~5,052) is ~20% lower because it excludes Markdown comments and the JSON catalog files. The earlier estimate came from a bytes-per-LOC heuristic (`gh api .../languages` returns bytes, not lines) that miscalibrated against repos with large fixture files. **Both numbers are inside the 2k-15k sweet spot.**
+
+3. **The body said the Bash detector "needs to find SOMETHING in echeo but not produce the headline finding."** Echeo has 5 shell files (311 lines) — meaningful enough that a thoughtful Bash detector can produce a real secondary finding (e.g. dead scripts, missing `set -euo pipefail`, etc.). Don't under-invest in Bash on the assumption it's a token slice.
+
+### New question this surfaces — JSON policy for `chump ingest`
+
+The 175,187 lines of JSON aren't a measurement quirk. They're 3 catalog files under `docs/repo-catalog/` (TOP_REPOS_WITH_CODE.json @ 77k, COMPLETE_CATALOG_FIXED.json @ 72k, COMPLETE_CATALOG.json @ 24k) — generated repo-discovery snapshots, not hand-written code. Three policy choices for the demo:
+
+| Policy | What the demo shows | Cost |
+|---|---|---|
+| **(a) Ignore data-fixture JSON** (matches gitignore-style heuristic: large, generated-looking, in docs/) | Clean demo, focuses on source code | Risk: viewer asks "what about the JSON?" and we have no answer |
+| **(b) Index the JSON as structured data** (schema-extract, surface as a separate "data assets" artifact) | Differentiated finding: "Chump understood your fixtures" | Real engineering — needs a JSON-schema-inference detector that doesn't exist yet |
+| **(c) Defer to operator decision at ingest time** (interactive prompt: "Index this 76k-line JSON file?") | Honest UX | Bad screencast — viewer sees a prompt and loses the magic |
+
+**Recommended Phase-0 policy: (a) — ignore large generated JSON in `docs/repo-catalog/`**. Cleaner demo arc, and the JSON catalog files in echeo specifically are out-of-scope for any value-add Chump would offer. **File a follow-up gap to add (b) capability as a Phase-2 differentiator once the basic demo lands.**
+
+### Week 2 design defaults — updated
+
+The body's per-language detector priority (Rust > Python > JS > Bash + YAML lighter) gets a small revision:
+
+| Old | New | Why |
+|---|---|---|
+| Rust | Rust (unchanged) | echeo's load-bearing core |
+| Python | Python (unchanged) | ML/embedding scripts |
+| JavaScript | JavaScript (unchanged) | npm install shim |
+| Bash + YAML lighter | **Bash second-secondary** | 5 files / 311 LOC — real surface |
+| (YAML implied) | **YAML deprioritized to zero for echeo demo** | 0 files; investing in YAML detector earns no echeo signal |
+| (JSON not addressed) | **JSON: implement (a) policy — ignore docs/repo-catalog/** | Plus follow-up gap for Phase-2 (b) |
+
+### Pre-flight (INFRA-1778) still required
+
+This Phase-0 scan does NOT replace the auth pre-flight. INFRA-1778
+verifies push access, cloneability, and per-file edge-case handling.
+This addendum confirms language SHAPE is well-suited; pre-flight
+confirms Chump can actually ACT on the repo.
+
+### Phase-0 follow-up after #2385 lands
+
+When [#2385](https://github.com/repairman29/chump/pull/2385) (INFRA-1719 AST crawler) lands, re-run the same scan with the AST-crawler tool against `/tmp/echeo-phase0-scan`. Compare deltas — places where the AST crawler finds structure that tokei misses, or vice versa. Append a second addendum to this doc. If AST crawler surfaces a true blocker (e.g. parse failures on echeo's Rust workspace layout), promote the next fallback (`daisy-chain`) and re-record here.
