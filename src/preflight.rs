@@ -479,6 +479,31 @@ pub fn run(argv: &[String]) -> i32 {
             &["cargo", "check", "--workspace"],
             GateKind::Rust,
         ));
+        // INFRA-1731: event-registry-audit local gate. Catches
+        // register-without-emit (orphan) failures BEFORE push so operators
+        // don't burn a CI round-trip on an audit fail. The audit script
+        // itself respects CHUMP_REGISTRY_GATE_MODE; gate-specific skip is
+        // CHUMP_PREFLIGHT_SKIP_REGISTRY=1 (with audit-trail emit).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_registry_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_REGISTRY=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "event-registry-audit",
+                &["bash", "scripts/ci/test-event-registry-coverage.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
