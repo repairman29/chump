@@ -614,6 +614,42 @@ if [[ "${CHUMP_PREFLIGHT_AUDIT:-1}" == "1" && "${CHUMP_PREFLIGHT_SKIP:-0}" == "1
     fi
 fi
 
+# INFRA-1833: auto-fmt-on-commit. Run `cargo fmt --all` BEFORE commit so
+# the cargo fmt --check CI gate never fails. Auto-fix beats check-and-fail —
+# agents can't bypass what they don't see. Only runs when:
+#   - staged delta includes any .rs file (skip for docs-only commits)
+#   - cargo is on PATH
+#   - CHUMP_AUTO_FMT != "0" (bypass with audit-trail emit)
+_has_rust_staged=0
+if echo "$_staged_paths" | grep -qE '\.rs$|^Cargo\.(toml|lock)$' 2>/dev/null; then
+    _has_rust_staged=1
+fi
+if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
+    if [[ "${CHUMP_AUTO_FMT:-1}" == "0" ]]; then
+        _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"auto_fmt_bypassed","session":"%s","reason":"CHUMP_AUTO_FMT=0"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "${CHUMP_SESSION_ID:-${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}}" \
+            >> "$_amb" 2>/dev/null || true
+        echo "[chump-commit] INFRA-1833: skipping cargo fmt (CHUMP_AUTO_FMT=0); audit emitted" >&2
+    else
+        echo "[chump-commit] INFRA-1833: cargo fmt --all (auto-fix, kills fmt-check CI failures)" >&2
+        if cargo fmt --all 2>&1 | tail -3 >&2; then
+            # Re-stage any files cargo fmt touched. If nothing changed, this is a no-op.
+            git add -A 2>/dev/null || true
+            _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"auto_fmt_applied","session":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "${CHUMP_SESSION_ID:-${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}}" \
+                >> "$_amb" 2>/dev/null || true
+        else
+            echo "[chump-commit] INFRA-1833: cargo fmt --all failed (non-fatal); proceeding to commit" >&2
+        fi
+    fi
+fi
+
 # Commit with the passed-through git args.
 # Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
 # closed and the lock released after git exits. With exec the FD is also
