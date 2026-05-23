@@ -1465,6 +1465,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-demo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "chump-desktop"
 version = "0.1.0"
 dependencies = [
