@@ -780,6 +780,32 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1855: cargo-test workspace gate (META-070 Tier-C). Heaviest
+        // unmirrored gate — would catch "broken on main, every PR fails"
+        // pattern (today's events.rs Debug panic INFRA-1832 cost ~3h before #2422).
+        // Default invokes existing scripts/ci/cargo-test-with-rerun.sh which
+        // already wraps cargo test --workspace with the flake-rerun retry policy.
+        // Default 600s timeout matches INFRA-1744 pre-push hook cap. Skip via
+        // CHUMP_PREFLIGHT_SKIP_CARGOTEST=1 (mirrors INFRA-1731 pattern).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CARGOTEST").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping cargo-test (CHUMP_PREFLIGHT_SKIP_CARGOTEST=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_cargotest_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CARGOTEST=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "cargo-test",
+                &["bash", "scripts/ci/cargo-test-with-rerun.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
