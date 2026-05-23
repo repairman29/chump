@@ -180,6 +180,7 @@ mod routes;
 mod rpc_mode;
 mod run_test_tool;
 mod runtime_flags;
+mod sandbox; // INFRA-1454: agent bash syscall-restriction layer (macOS sandbox-exec wrap)
 mod sandbox_tool;
 mod schedule_db;
 mod schedule_tool;

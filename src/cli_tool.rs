@@ -13,7 +13,6 @@ use async_trait::async_trait;
 use axonerai::tool::Tool;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tokio::process::Command;
 
 /// Risk level from heuristic inspection of a command (for logging and approval UI).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -397,20 +396,13 @@ impl CliTool {
             });
         }
 
-        // Local execution path (unchanged): run via shell so PATH is used and
-        // compound commands work (e.g. "ls -la", "cat README.md").
-        let mut c = Command::new(if cfg!(target_os = "windows") {
-            "cmd"
-        } else {
-            "sh"
-        });
-        let shell_arg = if cfg!(target_os = "windows") {
-            "/c"
-        } else {
-            "-c"
-        };
-        c.arg(shell_arg).arg(&cmd);
-        c.current_dir(cwd_path);
+        // Local execution path: route through the sandbox module which,
+        // under CHUMP_AGENT_SANDBOX=1, wraps the command in macOS
+        // sandbox-exec with a worktree-pinned profile (INFRA-1454).
+        // Default-off in v1 so the pilot ships without disturbing existing
+        // flows; the sandbox-exec path returns the same shape of Command
+        // when disabled or unsupported.
+        let mut c = crate::sandbox::wrap_command(&cmd, &cwd_path);
 
         let output = tokio::time::timeout(Duration::from_secs(timeout_secs), c.output())
             .await

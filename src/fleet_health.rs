@@ -75,6 +75,9 @@ pub struct HealthReport {
     // INFRA-1504: binary freshness
     pub binary_age_h: f64,
     pub binary_stale: bool,
+    // INFRA-1454: agent-bash sandbox-runtime status
+    pub sandbox_status_tag: String,
+    pub sandbox_status_summary: String,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -252,6 +255,27 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         signals.push(s);
     }
 
+    // ── 10. Sandbox runtime (INFRA-1454) ─────────────────────────────────────
+    // Pilot v1: report status only; flag Missing as a degradation signal so
+    // chump fleet doctor exits non-zero when the runtime is unavailable on
+    // a host that should have it. AvailableNotEnabled / DisabledByOperator
+    // are informational (operator made the choice consciously).
+    let sandbox_status = crate::sandbox::sandbox_runtime_status();
+    if matches!(
+        sandbox_status,
+        crate::sandbox::SandboxStatus::Missing { .. }
+    ) {
+        let s = HealthSignal {
+            name: "sandbox_missing".into(),
+            penalty: 10,
+            detail: sandbox_status.summary(),
+        };
+        total_penalty += s.penalty;
+        signals.push(s);
+    }
+    let sandbox_status_tag = sandbox_status.tag().to_string();
+    let sandbox_status_summary = sandbox_status.summary();
+
     // ── Score + grade ─────────────────────────────────────────────────────────
     let raw_score = (100i64 - total_penalty).max(0).min(100);
     let score = raw_score as u8;
@@ -284,6 +308,8 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         ambient_recent: collect_ambient_recent(repo_root),
         binary_age_h,
         binary_stale,
+        sandbox_status_tag,
+        sandbox_status_summary,
     }
 }
 
@@ -416,7 +442,7 @@ impl HealthReport {
             .map(|s| format!(r#""{}""#, json_escape(&s.name)))
             .unwrap_or_else(|| r#"null"#.to_string());
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs}}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"binary_age_h":{bah:.2},"binary_stale":{bs},"sandbox_status":"{sst}"}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -436,6 +462,7 @@ impl HealthReport {
             sr = self.session_rescues_24h,
             bah = self.binary_age_h,
             bs = self.binary_stale,
+            sst = json_escape(&self.sandbox_status_tag),
         )
     }
 
@@ -567,6 +594,10 @@ impl HealthReport {
             } else {
                 "\n"
             }
+        ));
+        out.push_str(&format!(
+            "  Sandbox:  {} — {}\n",
+            self.sandbox_status_tag, self.sandbox_status_summary
         ));
         if !self.signals.is_empty() {
             out.push_str("\n  Penalties:\n");
@@ -1355,6 +1386,8 @@ mod tests {
             ambient_recent: vec![],
             binary_age_h: 0.0,
             binary_stale: false,
+            sandbox_status_tag: "available_not_enabled".to_string(),
+            sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
         };
         let json = report.render_event_json();
         assert!(json.contains(r#""kind":"fleet_health""#), "kind field");
@@ -1398,6 +1431,8 @@ mod tests {
             ambient_recent: vec![],
             binary_age_h: 0.0,
             binary_stale: false,
+            sandbox_status_tag: "available_not_enabled".to_string(),
+            sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
         };
         let text = report.render_text();
         assert!(text.contains("75/100"), "score in text");
@@ -1432,6 +1467,8 @@ mod tests {
             ambient_recent: vec![],
             binary_age_h: 0.0,
             binary_stale: false,
+            sandbox_status_tag: "available_not_enabled".to_string(),
+            sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
         };
         let json = report.render_json();
         assert!(json.starts_with('{'), "starts with {{");
@@ -1479,6 +1516,8 @@ mod tests {
             ambient_recent: vec![],
             binary_age_h: 0.0,
             binary_stale: false,
+            sandbox_status_tag: "available_not_enabled".to_string(),
+            sandbox_status_summary: "sandbox runtime present but not enabled".to_string(),
         };
         emit(&tmp, &report);
         let contents = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl")).unwrap();

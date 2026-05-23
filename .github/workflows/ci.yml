@@ -682,6 +682,9 @@ jobs:
       - name: chump pr explain-block (INFRA-1416 stuck-PR diagnostic)
         run: bash scripts/ci/test-pr-explain-block.sh
 
+      - name: agent-bash sandbox pilot (INFRA-1454)
+        run: bash scripts/ci/test-sandbox-isolation.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
