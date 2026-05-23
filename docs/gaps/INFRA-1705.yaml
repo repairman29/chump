@@ -1,0 +1,16 @@
+- id: INFRA-1705
+  domain: INFRA
+  title: "ZERO-WASTE: auto-prune worktree on PR-merge event (kill the periodic-sweep window)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Currently after auto-merge ships a PR, the corresponding /tmp/chump-<gap-slug>/ worktree sits as an orphan until the next periodic prune sweep (scripts/ops/prune-worktrees.sh runs on a launchd cron). That leaves a 5-10 min window where orphans accumulate; with multiple PRs landing per hour the steady-state on a busy day is 5-15 stale worktrees taking disk + adding noise to git worktree list. Operator noticed this 2026-05-22 after shipping 3 PRs in one session left 3 orphan worktrees waiting on the next sweep. Fix: github-webhook-receiver.py already handles pull_request events; on action=closed AND merged=true, derive the worktree path from the branch name (chump/<gap-slug>-claim -> /tmp/chump-<gap-slug>) and trigger an immediate targeted prune that reuses the existing prune-worktrees.sh safety checks (no lease, no uncommitted changes). Periodic sweep stays as safety net for missed webhooks.
+  acceptance_criteria:
+    - "scripts/ops/github-webhook-receiver.py adds a pull_request:closed+merged event handler (already handles pull_request events for other actions)"
+    - Handler derives worktree path from PR head_ref via existing chump/<gap-slug>-claim convention; rejects head_refs that don't match the convention to avoid touching unrelated worktrees
+    - Handler invokes prune-worktrees.sh (or inlined equivalent) targeting that specific path; standard safety checks apply (skip if lease still active, skip if uncommitted changes, skip if directory missing)
+    - "Emits kind=worktree_orphan_pruned {path, branch, trigger:'pr_merge_webhook'} on success or kind=worktree_prune_skipped {path, reason} if a safety check fails; both event kinds already exist in EVENT_REGISTRY.yaml from the periodic-sweep path"
+    - "Smoke test scripts/ci/test-webhook-pr-merge-prune.sh: simulate a pull_request closed+merged webhook delivery, assert the worktree directory is gone afterward, assert the right ambient event was emitted"
+    - Periodic prune sweep (existing launchd plist) continues to run as safety net for missed webhook deliveries; no change to that schedule
+
