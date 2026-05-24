@@ -1,0 +1,17 @@
+- id: INFRA-1867
+  domain: INFRA
+  title: 'CI/QA: preflight-vs-CI parity smoke — single script asserts every required CI check has a preflight mirror (INFRA-1861
+    slice b)'
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+  - 'New scripts/ci/test-preflight-ci-parity.sh: walks .github/workflows/*.yml extracting required-check job names + their
+    run: commands; cross-references docs/process/CI_GATES_INVENTORY.md (INFRA-1762)'
+  - 'For each CI gate found, assert one of: (i) mirrored in src/preflight.rs (grep for the script path), (ii) listed as Tier-D
+    in CI_GATES_INVENTORY.md (cannot mirror), (iii) explicit allowlist exception in scripts/ci/preflight-ci-parity-exceptions.txt'
+  - Exit non-zero on unmirrored + non-allowlisted gate; emit ambient kind=ci_parity_drift {gate_name, ci_path}
+  - Add to fast-checks job in ci.yml so the parity check runs on every PR
+  - 'Parent: INFRA-1861 slice (b)'
+  closed_date: '2026-05-24'
+  closed_pr: 2473
