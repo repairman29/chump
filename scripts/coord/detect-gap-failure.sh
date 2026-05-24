@@ -42,11 +42,14 @@ STUCK_LEASE_S="${CHUMP_STUCK_LEASE_S:-7200}"
 STUCK_PR_S="${CHUMP_STUCK_PR_S:-7200}"
 DRY_RUN="${CHUMP_DETECT_DRY_RUN:-0}"
 EMIT_JSON=0
+# INFRA-1888: set to 1 to emit gap_failed even for status=done gaps (debug mode).
+INCLUDE_DONE="${CHUMP_DETECT_GAP_FAILURE_INCLUDE_DONE:-0}"
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --json)    EMIT_JSON=1 ;;
+    --include-done) INCLUDE_DONE=1 ;;
   esac
 done
 
@@ -57,6 +60,26 @@ _emit() {
   printf '{"ts":"%s","kind":"%s",%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$*" \
     >> "$AMBIENT" 2>/dev/null || true
+}
+
+# INFRA-1888: Returns 0 (true) if gap is status=open in state.db, 1 otherwise.
+# When INCLUDE_DONE=1, always returns 0 (bypass mode).
+_gap_is_open() {
+  local gap_id="$1"
+  [[ "$INCLUDE_DONE" == "1" ]] && return 0
+  local db="$REPO_ROOT/.chump/state.db"
+  [[ -f "$db" ]] || return 0  # no DB → assume open to avoid false negatives
+  local status
+  status=$(python3 -c "
+import sqlite3, sys
+try:
+    conn = sqlite3.connect('$db')
+    row = conn.execute('SELECT status FROM gaps WHERE id=?', ('$gap_id',)).fetchone()
+    print(row[0] if row else 'open')
+except Exception:
+    print('open')
+")
+  [[ "$status" == "open" ]]
 }
 
 _age_seconds() {
@@ -78,6 +101,11 @@ findings_json=""
 
 add_finding() {
   local gap_id="$1" class="$2" reason="$3" recovery="$4" age_s="$5"
+  # INFRA-1888: skip gaps that are no longer open (done/merged/wontfix) to
+  # eliminate ~30% false-positive noise from already-shipped gaps.
+  if ! _gap_is_open "$gap_id"; then
+    return 0
+  fi
   local f="{\"gap_id\":\"$gap_id\",\"class\":\"$class\",\"reason\":\"$reason\",\"recovery_action\":\"$recovery\",\"age_s\":$age_s}"
   if [[ -z "$findings_json" ]]; then
     findings_json="$f"
@@ -176,6 +204,12 @@ for p in prs:
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+# INFRA-1888: audit trail when bypass mode is active (must come after _emit def).
+if [[ "$INCLUDE_DONE" == "1" ]]; then
+  _emit "detect_gap_failure_lax" \
+    "\"reason\":\"CHUMP_DETECT_GAP_FAILURE_INCLUDE_DONE=1 — done gaps included in scan\""
+fi
+
 scan_stuck_leases
 scan_stuck_prs
 
