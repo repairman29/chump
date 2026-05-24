@@ -758,6 +758,48 @@ pub fn find_similar_prs(gap_id: &str) -> Vec<u32> {
 }
 
 /// Render the briefing as agent-readable markdown.
+/// INFRA-1548: JSON rendering with schema_version:1 for harness consumers.
+pub fn render_json(b: &GapBriefing) -> String {
+    let escape = |s: &str| {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    };
+    let reflections: Vec<String> = b
+        .relevant_reflections
+        .iter()
+        .map(|r| format!("\"{}\"", escape(&r.directive)))
+        .collect();
+    let deps: Vec<String> = b
+        .depends_on
+        .iter()
+        .map(|d| format!("\"{}\"", escape(d)))
+        .collect();
+    let prs: Vec<String> = b.similar_closed_prs.iter().map(|n| n.to_string()).collect();
+    format!(
+        concat!(
+            r#"{{"schema_version":1,"gap_id":"{id}","gap_title":"{title}","gap_priority":"{prio}","#,
+            r#""gap_effort":"{effort}","gap_domain":"{domain}","gap_not_found":{nf},"#,
+            r#""gap_acceptance":{ac},"depends_on":[{deps}],"#,
+            r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}]}}"#
+        ),
+        id = escape(&b.gap_id),
+        title = escape(&b.gap_title),
+        prio = escape(&b.gap_priority),
+        effort = escape(&b.gap_effort),
+        domain = escape(&b.gap_domain),
+        nf = b.gap_not_found,
+        ac = b
+            .gap_acceptance
+            .as_deref()
+            .map(|s| format!("\"{}\"", escape(s)))
+            .unwrap_or_else(|| "null".to_string()),
+        deps = deps.join(","),
+        refs = reflections.join(","),
+        prs = prs.join(","),
+    )
+}
+
 pub fn render_markdown(b: &GapBriefing) -> String {
     if b.gap_not_found {
         return format!(
