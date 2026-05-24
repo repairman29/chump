@@ -1730,6 +1730,24 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
+/// Only matches entries that ARE stubs, not entries that mention "TODO" in
+/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+fn is_vague_ac_entry(s: &str) -> bool {
+    let t = s.trim();
+    let upper = t.to_uppercase();
+    upper == "TODO"
+        || upper == "TBD"
+        || upper == "TBC"
+        || upper == "N/A"
+        || upper.starts_with("TODO:")
+        || upper.starts_with("TODO ")
+        || upper.starts_with("TBD:")
+        || upper.starts_with("TBD ")
+        || upper.starts_with("<FILL")
+        || upper.starts_with("FILL IN")
+}
+
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
 /// Returns true if the AC is empty, contains only TODO items, or contains only TBD items.
 fn is_acceptance_criteria_vague(ac: &str) -> bool {
@@ -1744,21 +1762,17 @@ fn is_acceptance_criteria_vague(ac: &str) -> bool {
         if arr.is_empty() {
             return true; // Empty array
         }
-        // Check if all items are TODO or TBD strings
-        let all_vague = arr.iter().all(|item| {
-            if let Some(s) = item.as_str() {
-                let upper = s.to_uppercase();
-                upper == "TODO" || upper == "TBD" || upper.contains("TODO") || upper.contains("TBD")
-            } else {
-                false
-            }
-        });
-        return all_vague && !arr.is_empty();
+        // All items must be stubs for the gap to be flagged vague (INFRA-1878:
+        // entries that merely mention "TODO" in passing must not trigger ⚠).
+        let all_vague = arr
+            .iter()
+            .all(|item| item.as_str().map(is_vague_ac_entry).unwrap_or(false));
+        return all_vague;
     }
 
-    // If not JSON array, check if the raw string is just TODO/TBD
+    // If not JSON array, only flag if the whole string IS a stub keyword.
     let upper = trimmed.to_uppercase();
-    upper == "TODO" || upper == "TBD" || (upper.len() < 50 && upper.contains("TODO"))
+    upper == "TODO" || upper == "TBD"
 }
 
 /// Step 2: ensure the gap is in state.db. If missing, attempt to seed
