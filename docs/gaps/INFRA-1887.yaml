@@ -1,0 +1,21 @@
+- id: INFRA-1887
+  domain: INFRA
+  title: "DEMO-LIGHTNING: scripts/dev/lightning-demo-timeline.sh prints last-10 PRs with claim→opened→merged wall-clock per row (2026 demo #3: autonomous throughput evidence)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. New scripts/dev/lightning-demo-timeline.sh: walks the last N (default 10) merged PRs authored by current user via 'gh pr list --state merged --limit N --json number,title,createdAt,mergedAt,headRefName'\n2. For each PR: extract gap ID from title (regex INFRA-\\d+"
+    - META-\d+
+    - CREDIBLE-\d+
+    - DOC-\d+
+    - "FLEET-\\d+), look up claim timestamp from .chump/state.db OR fallback to first-commit ts via git log\n3. Compute three deltas per row: claim→opened (PR creation), opened→merged (CI + merge), claim→merged (total)\n4. Output: tab-separated table with headers gap_id "
+    - " pr "
+    - " claim_ts "
+    - " claim_to_open_min "
+    - " open_to_merge_min "
+    - " total_min "
+    - " title-truncated\n5. Summary footer: total wall-clock for N ships + median per-ship + fastest + slowest\n6. Bypass: --json mode emits the data as JSON array (machine-readable for dashboard consumers)\n7. Operator-facing: this IS the prompt-to-PR-merged demo capture; one screenshot answers \"how fast does Chump ship 10 PRs\""
+  closed_date: '2026-05-24'
+  closed_pr: 2450
+
