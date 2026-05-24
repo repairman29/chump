@@ -9,7 +9,7 @@ Chump has two co-equal lanes:
 - **The coordinator** — file-based leases, an `ambient.jsonl` peripheral-vision stream, a SQLite gap registry, linked worktrees, and a merge-queue ship pipeline. Coordinates many concurrent agent sessions on the same repo without stomping each other. No specific agent required; any tool that can commit code and push a branch works.
 - **The built-in agent** — optionally, Chump also ships its own agent: connects to local LLMs (Ollama, vLLM, mistral.rs), keeps durable state in SQLite (tasks, episodes, memory), exposes 30+ governed tools (repo, git, GitHub, web search, scheduling), and talks through a web PWA, CLI, Discord bot, or any [ACP-compatible editor](https://agentclientprotocol.com) (Zed, JetBrains). **This lane is optional** — you can use Chump as a pure coordinator for agents you already have.
 
-**License:** [MIT](LICENSE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
+**License:** [MIT](LICENSE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **For collaborators / external reviewers:** [docs/PITCH.md](docs/PITCH.md)
 
 > **No Anthropic key? No Claude Code?** Chump works with any agent that can commit code. See [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) for Ollama, or use the coordinator with your existing tool.
 >
