@@ -170,14 +170,39 @@ Three tiers per tick — different cadences, different audiences:
 
 ## Cadence calibration
 
-Default loop cadence: **15 min off-canonical** (`8,23,38,53 * * * *`).
-Avoids the global :00/:30 herd; calibrated to observed fleet ship rate
-of ~1 PR / 25 min and PR CI round-trip of ~10–15 min median.
+> **DEPRECATED (META-099, 2026-05-24): cron-15m is no longer the default.**
+> Measured incident on 2026-05-24: 5+ concurrent cron-based sessions at 15m
+> cadence → 154 `claude` processes, load-avg 36. Event-driven cuts to
+> ~6 wakes/session/day (16× reduction). Use event-driven for all new sessions.
+> Legacy cron bypass: `CHUMP_OPUS_LOOP_MODE=cron`.
 
-**Why not 5m**: retro measured ~50% pure-idle ticks at 5m cadence — the
-queue and PR-CI both move slower than that.
-**Why not 1h+**: misses sibling-takeover windows; CI state can flip twice
-before you notice.
+### Event-driven primary (required for new sessions)
+
+Use Monitor + ScheduleWakeup-fallback instead of cron. The `/loop` skill
+in dynamic mode (no interval) implements this automatically — use it.
+
+**Monitor shape** — arm once at session start, persistent:
+```bash
+tail -F .chump-locks/ambient.jsonl \
+  | grep --line-buffered -E '"kind":"(pr_merged|pr_stuck|fleet_wedge|silent_agent|gap_ship_confirmed|lease_overlap|operator_dm)"'
+```
+The Monitor fires an event notification the moment a relevant ambient line lands.
+You handle it, then re-arm ScheduleWakeup for the fallback window.
+
+**ScheduleWakeup fallback** — call at the end of every wake, with:
+- `delaySeconds`: 1200–1800 (cache-aware; stay above the 5-min cache-TTL boundary)
+- `prompt`: the full `/loop` prompt verbatim so the next firing re-enters the skill
+- `reason`: one sentence on what you're waiting for
+
+This means the loop wakes on events (fast) with a 20–30 min safety heartbeat if
+no events fire. Total wakes ≈ 6/day in a quiet session vs. 96/day at 15m cron.
+
+**Migration for existing cron sessions:**
+```bash
+bash scripts/coord/opus-shepherd-migrate-to-event-driven.sh
+```
+Detects the current cron job, deletes it via CronDelete, then prints the
+Monitor + ScheduleWakeup stanza to paste into the running session.
 
 ## Stop conditions and how to handle them
 

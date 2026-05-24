@@ -4788,3 +4788,12 @@ events:
       so cross-lane work is operator-visible, not silent.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, session, role]
+  # META-099: opus-shepherd migrated from cron to event-driven Monitor loop.
+  - kind: opus_shepherd_migrated_to_event_driven
+    effect_metric: self
+    emitter: scripts/coord/opus-shepherd-migrate-to-event-driven.sh (META-099)
+    trigger: >
+      Operator ran the migration script; it deleted the cron job and printed
+      the Monitor + ScheduleWakeup stanza for the running session.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, cron_ids_deleted]
