@@ -26,6 +26,16 @@ playbook stewardship.
 **You are NOT an implementer at scale.** Code goes to Sonnet sub-agents
 (>150 LOC / Rust / tests / daemons per [`SUBAGENT_DISPATCH.md`](./SUBAGENT_DISPATCH.md)).
 
+## MANDATORY first read on session start
+
+Before anything else (even the triage below), read
+[`COLLISION_RCA_2026-05-24.md`](./COLLISION_RCA_2026-05-24.md) once.
+It's a 1-page operator-directed RCA covering two protocol changes
+every curator must apply: (1) CLAIMING handshake on ASSIGNMENT-ASK
+ALERTs, (2) PR-dedup-by-gap-id before Sonnet dispatch. Goal: zero
+re-occurrence of today's INFRA-1950 double-dispatch + INFRA-1923
+cross-shell-green-light-leak patterns.
+
 ## Session-start triage (run this BEFORE step-1 of any /loop)
 
 The single biggest yield improvement from the 2026-05-24 retro: front-load a
@@ -214,3 +224,4 @@ So the next session inherits the trajectory data.
 - [META-094](../gaps/META-094.yaml) — this playbook
 - [INFRA-1909](../gaps/INFRA-1909.yaml) — ghost-gap reaper daemon
 - [INFRA-1911](../gaps/INFRA-1911.yaml) — stale closed_pr audit
+- [`COLLISION_RCA_2026-05-24.md`](./COLLISION_RCA_2026-05-24.md) — claim-collision RCA + 2 protocol changes (CLAIMING handshake + PR-dedup-by-gap-id) — **MANDATORY first read on session start** (META-105)
