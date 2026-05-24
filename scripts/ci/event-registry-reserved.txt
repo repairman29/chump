@@ -351,3 +351,8 @@ opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.s
 liaison_offline_mode_gated  # reason: INFRA-1876 — emitted by scripts/ops/github-liaison.sh when CHUMP_GITHUB_MODE=offline blocks daemon start; _emit_ambient helper form
 liaison_cache_offline_read  # reason: INFRA-1876 — emitted by scripts/coord/lib/github_cache.sh::_emit_offline_read_event when cache helpers run with CHUMP_GITHUB_MODE=offline; per-helper 60s debounce
 preflight_mdlinks_bypassed # reason: INFRA-1790 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_MDLINKS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+# INFRA-1868: audit-allowlist-staleness.sh daily cron
+# Emitted by scripts/ops/audit-allowlist-staleness.sh via python3 heredoc write
+# to ambient.jsonl — not a grep-scannable `kind=X` literal in the prod path.
+allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
+audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-staleness.sh skip-emit when CHUMP_AUDIT_ALLOWLIST_STALENESS=0; printf form not grep-scannable
