@@ -1717,6 +1717,9 @@ jobs:
           export GITHUB_BASE_SHA="${{ github.event.pull_request.base.sha }}"
           bash scripts/git-hooks/pre-push-ci-regression-guard.sh
 
+      - name: INFRA-1318 Phase 2 end-to-end smoke — webhook cache + liaison slice signals (INFRA-1877)
+        run: bash scripts/ci/test-liaison-webhook-cache.sh
+
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
   # filter says to skip (skipped ≠ passing in GitHub Actions). The stub pattern

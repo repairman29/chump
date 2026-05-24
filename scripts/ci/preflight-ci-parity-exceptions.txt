@@ -302,6 +302,7 @@ chump gap list --since filter           # reason: needs cargo build + CHUMP_BIN;
 /api/gap-queue fat shape                # reason: needs cargo build + CHUMP_BIN; test-api-gap-queue-shape.sh above
 CI regression guard suite               # reason: multi-line block with env export + git script; INFRA-1421; Tier-D
 CI gate promotion no-regression (INFRA-1869)  # reason: INFRA-1869 meta-gate compares CI workflow gates against the promotion ledger; runs only in CI context where ledger has cloud-side history; INFRA-1900 piggyback parity addition
+INFRA-1318 Phase 2 end-to-end smoke      # reason: INFRA-1877 — spins up python webhook receiver on ephemeral port + github-liaison.sh; multi-process bash integration test, not suitable for chump preflight inline; runs <15s in CI; gap: INFRA-1877
 
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
