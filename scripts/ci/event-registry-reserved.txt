@@ -328,4 +328,8 @@ oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emi
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
 oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable
 oracle_refresh_pr_opened  # reason: META-088 — scripts/coord/oracle-refresh.sh emits after auto-PR opens; printf-direct JSON not grep-scannable
+<<<<<<< HEAD
 subagent_idle_without_pr  # reason: INFRA-1953 — emitted by scripts/dispatch/subagent-pre-exit-check.sh when a subagent ships work without creating PR; printf-direct JSON not grep-scannable as kind=X literal; debounced per session-id within 5min window
+=======
+pr_oversight_snapshot  # reason: INFRA-1897 emitted by scripts/coord/pr-pulse.sh on daily snapshot run; consumed by INFRA-1898 pr-pulse-consumer.sh — kind literal lives in shell heredoc not grep-scannable as kind=X (per shepherd diagnosis 2026-05-24T15:56Z)
+>>>>>>> 62ffe1b26 (fix(INFRA-1898): register pr_oversight_snapshot kind (shepherd diagnosis))
