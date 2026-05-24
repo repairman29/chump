@@ -329,5 +329,7 @@ oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emi
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
 oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable
 oracle_refresh_pr_opened  # reason: META-088 — scripts/coord/oracle-refresh.sh emits after auto-PR opens; printf-direct JSON not grep-scannable
-preflight_ci_agreement  # reason: INFRA-1927 — scripts/git-hooks/pre-push emits via printf-direct JSON (not ambient-emit.sh) to avoid adding a subprocess in the hot push path; grep-scannable pattern differs from kind= literal due to variable expansion
-preflight_ci_agreement_resolved  # reason: INFRA-1927 — scripts/ops/github-liaison.sh _resolve_preflight_agreements emits via printf-direct JSON inside a python3 heredoc; not grep-scannable as kind= literal
+
+# ── META-093: Opus parallel sub-fleet slot tracker ───────────────────────────
+opus_slot_dispatched  # reason: META-093 emitted by scripts/coord/opus-slot-tracker.sh dispatch subcommand via python3 heredoc; not grep-scannable as kind=X literal in PROD_PATHS
+opus_slot_reaped      # reason: META-093 emitted by scripts/coord/opus-slot-tracker.sh reap subcommand via python3 heredoc; not grep-scannable as kind=X literal in PROD_PATHS

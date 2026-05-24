@@ -508,3 +508,8 @@ CHUMP_CI_HEALTH_CONSEC_FILE
 #   (default 1 = enabled). Bypass emits no audit event; use sparingly.
 CHUMP_RUNNER_QUEUE_THRESHOLD_S
 CHUMP_RUNNER_GHOST_ONLINE_DETECT
+# META-093: opus parallel sub-fleet slot tracker
+CHUMP_OPUS_MAX_SLOTS          # 0=disabled, 1=single-slot legacy, 3=default parallel (3 concurrent Sonnet slots)
+CHUMP_OPUS_SLOTS_FILE         # override path for .chump-locks/opus-slots.json (test use)
+CHUMP_OPUS_LEASE_TIMEOUT_S    # seconds before no-lease kill (default 300 = 5min)
+CHUMP_OPUS_PR_TIMEOUT_S       # seconds before no-PR kill (default 600 = 10min)
