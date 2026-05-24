@@ -1,0 +1,17 @@
+- id: META-093
+  domain: META
+  title: "EFFECTIVE: opus-shepherd 3-slot parallel Sonnet sub-fleet with 15-min fail-fast per-slot budget — kill+replace stalled dispatches; replaces 1-at-a-time self-implement default; session2 INFRA-1727 stalled 35min before takeover, should have been killed at 15min"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. Opus-shepherd loop runs UP TO 3 concurrent Sonnet sub-agents instead of the prior 0-or-1 default (per-tick capacity check: if in-flight count < 3 AND safe pickable gap exists, dispatch)"
+    - 2. Each dispatched sub-agent has explicit 15-min wall-clock budget (CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S default 900s already exists — enforce kill+replace via TaskStop when exceeded)
+    - "3. Per-slot fail-fast detection: tick-N+1 checks each in-flight slot for (a) no lease created within 5min of dispatch, OR (b) no PR opened within 10min of dispatch, OR (c) 15-min total budget exceeded — TaskStop and dispatch replacement"
+    - 4. New scripts/coord/opus-slot-tracker.sh — maintains .chump-locks/opus-slots.json with {slot_id, agent_id, gap_id, dispatched_ts, last_progress_ts} per slot; rebuilt on tick from active claim+task state
+    - "5. Smoke test scripts/ci/test-opus-slot-tracker.sh: simulate 3-slot dispatch with one stalled, assert kill+replace fires at 15min budget"
+    - "6. Bypass: CHUMP_OPUS_MAX_SLOTS=0 (force self-implement only) OR CHUMP_OPUS_MAX_SLOTS=1 (single-slot legacy mode)"
+    - 7. Documented in OPUS_SHEPHERD_PLAYBOOK.md (META-094)
+    - "8. Baseline 2026-05-24 session2: INFRA-1727 sub-agent stalled 35min before I manually took over; with this gap shipped, it would have been killed at 15min and dispatched fresh"
+    - "9. Capacity discipline: never exceed 3 slots from one Opus session (avoid contention with sibling Opus shepherds); cluster-wide soft cap left to operator policy"
+
