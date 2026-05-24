@@ -2676,6 +2676,21 @@ events:
     trigger: broadcast.sh invocation rc != 0 when sending an RPC request
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
+  - kind: bypass_threshold_breach
+    effect_metric: self
+    emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)
+    trigger: daily auditor finds a session whose 24h bypass count
+      (audit_no_verify + preflight_bypassed) exceeds CHUMP_BYPASS_DAILY_THRESHOLD
+      (default 5). Pairs with INFRA-1872 (ci_qa_score) — that's the aggregate
+      rear-view; this is the per-session shame-loop signal.
+    consumers: [operator-recall, fleet-brief, audit-log]
+    fields_required: [ts, kind, session, count, threshold, week_avg]
+
+  - kind: audit_bypass_freq_bypassed
+    effect_metric: self
+    emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)
+    trigger: CHUMP_AUDIT_BYPASS_FREQ=0 silences the daily auditor
+    consumers: [audit-log]
 
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
