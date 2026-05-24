@@ -1484,7 +1484,12 @@ Operator or sibling worker can rescue this branch via:
     # Disable: CHUMP_TIMEOUT_RESCUE=0.
     if [[ "$rc" -eq 124 ]] && [[ "${CHUMP_TIMEOUT_RESCUE:-1}" != "0" ]]; then
         _post_cycle_sha="$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")"
-        if [[ -n "$_pre_cycle_sha" ]] && [[ "$_pre_cycle_sha" == "$_post_cycle_sha" ]]; then
+        # INFRA-1715: _pre_cycle_sha is only set on the success path at line 1006.
+        # When the cycle short-circuits earlier (claim race, dispatch error,
+        # etc.) it stays unbound, and `set -u` higher up makes the next line
+        # crash the worker on rc=124 with "_pre_cycle_sha: unbound variable".
+        # Default to empty so the comparison is a clean no-rescue path.
+        if [[ -n "${_pre_cycle_sha:-}" ]] && [[ "${_pre_cycle_sha:-}" == "$_post_cycle_sha" ]]; then
             # No new commit since cycle start — attempt rescue
             _rescue_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             log "INFRA-831: rc=124 + no WIP commit — attempting rescue via chump-commit.sh"
