@@ -382,6 +382,24 @@ fn is_test_domain(domain: &str) -> bool {
         || domain.ends_with("TEST")
 }
 
+/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
+/// Only matches entries that ARE stubs, not entries that mention "TODO" in
+/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+fn is_vague_ac_entry(s: &str) -> bool {
+    let t = s.trim();
+    let upper = t.to_uppercase();
+    upper == "TODO"
+        || upper == "TBD"
+        || upper == "TBC"
+        || upper == "N/A"
+        || upper.starts_with("TODO:")
+        || upper.starts_with("TODO ")
+        || upper.starts_with("TBD:")
+        || upper.starts_with("TBD ")
+        || upper.starts_with("<FILL")
+        || upper.starts_with("FILL IN")
+}
+
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
 fn is_acceptance_criteria_vague(ac: &str) -> bool {
     let trimmed = ac.trim();
@@ -395,21 +413,17 @@ fn is_acceptance_criteria_vague(ac: &str) -> bool {
         if arr.is_empty() {
             return true; // Empty array
         }
-        // Check if all items are TODO or TBD strings
-        let all_vague = arr.iter().all(|item| {
-            if let Some(s) = item.as_str() {
-                let upper = s.to_uppercase();
-                upper == "TODO" || upper == "TBD" || upper.contains("TODO") || upper.contains("TBD")
-            } else {
-                false
-            }
-        });
-        return all_vague && !arr.is_empty();
+        // All items must be stubs for the gap to be flagged vague (INFRA-1878:
+        // entries that merely mention "TODO" in passing must not trigger ⚠).
+        let all_vague = arr
+            .iter()
+            .all(|item| item.as_str().map(is_vague_ac_entry).unwrap_or(false));
+        return all_vague;
     }
 
-    // If not JSON array, check if the raw string is just TODO/TBD
+    // If not JSON array, only flag if the whole string IS a stub keyword.
     let upper = trimmed.to_uppercase();
-    upper == "TODO" || upper == "TBD" || (upper.len() < 50 && upper.contains("TODO"))
+    upper == "TODO" || upper == "TBD"
 }
 
 /// INFRA-094: write a marker recording that the chump CLI just modified
@@ -7660,13 +7674,9 @@ async fn main() -> Result<()> {
                         let vague_reason =
                             if gap.acceptance_criteria.trim().is_empty() || ac_items.is_empty() {
                                 Some("empty acceptance_criteria")
-                            } else if ac_items.iter().any(|item| {
-                                let lower = item.to_lowercase();
-                                lower.contains("todo")
-                                    || lower.trim() == "tbd"
-                                    || lower.trim() == "n/a"
-                                    || lower.trim() == "tbc"
-                            }) {
+                            } else if ac_items.iter().any(|item| is_vague_ac_entry(item)) {
+                                // INFRA-1878: use stub-detection helper so entries that
+                                // merely mention "TODO" in passing are not flagged.
                                 Some("acceptance_criteria contains TODO/TBD placeholder")
                             } else {
                                 None
