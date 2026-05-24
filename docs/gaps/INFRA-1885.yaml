@@ -1,0 +1,17 @@
+- id: INFRA-1885
+  domain: INFRA
+  title: "RESILIENT: lease-breadth cap — reject claims of top-level dirs (src, scripts/ci, docs/gaps) without specific file paths; force file-level granularity"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - chump claim refuses lease paths that match the exact top-level dirs src, scripts/ci, docs/gaps, src/lib, app — operator must specify file paths or sub-paths
+    - "Allowlist override: CHUMP_LEASE_ALLOW_BROAD_DIRS=1 + commit-message trailer 'Broad-Lease-Reason: <one sentence>' for legitimate sweep gaps (e.g. cargo workspace refactor)"
+    - "Audit: every broad-claim that bypasses emits kind=lease_broad_dir_claim with session_id, gap, paths, reason for ambient.jsonl tracking"
+    - "Test: scripts/ci/test-lease-breadth-cap.sh — verifies (a) broad claim rejected, (b) file-level claim allowed, (c) override + trailer works, (d) audit event emitted"
+    - "Smoke: chump claim INFRA-X --paths scripts/ci exits 1; with --paths scripts/ci/foo.sh succeeds"
+  notes: |
+    Filed by curator-opus-target-2026-05-23 after observing INFRA-1854 hold src + scripts/ci + docs/gaps simultaneously for >30min, blocking 3 other curators from filing event-registry entries. Pattern repeats nightly. Tactical sibling to INFRA-1863 OWNER-BY-SCOPE umbrella — that's the vision, this is the immediate guardrail.
+  closed_date: '2026-05-24'
+  closed_pr: 2479
+
