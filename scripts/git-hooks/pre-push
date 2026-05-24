@@ -48,6 +48,14 @@
 
 set -euo pipefail
 
+# INFRA-1950: resolve repo root from the hook's own location so all internal
+# `git` calls use an explicit `-C "$REPO_ROOT"` rather than inheriting ambient
+# GIT_DIR / GITHUB_WORKSPACE from the Actions runner-listener process. Without
+# this, Guard 3's `git merge-base` and `git ls-remote` resolve against the
+# wrong repo context when the hook is invoked under GitHub Actions self-hosted
+# runners (which leak GIT_DIR into child processes).
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 # INFRA-1588: ERR trap so SIGPIPE / set -e failures don't abort the hook
 # silently. Without this, `git push` prints "failed to push some refs" with
 # no diagnostic — the operator has no idea which line failed (4 ships hit
@@ -947,11 +955,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     ZERO_SHA="0000000000000000000000000000000000000000"
     if [[ "${CHUMP_FORCE_LEASE_CHECK:-1}" != "0" ]] \
         && [[ "$remote_sha" != "$ZERO_SHA" ]] \
-        && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null
+        && ! git -C "$REPO_ROOT" merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null
     then
         # This IS a force-push (history rewrite). Compare what the remote
         # ACTUALLY has right now to what our local view said.
-        actual_remote_sha=$(git ls-remote "$REMOTE" "$remote_ref" 2>/dev/null | awk '{print $1}')
+        actual_remote_sha=$(git -C "$REPO_ROOT" ls-remote "$REMOTE" "$remote_ref" 2>/dev/null | awk '{print $1}')
         if [[ -n "$actual_remote_sha" && "$actual_remote_sha" != "$remote_sha" ]]; then
             echo "" >&2
             echo "[pre-push] BLOCKED: force-push race detected on $branch (INFRA-345)." >&2
