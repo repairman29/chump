@@ -325,6 +325,16 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, existing_pr, existing_author]
 
+  - kind: lease_broad_dir_claim
+    effect_metric: self
+    emitter: src/atomic_claim.rs emit_lease_broad_dir_claim (INFRA-1885)
+    trigger: operator used CHUMP_LEASE_ALLOW_BROAD_DIRS=1 to bypass the
+      lease-breadth cap and claim a top-level dir (src, scripts/ci,
+      docs/gaps, src/lib, app). Emitted for audit; operator must add
+      Broad-Lease-Reason commit trailer.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session_id, gap, paths, reason]
+
   - kind: gap_claim_nats_conflict
     effect_metric: self
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
