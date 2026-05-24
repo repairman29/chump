@@ -1,20 +1,26 @@
-// crates/chump-coord/tests/a2a_layer1a.rs — INFRA-1758
+// crates/chump-coord/tests/a2a_layer1a.rs — INFRA-1118
 //
-// Integration test for the A2A Layer 1a foundation slice (1/4). Validates
-// the wire-format contract that downstream slices (real NATS subscribe in
-// slice 2, fallback in slice 3, chaos test in slice 4) all depend on:
-//   - EventFilter exhaustive variants
-//   - CoordEvent JSON round-trip (compat with ambient.jsonl line shape)
-//   - subscribe_events stub returns NotImplemented (compile-time check that
-//     the async signature exists with the right type)
+// Integration tests for A2A Layer 1a (NATS-primary delivery, file-fallback).
+//
+// Test structure:
+//   Unit tests (no NATS): wire types, filter logic, feature gate (AC#7)
+//   NATS tests (skipped if no server): subscribe→publish→receive round-trip,
+//     latency p99 < 50ms, backpressure detection (AC#1, AC#2, AC#4)
+//
+// All NATS tests guard with nats_url_if_available() which returns None and
+// prints "skip — no NATS" when the server is unreachable. Never fails the
+// build due to missing NATS.
 
-use chump_coord::events::{subscribe_events, CoordEvent, EventFilter, SubscribeError};
+use chump_coord::events::{subscribe_events_with_session, CoordEvent, EventFilter};
+use chump_coord::{CoordClient, CoordEvent as LibCoordEvent};
 use serde_json::json;
+use std::time::{Duration, Instant};
+
+// ── Wire-type and filter tests (no NATS) ────────────────────────────────────
 
 #[test]
 fn event_filter_variants_exhaustive() {
-    // If this fails to compile when slice 2 adds variants, downstream
-    // match-sites need updating.
+    // Compile-time: ensure all EventFilter variants still exist.
     let _ = EventFilter::All;
     let _ = EventFilter::Kind("k".to_string());
     let _ = EventFilter::Session("s".to_string());
@@ -24,15 +30,14 @@ fn event_filter_variants_exhaustive() {
 #[test]
 fn coord_event_round_trip() {
     let e = CoordEvent {
-        ts: "2026-05-23T01:02:03Z".to_string(),
+        ts: "2026-05-24T01:02:03Z".to_string(),
         kind: "gap_claimed".to_string(),
-        session_id: Some("claim-infra-1758-82116-1779547274".to_string()),
-        payload: json!({"gap_id": "INFRA-1758"}),
+        session_id: Some("claim-infra-1118-49539-1779636943".to_string()),
+        payload: json!({"gap_id": "INFRA-1118"}),
     };
     let j = serde_json::to_string(&e).expect("serialize");
     let back: CoordEvent = serde_json::from_str(&j).expect("deserialize");
     assert_eq!(e, back, "round-trip lossless");
-    // Check the wire shape lines up with ambient.jsonl conventions
     assert!(j.contains("\"ts\":\""));
     assert!(j.contains("\"kind\":\"gap_claimed\""));
 }
@@ -40,14 +45,12 @@ fn coord_event_round_trip() {
 #[test]
 fn coord_event_missing_session_id_omitted_in_json() {
     let e = CoordEvent {
-        ts: "2026-05-23T00:00:00Z".to_string(),
+        ts: "2026-05-24T00:00:00Z".to_string(),
         kind: "ambient_only_no_session".to_string(),
         session_id: None,
         payload: json!({}),
     };
     let j = serde_json::to_string(&e).expect("serialize");
-    // skip_serializing_if drops the key entirely when None — matches the
-    // ambient.jsonl convention of omitting absent fields.
     assert!(
         !j.contains("session_id"),
         "None session_id should be omitted in JSON: {j}"
@@ -71,25 +74,197 @@ fn filter_matches_logic() {
     assert!(!EventFilter::Kinds(vec!["x".to_string(), "y".to_string()]).matches(&e));
 }
 
+/// AC#7: CHUMP_A2A_LAYER=0 (default) must return a stream with no NATS required.
 #[tokio::test]
-async fn subscribe_events_stub_returns_not_implemented() {
-    // Compile-time: async fn signature exists with the right shape.
-    // Runtime: stub returns NotImplemented so downstream callers fail fast
-    // until slice 2/4 lands the real impl.
-    let res = subscribe_events(EventFilter::All).await;
-    match res {
-        Err(SubscribeError::NotImplemented) => {}
-        Err(other) => panic!("expected NotImplemented, got: {}", other),
-        Ok(_) => panic!("stub must not return Ok — slice 2/4 hasn't shipped"),
+async fn layer0_default_no_nats_required() {
+    std::env::remove_var("CHUMP_A2A_LAYER");
+    let result =
+        subscribe_events_with_session(EventFilter::All, Some("test-layer0".to_string())).await;
+    assert!(
+        result.is_ok(),
+        "layer 0 subscribe must succeed without NATS, got: {:?}",
+        result.err().map(|e| e.to_string())
+    );
+}
+
+/// AC#7: CHUMP_A2A_LAYER=1 with no NATS must still return Ok (fallback path).
+#[tokio::test]
+async fn layer1_no_nats_returns_stream_not_error() {
+    std::env::set_var("CHUMP_A2A_LAYER", "1");
+    std::env::set_var("CHUMP_NATS_TIMEOUT_MS", "150");
+    std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:19999");
+    let result =
+        subscribe_events_with_session(EventFilter::All, Some("test-layer1-no-nats".to_string()))
+            .await;
+    assert!(
+        result.is_ok(),
+        "layer 1 subscribe must return Ok even with NATS unreachable"
+    );
+    std::env::remove_var("CHUMP_A2A_LAYER");
+    std::env::remove_var("CHUMP_NATS_TIMEOUT_MS");
+    std::env::remove_var("CHUMP_NATS_URL");
+}
+
+// ── NATS integration tests (skipped if no server) ───────────────────────────
+
+/// Check if NATS is reachable. Returns the URL if yes, None if should skip.
+async fn nats_url_if_available() -> Option<String> {
+    let url =
+        std::env::var("CHUMP_NATS_URL").unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string());
+    match tokio::time::timeout(Duration::from_millis(500), async_nats::connect(&url)).await {
+        Ok(Ok(_)) => Some(url),
+        _ => None,
     }
 }
 
-#[test]
-fn error_display_contains_marker() {
-    let e = SubscribeError::NotImplemented;
-    let s = format!("{e}");
-    assert!(
-        s.contains("INFRA-1118"),
-        "error display should reference slice 2/4 (INFRA-1118)"
+/// AC#1 + AC#2: subscribe → publish → receive round-trip with p99 < 50ms.
+///
+/// Subscribes on a per-test durable consumer, publishes 20 events through
+/// JetStream, measures end-to-end latency from publish call to receipt on the
+/// subscriber stream. All 20 must arrive; p99 must be under 50ms.
+#[tokio::test]
+async fn subscribe_publish_receive_roundtrip_p99_under_50ms() {
+    let Some(nats_url) = nats_url_if_available().await else {
+        eprintln!(
+            "skip — no NATS on {}",
+            std::env::var("CHUMP_NATS_URL").unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string())
+        );
+        return;
+    };
+
+    std::env::set_var("CHUMP_A2A_LAYER", "1");
+    std::env::set_var("CHUMP_NATS_URL", &nats_url);
+
+    let session_id = format!("test-rt-{}", uuid::Uuid::new_v4().simple());
+    // Isolate from live fleet state
+    let bucket = format!("chump_gaps_rt_{}", uuid::Uuid::new_v4().simple());
+    std::env::set_var("CHUMP_NATS_GAP_BUCKET", &bucket);
+
+    // Subscribe first — consumer must exist before we publish
+    let mut stream = subscribe_events_with_session(
+        EventFilter::Kind("test_roundtrip".to_string()),
+        Some(session_id.clone()),
+    )
+    .await
+    .expect("subscribe must succeed with NATS available");
+
+    // Allow subscriber task to establish the JetStream consumer
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let client = CoordClient::connect().await.expect("CoordClient connect");
+
+    const N: usize = 20;
+    let mut send_times = Vec::with_capacity(N);
+
+    for i in 0..N {
+        send_times.push(Instant::now());
+        client
+            .emit(LibCoordEvent {
+                event: "test_roundtrip".to_string(),
+                session: session_id.clone(),
+                ts: chrono::Utc::now().to_rfc3339(),
+                kind: Some("test_roundtrip".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap_or_else(|e| panic!("emit {i} failed: {e}"));
+    }
+
+    let mut latencies_ms = Vec::with_capacity(N);
+    for (i, send_time) in send_times.iter().enumerate() {
+        let event = tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap_or_else(|_| panic!("timeout waiting for event {i}"))
+            .unwrap_or_else(|| panic!("stream ended before event {i}"));
+        let elapsed = send_time.elapsed().as_millis() as u64;
+        latencies_ms.push(elapsed);
+        assert_eq!(event.kind, "test_roundtrip", "wrong kind at event {i}");
+    }
+
+    latencies_ms.sort_unstable();
+    let p99_idx = ((N as f64 * 0.99) as usize).min(N - 1);
+    let p99_ms = latencies_ms[p99_idx];
+
+    eprintln!(
+        "roundtrip latencies (ms): min={} median={} p99={} max={}",
+        latencies_ms[0],
+        latencies_ms[N / 2],
+        p99_ms,
+        latencies_ms[N - 1]
     );
+
+    assert!(
+        p99_ms < 50,
+        "p99 latency {p99_ms}ms exceeds 50ms budget (AC#1)"
+    );
+
+    std::env::remove_var("CHUMP_A2A_LAYER");
+    std::env::remove_var("CHUMP_NATS_URL");
+    std::env::remove_var("CHUMP_NATS_GAP_BUCKET");
+}
+
+/// AC#4: Backpressure event (fleet_a2a_backpressure) emitted when pending
+/// count exceeds max_ack_pending.
+///
+/// Sets max_ack_pending=8, publishes 10 events rapidly without draining the
+/// consumer, then asserts the ambient log contains fleet_a2a_backpressure.
+#[tokio::test]
+async fn backpressure_event_emitted_on_slow_consumer() {
+    let Some(nats_url) = nats_url_if_available().await else {
+        eprintln!("skip — no NATS available");
+        return;
+    };
+
+    std::env::set_var("CHUMP_A2A_LAYER", "1");
+    std::env::set_var("CHUMP_NATS_URL", &nats_url);
+    std::env::set_var("CHUMP_A2A_MAX_ACK_PENDING", "8");
+
+    let tmp_log = format!("/tmp/a2a-bp-test-{}.jsonl", uuid::Uuid::new_v4().simple());
+    std::env::set_var("CHUMP_AMBIENT_LOG", &tmp_log);
+
+    let session_id = format!("test-bp-{}", uuid::Uuid::new_v4().simple());
+    let bucket = format!("chump_gaps_bp_{}", uuid::Uuid::new_v4().simple());
+    std::env::set_var("CHUMP_NATS_GAP_BUCKET", &bucket);
+
+    // Subscribe but intentionally do NOT drain — creating slow consumer
+    let _stream = subscribe_events_with_session(
+        EventFilter::Kind("test_backpressure".to_string()),
+        Some(session_id.clone()),
+    )
+    .await
+    .expect("subscribe");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let client = CoordClient::connect().await.expect("CoordClient connect");
+
+    // Publish 10 events fast — exceeds max_ack_pending=8
+    for i in 0..10u32 {
+        client
+            .emit(LibCoordEvent {
+                event: "test_backpressure".to_string(),
+                session: session_id.clone(),
+                ts: chrono::Utc::now().to_rfc3339(),
+                kind: Some("test_backpressure".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap_or_else(|e| panic!("emit {i}: {e}"));
+    }
+
+    // Give subscriber task time to detect and emit backpressure event
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let log_contents = std::fs::read_to_string(&tmp_log).unwrap_or_default();
+    assert!(
+        log_contents.contains("fleet_a2a_backpressure"),
+        "expected fleet_a2a_backpressure in ambient log;\nlog contents:\n{log_contents}"
+    );
+
+    let _ = std::fs::remove_file(&tmp_log);
+    std::env::remove_var("CHUMP_A2A_LAYER");
+    std::env::remove_var("CHUMP_NATS_URL");
+    std::env::remove_var("CHUMP_A2A_MAX_ACK_PENDING");
+    std::env::remove_var("CHUMP_AMBIENT_LOG");
+    std::env::remove_var("CHUMP_NATS_GAP_BUCKET");
 }
