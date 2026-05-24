@@ -189,6 +189,7 @@ gh_shim_worktree_install_blocked # reason: planned for gh-shim install blocked b
 gh_shim_worktree_path_resolved   # reason: planned for INFRA-779 gitdir repair confirmation
 github_app_fallback  # reason: emitted by scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076); helper function emit not grep-scannable as literal kind string
 guard_bypassed             # reason: planned for pre-commit/pre-push --no-verify bypass tracker
+handoff_lane_override  # reason: INFRA-1922 — emitted by scripts/coord/handoff-loop.sh only when operator sets CHUMP_HANDOFF_LANE_OVERRIDE=1 (rare cross-lane work path); registered in EVENT_REGISTRY.yaml + scanner-anchor will exist once a real emit lands
 hidden_gems_refreshed  # reason: INFRA-1727 — emitted by scripts/dev/build-hidden-gems.sh after rebuild; python3 heredoc write to ambient.jsonl, not grep-scannable as kind=X literal
 inbox_auto_poll_surfaced  # reason: INFRA-1860 emitted by scripts/coord/inbox-poll.sh PostToolUse hook helper, ambient-emit positional-arg form not grep-scannable as kind=X literal
 inbox_session_derived  # reason: INFRA-1879 — emitted by scripts/coord/inbox-poll.sh on session-id derivation; positional-arg form

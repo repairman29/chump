@@ -4724,3 +4724,35 @@ events:
       Indicates a stale citation that should be removed or the gap filed.
     consumers: [audit-log]
     fields_required: [ts, kind, doc, gap_id]
+  # INFRA-1922: curator-opus-handoff productization. The handoff curator role
+  # ships as .claude/agents/handoff.md + .claude/skills/handoff/SKILL.md +
+  # scripts/coord/handoff-loop.sh (harness-neutral CLI). The CLI emits the
+  # three kinds below.
+  - kind: sub_agent_dispatched
+    effect_metric: self
+    emitter: scripts/coord/handoff-loop.sh (INFRA-1922) — also expected from other curators per META-069 / CREDIBLE-074
+    trigger: >
+      An Opus curator (any role) dispatched a Sonnet sub-agent via the Agent
+      tool to ship a gap. Emitted per dispatch so the operator can audit the
+      Opus-vs-Sonnet ratio (CREDIBLE-074). Fields: gap (target gap id), role
+      (dispatching curator role), target_model (always "sonnet" today).
+    consumers: [fleet-brief, ops-audit, dispatch-hygiene]
+    fields_required: [ts, kind, session, gap, role, target_model]
+  - kind: handoff_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/handoff-loop.sh (INFRA-1922) heartbeat subcommand
+    trigger: >
+      curator-opus-handoff role tick — emitted periodically so the
+      orchestrator can audit liveness. Cron-driven (launchd plist filed
+      separately) or invoked manually via /handoff heartbeat.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session, role]
+  - kind: handoff_lane_override
+    effect_metric: self
+    emitter: scripts/coord/handoff-loop.sh (INFRA-1922) when CHUMP_HANDOFF_LANE_OVERRIDE=1
+    trigger: >
+      curator-opus-handoff role accepted a claim outside its lane scope
+      because the operator set CHUMP_HANDOFF_LANE_OVERRIDE=1. Audit emit
+      so cross-lane work is operator-visible, not silent.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session, role]

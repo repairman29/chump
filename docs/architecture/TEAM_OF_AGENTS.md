@@ -144,6 +144,30 @@ Combined, these are roughly **3-4 weeks of focused infra work** to fully
 automate the team-of-agents pattern. After that, Jeff intervenes only on
 substantive architecture / strategy.
 
+### Productized curator roles (META-097 — shipped/filed/missing)
+
+The role-scoped fleet (META-074, 2026-05-23) introduced five named Opus
+curators (target / ci-audit / handoff / shepherd / decompose), one per
+hot-file cluster. Each role gets productized as a triplet:
+
+- `.claude/agents/<role>.md` — subagent definition (discipline + lane scope)
+- `.claude/skills/<role>/SKILL.md` — user-invocable slash command (thin wrapper)
+- `scripts/coord/<role>-loop.sh` — the harness-neutral CLI (capability)
+
+Status table (2026-05-24):
+
+| Role | Agent | Skill | Script | Status |
+|---|---|---|---|---|
+| target | ✅ shipped | ✅ shipped | ⏳ filed (INFRA-1917) | shipped |
+| handoff | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1922) | **shipped** |
+| shepherd | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| ci-audit | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| decompose | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| md-links | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+
+The 5 self-contributed acceptance-criteria per role live at
+[`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
+
 ### Missing (not even gap'd)
 
 - **A "dispatch the Q3 plan" recipe** — would walk RESEARCH_PLAN_2026Q3.md
