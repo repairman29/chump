@@ -355,3 +355,4 @@ preflight_mdlinks_bypassed # reason: INFRA-1790 emitted from src/preflight.rs wh
 # Emitted by scripts/ops/audit-allowlist-staleness.sh via python3 heredoc write
 # to ambient.jsonl — not a grep-scannable `kind=X` literal in the prod path.
 allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
+audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-staleness.sh skip-emit when CHUMP_AUDIT_ALLOWLIST_STALENESS=0; printf form not grep-scannable
