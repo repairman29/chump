@@ -1,0 +1,15 @@
+- id: INFRA-1948
+  domain: INFRA
+  title: "INFRA-1862 slice E: A2A schema validation + 4 observability kinds (a2a_msg_sent, a2a_msg_delivered, a2a_msg_acked, a2a_msg_dead_lettered) all registered in EVENT_REGISTRY.yaml"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Background — INFRA-1944/1945/1946/1947 will all emit new ambient kinds. INFRA-1948 makes sure they're all registered + schema-validated before they ship, not as a follow-up after the audit gate yells at us (INFRA-1916 pattern recurrence)"
+    - "Register 4 new kinds in docs/observability/EVENT_REGISTRY.yaml — a2a_msg_sent (emitter broadcast.sh on every dual-write), a2a_msg_delivered (chump-inbox.sh on cursor advance per slice A), a2a_msg_acked (broadcast.sh --await on receipt of delivery), a2a_msg_dead_lettered (a2a-dead-letter-reaper per slice C). Each entry has fields_required + consumers list"
+    - "Add JSON schema validation — new scripts/coord/lib/a2a_schema.sh sourced by broadcast.sh + chump-inbox.sh; validates incoming JSON has required fields (ts, kind, to, sender, corr_id) before write/read; emits kind=a2a_msg_schema_violation on fail"
+    - "Update scripts/ci/event-registry-reserved.txt — add the 4 new kinds + a2a_msg_schema_violation if any path can't be grep-scanned"
+    - "Smoke test scripts/ci/test-a2a-schema-validation.sh — synth malformed msg JSON, send; assert sender rejects (or recipient drops) + emits a2a_msg_schema_violation"
+    - "Pairs with INFRA-1944/1945/1946/1947; INFRA-1862 slice E of E (and the closer — ships last so all 4 emitters' kinds are registered before the audit-required gate runs)"
+    - "Done definition — all 4 new A2A kinds in EVENT_REGISTRY.yaml; audit-required passes; schema validation rejects malformed msgs at both endpoints"
+  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
