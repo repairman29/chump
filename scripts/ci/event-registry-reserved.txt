@@ -363,3 +363,4 @@ audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-sta
 pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
 auto_capability_bypassed  # reason: INFRA-1825 — capability-publish.sh CHUMP_AUTO_CAPABILITY=0 opt-out; printf-direct JSON not grep-scannable as kind=X literal
 capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
+hidden_gems_refreshed  # reason: INFRA-1727 — emitted by scripts/dev/build-hidden-gems.sh after rebuild; python3 heredoc write to ambient.jsonl, not grep-scannable as kind=X literal
