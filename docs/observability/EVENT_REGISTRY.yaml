@@ -4590,3 +4590,16 @@ events:
       ritual runs daily.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, date, roles_paged, failed]
+  # META-103: curator-opus-observability telemetry-tuning findings.
+  # Emitted by scripts/coord/observability-loop.sh via printf in _emit_finding
+  # helper; structured payload not grep-scannable as bare literal.
+  - kind: observability_finding
+    effect_metric: self
+    emitter: scripts/coord/observability-loop.sh (META-103)
+    trigger: >
+      Emitted on each tick cycle when audit-event-registry, reaper-cadence-audit,
+      cost-leaderboard-rollup, or detector-noise-rank detects an anomaly.
+      category is one of: zero_emit_kind, high_volume_kind, reaper_cadence_drift,
+      api_burner. severity is one of: proposal, warn, alert, info.
+    consumers: [fleet-brief, ops-audit, observability-curator]
+    fields_required: [ts, kind, category, severity, kind_or_subject, detail]
