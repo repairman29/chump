@@ -1,0 +1,16 @@
+- id: INFRA-1909
+  domain: INFRA
+  title: "RESILIENT: ghost-gap reaper daemon — auto-reconcile state.db gaps with status:open but closed_pr already on origin/main (4 instances in 2026-05-24 session: INFRA-1727 INFRA-1887 DOC-053 DOC-054 — each took 1 round-trip of claim+discover+manual chump gap ship)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Reproduce: state.db has N gaps where status:open AND title or commit message of a merged PR on origin/main references the gap_id; ghost-gap reaper detects these and auto-runs chump gap ship <ID> --closed-pr <N> --update-yaml"
+    - "2. Detection logic: query state.db for all status:open gaps; for each gap_id, run gh pr list --search 'gap_id' --state merged --json number,mergedAt --limit 1; if a merged PR exists AND its mergedAt > gap's last_updated, reaper considers it a ghost"
+    - "3. Reconciliation: invoke CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 chump gap ship <ID> --closed-pr <N> --update-yaml; emit kind=ghost_gap_reaped with {gap_id, pr, reaped_via}"
+    - "4. Cadence: daily cron OR hourly planner; non-blocking (best-effort, exits 0 even if 0 ghosts found)"
+    - "5. Bypass: CHUMP_GHOST_GAP_REAPER=0 disables; emit kind=ghost_gap_reaper_disabled if bypass active"
+    - "6. Smoke test scripts/ci/test-ghost-gap-reaper.sh: seed state.db with synthetic status:open gap; stub gh pr list to return matching merged PR; invoke reaper; assert gap is now status:done"
+    - "7. Baseline 2026-05-24 evidence: 4 instances in single ~3hr session forced manual operator round-trip (claim → discover stale → release+chump gap ship): INFRA-1727 (shipped #2488 by me but state stuck open earlier), INFRA-1887 (shipped #2450 earlier session), DOC-053 (shipped #2454 needed closeout #2471), DOC-054 (shipped #2462). 4 manual chump gap ship calls totaling ~20 operator-min that a daily cron would have absorbed silently"
+    - "8. Pairs with INFRA-1888 (detect-gap-failure skips status:done — same drift class on detector side)"
+
