@@ -1,7 +1,7 @@
 - id: INFRA-1442
   domain: INFRA
   title: "RESILIENT: claim-time fuzzy-match against open-PR titles/commit-bodies — prevents 3-way duplicate fixes (today's test-cache-mergestatestatus.sh fixed in INFRA-1341+1384+1396 in parallel, ~3 wasted compute-hours)"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -13,4 +13,6 @@
     - Existing INFRA-1149 reserve-side similarity check covers gap-filing dupes; this gap covers CLAIM-side (different gap IDs targeting same root cause)
     - CI test scripts/ci/test-claim-fuzzy-match.sh fabricates 2 gaps + 1 open PR with shared keywords + asserts claim refuses without --force-duplicate
     - "Measure: kind=duplicate_root_cause_observed ambient event count drops over a 7d window"
+  closed_date: '2026-05-24'
+  closed_pr: 2358
 

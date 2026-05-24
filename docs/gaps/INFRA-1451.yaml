@@ -1,0 +1,25 @@
+- id: INFRA-1451
+  domain: INFRA
+  title: "EFFECTIVE: chump orchestrate intent-parser stub loses --size and --filter params from natural-language phrases"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real-binary smoke 2026-05-15: prompt 'spawn the fleet on infra p0/p1, size 4' routes to 'chump fleet start' but loses the --size 4 + --domain INFRA + priority filter. June-6 demo criterion #4 requires this: operator types 'spawn the fleet on infra p0/p1, size 4' → fleet starts WITH 4 workers on INFRA P0/P1 gaps. Currently routes to bare 'chump fleet start'.
+  acceptance_criteria:
+    - Intent parser extracts numeric size (size N
+    - N workers
+    - "--size N) → emits --size N"
+    - src/intent_parser.rs extracts domain (infra
+    - product
+    - credible
+    - ...) → emits --domain DOMAIN
+    - Priority phrases (p0
+    - p1
+    - p0/p1
+    - highest) → emits --priority P0[+,P1]
+    - Smoke test scripts/ci/test-intent-parser-params.sh asserts the 'spawn the fleet on infra p0/p1, size 4' example routes to 'chump fleet start --size 4 --domain INFRA --priority P0,P1'
+    - FTUE workflow extended to assert parameterized intent
+  closed_date: '2026-05-24'
+  closed_pr: 2286
+

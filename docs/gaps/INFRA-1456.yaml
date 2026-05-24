@@ -1,0 +1,19 @@
+- id: INFRA-1456
+  domain: INFRA
+  title: "EFFECTIVE: chump inspect/resume/scrap eject-and-inspect primitive"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Commercial-launch precondition surfaced by Persona-5 skeptic validation interview (see docs/strategy/commercial/COMMERCIAL_PIVOT_SPARRING.md). The Saturday-morning-uninstall scenario: 20-agent fleet runs Friday night, 18 green / 2 wedged. If operator can't tell why those 2 are wedged in under 60 seconds, the entire Chump abstraction becomes net-negative — operator is debugging Chump instead of their codebase. Skeptic verdict: 'I am not going to be a Chump administrator.' Eject-and-inspect must make a wedged agent feel like debugging a normal local git branch.
+  acceptance_criteria:
+    - "chump inspect <gap-id> opens a tmux session with 3 panes: worktree shell (cd'd in), tail -f of ambient.jsonl filtered to this gap, last N agent bash commands with cmd+cwd+exit+stdout-tail"
+    - "Trajectory capture: every agent bash invocation per gap logged with structured fields (timestamp, cmd, cwd, exit_code, stdout_tail) to queryable structured log"
+    - chump resume <gap-id> reattaches a wedged gap to fleet rotation after manual operator fix (validates worktree state + commit graph + re-leases atomically)
+    - chump scrap <gap-id> cleanly destroys worktree directory, kills any associated sandbox container, releases lease, leaves zero host-fs/disk-port/container residue
+    - INFRA-779 gitdir-confusion recovery path documented under chump inspect (auto-repair attempt + manual fallback command shown)
+    - "CI test: wedge an agent intentionally (kill -9 mid-run), run inspect, verify all 3 panes populated with the right state"
+    - "CI test: chump scrap on a wedged gap leaves zero residue (no orphan worktree dir, no orphan container, no orphan lease, no bound ports)"
+  closed_date: '2026-05-24'
+  closed_pr: 2351
+

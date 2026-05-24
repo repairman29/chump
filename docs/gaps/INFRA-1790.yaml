@@ -1,7 +1,7 @@
 - id: INFRA-1790
   domain: INFRA
   title: "ZERO-WASTE: chump preflight runs markdown intra-doc-links check on changed .md files — DOC-039 (INFRA-1762 Tier C #4)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -11,4 +11,6 @@
     - "Bypass: CHUMP_PREFLIGHT_SKIP_MDLINKS=1 + emit preflight_mdlinks_bypassed"
     - "Smoke test scripts/ci/test-preflight-mdlinks-gate.sh: synthetic md with a broken intra-doc link, assert gate catches it"
     - "Speed budget: < 3s on a 5-file PR (regex link extract + filesystem stat)"
+  closed_date: '2026-05-24'
+  closed_pr: 2449
 

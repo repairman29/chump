@@ -1,8 +1,8 @@
 - id: INFRA-1595
   domain: INFRA
   title: "RESILIENT: chump fleet self-doctor --heal — autonomous loop that auto-installs missing daemons + dispatches subagents for stuck PRs (no operator intervention)"
-  status: open
-  priority: P0
+  status: done
+  priority: P1
   effort: m
   acceptance_criteria:
     - "New 'chump fleet doctor --heal' mode extends existing 'chump fleet doctor --strict' (INFRA-1427) by AUTO-FIXING what it diagnoses: missing daemons get auto-installed via the relevant install-*.sh script."
@@ -30,4 +30,6 @@
     Don't ship with --heal default-on until INFRA-1541 AC gate has 50-PR observation done; ship --heal as opt-in env (CHUMP_FLEET_SELF_DOCTOR_HEAL=true), default off. After observation, flip to on.
     
     Belongs as Wave 0b because every subsequent wave's daemons need it to stay installed across reboots + drift.
+  closed_date: '2026-05-24'
+  closed_pr: 2261
 

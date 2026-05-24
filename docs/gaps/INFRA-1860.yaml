@@ -1,0 +1,15 @@
+- id: INFRA-1860
+  domain: INFRA
+  title: "RESILIENT P0: PostToolUse hook auto-reads curator inbox every N tool calls — fixes operator-as-messenger antipattern (long-running sessions miss inbox messages because SessionStart hook only fires once)"
+  status: done
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - Add PostToolUse hook to .claude/settings.json that runs scripts/coord/inbox-poll.sh
+    - inbox-poll.sh reads .chump-locks/inbox/<session>.cursor and inbox/<session>.jsonl mtime; outputs unread messages as system-reminder text to stdout
+    - "Throttle: only fires every N tool calls (default N=20) via .chump-locks/inbox-poll-counter file"
+    - Bypass CHUMP_AUTO_INBOX_POLL=0 disables auto-poll
+    - Smoke test scripts/ci/test-posttooluse-inbox-poll.sh asserts hook config + script behavior
+  closed_date: '2026-05-24'
+  closed_pr: 2444
+

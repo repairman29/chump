@@ -1,7 +1,7 @@
 - id: INFRA-1586
   domain: INFRA
   title: "ZERO-WASTE: PWA header dedup — remove model/cost/pillar/autopilot chips already canonical in status-footer (header → title + repo + heartbeat only)"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -38,4 +38,7 @@
     - "Orphan padding-bottom rules in index.html:117-123 for removed chips deleted"
     - Playwright e2e/pwa-header-dedup.spec.ts passes at 375/640/1440px
     - INFRA-1276 (<=640px header overlap) closed with reference to this gap's PR
+  closed_date: '2026-05-24'
+  closed_pr: 2469
+  skills_required: pwa,frontend
 
