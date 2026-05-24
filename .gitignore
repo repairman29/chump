@@ -24,6 +24,14 @@ ChumpMenu/ChumpMenu.app/
 # Use .claude/* (not .claude/) so we can re-include settings.json below
 .claude/*
 !.claude/settings.json
+# INFRA-1917: productized curator roles + skills live in .claude/ and are
+# canonical (committed); other .claude/ runtime (projects/, shell-snapshots/,
+# statsig/, settings.local.json) stays local-only via the broad .claude/* rule.
+!.claude/agents/
+!.claude/agents/*.md
+!.claude/skills/
+!.claude/skills/*/
+!.claude/skills/*/SKILL.md
 # INFRA-188: chump-native worktree directory (canonical post-INFRA-186)
 .chump/worktrees/
 
