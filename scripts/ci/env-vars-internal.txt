@@ -501,3 +501,10 @@ CHUMP_CI_HEALTH_GATE_DISABLE
 CHUMP_CI_HEALTH_JAM_THRESHOLD
 CHUMP_CI_HEALTH_JAM_RECOVERY
 CHUMP_CI_HEALTH_CONSEC_FILE
+# META-100: RUNNER_GHOST_ONLINE detection in operator-recall.
+# CHUMP_RUNNER_QUEUE_THRESHOLD_S: seconds a workflow_run stays queued before
+#   ghost-online detection fires (default 300). Set to 0 in tests to force detection.
+# CHUMP_RUNNER_GHOST_ONLINE_DETECT: set to 0 to disable the detection block entirely
+#   (default 1 = enabled). Bypass emits no audit event; use sparingly.
+CHUMP_RUNNER_QUEUE_THRESHOLD_S
+CHUMP_RUNNER_GHOST_ONLINE_DETECT
