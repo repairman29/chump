@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.ci-health-gate — INFRA-1607 LaunchAgent.
+
+  Runs scripts/coord/ci-health-gate.sh every 5 minutes. Writes
+  .chump/fleet-paused when CI is jammed (>= 50% BLOCKED PRs) or
+  any SLO is breached. Clears the sentinel after 2 consecutive
+  clean runs.
+
+  INSTALLATION:
+    1. Edit this file: replace /path/to/Chump with your repo path,
+       and /path/to/HOME with your $HOME.
+    2. cp launchd/com.chump.ci-health-gate.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.ci-health-gate.plist
+    4. Verify: launchctl list | grep com.chump.ci-health-gate
+    5. Manual run: launchctl start com.chump.ci-health-gate
+       Logs: tail /tmp/chump-ci-health-gate.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.ci-health-gate.plist
+    rm ~/Library/LaunchAgents/com.chump.ci-health-gate.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.ci-health-gate</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/ci-health-gate.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 5 minutes (300 seconds). Sleep-aware (skipped while laptop sleeping). -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <!-- Don't start at load — wait for the first tick. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-ci-health-gate.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-ci-health-gate.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- chump, gh, git, python3 must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

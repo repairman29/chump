@@ -111,3 +111,11 @@ installers:
     install: bash scripts/setup/install-distill-pr-skills-launchd.sh
     check: launchctl list 2>/dev/null | grep -q dev.chump.distill-pr-skills
     adds: ~/Library/LaunchAgents/dev.chump.distill-pr-skills.plist + hourly run
+
+  - id: ci-health-gate-launchd
+    why: INFRA-1607 — 5-min daemon that auto-pauses the fleet when CI is jammed (>= 50% BLOCKED PRs) or any SLO is breached. Without this, workers keep claiming new gaps during a pipeline jam and compound the pile-up. Plist at launchd/com.chump.ci-health-gate.plist; script at scripts/coord/ci-health-gate.sh.
+    priority: P1
+    install: cp launchd/com.chump.ci-health-gate.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.ci-health-gate.plist && launchctl load ~/Library/LaunchAgents/com.chump.ci-health-gate.plist
+    check: launchctl list 2>/dev/null | grep -q com.chump.ci-health-gate
+    depends_on: [chump-binary, github-liaison-launchd]
+    adds: ~/Library/LaunchAgents/com.chump.ci-health-gate.plist + 5-min run

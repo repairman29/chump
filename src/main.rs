@@ -6336,6 +6336,56 @@ async fn main() -> Result<()> {
                 }
                 // ── end INFRA-1152 ───────────────────────────────────────────────────
 
+                // ── INFRA-1607: fleet-paused admission guard ─────────────────────────
+                // Before any state.db write, check whether ci-health-gate.sh or
+                // waste-spike-detector.sh has written .chump/fleet-paused. If so,
+                // refuse the reserve unless CHUMP_IGNORE_WASTE_PAUSE=1 is set.
+                let ignore_pause = std::env::var("CHUMP_IGNORE_WASTE_PAUSE").as_deref() == Ok("1");
+                if !ignore_pause {
+                    let pause_path = repo_root.join(".chump").join("fleet-paused");
+                    if pause_path.exists() {
+                        // Read pause reason from JSON payload; fall back to
+                        // "unknown" if the file is unreadable or malformed.
+                        let pause_reason: String = std::fs::read_to_string(&pause_path)
+                            .ok()
+                            .and_then(|s| {
+                                let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+                                v.get("reason")
+                                    .and_then(|r| r.as_str())
+                                    .map(|r| r.to_string())
+                            })
+                            .unwrap_or_else(|| "unknown".to_string());
+
+                        // Emit gap_reserve_blocked to ambient stream.
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let ts_now = unix_ts();
+                        let safe_reason = pause_reason.replace(['"', '\\'], "");
+                        let safe_domain = domain.replace(['"', '\\'], "");
+                        let safe_title = title.replace(['"', '\\'], "");
+                        if let Some(parent) = ambient_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                            .and_then(|mut f| {
+                                use std::io::Write;
+                                writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts_now}","kind":"gap_reserve_blocked","pause_reason":"{safe_reason}","domain":"{safe_domain}","title":"{safe_title}"}}"#
+                                )
+                            });
+
+                        eprintln!("chump gap reserve: fleet is paused (reason: {pause_reason}).");
+                        eprintln!(
+                            "Run `chump health --slo-check` to diagnose, or set CHUMP_IGNORE_WASTE_PAUSE=1 to bypass."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                // ── end INFRA-1607 ───────────────────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
