@@ -1,0 +1,25 @@
+{
+  "_doc": "INFRA-1899 — known-transient CI failure classes. Each entry has a 'class' label and a 'pattern' regex matched against the failing check's name + conclusion + logs (joined newline-separated). See scripts/coord/transient-retrigger.sh.",
+  "classes": [
+    {
+      "class": "audit_cancelled",
+      "pattern": "(?i)\\baudit\\b.*conclusion=cancelled|audit.*cancelled\\b",
+      "description": "Audit job conclusion=cancelled (defensive after INFRA-1852 root-cause fix)."
+    },
+    {
+      "class": "checkout_auth_race",
+      "pattern": "could not read Username for 'https://github.com'|fatal: could not read Username",
+      "description": "actions/checkout auth blip — transient GH token mint race."
+    },
+    {
+      "class": "flake_rerun_exhausted",
+      "pattern": "flake-rerun limit exceeded|flake[- ]rerun limit",
+      "description": "cargo-test flake rerunner gave up; a fresh CI run usually clears it."
+    },
+    {
+      "class": "network_blip",
+      "pattern": "SIGPIPE|broken pipe|Temporary failure in name resolution|Could not resolve host|connection reset by peer|TLS handshake timeout|i/o timeout",
+      "description": "Generic network/runner-side blip during CI step."
+    }
+  ]
+}

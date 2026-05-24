@@ -4487,3 +4487,22 @@ events:
       see the note; choice to abandon the intended claim remains theirs.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, target_gap, suggested_gaps_count, target_priority]
+
+  # INFRA-1899: transient-retrigger daemon. Auto-recognizes known-transient
+  # CI failure patterns on open PRs and pushes an empty commit to force a
+  # fresh CI run, capped at 2 retries per PR per 6 hours. Retires the
+  # operator hand-empty-commit-retrigger workaround (today's session had
+  # 10+ manual retriggers for the audit-cancel pattern alone).
+  - kind: transient_auto_retriggered
+    effect_metric: self
+    emitter: scripts/coord/transient-retrigger.sh (INFRA-1899)
+    trigger: >
+      Daemon classified an open PR's failing required check against the
+      catalog at scripts/coord/transient-classes.json (audit_cancelled,
+      checkout_auth_race, flake_rerun_exhausted, network_blip), confirmed
+      the per-PR retry cap (default 2/6h) was not yet exceeded, and
+      pushed an empty commit to the PR's head branch to force a fresh
+      CI run. The attempt_number field discriminates first vs. second
+      retry within the window.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, failure_class, attempt_number]
