@@ -4501,6 +4501,29 @@ events:
       stands by; the curator will idle until a new pickable gap appears.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, curator]
+  # META-104: external-collab curator (operator-facing surface + Marcus arc + partnership pipeline)
+  - kind: external_collab_finding
+    effect_metric: self
+    emitter: scripts/coord/external-collab-loop.sh (META-104)
+    trigger: >
+      curator-opus-external-collab detected a drift condition in one of
+      four categories: voice_drift (banned term found in PITCH.md /
+      HIDDEN_GEMS.md / DEMO_5MIN.md), surface_stale (doc >14d untouched),
+      marcus_at_risk (Marcus milestone stalled >7d with no gap progress),
+      partnership_stalled (INFRA-1501/1506/1511 approaching or past
+      decision deadline). Curator audits only; does not edit docs directly.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, category, surface, detail]
+  - kind: external_collab_scope_override
+    effect_metric: self
+    emitter: scripts/coord/external-collab-loop.sh (META-104)
+    trigger: >
+      CHUMP_EXTERNAL_COLLAB_SCOPE_OVERRIDE=1 was set, allowing the
+      external-collab curator to claim work outside its defined lane
+      (OPERATOR-FACING + EXTERNAL-FACING surfaces). Emitted for audit
+      accountability.
+    consumers: [ops-audit]
+    fields_required: [ts, kind]
   # INFRA-1886: soft pre-claim suggestion in `chump gap preflight <ID>`.
   - kind: preflight_priority_hint_shown
     effect_metric: self
