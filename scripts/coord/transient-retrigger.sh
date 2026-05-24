@@ -55,6 +55,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+
+# INFRA-1274: route GitHub calls through the cache-first wrapper so the
+# raw-gh-lint gate stays green (and to inherit retry/criticality logic).
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/github_cache.sh"
 AMBIENT_LOG="${CHUMP_TRANSIENT_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STATE_FILE="${CHUMP_TRANSIENT_STATE_FILE:-$REPO_ROOT/.chump-locks/transient-retrigger-state.jsonl}"
 CATALOG="${CHUMP_TRANSIENT_CATALOG:-$REPO_ROOT/scripts/coord/transient-classes.json}"
@@ -159,7 +164,7 @@ pr_labels() {
         echo "$mock"
         return
     fi
-    gh pr view "$pr" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo ""
+    chump_gh pr view "$pr" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo ""
 }
 
 # ── fetch the failed-log blob for a PR (mock-aware) ───────────────────────
@@ -194,7 +199,7 @@ list_candidate_prs() {
         printf '%s\n' "$mock"
         return
     fi
-    gh pr list --state open --limit "$MAX_PRS" \
+    chump_gh pr list --state open --limit "$MAX_PRS" \
         --json number,headRefName,statusCheckRollup \
         --jq '.[] | select((.statusCheckRollup // []) | map(select(.conclusion=="FAILURE" or .conclusion=="CANCELLED")) | length > 0) | "\(.number)\t\(.headRefName)"' \
         2>/dev/null || true
