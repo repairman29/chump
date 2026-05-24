@@ -57,10 +57,13 @@ else
 fi
 
 # ── --role validates ──────────────────────────────────────────────────────
-if bash "$SCRIPT" --role bogus 2>&1 | grep -q "unknown role"; then
-    ok "--role validates against valid set"
+# Capture both stderr + exit code (pipefail would fail the whole expression
+# when the bogus-role causes exit 2; use a temp var instead)
+bogus_out="$(bash "$SCRIPT" --role bogus 2>&1 || true)"
+if echo "$bogus_out" | grep -q "unknown role"; then
+    ok "--role validates against valid set (rejects bogus)"
 else
-    fail "--role bogus should error"
+    fail "--role bogus should error with 'unknown role'; got: $bogus_out"
 fi
 
 # ── --role emits exactly one template ─────────────────────────────────────
