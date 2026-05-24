@@ -4576,3 +4576,19 @@ events:
       branch name (chump/oracle-refresh-<stamp>).
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, branch]
+  # META-098: daily self-productization wave. Once per day a launchd cron
+  # sends 6 A2A broadcast.sh DMs (one per curator role) asking the curator
+  # to contemplate what changed in their lane and add delta-AC to their
+  # agent.md / SKILL.md (or file a follow-up gap). Productizes the manual
+  # A2A wave that spawned META-097.
+  - kind: daily_self_productize_wave
+    effect_metric: self
+    emitter: scripts/coord/daily-self-productize.sh (META-098)
+    trigger: >
+      Daemon fired once per day (idempotent on same-date guard). Sends
+      one broadcast.sh DM per curator role (6 total). roles_paged is the
+      count of successful pages; failed is the count of failed pages.
+      Consumers can compute the wave-cadence over time to verify the
+      ritual runs daily.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, date, roles_paged, failed]
