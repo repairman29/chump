@@ -210,6 +210,13 @@ FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 # OAUTH-subscription sessions to the exhausted chump-local cascade.
 if [[ "$_fleet_auth_mode" == "unknown" ]]; then
     FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+    # INFRA-1716: warn when falling through to chump-local — the cascade bank
+    # was exhausted in INFRA-459 and produces silent 15-min timeouts per worker.
+    if [[ "${FLEET_BACKEND}" == "chump-local" ]]; then
+        echo "[run-fleet] WARN: no claude auth found (ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN / oauth-token.json unset)." >&2
+        echo "[run-fleet] WARN: cascade bank exhausted in prod (INFRA-459); workers will TIMEOUT silently." >&2
+        echo "[run-fleet] WARN: set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to use backend=claude." >&2
+    fi
 else
     FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 fi
