@@ -159,6 +159,7 @@ cost_quota_warning         # reason: planned for INFRA-1076 soft quota warning
 crate  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
 curator_auto_decompose     # reason: planned for opus-curator auto-decompose arm
 curator_decision           # reason: planned for opus-curator gap-ranking decision emit
+infra_watcher_finding      # reason: META-102 — emitted from scripts/coord/infra-watcher-loop.sh via direct printf JSON; emit uses dynamic {category,severity,detail} fields assembled at runtime, not grep-scannable as a `"kind":"infra_watcher_finding"` literal in the production path scan
 decomposition_hint         # reason: planned for chump gap decompose hint injection
 disk_critical              # reason: emitter scripts/ops/disk-watchdog.sh uses variable-mediated emit (disk_alert_kind); grep pattern misses it; will fix in follow-up
 feature_silent_failure     # reason: planned for feature smoke-test failure detector

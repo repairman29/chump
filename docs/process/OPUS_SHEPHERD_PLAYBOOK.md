@@ -16,6 +16,7 @@ work the curators don't catch and code-shipping you don't bottleneck. Specifical
 | `curator-opus-shepherd` | PR rescue (rebase / retrigger loops on DIRTY) | Same-PR rescue races |
 | `curator-opus-handoff` | Inbox handoff coordination between sessions | Inbox cursor advancement |
 | `curator-opus-target` / `-ci-audit` / `-md-links` / `-decompose` | Specialist curators per concern | Their specialty path edits |
+| `curator-opus-infra-watcher` | SUBSTRATE health — launchd plist intervals, runner ghost-online, disk pressure, process bloat; run `scripts/coord/infra-watcher-loop.sh tick` | Don't do PR rescue, gap decomposition, or application-code edits in this lane |
 | `orchestrator-opus-<date>` | Meta-coordinator; the DONE receiver | Don't try to BE the orchestrator |
 | `operator-<id>` (human) | Operator decisions; dispatches wizards | Operator-driven mission docs (licensing, partnership) |
 
