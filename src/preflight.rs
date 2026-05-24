@@ -780,6 +780,109 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+
+        // INFRA-1921 (batched per AC): 4 META-070 mirror gates land together
+        // because they all insert at the same site and each one alone causes
+        // identical conflicts on the others' branches when main moves. Each
+        // gate has its own bypass env var so an operator can disable them
+        // individually without disabling the whole batch.
+
+        // INFRA-1855: cargo-test workspace gate (META-070 Tier-C). Heaviest
+        // unmirrored gate — catches "broken on main, every PR fails" class
+        // (INFRA-1832 events.rs Debug panic + INFRA-1916 chump-pillar-health
+        // removal would both have been caught locally). Wraps existing
+        // scripts/ci/cargo-test-with-rerun.sh.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CARGOTEST").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping cargo-test (CHUMP_PREFLIGHT_SKIP_CARGOTEST=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_cargotest_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CARGOTEST=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "cargo-test",
+                &["bash", "scripts/ci/cargo-test-with-rerun.sh"],
+                GateKind::Rust,
+            ));
+        }
+
+        // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
+        // .github/workflows/ci.yml integration-test job — runs the synthetic
+        // state.db fixture + chump CLI smoke via existing
+        // scripts/ci/test-system-integration.sh.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_INTEGRATION").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping integration-test (CHUMP_PREFLIGHT_SKIP_INTEGRATION=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_integration_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_INTEGRATION=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "integration-test",
+                &["bash", "scripts/ci/test-system-integration.sh"],
+                GateKind::Rust,
+            ));
+        }
+
+        // INFRA-1858: chump-first contract gate (CREDIBLE-046). Mirrors
+        // .github/workflows/no-anthropic-smoke.yml — proves the coordination
+        // layer (gap list/reserve/show/ship) works without ANTHROPIC_API_KEY
+        // or CLAUDE_CODE_OAUTH_TOKEN. The CREDIBLE-046 regression cost
+        // ~3h of throughput before #2404 fixed it; this gate catches it
+        // locally before push.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CHUMPFIRST").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping chump-first-contract (CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1)"
+            );
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_chumpfirst_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "chump-first-contract",
+                &["bash", "scripts/ci/check-chump-first-contract.sh"],
+                GateKind::Rust,
+            ));
+        }
+
+        // INFRA-1859: acp-smoke gate. Mirrors editor-integration.yml acp-smoke
+        // job — runs the ACP protocol smoke test via existing
+        // scripts/ci/test-acp-smoke.sh. The underlying script handles its
+        // own missing-dep skip-gracefully (node + chromedriver).
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_ACPSMOKE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping acp-smoke (CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_acpsmoke_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_ACPSMOKE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "acp-smoke",
+                &["bash", "scripts/ci/test-acp-smoke.sh"],
+                GateKind::Rust,
+            ));
+        }
     }
 
     // INFRA-1788: docs-delta-trailer gate. Only fires under --pre-commit
@@ -822,6 +925,33 @@ pub fn run(argv: &[String]) -> i32 {
         }
     }
     // else: bare `chump preflight` — gate is silently skipped (AC #6).
+
+    // INFRA-1854: pr-hygiene local gate. Mirrors ci.yml pr-hygiene job —
+    // wraps CREDIBLE-027 mass-deletion + INFRA-1568 broad-canary sub-checks
+    // via scripts/ci/check-pr-hygiene.sh. (check-pr-scope CREDIBLE-026 is
+    // already covered by INFRA-1792 pr-scope-sanity gate.) Lives in the
+    // Scripts scope (vs the 4 Rust-scope gates above) because pr-hygiene
+    // only inspects file paths in the diff — runs even when no Rust changed.
+    if scope.includes(GateKind::Scripts) {
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_PRHYGIENE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping pr-hygiene (CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_prhygiene_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "pr-hygiene",
+                &["bash", "scripts/ci/check-pr-hygiene.sh"],
+                GateKind::Scripts,
+            ));
+        }
+    }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
         for script in discover_test_scripts(&repo_root) {
