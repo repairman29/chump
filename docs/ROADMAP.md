@@ -8,7 +8,7 @@
 > Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
 > when an outcome lands or framing shifts.
 
-## TL;DR for a returning operator (2026-05-16 reality)
+## TL;DR for a returning operator (2026-05-24 reality)
 
 Five anchors. **Mission Yield** is the headline number; **Wave order** is the ship discipline; the three workstreams below run inside both constraints.
 
@@ -29,21 +29,45 @@ live. "Offline-first" is a tier-3 differentiator, not the spine. The fleet's
 behavior (reliable auto-merge, conflict-resolving rebases, healing CI gates)
 IS what customers like Marcus pay for.
 
-## Today's bets (week of 2026-05-16)
+## Shipped from week-of-2026-05-16 bets ✅
+
+| Bet | Gap | Status |
+|---|---|---|
+| Hit 50 PRs/hr by end of May | INFRA-1540 + INFRA-1542 | ✅ done |
+| Marcus trust gate (per-gap budgets) | [INFRA-1486](gaps/INFRA-1486.yaml) | ✅ done |
+| Self-hosted runners actually serve CI | INFRA-1540 ghost-ship recovery | ✅ done |
+| 4 follow-up gaps for full INFRA-1534 closure | INFRA-1542 / 1543 / 1544 + CREDIBLE-069 | ✅ done (CREDIBLE-069 still open as P2/s telemetry slice) |
+| Marcus canonical demo interface | [INFRA-1483](gaps/INFRA-1483.yaml) | ✅ done |
+
+## Today's bets (week of 2026-05-24)
 
 | Bet | Gap(s) | Status |
 |---|---|---|
-| Hit 50 PRs/hr by end of May | INFRA-1540 + INFRA-1542 | shipping today (#2245, #2247) |
-| Marcus trust gate (per-gap budgets) | [INFRA-1486](gaps/INFRA-1486.yaml) P0 | open, next pickup |
-| Self-hosted runners actually serve CI | INFRA-1540 ghost-ship recovery | shipping today |
-| 4 follow-up gaps for full INFRA-1534 closure | INFRA-1542 / 1543 / 1544 + CREDIBLE-069 | #2246 armed |
-| Marcus canonical demo interface | [INFRA-1483](gaps/INFRA-1483.yaml) | next P1 after 50/hr push gives breathing room |
+| Chump fleet autopilot — operator playbook as one daemon set | [META-090](gaps/META-090.yaml) P0/m | open, strategic productization; unblocked by 4/5 wizard-retirement criteria below |
+| Marcus arc M-B → M-C (post-demo trust + first-customer-onboard) | new gap TBD when M-B framing lands | breathing room from 50/hr; next P1 |
+| 50-PRs/hr Phase 2 — sustained 4h verification | INFRA-1540/1542 instrumentation follow-up | shipped capacity; now needs the 4h-green run |
+| A2A-first communication discipline (presence ledger + auto-mirror + passive emit) | [INFRA-1932](gaps/INFRA-1932.yaml) P1/m | partial-shipped via #2524 (Pattern 0 in shepherd playbook); 6 ACs remaining |
 
-## Operator action checkpoints in next 15 days
+### Wizard-retirement criteria — 4/5 in flight (META-090 unblock signal)
 
-- **Day +1** (tomorrow): observe cache hit-rate on a heavy job once #2245 lands
-- **Day +10** (~2026-05-26): rack 1+ Raspberry Pi for linux-arm64 lane (INFRA-1543)
-- **Day +14** (~2026-05-30): 50/hr sustained for 4 consecutive hours = green
+The wizard role retires when the daemon mesh covers what the operator does manually 10×/day. Criteria:
+
+| # | Daemon | Status |
+|---|---|---|
+| 1 | curator-jit-scheduler | ✅ shipped INFRA-1892 (PR #2463) |
+| 2 | transient-retrigger | ✅ shipped INFRA-1899 (PR #2482) |
+| 3 | pr-pulse consumer | 🚧 in flight (#2497 INFRA-1898) |
+| 4 | oracle-refresh cron | 🚧 in flight (#2510 META-088) |
+| 5 | curator-launch automation | 🚧 in flight (#2518) |
+
+When 5/5 land, META-090 autopilot can compose them into one daemon-set and the operator stops being the scheduler.
+
+## Operator action checkpoints (refreshed 2026-05-24)
+
+- **Day +1** (~2026-05-25): verify 4/5 wizard-retirement PRs land; identify the holdout
+- **Day +7** (~2026-05-31): 50/hr sustained 4h green; start META-090 autopilot integration
+- **Day +14** (~2026-06-07): META-090 autopilot daemon-set running unattended for 24h
+- **Day +21** (~2026-06-14): Marcus M-B demo ready (post-trust-gate onboarding)
 
 ---
 
