@@ -1,0 +1,28 @@
+- id: INFRA-1691
+  domain: INFRA
+  title: "EFFECTIVE: chump nugget CLI subcommand (add/list/search/keep/delete) — INFRA-1473 follow-up"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Follow-up to INFRA-1473 #2337 (Marcus M-D Phase 2 substrate). Wire the chump-team::nuggets Rust API into a chump CLI subcommand so operators can use it.
+  acceptance_criteria:
+    - chump nugget add --gap <ID> --title 'X' --body '...' [--kind gotcha
+    - pattern
+    - dead_end
+    - failure_mode
+    - convention
+    - other] [--repo URL]
+    - chump nugget list [--repo URL] [--limit N]
+    - chump nugget search '<query>' [--repo URL] [--limit 5] [--min-sim 0.6]
+    - chump nugget keep <UUID> — promote to keeper=true manually
+    - chump nugget delete <UUID>
+    - All commands honor OPENAI_API_KEY for embeddings; nuggets persisted with NULL embedding when unset
+    - Reads CHUMP_TEAM_URL + CHUMP_TEAM_API_KEY from env or ~/.chump/team.toml
+    - src/nugget.rs (mod declaration + dispatch in src/main.rs like preflight)
+    - 3-5 unit tests on the arg parser + 1 CI test scripts/ci/test-chump-nugget-cli.sh
+  notes: |
+    Pairs with INFRA-1692 (pre-claim hook), INFRA-1693 (privacy doc), INFRA-1694 (live test).
+  closed_date: '2026-05-24'
+  closed_pr: 2342
+

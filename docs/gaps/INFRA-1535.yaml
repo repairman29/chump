@@ -1,7 +1,7 @@
 - id: INFRA-1535
   domain: INFRA
   title: "ZERO-WASTE: paramedic RUNNER_AUTOSCALE — register self-hosted runners on queue surge, deregister on idle; per-machine + per-mesh capacity envelopes"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -17,4 +17,6 @@
     - "Today's signal: 24+ queued runs at 2 concurrent saturated for 12+ hours. Autoscale to 4 = ~6 min drain vs ~30 min. Pair with INFRA-1534 (single-runner install) which it builds on"
   notes: |
     Demoted P0→P1 2026-05-16: depends on INFRA-1534 (self-hosted runners) shipping first. Keeping P0 budget reserved for true unblockers across pillars per META-046. Re-promote to P0 after INFRA-1534 lands.
+  closed_date: '2026-05-24'
+  closed_pr: 2234
 
