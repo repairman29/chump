@@ -313,6 +313,12 @@ tool_approval_policy_changed  # reason: INFRA-1340 PRODUCT-109; emission wiring 
 tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
 watchdog_silent            # reason: planned for watchdog heartbeat absence detector
 webhook_cache_write  # reason: INFRA-1873 emitted via _emit_ambient dict-payload in github-webhook-receiver.py (_upsert_pr + _upsert_check_runs call sites); dict-payload emit not grep-scannable as "kind":"webhook_cache_write" literal
+observability_finding  # reason: META-103 emitted by scripts/coord/observability-loop.sh via printf in _emit_finding helper; structured payload {category,severity,kind_or_subject,detail} not grep-scannable as bare "kind":"observability_finding" literal
+kind_that_fires   # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 1; not a production emit
+kind_that_never_fires  # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 1; not a production emit
+loud_detector     # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 5; not a production emit
+noisy_kind        # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 2; not a production emit
+normal_kind       # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 4; not a production emit
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
 oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on THE_PATH.md hash change; printf-direct JSON not grep-scannable as kind=X literal
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
