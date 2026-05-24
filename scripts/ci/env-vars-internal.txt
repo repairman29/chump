@@ -437,6 +437,8 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
 # INFRA-1791: skip gap-preflight-ac-gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ACGATE
+# INFRA-1867: emergency bypass for preflight-vs-CI parity smoke check
+CHUMP_SKIP_PARITY_CHECK
 # INFRA-1719: AST crawler typed inputs
 CHUMP_DECOMPOSE_AST
 # INFRA-1760: A2A Layer 2c CapabilityManifest opt-in hardware fields.
@@ -467,3 +469,8 @@ CHUMP_PREFLIGHT_SKIP_GAPSINT
 CHUMP_NO_VERIFY_REASON
 # INFRA-1834: bot-merge.sh env-controlled --no-verify push escape hatch
 CHUMP_BOT_MERGE_NO_VERIFY
+# INFRA-1875: GitHub Liaison webhook-health probe + polling fallback
+CHUMP_LIAISON_WEBHOOK_HEALTH_URL
+CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS
+CHUMP_LIAISON_POLL_FALLBACK_S
+CHUMP_LIAISON_WEBHOOK_HEALTH_DISABLED

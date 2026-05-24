@@ -1,0 +1,307 @@
+# preflight-ci-parity-exceptions.txt — INFRA-1867
+#
+# Explicit allowlist for CI gates that are NOT mirrored in `chump preflight`
+# and are not classified Tier-D in docs/process/CI_GATES_INVENTORY.md.
+#
+# These are Tier-C gates (mirrorable, follow-up gap filed) and infrastructure
+# setup steps (Tier-D in spirit but not yet documented there). Adding a gate
+# here declares "we know this is not mirrored; a follow-up gap exists or this
+# is intentionally deferred."
+#
+# REMOVING an entry from this file without adding a mirror in src/preflight.rs
+# will cause test-preflight-ci-parity.sh to fail — that is intentional.
+# ADDING a new entry here for a genuinely mirrorable gate must come with a
+# filed follow-up gap ID in the comment.
+#
+# Format:
+#   <script-path-or-step-name-fragment>  # reason: <one-line why> [gap: <ID>]
+#
+# Matching rules (in test-preflight-ci-parity.sh):
+#   - If a gate's run: command contains the entry → allowlisted
+#   - If a gate's step name contains the entry → allowlisted
+#   - Exact match preferred; substrings accepted for compound step names
+#
+# ── Infrastructure / setup steps (cannot mirror — Linux-only or runner state) ─
+Free disk space            # reason: sudo/apt Linux-only disk cleanup; runner-specific; Tier-D in spirit
+Install Linux packages     # reason: apt-get Linux-only; macOS self-hosted skips via `if: runner.os == 'Linux'`
+Install PyYAML             # reason: pip install step; Linux CI runner only; macOS runner skips
+Install Rust toolchain     # reason: dtolnay/rust-toolchain action; GitHub Actions only
+Cache cargo                # reason: Swatinem/rust-cache action; GitHub Actions only
+Build chump (debug         # reason: cargo build step used as prereq; covered by preflight cargo gates
+INFRA-503                  # reason: informational notice step (echo only); not a real gate
+
+# ── PR-shape checks (require GitHub PR context — Tier D) ──────────────────────
+check-pr-scope.sh          # reason: reads PR title via GH_TOKEN + GitHub event context; Tier-D
+check-mass-deletion.sh     # reason: reads PR diff via GitHub API + event context; Tier-D
+test-pr-ac-coverage.sh     # reason: reads PR file list via github.event.pull_request.number; Tier-D
+Warn if PR diff            # reason: uses steps.filter.outputs.code — GitHub Actions output only; Tier-D
+
+# ── Release / staleness (requires live GitHub API state) ─────────────────────
+check-release-staleness.sh # reason: calls GitHub releases API; Tier-D
+
+# ── Runner / self-hosted health (runner-specific) ────────────────────────────
+test-self-hosted-runner-deps.sh  # reason: probes runner PATH for CLIs; runner-specific; Tier-D
+test-workflow-linux-guard.sh     # reason: awk sweep of ci.yml for Linux-only guards; CI-meta gate
+test-broad-canary-coverage.sh    # reason: validates runner canary surface; runner-specific; Tier-D
+test-changes-job-self-hosted.sh  # reason: checks ci.yml routing vars; CI-meta gate
+test-ci-heavy-jobs-cross-platform.sh  # reason: audits CI cross-platform apt-get guards; CI-meta gate
+
+# ── Cargo test (Tier B — pre-push hook mirrors it, not preflight) ─────────────
+cargo-test-with-rerun.sh   # reason: `cargo test --workspace`; runtime > preflight 60s target; Tier-B (pre-push hook)
+
+# ── Advisory-only gates (|| true — not blocking; low mirror ROI) ─────────────
+test-no-claude-leak.sh     # reason: warn-only in CI (|| true not yet removed); gap: INFRA-1793
+test-pwa-parse-gate.sh     # reason: advisory (|| true); gate: INFRA-1621; promote once INFRA-1620 fixed
+test-public-doc-privacy.sh # reason: advisory (|| true); gap: DOC-050/DOC-051
+test-doc-freshness.sh      # reason: warn-only; DOC-041; no operator action until --strict mode ships
+no-inline-ambient-printf   # reason: lint-only; static analysis of CI config; low local value
+
+# ── Research / eval harness (requires eval infrastructure) ───────────────────
+test-research-026-preflight.sh  # reason: eval harness preflight; requires scripts/eval/ setup; Tier-D
+research-lane-a-smoke.sh        # reason: eval harness smoke; requires scripts/eval/ infra; Tier-D
+
+# ── PWA / web (requires running chump --web server) ─────────────────────────
+test-pwa-flake-quarantine.sh      # reason: PWA server interaction; Tier-D
+test-pwa-version-compat.sh        # reason: PWA version check; depends on running server; Tier-D
+test-pwa-workflow-observability.sh # reason: PWA workflow; requires running server; Tier-D
+
+# ── CI-structure / meta-checks (checks the CI pipeline itself) ───────────────
+test-preflight-ci-parity.sh       # reason: this script itself; self-reference via the ci.yml step added in INFRA-1867
+test-observability-coverage.sh    # reason: diff-aware PR gate (BASE_REF=origin/main); Tier-D
+test-obs-coverage-guard.sh        # reason: CI meta — audits new src/ files for tracing hooks; CI-structural
+test-infra-257-doc-only-guards.sh # reason: CI meta — checks doc-only CI paths; CI-structural
+check-path-filter-coverage.sh     # reason: already in preflight --with-tests whitelist (optional); not required
+
+# ── Tier-C (mirrorable — follow-up gaps filed, Tier-C in CI_GATES_INVENTORY) ─
+# These are the gates that produce the most CI failures. Each has a filed gap.
+# Remove from this file when the gap ships and preflight.rs gains the mirror.
+
+# Mirrorable: AC completeness / gap quality
+test-gap-preflight-ac-gate.sh   # reason: MIRRORED in preflight.rs — should not appear; if here, BUG
+
+# Remaining Tier-C gates (not yet mirrored — follow-up gaps exist or TBD):
+test-infra-124-docs-delta-trailer.sh  # reason: Tier-C; gap: INFRA-1788
+test-markdown-intra-doc-links.sh      # reason: Tier-C; gap: INFRA-1790
+
+# All other fast-checks and audit job steps not mirrored above:
+# (The large body of functional test scripts — ~150+ scripts — are integration
+#  tests that exercise individual chump features. They are NOT candidates for
+#  preflight mirroring because preflight targets the <60s fast-feedback loop.
+#  Each would need a dedicated analysis. Tracked as a group under INFRA-1861.)
+coord-surfaces-smoke.sh
+precommit-strict-replay.sh
+test-agent-throughput.sh
+test-alert-classifier.sh
+test-ambient-schema.sh
+test-attribution-portable.sh
+test-auto-arm-sweeper.sh
+test-autonomous-ship-rate.sh
+test-autoscale-decisions.sh
+test-book-sync-guard.sh
+test-bot-merge-conflict-wiring.sh
+test-bot-merge-exit-codes.sh
+test-bot-merge-exit-phases.sh
+test-bot-merge-graphql-preflight.sh
+test-bot-merge-stacked-rebase.sh
+test-bot-merge-watchdog.sh
+test-bounced-pr-detector.sh
+test-cache-event-emission.sh
+test-cache-mergestatestatus.sh
+test-cargo-target-reaper.sh
+test-change-approval.sh
+test-ci-flake-rerun.sh
+test-claim-fuzzy-match.sh
+test-claude-reaper.sh
+test-cli-version-debug.sh
+test-cockpit-wake-fleet.sh
+test-conflict-resolver.sh
+test-cost-enforcement.sh
+test-credential-lifecycle.sh
+test-credential-pattern-guard.sh
+test-cross-judge-guard.sh
+test-curator-auto-decompose.sh
+test-curator-decision-logging.sh
+test-curator-freshness.sh
+test-curator-p0-demotion.sh
+test-default-flip-guard.sh
+test-docs-delta-guard.sh
+test-effective-010-completion.sh
+test-error-path-coverage.sh
+test-flake-autorerun.sh
+test-fleet-bootstrap.sh
+test-fleet-brief-pillar-table.sh
+test-fleet-fanout.sh
+test-fleet-metrics-snapshot.sh
+test-fleet-race-loss.sh
+test-fleet-spec.sh
+test-fleet-starve-auto-action.sh
+test-fleet-state-mutex.sh
+test-fleet-status-rate-limit.sh
+test-gap-ac-requirement.sh
+test-gap-closure-consistency-fixture.sh
+test-gap-divergence-guard.sh
+test-gap-doctor-safe-sweep.sh
+test-gap-impact-rating.sh
+test-gap-lifecycle-manager.sh
+test-gap-list-since-json-schema.sh
+test-gap-profiling.sh
+test-gap-quality-gate.sh
+test-gap-rebalance.sh
+test-gap-run-now.sh
+test-gap-status-flip.sh
+test-gap-templates.sh
+test-gap-workflow-status.sh
+test-gh-api-probe.sh
+test-gh-shim-script-attribution.sh
+test-git-identity-guard.sh
+test-hardcoded-date-guard.sh
+test-infra-1025-atomic-claim.sh
+test-infra-109-worktree-boundary.sh
+test-infra-115-lease-ttl-file.sh
+test-infra-119-bot-merge-hang.sh
+test-infra-250-v1-retirement.sh
+test-infra-254-pwa-root-redirect.sh
+test-infra-258-reaper-partial-delivery.sh
+test-inspect-resume-scrap.sh
+test-install-ambient-hooks.sh
+test-install-gh-shim-worktree-safe.sh
+test-install-pr-auto-rebase.sh
+test-keystone-cascade.sh
+test-known-flakes-gate.sh
+test-lint-handoff-comment.sh
+test-mcp-coord-smoke.sh
+test-merge-driver-ci-yml.sh
+test-merge-driver-pre-commit.sh
+test-merge-driver-state-sql.sh
+test-meta-011-git-stomp.sh
+test-migration-pipeline-gates.sh
+test-model-registry.sh
+test-no-manual-ship-bypass.sh
+test-no-verify-audit.sh
+test-orphan-pr-closer.sh
+test-orphan-worktree-prune.sh
+test-per-worktree-target-guard.sh
+test-pick-and-claim-lockdir.sh
+test-picker-priority.sh
+test-pillar-balance.sh
+test-pipefail-race-sweep.sh
+test-pr-auto-rebase.sh
+test-pr-blocked-watch.sh
+test-pr-explain-block.sh
+test-pr-failure-auto-rescue.sh
+test-pr-rescue-audit-handler.sh
+test-pr-triage-bot.sh
+test-pr-watch-auto-resolve.sh
+test-pr-watch-shepherd-smoke.sh
+test-pre-push-force-lease-guard.sh
+test-pre-push-preflight-hook.sh
+test-pre-push-rebase-allow.sh
+test-pre-push-test-gate.sh
+test-precommit-guard-audit.sh
+test-precommit-strict-replay.sh
+test-prepush-worktree-cd.sh
+test-prereg-content-guard.sh
+test-raw-yaml-guard.sh
+test-required-model.sh
+test-review-handoff-reengage.sh
+test-rollback-gap.sh
+test-rollup-cascade-cancel.sh
+test-rollup-semantic.sh
+test-run-consolidation.sh
+test-run-fleet-cross-repo.sh
+test-sandbox-isolation.sh
+test-speculative-on-speculative-guard.sh
+test-spike-isolation.sh
+test-stale-binary-ship-blocked.sh
+test-stale-branch-rebase.sh
+test-stale-process-watchdog.sh
+test-status-flip-proof-of-merge.sh
+test-subagent-epilogue-ref.sh
+test-submodule-guard.sh
+test-tool-normalize.sh
+test-triage-test-failure.sh
+test-velocity-trending.sh
+test-worker-circuit-breaker.sh
+test-worker-first-output-watchdog.sh
+test-worker-timeout-no-commit.sh
+test-worktree-contamination-check.sh
+test-worktree-prune-protects-live-edits.sh
+test-worktree-show-toplevel.sh
+
+# ── Audit job steps (builds + test runners requiring chump binary) ────────────
+# These use CHUMP_BIN and cargo build — expensive; not in preflight fast path
+test-gap-list-domain-summary.sh
+test-gap-list-done-format.sh
+test-infra-779-gitdir-repair.sh
+test-known-flake-skip.sh
+test-pr-scope-title-fallback.sh
+test-bot-merge-arm-ship-order.sh
+test-operator-recovery.sh
+test-pillar-dashboard.sh
+test-merge-driver-ci-yml-add-row.sh
+test-edit-replay.sh
+test-pwa-auth-toast-stream.sh
+test-pillar-balance-guard.sh
+test-cargo-mutex-isolation.sh
+test-system-integration.sh
+test-gap-consolidate.sh
+test-gap-audit-ac-open.sh
+test-gap-add-note.sh
+test-gap-list-since.sh
+test-api-gap-queue-shape.sh
+test-gap-show-ac-render.sh
+test-gap-closure-consistency-fixture.sh
+test-release-lease-flag.sh
+test-uuid-gap-id-compat.sh
+test-state-db-restore.sh
+test-pwa-e2e-gap-workflow.sh
+test-pwa-security.sh
+test-bot-merge-auto-close.sh
+test-gap-reserve-concurrency.sh
+test-gap-reserve-padding.sh
+test-gap-id-cross-session.sh
+test-cli-help.sh
+test-cli-fleet-coord.sh
+test-cli-integration.sh
+test-cli-output-format.sh
+test-orchestrate-session-summary.sh
+test-fleet-brief.sh
+
+# ── Standalone build steps (not a test gate) ─────────────────────────────────
+apalis-poc                 # reason: standalone example workspace build; not a functional gate
+
+# ── Multi-line run: block steps (require cargo build + CHUMP_BIN) ─────────────
+# These steps use multi-line run: | blocks that also call cargo build before
+# running a test script. The parser captures only the first line (cargo build
+# or export). The test script itself is in the audit exceptions above, but the
+# step name must also be allowlisted for fragment matching.
+docs/gaps.yaml must not exist          # reason: inline shell check (no script path); structural gate
+fleet brief subcommand                  # reason: needs cargo build + CHUMP_BIN; test-fleet-brief.sh allowlisted above
+orchestrate session-summary             # reason: needs cargo build + CHUMP_BIN; test-orchestrate-session-summary.sh above
+gap-reserve concurrency                 # reason: needs cargo build + PATH export; test-gap-reserve-concurrency.sh above
+gap-reserve ID zero-padding             # reason: needs cargo build + PATH export; test-gap-reserve-padding.sh above
+gap-ID cross-session collision          # reason: needs CHUMP_BIN env var; test-gap-id-cross-session.sh above
+bot-merge auto-close handshake          # reason: needs CHUMP_BIN env var; test-bot-merge-auto-close.sh above
+CLI help system consistency             # reason: needs CHUMP_BIN env var; test-cli-help.sh above
+CLI fleet + health + coord              # reason: needs CHUMP_BIN env var; test-cli-fleet-coord.sh above
+CLI integration tests                   # reason: needs CHUMP_BIN env var; test-cli-integration.sh above
+chump gap list domain summary           # reason: needs cargo build + CHUMP_BIN; test-gap-list-domain-summary.sh above
+chump gap list done-format              # reason: needs cargo build + CHUMP_BIN; test-gap-list-done-format.sh above
+state.db corruption recovery            # reason: needs CHUMP_BIN env var; test-state-db-restore.sh above
+PWA gap workflow e2e                    # reason: needs CHUMP_BIN env var; test-pwa-e2e-gap-workflow.sh above
+waste-tally --domain                    # reason: needs cargo build; test-waste-tally-domain.sh above
+gap audit-ac --open                     # reason: needs cargo build + CHUMP_BIN; test-gap-audit-ac-open.sh above
+UUID gap-ID compatibility               # reason: needs CHUMP_BIN env var; test-uuid-gap-id-compat.sh above
+gap show AC rendering                   # reason: needs cargo build + CHUMP_BIN; test-gap-show-ac-render.sh above
+chump gap set --add-note                # reason: needs cargo build + CHUMP_BIN; test-gap-add-note.sh above
+CLI output format consistency           # reason: needs CHUMP_BIN env var; test-cli-output-format.sh above
+gap consolidate                         # reason: needs cargo build + CHUMP_BIN; test-gap-consolidate.sh above
+PWA gap endpoint security               # reason: needs CHUMP_BIN env var; test-pwa-security.sh above
+release --lease                         # reason: needs CHUMP_BIN env var; test-release-lease-flag.sh above
+chump gap list --since filter           # reason: needs cargo build + CHUMP_BIN; test-gap-list-since.sh above
+/api/gap-queue fat shape                # reason: needs cargo build + CHUMP_BIN; test-api-gap-queue-shape.sh above
+CI regression guard suite               # reason: multi-line block with env export + git script; INFRA-1421; Tier-D
+
+# ── Deprecated/disabled steps (if: false) ────────────────────────────────────
+# These jobs have `if: false` and never run — parity is moot.
+# (tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path are in INFRA_JOBS skip list)

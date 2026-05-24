@@ -3367,6 +3367,15 @@ events:
     trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, path, reason]
+  # ── INFRA-1867: preflight-vs-CI parity drift ──────────────────────────────
+  - kind: ci_parity_drift
+    effect_metric: self
+    emitter: scripts/ci/test-preflight-ci-parity.sh (INFRA-1867)
+    trigger: a CI gate in .github/workflows/ci.yml is not mirrored in src/preflight.rs
+      and is not listed as Tier-D in CI_GATES_INVENTORY.md or allowlisted in
+      preflight-ci-parity-exceptions.txt.
+    consumers: [fleet-brief, operator-recall, ops-audit]
+    fields_required: [ts, kind, gate_name, ci_path]
   # ── INFRA-1199: ci-yml merge driver abort ─────────────────────────────────
   - kind: ci_yml_merge_driver_abort
     effect_metric: self
@@ -4391,3 +4400,69 @@ events:
       sweep re-evaluates pressure from scratch.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, allocated, limit, pct, threshold, new_reap_age]
+
+  # INFRA-1875: GitHub Liaison webhook-health probe + polling fallback.
+  # Closes INFRA-1318 Phase 2 AC #5/#6.
+  - kind: liaison_webhook_unhealthy
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Webhook-receiver health probe (default http://127.0.0.1:8765/health)
+      failed CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS times in a row (default 3).
+      Liaison drops poll interval to fallback value and emits
+      liaison_polling_fallback_active on the same cycle.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, consecutive_failures, url, last_error]
+
+  - kind: liaison_polling_fallback_active
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Companion to liaison_webhook_unhealthy — emitted on the cycle the
+      liaison switches from normal interval to fallback (default 30s). Pairs
+      with liaison_webhook_recovered which fires on the next successful probe.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, poll_interval_s, reason]
+
+  - kind: liaison_webhook_recovered
+    effect_metric: self
+    emitter: scripts/ops/github-liaison.sh (INFRA-1875)
+    trigger: >
+      Successful webhook-health probe after the liaison had been in
+      polling-fallback mode. Original poll interval restored. Pairs with
+      liaison_polling_fallback_active.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pid, poll_interval_s, url]
+  # INFRA-1892: curator-jit-scheduler daemon. Replaces the
+  # orchestrator-as-pebble-scheduler antipattern by auto-broadcasting
+  # next-gap assignments to curator-opus-* sessions on DONE events.
+  - kind: curator_jit_scheduled
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      A curator-opus-* session emitted a DONE event (or kind=gap_shipped).
+      The daemon called the existing _pick_gap.py with priority filter
+      P0,P1 (default), selected the top candidate, and broadcast a JIT
+      ASSIGNMENT to that curator's inbox via broadcast.sh.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, priority]
+
+  - kind: curator_jit_skipped
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Skipped a JIT broadcast — either dedup-window hit (same curator+gap
+      within CHUMP_JIT_DEDUP_WINDOW_S, default 3600s) or the broadcast.sh
+      call itself failed. Reason field discriminates.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, reason]
+
+  - kind: curator_jit_no_gap
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Curator finished a gap but _pick_gap.py returned no candidate
+      matching the priority filter (P0/P1 default). The daemon logs and
+      stands by; the curator will idle until a new pickable gap appears.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator]

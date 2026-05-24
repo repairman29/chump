@@ -922,11 +922,29 @@ jobs:
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-cli-integration.sh
 
+      - name: CI gate promotion no-regression (INFRA-1869)
+        # Asserts every gate listed in docs/process/CI_GATE_PROMOTION_LOG.md is
+        # currently strict-fail in .github/workflows/ci.yml. A promoted gate that
+        # regresses to --warn-only or `|| true` fails this check.
+        # No bypass env var by design — demoting a gate requires editing the log AND
+        # adding `CI-Promotion-Reverted: <reason>` to the commit body.
+        run: bash scripts/ci/test-gate-promotion-no-regression.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
       - name: apalis-poc (standalone, --locked)
         run: cargo build --locked --manifest-path examples/apalis-poc/Cargo.toml
+
+      # INFRA-1867: preflight-vs-CI parity smoke.
+      # Asserts every required-check CI gate is EITHER mirrored in
+      # `chump preflight` (src/preflight.rs) OR Tier-D in
+      # docs/process/CI_GATES_INVENTORY.md OR allowlisted in
+      # scripts/ci/preflight-ci-parity-exceptions.txt.
+      # Exits non-zero on unmirrored + non-allowlisted gate; emits
+      # kind=ci_parity_drift for each violating gate to ambient.jsonl.
+      - name: preflight-vs-CI parity smoke (INFRA-1867)
+        run: bash scripts/ci/test-preflight-ci-parity.sh
 
   # ── Shard 2: clippy ───────────────────────────────────────────────────────
   # Workspace-wide clippy with -D warnings. Runs in parallel with cargo-test
