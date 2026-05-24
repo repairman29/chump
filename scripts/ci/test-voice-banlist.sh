@@ -89,11 +89,16 @@ _changed_docs_files() {
   git -C "$REPO_ROOT" diff --name-only "$base..HEAD" 2>/dev/null \
     | grep '^docs/' \
     | grep -E '\.(md|txt|rst|adoc)$' \
+    | grep -v '^docs/process/VOICE_GUARDRAIL\.md$' \
     || true
+  # VOICE_GUARDRAIL.md is excluded: it is the definitional document that lists
+  # banned words as examples. Scanning it would be self-defeating.
 }
 
-# Fallback: compare against origin/main if the base ref doesn't resolve
-BASE_REF="origin/$BASE_BRANCH"
+# Build BASE_REF: if BASE_BRANCH already contains a slash (e.g. "origin/main")
+# use it directly; otherwise prefix with "origin/" so "main" → "origin/main".
+# This prevents the double-prefix bug when CI passes --base=origin/main.
+[[ "$BASE_BRANCH" == */* ]] && BASE_REF="$BASE_BRANCH" || BASE_REF="origin/$BASE_BRANCH"
 if ! git -C "$REPO_ROOT" rev-parse "$BASE_REF" &>/dev/null; then
   BASE_REF="HEAD~1"
 fi
