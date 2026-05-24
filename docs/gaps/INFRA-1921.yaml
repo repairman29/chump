@@ -1,0 +1,13 @@
+- id: INFRA-1921
+  domain: INFRA
+  title: "ZERO-WASTE P1: batch the 5 ZERO-WASTE preflight-gate PRs (#2448/#2455/#2460/#2464/#2466) into a single PR — they touch same 2 files, serialize naturally, have caused 3 mass-rescue cycles today (~150 GA-min waste)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Background — 5 sibling PRs (INFRA-1854 pr-hygiene, INFRA-1855 cargo-test, INFRA-1857 integration-test, INFRA-1858 chump-first, INFRA-1859 acp-smoke) each add ONE preflight gate to src/preflight.rs + ONE reservation line to scripts/ci/event-registry-reserved.txt. They all touch the same 2 files at the same insertion point. Every time main moves, all 5 conflict identically and need mass-rescue. Today: rescued 3 times (~15 GA-min × 5 PRs × 3 cycles = ~225 cumulative actions-minutes burned)"
+    - "Pick ONE owner (or wizard) to: claim a fresh INFRA-1922 gap, batch all 5 gate additions into one preflight.rs edit (5 if/else blocks contiguously) + one event-registry-reserved.txt edit (5 reservation lines contiguously), single commit, single PR. Ship that PR. THEN close the 5 sibling PRs with 'superseded by #NNNN' comment + chump gap ship --closed-pr NNNN --update-yaml for each of INFRA-1854/1855/1857/1858/1859"
+    - "Sequencing — wait until at most 1 of the 5 is still cycling (the others should naturally merge first if rescue cadence is fast). Avoid the worst case where the batch PR + a sibling both try to land = same conflict re-emerges"
+    - "Verification — after batch lands, all 5 INFRA-185X gaps closed in state.db with same closed_pr value; bash scripts/ci/test-preflight-{prhygiene,cargotest,integration,chumpfirst,acpsmoke}-gate.sh all pass on the merged main"
+    - "Done definition — 1 PR merged that adds all 5 gates atomically; 5 sibling PRs closed as superseded; preflight has all 5 new gates active"
+  notes: filed 15:11Z 2026-05-24 by wizard after 3rd identical mass-rescue cycle on the same 5-PR cluster; structural serialization fix
