@@ -4847,3 +4847,15 @@ events:
       Aggregated in retro to surface bypass-pattern abuse.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, pr]
+  # INFRA-1888: detect-gap-failure bypass mode audit trail
+  - kind: detect_gap_failure_lax
+    effect_metric: self
+    emitter: scripts/coord/detect-gap-failure.sh (INFRA-1888)
+    trigger: >
+      CHUMP_DETECT_GAP_FAILURE_INCLUDE_DONE=1 bypass env is active — the
+      gap-failure detector is running in lax mode where status=done gaps are
+      included in the scan. Emitted once per detector invocation when bypass
+      is in effect, to surface operator use of the debug override in the
+      ambient stream.
+    consumers: [audit-log]
+    fields_required: [ts, kind, reason]
