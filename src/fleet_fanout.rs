@@ -63,6 +63,12 @@ pub struct FanoutSpec {
     /// Default domain for reserved gaps (defaults to "INFRA").
     #[serde(default = "default_domain")]
     pub domain: String,
+    /// INFRA-1935: resolved commit SHA for --reference flag (Marcus M-B).
+    /// Operator passes a commit SHA or PR-N; chump fanout resolves PR-N to
+    /// merge commit SHA via REST (not GraphQL — fleet GraphQL is exhausted).
+    /// Serialized into per-worktree agent dispatch payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 fn default_effort() -> String {
@@ -106,6 +112,10 @@ pub struct PlannedRepoGap {
     /// that the operator should be aware of when running concurrent
     /// worktrees. Lands as real container isolation under INFRA-1454.
     pub env_isolation_warnings: Vec<String>,
+    /// INFRA-1935: resolved commit SHA from --reference flag, propagated
+    /// per-worktree so each agent dispatch payload carries the reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 impl FanoutSpec {
@@ -173,6 +183,7 @@ impl FanoutSpec {
                     target_repo,
                     repo_label: label,
                     env_isolation_warnings: env_warnings,
+                    reference: self.reference.clone(),
                 }
             })
             .collect()
@@ -257,7 +268,55 @@ pub fn build_gap_notes(g: &PlannedRepoGap) -> String {
     for w in &g.env_isolation_warnings {
         s.push_str(&format!("\\nenv_hint: {w}"));
     }
+    if let Some(r) = &g.reference {
+        s.push_str(&format!("\\nreference: {r}"));
+    }
     s
+}
+
+/// INFRA-1935: Render the agent dispatch prompt template.
+///
+/// Reads `scripts/dispatch/fanout-agent-prompt.md` from `repo_root`, then:
+/// - If `reference_sha` is Some, substitutes `{{REFERENCE_DIFF}}` with the
+///   actual `git diff <sha>^..<sha>` output (best-effort; empty string on
+///   failure) and injects the "Reference implementation" section.
+/// - If `reference_sha` is None, substitutes `{{REFERENCE_DIFF}}` with an
+///   empty string so the today-path renders without the reference block.
+///
+/// Returns the populated template string, or an error if the template file
+/// cannot be read.
+pub fn render_agent_prompt(
+    repo_root: &Path,
+    reference_sha: Option<&str>,
+) -> Result<String, String> {
+    let template_path = repo_root.join("scripts/dispatch/fanout-agent-prompt.md");
+    let template = std::fs::read_to_string(&template_path)
+        .map_err(|e| format!("read {}: {e}", template_path.display()))?;
+
+    let populated = match reference_sha {
+        Some(sha) => {
+            // Obtain the diff for this SHA via git. Best-effort: if git is
+            // unavailable or the SHA doesn't resolve, we fall back to an
+            // informational placeholder rather than hard-failing.
+            let diff_output = std::process::Command::new("git")
+                .args(["diff", &format!("{sha}^"), sha])
+                .current_dir(repo_root)
+                .output();
+            let diff_text = match diff_output {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+                Ok(o) => {
+                    // git exited non-zero (e.g. SHA not found in this repo).
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    format!("(git diff failed for {sha}: {stderr})")
+                }
+                Err(e) => format!("(could not exec git: {e})"),
+            };
+            template.replace("{{REFERENCE_DIFF}}", &diff_text)
+        }
+        None => template.replace("{{REFERENCE_DIFF}}", ""),
+    };
+
+    Ok(populated)
 }
 
 /// Aggregate `chump gap list --json` output into per-status counts and
@@ -537,5 +596,115 @@ success: ok
         assert_eq!(report.rows.len(), 1);
         assert_eq!(report.rows[0].repo_label, ""); // no repo_label in the synthetic notes
         assert_eq!(report.rows[0].target_repo, "/x");
+    }
+
+    // ── INFRA-1935: reference field propagation ───────────────────────────────
+
+    #[test]
+    fn reference_field_defaults_to_none() {
+        let s = FanoutSpec::from_yaml(SAMPLE).expect("parse");
+        assert_eq!(s.reference, None);
+    }
+
+    #[test]
+    fn reference_propagates_into_planned_gaps() {
+        let mut s = FanoutSpec::from_yaml(SAMPLE).expect("parse");
+        s.reference = Some("abc1234def5678".to_string());
+        let plan = s.plan(Path::new("/tmp/spec-dir"));
+        for g in &plan {
+            assert_eq!(
+                g.reference.as_deref(),
+                Some("abc1234def5678"),
+                "reference should propagate to every PlannedRepoGap"
+            );
+        }
+    }
+
+    #[test]
+    fn reference_none_not_propagated_when_unset() {
+        let s = FanoutSpec::from_yaml(SAMPLE).expect("parse");
+        let plan = s.plan(Path::new("/tmp/spec-dir"));
+        for g in &plan {
+            assert_eq!(g.reference, None, "reference should be None when not set");
+        }
+    }
+
+    #[test]
+    fn build_gap_notes_includes_reference_when_set() {
+        let mut s = FanoutSpec::from_yaml(SAMPLE).expect("parse");
+        s.reference = Some("deadbeef1234".to_string());
+        let plan = s.plan(Path::new("/tmp"));
+        let notes = build_gap_notes(&plan[0]);
+        assert!(
+            notes.contains("reference: deadbeef1234"),
+            "notes should contain reference SHA; got: {notes}"
+        );
+    }
+
+    #[test]
+    fn build_gap_notes_omits_reference_when_none() {
+        let s = FanoutSpec::from_yaml(SAMPLE).expect("parse");
+        let plan = s.plan(Path::new("/tmp"));
+        let notes = build_gap_notes(&plan[0]);
+        assert!(
+            !notes.contains("reference:"),
+            "notes should not contain reference when not set; got: {notes}"
+        );
+    }
+
+    // ── INFRA-1935: render_agent_prompt today-path and reference-path ─────────
+
+    #[test]
+    fn render_prompt_today_path_substitutes_empty_diff() {
+        // Write a minimal template to a temp dir, verify {{REFERENCE_DIFF}} → "".
+        let tmp = std::env::temp_dir().join("chump-fanout-test-today");
+        let dispatch_dir = tmp.join("scripts/dispatch");
+        std::fs::create_dir_all(&dispatch_dir).unwrap();
+        let tpl = "Before\n{{REFERENCE_DIFF}}\nAfter\n";
+        std::fs::write(dispatch_dir.join("fanout-agent-prompt.md"), tpl).unwrap();
+
+        let result = render_agent_prompt(&tmp, None).expect("render");
+        assert!(
+            result.contains("Before\n\nAfter"),
+            "today-path: {{REFERENCE_DIFF}} should be replaced with empty string; got: {result}"
+        );
+        assert!(
+            !result.contains("{{REFERENCE_DIFF}}"),
+            "placeholder should be fully substituted"
+        );
+    }
+
+    #[test]
+    fn render_prompt_reference_path_substitutes_placeholder() {
+        // Write a minimal template and verify the placeholder is substituted
+        // (even though git diff may not find the SHA in CI — the substitution
+        // itself is what we test here; we use a SHA that will fail gracefully).
+        let tmp = std::env::temp_dir().join("chump-fanout-test-ref");
+        let dispatch_dir = tmp.join("scripts/dispatch");
+        std::fs::create_dir_all(&dispatch_dir).unwrap();
+        let tpl = "---\n{{REFERENCE_DIFF}}\n---\n";
+        std::fs::write(dispatch_dir.join("fanout-agent-prompt.md"), tpl).unwrap();
+
+        // Use a SHA that won't exist in /tmp so git fails gracefully.
+        let result = render_agent_prompt(&tmp, Some("0000000000000000000000000000000000000000"))
+            .expect("render");
+        // The placeholder must be gone regardless of whether git succeeded.
+        assert!(
+            !result.contains("{{REFERENCE_DIFF}}"),
+            "placeholder should always be substituted; got: {result}"
+        );
+        // Template structure must be preserved.
+        assert!(result.contains("---"), "template structure preserved");
+    }
+
+    #[test]
+    fn render_prompt_missing_template_returns_error() {
+        let tmp = std::env::temp_dir().join("chump-fanout-test-missing-tpl");
+        // Don't create the template file.
+        let err = render_agent_prompt(&tmp, None).unwrap_err();
+        assert!(
+            err.contains("fanout-agent-prompt.md") || err.contains("read"),
+            "error should mention the template path; got: {err}"
+        );
     }
 }
