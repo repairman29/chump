@@ -988,6 +988,16 @@ events:
     effect_metric: self
     emitter: scripts/ops/audit-flake-catalog.sh (INFRA-1866)
     trigger: CHUMP_AUDIT_FLAKE_CATALOG=0 silences the daily audit
+  - kind: ci_qa_score
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-score.sh (INFRA-1872 / parent INFRA-1861 slice g)
+    trigger: daily aggregate — pct of last-N merged PRs landed clean (no --no-verify, no flake-rerun, no post-CI rebase)
+    consumers: [audit-log, fleet-brief, dashboard]
+
+  - kind: ci_qa_score_bypassed
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-score.sh (INFRA-1872)
+    trigger: CHUMP_CI_QA_SCORE=0 silences the daily score
     consumers: [audit-log]
 
   - kind: flake_rerun
