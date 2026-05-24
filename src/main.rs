@@ -284,6 +284,94 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-1886: `chump gap preflight <ID>` advisory hint. When the target
+/// gap is open + unclaimed, surface up to 3 higher-priority unclaimed gaps
+/// so the picker is nudged toward what's actually starved without enforcing
+/// hard ranked-pull semantics. No exit-code change; prints to stderr after
+/// the existing OK line.
+///
+/// Bypass: `CHUMP_PREFLIGHT_NO_SUGGEST=1` silences the note (mirrors the
+/// existing CHUMP_PREFLIGHT_SKIP_* discipline).
+///
+/// Emits `kind=preflight_priority_hint_shown` to ambient when the note
+/// fires, with fields `{target_gap, suggested_gaps_count, target_priority}`.
+fn print_priority_hint(store: &gap_store::GapStore, target_id: &str, repo_root: &std::path::Path) {
+    // Get target priority. If we can't read it, skip silently — preflight's
+    // exit code is already set; this is best-effort advisory.
+    //
+    // gap_store::GapRow.priority is Option<String> on the get() path
+    // (different struct than list()'s). Normalize to a plain string.
+    let target_priority: String = match store.get(target_id) {
+        Ok(Some(row)) => row.priority,
+        _ => return,
+    };
+    // Already P0 → nothing higher to suggest.
+    if target_priority == "P0" {
+        return;
+    }
+    // Pull all open gaps; filter to higher-priority (lower priority-number),
+    // exclude the target itself, sort by priority asc then created_at asc.
+    let opens = match store.list(Some("open")) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let target_rank = priority_rank(&target_priority);
+    let mut candidates: Vec<_> = opens
+        .into_iter()
+        .filter(|g| g.id != target_id)
+        .filter(|g| priority_rank(&g.priority) < target_rank)
+        .collect();
+    candidates.sort_by(|a, b| {
+        priority_rank(&a.priority)
+            .cmp(&priority_rank(&b.priority))
+            .then_with(|| a.created_at.cmp(&b.created_at))
+    });
+    let top: Vec<_> = candidates.into_iter().take(3).collect();
+    if top.is_empty() {
+        return;
+    }
+    eprintln!("[preflight] note — higher-priority unclaimed gaps you could pick instead:");
+    for g in &top {
+        let title: String = g.title.chars().take(50).collect();
+        let pillar = g.title.split(':').next().unwrap_or("").trim();
+        eprintln!(
+            "[preflight]   {pri:<2} {pillar:<10} {id} — {title}",
+            pri = g.priority,
+            id = g.id
+        );
+    }
+    // Best-effort ambient emit. Failure here is silent.
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let event = format!(
+        r#"{{"ts":"{now}","kind":"preflight_priority_hint_shown","target_gap":"{target_id}","suggested_gaps_count":{},"target_priority":"{target_priority}"}}"#,
+        top.len()
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{event}");
+    }
+}
+
+/// Priority string → ordinal (P0=0, P1=1, P2=2, P3=3). Unknown → 99 so it
+/// sorts last and doesn't get suggested.
+fn priority_rank(p: &str) -> u8 {
+    match p {
+        "P0" => 0,
+        "P1" => 1,
+        "P2" => 2,
+        "P3" => 3,
+        _ => 99,
+    }
+}
+
 /// INFRA-431: domains whose rows are pure test fixtures and should be
 /// hidden from the default `chump gap list` output. The 2026-05-03 INFRA-428
 /// audit found 306 leaked SPIKE/TEST/TEST168 rows in production state.db.
@@ -6489,6 +6577,14 @@ async fn main() -> Result<()> {
                 match store.preflight(&gap_id) {
                     Ok(gap_store::PreflightResult::Available) => {
                         println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                        // INFRA-1886: soft pre-claim suggestion. If target
+                        // is not P0 and CHUMP_PREFLIGHT_NO_SUGGEST is unset,
+                        // surface up to 3 higher-priority unclaimed gaps as
+                        // advisory. Doesn't change exit code; just nudges
+                        // picker toward what's actually starved.
+                        if std::env::var("CHUMP_PREFLIGHT_NO_SUGGEST").as_deref() != Ok("1") {
+                            print_priority_hint(&store, &gap_id, &repo_root);
+                        }
                         return Ok(());
                     }
                     Ok(gap_store::PreflightResult::Done) => {

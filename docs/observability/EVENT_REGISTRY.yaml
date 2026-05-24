@@ -4466,3 +4466,14 @@ events:
       stands by; the curator will idle until a new pickable gap appears.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, curator]
+  # INFRA-1886: soft pre-claim suggestion in `chump gap preflight <ID>`.
+  - kind: preflight_priority_hint_shown
+    effect_metric: self
+    emitter: src/main.rs print_priority_hint() (INFRA-1886)
+    trigger: >
+      `chump gap preflight <ID>` returned OK for a target gap whose
+      priority is below P0; print_priority_hint surfaced up to 3
+      higher-priority unclaimed gaps as advisory. Operator + curator
+      see the note; choice to abandon the intended claim remains theirs.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, target_gap, suggested_gaps_count, target_priority]
