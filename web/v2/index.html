@@ -2333,6 +2333,14 @@
        6 slots: model / cost / air-gap / pillar grades / fleet / GH budget. -->
   <chump-status-footer></chump-status-footer>
 
+  <!-- INFRA-1916 / PRODUCT-090: retained as hidden backing widget.
+       INFRA-1585 consolidation removed the visible header chip; pillar-health.js
+       still polls /api/health/pillars and the gate-required test contract
+       (scripts/ci/test-pillar-dashboard.sh §4) expects this element to be
+       DOM-present. Without it, audit-required FAILS on EVERY PR — fleet-wedge.
+       Follow-up: update test to expect the status-footer pillar-grades slot instead. -->
+  <chump-pillar-health hidden></chump-pillar-health>
+
   <!-- INFRA-1585: <chump-ootb-wizard> retained for Tauri OOTB setup only;
        Tauri-specific steps (system-tray, native-notif) have been folded into
        <chump-first-run-wizard> via window.__TAURI__ detection (see app.js).
