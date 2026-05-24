@@ -1,0 +1,22 @@
+- id: INFRA-1879
+  domain: INFRA
+  title: 'RESILIENT P0: inbox-poll.sh fails silently for curator sessions — needs robust session-ID derivation when CHUMP_SESSION_ID
+    unset and no active claim (INFRA-1860 followup)'
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+  - 'scripts/coord/inbox-poll.sh derivation order: 1) CHUMP_SESSION_ID 2) CLAUDE_SESSION_ID 3) most-recent .chump-locks/claim-*.json
+    4) tmux pane title via tmux display-message 5) no-op silently'
+  - All 6 known curator sessions must be discoverable via at least one path
+  - Smoke test scripts/ci/test-inbox-poll-session-derivation.sh covers each derivation path
+  - Bypass CHUMP_AUTO_INBOX_POLL=0 still honored
+  - Audit emit inbox_session_derived with derivation_path=N indicating which method matched
+  notes: 'Curator demote 2026-05-23T22:32Z (overnight tick #13): P0 budget breach (6 vs cap 5). INFRA-1879 is a P0/xs follow-up
+    to INFRA-1860 (which is also P0 and addresses the parent PostToolUse hook problem). Per CLAUDE.md P0 reservation rule,
+    parent unblocker carries the P0 weight; follow-up doesn''t need its own P0 slot unless the parent fix leaves the silent-failure
+    root un-fixed. Repromote if 1860 ships and 1879''s silent-failure root persists.
+
+    '
+  closed_date: '2026-05-24'
+  closed_pr: 2444
