@@ -135,15 +135,45 @@ if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
 
     if [[ "$preflight_has_targets" -eq 1 ]]; then
         echo "[pre-push] INFRA-1671: running chump preflight ..." >&2
-        if ! chump preflight 2>&1; then
+        _pf_start="$(date +%s)"
+        _pf_rc=0
+        chump preflight 2>&1 || _pf_rc=$?
+
+        # INFRA-1927: emit preflight_ci_agreement for agreement-rate measurement.
+        # Bypass: CHUMP_PREFLIGHT_CI_AGREEMENT=0
+        if [[ "${CHUMP_PREFLIGHT_CI_AGREEMENT:-1}" != "0" ]]; then
+            _pf_end="$(date +%s)"
+            _pf_secs=$(( _pf_end - _pf_start ))
+            _pf_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+            _pf_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+            _pf_gap="$(echo "$_pf_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
+            _pf_pass="false"
+            [[ "$_pf_rc" -eq 0 ]] && _pf_pass="true"
+            _pf_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _pf_wt_list="$(git worktree list --porcelain 2>/dev/null || true)"
+            _pf_main_repo="$(awk '/^worktree / {print $2; exit}' <<<"$_pf_wt_list")"
+            [[ -n "$_pf_main_repo" && -d "$_pf_main_repo/.chump-locks" ]] && _pf_root="$_pf_main_repo"
+            _pf_ambient="${CHUMP_AMBIENT_LOG:-$_pf_root/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_pf_ambient")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"preflight_ci_agreement","sha":"%s","branch":"%s","gap_id":"%s","preflight_pass":%s,"preflight_secs":%d}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pf_sha" "$_pf_branch" "$_pf_gap" \
+                "$_pf_pass" "$_pf_secs" \
+                >> "$_pf_ambient" 2>/dev/null || true
+            unset _pf_end _pf_sha _pf_branch _pf_gap _pf_pass _pf_root _pf_wt_list _pf_main_repo _pf_ambient
+        fi
+        unset _pf_start _pf_secs
+
+        if [[ "$_pf_rc" -ne 0 ]]; then
             echo "" >&2
             echo "[pre-push] BLOCKED: chump preflight failed (INFRA-1671)." >&2
             echo "[pre-push] Fix the failing gate and try again, or bypass with:" >&2
             echo "[pre-push]   CHUMP_PREFLIGHT_SKIP=1 git push" >&2
             echo "[pre-push]   (plus 'Preflight-Skip-Reason: <why>' in your commit body)" >&2
             echo "" >&2
+            unset _pf_rc
             exit 1
         fi
+        unset _pf_rc
     fi
 fi
 
