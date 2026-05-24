@@ -404,6 +404,16 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
         ),
     )
     conn.commit()
+    # INFRA-1873: emit once per _upsert_pr so dashboards can distinguish
+    # webhook-driven cache freshness from REST-driven freshness.
+    _emit_ambient({
+        "ts": _now_iso(),
+        "kind": "webhook_cache_write",
+        "target": "pr",
+        "number": pr.get("number"),
+        "head_sha": (pr.get("head") or {}).get("sha"),
+        "action": payload.get("action"),
+    })
 
 
 def _mark_open_prs_stale(conn: sqlite3.Connection) -> int:
@@ -553,6 +563,18 @@ class Handler(BaseHTTPRequestHandler):
                             "completed_at": suite.get("updated_at"),
                         })
                     cached_n = _upsert_check_runs(conn, head_sha or "", runs_to_cache)
+                    # INFRA-1873: emit once per _upsert_check_runs call so dashboards
+                    # can distinguish webhook-driven check_runs freshness from REST.
+                    if cached_n > 0:
+                        _emit_ambient({
+                            "ts": _now_iso(),
+                            "kind": "webhook_cache_write",
+                            "target": "check_runs",
+                            "number": (prs[0].get("number") if prs else None),
+                            "head_sha": head_sha or None,
+                            "runs_count": cached_n,
+                            "action": payload.get("action"),
+                        })
                     _emit_ambient({
                         "ts": _now_iso(),
                         "kind": "webhook_event_received",
