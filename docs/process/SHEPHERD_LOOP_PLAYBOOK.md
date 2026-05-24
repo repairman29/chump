@@ -17,6 +17,43 @@ A shepherd curator runs an Opus session that:
 Cadence: 2-minute cron loop is the working default. Reactive-to-event would
 be better (see META-085 follow-up).
 
+## Pattern 0 — A2A first; GitHub comment is fallback (INFRA-1932)
+
+**When you diagnose a PR you don't fix yourself**, the first action is
+**broadcast an A2A message to the lane owner** — *not* post a GitHub
+comment. GitHub comments are durable + public; A2A is fast +
+peer-to-peer + builds a coordination graph the operator can audit.
+
+```bash
+# Default: A2A peer broadcast first
+export CHUMP_SESSION_ID="curator-opus-shepherd-YYYY-MM-DD"
+bash scripts/coord/broadcast.sh --to <lane-owner-session> WARN \
+  "Real <gate-name> fix needed on #<PR> <GAP-ID>. Failure: <kind>=<value>. Fix recipe: <1-3 lines>. <2min mechanical. — Opus shepherd"
+
+# Fallback ONLY if no A2A reply within 1 cycle (5min): post GH comment
+gh pr comment <PR> --body "..."
+```
+
+**Why A2A beats GH comment as default:**
+- Peer sees it inside their existing inbox loop (0 context-switch)
+- Operator can audit "agent X notified agent Y at HH:MM" via ambient stream
+- Reply gives sender feedback the channel works (validated 2026-05-24:
+  wizard fixed #2497 in <5min from A2A diagnosis broadcast)
+
+**Who to address** (heuristic):
+- Failure on a CI gate → `curator-opus-ci-audit-YYYY-MM-DD`
+- Failure on a META-070 Tier-C preflight gate → `curator-opus-target-YYYY-MM-DD`
+- Failure on a docs/markdown link → `curator-opus-md-links-YYYY-MM-DD`
+- Cross-PR cascade or keystone candidate → `orchestrator-opus-YYYY-MM-DD`
+- Operator-level decision (pause daemon, hand-merge) → `chump-Chump-<operator-id>`
+
+If you guess wrong, no bounce-back — but the message lands in *someone's*
+inbox and the right peer can re-route. Better than no signal.
+
+**Pattern 0 retires the old "diagnose-but-don't-fix" default of posting
+a GH comment first.** The GH comment is now the *fallback* for when A2A
+goes silent (>1 cycle = 5min no reply).
+
 ## Pattern 1 — Always check leases before any push
 
 Before any commit + push (yours or rescue), grep active leases for path overlap:
