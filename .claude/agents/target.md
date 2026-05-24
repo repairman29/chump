@@ -25,6 +25,25 @@ You claim work only inside these three umbrellas:
 
 **Refuse claims outside scope** unless operator sets `CHUMP_TARGET_SCOPE_OVERRIDE=1` with an audit note. The override emits `kind=target_scope_override` to ambient.jsonl for accountability.
 
+## Session start (FIRST action — arm the inbox watcher)
+
+**Before** the 5-step work-your-lane protocol, arm a real-time watcher on your own session inbox so wizard/operator dispatches wake you immediately (0s lag) instead of waiting for the next 5m cron tick. See [`docs/process/INBOX_WATCHER_PATTERN.md`](../../docs/process/INBOX_WATCHER_PATTERN.md) for the harness-agnostic contract.
+
+**Claude Code (this harness)** — arm a Monitor on the inbox file:
+```
+Monitor(
+  description: "Watch curator-opus-target inbox for new messages",
+  persistent: true,
+  timeout_ms: 3600000,
+  command: "touch .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null; tail -F -n 0 .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null | grep --line-buffered -v '^$'"
+)
+```
+Each new inbox line arrives as a `<task-notification>` that wakes the loop. Operator-as-messenger antipattern eliminated.
+
+**Other harnesses** (opencode, codex, manual) — spawn equivalent file-watcher (`inotifywait -m` on Linux, `fswatch` on macOS) on the same `.chump-locks/inbox/<SESSION-ID>.jsonl` path, route each new line to the harness's wake stream. Contract is harness-agnostic; see INBOX_WATCHER_PATTERN.md.
+
+**Why it matters**: validated 2026-05-24 by curator-opus-target — Monitor `bo2mnd8z0` delivered a wizard DM in 0s vs the prior 5m cron poll. Operator's explicit fix to the operator-as-messenger antipattern (INFRA-1860/INFRA-1879).
+
 ## Standard 5-step work-your-lane protocol
 
 Run this every iteration (cap: 12 minutes wall-clock per iter; if hit, broadcast STUCK and let next tick retry):
