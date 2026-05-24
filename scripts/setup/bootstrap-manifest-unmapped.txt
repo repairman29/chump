@@ -1,0 +1,73 @@
+# bootstrap-manifest-unmapped.txt — INFRA-1926
+#
+# install-*-launchd.sh scripts in scripts/setup/ that are KNOWN to be
+# absent from bootstrap-manifest.yaml. Each entry is the bare basename
+# of the installer (one per line).
+#
+# Why this register exists:
+#   The pre-CI gate scripts/ci/test-bootstrap-manifest-coverage.sh fails
+#   if any install-*-launchd.sh exists with NEITHER a manifest entry NOR
+#   a line here. This forces a deliberate choice for every new installer:
+#     1. add it to bootstrap-manifest.yaml (fresh operators get it), OR
+#     2. add it here with a # reason comment (we know it's manual-only)
+#
+# Today's seed (2026-05-24): 48 installers were unmapped at the time
+# INFRA-1926 added the gate. Triage of this list is filed as a separate
+# follow-up gap so each entry can be classified rather than rubber-stamped.
+#
+# Format: bare basename, optionally followed by a # reason comment.
+# Blank lines and lines starting with `#` are ignored.
+
+# ── 2026-05-24 seed (INFRA-1926). Triage follow-up filed separately.
+# Each entry below is "unmapped pending triage" unless its reason is
+# more specific. Move entries OUT of this file (and into bootstrap-
+# manifest.yaml) as they're triaged + approved for fresh-install rollout.
+
+install-active-target-reaper-launchd.sh                    # 2026-05-24 seed: triage pending
+install-allowlist-audit-launchd.sh                         # 2026-05-24 seed: triage pending
+install-ambient-rotate-launchd.sh                          # 2026-05-24 seed: triage pending
+install-api-cost-digest-launchd.sh                         # 2026-05-24 seed: triage pending
+install-audit-bypass-launchd.sh                            # 2026-05-24 seed: triage pending
+install-auto-arm-sweeper-launchd.sh                        # 2026-05-24 seed: triage pending
+install-autonomous-mode-launchd.sh                         # 2026-05-24 seed: triage pending (opt-in autonomous-mode)
+install-binary-refresh-launchd.sh                          # 2026-05-24 seed: triage pending
+install-branch-protection-drift-launchd.sh                 # 2026-05-24 seed: triage pending
+install-cargo-target-reaper-launchd.sh                     # 2026-05-24 seed: triage pending
+install-ci-flake-rerun-launchd.sh                          # 2026-05-24 seed: triage pending
+install-claude-tmp-cleanup-launchd.sh                      # 2026-05-24 seed: triage pending
+install-curator-jit-scheduler-launchd.sh                   # 2026-05-24 seed: triage pending (INFRA-1892)
+install-decomposition-tracker-launchd.sh                   # 2026-05-24 seed: triage pending
+install-disk-health-monitor-launchd.sh                     # 2026-05-24 seed: triage pending
+install-disk-pressure-reaper-launchd.sh                    # 2026-05-24 seed: triage pending
+install-flake-catalog-launchd.sh                           # 2026-05-24 seed: triage pending
+install-fleet-auto-restart-launchd.sh                      # 2026-05-24 seed: triage pending
+install-fleet-health-launchd.sh                            # 2026-05-24 seed: triage pending
+install-gap-curate-launchd.sh                              # 2026-05-24 seed: triage pending
+install-gap-doctor-cron-launchd.sh                         # 2026-05-24 seed: triage pending
+install-gh-token-rotate-launchd.sh                         # 2026-05-24 seed: triage pending (operator-secret-dependent)
+install-github-cache-reconcile-launchd.sh                  # 2026-05-24 seed: triage pending
+install-lint-storm-detector-launchd.sh                     # 2026-05-24 seed: triage pending
+install-mission-grade-launchd.sh                           # 2026-05-24 seed: triage pending
+install-operator-leverage-launchd.sh                       # 2026-05-24 seed: triage pending
+install-overnight-research-launchd.sh                      # 2026-05-24 seed: triage pending (opt-in research mode)
+install-pid-invariant-launchd.sh                           # 2026-05-24 seed: triage pending
+install-pr-auto-rebase-launchd.sh                          # 2026-05-24 seed: triage pending
+install-pr-blocked-watch-launchd.sh                        # 2026-05-24 seed: triage pending
+install-prune-worktrees-launchd.sh                         # 2026-05-24 seed: triage pending
+install-queue-driver-launchd.sh                            # 2026-05-24 seed: triage pending
+install-reap-stale-leases-launchd.sh                       # 2026-05-24 seed: triage pending
+install-reaper-watchdog-launchd.sh                         # 2026-05-24 seed: triage pending (consumes other reapers' heartbeats — feels P0)
+install-roles-launchd.sh                                   # 2026-05-24 seed: triage pending
+install-smee-tunnel-launchd.sh                             # 2026-05-24 seed: triage pending (webhook tunnel, operator-network-dependent)
+install-soak-checkpoint-launchd.sh                         # 2026-05-24 seed: triage pending
+install-stale-auditor-finding-reaper-launchd.sh            # 2026-05-24 seed: triage pending
+install-stale-gap-lock-reaper-launchd.sh                   # 2026-05-24 seed: triage pending
+install-stale-pr-reaper-launchd.sh                         # 2026-05-24 seed: triage pending
+install-stale-worktree-reaper-launchd.sh                   # 2026-05-24 seed: triage pending
+install-stuck-pr-filer-launchd.sh                          # 2026-05-24 seed: triage pending
+install-syspolicyd-doctor-launchd.sh                       # 2026-05-24 seed: triage pending (macOS-specific)
+install-system-invariants-launchd.sh                       # 2026-05-24 seed: triage pending
+install-target-reaper-launchd.sh                           # 2026-05-24 seed: triage pending
+install-transient-retrigger-launchd.sh                     # 2026-05-24 seed: triage pending (INFRA-1899 sibling)
+install-webhook-receiver-launchd.sh                        # 2026-05-24 seed: triage pending (operator-secret-dependent)
+install-weekly-digest-launchd.sh                           # 2026-05-24 seed: triage pending (opt-in cadence)
