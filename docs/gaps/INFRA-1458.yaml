@@ -1,0 +1,16 @@
+- id: INFRA-1458
+  domain: INFRA
+  title: "RESILIENT: chump pr cascade-rebase <check-name> — single command to rebase every PR failing a given check (replace manual gh pr update-branch loop)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "`chump pr cascade-rebase <check-name>` lists every open PR with FAILURE conclusion on <check-name> then runs gh pr update-branch --rebase on each"
+    - "--dry-run flag prints the action plan as JSON without executing"
+    - "--skip-conflict flag continues past PRs that hit merge conflicts (vs default: report each)"
+    - "--exclude-labels do-not-paramedic for safety"
+    - Per-PR latency budget 30s; emit kind=cascade_rebase_run {check, pr_count, success_count, conflict_count, skipped_count}
+    - "Smoke test scripts/ci/test-cascade-rebase.sh with stub gh — fixture: 3 PRs failing 'foo-check', assert all 3 receive update-branch call, kind emitted with correct counts"
+    - "Replaces the manual 23-PR for-loop I just ran post-#2163-merge; should be invoked automatically by paramedic daemon (INFRA-1375) on keystone detection (INFRA-1420)"
+  closed_pr: 2292
+
