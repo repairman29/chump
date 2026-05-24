@@ -58,6 +58,8 @@ Less-used directories (small scope):
 | **Install ambient** | `scripts/setup/install-ambient-hooks.sh` | SessionStart/PreToolUse hooks for matrix wiring |
 | **Fix bare worktree** | `scripts/setup/fix-worktree-show-toplevel.sh` | Heals `core.bare=true` poison (INFRA-810) |
 
+**Public-facing docs surface:** [`docs/PITCH.md`](../docs/PITCH.md) — the canonical external-reviewer doc (why Chump, who it is for, what is shipped). Start there for grant readers, collaborators, or Marcus design-review.
+
 ---
 
 ## `coord/` — Gap lifecycle and fleet coordination {#coord}
