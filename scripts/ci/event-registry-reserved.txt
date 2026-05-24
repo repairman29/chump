@@ -1,162 +1,247 @@
-# scripts/ci/event-registry-reserved.txt — INFRA-1237
 #
-# Kinds that are EXEMPT from EVENT_REGISTRY.yaml drift enforcement in
-# BOTH directions (emit-without-register AND register-without-emit).
-#
-# Use sparingly. Each entry must include a `# reason:` comment explaining
-# why this kind is reserved (planned-but-not-yet-implemented, intentionally
-# undeclared internal probe, etc.).
-#
-# Format: one kind per line, optional inline `# reason: ...` comment.
-# Blank lines and lines starting with `#` are ignored.
-#
-# INFRA-1287: seeded with 88 register-without-emit orphans after analysis.
-# Disposition per kind:
-#   - 3 truly dead entries were PRUNED from EVENT_REGISTRY.yaml (adversary_alert,
 #     aggregate, product_drought — emitters never shipped)
+#   - 3 truly dead entries were PRUNED from EVENT_REGISTRY.yaml (adversary_alert,
 #   - obs_coverage_test_fixture → reserved (test-only, explicitly marked in registry)
 #   - remaining 84 → reserved (planned for specific features; see reason comments)
-#
+# (`ambient-emit.sh "capabilities_registry_refreshed"`) — bash arg form,
+# (emit_ambient "KIND" — no leading underscore, quoted arg). Registered in
+# BOTH directions (emit-without-register AND register-without-emit).
+# Blank lines and lines starting with `#` are ignored.
+# Both emit sites use the local `_emit_ambient` helper (or direct printf) and
+# CAPABILITIES_REGISTRY generator. These are NOT ambient event kinds —
+# Disposition per kind:
+# EVENT_REGISTRY.yaml; reserved here so coverage gate does not flag them.
+# EVENT_REGISTRY.yaml; reserved here to satisfy register-without-emit.
+# EVENT_REGISTRY.yaml; reserved here to satisfy strict-mode register-without-emit.
+# Emit sites use the local `_emit_ambient KIND ...` helper (underscore-prefixed,
+# Emitted by scripts/ops/audit-allowlist-staleness.sh via python3 heredoc write
+# Emitted via `respawn_emit()` helper in scripts/ops/stale-pr-reaper.sh —
+# Format: one kind per line, optional inline `# reason: ...` comment.
+# INFRA-1287: seeded with 88 register-without-emit orphans after analysis.
+# INFRA-1340: PRODUCT-109 follow-ups — kinds registered for future wiring
+# INFRA-1456: test fixture placeholder kind in src/inspect_cmd.rs::tests — not a real emit
+# INFRA-1695 / META-066: pre-existing lease-reaper telemetry surfaced after
+# INFRA-1729: emit site uses positional arg to ambient-emit.sh
+# INFRA-1729: false-positive "kind":"<value>" literals inside the
+# INFRA-1744: pre-push test gate timeout — emitted from scripts/git-hooks/pre-push
+# INFRA-1868: audit-allowlist-staleness.sh daily cron
+# INFRA-1875: github-liaison.sh webhook-health probe + polling fallback.
+# INFRA-1876: GitHub Liaison Phase 2 slice δ — offline-mode hard gate.
+# INFRA-1893: open-PR scan warning discipline — two new forensic kinds
+# Kinds that are EXEMPT from EVENT_REGISTRY.yaml drift enforcement in
 # Remove an entry here once the emit site is implemented and CI runs clean.
-
-# ── Hook-emitted (not grep-scannable) ─────────────────────────────────────────
-commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
-redundancy_bypass_used  # reason: emitted by scripts/git-hooks/pre-commit-redundancy.sh (META-063); git hooks are outside PROD_PATHS grep scan
-rust_first_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh on the block path (INFRA-1448); git-hooks/ outside PROD_PATHS grep scan
-rust_first_strict_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh strict layer (INFRA-1580); git-hooks/ outside PROD_PATHS grep scan
-rust_first_bypass_audit  # reason: emitted by scripts/dev/rust-first-bypass-audit.sh (INFRA-1580); scripts/dev/ outside PROD_PATHS grep scan
-prepush_head_drift  # reason: emitted by scripts/git-hooks/pre-push (INFRA-1372); git-hooks/ dir is outside PROD_PATHS grep scan
-ci_regression_guard_blocked  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
-ci_regression_guard_missing  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
-ci_regression_guard_suite_failed  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
-
-# ── Test fixtures ─────────────────────────────────────────────────────────────
-obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
-
+# Use sparingly. Each entry must include a `# reason:` comment explaining
+# apart from real emit sites, so allowlist with a reason instead.
+# are not grep-scannable as `kind=X` literals by Pattern 5b's regex.
+# as a `"kind":"..."` literal in the production path scan. Registered in
+# but the scan paths missed scripts/coord/*reaper*.sh; reserved with reason.
+# gap once src/web_server.rs lease clears. Reserved here to unblock CI in
+# helper-function emit pattern (printf with variable kind) is not grep-scannable
+# in the web-server approval handler; emission wiring lands in a follow-up
+# mcp_tool / skill / event / script). The literal scan can't tell them
+# not a `"kind":"X"` literal the gate's regex looks for. Registered in
+# positional bare-string kind arg) which doesn't match Pattern 5b's regex
+# scripts/ci/event-registry-reserved.txt — INFRA-1237
+# scripts/content-bots/ was added to PROD_PATHS — these were always emitted
+# state, exactly what this allowlist is for).
+# the meantime (registered-without-emit is the "intent declared, code WIP"
+# they're enum values of the registry's own `kind` field (cli / crate /
+# to ambient.jsonl — not a grep-scannable `kind=X` literal in the prod path.
+# undeclared internal probe, etc.).
+# when cargo test exceeds CHUMP_PREPUSH_TEST_TIMEOUT_S budget under sibling
+# why this kind is reserved (planned-but-not-yet-implemented, intentionally
+# worktree contention; one-off operator-facing signal, not a steady-state event.
 # ── Autonomous mode tracking ───────────────────────────────────────────────────
+# ── Bot/merge observability ────────────────────────────────────────────────────
+# ── Branch / protection ────────────────────────────────────────────────────────
+# ── CI / gate ──────────────────────────────────────────────────────────────────
+# ── Cascade routing ────────────────────────────────────────────────────────────
+# ── Change management ──────────────────────────────────────────────────────────
+# ── Claims ────────────────────────────────────────────────────────────────────
+# ── Cognition / eval ──────────────────────────────────────────────────────────
+# ── Cost / quota ──────────────────────────────────────────────────────────────
+# ── Curator / decompose ───────────────────────────────────────────────────────
+# ── Disk / fleet safety ───────────────────────────────────────────────────────
+# ── Eval / behavior ───────────────────────────────────────────────────────────
+# ── Feature monitoring ────────────────────────────────────────────────────────
+# ── Flake auto-rerun ──────────────────────────────────────────────────────────
+# ── Fleet / FTUE ──────────────────────────────────────────────────────────────
+# ── Gap lifecycle ──────────────────────────────────────────────────────────────
+# ── GitHub shim ───────────────────────────────────────────────────────────────
+# ── Guard / hook bypass ───────────────────────────────────────────────────────
+# ── Hook-emitted (not grep-scannable) ─────────────────────────────────────────
+# ── INFRA-1410: PR-stuck SLO + auto-respawn ──────────────────────────────────
+# ── Integration test pipeline (INFRA-849) ─────────────────────────────────────
+# ── Intent system (INFRA-1116/1117) ──────────────────────────────────────────
+# ── Invariant tracking ────────────────────────────────────────────────────────
+# ── Lessons system ────────────────────────────────────────────────────────────
+# ── Network monitoring ────────────────────────────────────────────────────────
+# ── Opus / roadmap ────────────────────────────────────────────────────────────
+# ── Orphan PR handling ────────────────────────────────────────────────────────
+# ── PR lifecycle ──────────────────────────────────────────────────────────────
+# ── Picker priority ───────────────────────────────────────────────────────────
+# ── Pillar balance ────────────────────────────────────────────────────────────
+# ── Planner ───────────────────────────────────────────────────────────────────
+# ── Preflight ────────────────────────────────────────────────────────────────
+# ── Reaper observability ──────────────────────────────────────────────────────
+# ── Review handoff ────────────────────────────────────────────────────────────
+# ── Roadmap proposals ────────────────────────────────────────────────────────
+# ── Rust-first policy ────────────────────────────────────────────────────────
+# ── SLO / health ──────────────────────────────────────────────────────────────
+# ── Speculative work ──────────────────────────────────────────────────────────
+# ── Stale gaps ────────────────────────────────────────────────────────────────
+# ── Test fixtures ─────────────────────────────────────────────────────────────
+# ── Test gate ────────────────────────────────────────────────────────────────
+# ── Watchdog ──────────────────────────────────────────────────────────────────
+# ── Webhook cache observability (INFRA-1873) ─────────────────────────────────
+INFRA-1866 — audit-flake-catalog.sh CHUMP_AUDIT_FLAKE_CATALOG=0 opt-out
+INFRA-1872 — emitted by scripts/ops/ci-qa-score.sh daily; rollup telemetry kind
+a2a_rpc_stub_called  # reason: INFRA-1759 stub diagnostic emitted from crates/chump-coord/src/rpc.rs::call_rpc + serve_rpc while real impl (NATS subject routing) is unwired; allowlist until INFRA-1119 slice 2/4 lands
+a2a_subscribe_stub_invoked  # reason: INFRA-1758 stub diagnostic emitted from crates/chump-coord/src/events.rs::subscribe_events while real impl (NATS push consumer) is unwired; allowlist until INFRA-1118 slice 2/4 lands
+ac_coverage_disabled    # reason: INFRA-1541 operator-override audit emit from same gate; outside PROD_PATHS
+ac_coverage_miss        # reason: INFRA-1541 pre-merge AC coverage gate; emitter scripts/ci/test-pr-ac-coverage.sh runs only in pr-hygiene job, outside PROD_PATHS grep scan
+ac_coverage_no_ac       # reason: INFRA-1541 pass-through marker when gap has no AC bullets; outside PROD_PATHS
+ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs without gap ref; outside PROD_PATHS
+ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same gate; outside PROD_PATHS
+allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
+asks_clarification         # reason: planned for eval harness behavior tracking
+ast_crawler_unsupported_language  # reason: INFRA-1719 emitted from crates/ast-crawler when an unsupported language is encountered; emit site uses struct-field syntax not grep-scannable as `kind=X` literal
+audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-staleness.sh skip-emit when CHUMP_AUDIT_ALLOWLIST_STALENESS=0; printf form not grep-scannable
+audit_no_verify  # reason: INFRA-1834 emitted from chump-commit.sh + bot-merge.sh when --no-verify bypass used; reason field is operator-supplied, kind name stable for daily audit grep
+auto_capability_bypassed  # reason: INFRA-1825 — capability-publish.sh CHUMP_AUTO_CAPABILITY=0 opt-out; printf-direct JSON not grep-scannable as kind=X literal
+auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when new CHUMP_* env refs were auto-appended to env-vars-internal.txt (default path)
+auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
+auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when cargo fmt --all was run pre-commit (default path)
+auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
+auto_merge_arm_failed      # reason: planned for bot-merge.sh auto-merge arm failure path
+auto_merge_armed           # reason: planned for bot-merge.sh --auto-merge success confirmation
 autonomous_mode_entered    # reason: planned for chump fleet autonomous-mode command
 autonomous_mode_exited     # reason: planned for chump fleet autonomous-mode command
 autonomous_ship_rate_regression # reason: planned for fleet health regression detector
-
-# ── Bot/merge observability ────────────────────────────────────────────────────
-auto_merge_arm_failed      # reason: planned for bot-merge.sh auto-merge arm failure path
-auto_merge_armed           # reason: planned for bot-merge.sh --auto-merge success confirmation
+avoids_tool                # reason: planned for eval harness behavior tracking
 bot_autonomous_check_failed # reason: planned for bot-merge autonomous-mode pre-ship gate
 bot_autonomous_check_passed # reason: planned for bot-merge autonomous-mode pre-ship gate
 bot_merge_aborted_no_worktree # reason: planned for bot-merge when worktree missing mid-run
 bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on ship)
+bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
 bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
 bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
-
-# ── Branch / protection ────────────────────────────────────────────────────────
 branch_protection_drift    # reason: planned for CI gate that detects branch protection changes
-
-# ── Cascade routing ────────────────────────────────────────────────────────────
+bypass_threshold_breach  # reason: INFRA-1837 — emitted by scripts/ops/audit-bypass-frequency.sh from inside a python3 heredoc dict (per breaching session); kind literal lives in python dict, not grep-scannable as kind=X
+capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
+capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
 cascade_near_cap           # reason: planned for Anthropic cascade rate-limit approach warning
 cascade_report             # reason: planned for cascade routing summary event
-
-# ── Change management ──────────────────────────────────────────────────────────
 change_approved            # reason: planned for operator change-approval workflow
 change_rolled_back         # reason: planned for automated rollback on regression
-
-# ── CI / gate ──────────────────────────────────────────────────────────────────
+chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
+chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
+chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
+ci_cascade_cancelled  # reason: INFRA-1870 emitted via _emit_ambient dict-payload in github-webhook-receiver.py workflow_run handler; dict-construction emit pattern not grep-scannable as "kind":"ci_cascade_cancelled" literal in PROD_PATHS
 ci_parity_drift            # reason: emitted by scripts/ci/test-preflight-ci-parity.sh (INFRA-1867); scripts/ci/ is outside PROD_PATHS grep scan
+ci_regression_guard_blocked  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
+ci_regression_guard_missing  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
+ci_regression_guard_suite_failed  # reason: emitted by scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421); git-hooks/ outside PROD_PATHS grep scan
 ci_yml_merge_driver_abort  # reason: planned for merge-driver failure detection in CI
-gate_check_result          # reason: planned for chump gate --check result emission
-gate_check_start           # reason: planned for chump gate --check start emission
-
-# ── Claims ────────────────────────────────────────────────────────────────────
+ci_yml_row_add_merged  # reason: emitted from scripts/git/merge-driver-ci-yml-add-row.sh (shell); not in PROD_PATHS
+circuit_breaker_closed       # reason: RESILIENT-011 same emit site as circuit_breaker_opened; match-arm literal not grep-scannable
+circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm literal in src/circuit_breaker.rs:emit_state_change_event; grep scanner pattern `kind = "..."` misses match-arm form `=> "circuit_breaker_opened"`
+circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
 claim_aborted_disk_full    # reason: planned for claim guard: disk < threshold aborts claim
-
-# ── Cost / quota ──────────────────────────────────────────────────────────────
+claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
+cli  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+cognition_ab_comparison    # reason: planned for EVAL-102 LLM-judge comparison result
+cognition_ab_run_start     # reason: planned for EVAL-102 AB run start
+commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
 cost_budget_breach         # reason: planned for INFRA-1076 cost quota enforcement
 cost_quota_exceeded        # reason: planned for INFRA-1076 hard quota enforcement
 cost_quota_warning         # reason: planned for INFRA-1076 soft quota warning
-
-# ── Cognition / eval ──────────────────────────────────────────────────────────
-cognition_ab_comparison    # reason: planned for EVAL-102 LLM-judge comparison result
-cognition_ab_run_start     # reason: planned for EVAL-102 AB run start
-
-# ── Curator / decompose ───────────────────────────────────────────────────────
+crate  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
 curator_auto_decompose     # reason: planned for opus-curator auto-decompose arm
 curator_decision           # reason: planned for opus-curator gap-ranking decision emit
 decomposition_hint         # reason: planned for chump gap decompose hint injection
-
-# ── Disk / fleet safety ───────────────────────────────────────────────────────
 disk_critical              # reason: emitter scripts/ops/disk-watchdog.sh uses variable-mediated emit (disk_alert_kind); grep pattern misses it; will fix in follow-up
-fleet_paused_disk_critical # reason: planned for fleet pause-on-disk-critical guard
-
-# ── Eval / behavior ───────────────────────────────────────────────────────────
-asks_clarification         # reason: planned for eval harness behavior tracking
-avoids_tool                # reason: planned for eval harness behavior tracking
-
-# ── Feature monitoring ────────────────────────────────────────────────────────
 feature_silent_failure     # reason: planned for feature smoke-test failure detector
-
-# ── Flake auto-rerun ──────────────────────────────────────────────────────────
+fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
 flake_autorerun_initiated  # reason: planned for RESILIENT flake-rerun orchestrator
 flake_autorerun_persisted  # reason: planned for RESILIENT flake-rerun (still flaking after retry)
 flake_autorerun_recovered  # reason: planned for RESILIENT flake-rerun (recovered on retry)
 flake_autorerun_skipped    # reason: planned for RESILIENT flake-rerun (skipped: not a known flake)
-
-# ── Fleet / FTUE ──────────────────────────────────────────────────────────────
+flake_catalog_orphan  # reason: INFRA-1866 — audit-flake-catalog.sh orphan catalog entry
+fleet_doctor_run        # reason: INFRA-1427 emitted via positional arg `bash "$AMBIENT_EMIT" fleet_doctor_run` in scripts/coord/fleet-doctor-strict.sh; grep scanner expects "kind":"..." JSON literal and misses this form
+fleet_paused_disk_critical # reason: planned for fleet pause-on-disk-critical guard
 fleet_version_skew         # reason: planned for fleet version drift detector
 ftue_init_smoke_passed     # reason: planned for FTUE first-run smoke test confirmation
-
-# ── Gap lifecycle ──────────────────────────────────────────────────────────────
 gap_check_false_positive   # reason: planned for gap-preflight false-positive reporter
+gap_dup_archived       # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
 gap_perf_sample            # reason: planned for gap execution performance sampling
+gap_reserve_open_pr_scan_failed  # reason: INFRA-1893 emitted from crates/chump-gap-store/src/lib.rs when scan fails AND gh smoke also fails — genuine auth failure telemetry; no EVENT_REGISTRY entry yet
+gap_reserve_open_pr_scan_inconsistent  # reason: INFRA-1893 emitted from crates/chump-gap-store/src/lib.rs when scan fails but gh smoke (gh api user) returns 200 — spurious-401 forensics; no EVENT_REGISTRY entry yet
+gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
+gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
 gap_shipped                # reason: planned for chump gap ship emit (currently ship silently succeeds)
-
-# ── GitHub shim ───────────────────────────────────────────────────────────────
+gate_check_result          # reason: planned for chump gate --check result emission
+gate_check_start           # reason: planned for chump gate --check start emission
 gh_shim_worktree_install_blocked # reason: planned for gh-shim install blocked by security policy
 gh_shim_worktree_path_resolved   # reason: planned for INFRA-779 gitdir repair confirmation
-
-# ── Guard / hook bypass ───────────────────────────────────────────────────────
+github_app_fallback  # reason: emitted by scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076); helper function emit not grep-scannable as literal kind string
 guard_bypassed             # reason: planned for pre-commit/pre-push --no-verify bypass tracker
-
-# ── Intent system (INFRA-1116/1117) ──────────────────────────────────────────
+hidden_gems_refreshed  # reason: INFRA-1727 — emitted by scripts/dev/build-hidden-gems.sh after rebuild; python3 heredoc write to ambient.jsonl, not grep-scannable as kind=X literal
+inbox_auto_poll_surfaced  # reason: INFRA-1860 emitted by scripts/coord/inbox-poll.sh PostToolUse hook helper, ambient-emit positional-arg form not grep-scannable as kind=X literal
+inbox_session_derived  # reason: INFRA-1879 — emitted by scripts/coord/inbox-poll.sh on session-id derivation; positional-arg form
+integration_test_fail      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
+integration_test_pass      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
 intent                     # reason: planned for INFRA-1116 INTENT file registration
 intent_overlap_detected    # reason: planned for INFRA-1116 overlap gate
 intent_overlap_overridden  # reason: planned for INFRA-1116 operator override
 intent_parse_ok            # reason: planned for INFRA-1117 intent parser success
 intent_parse_unknown       # reason: planned for INFRA-1117 intent parser unknown field
-
-# ── Invariant tracking ────────────────────────────────────────────────────────
 invariant_recovered        # reason: planned for invariant violation auto-recovery
 invariant_violation        # reason: planned for invariant violation detector
-
-# ── Lessons system ────────────────────────────────────────────────────────────
+keystone_cascade_fired     # reason: INFRA-1420 #2361 emitted from src/paramedic.rs action_keystone_cascade; allowlist while EVENT_REGISTRY entry catches up
+lease_reaper_deleted  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_dry_run  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_error  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_active  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_in_progress  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
+lease_reaper_skipped_invalid  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
 lesson_not_applied         # reason: planned for lessons injection failure detector
 lessons_audit_run          # reason: planned for lessons audit cron emit
 lessons_pruned             # reason: planned for lessons pruner emit
-
-# ── Network monitoring ────────────────────────────────────────────────────────
+liaison_cache_offline_read  # reason: INFRA-1876 — emitted by scripts/coord/lib/github_cache.sh::_emit_offline_read_event when cache helpers run with CHUMP_GITHUB_MODE=offline; per-helper 60s debounce
+liaison_cache_stale  # reason: INFRA-1874 emitted from scripts/coord/lib/github_cache.sh::cache_lookup_pr when age_s > CHUMP_LIAISON_CACHE_STALE_S (default 600); operator-visible 'cache degraded' signal separate from per-call cache_miss
+liaison_elected            # reason: INFRA-1317 #2373 GitHub Liaison election event from scripts/ops/github-liaison.sh; printf emit not grep-scannable
+liaison_heartbeat          # reason: INFRA-1317 #2373 GitHub Liaison heartbeat from scripts/ops/github-liaison.sh
+liaison_offline_mode_gated  # reason: INFRA-1876 — emitted by scripts/ops/github-liaison.sh when CHUMP_GITHUB_MODE=offline blocks daemon start; _emit_ambient helper form
+liaison_polling_fallback_active  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle alongside liaison_webhook_unhealthy; same helper-not-scannable issue
+liaison_takeover           # reason: INFRA-1317 #2373 GitHub Liaison takeover event
+liaison_webhook_recovered  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle on first successful probe after fallback; same helper-not-scannable issue
+liaison_webhook_unhealthy  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle when probe fails CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS times; _emit_ambient helper not grep-scannable
+liaison_yielded            # reason: INFRA-1317 #2373 GitHub Liaison yield event
+mcp_tool  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
+merge_preview_skipped  # reason: emitted from scripts/coord/ (shell); not in PROD_PATHS
+merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
 network_restored           # reason: planned for network watchdog: online after offline
 network_unavailable        # reason: planned for network watchdog: offline detection
-
-# ── Opus / roadmap ────────────────────────────────────────────────────────────
+obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
+operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
+opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.sh after addressed-async DM delivery (META-061 opus-message v0 retarget)
 opus_roadmap_published     # reason: planned for opus-curator roadmap publication emit
 orchestrate_intent         # reason: planned for orchestration session intent emit
 orchestrate_session_end    # reason: planned for orchestration session end emit
-
-# ── Orphan PR handling ────────────────────────────────────────────────────────
+orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
 orphan_pr_candidate        # reason: planned for orphan-pr-detector candidate emit
 orphan_pr_close_failed     # reason: planned for orphan-pr-detector close failure
 orphan_pr_closed           # reason: planned for orphan-pr-detector close success
-
-# ── Picker priority ───────────────────────────────────────────────────────────
 picker_priority_stale      # reason: planned for INFRA-1258 picker priority stale detection
 picker_used_priority       # reason: planned for INFRA-1258 picker priority usage confirmation
-
-# ── Pillar balance ────────────────────────────────────────────────────────────
 pillar_balance_block       # reason: planned for pillar balance enforcer: block claim
 pillar_balance_warn        # reason: planned for pillar balance enforcer: warn
-
-# ── Planner ───────────────────────────────────────────────────────────────────
 planner_rank_ran           # reason: planned for gap planner ranking emit
-
-# ── PR lifecycle ──────────────────────────────────────────────────────────────
+pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
+pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
 pr_bounced_relanded        # reason: emitter scripts/coord/ uses _emit function (confirmed in grep); adding to reserved while INFRA-1287 grep fixes land
 pr_bounced_unfinished      # reason: emitter scripts/coord/bounced-pr-detector.sh; _emit pattern may not cover all code paths
 pr_bundle_blocked          # reason: planned for PR bundle gate: conflicting bundle blocked
@@ -165,207 +250,64 @@ pr_dedup_bypass_rejected   # reason: planned for PR dedup bypass rejection
 pr_dedup_bypassed          # reason: planned for PR dedup bypass with reason
 pr_fmt_auto_fixed          # reason: planned for PR format shepherd auto-fix emit
 pr_fmt_shepherd_run        # reason: planned for PR format shepherd run emit
+pr_rebase_daemon_run    # reason: INFRA-1406 pr-rebase-daemon heartbeat
+pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
+pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-rebase
 pr_scope_violation         # reason: planned for PR scope gate: files-outside-intent
-
-# ── Preflight ────────────────────────────────────────────────────────────────
+pr_stuck_cycle_1_rebase_attempted  # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_stuck_exempt                    # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_triage_run  # reason: emitted from scripts/coord/chump-pr-triage.sh (shell); not in PROD_PATHS
+pre_commit_ac_test_missing  # reason: emitted by scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401); git-hooks/ outside PROD_PATHS grep scan
+preflight_acgate_bypassed # reason: INFRA-1791 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ACGATE=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+preflight_docsdelta_bypassed # reason: INFRA-1788 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1; struct-field emit (EmitArgs { kind: "..." }) not detected by Pattern 1 grep — allowlisted while orphan-warn lands
 preflight_dupe_pr          # reason: planned for gap-preflight duplicate PR warning emit
 preflight_dupe_worktree    # reason: planned for gap-preflight duplicate worktree warning emit
+preflight_envvars_bypassed # reason: INFRA-1787 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ENVVARS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
+preflight_gapsint_bypassed # reason: INFRA-1831 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_GAPSINT=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+preflight_mdlinks_bypassed # reason: INFRA-1790 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_MDLINKS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
+preflight_registry_bypassed # reason: INFRA-1731 #2377 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_REGISTRY=1; allowlist while EVENT_REGISTRY entry catches up
+preflight_subcmdhelp_bypassed # reason: INFRA-1789 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
 premature_closure_auto_fixed # reason: planned for premature-closure auto-fix emit
-
-# ── Reaper observability ──────────────────────────────────────────────────────
+prepush_head_drift  # reason: emitted by scripts/git-hooks/pre-push (INFRA-1372); git-hooks/ dir is outside PROD_PATHS grep scan
+prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-push timeout branch; printf-formatted from bash, not via emit_event helper
+pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-078
+pwa_gap_list_filtered  # reason: emitted from web/v2/gap-list.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-102
+pwa_impact_viewed  # reason: emitted from web/v2/impact.js via sendBeacon (JS, not in PROD_PATHS)
+queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
 reaper_run                 # reason: planned for reaper start/stop lifecycle emit
 reaper_safety_gate_triggered  # reason: INFRA-1786 — emitted by reap-orphan-claude-procs.sh when fg_pid=none on non-headless macOS; safety gate refuses reap-all
-
-# ── Review handoff ────────────────────────────────────────────────────────────
+reaper_self_paused  # reason: reaper telemetry, pre-existing
+redundancy_bypass_used  # reason: emitted by scripts/git-hooks/pre-commit-redundancy.sh (META-063); git hooks are outside PROD_PATHS grep scan
+restart  # reason: daemon-restart telemetry, pre-existing — too generic to register without scope
 review_handoff_escalated   # reason: planned for review handoff escalation emit
 review_handoff_timeout     # reason: planned for review handoff timeout emit
-
-# ── Roadmap proposals ────────────────────────────────────────────────────────
 roadmap_update_proposal_cost    # reason: planned for opus-curator roadmap update cost report
 roadmap_update_proposal_failed  # reason: planned for opus-curator roadmap update failure
 roadmap_update_proposal_opened  # reason: planned for opus-curator roadmap update PR opened
 roadmap_update_proposal_skipped # reason: planned for opus-curator roadmap update skipped
-
-# ── Rust-first policy ────────────────────────────────────────────────────────
-rust_first_bypass_used     # reason: planned for rust-first policy bypass tracker
-
-# ── SLO / health ──────────────────────────────────────────────────────────────
-slo_recovered              # reason: planned for SLO watchdog: recovered from breach
-
-# ── Speculative work ──────────────────────────────────────────────────────────
-speculative_race_loss      # reason: planned for speculative-gap race loss emit
-
-# ── Stale gaps ────────────────────────────────────────────────────────────────
-stale_post_merge_gap       # reason: planned for post-merge stale gap detector
-
-# ── Test gate ────────────────────────────────────────────────────────────────
-test_gate_bypassed         # reason: planned for test gate bypass emit (CHUMP_TEST_GATE=0)
-
-# ── Watchdog ──────────────────────────────────────────────────────────────────
-watchdog_silent            # reason: planned for watchdog heartbeat absence detector
-
-# ── Integration test pipeline (INFRA-849) ─────────────────────────────────────
-integration_test_pass      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
-integration_test_fail      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
-
-target_artifact_reaped  # reason: INFRA-1349 target/ artifact reaper kind; emitted when build dirs are cleaned under disk pressure
-target_artifact_critical_reap  # reason: INFRA-1431 critical-mode variant; emitted via shell variable $_event_kind in target-dir-reaper.sh (not a grep-scannable literal); same emit site as target_artifact_reaped
-
-pr_rebase_daemon_run    # reason: INFRA-1406 pr-rebase-daemon heartbeat
-pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
-pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-rebase
-
-fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
-synthesis_gap_filed     # reason: declared kind awaiting emitter (INFRA-1684 synthesis-truth audit wip); allowlist orphan to unblock audit cluster (#2337, et al.)
-stale_branch_auto_rebased  # reason: INFRA-1429 #2356 emitted from src/paramedic.rs action_rebase_dirty; allowlist while EVENT_REGISTRY entry catches up
-keystone_cascade_fired     # reason: INFRA-1420 #2361 emitted from src/paramedic.rs action_keystone_cascade; allowlist while EVENT_REGISTRY entry catches up
-gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
-gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
-claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
-preflight_registry_bypassed # reason: INFRA-1731 #2377 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_REGISTRY=1; allowlist while EVENT_REGISTRY entry catches up
-preflight_docsdelta_bypassed # reason: INFRA-1788 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1; struct-field emit (EmitArgs { kind: "..." }) not detected by Pattern 1 grep — allowlisted while orphan-warn lands
-liaison_elected            # reason: INFRA-1317 #2373 GitHub Liaison election event from scripts/ops/github-liaison.sh; printf emit not grep-scannable
-liaison_heartbeat          # reason: INFRA-1317 #2373 GitHub Liaison heartbeat from scripts/ops/github-liaison.sh
-liaison_takeover           # reason: INFRA-1317 #2373 GitHub Liaison takeover event
-liaison_yielded            # reason: INFRA-1317 #2373 GitHub Liaison yield event
-merge_queue_health      # reason: CREDIBLE-068 #2359 emitted from scripts/coord/monitor-merge-queue.sh via printf to ambient.jsonl; grep scanner does not see the shell printf pattern as a `kind=...` literal
-queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
-
-merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
-gap_dup_archived       # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
-operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
-bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
-pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-078
-orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
-chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
-fleet_doctor_run        # reason: INFRA-1427 emitted via positional arg `bash "$AMBIENT_EMIT" fleet_doctor_run` in scripts/coord/fleet-doctor-strict.sh; grep scanner expects "kind":"..." JSON literal and misses this form
-pwa_impact_viewed  # reason: emitted from web/v2/impact.js via sendBeacon (JS, not in PROD_PATHS)
-pwa_gap_list_filtered  # reason: emitted from web/v2/gap-list.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-102
-ci_yml_row_add_merged  # reason: emitted from scripts/git/merge-driver-ci-yml-add-row.sh (shell); not in PROD_PATHS
-pre_commit_ac_test_missing  # reason: emitted by scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401); git-hooks/ outside PROD_PATHS grep scan
-github_app_fallback  # reason: emitted by scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076); helper function emit not grep-scannable as literal kind string
 runner_migration_step           # reason: INFRA-1535 migration pipeline state-transition emit
 runner_scaled                   # reason: INFRA-1535 autoscale daemon scale-up/down emit
-self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
-merge_preview_skipped  # reason: emitted from scripts/coord/ (shell); not in PROD_PATHS
-circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm literal in src/circuit_breaker.rs:emit_state_change_event; grep scanner pattern `kind = "..."` misses match-arm form `=> "circuit_breaker_opened"`
-circuit_breaker_closed       # reason: RESILIENT-011 same emit site as circuit_breaker_opened; match-arm literal not grep-scannable
-circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
-pr_triage_run  # reason: emitted from scripts/coord/chump-pr-triage.sh (shell); not in PROD_PATHS
-ac_coverage_miss        # reason: INFRA-1541 pre-merge AC coverage gate; emitter scripts/ci/test-pr-ac-coverage.sh runs only in pr-hygiene job, outside PROD_PATHS grep scan
-ac_coverage_waived      # reason: INFRA-1541 waiver trailer audit emit from same gate; outside PROD_PATHS
-ac_coverage_disabled    # reason: INFRA-1541 operator-override audit emit from same gate; outside PROD_PATHS
-ac_coverage_no_gap_ref  # reason: INFRA-1541 pass-through marker for hotfix PRs without gap ref; outside PROD_PATHS
-ac_coverage_no_ac       # reason: INFRA-1541 pass-through marker when gap has no AC bullets; outside PROD_PATHS
-
-# ── INFRA-1410: PR-stuck SLO + auto-respawn ──────────────────────────────────
-# Emitted via `respawn_emit()` helper in scripts/ops/stale-pr-reaper.sh —
-# helper-function emit pattern (printf with variable kind) is not grep-scannable
-# as a `"kind":"..."` literal in the production path scan. Registered in
-# EVENT_REGISTRY.yaml; reserved here so coverage gate does not flag them.
-pr_stuck_cycle_1_rebase_attempted  # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
-pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
-pr_stuck_exempt                    # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
-self_doctor_tick               # reason: INFRA-1595 emitted from src/fleet_self_doctor.rs via EmitArgs{kind: "..".to_string()} struct-init form; grep pattern `kind = "X"` does not match `kind: "X".to_string()`
-self_doctor_healed             # reason: INFRA-1595 same struct-init pattern as self_doctor_tick; emit-site not grep-scannable
-self_doctor_failed             # reason: INFRA-1595 only fires on action failure (install error / execute-gap spawn error); rare path not exercised in PROD_PATHS smoke
+rust_first_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh on the block path (INFRA-1448); git-hooks/ outside PROD_PATHS grep scan
+rust_first_bypass_audit  # reason: emitted by scripts/dev/rust-first-bypass-audit.sh (INFRA-1580); scripts/dev/ outside PROD_PATHS grep scan
+rust_first_bypass_used     # reason: planned for rust-first policy bypass tracker
+rust_first_strict_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh strict layer (INFRA-1580); git-hooks/ outside PROD_PATHS grep scan
 self_doctor_budget_exceeded    # reason: INFRA-1595 only fires under stress (>3 dispatches/10min); rare path not exercised in PROD_PATHS smoke
-
-chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
-pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
-
-# INFRA-1695 / META-066: pre-existing lease-reaper telemetry surfaced after
-# scripts/content-bots/ was added to PROD_PATHS — these were always emitted
-# but the scan paths missed scripts/coord/*reaper*.sh; reserved with reason.
-lease_reaper_deleted  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-lease_reaper_dry_run  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-lease_reaper_error  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-lease_reaper_skipped_active  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-lease_reaper_skipped_in_progress  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-lease_reaper_skipped_invalid  # reason: stale-lease-reaper telemetry (scripts/coord/), pre-existing
-reaper_self_paused  # reason: reaper telemetry, pre-existing
-restart  # reason: daemon-restart telemetry, pre-existing — too generic to register without scope
-
-# INFRA-1744: pre-push test gate timeout — emitted from scripts/git-hooks/pre-push
-# when cargo test exceeds CHUMP_PREPUSH_TEST_TIMEOUT_S budget under sibling
-# worktree contention; one-off operator-facing signal, not a steady-state event.
-prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-push timeout branch; printf-formatted from bash, not via emit_event helper
-
-# INFRA-1340: PRODUCT-109 follow-ups — kinds registered for future wiring
-# in the web-server approval handler; emission wiring lands in a follow-up
-# gap once src/web_server.rs lease clears. Reserved here to unblock CI in
-# the meantime (registered-without-emit is the "intent declared, code WIP"
-# state, exactly what this allowlist is for).
-tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
+self_doctor_failed             # reason: INFRA-1595 only fires on action failure (install error / execute-gap spawn error); rare path not exercised in PROD_PATHS smoke
+self_doctor_healed             # reason: INFRA-1595 same struct-init pattern as self_doctor_tick; emit-site not grep-scannable
+self_doctor_tick               # reason: INFRA-1595 emitted from src/fleet_self_doctor.rs via EmitArgs{kind: "..".to_string()} struct-init form; grep pattern `kind = "X"` does not match `kind: "X".to_string()`
+self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
+skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
+slo_recovered              # reason: planned for SLO watchdog: recovered from breach
+speculative_race_loss      # reason: planned for speculative-gap race loss emit
+stale_branch_auto_rebased  # reason: INFRA-1429 #2356 emitted from src/paramedic.rs action_rebase_dirty; allowlist while EVENT_REGISTRY entry catches up
+stale_post_merge_gap       # reason: planned for post-merge stale gap detector
+synthesis_gap_filed     # reason: declared kind awaiting emitter (INFRA-1684 synthesis-truth audit wip); allowlist orphan to unblock audit cluster (#2337, et al.)
+target_artifact_critical_reap  # reason: INFRA-1431 critical-mode variant; emitted via shell variable $_event_kind in target-dir-reaper.sh (not a grep-scannable literal); same emit site as target_artifact_reaped
+target_artifact_reaped  # reason: INFRA-1349 target/ artifact reaper kind; emitted when build dirs are cleaned under disk pressure
+test_gate_bypassed         # reason: planned for test gate bypass emit (CHUMP_TEST_GATE=0)
 tool_approval_escalated  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
 tool_approval_policy_changed  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
-# INFRA-1456: test fixture placeholder kind in src/inspect_cmd.rs::tests — not a real emit
-x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
-preflight_envvars_bypassed # reason: INFRA-1787 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ENVVARS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
-preflight_subcmdhelp_bypassed # reason: INFRA-1789 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
-preflight_acgate_bypassed # reason: INFRA-1791 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ACGATE=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
-ast_crawler_unsupported_language  # reason: INFRA-1719 emitted from crates/ast-crawler when an unsupported language is encountered; emit site uses struct-field syntax not grep-scannable as `kind=X` literal
-a2a_subscribe_stub_invoked  # reason: INFRA-1758 stub diagnostic emitted from crates/chump-coord/src/events.rs::subscribe_events while real impl (NATS push consumer) is unwired; allowlist until INFRA-1118 slice 2/4 lands
-a2a_rpc_stub_called  # reason: INFRA-1759 stub diagnostic emitted from crates/chump-coord/src/rpc.rs::call_rpc + serve_rpc while real impl (NATS subject routing) is unwired; allowlist until INFRA-1119 slice 2/4 lands
-ci_cascade_cancelled  # reason: INFRA-1870 emitted via _emit_ambient dict-payload in github-webhook-receiver.py workflow_run handler; dict-construction emit pattern not grep-scannable as "kind":"ci_cascade_cancelled" literal in PROD_PATHS
-# INFRA-1893: open-PR scan warning discipline — two new forensic kinds
-gap_reserve_open_pr_scan_inconsistent  # reason: INFRA-1893 emitted from crates/chump-gap-store/src/lib.rs when scan fails but gh smoke (gh api user) returns 200 — spurious-401 forensics; no EVENT_REGISTRY entry yet
-gap_reserve_open_pr_scan_failed  # reason: INFRA-1893 emitted from crates/chump-gap-store/src/lib.rs when scan fails AND gh smoke also fails — genuine auth failure telemetry; no EVENT_REGISTRY entry yet
-
-# ── Webhook cache observability (INFRA-1873) ─────────────────────────────────
+tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-up gap
+watchdog_silent            # reason: planned for watchdog heartbeat absence detector
 webhook_cache_write  # reason: INFRA-1873 emitted via _emit_ambient dict-payload in github-webhook-receiver.py (_upsert_pr + _upsert_check_runs call sites); dict-payload emit not grep-scannable as "kind":"webhook_cache_write" literal
-
-auto_fmt_applied # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when cargo fmt --all was run pre-commit (default path)
-auto_fmt_bypassed # reason: INFRA-1833 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_FMT=0 disables the auto-fmt block
-chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
-preflight_gapsint_bypassed # reason: INFRA-1831 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_GAPSINT=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
-
-# INFRA-1729: false-positive "kind":"<value>" literals inside the
-# CAPABILITIES_REGISTRY generator. These are NOT ambient event kinds —
-# they're enum values of the registry's own `kind` field (cli / crate /
-# mcp_tool / skill / event / script). The literal scan can't tell them
-# apart from real emit sites, so allowlist with a reason instead.
-cli  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
-crate  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
-mcp_tool  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
-skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
-# INFRA-1729: emit site uses positional arg to ambient-emit.sh
-# (`ambient-emit.sh "capabilities_registry_refreshed"`) — bash arg form,
-# not a `"kind":"X"` literal the gate's regex looks for. Registered in
-# EVENT_REGISTRY.yaml; reserved here to satisfy strict-mode register-without-emit.
-capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
-auto_envvar_applied # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when new CHUMP_* env refs were auto-appended to env-vars-internal.txt (default path)
-auto_envvar_bypassed # reason: INFRA-1853 emitted from scripts/coord/chump-commit.sh when CHUMP_AUTO_ENVVAR=0 disables the auto-append block
-inbox_auto_poll_surfaced  # reason: INFRA-1860 emitted by scripts/coord/inbox-poll.sh PostToolUse hook helper, ambient-emit positional-arg form not grep-scannable as kind=X literal
-audit_no_verify  # reason: INFRA-1834 emitted from chump-commit.sh + bot-merge.sh when --no-verify bypass used; reason field is operator-supplied, kind name stable for daily audit grep
-liaison_cache_stale  # reason: INFRA-1874 emitted from scripts/coord/lib/github_cache.sh::cache_lookup_pr when age_s > CHUMP_LIAISON_CACHE_STALE_S (default 600); operator-visible 'cache degraded' signal separate from per-call cache_miss
- INFRA-1866 — audit-flake-catalog.sh CHUMP_AUDIT_FLAKE_CATALOG=0 opt-out
-flake_catalog_orphan  # reason: INFRA-1866 — audit-flake-catalog.sh orphan catalog entry
-inbox_session_derived  # reason: INFRA-1879 — emitted by scripts/coord/inbox-poll.sh on session-id derivation; positional-arg form
-
-# INFRA-1875: github-liaison.sh webhook-health probe + polling fallback.
-# Emit sites use the local `_emit_ambient KIND ...` helper (underscore-prefixed,
-# positional bare-string kind arg) which doesn't match Pattern 5b's regex
-# (emit_ambient "KIND" — no leading underscore, quoted arg). Registered in
-# EVENT_REGISTRY.yaml; reserved here to satisfy register-without-emit.
-liaison_webhook_unhealthy  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle when probe fails CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS times; _emit_ambient helper not grep-scannable
-liaison_polling_fallback_active  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle alongside liaison_webhook_unhealthy; same helper-not-scannable issue
-liaison_webhook_recovered  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle on first successful probe after fallback; same helper-not-scannable issue
-opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.sh after addressed-async DM delivery (META-061 opus-message v0 retarget)
-
-# INFRA-1876: GitHub Liaison Phase 2 slice δ — offline-mode hard gate.
-# Both emit sites use the local `_emit_ambient` helper (or direct printf) and
-# are not grep-scannable as `kind=X` literals by Pattern 5b's regex.
-liaison_offline_mode_gated  # reason: INFRA-1876 — emitted by scripts/ops/github-liaison.sh when CHUMP_GITHUB_MODE=offline blocks daemon start; _emit_ambient helper form
-liaison_cache_offline_read  # reason: INFRA-1876 — emitted by scripts/coord/lib/github_cache.sh::_emit_offline_read_event when cache helpers run with CHUMP_GITHUB_MODE=offline; per-helper 60s debounce
-preflight_mdlinks_bypassed # reason: INFRA-1790 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_MDLINKS=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
-# INFRA-1868: audit-allowlist-staleness.sh daily cron
-# Emitted by scripts/ops/audit-allowlist-staleness.sh via python3 heredoc write
-# to ambient.jsonl — not a grep-scannable `kind=X` literal in the prod path.
-allowlist_stale_entry  # reason: INFRA-1868 — audit-allowlist-staleness.sh daily staleness detector; emitted via python3 heredoc, not grep-scannable as kind=X literal
-audit_allowlist_staleness_bypassed  # reason: INFRA-1868 — audit-allowlist-staleness.sh skip-emit when CHUMP_AUDIT_ALLOWLIST_STALENESS=0; printf form not grep-scannable
-pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
-auto_capability_bypassed  # reason: INFRA-1825 — capability-publish.sh CHUMP_AUTO_CAPABILITY=0 opt-out; printf-direct JSON not grep-scannable as kind=X literal
-capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
-hidden_gems_refreshed  # reason: INFRA-1727 — emitted by scripts/dev/build-hidden-gems.sh after rebuild; python3 heredoc write to ambient.jsonl, not grep-scannable as kind=X literal
- INFRA-1872 — emitted by scripts/ops/ci-qa-score.sh daily; rollup telemetry kind
+x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
