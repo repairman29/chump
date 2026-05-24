@@ -152,6 +152,14 @@ so the queue self-regulates without operator intervention:
 Install via `scripts/setup/install-operator-fleet.sh` (next sub-gap,
 filed as META-NEW). Verify via `chump fleet doctor` reporting HEALTHY.
 
+### Helpers (manual rescue when daemons don't catch it)
+
+| Tool | Gap | When to use | Safety |
+|---|---|---|---|
+| `scripts/dev/take-both-resolve.py <file>…` | INFRA-1920 | N PRs all conflict on the SAME additive text file (event registries, allowlists). Strips conflict markers, keeps both sides | **Additive merges only** — silently destructive for semantic conflicts; inspect diff before commit |
+
+Typical use: `git rebase origin/main` fails on 5 sibling PRs all touching `scripts/ci/event-registry-reserved.txt`. Each rescue takes ~10s with this tool vs ~3min via manual Edit. See the script docstring for the safety contract.
+
 ## 8. Wizard Retirement Criteria
 
 The wizard can drop from /loop 2m to weekly cadence when ALL FIVE hold:
@@ -168,6 +176,13 @@ The wizard can drop from /loop 2m to weekly cadence when ALL FIVE hold:
 
 When all 5 hold: operator wakes wizard only for new tracks / strategy
 pivots / first-customer pitch decisions.
+
+Between strategy work and PR rescue, the wizard pulls loop-slack work
+from **`docs/process/WIZARD_STRATEGIC_BACKLOG.md`** (META-095) — a ranked
+durable surface of "what should the wizard do during 60–300s of slack
+between PR-pulse cycles?" Sections: HIGHEST=Retirement work, HIGH=Command
+durability, MEDIUM=Preventer gaps + PM hygiene, LOW/SKIP=explicit
+anti-list. Update by appending to changelog after each pull.
 
 ---
 
@@ -243,6 +258,21 @@ bash scripts/coord/broadcast.sh --to orchestrator-opus-$(date +%Y-%m-%d) DONE \
    breaks main.
 6. **Wizard re-doing Oracle work manually.** Solution: META-088 cron.
    Symptom: operator-opus session re-writes THE_PATH.md every 4h by hand.
+7. **Wizard hoards curator-lane work because solo-rescue is faster than
+   dispatch.** Solution: consistent DISPATCH format (PR=<n> GAP=<id>
+   | task | tools | reply-channel) → re-ping after 2 cycles → escalate.
+   **Never absorb curator lane work back to wizard** — it silently
+   disengages the curator, making them dormant. Symptom: curator
+   inboxes stay empty, wizard re-rescues the same cluster multiple
+   times per session. (Caught by operator 2026-05-24.)
+8. **"Broken on main" regression wedges every downstream PR via
+   audit-required gate.** Solution: identify the keystone fix (often a
+   1-line restore — e.g. INFRA-1916 re-added a removed element), ship
+   it ASAP, then mass-rescue the wedged PRs against fresh main. INFRA-1855
+   cargo-test workspace gate (in #2466) catches this class locally
+   going forward. Symptom: N PRs all failing the same audit step that
+   was added by yesterday's merge. (Same class: INFRA-1832 events.rs
+   Debug panic earlier in the week.)
 
 ---
 
