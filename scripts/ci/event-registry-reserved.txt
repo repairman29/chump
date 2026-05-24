@@ -228,6 +228,9 @@ obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scr
 operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
 opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.sh after addressed-async DM delivery (META-061 opus-message v0 retarget)
 opus_roadmap_published     # reason: planned for opus-curator roadmap publication emit
+opus_shepherd_plan  # reason: META-091 — emitted by scripts/coord/opus-shepherd-triage.sh via python3 heredoc, not grep-scannable as kind=X literal
+opus_shepherd_triage  # reason: META-091 — emitted by scripts/coord/opus-shepherd-triage.sh via python3 heredoc, not grep-scannable as kind=X literal
+opus_shepherd_triage_skipped  # reason: META-091 — emitted by scripts/coord/opus-shepherd-triage.sh via python3 heredoc, not grep-scannable as kind=X literal
 orchestrate_intent         # reason: planned for orchestration session intent emit
 orchestrate_session_end    # reason: planned for orchestration session end emit
 orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
@@ -311,3 +314,7 @@ tool_auto_approved  # reason: INFRA-1340 PRODUCT-109; emission wiring in follow-
 watchdog_silent            # reason: planned for watchdog heartbeat absence detector
 webhook_cache_write  # reason: INFRA-1873 emitted via _emit_ambient dict-payload in github-webhook-receiver.py (_upsert_pr + _upsert_check_runs call sites); dict-payload emit not grep-scannable as "kind":"webhook_cache_write" literal
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
+oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on THE_PATH.md hash change; printf-direct JSON not grep-scannable as kind=X literal
+oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
+oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable
+oracle_refresh_pr_opened  # reason: META-088 — scripts/coord/oracle-refresh.sh emits after auto-PR opens; printf-direct JSON not grep-scannable
