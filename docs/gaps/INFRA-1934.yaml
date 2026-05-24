@@ -1,0 +1,14 @@
+- id: INFRA-1934
+  domain: INFRA
+  title: "RESILIENT P2: triage the 48 install-*-launchd.sh entries in bootstrap-manifest-unmapped.txt — INFRA-1926 deferred this; each needs decide bootstrap-install (move to manifest) vs keep-manual"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Background — INFRA-1926 (PR #2512) added scripts/setup/bootstrap-manifest-unmapped.txt with 48 entries seeded from the install-*-launchd.sh scripts that had no manifest entry. Each entry says 'triage pending'. Without triage, fresh operators continue to miss daemons that arguably SHOULD be installed by default (per INFRA-1926 RCA, this is how today's 3 daemon_silent ALERTs happened)"
+    - "For each of the 48 entries — decide: (a) move to bootstrap-manifest.yaml (with priority + check + install commands) if fresh-operator should get it automatically, OR (b) keep in unmapped.txt with a concrete reason (e.g. 'operator-secret-dependent', 'opt-in autonomous mode', 'macOS-platform-specific', 'experimental, not productized')"
+    - "Decision rubric — P0 includes when: daemon is required by other shipped infrastructure (e.g. consumes another daemon's heartbeat); P1 when: daemon is part of META-066 productization layer goal; P2 when: nice-to-have for healthy fleet; keep-manual when: requires operator-specific secret/network/opt-in"
+    - "Reference each existing manifest entry's `why` description to set the bar for new entries — single-line operator-facing justification, not a code comment"
+    - "Verification — after triage, bash scripts/ci/test-bootstrap-manifest-coverage.sh still passes (no missing entries); bash scripts/setup/chump-fleet-bootstrap.sh --check on a fresh host reports the new entries as missing (since they weren't installed yet) and installing them works without error"
+    - "Done definition — bootstrap-manifest-unmapped.txt has 0 entries marked 'triage pending'; every entry is either moved out or carries a non-pending reason"
+  notes: filed 16:10Z 2026-05-24 by wizard as INFRA-1926 deferred follow-up; rich-but-rote per-installer judgment work suited for a Sonnet sub-fleet or curator pass
