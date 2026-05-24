@@ -1,21 +1,35 @@
 #!/usr/bin/env bash
 # scripts/dev/chump-dashboard-tui.sh — INFRA-1894
 #
-# One-shot terminal dashboard for the live state of the Chump fleet.
-# Pairs with scripts/dev/lightning-demo-timeline.sh (historical) and
-# docs/DEMO_5MIN.md (the pitch wrapper) to give an operator three views:
+# One-shot terminal dashboard for the Chump operator pitch (META-067 Track 3).
+# Fits in a single 80x40 terminal screen. No curses, no polling.
 #
-#   chump-dashboard-tui.sh             — live snapshot, screenshot-ready
-#   lightning-demo-timeline.sh         — last-10 PR wall-clock retrospective
-#   cat docs/DEMO_5MIN.md               — the 5-minute pitch
+# Sections:
+#   (a) Today's shipping — count + median ship time (lightning-demo-timeline.sh --json)
+#   (b) Active leases   — table from .chump-locks/claim-*.json
+#   (c) Inbox unread    — count from chump-inbox.sh count
+#   (d) Pillar pickable — per-pillar open P1 xs|s|m gap count (chump gap list)
+#   (e) Recent alerts   — last 5 ALERT/WARN/STUCK events from ambient.jsonl
 #
-# Five sections, each < 10 lines, fits in 80x40 terminal.
+# Usage:
+#   chump-dashboard-tui.sh              # one-shot render to stdout, exit 0
+#   chump-dashboard-tui.sh --json       # same data as JSON envelope
+#   chump-dashboard-tui.sh --watch [--interval N]  # redraw every N seconds (default 5)
 
-set -euo pipefail
+set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+# Resolve repo root without relying on cwd
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+_GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON" == ".git" ]]; then
+    MAIN_REPO="$REPO_ROOT"
+else
+    MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
+fi
+LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
+CHUMP_BIN="${CHUMP_BIN:-$(command -v chump 2>/dev/null || echo "$MAIN_REPO/target/debug/chump")}"
 
 JSON=0
 WATCH=0
@@ -23,165 +37,302 @@ WATCH_INTERVAL_S=5
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --json) JSON=1; shift ;;
-        --watch) WATCH=1; shift ;;
-        --interval) WATCH_INTERVAL_S="$2"; shift 2 ;;
+        --json)        JSON=1; shift ;;
+        --watch)       WATCH=1; shift ;;
+        --interval)    WATCH_INTERVAL_S="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,/^$/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+            sed -n '3,20p' "$0"
             exit 0
             ;;
-        *) echo "chump-dashboard-tui: unknown flag '$1'" >&2; exit 2 ;;
+        *) printf 'chump-dashboard-tui: unknown flag "%s"\n' "$1" >&2; exit 2 ;;
     esac
 done
 
-# ── Section A: ships + lightning ──────────────────────────────────────────────
-section_ships() {
-    local lightning_json today_ships median p10 p90 sample_size
-    if [[ -x "$REPO_ROOT/scripts/dev/lightning-demo-timeline.sh" ]]; then
-        lightning_json=$("$REPO_ROOT/scripts/dev/lightning-demo-timeline.sh" --json 2>/dev/null || echo '{}')
-    else
-        lightning_json='{}'
+# ── Section A: ships ──────────────────────────────────────────────────────────
+_section_a_data() {
+    local today_ships="?" median="?"
+    local timeline="$MAIN_REPO/scripts/dev/lightning-demo-timeline.sh"
+    if [[ -x "$timeline" ]]; then
+        local raw
+        raw="$("$timeline" --json 2>/dev/null || echo '{}')"
+        today_ships="$(printf '%s' "$raw" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+s=d.get('summary',d)
+v=s.get('ship_count') or s.get('today_ship_count') or s.get('count','?')
+print(v)
+" 2>/dev/null || echo '?')"
+        median="$(printf '%s' "$raw" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+s=d.get('summary',d)
+v=s.get('median_min') or s.get('median_ship_time_min') or s.get('median','?')
+print(v)
+" 2>/dev/null || echo '?')"
     fi
-    today_ships=$(echo "$lightning_json" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(s.get('ship_count', 0))" 2>/dev/null || echo "?")
-    median=$(echo "$lightning_json" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(s.get('median_min') or '?')" 2>/dev/null || echo "?")
-    p10=$(echo "$lightning_json" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(s.get('p10_min') or '?')" 2>/dev/null || echo "?")
-    p90=$(echo "$lightning_json" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('summary',{}); print(s.get('p90_min') or '?')" 2>/dev/null || echo "?")
-    sample_size="$today_ships"
-    echo "──── SHIPS (last ${sample_size}) ────────────────────────────────────────"
-    printf "  count: %s   median: %s min   p10: %s   p90: %s\n" "$today_ships" "$median" "$p10" "$p90"
+    # fallback: git log count for today
+    if [[ "$today_ships" == "?" ]]; then
+        today_ships="$(git -C "$MAIN_REPO" log --after="midnight" --oneline origin/main 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+    printf '%s\t%s' "$today_ships" "$median"
+}
+
+_section_a_render() {
+    local data today_ships median
+    data="$(_section_a_data)"
+    today_ships="$(printf '%s' "$data" | cut -f1)"
+    median="$(printf '%s' "$data" | cut -f2)"
+    printf '  ships today: %-6s   median ship time: %s min\n' "$today_ships" "$median"
 }
 
 # ── Section B: active leases ──────────────────────────────────────────────────
-section_leases() {
-    echo "──── ACTIVE LEASES ────────────────────────────────────────────────────"
-    if command -v chump >/dev/null 2>&1; then
-        chump --leases 2>/dev/null | head -8 | sed 's/^/  /' || echo "  (chump --leases failed)"
-    else
-        echo "  (no chump binary on PATH)"
-    fi
-}
-
-# ── Section C: inbox unread ───────────────────────────────────────────────────
-section_inbox() {
-    echo "──── INBOX ────────────────────────────────────────────────────────────"
-    if [[ -x "$REPO_ROOT/scripts/coord/chump-inbox.sh" ]]; then
-        local count
-        count=$("$REPO_ROOT/scripts/coord/chump-inbox.sh" count 2>/dev/null || echo "?")
-        printf "  unread for %s: %s\n" "${CHUMP_SESSION_ID:-(no session set)}" "$count"
-    else
-        echo "  (no chump-inbox.sh found)"
-    fi
-}
-
-# ── Section D: pillar breakdown ───────────────────────────────────────────────
-section_pillars() {
-    echo "──── PILLAR PICKABLE (P0|P1, xs|s, no-deps) ───────────────────────────"
-    if command -v chump >/dev/null 2>&1; then
-        chump gap audit-priorities --json 2>/dev/null | python3 -c "
-import json, sys
+_section_b_render() {
+    local now_epoch any=0
+    now_epoch="$(date +%s)"
+    local f gap_id taken_at age_s age paths_raw paths
+    while IFS= read -r f; do
+        [[ -f "$f" ]] || continue
+        gap_id="$(python3 -c "import json; d=json.load(open('$f')); print(d.get('gap_id','?'))" 2>/dev/null || echo '?')"
+        taken_at="$(python3 -c "import json; d=json.load(open('$f')); print(d.get('taken_at',''))" 2>/dev/null || echo '')"
+        paths_raw="$(python3 -c "
+import json
+d=json.load(open('$f'))
+ps=d.get('paths',[])
+out=','.join(ps[:2])+(',...' if len(ps)>2 else '')
+print(out[:32])
+" 2>/dev/null || echo '')"
+        if [[ -n "$taken_at" ]]; then
+            local te
+            # Use python3 for UTC-aware epoch to avoid macOS date -j localtime bug
+            te="$(python3 -c "
+from datetime import datetime, timezone
 try:
-    d = json.load(sys.stdin)
-    pickable = d.get('pickable_by_pillar', d.get('pillar_pickable', {})) or {}
-    if not pickable:
-        print('  (no pickable_by_pillar data)')
-    else:
-        order = ['EFFECTIVE', 'CREDIBLE', 'RESILIENT', 'ZERO-WASTE', 'MISSION']
-        parts = []
-        for p in order:
-            n = pickable.get(p) or pickable.get(p.lower())
-            if n is not None:
-                parts.append(f'{p}={n}')
-        print('  ' + '   '.join(parts) if parts else '  (no data)')
-except Exception as e:
-    print(f'  (audit-priorities parse failed: {e})')
-" 2>/dev/null || echo "  (audit-priorities failed)"
-    else
-        echo "  (no chump binary on PATH)"
-    fi
+    dt=datetime.strptime('$taken_at','%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    import time; print(int(dt.timestamp()))
+except Exception: print(0)
+" 2>/dev/null || echo 0)"
+            age_s=$(( now_epoch - te ))
+            if (( age_s < 0 )); then age="0m"
+            elif (( age_s < 3600 )); then age="$((age_s/60))m"
+            else age="$((age_s/3600))h$((( age_s%3600)/60))m"; fi
+        else
+            age="?"
+        fi
+        printf '  %-20s %-7s %s\n' "$gap_id" "$age" "$paths_raw"
+        any=1
+    done < <(find "$LOCK_DIR" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | sort)
+    [[ "$any" -eq 0 ]] && printf '  (none)\n'
 }
 
-# ── Section E: last 5 ALERT/WARN/STUCK ──────────────────────────────────────
-section_alerts() {
-    echo "──── LAST 5 ALERT/WARN/STUCK ──────────────────────────────────────────"
-    if [[ -r "$AMBIENT_LOG" ]]; then
-        AMBIENT_LOG="$AMBIENT_LOG" python3 <<'PYEOF'
+# ── Section C: inbox ──────────────────────────────────────────────────────────
+_section_c_render() {
+    local cnt="?"
+    local inbox_sh="$MAIN_REPO/scripts/coord/chump-inbox.sh"
+    if [[ -x "$inbox_sh" ]]; then
+        cnt="$("$inbox_sh" count 2>/dev/null || echo '?')"
+    fi
+    printf '  unread: %s\n' "$cnt"
+}
+
+# ── Section D: pillar pickable ────────────────────────────────────────────────
+_pillar_pickable() {
+    local gaps="" eff=0 cred=0 res=0 zw=0 miss=0
+    if [[ -x "$CHUMP_BIN" ]]; then
+        gaps="$("$CHUMP_BIN" gap list --status open 2>/dev/null || true)"
+        # first run sometimes prints "re-run to list" after auto-importing
+        if printf '%s' "$gaps" | grep -q "re-run to list"; then
+            gaps="$("$CHUMP_BIN" gap list --status open 2>/dev/null || true)"
+        fi
+        eff="$(printf '%s' "$gaps" | grep -cE '\bEFFECTIVE\b' 2>/dev/null || echo 0)"
+        cred="$(printf '%s' "$gaps" | grep -cE '\bCREDIBLE\b' 2>/dev/null || echo 0)"
+        res="$(printf '%s' "$gaps" | grep -cE '\bRESILIENT\b' 2>/dev/null || echo 0)"
+        zw="$(printf '%s' "$gaps" | grep -cE '\bZERO-WASTE\b' 2>/dev/null || echo 0)"
+        miss="$(printf '%s' "$gaps" | grep -cE '\bMISSION\b' 2>/dev/null || echo 0)"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s' "$eff" "$cred" "$res" "$zw" "$miss"
+}
+
+_section_d_render() {
+    local pd eff cred res zw miss
+    pd="$(_pillar_pickable)"
+    eff="$(printf '%s' "$pd" | cut -f1)"
+    cred="$(printf '%s' "$pd" | cut -f2)"
+    res="$(printf '%s' "$pd" | cut -f3)"
+    zw="$(printf '%s' "$pd" | cut -f4)"
+    miss="$(printf '%s' "$pd" | cut -f5)"
+    printf '  EFFECTIVE=%-4s CREDIBLE=%-4s RESILIENT=%-4s ZERO-WASTE=%-4s MISSION=%-4s\n' \
+        "$eff" "$cred" "$res" "$zw" "$miss"
+}
+
+# ── Section E: alerts ─────────────────────────────────────────────────────────
+_section_e_render() {
+    if [[ ! -r "$AMBIENT_LOG" ]]; then
+        printf '  (no ambient.jsonl)\n'; return
+    fi
+    AMBIENT_LOG="$AMBIENT_LOG" python3 <<'PYEOF'
 import json, os
 path = os.environ['AMBIENT_LOG']
 hits = []
 try:
     with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                e = json.loads(line)
-            except Exception:
-                continue
-            ev = e.get('event', '')
-            kind = e.get('kind', '')
-            if ev in ('ALERT','WARN','STUCK') or kind in ('graphql_exhausted','silent_agent','pr_stuck','fleet_wedge'):
-                hits.append((e.get('ts',''), ev or kind, (e.get('reason') or e.get('note') or '')[:60]))
-    for ts, k, r in hits[-5:]:
-        print(f"  [{ts}] {k}: {r}")
-    if not hits:
-        print('  (none recently)')
-except Exception as e:
-    print(f'  (ambient read failed: {e})')
+        lines = f.readlines()
+    for line in lines[-200:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        ev   = e.get('event', '')
+        kind = e.get('kind', '')
+        if ev in ('ALERT', 'WARN', 'STUCK') \
+           or kind in ('graphql_exhausted', 'silent_agent', 'pr_stuck', 'fleet_wedge'):
+            ts  = e.get('ts', '')[:16]
+            msg = str(e.get('reason') or e.get('note') or e.get('msg') or kind)[:52]
+            hits.append((ts, ev or kind, msg))
+    shown = hits[-5:]
+    if shown:
+        for ts, k, m in shown:
+            print(f"  [{ts}] {k}: {m}")
+    else:
+        print("  (none recently)")
+except Exception as ex:
+    print(f"  (ambient read failed: {ex})")
 PYEOF
-    else
-        echo "  (no ambient.jsonl)"
-    fi
 }
 
+# ── Human render ──────────────────────────────────────────────────────────────
 render_human() {
-    clear 2>/dev/null || true
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "╔══════════════════════════════════════════════════════════════════════╗"
-    echo "║  Chump Fleet Dashboard — $ts                            ║"
-    echo "╚══════════════════════════════════════════════════════════════════════╝"
-    section_ships
-    section_leases
-    section_inbox
-    section_pillars
-    section_alerts
-    echo
-    echo "  (refresh: bash $0; watch: bash $0 --watch)"
+    printf '┌──────────────────────────────────────────────────────────────────────────┐\n'
+    printf '│  CHUMP DASHBOARD  %-56s│\n' "$ts"
+    printf '├──────────────────────────────────────────────────────────────────────────┤\n'
+    printf '│  (a) TODAY'\''S SHIPPING                                                     │\n'
+    _section_a_render | while IFS= read -r r; do printf '│  %-74s│\n' "$r"; done
+    printf '├──────────────────────────────────────────────────────────────────────────┤\n'
+    printf '│  (b) ACTIVE LEASES                                                        │\n'
+    printf '│  %-20s %-7s %-44s│\n' "GAP" "AGE" "PATHS"
+    _section_b_render | while IFS= read -r r; do printf '│  %-74s│\n' "$r"; done
+    printf '├──────────────────────────────────────────────────────────────────────────┤\n'
+    printf '│  (c) INBOX UNREAD                                                         │\n'
+    _section_c_render | while IFS= read -r r; do printf '│  %-74s│\n' "$r"; done
+    printf '├──────────────────────────────────────────────────────────────────────────┤\n'
+    printf '│  (d) PILLAR PICKABLE                                                      │\n'
+    _section_d_render | while IFS= read -r r; do printf '│  %-74s│\n' "$r"; done
+    printf '├──────────────────────────────────────────────────────────────────────────┤\n'
+    printf '│  (e) RECENT ALERTS / WARN / STUCK (last 5)                                │\n'
+    _section_e_render | head -5 | while IFS= read -r r; do printf '│  %-74s│\n' "$r"; done
+    printf '└──────────────────────────────────────────────────────────────────────────┘\n'
 }
 
+# ── JSON render ───────────────────────────────────────────────────────────────
 render_json() {
-    local lightning_json leases_text inbox_count
-    lightning_json='{}'
-    if [[ -x "$REPO_ROOT/scripts/dev/lightning-demo-timeline.sh" ]]; then
-        lightning_json=$("$REPO_ROOT/scripts/dev/lightning-demo-timeline.sh" --json 2>/dev/null || echo '{}')
+    # Section A
+    local sd today_ships median
+    sd="$(_section_a_data)"
+    today_ships="$(printf '%s' "$sd" | cut -f1)"
+    median="$(printf '%s' "$sd" | cut -f2)"
+
+    # Section B: leases as JSON array
+    local lease_json="["
+    local first=1 f
+    while IFS= read -r f; do
+        [[ -f "$f" ]] || continue
+        local entry
+        entry="$(python3 -c "
+import json
+d=json.load(open('$f'))
+print(json.dumps({'gap_id':d.get('gap_id','?'),'taken_at':d.get('taken_at',''),'paths':d.get('paths',[])}))
+" 2>/dev/null || echo '')"
+        [[ -z "$entry" ]] && continue
+        [[ "$first" -eq 0 ]] && lease_json+=","
+        lease_json+="$entry"
+        first=0
+    done < <(find "$LOCK_DIR" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | sort)
+    lease_json+="]"
+
+    # Section C
+    local inbox_cnt="?"
+    local inbox_sh="$MAIN_REPO/scripts/coord/chump-inbox.sh"
+    [[ -x "$inbox_sh" ]] && inbox_cnt="$("$inbox_sh" count 2>/dev/null || echo '?')"
+
+    # Section D
+    local pd eff cred res zw miss
+    pd="$(_pillar_pickable)"
+    eff="$(printf '%s' "$pd" | cut -f1)"
+    cred="$(printf '%s' "$pd" | cut -f2)"
+    res="$(printf '%s' "$pd" | cut -f3)"
+    zw="$(printf '%s' "$pd" | cut -f4)"
+    miss="$(printf '%s' "$pd" | cut -f5)"
+
+    # Section E: alerts as JSON array
+    local alert_json="[]"
+    if [[ -r "$AMBIENT_LOG" ]]; then
+        alert_json="$(AMBIENT_LOG="$AMBIENT_LOG" python3 <<'PYEOF'
+import json, os
+path = os.environ['AMBIENT_LOG']
+hits = []
+try:
+    with open(path) as f:
+        lines = f.readlines()
+    for line in lines[-200:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        ev   = e.get('event', '')
+        kind = e.get('kind', '')
+        if ev in ('ALERT', 'WARN', 'STUCK') \
+           or kind in ('graphql_exhausted', 'silent_agent', 'pr_stuck', 'fleet_wedge'):
+            hits.append({'ts': e.get('ts',''), 'event': ev or kind,
+                         'msg': str(e.get('reason') or e.get('note') or e.get('msg') or kind)})
+    print(json.dumps(hits[-5:]))
+except Exception as ex:
+    print('[]')
+PYEOF
+)"
     fi
-    leases_text=$(chump --leases 2>/dev/null | head -20 || echo "")
-    inbox_count="0"
-    if [[ -x "$REPO_ROOT/scripts/coord/chump-inbox.sh" ]]; then
-        inbox_count=$("$REPO_ROOT/scripts/coord/chump-inbox.sh" count 2>/dev/null || echo "0")
-    fi
-    LIGHTNING_JSON="$lightning_json" LEASES_TEXT="$leases_text" INBOX_COUNT="$inbox_count" \
-        python3 <<'PYEOF'
+
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    SHIP_COUNT="$today_ships" MEDIAN="$median" \
+    LEASE_JSON="$lease_json" INBOX="$inbox_cnt" \
+    EFF="$eff" CRED="$cred" RES="$res" ZW="$zw" MISS="$miss" \
+    ALERTS="$alert_json" TS="$ts" \
+    python3 <<'PYEOF'
 import json, os
 out = {
-    'ts': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    'lightning': json.loads(os.environ.get('LIGHTNING_JSON') or '{}'),
-    'leases_text': os.environ.get('LEASES_TEXT', ''),
-    'inbox_unread': int(os.environ.get('INBOX_COUNT', '0') or '0'),
-    'session_id': os.environ.get('CHUMP_SESSION_ID', ''),
+    "ts": os.environ["TS"],
+    "shipping": {
+        "today_ship_count": os.environ["SHIP_COUNT"],
+        "median_ship_time_min": os.environ["MEDIAN"]
+    },
+    "leases": json.loads(os.environ.get("LEASE_JSON", "[]")),
+    "inbox_unread": os.environ["INBOX"],
+    "pillar_pickable": {
+        "EFFECTIVE":  os.environ["EFF"],
+        "CREDIBLE":   os.environ["CRED"],
+        "RESILIENT":  os.environ["RES"],
+        "ZERO_WASTE": os.environ["ZW"],
+        "MISSION":    os.environ["MISS"]
+    },
+    "recent_alerts": json.loads(os.environ.get("ALERTS", "[]"))
 }
-print(json.dumps(out, separators=(',', ':')))
+print(json.dumps(out, indent=2))
 PYEOF
 }
 
+# ── Main ──────────────────────────────────────────────────────────────────────
 if [[ "$JSON" -eq 1 ]]; then
     render_json
-    exit 0
-fi
-
-if [[ "$WATCH" -eq 1 ]]; then
+elif [[ "$WATCH" -eq 1 ]]; then
     while true; do
+        clear
         render_human
         sleep "$WATCH_INTERVAL_S"
     done
