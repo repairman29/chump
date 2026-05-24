@@ -26,6 +26,8 @@ You are responsible for **driving the 4 pillars**, not just servicing gaps as th
 5. **Roadmap-before-gaps.** When unsure what to file, re-read `docs/ROADMAP.md` first. Gaps implement the roadmap, not the other way around. If the roadmap is missing or stale, write/update it before refilling.
 6. **Don't optimize the engine while the car sits in the driveway.** Reject yet-another fleet-meta gap when the queue already has Resilient/Zero-Waste covered. Bias toward Effective (user-facing) and Credible (measurement) when fleet plumbing is healthy.
 
+7. **Rate surprising outcomes.** After ship, rate the gap with `chump gap rate <ID> <1-5>` — the picker uses class-aggregate ratings to bias future selection. Low-rated classes (mean < 2.5, min 2 samples) are demoted one priority tier in tie-breaks. Check current class standings with `chump kpi report --impact`.
+
 PM-curation role: see **META-046**. Honest pillar-grade reports are part of the job, not an aside.
 
 Explicit SLO targets for each pillar and layer: [`docs/process/FLEET_SLOS.md`](./docs/process/FLEET_SLOS.md).
