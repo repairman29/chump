@@ -38,11 +38,20 @@ git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 bash scripts/setup/chump-fleet-bootstrap.sh --check  # META-066, must exit 0
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
+scripts/coord/chump-inbox.sh read --no-advance   # INFRA-1115: peer DMs (per OPUS_MESSAGE_PROTOCOL.md)
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
 chump gap list --status open                     # canonical .chump/state.db
 chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 ```
+
+The SessionStart hook (INFRA-1150 a2a-inbox-inject) auto-surfaces unread
+peer broadcasts at the top of every session digest under a `Pending
+broadcasts` header. Process + reply per
+[`docs/process/OPUS_MESSAGE_PROTOCOL.md`](./docs/process/OPUS_MESSAGE_PROTOCOL.md)
+**before** picking up a new gap. Send addressed DMs via
+`scripts/coord/broadcast.sh --to <session-id> WARN "..."`; read with
+`scripts/coord/chump-inbox.sh read`.
 
 If `chump-fleet-bootstrap.sh --check` exits non-zero, run without `--check` to
 install missing launchd plists + git hooks. Without this, the productization

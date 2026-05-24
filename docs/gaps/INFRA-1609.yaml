@@ -1,7 +1,7 @@
 - id: INFRA-1609
   domain: INFRA
   title: "RESILIENT: self-hosted runner-offline detection + ambient alert — poll gh actions/runners every 2min, emit kind=runner_offline / runner_recovered on status delta; surface in fleet brief + chump fleet doctor; also alert on ci_check_wait > 20min"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -47,4 +47,6 @@
     - "scripts/ci/test-runner-watcher.sh: fixture gh-api response, mutation, asserts correct ambient event emitted"
     - docs/process/RUNNER_HEALTH_MONITORING.md documents thresholds + recovery playbook
     - Composes with INFRA-1603 hot-reload SSE so PWA gets runner-offline toast (when INFRA-1603 ships); not a strict dep
+  closed_date: '2026-05-24'
+  closed_pr: 2273
 

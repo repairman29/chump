@@ -404,6 +404,16 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
         ),
     )
     conn.commit()
+    # INFRA-1873: emit once per _upsert_pr so dashboards can distinguish
+    # webhook-driven cache freshness from REST-driven freshness.
+    _emit_ambient({
+        "ts": _now_iso(),
+        "kind": "webhook_cache_write",
+        "target": "pr",
+        "number": pr.get("number"),
+        "head_sha": (pr.get("head") or {}).get("sha"),
+        "action": payload.get("action"),
+    })
 
 
 def _mark_open_prs_stale(conn: sqlite3.Connection) -> int:
@@ -552,7 +562,50 @@ class Handler(BaseHTTPRequestHandler):
                             "started_at": suite.get("run_started_at"),
                             "completed_at": suite.get("updated_at"),
                         })
+                        # INFRA-1870: emit ci_cascade_cancelled when a workflow_run
+                        # is cancelled (concurrency cancel-in-progress per ci.yml).
+                        # action=completed + conclusion=cancelled → cascade or user cancel.
+                        # reason heuristic:
+                        #   - "superseded": GitHub cancel-in-progress (standard concurrency group)
+                        #   - "user": manual cancellation (no automated concurrency signal available
+                        #             from the payload; GH does not expose the trigger in webhook)
+                        #   - "timeout": job-level timeout exceeded (also surfaces as cancelled)
+                        # All three cases: conclusion=cancelled; we use "superseded" as the
+                        # default because it is by far the most common cause in this repo
+                        # (ci.yml cancel-in-progress on PR fixup pushes).  A future slice
+                        # can add finer discrimination once GH exposes the cancel source.
+                        if payload.get("action") == "completed" and suite.get("conclusion") == "cancelled":
+                            wf_pr_list = suite.get("pull_requests") or []
+                            wf_pr_number = wf_pr_list[0].get("number") if wf_pr_list else None
+                            # predecessor_sha: the commit that was running before this cancellation.
+                            # The head_commit of the workflow_run that got cancelled IS the predecessor
+                            # from the perspective of the superseding run.  We expose head_sha here.
+                            predecessor_sha = suite.get("head_sha") or None
+                            _emit_ambient({
+                                "ts": _now_iso(),
+                                "kind": "ci_cascade_cancelled",
+                                "workflow_run_id": suite.get("id"),
+                                "pr_number": wf_pr_number,
+                                "predecessor_sha": predecessor_sha,
+                                "reason": "superseded",
+                            })
+                            log.info(
+                                "INFRA-1870: ci_cascade_cancelled workflow_run_id=%s pr=%s sha=%s",
+                                suite.get("id"), wf_pr_number, predecessor_sha,
+                            )
                     cached_n = _upsert_check_runs(conn, head_sha or "", runs_to_cache)
+                    # INFRA-1873: emit once per _upsert_check_runs call so dashboards
+                    # can distinguish webhook-driven check_runs freshness from REST.
+                    if cached_n > 0:
+                        _emit_ambient({
+                            "ts": _now_iso(),
+                            "kind": "webhook_cache_write",
+                            "target": "check_runs",
+                            "number": (prs[0].get("number") if prs else None),
+                            "head_sha": head_sha or None,
+                            "runs_count": cached_n,
+                            "action": payload.get("action"),
+                        })
                     _emit_ambient({
                         "ts": _now_iso(),
                         "kind": "webhook_event_received",

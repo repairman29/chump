@@ -437,6 +437,8 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
 # INFRA-1791: skip gap-preflight-ac-gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ACGATE
+# INFRA-1867: emergency bypass for preflight-vs-CI parity smoke check
+CHUMP_SKIP_PARITY_CHECK
 # INFRA-1719: AST crawler typed inputs
 CHUMP_DECOMPOSE_AST
 # INFRA-1760: A2A Layer 2c CapabilityManifest opt-in hardware fields.
@@ -472,3 +474,20 @@ CHUMP_LIAISON_WEBHOOK_HEALTH_URL
 CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS
 CHUMP_LIAISON_POLL_FALLBACK_S
 CHUMP_LIAISON_WEBHOOK_HEALTH_DISABLED
+# INFRA-1876: GitHub Liaison Phase 2 slice δ — offline-mode hard gate
+CHUMP_GITHUB_MODE
+CHUMP_LIAISON_OFFLINE_DEBOUNCE_S
+CHUMP_PREFLIGHT_SKIP_MDLINKS
+
+# INFRA-1868: audit-allowlist-staleness.sh daily cron tunables
+CHUMP_AUDIT_ALLOWLIST_STALENESS
+CHUMP_ALLOWLIST_STATE
+CHUMP_ALLOWLIST_RESERVED
+CHUMP_ALLOWLIST_ENVVARS
+CHUMP_ALLOWLIST_CODE_ROOT
+CHUMP_ALLOWLIST_STALE_DAYS
+# INFRA-1885: lease-breadth cap — allow broad top-level dir leases when set to "1".
+# Operator escape hatch for legitimate sweep gaps (e.g. cargo workspace refactor).
+# Every use emits kind=lease_broad_dir_claim to ambient.jsonl for audit.
+# Must accompany a commit-message trailer: Broad-Lease-Reason: <one sentence>
+CHUMP_LEASE_ALLOW_BROAD_DIRS

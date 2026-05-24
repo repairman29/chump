@@ -1,7 +1,7 @@
 - id: INFRA-1504
   domain: INFRA
   title: "EFFECTIVE: chump --upgrade auto-notify + one-command upgrade path — surfaces stale binary in chump health"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14,4 +14,6 @@
     - "If manual: print instructions"
     - "--dry-run flag to preview the command"
     - Smoke test scripts/ci/test-chump-upgrade-detection.sh
+  closed_date: '2026-05-24'
+  closed_pr: 2284
 

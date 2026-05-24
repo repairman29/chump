@@ -325,6 +325,16 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, existing_pr, existing_author]
 
+  - kind: lease_broad_dir_claim
+    effect_metric: self
+    emitter: src/atomic_claim.rs emit_lease_broad_dir_claim (INFRA-1885)
+    trigger: operator used CHUMP_LEASE_ALLOW_BROAD_DIRS=1 to bypass the
+      lease-breadth cap and claim a top-level dir (src, scripts/ci,
+      docs/gaps, src/lib, app). Emitted for audit; operator must add
+      Broad-Lease-Reason commit trailer.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session_id, gap, paths, reason]
+
   - kind: gap_claim_nats_conflict
     effect_metric: self
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
@@ -978,6 +988,16 @@ events:
     effect_metric: self
     emitter: scripts/ops/audit-flake-catalog.sh (INFRA-1866)
     trigger: CHUMP_AUDIT_FLAKE_CATALOG=0 silences the daily audit
+  - kind: ci_qa_score
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-score.sh (INFRA-1872 / parent INFRA-1861 slice g)
+    trigger: daily aggregate — pct of last-N merged PRs landed clean (no --no-verify, no flake-rerun, no post-CI rebase)
+    consumers: [audit-log, fleet-brief, dashboard]
+
+  - kind: ci_qa_score_bypassed
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-score.sh (INFRA-1872)
+    trigger: CHUMP_CI_QA_SCORE=0 silences the daily score
     consumers: [audit-log]
 
   - kind: flake_rerun
@@ -2656,6 +2676,21 @@ events:
     trigger: broadcast.sh invocation rc != 0 when sending an RPC request
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
+  - kind: bypass_threshold_breach
+    effect_metric: self
+    emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)
+    trigger: daily auditor finds a session whose 24h bypass count
+      (audit_no_verify + preflight_bypassed) exceeds CHUMP_BYPASS_DAILY_THRESHOLD
+      (default 5). Pairs with INFRA-1872 (ci_qa_score) — that's the aggregate
+      rear-view; this is the per-session shame-loop signal.
+    consumers: [operator-recall, fleet-brief, audit-log]
+    fields_required: [ts, kind, session, count, threshold, week_avg]
+
+  - kind: audit_bypass_freq_bypassed
+    effect_metric: self
+    emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)
+    trigger: CHUMP_AUDIT_BYPASS_FREQ=0 silences the daily auditor
+    consumers: [audit-log]
 
   # ── RESILIENT-001: stale binary detection ────────────────────────────────
   - kind: stale_binary_detected
@@ -3367,6 +3402,15 @@ events:
     trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, path, reason]
+  # ── INFRA-1867: preflight-vs-CI parity drift ──────────────────────────────
+  - kind: ci_parity_drift
+    effect_metric: self
+    emitter: scripts/ci/test-preflight-ci-parity.sh (INFRA-1867)
+    trigger: a CI gate in .github/workflows/ci.yml is not mirrored in src/preflight.rs
+      and is not listed as Tier-D in CI_GATES_INVENTORY.md or allowlisted in
+      preflight-ci-parity-exceptions.txt.
+    consumers: [fleet-brief, operator-recall, ops-audit]
+    fields_required: [ts, kind, gate_name, ci_path]
   # ── INFRA-1199: ci-yml merge driver abort ─────────────────────────────────
   - kind: ci_yml_merge_driver_abort
     effect_metric: self
@@ -4424,3 +4468,66 @@ events:
       liaison_polling_fallback_active.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pid, poll_interval_s, url]
+  # INFRA-1892: curator-jit-scheduler daemon. Replaces the
+  # orchestrator-as-pebble-scheduler antipattern by auto-broadcasting
+  # next-gap assignments to curator-opus-* sessions on DONE events.
+  - kind: curator_jit_scheduled
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      A curator-opus-* session emitted a DONE event (or kind=gap_shipped).
+      The daemon called the existing _pick_gap.py with priority filter
+      P0,P1 (default), selected the top candidate, and broadcast a JIT
+      ASSIGNMENT to that curator's inbox via broadcast.sh.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, priority]
+
+  - kind: curator_jit_skipped
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Skipped a JIT broadcast — either dedup-window hit (same curator+gap
+      within CHUMP_JIT_DEDUP_WINDOW_S, default 3600s) or the broadcast.sh
+      call itself failed. Reason field discriminates.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator, gap_id, reason]
+
+  - kind: curator_jit_no_gap
+    effect_metric: self
+    emitter: scripts/coord/curator-jit-scheduler.sh (INFRA-1892)
+    trigger: >
+      Curator finished a gap but _pick_gap.py returned no candidate
+      matching the priority filter (P0/P1 default). The daemon logs and
+      stands by; the curator will idle until a new pickable gap appears.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, curator]
+  # INFRA-1886: soft pre-claim suggestion in `chump gap preflight <ID>`.
+  - kind: preflight_priority_hint_shown
+    effect_metric: self
+    emitter: src/main.rs print_priority_hint() (INFRA-1886)
+    trigger: >
+      `chump gap preflight <ID>` returned OK for a target gap whose
+      priority is below P0; print_priority_hint surfaced up to 3
+      higher-priority unclaimed gaps as advisory. Operator + curator
+      see the note; choice to abandon the intended claim remains theirs.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, target_gap, suggested_gaps_count, target_priority]
+
+  # INFRA-1899: transient-retrigger daemon. Auto-recognizes known-transient
+  # CI failure patterns on open PRs and pushes an empty commit to force a
+  # fresh CI run, capped at 2 retries per PR per 6 hours. Retires the
+  # operator hand-empty-commit-retrigger workaround (today's session had
+  # 10+ manual retriggers for the audit-cancel pattern alone).
+  - kind: transient_auto_retriggered
+    effect_metric: self
+    emitter: scripts/coord/transient-retrigger.sh (INFRA-1899)
+    trigger: >
+      Daemon classified an open PR's failing required check against the
+      catalog at scripts/coord/transient-classes.json (audit_cancelled,
+      checkout_auth_race, flake_rerun_exhausted, network_blip), confirmed
+      the per-PR retry cap (default 2/6h) was not yet exceeded, and
+      pushed an empty commit to the PR's head branch to force a fresh
+      CI run. The attempt_number field discriminates first vs. second
+      retry within the window.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, failure_class, attempt_number]

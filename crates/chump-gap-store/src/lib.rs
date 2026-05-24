@@ -13,7 +13,11 @@ use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+// INFRA-1893: debounce flag — emit gap_reserve_open_pr_scan_failed at most once per process.
+static SCAN_FAILED_WARNED: AtomicBool = AtomicBool::new(false);
 
 // ────────────────────────── Data types ──────────────────────────
 
@@ -1418,28 +1422,66 @@ impl GapStore {
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[gap reserve] WARN: open-PR scan failed ({e}). Continuing \
-                         with lease+DB coverage only — slight collision risk against \
-                         in-flight PRs from sibling sessions. Set \
-                         CHUMP_RESERVE_SCAN_OPEN_PRS=0 to silence."
-                    );
-                    // CREDIBLE-052: emit gap_id_allocator_offline so operators can
-                    // see network gaps in the ambient stream.
+                    // INFRA-1893: negative-confirmation gate before emitting any
+                    // visible warning. Run a cheap gh smoke call (gh api user).
+                    // If the smoke passes (gh is healthy), the original failure was
+                    // an internal inconsistency (spurious 401 from --paginate/--jq
+                    // path or scope mismatch). Suppress the operator-visible warning
+                    // and emit a forensic ambient event instead.
+                    // If the smoke also fails, gh is genuinely broken — emit a
+                    // single visible warning (debounced per-process via
+                    // SCAN_FAILED_WARNED) and a gap_reserve_open_pr_scan_failed
+                    // ambient event.
                     let amb = locks_dir.join("ambient.jsonl");
                     let ts = unix_to_iso_full(unix_now());
-                    let line = format!(
-                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_allocator_offline\",\
-                         \"domain\":\"{domain_upper}\",\"reason\":\"{}\"}}\n",
-                        e.to_string().replace('"', "'")
-                    );
                     use std::io::Write as _;
-                    if let Ok(mut f) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&amb)
-                    {
-                        let _ = f.write_all(line.as_bytes());
+                    let reason_escaped = e.to_string().replace('"', "'");
+                    if gh_smoke_check() {
+                        // gh is healthy — inconsistency in the scan call itself.
+                        // Suppress stderr warning; emit forensic telemetry only.
+                        let line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_open_pr_scan_inconsistent\",\
+                             \"domain\":\"{domain_upper}\",\"reason\":\"{reason_escaped}\"}}\n"
+                        );
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&amb)
+                        {
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                    } else {
+                        // gh is genuinely unreachable / unauthenticated.
+                        // Emit operator-visible warning at most once per process.
+                        if !SCAN_FAILED_WARNED.swap(true, Ordering::Relaxed) {
+                            eprintln!(
+                                "[gap reserve] WARN: open-PR scan failed ({e}). Continuing \
+                                 with lease+DB coverage only — slight collision risk against \
+                                 in-flight PRs from sibling sessions. Set \
+                                 CHUMP_RESERVE_SCAN_OPEN_PRS=0 to silence."
+                            );
+                        }
+                        // Emit gap_reserve_open_pr_scan_failed (once per process
+                        // — guard the file write with the same flag so 5 back-to-back
+                        // reserves don't append 5 identical lines).
+                        // CREDIBLE-052: also retain gap_id_allocator_offline for
+                        // existing consumers that watch that kind.
+                        let scan_line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_open_pr_scan_failed\",\
+                             \"domain\":\"{domain_upper}\",\"reason\":\"{reason_escaped}\"}}\n"
+                        );
+                        let offline_line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_allocator_offline\",\
+                             \"domain\":\"{domain_upper}\",\"reason\":\"{reason_escaped}\"}}\n"
+                        );
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&amb)
+                        {
+                            let _ = f.write_all(scan_line.as_bytes());
+                            let _ = f.write_all(offline_line.as_bytes());
+                        }
                     }
                 }
             }
@@ -3154,6 +3196,20 @@ fn parse_iso_to_unix(s: &str) -> Option<i64> {
     }
     days += day as i64 - 1;
     Some(days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64)
+}
+
+/// INFRA-1893: lightweight gh health probe — calls `gh api user` (1 REST call,
+/// core bucket, no scope beyond public read). Returns true if gh responds 200,
+/// false on any error. Used as a negative-confirmation gate before surfacing a
+/// visible warning when the open-PR scan fails: if the smoke passes but the
+/// scan failed, the failure is an internal inconsistency (spurious 401 from
+/// --paginate/--jq path) and we suppress the operator-visible warning.
+fn gh_smoke_check() -> bool {
+    std::process::Command::new("gh")
+        .args(["api", "user", "--jq", ".login"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// INFRA-1039: use REST endpoint (gh api repos/{nwo}/pulls) instead of GraphQL

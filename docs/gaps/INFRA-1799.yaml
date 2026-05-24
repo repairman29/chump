@@ -1,12 +1,17 @@
 - id: INFRA-1799
   domain: INFRA
   title: "ZERO-WASTE: chump gap set acceptance-criteria escapes pipe chars in AC values (today's INFRA-1796 yaml break + earlier Rust-generic AC breaks)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  description: |
+    chump gap set --acceptance-criteria treats the pipe character as the AC delimiter, but provides no escape mechanism. When an AC value legitimately contains '|' (Rust generic bounds like Type1|Type2, regex alternation like <a|b|c>, shell pipes in code snippets), the parser splits the value mid-bullet and produces malformed yaml. Today (2026-05-23) this bug broke 3 separate AC writes: (1) my own attempts to file Rust HandoffContract gaps with generic syntax, (2) the INFRA-1796 (opus-message v0) author writing '<gap-id|session-id|all-opus>' for the --to recipient resolution, (3) similar issues in subsequent ACs. The INFRA-1796 case cascaded through gaps-integrity check on 5 PRs (#2391, #2392, #2393, #2394, plus advisory). The fix is small CLI-parser change: either accept --acceptance-criteria multiple times (one bullet per flag) or treat backslash-pipe as escaped. Pillar ZERO-WASTE — high-frequency CI failure source that costs both time-to-fix and operator-time-routing.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "src/main.rs or wherever chump gap set lives: parser for --acceptance-criteria gains a documented escape mechanism. Two options to evaluate (operator picks during implementation): (a) treat backslash-pipe (escape) as literal pipe within an AC bullet, (b) accept --acceptance-criteria multiple times where each invocation is one bullet (no delimiter needed), preferred because no escape syntax to teach"
+    - chump gap set --help documents the chosen mechanism with an example showing a pipe-containing AC value
+    - "Smoke test scripts/ci/behavior_gap_set_pipe_escape.sh: invoke chump gap set on a synthetic gap with an AC value containing a literal pipe, assert the resulting yaml parses cleanly via python yaml.safe_load + assert the AC bullet contains the literal pipe character"
+    - "Backward compatible: existing AC values without pipes work identically; only the new escape-or-multi-flag path is a feature add"
+    - "Optional: if implementation goes the multi-flag route, the old delimiter syntax stays supported with a deprecation warning to ambient kind=chump_gap_set_legacy_delim used so the curator can migrate scripts gradually"
+  closed_date: '2026-05-24'
+  closed_pr: 2411
 

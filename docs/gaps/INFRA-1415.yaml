@@ -1,7 +1,7 @@
 - id: INFRA-1415
   domain: INFRA
   title: "EFFECTIVE: chump claim --check-only — dry-run that warns on hot-file collision + stale state.db status before creating worktree (today: claimed INFRA-1368/1363 only to find them done)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -10,4 +10,6 @@
     - "Output: structured table of pass/warn/fail per gate; --json variant for tooling"
     - Used by INFRA-1409 chump pr triage and by manual operator inspection
     - CI test scripts/ci/test-claim-check-only.sh fabricates gap-states for each fail scenario + asserts the right gate fires
+  closed_date: '2026-05-24'
+  closed_pr: 2275
 

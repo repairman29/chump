@@ -1,12 +1,19 @@
 - id: INFRA-1722
   domain: INFRA
   title: "CREDIBLE: auto-generate per-repo ARCHITECTURE.md on significant changes (companion to CAPABILITIES_REGISTRY.json)"
-  status: open
-  priority: P2
+  status: done
+  priority: P1
   effort: m
+  description: |
+    Companion to INFRA-1721 (CAPABILITIES_REGISTRY.json). Where the registry is a programmatic surface for cross-repo discovery, ARCHITECTURE.md is the human-readable counterpart: per-repo topology, module relationships, key primitives. Currently agents working on unfamiliar repos read source from scratch every time — wasteful + drifts. Auto-generate ARCHITECTURE.md on significant changes (rust source touched, structural reorgs) so it stays mirror-accurate to the code state. The Custodian content bot (from META-066 / INFRA-1695 suite) is the natural agent for the prose sections; topology + dependency graph stays deterministic. Pillar CREDIBLE — artifact stays in sync with code state, observable transparency for operators + sibling fleets.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "scripts/ops/generate-architecture-doc.sh inspects the repo (reuses INFRA-1719 AST crawler output for the structural data) and produces docs/ARCHITECTURE.md with: module topology (text tree), key primitives (top-level fn/struct/trait per module with one-line summaries derived from doc comments), inter-module dependency graph (text adjacency list), public surface boundaries (which crates/modules are publicly used vs internal)"
+    - Generator invokes the Custodian content bot to produce the prose sections (Mission/Overview, Module Roles); leaves topology + dependency graph as deterministic non-AI output
+    - "Wired via the same github-webhook-receiver path INFRA-1721 uses for CAPABILITIES_REGISTRY; fires on pull_request:closed+merged for base=main, gated on rust-source or Cargo.toml or EVENT_REGISTRY.yaml diff"
+    - "Diff-aware: regeneration produces a minimal diff vs current docs/ARCHITECTURE.md; auto-PR only opens if the regeneration changed at least 5 lines (avoid churn PRs on cosmetic changes)"
+    - Emits kind=architecture_doc_regenerated with fields repo+lines_changed+sections_touched to ambient on each generation
+    - "Smoke test scripts/ci/test-architecture-doc-gen.sh: synthetic repo with 3 modules + 2 deps + 5 pub fns, run generator, assert output ARCHITECTURE.md has the 4 expected sections (Topology, Primitives, Dependencies, Public Surface) and the prose-sections were invoked via Custodian (mocked)"
+  depends_on: [INFRA-1719, INFRA-1721]
+  closed_date: '2026-05-24'
+  closed_pr: 2414
 

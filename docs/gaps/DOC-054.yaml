@@ -1,0 +1,11 @@
+- id: DOC-054
+  domain: DOC
+  title: "SYNTHESIS-2026-05-23: docs/syntheses/2026-05-23-autopilot-overnight.md — captures today's 20+ PR autopilot run for continuity + demo evidence"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. New docs/syntheses/2026-05-23-autopilot-overnight.md: structured retrospective of the curator-opus-ci-audit-2026-05-23 session\n2. Sections: (a) session window + PR ship count + median wall-clock, (b) named milestones (3-tier auto-fix stack / 8-PR mandate-vs-suggest stack / A2A foundation / META-067 demo-polish quartet / META-073 schema trio), (c) lessons accumulated (catalog what worked + what failed, link to opus-curator-overnight lessons doc), (d) gap registry deltas (filed + decomposed counts), (e) hand-off notes for tomorrow's curator\n3. Cited PR numbers + gap IDs match reality (verified at source per opus-curator lesson #1)\n4. Each section ~80-100 words; total fits readable in 5 min\n5. Cross-references: AGENTS.md, CLAUDE.md, opus-curator lessons doc, today's other syntheses if any\n6. Operator-facing: this is the canonical retrospective the operator can share with reviewers tomorrow without re-deriving"
+  closed_date: '2026-05-24'
+  closed_pr: 2462
+

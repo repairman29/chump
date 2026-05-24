@@ -50,7 +50,14 @@ echo "--- Test 1: gap list ---"
 export CHUMP_STATE_DB="$TMP/state.db"
 output=$("$CHUMP_BIN" gap list --status open 2>&1 || true)
 # Should not error out, may print "state.db is empty" or a list
-if echo "$output" | grep -q "Error.*anthropic\|401\|API key"; then
+# INFRA-1900: anchor the grep to actual Anthropic-call failure markers, not
+# gap-title substrings. Old pattern "Error.*anthropic\|401\|API key" tripped
+# false-positive on gap titles like "INFRA-1893: HTTP 401 Bad credentials"
+# or gaps referencing "API key" when auto-import populated the temp state.db
+# from docs/gaps/ on empty-state.db path (INFRA-821) and dumped them.
+# New pattern matches concrete failure phrases the Anthropic SDK actually
+# emits when a real API call is attempted without creds.
+if echo "$output" | grep -qE "ANTHROPIC_API_KEY (not set|missing|required)|anthropic\.com.*401|HTTP 401 .* api\.anthropic\.com|reqwest::Error.*api\.anthropic"; then
     fail "gap list made an Anthropic API call: $output"
 fi
 pass "gap list works without Anthropic creds"

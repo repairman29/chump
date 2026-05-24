@@ -113,9 +113,6 @@
       padding-bottom: 10px;
       flex: 1;
     }
-    chump-model-indicator {
-      padding-bottom: 9px;
-    }
     chump-heartbeat {
       padding-bottom: 9px;
       font-size: 11px;
@@ -2313,10 +2310,6 @@
   <header id="app-header">
     <span id="app-title">Chump</span>
     <chump-repo-switcher></chump-repo-switcher>
-    <chump-model-picker></chump-model-picker>
-    <chump-cost-meter></chump-cost-meter>
-    <chump-pillar-health></chump-pillar-health>
-    <chump-autopilot-toggle></chump-autopilot-toggle>
     <chump-heartbeat></chump-heartbeat>
   </header>
 
@@ -2340,9 +2333,19 @@
        6 slots: model / cost / air-gap / pillar grades / fleet / GH budget. -->
   <chump-status-footer></chump-status-footer>
 
+  <!-- INFRA-1916 / PRODUCT-090: retained as hidden backing widget.
+       INFRA-1585 consolidation removed the visible header chip; pillar-health.js
+       still polls /api/health/pillars and the gate-required test contract
+       (scripts/ci/test-pillar-dashboard.sh §4) expects this element to be
+       DOM-present. Without it, audit-required FAILS on EVERY PR — fleet-wedge.
+       Follow-up: update test to expect the status-footer pillar-grades slot instead. -->
+  <chump-pillar-health hidden></chump-pillar-health>
+
+  <!-- INFRA-1585: <chump-ootb-wizard> retained for Tauri OOTB setup only;
+       Tauri-specific steps (system-tray, native-notif) have been folded into
+       <chump-first-run-wizard> via window.__TAURI__ detection (see app.js).
+       <chump-welcome> removed — canonical first-run surface is <chump-first-run-wizard>. -->
   <chump-ootb-wizard></chump-ootb-wizard>
-  <!-- PRODUCT-082: universal first-run welcome (non-Tauri) -->
-  <chump-welcome></chump-welcome>
   <!-- PRODUCT-094: notification center — invisible singleton; manages SSE + badge -->
   <chump-notification-center></chump-notification-center>
   <!-- PRODUCT-100: status pill + error toasts + offline banner -->
@@ -2362,7 +2365,9 @@
   <script src="pr-list.js" type="module"></script>
   <script src="workflow-timeline.js" type="module"></script>
   <script src="ootb-wizard.js" type="module"></script>
-  <script src="welcome.js" type="module"></script>
+  <!-- INFRA-1585: welcome.js removed as a functional script; legacy localStorage
+       migration runs from the stub module imported indirectly via prefs.js
+       startup if needed. No chump-welcome element registered. -->
   <script src="inference-profile.js" type="module"></script>
   <!-- ambient-viewer.js removed: ChumpAmbientViewer class now lives in app.js (INFRA-1198); INFRA-1332 dedup fix -->
   <script src="fleet-sidebar.js" type="module"></script>

@@ -1,0 +1,22 @@
+- id: INFRA-1694
+  domain: INFRA
+  title: "CREDIBLE: live integration test for chump-team nuggets API + RPC (INFRA-1473 follow-up)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Follow-up to INFRA-1473 #2337. Mirror of crates/chump-team/tests/live.rs (INFRA-1475 path); env-gated integration test against the live Supabase project. Verifies the full nugget lifecycle works end-to-end before declaring AC #2 + AC #6 closed.
+  acceptance_criteria:
+    - crates/chump-team/tests/nuggets_live.rs
+    - Env-gated on CHUMP_TEAM_URL + CHUMP_TEAM_API_KEY + OPENAI_API_KEY (skips gracefully if unset)
+    - "Test 1: create_nugget with AutoEmbed inserts row, returns id"
+    - "Test 2: search_nuggets for related query returns the just-inserted nugget with similarity > 0.6"
+    - "Test 3: log_nugget_read by 3 distinct sessions auto-promotes keeper=true"
+    - "Test 4: delete_nugget flips deleted_at, subsequent search excludes it"
+    - Cleans up via delete_nugget on each created row (audit trail preserved)
+    - Documented manual run command in test file header
+  notes: |
+    Closes INFRA-1473 AC #2 + AC #6. Pairs with INFRA-1691, INFRA-1692, INFRA-1693.
+  closed_date: '2026-05-24'
+  closed_pr: 2343
+
