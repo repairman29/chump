@@ -344,3 +344,9 @@ liaison_webhook_unhealthy  # reason: INFRA-1875 emit at scripts/ops/github-liais
 liaison_polling_fallback_active  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle alongside liaison_webhook_unhealthy; same helper-not-scannable issue
 liaison_webhook_recovered  # reason: INFRA-1875 emit at scripts/ops/github-liaison.sh _refresh_cycle on first successful probe after fallback; same helper-not-scannable issue
 opus_message_sent  # reason: INFRA-1800 — emitted by scripts/coord/broadcast.sh after addressed-async DM delivery (META-061 opus-message v0 retarget)
+
+# INFRA-1876: GitHub Liaison Phase 2 slice δ — offline-mode hard gate.
+# Both emit sites use the local `_emit_ambient` helper (or direct printf) and
+# are not grep-scannable as `kind=X` literals by Pattern 5b's regex.
+liaison_offline_mode_gated  # reason: INFRA-1876 — emitted by scripts/ops/github-liaison.sh when CHUMP_GITHUB_MODE=offline blocks daemon start; _emit_ambient helper form
+liaison_cache_offline_read  # reason: INFRA-1876 — emitted by scripts/coord/lib/github_cache.sh::_emit_offline_read_event when cache helpers run with CHUMP_GITHUB_MODE=offline; per-helper 60s debounce

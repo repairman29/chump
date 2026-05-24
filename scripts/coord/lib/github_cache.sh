@@ -83,6 +83,7 @@ cache_lookup_pr() {
             *) shift ;;
         esac
     done
+    _emit_offline_read_event cache_lookup_pr  # INFRA-1876
     local db; db="$(_cache_db_path)"
     [[ -f "$db" ]] || return 2
 
@@ -215,6 +216,33 @@ _cache_ambient_path() {
     printf '%s/.chump-locks/ambient.jsonl' "$root"
 }
 
+# INFRA-1876: offline-mode tag emission for cache reads.
+# When CHUMP_GITHUB_MODE=offline, the cache helpers emit
+# kind=liaison_cache_offline_read so dashboards can show "operating offline"
+# without scanning every cache_hit/cache_miss event. Debounced once per 60s
+# per helper to avoid flooding ambient when callers loop.
+# rc=0 always (never blocks the actual cache read).
+_emit_offline_read_event() {
+    local helper="${1:?helper}"
+    [[ "${CHUMP_GITHUB_MODE:-}" == "offline" ]] || return 0
+    local debounce="${CHUMP_LIAISON_OFFLINE_DEBOUNCE_S:-60}"
+    local marker="${TMPDIR:-/tmp}/chump-liaison-offline-${helper}.marker"
+    if [[ -f "$marker" ]]; then
+        local mtime now age
+        mtime=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null)
+        now=$(date -u +%s)
+        if [[ -n "$mtime" ]]; then
+            age=$((now - mtime))
+            [[ "$age" -lt "$debounce" ]] && return 0
+        fi
+    fi
+    : > "$marker" 2>/dev/null
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"liaison_cache_offline_read","helper":"%s","debounce_s":%s}\n' \
+        "$ts" "$helper" "$debounce" >> "$amb" 2>/dev/null || true
+}
+
 # INFRA-1275: cache_query_open_prs
 #   stdout: tab-separated lines `<number>\t<title>\t<head_ref>` per open PR
 #           (merged_at IS NULL). Empty on miss/empty.
@@ -222,6 +250,7 @@ _cache_ambient_path() {
 #   The caller can grep by title substring (cheap) instead of paying
 #   GitHub's GraphQL secondary-rate-limit tax.
 cache_query_open_prs() {
+    _emit_offline_read_event cache_query_open_prs  # INFRA-1876
     local db; db="$(_cache_db_path)"
     local amb; amb="$(_cache_ambient_path)"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -439,6 +468,7 @@ cache_lookup_pr_by_branch() {
 #   `gh api repos/X/commits/SHA/check-runs`.
 cache_lookup_checks() {
     local sha="${1:?cache_lookup_checks <head_sha>}"
+    _emit_offline_read_event cache_lookup_checks  # INFRA-1876
     local db; db="$(_cache_db_path)"
     local amb; amb="$(_cache_ambient_path)"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
