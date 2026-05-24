@@ -43,7 +43,10 @@
     - "Backward-compat: existing broadcast.sh callers continue to work; new typed-schema is opt-in via --strict flag; flip to default after 7-day clean window"
     - "Smoke: scripts/ci/test-a2a-mesh.sh spawns 3 ephemeral sessions, exchanges messages across all 6 pair-directions, asserts 100% delivery + <100ms median latency"
   notes: |
-    P1 EFFECTIVE. Child B of META-074. Ship after child A (CI/QA) is
-    at ≥95% because A2A needs trustworthy success/failure signal to
-    coordinate. Suggested owner role: curator-opus-a2a (new role; can
-    promote from existing curator-opus-handoff session).
+    DECOMPOSED 2026-05-24T17:42Z by wizard (owning the offline decompose-curator task per operator 17:31Z directive). 5 sub-slices filed:
+      - INFRA-1944 slice A: broadcast.sh delivery-confirmation receipts (P1/s)
+      - INFRA-1945 slice B: role-typed routing via fleet-registry.jsonl (P1/s)
+      - INFRA-1946 slice C: dead-letter queue + operator-recall page (P1/s)
+      - INFRA-1947 slice D: opt-in NATS transport with file-fallback (P2/m)
+      - INFRA-1948 slice E: schema validation + 4 ambient kinds (P1/xs, ships last)
+    Recommended ship order: E (gates) → A → B → C → D. Slices A-C usable independently for single-machine fleet; D enables Pi-mesh.
