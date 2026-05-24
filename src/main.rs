@@ -874,11 +874,16 @@ async fn main() -> Result<()> {
     if let Some(pos) = args.iter().position(|a| a == "--briefing") {
         let gap_id = args.get(pos + 1).map(String::as_str).unwrap_or("");
         if gap_id.is_empty() || gap_id.starts_with("--") {
-            eprintln!("Usage: chump --briefing <GAP-ID>");
+            eprintln!("Usage: chump --briefing <GAP-ID> [--json]");
             std::process::exit(2);
         }
         let b = briefing::build_briefing(gap_id);
-        print!("{}", briefing::render_markdown(&b));
+        // INFRA-1548: --json flag emits schema_version:1 JSON for harness consumers.
+        if args.iter().any(|a| a == "--json") {
+            println!("{}", briefing::render_json(&b));
+        } else {
+            print!("{}", briefing::render_markdown(&b));
+        }
         return Ok(());
     }
 
@@ -5630,9 +5635,14 @@ async fn main() -> Result<()> {
                         });
 
                         if json_out {
-                            // Extend JSON output with ac_count + ac_has_todos (CREDIBLE-033).
+                            // Extend JSON output with schema_version (INFRA-1548),
+                            // ac_count + ac_has_todos (CREDIBLE-033).
                             let mut val = serde_json::to_value(&g).unwrap_or_default();
                             if let Some(obj) = val.as_object_mut() {
+                                obj.insert(
+                                    "schema_version".to_string(),
+                                    serde_json::Value::Number(1.into()),
+                                );
                                 obj.insert(
                                     "ac_count".to_string(),
                                     serde_json::Value::Number(ac_items.len().into()),

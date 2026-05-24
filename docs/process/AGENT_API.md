@@ -23,7 +23,16 @@ Versioned so harness implementers can target a stable surface. Breaking-change d
 | `health --json` | **1** — current shipped output | breaking changes bump |
 | `gap show --json` | **1** — current | breaking changes bump |
 
-Until a surface has a `schema_version` field, treat its shape as **stable in practice but not formally contracted** — pin to a specific chump release rather than `latest`.
+All three primary JSON surfaces (`--briefing --json`, `health --json`, `gap show --json`) now emit `schema_version: 1` (INFRA-1548). This is **contracted** — harnesses may assert its presence. Surfaces that have not yet been wired remain **stable in practice but not formally contracted** — pin to a specific chump release rather than `latest`.
+
+## Breaking changes
+
+A `schema_version` bump is **required** when:
+- A field is removed from a JSON output
+- A field's type changes (e.g. string → array)
+- A field's meaning changes incompatibly
+
+An N-1 compatibility shim must be maintained for one release cycle after a bump. Adding new fields is non-breaking and does not require a bump.
 
 ## 1. `chump --briefing <GAP-ID>`
 
