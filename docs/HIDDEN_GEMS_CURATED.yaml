@@ -1,0 +1,70 @@
+# HIDDEN_GEMS_CURATED.yaml — operator overlay for hand-picked entries
+#
+# This file is the operator's hand-curated set of high-value primitives that
+# the auto-builder either won't surface or won't highlight strongly enough.
+# The build script (scripts/dev/build-hidden-gems.sh) merges these on top of
+# the auto-detected baseline so manual highlights survive regeneration.
+#
+# Schema per entry:
+#   name:            string — the primitive's invocation name
+#   where_to_find:   string — repo-relative file path (verified by smoke test)
+#   when_to_use:     string — one-line value prop
+#   example_command: string — copy-pasteable invocation
+#
+# Sections: cli, mcp, env, hidden
+# (Add a new section here if you have a primitive that doesn't fit.)
+
+cli:
+  - name: chump-coord watch
+    where_to_find: crates/chump-coord/src/main.rs
+    when_to_use: Live cross-machine view of NATS-published fleet events (claims, ships, alerts) without polling
+    example_command: chump-coord watch
+
+  - name: chump gap consolidate
+    where_to_find: src/main.rs
+    when_to_use: Detect near-duplicate gap titles before they pollute the registry — Jaccard-similarity ranked, dry-run by default
+    example_command: chump gap consolidate --threshold 0.7
+
+  - name: chump fleet doctor
+    where_to_find: src/main.rs
+    when_to_use: Strict 7-invariant health check; non-zero exit on any failure (binary staleness, expired leases, low disk, dirty PRs, gap drift, P0 budget, pillar floor)
+    example_command: chump fleet doctor --slo-check
+
+  - name: scripts/dev/api-cost-leaderboard.sh
+    where_to_find: scripts/dev/api-cost-leaderboard.sh
+    when_to_use: Find the biggest GitHub-API burner in the fleet over the last hour — first diagnostic when graphql_exhausted fires
+    example_command: bash scripts/dev/api-cost-leaderboard.sh --window 1h
+
+  - name: scripts/dispatch/fleet-brief.sh
+    where_to_find: scripts/dispatch/fleet-brief.sh
+    when_to_use: 60-second operator briefing — 24h ship count, pillar mix, stalls, alerts, suggested next action
+    example_command: bash scripts/dispatch/fleet-brief.sh
+
+  - name: scripts/dev/chump-dashboard-tui.sh
+    where_to_find: scripts/dev/chump-dashboard-tui.sh
+    when_to_use: One-shot terminal dashboard (ships + lightning + leases + inbox + pillars) — screenshot-ready in 80x40
+    example_command: bash scripts/dev/chump-dashboard-tui.sh
+
+  - name: scripts/dev/chump-pitch.sh
+    where_to_find: scripts/dev/chump-pitch.sh
+    when_to_use: One-command operator pitch — runs dashboard + lightning timeline + cats DEMO_5MIN.md for a 5-minute walkthrough
+    example_command: bash scripts/dev/chump-pitch.sh
+
+mcp:
+  - name: chump-mcp-gaps
+    where_to_find: chump-mcp.json
+    when_to_use: MCP server that exposes chump gap CLI surface to any MCP-aware agent — list, show, reserve, ship without spawning a shell
+    example_command: claude --mcp-servers chump-mcp.json
+
+env: []
+
+hidden:
+  - name: CHUMP_GH_CALL_CRITICALITY=background
+    where_to_find: scripts/coord/lib/github_cache.sh
+    when_to_use: Tag a non-critical gh call as background so it yields the GraphQL bucket to ship-blocking critical-path callers under pressure
+    example_command: CHUMP_GH_CALL_CRITICALITY=background gh pr list --limit 100
+
+  - name: cache_lookup_pr / cache_query_behind_prs
+    where_to_find: scripts/coord/lib/github_cache.sh
+    when_to_use: Cache-first PR-state lookup (webhook-populated SQLite at .chump/github_cache.db) — REST-only fallback on miss; avoids GraphQL exhaustion
+    example_command: source scripts/coord/lib/github_cache.sh && cache_lookup_pr 2467
