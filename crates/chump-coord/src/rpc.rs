@@ -255,12 +255,11 @@ pub async fn call_rpc(
         "request": req,
     }))?;
 
-    write_envelope_to_inbox(target_session, &envelope_json).map_err(|e| {
+    write_envelope_to_inbox(target_session, &envelope_json).inspect_err(|e| {
         let _ = append_ambient(&format!(
             r#"{{"ts":"{ts_started}","kind":"a2a_rpc_send_failed","target":"{target_session}","method":"{method}","request_id":"{request_id}","error":"{}"}}"#,
             e.to_string().replace('"', "'")
         ));
-        e
     })?;
 
     let _ = append_ambient(&format!(
