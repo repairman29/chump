@@ -4531,3 +4531,62 @@ events:
       retry within the window.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, failure_class, attempt_number]
+
+  # META-088: Oracle refresh cron. Periodic Opus burst (every 4h via launchd)
+  # re-contemplates docs/process/THE_PATH.md against current state.db + recent
+  # ambient. Emits 4 ambient kinds for observability.
+  - kind: oracle_refresh_drift
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (META-088)
+    trigger: >
+      Oracle burst returned content with a different shasum than the existing
+      docs/process/THE_PATH.md — the refresh produced real drift. THE_PATH.md
+      has been overwritten and an auto-merge PR opened. before_hash + after_hash
+      let consumers see the change magnitude.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, before_hash, after_hash]
+  - kind: oracle_refresh_noop
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (META-088)
+    trigger: >
+      Oracle burst returned content with the same shasum as the existing
+      THE_PATH.md — idempotent no-op. No PR opened. Useful signal for
+      "Oracle ran but nothing changed" telemetry.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, hash]
+  - kind: oracle_refresh_skipped
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (META-088)
+    trigger: >
+      Oracle daemon ran but could not complete a burst — either the claude
+      CLI is missing OR the burst returned empty/too-short output. reason
+      field discriminates causes (claude_cli_missing, empty_or_short_output).
+      Fail-soft path so the daemon stays cron-able even when LLM access
+      is down.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+  - kind: oracle_refresh_pr_opened
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (META-088)
+    trigger: >
+      After a drift event, the daemon successfully created an auto-merge
+      PR with the refreshed THE_PATH.md. branch field is the PR's head
+      branch name (chump/oracle-refresh-<stamp>).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, branch]
+  # META-098: daily self-productization wave. Once per day a launchd cron
+  # sends 6 A2A broadcast.sh DMs (one per curator role) asking the curator
+  # to contemplate what changed in their lane and add delta-AC to their
+  # agent.md / SKILL.md (or file a follow-up gap). Productizes the manual
+  # A2A wave that spawned META-097.
+  - kind: daily_self_productize_wave
+    effect_metric: self
+    emitter: scripts/coord/daily-self-productize.sh (META-098)
+    trigger: >
+      Daemon fired once per day (idempotent on same-date guard). Sends
+      one broadcast.sh DM per curator role (6 total). roles_paged is the
+      count of successful pages; failed is the count of failed pages.
+      Consumers can compute the wave-cadence over time to verify the
+      ritual runs daily.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, date, roles_paged, failed]

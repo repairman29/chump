@@ -90,3 +90,24 @@ installers:
     install: bash scripts/setup/install-github-liaison.sh
     check: bash scripts/setup/install-github-liaison.sh --check
     adds: ~/Library/LaunchAgents/dev.chump.github-liaison.plist + KeepAlive daemon
+
+  - id: stale-branch-reaper-launchd
+    why: INFRA-388 — daily reaper deletes remote branches 14+ days old with no open PR. Without this the reaper script exists but never runs; reaper-heartbeat-watchdog ALERTs daemon_silent for "branch". Installer existed since 2026-05 but was missing from manifest until INFRA-1926 today.
+    priority: P1
+    install: bash scripts/setup/install-stale-branch-reaper-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q dev.chump.stale-branch-reaper
+    adds: ~/Library/LaunchAgents/dev.chump.stale-branch-reaper.plist + daily run
+
+  - id: pr-watch-shepherd-launchd
+    why: INFRA-354 — 10-min sweeper that scans all open ARMED PRs and auto-recovers DIRTY-after-arm ones from a clean ephemeral worktree. Without this, the per-PR detached pr-watch.sh children die when their host worktree is reaped, leaving PRs stuck DIRTY. Manifest gap surfaced by daemon_silent ALERT for "pr-watch" today.
+    priority: P1
+    install: bash scripts/setup/install-pr-watch-shepherd-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q dev.chump.pr-watch-shepherd
+    adds: ~/Library/LaunchAgents/dev.chump.pr-watch-shepherd.plist + 10-min run
+
+  - id: distill-pr-skills-launchd
+    why: INFRA-195 — hourly feedback loop that distills shipped PRs into chump_improvement_targets rows for cross-agent skill sharing. Without this the table only grows via manual sqlite3 INSERTs (i.e. never). reaper-heartbeat-watchdog ALERTs daemon_silent for "distill" because /tmp/chump-distill.heartbeat is never stamped. Installer NEWLY created by INFRA-1926 today (the script existed since 2026-05-01 but no launchd installer ever shipped).
+    priority: P2
+    install: bash scripts/setup/install-distill-pr-skills-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q dev.chump.distill-pr-skills
+    adds: ~/Library/LaunchAgents/dev.chump.distill-pr-skills.plist + hourly run

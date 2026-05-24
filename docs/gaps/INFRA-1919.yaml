@@ -1,0 +1,14 @@
+- id: INFRA-1919
+  domain: INFRA
+  title: "ZERO-WASTE: migrate test-pillar-dashboard.sh §4 off legacy <chump-pillar-health> element to <chump-status-footer> pillar-grades slot — removes the INFRA-1916 hidden-widget hack"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Background — INFRA-1916 unwedged the fleet by adding `<chump-pillar-health hidden></chump-pillar-health>` back to web/v2/index.html as a hidden backing widget. The element's actual functionality (pillar grades display) lives in <chump-status-footer> per PRODUCT-107. The hidden widget exists only to satisfy scripts/ci/test-pillar-dashboard.sh §4 which hard-greps for the literal element. This is a hack carried forward indefinitely unless the test migrates"
+    - "Update scripts/ci/test-pillar-dashboard.sh §4 to check for `<chump-status-footer>` as the canonical pillar-grades surface — grep for chump-status-footer and the pillar-grades slot in its component template at web/v2/status-footer.js"
+    - "Remove the hidden `<chump-pillar-health>` element from web/v2/index.html — both the element and the explanatory HTML comment block added by INFRA-1916"
+    - "Remove web/v2/pillar-health.js IF no other surface uses it — grep for pillar-health.js and chump-pillar-health imports first; if only the legacy script tag at line 2378 remains, drop the script tag too"
+    - "Local verification — bash scripts/ci/test-pillar-dashboard.sh exits 0 with the new check; commit hits no Rust-First-Bypass trailer needed since web-only change"
+    - "Done definition — index.html has no chump-pillar-health element; test passes against the status-footer slot; INFRA-1916 follow-up TODO comment resolved"
+  notes: filed 15:02Z 2026-05-24 by wizard as INFRA-1916 follow-up; per WIZARD_STRATEGIC_BACKLOG.md §3 medium-leverage preventer

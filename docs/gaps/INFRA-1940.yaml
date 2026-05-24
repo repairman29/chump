@@ -1,0 +1,19 @@
+- id: INFRA-1940
+  domain: INFRA
+  title: "EFFECTIVE P1: file .claude/agents/orchestrator.md (wizard role productization) — INFRA-1936 #2531 includes orchestrator in its INBOX_WATCHER_PATTERN.md owner list but only ships agents/target.md + agents/harvester.md; wizard role still ad-hoc per session"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Background — INFRA-1936 #2531 (target curator, 16:51Z 2026-05-24) shipped INBOX_WATCHER_PATTERN.md + agents/target.md + agents/harvester.md. The doc explicitly lists orchestrator in its owner list (every productized curator role: target / harvester / shepherd / ci-audit / handoff / decompose / md-links / orchestrator). But there's no .claude/agents/orchestrator.md, so the wizard role is still an ad-hoc Claude Code window with per-session reinvention of the operating model (rings, dispatch discipline, backlog usage, etc.)"
+    - New .claude/agents/orchestrator.md (mirroring target.md structure) — frontmatter with name=orchestrator, description listing wizard responsibilities (rank gaps, dispatch curators via A2A, ship keystones, run loops); tools include Bash, Read, Edit, Write, Grep, Glob, Agent, Monitor
+    - "Body sections — (1) Lane scope: rank gaps + dispatch + ship keystones + retire-self-via-META-090. Hard boundary: do NOT free-claim curator-lane work; do NOT solo-rescue when curator is alive. (2) 4 rings from OPERATOR_PLAYBOOK.md §1 — Ship / Coordinate / Retire / Command. (3) Session-start: arm Monitor on inbox + ambient per INBOX_WATCHER_PATTERN.md (cite the doc). (4) Loop-slack discipline: read docs/process/WIZARD_STRATEGIC_BACKLOG.md (META-095) top item; act if ≤3 commands; cross off after ship. (5) Directed-dispatch format: PR=<n> GAP=<id> "
+    - " task "
+    - " DO-NOT-guardrail "
+    - " structured-Q-back "
+    - " reply-channel. (6) Operator-corrected anti-patterns from 2026-05-24 session: 'don't abdicate tactical calls', 'tell curators what to do, don't let them self-direct', 'check who's alive before dispatching to dead inboxes'"
+    - Smoke test scripts/ci/test-orchestrator-agent-md.sh — assert .claude/agents/orchestrator.md exists; assert frontmatter has tools list including Monitor; assert body references INBOX_WATCHER_PATTERN.md and WIZARD_STRATEGIC_BACKLOG.md and OPERATOR_PLAYBOOK.md; assert the 4 rings are named; assert 'directed dispatch format' block present
+    - Update scripts/ci/test-inbox-watcher-pattern.sh — INFRA-1936's coverage gate currently asserts target.md + harvester.md have the watcher-arm block; add orchestrator.md to the required-roles list
+    - Pairs with — INFRA-1936 (the pattern); META-097 (productize remaining 5 curator roles, 4 sibling sub-fleet workers in flight); META-089 OPERATOR_PLAYBOOK.md (cite this gap as the wizard-role companion to playbook)
+    - Done definition — .claude/agents/orchestrator.md exists in repo; smoke test passes; next wizard session opens with Monitor armed by reading the agent file's session-start block instead of having to invent the pattern from scratch
+
