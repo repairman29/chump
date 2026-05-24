@@ -1,0 +1,16 @@
+- id: META-091
+  domain: META
+  title: "EFFECTIVE: opus-shepherd session-start structured triage pass — ghost-sweep + ambient signature stats + sibling-lease inventory + written game-plan, replaces poll-and-react with plan-and-execute (productize from session2 retrospective where 49-ghost-reconcile windfall was discovered at tick 40 instead of tick 1)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - 1. New first-tick of every opus-shepherd /loop runs a structured 5-min triage block BEFORE step-1 inbox read
+    - "2. Triage block (in order): (a) ghost-gap sweep — title-search all open P1 gaps for 'in:title <gap-id>' merged-PR matches, list candidates with stricter filter '(GID)' or 'GID:' to reduce false-positives, (b) ambient.jsonl signature stats — last 24h event-kind histogram + back-off-trigger detection, (c) sibling lease inventory — gap-id + paths for each active claim, (d) pickable surface diff — count P1/xs+s gaps NOT in any sibling lease, (e) WRITTEN GAME-PLAN — operator-readable 3-bullet plan committed to ambient with kind=opus_shepherd_plan"
+    - 3. Output goes to ambient.jsonl as a structured kind=opus_shepherd_triage event AND a a2a WARN broadcast to operator-76c22455 so the operator sees the plan within 5min of session resume
+    - 4. Implemented in scripts/coord/opus-shepherd-triage.sh — sourced by the /loop first-tick OR invoked directly by an operator at session resume
+    - "5. Smoke test scripts/ci/test-opus-shepherd-triage.sh: stub state.db with 3 ghosts + ambient.jsonl with synthetic events, run triage, assert all 5 sections present + kind=opus_shepherd_plan emitted"
+    - "6. Bypass: CHUMP_OPUS_SHEPHERD_TRIAGE=0 disables; emit kind=opus_shepherd_triage_skipped"
+    - 7. Documented in OPUS_SHEPHERD_PLAYBOOK.md (META-094)
+    - "8. Baseline 2026-05-24 session2: 49-ghost reconcile windfall discovered at tick 40 instead of tick 1 — would have saved ~3hr of poll-and-react cycles"
+
