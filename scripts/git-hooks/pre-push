@@ -56,6 +56,48 @@ set -euo pipefail
 # Capture exit-status before any further commands clobber $? .
 trap 'rc=$?; echo "[pre-push] hook aborted at line $LINENO with exit $rc" >&2; exit $rc' ERR
 
+# -----------------------------------------------------------------------
+# INFRA-1950: env-immunity hardening (TRUNK_RED 2026-05-23/24)
+#
+# The GitHub Actions self-hosted runner-listener leaks GIT_DIR /
+# GIT_WORK_TREE / GITHUB_WORKSPACE into every hook process spawned under
+# it. Those vars redirect git's repo context to wherever the runner's
+# active checkout sits, NOT the chump repo whose pre-push we are. Result:
+# every `git rev-parse --show-toplevel`, `git merge-base`, `git ls-remote`
+# resolved against the wrong tree, Guard 3 (force-with-lease race,
+# INFRA-345) silently passed when it should have blocked, and 5/5 main
+# CI runs went red between 16:05Z and 18:22Z on 2026-05-23.
+#
+# Two defences (belt + braces):
+#   (1) Unset the known leak vars so any sub-process / fallback path is
+#       safe even if it forgets the -C flag below.
+#   (2) Compute REPO_ROOT once from BASH_SOURCE (filesystem-anchored, no
+#       env input) and wrap every `git <cmd>` with `git -C "$REPO_ROOT"`
+#       so the call is immune to env contamination regardless.
+#
+# RUNNER_* env vars are diagnostic, not git-affecting — we leave them so
+# downstream tooling can still detect "running under Actions" if needed.
+# -----------------------------------------------------------------------
+unset GIT_DIR GIT_WORK_TREE GITHUB_WORKSPACE GIT_COMMON_DIR GIT_INDEX_FILE
+
+# Derive REPO_ROOT from this script's path on disk. The hook is installed
+# at .git/hooks/pre-push as a symlink → scripts/git-hooks/pre-push, so the
+# scripts/git-hooks parent's parent is always the repo root. BASH_SOURCE
+# is set by bash itself and ignores GIT_* / GITHUB_* env contamination.
+#
+# Fallback ladder when BASH_SOURCE resolution fails (manual invocation,
+# unusual interpreter): try `git rev-parse --show-toplevel` (now env-clean
+# because we unset above), then `pwd`. Final fallback won't be env-immune
+# but at least produces a defined value rather than crashing.
+_pp_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || _pp_script_dir=""
+if [[ -n "$_pp_script_dir" && -d "$_pp_script_dir/../.." ]]; then
+    REPO_ROOT="$(cd "$_pp_script_dir/../.." 2>/dev/null && pwd -P)"
+else
+    REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+unset _pp_script_dir
+export REPO_ROOT
+
 # Never block pushes to main/master — those go through PR only.
 REMOTE="$1"
 # $2 is the remote URL; unused here.
@@ -74,7 +116,9 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
     export CHUMP_TEST_GATE=0
     export CHUMP_MERGE_PREVIEW=0
     _or_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    _or_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    # INFRA-1950: env-immune via -C "$REPO_ROOT" so runner-listener env-leak
+    # cannot redirect us to the wrong tree.
+    _or_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
     mkdir -p "${_or_root}/.chump-locks" 2>/dev/null || true
     printf '{"ts":"%s","kind":"guard_bypassed","guard_name":"operator_recovery_umbrella","bypasses":["CHUMP_BYPASS_BOT_MERGE","CHUMP_GAP_CHECK","CHUMP_TEST_GATE","CHUMP_ALLOW_UNREGISTERED_GAP"],"operator":true}\n' \
         "$_or_ts" >> "${_or_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
@@ -112,13 +156,15 @@ if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
         [[ -z "$local_sha" ]] && continue
         if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
         if [[ "$remote_sha" =~ ^0+$ ]]; then
-            range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
+            # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+            range_base="$(git -C "$REPO_ROOT" merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
             [[ -z "$range_base" ]] && range_base="origin/main"
         else
             range_base="$remote_sha"
         fi
         # Match what preflight cares about: Rust + scripts + Cargo manifests.
-        if git diff --name-only "$range_base..$local_sha" 2>/dev/null \
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        if git -C "$REPO_ROOT" diff --name-only "$range_base..$local_sha" 2>/dev/null \
             | grep -qE '\.(rs|sh)$|^Cargo\.(toml|lock)$|^crates/|^src/|^scripts/'; then
             preflight_has_targets=1
             break
@@ -165,12 +211,14 @@ if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
         # First push of branch: remote_sha is zeros → compare against origin/main.
         if [[ "$remote_sha" =~ ^0+$ ]]; then
-            range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
+            # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+            range_base="$(git -C "$REPO_ROOT" merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
             [[ -z "$range_base" ]] && range_base="origin/main"
         else
             range_base="$remote_sha"
         fi
-        if git diff --name-only "$range_base..$local_sha" 2>/dev/null | grep -qE '\.rs$'; then
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        if git -C "$REPO_ROOT" diff --name-only "$range_base..$local_sha" 2>/dev/null | grep -qE '\.rs$'; then
             push_has_rust=1
             break
         fi
@@ -225,13 +273,14 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
     # The git revisions to scan are determined by the diff between the
     # being-pushed ref and its remote tracking ref. If there is no remote
     # tracking ref (new branch), scan everything not yet on origin/main.
-    _fa_local_sha="$(git rev-parse HEAD 2>/dev/null || echo HEAD)"
-    _fa_base="$(git merge-base "$_fa_local_sha" origin/main 2>/dev/null || echo "")"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT" throughout this guard.
+    _fa_local_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo HEAD)"
+    _fa_base="$(git -C "$REPO_ROOT" merge-base "$_fa_local_sha" origin/main 2>/dev/null || echo "")"
     if [[ -n "$_fa_base" && "$_fa_base" != "$_fa_local_sha" ]]; then
         # INFRA-1588: read-then-parse — git log can produce many commits;
         # piping through grep|awk under pipefail risked SIGPIPE if a later
         # short-circuit was added. Materialising first removes that hazard.
-        _fa_log="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" 2>/dev/null || true)"
+        _fa_log="$(git -C "$REPO_ROOT" log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" 2>/dev/null || true)"
         _fa_ghosts="$(grep -E " ${_fa_regex}" <<<"$_fa_log" | awk '{print $1}' || true)"
         if [[ -n "$_fa_ghosts" ]]; then
             echo "" >&2
@@ -239,7 +288,7 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
             echo "[pre-push] These leak from CI test fixtures running 'git init' in shared dirs and trigger pr-hygiene/CREDIBLE-027 at CI time." >&2
             echo "" >&2
             echo "$_fa_ghosts" | while read -r _sha; do
-                git log -1 --format='  %h %ae — %s' "$_sha" >&2
+                git -C "$REPO_ROOT" log -1 --format='  %h %ae — %s' "$_sha" >&2
             done
             echo "" >&2
             if [[ "${CHUMP_AUTODROP_FIXTURE_COMMITS:-0}" = "1" ]]; then
@@ -247,28 +296,28 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
                 # Build a rebase --onto base ghost~ HEAD for each (in order)
                 # Simplest reliable approach: cherry-pick all non-ghost commits onto base
                 # INFRA-1588: same read-then-parse pattern for the auto-drop branch.
-                _fa_keep_log="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" --reverse 2>/dev/null || true)"
+                _fa_keep_log="$(git -C "$REPO_ROOT" log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" --reverse 2>/dev/null || true)"
                 _fa_keep="$(grep -vE " ${_fa_regex}" <<<"$_fa_keep_log" | awk '{print $1}' || true)"
                 unset _fa_keep_log
-                _fa_branch="$(git rev-parse --abbrev-ref HEAD)"
-                git checkout -q "$_fa_base"
+                _fa_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+                git -C "$REPO_ROOT" checkout -q "$_fa_base"
                 _fa_failed=0
                 for _sha in $_fa_keep; do
-                    if ! git cherry-pick "$_sha" >/dev/null 2>&1; then
+                    if ! git -C "$REPO_ROOT" cherry-pick "$_sha" >/dev/null 2>&1; then
                         _fa_failed=1
-                        git cherry-pick --abort >/dev/null 2>&1 || true
+                        git -C "$REPO_ROOT" cherry-pick --abort >/dev/null 2>&1 || true
                         break
                     fi
                 done
                 if [[ $_fa_failed -eq 1 ]]; then
-                    git checkout -q "$_fa_branch"
+                    git -C "$REPO_ROOT" checkout -q "$_fa_branch"
                     echo "[pre-push] auto-drop failed; manual fix required: git rebase -i $_fa_base" >&2
                     exit 1
                 fi
-                git branch -f "$_fa_branch" HEAD
-                git checkout -q "$_fa_branch"
+                git -C "$REPO_ROOT" branch -f "$_fa_branch" HEAD
+                git -C "$REPO_ROOT" checkout -q "$_fa_branch"
                 # Emit ambient event
-                _fa_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+                _fa_repo_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
                 _fa_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
                 printf '{"ts":"%s","kind":"fixture_commit_dropped","branch":"%s","dropped_count":%d}\n' \
                     "$_fa_ts" "$_fa_branch" "$(echo "$_fa_ghosts" | wc -l | tr -d ' ')" \
@@ -303,8 +352,9 @@ fi
 #   branch so waste-tally can track voluntary bypasses.
 # -----------------------------------------------------------------------
 if [[ "${CHUMP_MERGE_PREVIEW:-1}" == "0" ]]; then
-    _mp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    _mp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+    _mp_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+    _mp_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     _mp_gap="$(echo "$_mp_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 \
         | tr '[:lower:]' '[:upper:]' || echo "")"
     printf '{"ts":"%s","kind":"merge_preview_skipped","gap_id":"%s","branch":"%s","bypassed_by":"CHUMP_MERGE_PREVIEW=0"}\n' \
@@ -312,16 +362,17 @@ if [[ "${CHUMP_MERGE_PREVIEW:-1}" == "0" ]]; then
         >> "${_mp_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
     unset _mp_root _mp_branch _mp_gap
 elif command -v git &>/dev/null; then
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT" throughout.
     # Fetch latest main so the merge-tree comparison is current.
-    git fetch origin main --quiet 2>/dev/null || true
-    _mp_base="$(git merge-base HEAD origin/main 2>/dev/null || echo "")"
-    _mp_head="$(git rev-parse HEAD 2>/dev/null || echo "")"
+    git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
+    _mp_base="$(git -C "$REPO_ROOT" merge-base HEAD origin/main 2>/dev/null || echo "")"
+    _mp_head="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
     # Only check when HEAD is actually ahead of main (skip clean/up-to-date branches).
     if [[ -n "$_mp_base" && "$_mp_base" != "$_mp_head" ]]; then
         # Three-tree merge-tree: base, ours (origin/main), theirs (HEAD).
         # Conflict markers appear as lines starting with +<<<<<<<, +=======,
         # +>>>>>>> in the diff output section.
-        _mp_out="$(git merge-tree "$_mp_base" origin/main HEAD 2>/dev/null || true)"
+        _mp_out="$(git -C "$REPO_ROOT" merge-tree "$_mp_base" origin/main HEAD 2>/dev/null || true)"
         if grep -qE '^\+<{6,7} ' <<<"$_mp_out"; then
             # Extract conflicting file names from the diff header lines.
             # INFRA-1588: avoid SIGPIPE — `head -10` can close the pipe while
@@ -333,8 +384,8 @@ elif command -v git &>/dev/null; then
                 | awk '{print $1}' | sort -u || true)"
             _mp_files="$(awk 'NR<=10 {print}' <<<"$_mp_diffhdrs" | tr '\n' ' ')"
             unset _mp_diffhdrs
-            _mp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-            _mp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _mp_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            _mp_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
             echo "" >&2
             echo "[pre-push] BLOCKED (INFRA-1391): DIRTY conflict with origin/main detected." >&2
             echo "[pre-push] Conflict files: ${_mp_files:-<see merge-tree output>}" >&2
@@ -380,10 +431,11 @@ if [[ "${CHUMP_LINT_GATE:-on}" == "off" ]]; then
     echo "[pre-push] CHUMP_LINT_GATE=off — skipping clippy lint gate (lint-deluge mode)" >&2
 elif [[ "${CHUMP_CLIPPY_GATE:-1}" == "0" ]]; then
     # Emit lint_bypass telemetry.
-    _lg_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    _lg_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+    _lg_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+    _lg_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     _lg_gap="$(echo "$_lg_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
-    _lg_reason="$(git log -1 --pretty=format:%B 2>/dev/null \
+    _lg_reason="$(git -C "$REPO_ROOT" log -1 --pretty=format:%B 2>/dev/null \
         | grep -i '^Lint-Gate-Bypass:' | head -1 \
         | sed 's/^[Ll]int-[Gg]ate-[Bb]ypass:[[:space:]]*//' || echo "")"
     printf '{"ts":"%s","kind":"lint_bypass","gap_id":"%s","reason":"%s","branch":"%s","bypassed_by":"CHUMP_CLIPPY_GATE=0"}\n' \
@@ -392,14 +444,15 @@ elif [[ "${CHUMP_CLIPPY_GATE:-1}" == "0" ]]; then
     unset _lg_root _lg_branch _lg_gap _lg_reason
 elif command -v cargo &>/dev/null; then
     # Determine if any .rs files changed in the push vs origin/main.
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT".
     _CLIPPY_HAS_RS=0
-    if git fetch origin main --quiet 2>/dev/null; then
-        if git diff --name-only origin/main...HEAD 2>/dev/null | grep -qE '\.rs$'; then
+    if git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
+        if git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null | grep -qE '\.rs$'; then
             _CLIPPY_HAS_RS=1
         fi
     else
         # Offline — check working tree diff.
-        if git diff --name-only HEAD 2>/dev/null | grep -qE '\.rs$'; then
+        if git -C "$REPO_ROOT" diff --name-only HEAD 2>/dev/null | grep -qE '\.rs$'; then
             _CLIPPY_HAS_RS=1
         fi
     fi
@@ -422,7 +475,8 @@ elif command -v cargo &>/dev/null; then
             exit 1
         fi
 
-        REPO_ROOT_CL="$(git rev-parse --show-toplevel)"
+        # INFRA-1950: derive REPO_ROOT_CL via env-immune -C "$REPO_ROOT".
+        REPO_ROOT_CL="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
         echo "[pre-push] INFRA-1390: running cargo clippy (diff has .rs changes)..." >&2
         echo "[pre-push] Bypass: CHUMP_CLIPPY_GATE=0 git push  (with Lint-Gate-Bypass: trailer)" >&2
 
@@ -470,10 +524,11 @@ fi
 
 # RESILIENT-014: emit ambient audit event when the test gate is bypassed.
 if [[ "${CHUMP_TEST_GATE:-1}" == "0" ]]; then
-    _r014_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    _r014_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+    _r014_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+    _r014_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     _r014_gap="$(echo "$_r014_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
-    _r014_reason="$(git log -1 --pretty=format:%B 2>/dev/null \
+    _r014_reason="$(git -C "$REPO_ROOT" log -1 --pretty=format:%B 2>/dev/null \
         | grep -i '^Test-Gate-Bypass:' | head -1 \
         | sed 's/^[Tt]est-[Gg]ate-[Bb]ypass:[[:space:]]*//' || echo "")"
     _r014_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -485,9 +540,10 @@ if [[ "${CHUMP_TEST_GATE:-1}" == "0" ]]; then
 fi
 
 if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
-    REPO_ROOT_T="$(git rev-parse --show-toplevel)"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+    REPO_ROOT_T="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
     CACHE_DIR="$REPO_ROOT_T/.chump-locks/test-gate-cache"
-    TREE_SHA="$(git rev-parse HEAD^{tree} 2>/dev/null || echo unknown)"
+    TREE_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD^{tree} 2>/dev/null || echo unknown)"
     CACHE_MARKER="$CACHE_DIR/${TREE_SHA}.ok"
 
     # Fast cache hit: this exact tree was tested green before.
@@ -506,8 +562,9 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         ANY_RS=0
         if [[ -t 0 ]] || [[ -z "${CHUMP_TEST_GATE_RANGE:-}" ]]; then
             # Stdin is a terminal or unset — use origin/main fallback.
-            if git fetch origin main --quiet 2>/dev/null; then
-                if git diff --name-only origin/main...HEAD 2>/dev/null \
+            # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+            if git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
+                if git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null \
                     | grep -qE '\.rs$'; then
                     ANY_RS=1
                 fi
@@ -537,7 +594,8 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # INFRA-1372 AC-3: record HEAD before cargo test. If a Rust test
             # creates a commit (e.g. via git-command inheritance), HEAD moves and
             # we must abort the push to prevent garbage commits landing on the branch.
-            _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+            # INFRA-1950: env-immune git via -C "$REPO_ROOT_T".
+            _PRE_TEST_HEAD="$(git -C "$REPO_ROOT_T" rev-parse HEAD 2>/dev/null || echo "unknown")"
 
             # INFRA-1167: build --skip list from KNOWN_FLAKES.yaml so environment-
             # dependent parallel-test races never block a legitimate push. Skipped
@@ -715,7 +773,8 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         else
             # INFRA-1403: no .rs changes in this push — skip test gate and emit telemetry.
             _AMBIENT_LOG="$REPO_ROOT_T/.chump-locks/ambient.jsonl"
-            _BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            # INFRA-1950: env-immune git via -C "$REPO_ROOT_T".
+            _BRANCH="$(git -C "$REPO_ROOT_T" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
             mkdir -p "$(dirname "$_AMBIENT_LOG")" 2>/dev/null || true
             printf '{"ts":"%s","event":"INFO","kind":"pre_push_test_gate_skipped","reason":"no_rust_changes","branch":"%s","source":"pre-push"}\n' \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BRANCH" \
@@ -729,10 +788,11 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
     # subshell exits — bash restores env after a subshell, but `unset` in the
     # parent shell is permanent). We re-read HEAD here from the worktree gitdir.
     if [[ "${_PRE_TEST_HEAD:-unknown}" != "unknown" ]]; then
-        _POST_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        _POST_TEST_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")"
         if [[ "$_PRE_TEST_HEAD" != "$_POST_TEST_HEAD" && "$_POST_TEST_HEAD" != "unknown" ]]; then
-            _pp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-            _pp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            _pp_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+            _pp_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
             _pp_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             mkdir -p "${_pp_root}/.chump-locks" 2>/dev/null || true
             printf '{"ts":"%s","kind":"prepush_head_drift","pre_head":"%s","post_head":"%s","branch":"%s"}\n' \
@@ -787,7 +847,7 @@ detect_recent_rebase() {
         if (( now - last_ts < window_s )); then
             return 0  # found a recent rebase
         fi
-    done < <(git reflog show HEAD --date=local --format='%cd	%gs' -50 2>/dev/null)
+    done < <(git -C "$REPO_ROOT" reflog show HEAD --date=local --format='%cd	%gs' -50 2>/dev/null)
     return 1
 }
 
@@ -833,7 +893,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         && [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" != "1" ]] \
         && [[ "${CHUMP_OPERATOR_RECOVERY:-0}" != "1" ]]; then
         # Extract HEAD commit message body and grep for the trailer.
-        head_msg="$(git log -1 --format='%B' "$local_sha" 2>/dev/null || true)"
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        head_msg="$(git -C "$REPO_ROOT" log -1 --format='%B' "$local_sha" 2>/dev/null || true)"
         if ! grep -qE '^Bot-Merge-Bypass:[[:space:]]*\S' <<<"$head_msg"; then
             echo "[pre-push] BLOCKED (INFRA-1441): CHUMP_BYPASS_BOT_MERGE=1 requires audit trailer." >&2
             echo "" >&2
@@ -855,14 +916,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         reason="$(grep -E '^Bot-Merge-Bypass:' <<<"$head_msg" | head -1 | sed -E 's/^Bot-Merge-Bypass:[[:space:]]*//')"
         # Best-effort gap-id extraction from branch name.
         gap_from_branch="$(echo "$branch" | sed -E 's|^chump/||' | awk -F- '{print toupper($1)"-"$2}')"
-        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        repo_root="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
         # If we're inside a worktree, the .chump-locks/ambient.jsonl lives at the main repo.
         # INFRA-1588: read-then-parse — the old pipeline
         #   git worktree list --porcelain | awk '/^worktree / {print $2; exit}'
         # closes the pipe from awk's `exit` while git was still writing → SIGPIPE
         # on git → under `set -o pipefail` becomes exit 141 → silent hook abort.
         # Splitting producer and consumer eliminates the pipe entirely.
-        _wt_list="$(git worktree list --porcelain 2>/dev/null || true)"
+        _wt_list="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null || true)"
         main_repo="$(awk '/^worktree / {print $2; exit}' <<<"$_wt_list")"
         unset _wt_list
         [[ -n "$main_repo" && -d "$main_repo/.chump-locks" ]] && repo_root="$main_repo"
@@ -945,13 +1007,21 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # New-branch push (remote_sha = all zeros) is not a force → skip.
     # -----------------------------------------------------------------------
     ZERO_SHA="0000000000000000000000000000000000000000"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT". THIS IS THE PRIMARY
+    # FIX SITE for the TRUNK_RED incident on 2026-05-23 — when the GH
+    # Actions self-hosted runner-listener spawns the hook with GIT_DIR /
+    # GIT_WORK_TREE / GITHUB_WORKSPACE leaked from its own context,
+    # `git merge-base --is-ancestor` resolved against the wrong tree and
+    # silently returned true (every SHA is an ancestor of itself in an
+    # unrelated repo), so the force-push race-check never fired.
     if [[ "${CHUMP_FORCE_LEASE_CHECK:-1}" != "0" ]] \
         && [[ "$remote_sha" != "$ZERO_SHA" ]] \
-        && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null
+        && ! git -C "$REPO_ROOT" merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null
     then
         # This IS a force-push (history rewrite). Compare what the remote
         # ACTUALLY has right now to what our local view said.
-        actual_remote_sha=$(git ls-remote "$REMOTE" "$remote_ref" 2>/dev/null | awk '{print $1}')
+        # INFRA-1950: env-immune git via -C "$REPO_ROOT".
+        actual_remote_sha=$(git -C "$REPO_ROOT" ls-remote "$REMOTE" "$remote_ref" 2>/dev/null | awk '{print $1}')
         if [[ -n "$actual_remote_sha" && "$actual_remote_sha" != "$remote_sha" ]]; then
             echo "" >&2
             echo "[pre-push] BLOCKED: force-push race detected on $branch (INFRA-345)." >&2
@@ -987,8 +1057,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     # Determine the range of new commits being pushed.
     # If remote sha is all zeros, it's a new branch — compare against origin/main.
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT" throughout this block.
     if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
-        base=$(git merge-base HEAD "origin/main" 2>/dev/null || echo "")
+        base=$(git -C "$REPO_ROOT" merge-base HEAD "origin/main" 2>/dev/null || echo "")
         [[ -z "$base" ]] && continue
         range="${base}..${local_sha}"
     else
@@ -998,12 +1069,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # Extract gap IDs from commit subjects only (%s), not bodies.
     # Using %s %b caused false positives when commit bodies mentioned gap IDs
     # in passing (e.g. cleanup commits referencing a gap they didn't implement).
-    GAP_IDS=$(git log "$range" --format="%s" 2>/dev/null \
+    GAP_IDS=$(git -C "$REPO_ROOT" log "$range" --format="%s" 2>/dev/null \
         | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)
 
     [[ -z "$GAP_IDS" ]] && continue
 
-    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    # INFRA-1950: REPO_ROOT is already set at top-of-script (env-immune from
+    # BASH_SOURCE); the gap-preflight script path is derived from it directly.
     PREFLIGHT="$REPO_ROOT/scripts/coord/gap-preflight.sh"
 
     [[ ! -x "$PREFLIGHT" ]] && continue
@@ -1015,10 +1087,17 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # Without this, gap-preflight falls back to the machine-global session ID
     # which doesn't match the claim-infra-NNN-PID-TS lease, producing a false
     # "already claimed by another session" rejection.
-    _LOCK_DIR="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    # INFRA-1950: env-immune git via -C "$REPO_ROOT" — the leak vars would
+    # otherwise redirect --git-common-dir resolution to a foreign repo.
+    _LOCK_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
     if [[ "$_LOCK_DIR" == ".git" ]]; then
         _LOCK_DIR="$REPO_ROOT/.chump-locks"
     else
+        # --git-common-dir can return a relative path; resolve against REPO_ROOT
+        # rather than $PWD to keep this env-immune.
+        if [[ "$_LOCK_DIR" != /* ]]; then
+            _LOCK_DIR="$REPO_ROOT/$_LOCK_DIR"
+        fi
         _LOCK_DIR="$(cd "$_LOCK_DIR/.." 2>/dev/null && pwd || echo "$REPO_ROOT")/.chump-locks"
     fi
     _OWN_SESSION=""
@@ -1079,7 +1158,14 @@ done
 # reference existing tests, then run those tests to catch re-regressions early.
 # Use git rev-parse to locate the guard script; degrade gracefully when git
 # cannot resolve a work-tree (bare clones used in test harnesses).
-_CI_REG_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+# INFRA-1950: prefer the env-immune $REPO_ROOT computed at top-of-script;
+# fall back to git -C as a defence-in-depth path when REPO_ROOT is unset
+# (only possible if hook is invoked through an exotic interpreter path).
+if [[ -n "${REPO_ROOT:-}" && -d "$REPO_ROOT" ]]; then
+    _CI_REG_ROOT="$REPO_ROOT"
+else
+    _CI_REG_ROOT="$(git -C "${REPO_ROOT:-.}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
 _CI_REG_GUARD="${_CI_REG_ROOT:+$_CI_REG_ROOT/scripts/git-hooks/pre-push-ci-regression-guard.sh}"
 if [[ -n "$_CI_REG_GUARD" ]] && [[ -x "$_CI_REG_GUARD" ]] && [[ "${CHUMP_CI_REGRESSION_GUARD:-1}" != "0" ]]; then
     # Redirect stdout → stderr so test harnesses that capture hook stdout
