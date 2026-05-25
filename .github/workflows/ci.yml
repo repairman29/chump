@@ -1560,6 +1560,14 @@ jobs:
         # implementer. Now hard-fail with CHUMP_ALLOW_STALE_DESTRUCTIVE=1
         # as the audited escape hatch.
         run: bash scripts/ci/test-stale-binary-ship-blocked.sh
+
+      - name: JIT binary refresh wired (INFRA-1977 — H8 critique fix)
+        # Structural test: stale-detection now triggers a background
+        # `cargo install` so subsequent invocations find Fresh without
+        # operator manually rebuilding. Refuses CURRENT invocation
+        # (binary can't replace itself); friendly retry message with
+        # rebuild state from .chump/binary-refresh-state.json.
+        run: bash scripts/ci/test-jit-binary-refresh.sh
       # INFRA-682: auto-detect when PR diff matches NONE of the code: patterns.
       # If filter.outputs.code is false on a PR, all required CI checks
       # (fast-checks, clippy, cargo-test, test rollup) will be SKIPPED — branch
