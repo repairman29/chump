@@ -47,6 +47,9 @@ IS what customers like Marcus pay for.
 | Marcus arc M-B → M-C (post-demo trust + first-customer-onboard) | new gap TBD when M-B framing lands | breathing room from 50/hr; next P1 |
 | 50-PRs/hr Phase 2 — sustained 4h verification | INFRA-1540/1542 instrumentation follow-up | shipped capacity; now needs the 4h-green run |
 | A2A-first communication discipline (presence ledger + auto-mirror + passive emit) | [INFRA-1932](gaps/INFRA-1932.yaml) P1/m | partial-shipped via #2524 (Pattern 0 in shepherd playbook); 6 ACs remaining |
+| Rust-first orchestration substrate (Wave-3) — port 16.8K LOC bash+Python to ~6K LOC Rust across 6 sub-gaps | [META-107](gaps/META-107.yaml) P1/xl umbrella + [INFRA-1997](gaps/INFRA-1997.yaml) P0/m keystone | open; INFRA-1997 chump-git-hooks is pickable now (smallest blast radius, kills INFRA-1950 env-leak class). Prerequisite for META-090 autopilot landing on env-immune substrate; blueprint at [strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md](strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md) |
+
+**Chained, not competing.** META-107 IS the substrate that META-090 composes. Without META-107, autopilot inherits 16.8K LOC of bash spaghetti (race conditions in `bot-merge.sh`, env-leak in `pre-push`, `sed`-escape in `broadcast.sh`). With it, autopilot is composed from `chump-ship` + `chump-messaging` + `chump-worker` Rust traits where env-leak / double-instance / SQL-escape bugs are *structurally impossible*.
 
 ### Wizard-retirement criteria — 4/5 in flight (META-090 unblock signal)
 
@@ -62,12 +65,15 @@ The wizard role retires when the daemon mesh covers what the operator does manua
 
 When 5/5 land, META-090 autopilot can compose them into one daemon-set and the operator stops being the scheduler.
 
-## Operator action checkpoints (refreshed 2026-05-24)
+## Operator action checkpoints (refreshed 2026-05-25 — META-107 added)
 
-- **Day +1** (~2026-05-25): verify 4/5 wizard-retirement PRs land; identify the holdout
-- **Day +7** (~2026-05-31): 50/hr sustained 4h green; start META-090 autopilot integration
-- **Day +14** (~2026-06-07): META-090 autopilot daemon-set running unattended for 24h
-- **Day +21** (~2026-06-14): Marcus M-B demo ready (post-trust-gate onboarding)
+- **Day +1** (~2026-05-26): INFRA-1997 chump-git-hooks lands (kills TRUNK_RED env-leak class); verify remaining 4/5 wizard-retirement PRs land; identify any holdout
+- **Day +7** (~2026-06-01): INFRA-1998 messaging + INFRA-1999 github-cache in parallel; 50/hr sustained 4h green
+- **Day +14** (~2026-06-08): INFRA-2001 chump-ship lands (fixes INFRA-1532 double-instance by PID-locked socket, by construction); META-090 autopilot composition begins ON the Rust substrate
+- **Day +21** (~2026-06-15): META-090 autopilot daemon-set running unattended for 24h on env-immune substrate; INFRA-2002 chump-worker lands
+- **Day +28** (~2026-06-22): Marcus M-B demo with autopilot+substrate as the credibility story (post-trust-gate onboarding)
+
+**The trade** (vs prior 2026-05-24 schedule): 1-week push on "autopilot unattended 24h" (Day +14 → Day +21) in exchange for the autopilot landing on a substrate where env-leak / double-instance / SQL-escape are *structurally impossible*. Yesterday's INFRA-1950 P0 TRUNK_RED (5/5 main runs failed for 2h due to runner-listener `GIT_DIR` leak) is the kind of incident the substrate eliminates.
 
 ---
 
