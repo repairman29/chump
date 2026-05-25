@@ -4859,3 +4859,23 @@ events:
       ambient stream.
     consumers: [audit-log]
     fields_required: [ts, kind, reason]
+  # INFRA-1933: shared Cargo target dir. Emitted once per worker.sh launch
+  # when CARGO_TARGET_DIR is set to the shared cache path.
+  - kind: cargo_target_dir_shared
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (INFRA-1933)
+    trigger: >
+      worker.sh found CARGO_TARGET_DIR unset and exported it to the shared
+      cache path (~/.cargo/chump-shared-target). Prevents each worktree from
+      building its own 5-11 GB target/ tree.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, target_dir]
+
+  - kind: cargo_target_dir_external
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (INFRA-1933)
+    trigger: >
+      CARGO_TARGET_DIR was already set by the caller before worker.sh ran;
+      worker.sh respected the external value without overriding it.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, source, target_dir]

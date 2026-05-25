@@ -117,6 +117,21 @@ CHUMP_STARVE_THRESHOLD="${CHUMP_STARVE_THRESHOLD:-3}"
 # (INFRA-611) can optionally respawn with relaxed filters or scale down.
 CHUMP_STAND_DOWN_THRESHOLD="${CHUMP_STAND_DOWN_THRESHOLD:-5}"
 
+# INFRA-1933: shared Cargo target dir — all worktrees reuse one build cache
+# instead of each creating its own 5-11 GB target/ tree. Callers may override
+# by setting CARGO_TARGET_DIR before sourcing this file.
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
+    mkdir -p "$CARGO_TARGET_DIR" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"cargo_target_dir_shared","source":"worker.sh","target_dir":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CARGO_TARGET_DIR" \
+        >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+else
+    printf '{"ts":"%s","kind":"cargo_target_dir_external","source":"worker.sh","target_dir":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CARGO_TARGET_DIR" \
+        >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+fi
+
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0
