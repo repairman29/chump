@@ -1,0 +1,9 @@
+- id: INFRA-1984
+  domain: INFRA
+  title: "MEDIUM: no shared fleet snapshot; agents re-grep JSONL at session start (critique M6)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Failure: no shared situational model. Every agent rebuilds its world-view from JSONL grep at session start (saw this in my own re-arm cycles after every context compact today)."
+

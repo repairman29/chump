@@ -1,0 +1,9 @@
+- id: INFRA-1978
+  domain: INFRA
+  title: "HIGH: chump --briefing / health JSON schema_version not asserted by callers (critique H9)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Failure: INFRA-1548 added schema_version:1 to `chump --briefing` and `chump health` JSON. But callers (scripts/dispatch/operator-recall.sh and the harness contract spec consumers) do not assert version compatibility at parse time."
+
