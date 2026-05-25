@@ -6193,4 +6193,98 @@ meta:
         // Clean up
         std::env::remove_var("CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE");
     }
+
+    // ── INFRA-2022: set_fields acceptance_criteria round-trip ──────────────
+    // Verifies that an operator-supplied AC value is persisted to state.db
+    // and survives a subsequent get(). This is the DB-level guard for the
+    // bug where `chump gap set` silently lost the provided value.
+
+    #[test]
+    fn set_fields_acceptance_criteria_roundtrip() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "ac-roundtrip-test", "P1", "xs")
+            .unwrap();
+
+        // Confirm the gap starts with empty or TODO AC (from reserve defaults).
+        let before = store.get(&id).unwrap().unwrap();
+        // Either empty or the obs-AC TODO stubs — neither should be our target.
+        let target = r#"["real criterion here","second bullet"]"#;
+        assert_ne!(
+            before.acceptance_criteria, target,
+            "pre-condition: gap should not already have the target AC"
+        );
+
+        // Apply the operator-provided value via set_fields — the path that
+        // was broken in INFRA-2022.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(target.to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("set_fields acceptance_criteria must succeed");
+
+        // Read back from DB and verify value was persisted.
+        let after = store.get(&id).unwrap().unwrap();
+        assert_eq!(
+            after.acceptance_criteria, target,
+            "set_fields must persist the operator-supplied AC; got {:?}",
+            after.acceptance_criteria
+        );
+    }
+
+    #[test]
+    fn set_fields_acceptance_criteria_overwrites_todo_placeholders() {
+        // Regression: when a gap is reserved with the default obs-AC TODO stubs
+        // (INFRA-756), a subsequent `chump gap set --acceptance-criteria "..."'
+        // must fully replace them. The bug in INFRA-2022 was that the positional
+        // form `acceptance_criteria "..."` (no `--`) was silently ignored at the
+        // CLI layer, leaving the TODOs in place. This test verifies the DB layer
+        // correctly overwrites any existing value when set_fields is called.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "overwrite-todo-test", "P1", "xs")
+            .unwrap();
+
+        // Seed with TODO placeholders (simulating what reserve installs).
+        let todo_ac = r#"["TODO: what events","TODO: how cost tracked"]"#;
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(todo_ac.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // Now overwrite with real AC — must fully replace the TODO stubs.
+        let real_ac = r#"["chump gap show INFRA-NNN renders the operator-provided text"]"#;
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(real_ac.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let after = store.get(&id).unwrap().unwrap();
+        assert_eq!(
+            after.acceptance_criteria, real_ac,
+            "set_fields must overwrite TODO stubs with real AC; got {:?}",
+            after.acceptance_criteria
+        );
+        // Verify the original TODO stubs were fully replaced — the stored value
+        // must NOT equal the seed stubs even if some descriptive text might
+        // coincidentally contain the word "TODO".
+        assert_ne!(
+            after.acceptance_criteria, todo_ac,
+            "stored AC must not still be the original TODO stubs"
+        );
+    }
 }
