@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: Claude Code PreToolUse hook auto-reads inbox + prepends CRIT messages to next-tool context"
   status: open
-  priority: P1
+  priority: P0
   effort: m
   acceptance_criteria:
     - "New .claude/hooks/pre-tool-use-inbox-check.sh: invoked every CHUMP_INBOX_HOOK_INTERVAL tool calls (default 10); calls chump-inbox.sh check-urgent; if any unread CRIT message, hook stdout contains the message as <inbox-interrupt> XML block which Claude Code injects into next-tool context"

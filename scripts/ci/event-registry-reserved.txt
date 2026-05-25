@@ -387,3 +387,7 @@ ci_cluster_detected  # reason: emitted by scripts/coord/ci-audit-loop.sh::audit 
 # ── INFRA-2014 / META-106: inbox-injector (the 'magic' A2A live signal) ──────
 inbox_injection_executed  # reason: INFRA-2014 emitted by scripts/coord/inbox-injector.sh after tmux send-keys interrupt delivered to a recipient pane; carries urgency + sender + pane target
 inbox_injector_paused     # reason: INFRA-2014 emitted when CHUMP_INBOX_INJECTOR_PAUSE=1 disables daemon
+
+# ── INFRA-2016: global URGENT-INBOX + PostToolUse check ──────────────────────
+urgent_broadcast_sent     # reason: INFRA-2016 emitted by scripts/coord/broadcast-urgent.sh when CRIT/EMERGENCY message written to .chump-locks/URGENT-INBOX.jsonl global channel; bypasses session-keyed routing
+inbox_urgent_surfaced     # reason: INFRA-2016 emitted by scripts/coord/inbox-check-urgent.sh after surfacing global-urgent messages as <system-reminder> via PostToolUse hook; carries message count + new cursor
