@@ -18,6 +18,33 @@
 #
 # Emits kind=inbox_advance event to ambient.jsonl after a successful cursor
 # update, with {ts, kind, session, messages_read, new_offset}.
+#
+# INFRA-1998 (Rust-first Phase 1): when CHUMP_MESSAGING_RUST=1, the
+# `read` subcommand (default-path, no exotic flags) exec's the chump-inbox
+# binary if it's on $PATH. All other subcommands + flag combinations
+# (--json, --filter, --since iso-ts, count, tail) stay on the bash body
+# below in Phase 1.
+
+# ── INFRA-1998: selective Rust pass-through ──────────────────────────────────
+if [[ "${CHUMP_MESSAGING_RUST:-0}" == "1" ]] && command -v chump-inbox >/dev/null 2>&1; then
+    _SUB="${1:-}"
+    if [[ "$_SUB" == "read" ]]; then
+        # Scan remaining args for "exotic" flags Phase 1 Rust doesn't handle.
+        # If any present, fall through to bash. Otherwise exec the binary.
+        _ROUTE_RUST=1
+        for _arg in "$@"; do
+            case "$_arg" in
+                --json|--filter)
+                    _ROUTE_RUST=0
+                    break
+                    ;;
+            esac
+        done
+        if [[ "$_ROUTE_RUST" -eq 1 ]]; then
+            exec chump-inbox "$@"
+        fi
+    fi
+fi
 
 set -euo pipefail
 

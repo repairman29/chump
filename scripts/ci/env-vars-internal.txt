@@ -524,3 +524,13 @@ CHUMP_OPUS_PR_TIMEOUT_S       # seconds before no-PR kill (default 600 = 10min)
 CHUMP_PREPUSH_RUST
 CHUMP_FORCE_LEASE_CHECK
 CHUMP_AMBIENT_DISABLE
+
+# INFRA-1998: chump-messaging crate Phase 1 (Rust broker substrate for
+# scripts/coord/broadcast.sh + chump-inbox.sh).
+# CHUMP_MESSAGING_RUST=1 selects the chump-broadcast / chump-inbox binaries
+#   via thin shim at the top of the bash callsites; falls through to the
+#   legacy bash bodies otherwise (1-week parallel-validation window).
+# CHUMP_CORR_ID is read by chump-broadcast (mirrors the pre-existing bash
+#   broadcast.sh consumer) — explicit correlation-id override for INFRA-1255.
+CHUMP_MESSAGING_RUST
+CHUMP_CORR_ID
