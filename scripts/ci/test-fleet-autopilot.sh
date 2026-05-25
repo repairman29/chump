@@ -28,13 +28,14 @@ echo "=== META-090 fleet autopilot tests ==="
 
 for needle in \
     "AUTOPILOT_LAYERS=" \
-    "com.chump.pr-auto-rebase" \
-    "com.chump.auto-arm-sweeper" \
+    "dev.chump.pr-auto-rebase" \
+    "dev.chump.auto-arm-sweeper" \
     "com.chump.pr-pulse-consumer" \
     "com.chump.transient-retrigger" \
     "com.chump.oracle-refresh" \
     "com.chump.curator-jit-scheduler" \
-    "com.chump.curator|" \
+    "com.chump.opus-curator" \
+    "com.chump.emergency-fast-path" \
     "com.chump.fleet-autopilot" \
     "com.chump.refresh-runner-binary" \
     "cmd_start" \
@@ -54,12 +55,12 @@ for needle in \
     fi
 done
 
-# (2) AC#1 requirement: >=10 daemons configured
-layer_count=$(grep -cE '^\s+"com\.chump\.' "$TARGET")
-if [[ "$layer_count" -ge 9 ]]; then
-    ok "AC#1: $layer_count daemon layers configured (>=9 required)"
+# (2) AC#1 requirement: >=10 daemons configured (post-RESILIENT-021: dev.* + com.* mix)
+layer_count=$(grep -cE '^\s+"(com|dev)\.chump\.' "$TARGET")
+if [[ "$layer_count" -ge 10 ]]; then
+    ok "AC#1: $layer_count daemon layers configured (>=10 required)"
 else
-    fail "AC#1: only $layer_count layers configured (need >=9 per AC#7 smoke target)"
+    fail "AC#1: only $layer_count layers configured (need >=10 per AC#7 smoke target)"
 fi
 
 # (3) Installer contract

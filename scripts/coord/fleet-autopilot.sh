@@ -43,16 +43,25 @@ mkdir -p "$LOG_DIR"
 # REQUIRED_DAEMONS from chump-fleet-bootstrap.sh are loaded FIRST, then these.
 AUTOPILOT_LAYERS=(
     # Layer 1: PR management
-    "com.chump.pr-auto-rebase|scripts/setup/install-pr-auto-rebase-launchd.sh"
-    "com.chump.auto-arm-sweeper|scripts/setup/install-auto-arm-sweeper-launchd.sh"
+    # NOTE: pr-auto-rebase + auto-arm-sweeper installers use `dev.chump.*`
+    # prefix (legacy); RESILIENT-021 reconciled the registry to match the
+    # actual labels each installer writes. Don't "normalize" without updating
+    # the installer or the launchctl lookup will silently miss.
+    "dev.chump.pr-auto-rebase|scripts/setup/install-pr-auto-rebase-launchd.sh"
+    "dev.chump.auto-arm-sweeper|scripts/setup/install-auto-arm-sweeper-launchd.sh"
     "com.chump.pr-pulse-consumer|scripts/setup/install-pr-pulse-consumer-launchd.sh"
     "com.chump.transient-retrigger|scripts/setup/install-transient-retrigger-launchd.sh"
     # Layer 2: Oracle refresh
     "com.chump.oracle-refresh|scripts/setup/install-oracle-refresh-launchd.sh"
     # Layer 3: JIT scheduler
     "com.chump.curator-jit-scheduler|scripts/setup/install-curator-jit-scheduler-launchd.sh"
-    # Layer 4: Curator sessions (single installer, manages 6 roles)
-    "com.chump.curator|scripts/setup/install-curator-launchd.sh"
+    # Layer 4: Curator sessions
+    # install-curator-launchd.sh manages TWO plists (opus-curator + emergency-fast-path)
+    # so we list both labels but share the same installer. The installer is
+    # idempotent and skips already-loaded plists, so calling it twice via the
+    # autopilot start loop is safe.
+    "com.chump.opus-curator|scripts/setup/install-curator-launchd.sh"
+    "com.chump.emergency-fast-path|scripts/setup/install-curator-launchd.sh"
     # Layer 5: Master heartbeat (this file's own cron)
     "com.chump.fleet-autopilot|scripts/setup/install-fleet-autopilot-launchd.sh"
     # Substrate (depends on CREDIBLE-076)
