@@ -1,0 +1,24 @@
+# scripts/setup/expected-repo-vars.yaml — expected steady-state of GitHub repo variables
+# Used by scripts/coord/infra-watcher-loop.sh check-repo-vars to detect post-incident drift.
+#
+# INFRA-1976: CHUMP_SELF_HOSTED_ENABLED=false sat unrecovered for 4 days (2026-05-20 to
+# 2026-05-24) causing silent CI starvation. This file codifies the expected values so
+# infra-watcher can detect and surface divergence before it becomes a multi-day incident.
+#
+# Schema: each entry has:
+#   name:          (required) the GitHub Actions variable name
+#   expected:      (required) the expected string value in steady state
+#   description:   (optional) why this variable matters and what can go wrong
+#
+# Adding a new entry: add the variable name + expected value. The infra-watcher
+# check-repo-vars step will alert (kind=repo_var_stale_after_incident) when it
+# diverges for more than 2 hours from this file.
+
+repo_vars:
+  - name: CHUMP_SELF_HOSTED_ENABLED
+    expected: "true"
+    description: >
+      Controls whether CI jobs route to self-hosted runners. Set to "false"
+      during disk_critical incidents to stop new job intake. Must be restored
+      to "true" once disk pressure is resolved. When stuck false the fleet
+      starves silently — CI queues but nothing runs.
