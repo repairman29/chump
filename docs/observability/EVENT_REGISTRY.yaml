@@ -1419,6 +1419,16 @@ events:
     trigger: dispatched subagent exceeded token/time cap
     consumers: [audit-log]
 
+  - kind: subagent_killed_at_budget
+    effect_metric: self
+    emitter: src/dispatch.rs (chump dispatch — wait_with_hang_detection, INFRA-1972)
+    trigger: parent-enforced subagent budget exceeded; SIGTERM sent at
+      CHUMP_SUBAGENT_BUDGET_S (default 900s), then SIGKILL after 30s grace.
+      Distinct from subagent_budget_exceeded (script-side soft signal) and
+      from hang_detector (longer fall-through 3600s wall-clock guard).
+    consumers: [fleet-brief, watchdog, operator-recall, audit-log]
+    fields_required: [ts, session, kind, gap, process, pid, budget_secs]
+
   - kind: subagent_heartbeat
     effect_metric: self
     emitter: src/execute_gap.rs (INFRA-334)

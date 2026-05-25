@@ -472,30 +472,102 @@ fn wait_with_hang_detection(
     process_name: &str,
     gap_id: &str,
 ) -> Result<std::process::ExitStatus> {
-    let timeout_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
+    // Two cooperating deadlines:
+    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 900s):
+    //      parent-enforced upper bound on wall-clock per subagent dispatch.
+    //      INFRA-1972 (critique H3): CLAUDE.md documents this as a
+    //      "self-discipline rule" for the subagent itself, but yesterday's
+    //      ci-audit + md-links dispatches burned 144K + 157K tokens past
+    //      budget without self-honoring it. This is the parent-side hard
+    //      enforcement that didn't exist before. On exceed: SIGTERM, then
+    //      30s grace, then SIGKILL. Emits kind=subagent_killed_at_budget.
+    //   2. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600s):
+    //      backup deadline — catches a stuck process that somehow survived
+    //      the budget kill. SIGKILL only. Emits kind=hang_detector.
+    //
+    // Either env set to 0 disables that specific deadline. The budget
+    // (faster) fires first by design; hang is a backstop.
+    let budget_secs: u64 = std::env::var("CHUMP_SUBAGENT_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .or_else(|| {
+            // Fall back to the legacy bot-merge-specific name if set,
+            // so existing env configs keep working (CLAUDE.md still
+            // documents CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S=900).
+            std::env::var("CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S")
+                .ok()
+                .and_then(|s| s.parse().ok())
+        })
+        .unwrap_or(900);
+
+    let hang_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3600);
 
-    if timeout_secs == 0 {
+    let no_budget = budget_secs == 0;
+    let no_hang = hang_secs == 0;
+    if no_budget && no_hang {
         return child.wait().context("waiting for child process");
     }
 
-    let timeout = Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
+    let child_pid = child.id();
+    let mut budget_kill_in_flight: Option<std::time::Instant> = None;
+    let grace_secs: u64 = 30; // SIGTERM → SIGKILL grace window
 
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {
-                if start.elapsed() > timeout {
-                    emit_hang_alert(process_name, gap_id, timeout_secs);
+                let elapsed = start.elapsed();
+
+                // Budget enforcement (faster, graceful)
+                if !no_budget && budget_kill_in_flight.is_none() && elapsed.as_secs() > budget_secs
+                {
+                    emit_subagent_killed_at_budget(
+                        process_name,
+                        gap_id,
+                        budget_secs,
+                        child_pid,
+                    );
+                    // Send SIGTERM (graceful). std::process::Child::kill is
+                    // SIGKILL only; use the `kill` CLI to get SIGTERM without
+                    // pulling in a new crate dep (see paramedic.rs for the
+                    // existing precedent of Command::new("kill")).
+                    let _ = std::process::Command::new("kill")
+                        .args(["-TERM", &child_pid.to_string()])
+                        .status();
+                    budget_kill_in_flight = Some(std::time::Instant::now());
+                }
+
+                // After SIGTERM, allow `grace_secs` for graceful shutdown
+                // before SIGKILL. INFRA-1972 AC: "at budget_secs + 30s: SIGKILL".
+                if let Some(term_at) = budget_kill_in_flight {
+                    if term_at.elapsed().as_secs() > grace_secs {
+                        let _ = child.kill(); // SIGKILL
+                        let _ = child.wait();
+                        bail!(
+                            "{} exceeded subagent budget ({} secs) for gap {}; SIGTERM at budget, \
+                             SIGKILL after {}s grace",
+                            process_name,
+                            budget_secs,
+                            gap_id,
+                            grace_secs
+                        );
+                    }
+                }
+
+                // Hang-detector backstop (slower, hard kill — handles a stuck
+                // process that somehow survived the budget SIGTERM+SIGKILL).
+                if !no_hang && elapsed > Duration::from_secs(hang_secs) {
+                    emit_hang_alert(process_name, gap_id, hang_secs);
                     let _ = child.kill();
                     let _ = child.wait();
                     bail!(
                         "{} exceeded no-tool-call timeout ({} secs) for gap {}; sent SIGTERM",
                         process_name,
-                        timeout_secs,
+                        hang_secs,
                         gap_id
                     );
                 }
@@ -503,6 +575,60 @@ fn wait_with_hang_detection(
             }
             Err(e) => return Err(e).context("checking child process status"),
         }
+    }
+}
+
+/// Emit `kind=subagent_killed_at_budget` to ambient.jsonl (INFRA-1972, H3).
+/// Distinct from `kind=hang_detector` — this is the parent-enforced subagent
+/// budget exceed; hang_detector is the longer fall-through wall-clock guard.
+fn emit_subagent_killed_at_budget(
+    process_name: &str,
+    gap_id: &str,
+    budget_secs: u64,
+    child_pid: u32,
+) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+
+    let worktree = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
+         \"event\":\"subagent_killed_at_budget\",\"kind\":\"subagent_killed_at_budget\",\
+         \"process\":\"{process_name}\",\"gap\":\"{gap_id}\",\"pid\":{child_pid},\
+         \"budget_secs\":{budget_secs}}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+
+    if std::env::var("CHUMP_AMBIENT_NATS").as_deref() != Ok("0") {
+        let _ = std::process::Command::new("chump-coord")
+            .arg("emit")
+            .arg("subagent_killed_at_budget")
+            .arg(format!("process={}", process_name))
+            .arg(format!("gap={}", gap_id))
+            .arg(format!("pid={}", child_pid))
+            .arg(format!("budget_secs={}", budget_secs))
+            .status();
     }
 }
 

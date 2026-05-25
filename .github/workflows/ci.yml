@@ -672,6 +672,9 @@ jobs:
       - name: pr-terminal-state helper — mergedAt-validated (INFRA-1981)
         run: bash scripts/ci/test-pr-terminal-state.sh
 
+      - name: subagent budget kill — parent-enforced SIGTERM+grace+SIGKILL (INFRA-1972)
+        run: bash scripts/ci/test-subagent-budget-kill.sh
+
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
 
