@@ -36,6 +36,13 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# W-012 / W-013 (RESILIENT-023): unset workflow-level CHUMP_REPO + CHUMP_LOCK_DIR
+# so the detector writes ambient.jsonl to OUR $FAKE/.chump-locks (where the
+# assertions look) rather than the workflow-injected paths from INFRA-1959.
+# Without this, ambient events go to github.workspace/.chump-locks/ambient.jsonl
+# and the test claims the event is missing when it's actually written elsewhere.
+unset CHUMP_REPO CHUMP_LOCK_DIR
+
 # Fake repo
 FAKE="$TMP/repo"
 mkdir -p "$FAKE/.chump-locks" "$FAKE/scripts/coord" "$TMP/bin"
