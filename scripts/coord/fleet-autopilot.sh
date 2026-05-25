@@ -72,6 +72,8 @@ AUTOPILOT_LAYERS=(
     "com.chump.wedge-state-machine|scripts/setup/install-wedge-state-machine-launchd.sh"
     # THE FLOOR Phase 3 / INFRA-2014: live A2A inbox injector
     "com.chump.inbox-injector|scripts/setup/install-inbox-injector-launchd.sh"
+    # INFRA-2026: post-push PR integrity watch — auto-reopen stale-base force-close incidents
+    "com.chump.post-push-integrity|scripts/setup/install-post-push-integrity-launchd.sh"
 )
 
 emit() {
