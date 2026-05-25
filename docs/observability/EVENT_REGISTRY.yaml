@@ -1168,6 +1168,46 @@ events:
       a fresh MISSION-* tracking gap. sub_gaps_filed is a comma-separated list
       of newly created gap IDs. At most one per curator run (guard).
 
+  - kind: decompose_sliced
+    effect_metric: self
+    emitter: scripts/coord/decompose-loop.sh (INFRA-1924)
+    trigger: curator-opus-decompose slice subcommand reviewed and (when --auto-accept)
+             filed sub-gaps for an umbrella via 'chump gap decompose'
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, parent_id, slice_count]
+    docs: |
+      Emitted by the productized decompose curator loop (INFRA-1924). parent_id is
+      the umbrella gap; slice_count is the number of sub-gaps proposed (capped at
+      --max-slices, default 5); child_ids is a JSON array of newly filed sub-gap
+      IDs when --auto-accept was passed (empty in dry-run mode). AC source: INFERRED
+      from chump gap decompose CLI semantics + CLAUDE.md two-phase decomposition
+      doctrine — confirm-or-refactor when curator-opus-decompose wakes up.
+
+  - kind: decompose_audit
+    effect_metric: self
+    emitter: scripts/coord/decompose-loop.sh (INFRA-1924)
+    trigger: curator-opus-decompose audit-pending subcommand scanned open gaps for
+             stale umbrellas (open >7d with "Rough shape:" / "decompose at claim
+             time" / "umbrella" / "sub-slice" doctrine phrasing)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, candidate_count]
+    docs: |
+      Emitted each audit-pending tick. candidate_count is the number of umbrellas
+      flagged for decomposition. Stop condition: when candidate_count is 0 (and
+      inbox empty), the loop exits 0 so cron doesn't spin.
+
+  - kind: decompose_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/decompose-loop.sh (INFRA-1924)
+    trigger: curator-opus-decompose heartbeat subcommand fires each cron tick
+             (every 30 min via scripts/launchd/com.chump.decompose-loop.plist)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, role]
+    docs: |
+      Liveness signal for the decompose curator role. role is always
+      "curator-opus-decompose". Pairs with kind=decompose_audit and
+      kind=decompose_sliced to verify the role is active when expected.
+
   - kind: system_gap_tick
     effect_metric: self
     emitter: scripts/coord/system-gap-tick.sh (INFRA-841)

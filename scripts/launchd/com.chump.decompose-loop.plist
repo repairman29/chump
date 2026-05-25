@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.decompose-loop</string>
+
+  <!-- INFRA-1924: curator-opus-decompose audit-pending sweep + heartbeat.
+       Runs every 30 min. The audit-pending subcommand exits 0 cleanly when
+       zero stale-umbrella candidates remain (stop condition), so the daemon
+       does not spin on an empty queue. Heartbeat emits kind=decompose_heartbeat
+       to ambient for liveness telemetry.
+
+       AC source: INFERRED — see docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md
+       § decompose. Confirm-or-refactor when curator-opus-decompose wakes up. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/coord/decompose-loop.sh heartbeat &amp;&amp; bash scripts/coord/decompose-loop.sh audit-pending</string>
+  </array>
+
+  <!-- Every 30 minutes -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-decompose-loop.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-decompose-loop.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>CHUMP_SESSION_ID</key>
+    <string>curator-opus-decompose-cron</string>
+  </dict>
+</dict>
+</plist>

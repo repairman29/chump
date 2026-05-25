@@ -156,6 +156,29 @@ substantive architecture / strategy.
   COMP-014's "fix the recording", we should periodically reconcile against
   Anthropic's actual billing to catch ledger drift.
 
+## Productized curator roles (META-097, ongoing 2026-05-24)
+
+Named Opus curator roles are being productized from session-bound personas
+into harness-neutral `scripts/coord/<role>-loop.sh` CLIs + `.claude/agents/<role>.md`
++ `.claude/skills/<role>/SKILL.md`. Pattern is non-negotiable per
+[`../../.claude/README.md`](../../.claude/README.md): capability in the script,
+adapter in `.claude/`. Any harness (Claude Code, opencode, codex, manual)
+invokes the loop the same way.
+
+| Role | Status | Agent | Skill | Script | AC source |
+|---|---|---|---|---|---|
+| target | shipped (INFRA-1918) | `.claude/agents/target.md` | `.claude/skills/target/SKILL.md` | `scripts/coord/target-loop.sh` (filed) | self-contributed |
+| shepherd | shipped (META-091/092/094) | filed | filed | `scripts/coord/opus-shepherd-triage.sh` + siblings | self-contributed |
+| handoff | filed (INFRA-1922) | filed | filed | filed | self-contributed |
+| ci-audit | filed (INFRA-1925) | filed | filed | filed | INFERRED |
+| **decompose** | **shipped (INFRA-1924)** | `.claude/agents/decompose.md` | `.claude/skills/decompose/SKILL.md` | `scripts/coord/decompose-loop.sh` | **INFERRED** |
+| md-links | filed (INFRA-1923) | filed | filed | filed | INFERRED |
+
+INFERRED AC sources are recorded in
+[`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md);
+when a contesting curator session wakes up, file a follow-up gap to refactor
+rather than blocking the productization PR.
+
 ## Anti-patterns (learned the hard way)
 
 | Anti-pattern | Cost when it happens | Mitigation |
