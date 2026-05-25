@@ -90,6 +90,28 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# INFRA-1986: cache stdin ONCE up front.
+#
+# Git invokes pre-push with a stdin stream of one "local_ref local_sha
+# remote_ref remote_sha\n" line per ref. Several blocks below want to
+# inspect those refs (Guard 0a preflight, Guard 0b clippy ref-detector,
+# the main Guard 1/2/3 loop). Stdin is a one-shot — once consumed, the
+# downstream loops see EOF, silently iterate zero times, and we sail past
+# Guard 3 with no protection.
+#
+# Regression history: INFRA-1927 added the Guard 0a loop at line ~120
+# WITHOUT redirecting it to a cached buffer. The Guard 0b loop at line
+# ~200 already drained whatever was left, leaving the main Guard 1/2/3
+# loop with empty stdin. test-pre-push-force-lease-guard.sh Test 1 went
+# silently green (rc=0, no output) — i.e. force-push race protection was
+# OFF in production for the duration INFRA-1927 was live.
+#
+# Fix: read all of stdin into _HOOK_STDIN once, then feed each loop with
+#   `while ... done <<< "$_HOOK_STDIN"` so every loop sees the full input.
+# -----------------------------------------------------------------------
+_HOOK_STDIN="$(cat || true)"
+
+# -----------------------------------------------------------------------
 # Guard 0a: chump preflight (INFRA-1671)
 #
 # The single-command local CI mirror (INFRA-1670). When the `chump` binary
@@ -131,7 +153,7 @@ if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
             preflight_has_targets=1
             break
         fi
-    done <<<"$(cat 2>/dev/null || true)"
+    done <<<"$_HOOK_STDIN"
 
     if [[ "$preflight_has_targets" -eq 1 ]]; then
         echo "[pre-push] INFRA-1671: running chump preflight ..." >&2
@@ -212,7 +234,7 @@ if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             push_has_rust=1
             break
         fi
-    done <<<"$(cat 2>/dev/null || true)"
+    done <<<"$_HOOK_STDIN"
     # Conservative fallback: if we couldn't read stdin (manual invocation) AND
     # the repo has Rust files, run the check to avoid silently letting bad
     # code through.
@@ -1110,7 +1132,7 @@ PYEOF
         echo "[pre-push] Bypass (when commit bodies cause false positives): CHUMP_GAP_CHECK=0 git push" >&2
         exit 1
     fi
-done
+done <<<"$_HOOK_STDIN"
 
 # ── INFRA-1421: CI-regression-guard suite ─────────────────────────────────────
 # When a push touches ci.yml fix commits, verify CI-Regression-Guard trailers
