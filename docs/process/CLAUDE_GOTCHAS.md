@@ -1632,6 +1632,32 @@ unset CHUMP_CONFLICT_RESOLVER_ENABLED      # back to manual-resolve default
 (`_start`, `_validated`, `_success`, `_dropped`, `_attempt_failed`,
 `_continue_failed`, `_handoff`, `_skipped`, `_failed`).
 
+## Skill management — `chump skill` (INFRA-1613)
+
+Skills are reusable task procedures stored in `chump-brain/skills/<name>/SKILL.md`.
+The `chump skill` CLI exposes the full skill lifecycle without requiring an agent session.
+
+**Commands:**
+```bash
+chump skill list [--json]                  # enumerate installed skills
+chump skill view NAME                      # show full SKILL.md content + reliability
+chump skill health [--name N] [--min-uses N]  # Wilson CI ranking (composite score)
+chump skill record-outcome NAME true|false # record a success/failure outcome
+chump skill tap-add URL                    # install skills from a GitHub repo
+```
+
+**Brain directory:** `chump-brain/skills/<name>/SKILL.md` (override: `CHUMP_BRAIN_PATH`).
+Each subdirectory must contain a `SKILL.md` with valid YAML frontmatter + the five
+required sections (`## When to Use`, `## Quick Reference`, `## Procedure`, `## Pitfalls`,
+`## Verification`).
+
+**Reliability stats** come from the `chump_skills` SQLite table (`skill_db.rs`).
+`chump skill health` uses Wilson 95% CI + recency decay + use-count weight (see
+`src/skill_metrics.rs::skill_health_ranking()`) to produce a composite ranking.
+
+**Agent-facing API** (`skill_manage` tool in `src/skill_tool.rs`) is the write path
+used during agent sessions; `chump skill` is the operator-facing read/inspect path.
+
 ## Local CI discipline — `chump preflight` (INFRA-1670, INFRA-1672, INFRA-1673)
 
 Before pushing, run `chump preflight` to mirror CI locally and skip the

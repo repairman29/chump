@@ -1504,6 +1504,275 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // INFRA-1613: `chump skill <subcmd>` — operator-facing CLI for skill management.
+    // Exposes list/view/health/record-outcome/tap-add without requiring an
+    // agent loop session. Skills live in chump-brain/skills/<name>/SKILL.md;
+    // reliability stats come from chump_skills SQLite table (skill_db.rs).
+    if args.get(1).map(String::as_str) == Some("skill") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("list");
+        let want_json = args.iter().any(|a| a == "--json");
+
+        if subcmd == "--help" || subcmd == "help" || subcmd == "-h" {
+            println!("Usage: chump skill <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  list [--json]              List all installed skills");
+            println!("  view NAME                  Show full SKILL.md for NAME");
+            println!("  health [--name NAME] [--min-uses N]");
+            println!("                             Wilson CI ranking per skill");
+            println!("  record-outcome NAME true|false");
+            println!("                             Record a success/failure outcome");
+            println!("  tap-add URL                Install skills from a GitHub repo");
+            println!();
+            println!("Skills live in: chump-brain/skills/<name>/SKILL.md");
+            println!("Override: CHUMP_BRAIN_PATH env var");
+            return Ok(());
+        }
+
+        match subcmd {
+            "list" => {
+                match crate::skills::list_skills() {
+                    Ok(skills) if skills.is_empty() => {
+                        if want_json {
+                            println!("[]");
+                        } else {
+                            println!(
+                                "No skills installed. Use skill_manage action=create to add one."
+                            );
+                        }
+                    }
+                    Ok(skills) => {
+                        if want_json {
+                            // Build JSON array from skill frontmatter + reliability stats.
+                            let mut items: Vec<serde_json::Value> =
+                                Vec::with_capacity(skills.len());
+                            for s in &skills {
+                                let (rel, n) =
+                                    crate::skill_db::skill_reliability(&s.frontmatter.name)
+                                        .unwrap_or((0.5, 0));
+                                let rec =
+                                    crate::skill_db::list_skill_records().ok().and_then(|recs| {
+                                        recs.into_iter().find(|r| r.name == s.frontmatter.name)
+                                    });
+                                let last_used = rec.as_ref().and_then(|r| r.last_used_at.clone());
+                                let version = s.frontmatter.version;
+                                let platforms = &s.frontmatter.platforms;
+                                let meta = serde_json::json!({
+                                    "tags": s.frontmatter.metadata.tags,
+                                    "category": s.frontmatter.metadata.category,
+                                    "requires_toolsets": s.frontmatter.metadata.requires_toolsets,
+                                });
+                                items.push(serde_json::json!({
+                                    "name": s.frontmatter.name,
+                                    "description": s.frontmatter.description,
+                                    "version": version,
+                                    "platforms": platforms,
+                                    "metadata": meta,
+                                    "reliability_p": rel,
+                                    "sample_n": n,
+                                    "last_used_at": last_used,
+                                }));
+                            }
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&items)
+                                    .unwrap_or_else(|_| "[]".to_string())
+                            );
+                        } else {
+                            println!("Installed skills ({}):", skills.len());
+                            for s in &skills {
+                                println!("  {}", s.summary_line());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill list: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            "view" => {
+                let name = match args.get(3) {
+                    Some(n) => n.as_str(),
+                    None => {
+                        eprintln!("Usage: chump skill view NAME");
+                        std::process::exit(2);
+                    }
+                };
+                match crate::skills::load_skill(name) {
+                    Ok(skill) => {
+                        let (rel, n) = crate::skill_db::skill_reliability(name).unwrap_or((0.5, 0));
+                        if n > 0 {
+                            println!(
+                                "# Skill: {} (v{})\n",
+                                skill.frontmatter.name, skill.frontmatter.version
+                            );
+                            println!("**Description:** {}", skill.frontmatter.description);
+                            println!("**Reliability:** {:.1}% over {} uses\n", rel * 100.0, n);
+                            println!("---\n");
+                        } else {
+                            println!(
+                                "# Skill: {} (v{})\n",
+                                skill.frontmatter.name, skill.frontmatter.version
+                            );
+                            println!("**Description:** {}", skill.frontmatter.description);
+                            println!("**Reliability:** no usage data yet\n");
+                            println!("---\n");
+                        }
+                        print!("{}", skill.body);
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill view: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            "health" => {
+                // Optional filters: --name NAME, --min-uses N
+                let name_filter: Option<String> = {
+                    let mut v = None;
+                    let mut it = args.iter().skip(3);
+                    while let Some(a) = it.next() {
+                        if a == "--name" {
+                            v = it.next().cloned();
+                            break;
+                        }
+                    }
+                    v
+                };
+                let min_uses: u64 = {
+                    let mut v = 0u64;
+                    let mut it = args.iter().skip(3);
+                    while let Some(a) = it.next() {
+                        if a == "--min-uses" {
+                            if let Some(n) = it.next().and_then(|s| s.parse().ok()) {
+                                v = n;
+                            }
+                            break;
+                        }
+                    }
+                    v
+                };
+                match crate::skill_metrics::skill_health_ranking() {
+                    Ok(ranking) => {
+                        let filtered: Vec<_> = ranking
+                            .into_iter()
+                            .filter(|h| name_filter.as_deref().is_none_or(|n| h.name == n))
+                            .filter(|h| h.use_count >= min_uses)
+                            .collect();
+                        if want_json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&filtered)
+                                    .unwrap_or_else(|_| "[]".to_string())
+                            );
+                        } else if filtered.is_empty() {
+                            println!("No skills matching the filter.");
+                        } else {
+                            println!(
+                                "{:<30} {:>6} {:>6} {:>12} {:>10} {:>8}",
+                                "name", "uses", "rel%", "ci_lower-upper", "composite", "days_old"
+                            );
+                            println!("{}", "-".repeat(80));
+                            for h in &filtered {
+                                let days = h
+                                    .days_since_last_use
+                                    .map(|d| d.to_string())
+                                    .unwrap_or_else(|| "never".to_string());
+                                println!(
+                                    "{:<30} {:>6} {:>5.1}% [{:>5.1}%–{:>5.1}%] {:>10.3} {:>8}",
+                                    h.name,
+                                    h.use_count,
+                                    h.reliability * 100.0,
+                                    h.confidence_lower * 100.0,
+                                    h.confidence_upper * 100.0,
+                                    h.composite_score,
+                                    days,
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill health: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            "record-outcome" => {
+                let name = match args.get(3) {
+                    Some(n) => n.as_str(),
+                    None => {
+                        eprintln!("Usage: chump skill record-outcome NAME true|false");
+                        std::process::exit(2);
+                    }
+                };
+                let success_str = match args.get(4) {
+                    Some(s) => s.as_str(),
+                    None => {
+                        eprintln!("Usage: chump skill record-outcome NAME true|false");
+                        std::process::exit(2);
+                    }
+                };
+                let success = match success_str {
+                    "true" | "1" | "yes" => true,
+                    "false" | "0" | "no" => false,
+                    other => {
+                        eprintln!("chump skill record-outcome: expected true|false, got {other:?}");
+                        std::process::exit(2);
+                    }
+                };
+                match crate::skill_db::record_skill_outcome(name, success) {
+                    Ok(()) => {
+                        let (rel, uses) =
+                            crate::skill_db::skill_reliability(name).unwrap_or((0.5, 0));
+                        println!(
+                            "Recorded {} for '{}'. Reliability: {:.1}% over {} uses.",
+                            if success { "success" } else { "failure" },
+                            name,
+                            rel * 100.0,
+                            uses
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill record-outcome: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            "tap-add" => {
+                let url = match args.get(3) {
+                    Some(u) => u.as_str(),
+                    None => {
+                        eprintln!("Usage: chump skill tap-add URL");
+                        eprintln!(
+                            "  URL: https://github.com/owner/repo (must have a skills/ directory)"
+                        );
+                        std::process::exit(2);
+                    }
+                };
+                // Call handle_tap_add directly (pub since INFRA-1613).
+                match crate::skill_tool::handle_tap_add(url).await {
+                    Ok(msg) => println!("{msg}"),
+                    Err(e) => {
+                        eprintln!("chump skill tap-add: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            other => {
+                eprintln!("chump skill: unknown subcommand '{other}'");
+                eprintln!("Valid: list, view, health, record-outcome, tap-add");
+                eprintln!("Run 'chump skill --help' for usage.");
+                std::process::exit(2);
+            }
+        }
+    }
+
     // INFRA-1696 (META-066 phase 3): `chump content-bots <subcmd>` operator
     // surface for the Content Bots Suite (PMM, DocuBot, Evangelist, CopyBot).
     // Reads docs/agents/content-bots/bots.yaml + the toggle resolver from

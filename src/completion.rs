@@ -52,6 +52,7 @@ const TOP_LEVEL: &[&str] = &[
     "session-track",
     "ship-quality",
     "simulate",
+    "skill",
     "stats",
     "triage",
     "waste-tally",
@@ -63,6 +64,10 @@ const TOP_LEVEL: &[&str] = &[
     "--help",
     "--version",
 ];
+
+const SKILL_SUBS: &[&str] = &["list", "view", "health", "record-outcome", "tap-add"];
+
+const SKILL_FLAGS: &[&str] = &["--json", "--name", "--min-uses", "--help"];
 
 const GAP_SUBS: &[&str] = &[
     "list",
@@ -100,6 +105,7 @@ pub fn zsh() -> String {
     let gap = GAP_SUBS.join(" ");
     let gap_flags = GAP_FLAGS.join(" ");
     let common = COMMON_FLAGS.join(" ");
+    let skill = SKILL_SUBS.join(" ");
 
     format!(
         r#"#compdef chump
@@ -107,9 +113,10 @@ pub fn zsh() -> String {
 # Install: chump completion zsh | sudo tee $(brew --prefix)/share/zsh/site-functions/_chump
 
 _chump() {{
-  local -a cmds gap_cmds
+  local -a cmds gap_cmds skill_cmds
   cmds=({top})
   gap_cmds=({gap})
+  skill_cmds=({skill})
 
   local state
   _arguments -C \
@@ -147,6 +154,34 @@ _chump() {{
                 ;;
               *)
                 _arguments '*: :{gap_flags}'
+                ;;
+            esac
+          fi
+          ;;
+        skill)
+          if (( CURRENT == 2 )); then
+            _describe 'skill subcommand' skill_cmds
+          else
+            case $words[2] in
+              list)
+                _arguments '--json[output as JSON]'
+                ;;
+              view)
+                _arguments '1:skill-name:'
+                ;;
+              health)
+                _arguments \
+                  '--name[filter to skill name]:name:' \
+                  '--min-uses[minimum use count]:n:' \
+                  '--json[output as JSON]'
+                ;;
+              record-outcome)
+                _arguments \
+                  '1:skill-name:' \
+                  '2:outcome:(true false)'
+                ;;
+              tap-add)
+                _arguments '1:github-url:'
                 ;;
             esac
           fi
@@ -204,13 +239,15 @@ _chump "$@"
         top = top,
         gap = gap,
         gap_flags = gap_flags,
-        common = common
+        common = common,
+        skill = skill
     )
 }
 
 pub fn bash() -> String {
     let top = TOP_LEVEL.join(" ");
     let gap = GAP_SUBS.join(" ");
+    let skill = SKILL_SUBS.join(" ");
 
     format!(
         r#"# EFFECTIVE-010: bash completion for chump
@@ -228,6 +265,7 @@ _chump_complete() {{
 
   local top_cmds="{top}"
   local gap_subs="{gap}"
+  local skill_subs="{skill}"
 
   if [[ $cword -eq 1 ]]; then
     COMPREPLY=($(compgen -W "$top_cmds" -- "$cur"))
@@ -260,6 +298,26 @@ _chump_complete() {{
           ;;
       esac
       ;;
+    skill)
+      if [[ $cword -eq 2 ]]; then
+        COMPREPLY=($(compgen -W "$skill_subs" -- "$cur"))
+        return
+      fi
+      local sub="${{words[2]}}"
+      case "$sub" in
+        list)
+          COMPREPLY=($(compgen -W "--json" -- "$cur"))
+          ;;
+        health)
+          COMPREPLY=($(compgen -W "--json --name --min-uses" -- "$cur"))
+          ;;
+        record-outcome)
+          if [[ $cword -eq 4 ]]; then
+            COMPREPLY=($(compgen -W "true false" -- "$cur"))
+          fi
+          ;;
+      esac
+      ;;
     claim)
       case "$prev" in
         --paths)  COMPREPLY=($(compgen -f -- "$cur")); return ;;
@@ -285,7 +343,8 @@ _chump_complete() {{
 complete -F _chump_complete chump
 "#,
         top = top,
-        gap = gap
+        gap = gap,
+        skill = skill
     )
 }
 
@@ -390,6 +449,36 @@ pub fn fish() -> String {
             "complete -c chump -n '__fish_seen_subcommand_from completion' -a {shell} -d '{shell} completion'"
         ));
     }
+
+    lines.push(String::new());
+    lines.push("# skill subcommands".to_string());
+    let skill_subs: &[(&str, &str)] = &[
+        ("list", "List installed skills"),
+        ("view", "Show full SKILL.md"),
+        ("health", "Wilson CI ranking per skill"),
+        ("record-outcome", "Record success/failure outcome"),
+        ("tap-add", "Install skills from a GitHub repo"),
+    ];
+    for (sub, desc) in skill_subs {
+        lines.push(format!(
+            "complete -c chump -n '__fish_seen_subcommand_from skill' -a {sub} -d '{desc}'"
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push("# skill flags".to_string());
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from skill' -l json -d 'JSON output'"
+            .to_string(),
+    );
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from skill' -l name -d 'Filter by skill name'"
+            .to_string(),
+    );
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from skill' -l min-uses -d 'Minimum use count filter'"
+            .to_string(),
+    );
 
     lines.push(String::new());
     lines.push("# health / waste-tally flags".to_string());

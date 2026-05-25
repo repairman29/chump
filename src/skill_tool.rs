@@ -386,7 +386,8 @@ pub fn validate_skill_markdown_safety(content: &str) -> Result<()> {
 /// COMP-006: fetch and install skills from a public GitHub repository.
 /// The repo must have a `skills/` directory with one or more SKILL.md files.
 /// Each skill dir: `skills/<skill-name>/SKILL.md` or `skills/<skill-name>.md`.
-async fn handle_tap_add(url: &str) -> Result<String> {
+/// Public so the `chump skill tap-add` CLI surface (INFRA-1613) can call it directly.
+pub async fn handle_tap_add(url: &str) -> Result<String> {
     let (owner, repo) = parse_github_repo(url).ok_or_else(|| {
         anyhow!(
             "Could not parse GitHub URL '{}'. Expected: https://github.com/owner/repo",
