@@ -236,13 +236,12 @@ pub fn fail_if_stale_for_destructive(
             // the friendlier message tells the operator a retry will work.
             // Bypass: CHUMP_DISABLE_JIT_BINARY_REFRESH=1 (return to pre-1977
             // hand-rebuild behavior).
-            let refresh_state = if std::env::var("CHUMP_DISABLE_JIT_BINARY_REFRESH").as_deref()
-                == Ok("1")
-            {
-                BinaryRefreshState::Disabled
-            } else {
-                trigger_or_check_binary_refresh(repo_root)
-            };
+            let refresh_state =
+                if std::env::var("CHUMP_DISABLE_JIT_BINARY_REFRESH").as_deref() == Ok("1") {
+                    BinaryRefreshState::Disabled
+                } else {
+                    trigger_or_check_binary_refresh(repo_root)
+                };
 
             eprintln!(
                 "[chump] REFUSED: '{op_name}' is a destructive bulk-YAML \
@@ -419,6 +418,9 @@ fn spawn_background_rebuild(repo_root: &Path, state_file: &Path, now_unix: u64) 
     );
 
     // Emit ambient event.
+    // scanner-anchor: "kind":"binary_refresh_started"
+    // scanner-anchor: "kind":"binary_refresh_completed"
+    // scanner-anchor: "kind":"binary_refresh_failed"
     emit_binary_refresh_event(repo_root, "binary_refresh_started", "", 0);
 
     // The actual rebuild + marker update is done by a small wrapper shell

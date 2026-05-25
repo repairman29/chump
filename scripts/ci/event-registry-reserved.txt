@@ -363,3 +363,21 @@ recovery_queue_paused        # reason: INFRA-1993 emitted when CHUMP_RECOVERY_QU
 wedge_remediation_requested  # reason: INFRA-1994 emitted by scripts/coord/wedge-state-machine.sh per-class remediation router; carries action + detail for operator/audit
 wedge_remediation_rate_limited  # reason: INFRA-1994 emitted when same wedge_class fires within rate window (default 30min); deferred
 wedge_chronic                # reason: INFRA-1994 emitted when same wedge_class fires ≥3x in 24h (default); escalation signal to file META gap for permanent fix
+
+# ── INFRA-2003: event-registry strict-mode trunk-red unblock (#2587 flipped strict) ──
+#
+# THE FLOOR Phase 1 (#2587, INFRA-1987) flipped CHUMP_REGISTRY_GATE_MODE=strict
+# in the audit job, surfacing 5 pre-existing latent violations that had been
+# advisory-warning-only until that point. Result: every PR in CI started failing
+# the event-registry coverage gate. INFRA-2003 unblocks the trunk by reserving
+# these 5 kinds with explicit reasons so the strict gate passes; follow-up
+# work owns the proper resolution per kind (wire emit OR remove from registry).
+pr_oversight_snapshot  # reason: emit-without-register surfaced 2026-05-25; emit site not yet wired into the audit scanner's PROD_PATHS; reserved while a follow-up gap restructures the PR-oversight emit path
+subagent_idle_without_pr  # reason: emit-without-register surfaced 2026-05-25 by INFRA-1987 strict-mode flip; emit logic exists in subagent watchdog but not in scanner's PROD_PATHS; reserved pending follow-up to either register or rehome the emit
+preflight_ci_agreement  # reason: register-without-emit orphan from INFRA-1927 (#2537 area); emit site is gated by CHUMP_PREFLIGHT_CI_AGREEMENT env var so scanner reports no production emit; reserved pending decision to wire unconditionally or remove from registry
+voice_lint_bypassed  # reason: register-without-emit orphan; voice-lint half-state class (critique H6 / INFRA-1975); kind is registered for the eventual policy decision (required-OR-removed); reserved until INFRA-1975 lands
+voice_lint_violation  # reason: register-without-emit orphan; same class as voice_lint_bypassed; reserved until INFRA-1975 voice-lint policy decision lands
+
+# ── INFRA-1923 / META-097 (ci-audit role productize, shipped 17:22Z 2026-05-25 as #2590) ──
+ci_audit_heartbeat  # reason: emitted by scripts/coord/ci-audit-loop.sh::heartbeat (per INFRA-1923 productization); printf-direct JSON not grep-scannable by PROD_PATHS scanner; reserved pending formal EVENT_REGISTRY.yaml entry by ci-audit role owner
+ci_cluster_detected  # reason: emitted by scripts/coord/ci-audit-loop.sh::audit when ≥N PRs share failing-check set; same scanner-scope class as ci_audit_heartbeat; reserved pending formal EVENT_REGISTRY.yaml entry by ci-audit role owner

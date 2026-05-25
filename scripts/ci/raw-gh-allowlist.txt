@@ -42,3 +42,4 @@ scripts/coord/pr-failure-auto-rescue.sh # migration gap: INFRA-1618
 
 # CI quality-score daily telemetry — new script (INFRA-1872); cache-migration deferred to INFRA-1249
 scripts/ops/ci-qa-score.sh                # INFRA-1872: gh pr list for merged-PR-window stats; migration: INFRA-1249
+scripts/coord/cluster-detector.sh  # INFRA-1987 THE FLOOR Phase 1; cluster detector uses direct gh pr list at line 108 — follow-up to migrate to cache_query_open_prs
