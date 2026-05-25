@@ -7601,6 +7601,109 @@ async fn main() -> Result<()> {
                     gap_set_usage();
                     std::process::exit(2);
                 }
+                // INFRA-2022: support positional `<field_name> <value>` as an alias
+                // for `--<flag-name> <value>`. Operators naturally type:
+                //   chump gap set INFRA-NNN acceptance_criteria "text"
+                // but the parser only recognises `--acceptance-criteria`. Without
+                // this normalisation the positional field name is silently ignored,
+                // leaving whatever placeholder the gap was reserved with intact —
+                // a footgun that bit the wizard 6+ times on 2026-05-25.
+                //
+                // Strategy: build a mutable local args shadow so the existing
+                // `flag(...)` closure (which captures the outer immutable `args`)
+                // is NOT affected. We then re-define a local `flag_local` that
+                // reads from the mutable shadow.  Only the `gap set` arm needs
+                // this — other subcommands stay on the shared closure.
+                //
+                // Supported positional aliases (snake_case or kebab-case):
+                //   acceptance_criteria / acceptance-criteria → --acceptance-criteria
+                //   title                                     → --title
+                //   description                               → --description
+                //   priority                                  → --priority
+                //   effort                                    → --effort
+                //   status                                    → --status
+                //   notes                                     → --notes
+                //   depends_on / depends-on                   → --depends-on
+                //   source_doc / source-doc                   → --source-doc
+                //   opened_date / opened-date                 → --opened-date
+                //   closed_date / closed-date                 → --closed-date
+                //   closed_pr / closed-pr                     → --closed-pr
+                //   skills_required / skills-required         → --skills-required
+                //   preferred_backend / preferred-backend     → --preferred-backend
+                //   preferred_machine / preferred-machine     → --preferred-machine
+                //   estimated_minutes / estimated-minutes     → --estimated-minutes
+                //   required_model / required-model           → --required-model
+                let positional_field_map: &[(&str, &str)] = &[
+                    ("acceptance_criteria", "--acceptance-criteria"),
+                    ("acceptance-criteria", "--acceptance-criteria"),
+                    ("title", "--title"),
+                    ("description", "--description"),
+                    ("priority", "--priority"),
+                    ("effort", "--effort"),
+                    ("status", "--status"),
+                    ("notes", "--notes"),
+                    ("depends_on", "--depends-on"),
+                    ("depends-on", "--depends-on"),
+                    ("source_doc", "--source-doc"),
+                    ("source-doc", "--source-doc"),
+                    ("opened_date", "--opened-date"),
+                    ("opened-date", "--opened-date"),
+                    ("closed_date", "--closed-date"),
+                    ("closed-date", "--closed-date"),
+                    ("closed_pr", "--closed-pr"),
+                    ("closed-pr", "--closed-pr"),
+                    ("skills_required", "--skills-required"),
+                    ("skills-required", "--skills-required"),
+                    ("preferred_backend", "--preferred-backend"),
+                    ("preferred-backend", "--preferred-backend"),
+                    ("preferred_machine", "--preferred-machine"),
+                    ("preferred-machine", "--preferred-machine"),
+                    ("estimated_minutes", "--estimated-minutes"),
+                    ("estimated-minutes", "--estimated-minutes"),
+                    ("required_model", "--required-model"),
+                    ("required-model", "--required-model"),
+                ];
+                // Normalise: rewrite bare positional field name at args[4] to its
+                // canonical `--flag` form in a local mutable shadow. We only apply
+                // this when no `--<flag>` args are already present (to avoid
+                // ambiguity in mixed usage). An unrecognised bare positional at
+                // args[4] with a trailing value at args[5] is an error (typo guard).
+                let mut args_local: Vec<String> = args.clone();
+                let has_existing_flags = args_local[4..].iter().any(|a| a.starts_with("--"));
+                if !has_existing_flags {
+                    if let Some(field_arg) = args_local.get(4).cloned() {
+                        if let Some((_, flag_name)) = positional_field_map
+                            .iter()
+                            .find(|(alias, _)| *alias == field_arg.as_str())
+                        {
+                            // Rewrite bare field name to canonical --flag form.
+                            // The value at args[5] stays put and is picked up by
+                            // flag_local() automatically.
+                            args_local[4] = flag_name.to_string();
+                        } else if !field_arg.is_empty()
+                            && args_local.get(5).is_some()
+                            && !field_arg.starts_with('-')
+                        {
+                            // Unknown bare positional with a trailing value — typo.
+                            // Error out so the operator knows the update was lost.
+                            eprintln!(
+                                "chump gap set: unrecognised positional field name {:?}. \
+                                 Use --<flag> form (see usage above).",
+                                field_arg
+                            );
+                            gap_set_usage();
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                // Local flag() that reads from args_local (the normalised shadow).
+                let flag_local = |name: &str| -> Option<String> {
+                    args_local
+                        .iter()
+                        .position(|a| a == name)
+                        .and_then(|i| args_local.get(i + 1))
+                        .cloned()
+                };
                 // INFRA-1799: --acceptance-criteria parsing has two forms:
                 //   (preferred) repeated `--acceptance-criteria BULLET` flags
                 //               → each value is one AC bullet, NO pipe-splitting,
@@ -7614,9 +7717,9 @@ async fn main() -> Result<()> {
                 let ac_flag_values: Vec<String> = {
                     let mut vals = Vec::new();
                     let mut i = 0usize;
-                    while i < args.len() {
-                        if args[i] == "--acceptance-criteria" {
-                            if let Some(v) = args.get(i + 1) {
+                    while i < args_local.len() {
+                        if args_local[i] == "--acceptance-criteria" {
+                            if let Some(v) = args_local.get(i + 1) {
                                 vals.push(v.clone());
                                 i += 2;
                                 continue;
@@ -7652,7 +7755,7 @@ async fn main() -> Result<()> {
                     // flag occurrence is exactly one bullet, no splitting.
                     Some(serde_json::to_string(&ac_flag_values).unwrap_or_else(|_| "[]".into()))
                 };
-                let depends_on = flag("--depends-on").map(|raw| {
+                let depends_on = flag_local("--depends-on").map(|raw| {
                     let parts: Vec<&str> = raw
                         .split(',')
                         .map(|s| s.trim())
@@ -7666,7 +7769,7 @@ async fn main() -> Result<()> {
                 // missing/non-numeric closed_pr at commit time, so this is the
                 // canonical way to satisfy it from the CLI rather than
                 // hand-editing YAML.
-                let closed_pr: Option<i64> = match flag("--closed-pr") {
+                let closed_pr: Option<i64> = match flag_local("--closed-pr") {
                     Some(s) => match s.trim().parse::<i64>() {
                         Ok(n) if n > 0 => Some(n),
                         _ => {
@@ -7684,7 +7787,7 @@ async fn main() -> Result<()> {
                 //   "[YYYY-MM-DDTHH:MM:SSZ] <text>"
                 // Multiple notes are newline-separated. The --notes flag still
                 // overwrites the entire field; --add-note only appends.
-                let notes: Option<String> = if let Some(add_text) = flag("--add-note") {
+                let notes: Option<String> = if let Some(add_text) = flag_local("--add-note") {
                     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
                     let new_entry = format!("[{}] {}", ts, add_text);
                     // Fetch current notes and append.
@@ -7699,27 +7802,27 @@ async fn main() -> Result<()> {
                     };
                     Some(combined)
                 } else {
-                    flag("--notes")
+                    flag_local("--notes")
                 };
 
                 let update = gap_store::GapFieldUpdate {
-                    title: flag("--title"),
-                    description: flag("--description"),
-                    priority: flag("--priority"),
-                    effort: flag("--effort"),
-                    status: flag("--status"),
+                    title: flag_local("--title"),
+                    description: flag_local("--description"),
+                    priority: flag_local("--priority"),
+                    effort: flag_local("--effort"),
+                    status: flag_local("--status"),
                     acceptance_criteria,
                     depends_on,
                     notes,
-                    source_doc: flag("--source-doc"),
-                    opened_date: flag("--opened-date"),
-                    closed_date: flag("--closed-date"),
+                    source_doc: flag_local("--source-doc"),
+                    opened_date: flag_local("--opened-date"),
+                    closed_date: flag_local("--closed-date"),
                     closed_pr,
-                    skills_required: flag("--skills-required"),
-                    preferred_backend: flag("--preferred-backend"),
-                    preferred_machine: flag("--preferred-machine"),
-                    estimated_minutes: flag("--estimated-minutes"),
-                    required_model: flag("--required-model"),
+                    skills_required: flag_local("--skills-required"),
+                    preferred_backend: flag_local("--preferred-backend"),
+                    preferred_machine: flag_local("--preferred-machine"),
+                    estimated_minutes: flag_local("--estimated-minutes"),
+                    required_model: flag_local("--required-model"),
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
