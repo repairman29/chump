@@ -122,6 +122,7 @@ fi
 REBASED=0
 SKIPPED=0
 FAILED=0
+DEFERRED=0
 while IFS=$'\t' read -r PR STATE; do
     [[ -z "$PR" ]] && continue
     count="$(cooldown_count "$PR")"
@@ -135,6 +136,63 @@ while IFS=$'\t' read -r PR STATE; do
         echo "[pr-auto-rebase] DRY-RUN would rebase #$PR (state=$STATE, prior rebases this hour=$count)"
         continue
     fi
+
+    # INFRA-1974 (H5 critique fix): per-branch advisory lock. Prevents this
+    # daemon from racing an operator-initiated `git rebase origin/main` on
+    # the same branch — observed live on 2026-05-25 04:51:46Z (PR #2566) and
+    # again at 16:31:07Z (PR #2574) where the daemon's parallel rebase
+    # produced a duplicate CI run that doubled the queue cost. Operator
+    # rebases should take `flock -n .chump-locks/rebase-<branch>.lock`
+    # before touching the branch; that's a follow-up gap. For now the
+    # daemon side defers cleanly when the lock can't be acquired.
+    #
+    # Bypass: CHUMP_PR_AUTO_REBASE_NO_LOCK=1 reverts to pre-1974 behavior
+    # (always rebase regardless of operator activity).
+    BRANCH="$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null)"
+    if [[ -z "$BRANCH" ]]; then
+        echo "[pr-auto-rebase] WARN #$PR — could not resolve branch name; skipping"
+        emit pr_auto_rebase_skipped "$PR" "\"reason\":\"branch_resolve_failed\""
+        SKIPPED=$((SKIPPED+1))
+        continue
+    fi
+    # Sanitize branch name for use in filename (e.g. chump/foo-bar → chump_foo-bar)
+    BRANCH_SAFE="${BRANCH//\//_}"
+    LOCKFILE="$REPO_ROOT/.chump-locks/rebase-${BRANCH_SAFE}.lock"
+    if [[ "${CHUMP_PR_AUTO_REBASE_NO_LOCK:-0}" != "1" ]] && command -v flock >/dev/null 2>&1; then
+        # Acquire lock in subshell so it auto-releases at scope exit. If we
+        # can't get it in 1s, defer this PR — operator is rebasing.
+        REBASE_OUTPUT_FILE="$(mktemp)"
+        REBASE_EXIT=0
+        (
+            exec 9>"$LOCKFILE"
+            if ! flock -n -w 1 9; then
+                echo "[pr-auto-rebase] DEFER #$PR — branch $BRANCH lock held (operator rebasing?)"
+                emit pr_auto_rebase_deferred_for_operator "$PR" "\"reason\":\"lock_held\",\"branch\":\"$BRANCH\""
+                exit 2  # signal deferred to outer
+            fi
+            # Lock held — do the rebase. Re-source the logic by exporting and
+            # re-running the core action; simpler to just inline a redirect.
+            true
+        )
+        if [[ $? -eq 2 ]]; then
+            DEFERRED=$((DEFERRED+1))
+            rm -f "$REBASE_OUTPUT_FILE"
+            continue
+        fi
+        rm -f "$REBASE_OUTPUT_FILE"
+        # Re-acquire the lock for the actual rebase action below. Subshell
+        # above proved the lock is available; this scope holds it through
+        # the gh API + local-rebase fallback.
+        exec 9>"$LOCKFILE"
+        flock -n 9 || {
+            echo "[pr-auto-rebase] DEFER #$PR — lock taken between probe and acquire (rare race)"
+            emit pr_auto_rebase_deferred_for_operator "$PR" "\"reason\":\"lock_race\",\"branch\":\"$BRANCH\""
+            DEFERRED=$((DEFERRED+1))
+            exec 9>&-
+            continue
+        }
+    fi
+
     echo "[pr-auto-rebase] rebasing #$PR (state=$STATE)..."
     if gh pr update-branch "$PR" 2>&1 | tail -3; then
         echo "[pr-auto-rebase] OK #$PR"
@@ -191,7 +249,14 @@ while IFS=$'\t' read -r PR STATE; do
         fi
         rm -rf "$WT" 2>/dev/null || true
     fi
+
+    # INFRA-1974: release per-branch lock at end of iteration so the next
+    # PR's iteration starts clean. The fd 9 was opened above with `exec`
+    # which has loop-scope; close explicitly to release flock.
+    if [[ "${CHUMP_PR_AUTO_REBASE_NO_LOCK:-0}" != "1" ]] && command -v flock >/dev/null 2>&1; then
+        exec 9>&- 2>/dev/null || true
+    fi
 done <<< "$TARGETS"
 
-echo "[pr-auto-rebase] done — rebased=$REBASED skipped=$SKIPPED failed=$FAILED"
+echo "[pr-auto-rebase] done — rebased=$REBASED skipped=$SKIPPED failed=$FAILED deferred=$DEFERRED"
 exit 0
