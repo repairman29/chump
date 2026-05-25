@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-078)
 # scripts/ci/test-import-similarity-block.sh — INFRA-1434
 #
 # Validates the title-similarity guard added to `chump gap import`.

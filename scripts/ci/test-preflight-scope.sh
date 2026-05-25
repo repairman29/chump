@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # INFRA-1672: regression test for `chump preflight --scope`.
 #
 # Verifies:

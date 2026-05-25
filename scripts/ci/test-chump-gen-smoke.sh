@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-chump-gen-smoke.sh — INFRA-593: smoke test for `chump gen`.
 #
 # Verifies that `chump gen "add comment"` against a fixture Rust repo:

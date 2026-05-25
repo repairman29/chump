@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # scripts/ci/test-gap-audit-priorities-closed-at.sh — INFRA-1682
 #
 # Regression guard for the "Invalid column type Text at index: 12, name:

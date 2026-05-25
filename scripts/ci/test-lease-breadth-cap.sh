@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-lease-breadth-cap.sh — INFRA-1885: lease-breadth cap
 #
 # Verifies four assertions:

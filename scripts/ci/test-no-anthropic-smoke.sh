@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-no-anthropic-smoke.sh — CREDIBLE-046
 #
 # Proves chump's coordination layer works without ANY Anthropic credentials.

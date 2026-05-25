@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # test-gap-list-domain-summary.sh — INFRA-431
 #
 # `chump gap list` now hides pure-test domains by default, prints a domain

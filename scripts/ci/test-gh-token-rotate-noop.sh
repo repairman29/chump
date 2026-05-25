@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-gh-token-rotate-noop.sh — CI regression test for INFRA-1361.
 #
 # Verifies that `chump gh-token rotate` exits 0 silently when

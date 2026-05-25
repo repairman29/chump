@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-ci-health-gate.sh — INFRA-1607
 #
 # Smoke tests for the CI health gate daemon + gap reserve guard:
