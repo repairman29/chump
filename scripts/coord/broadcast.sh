@@ -35,11 +35,27 @@
 # Agents should check ambient.jsonl for INTENT events from the last 5 minutes
 # before claiming a gap. If another session announced INTENT for the same gap,
 # pause 10 seconds and re-check before proceeding.
+#
+# INFRA-1998 (Rust-first Phase 1): when CHUMP_MESSAGING_RUST=1 and the
+# chump-broadcast binary is on $PATH, exec the Rust port. Otherwise the
+# legacy bash body below runs unchanged. Phase 1 ships both paths; Phase
+# 2 (separate gap) flips the default; Phase 3 removes bash.
+
+# ── INFRA-1998: Rust pass-through (opt-in via CHUMP_MESSAGING_RUST=1) ─────────
+if [[ "${CHUMP_MESSAGING_RUST:-0}" == "1" ]]; then
+    if command -v chump-broadcast >/dev/null 2>&1; then
+        exec chump-broadcast "$@"
+    fi
+    # Binary not on $PATH — fall through to legacy bash body silently.
+    # The smoke test scripts/ci/test-messaging-rust-parity.sh asserts
+    # this fallback path doesn't surface to operators in CI.
+fi
 
 set -euo pipefail
 
 # INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
 # shellcheck source=../lib/discover-flock.sh
+# shellcheck disable=SC1091  # CREDIBLE-001 smoke runs shellcheck without -x
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
