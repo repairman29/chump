@@ -47,7 +47,10 @@ run_sm() {
 
 emit_detect() {
     local class="$1"; local note="${2:-}"
-    printf '{"ts":"%s","kind":"wedge_detected","source":"wedge_watch","class":"%s","note":"%s"}\n' \
+    # Use the SAME field names as production wedge-watch.sh:
+    # wedge_class + reason (not class + note). Discovered when live
+    # daemon failed to process 10 real events using the test format.
+    printf '{"ts":"%s","kind":"wedge_detected","source":"wedge_watch","wedge_class":"%s","reason":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$class" "$note" \
         >> "$FAKE/.chump-locks/ambient.jsonl"
 }
