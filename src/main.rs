@@ -3958,6 +3958,8 @@ async fn main() -> Result<()> {
             }
             // INFRA-721: 60-second operator briefing — 24h ships, pillar mix,
             // stalls, auto-fixed, manual rescues, suggested actions.
+            // INFRA-2013: also shows 1h ships as leading indicator; emits
+            // fleet_stalled when ships_1h==0 and BLOCKED open PRs >= 2.
             // Wire: FLEET-019 SessionStart hook calls this at session open.
             "brief" => {
                 let want_json = args.iter().any(|a| a == "--json");
@@ -3968,6 +3970,7 @@ async fn main() -> Result<()> {
                 let now = chrono::Utc::now();
                 let now_ts = now.timestamp();
                 let cutoff = now_ts - window_secs;
+                let cutoff_1h = now_ts - 3600; // INFRA-2013 leading indicator
                 let ts_iso = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
                 // INFRA-1355: fleet-wide state (ambient.jsonl, lease files)
@@ -4006,6 +4009,18 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-2013: 1h window events for leading-indicator stall detection
+                let events_1h: Vec<&serde_json::Value> = events
+                    .iter()
+                    .filter(|e| {
+                        e.get("ts")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.timestamp() >= cutoff_1h)
+                            .unwrap_or(false)
+                    })
+                    .collect();
+
                 // Count by "event" field (top-level event type)
                 let count_event = |ev: &str| -> usize {
                     window_events
@@ -4022,6 +4037,11 @@ async fn main() -> Result<()> {
                 };
 
                 let ships = count_event("commit");
+                // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
+                let ships_1h: usize = events_1h
+                    .iter()
+                    .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some("commit"))
+                    .count();
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
@@ -4094,6 +4114,27 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
+                // ── INFRA-2013: fleet stall detection (leading indicator) ────
+                // Condition: 0 merges in last 1h AND >= 2 open BLOCKED PRs.
+                // "open BLOCKED PRs" is approximated here by pr_stuck events in
+                // the last 30 min (the same signal the shell path uses via gh).
+                // When condition fires: emit fleet_stalled to ambient.jsonl so
+                // watchers (operator-recall, cluster-detector, etc.) can page.
+                let fleet_stalled = ships_1h == 0 && pr_stuck >= 2;
+                if fleet_stalled {
+                    let stall_line = format!(
+                        "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_stalled\",\"ships_1h\":0,\"blocked_open\":{pr_stuck},\"source\":\"chump-fleet-brief\"}}\n"
+                    );
+                    let _ = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                        .and_then(|mut f| {
+                            use std::io::Write;
+                            f.write_all(stall_line.as_bytes())
+                        });
+                }
+
                 // ── Pillar mix from open P0/P1 gaps ─────────────────────────
                 let store_res = gap_store::GapStore::open(&repo_root);
                 let mut pillar_counts: std::collections::HashMap<&str, usize> = [
@@ -4129,6 +4170,13 @@ async fn main() -> Result<()> {
 
                 // ── Suggested actions ────────────────────────────────────
                 let mut suggestions: Vec<String> = Vec::new();
+                // INFRA-2013: fleet_stalled is the highest-priority signal —
+                // surface before wedge/silent_agent so it's not buried.
+                if fleet_stalled {
+                    suggestions.push(format!(
+                        "🔴 STALLED: 0 merges in last 1h with {pr_stuck} stuck PRs — investigate bot-merge contention now"
+                    ));
+                }
                 if fleet_wedges > 0 {
                     suggestions.push(format!(
                         "⚠  {} fleet_wedge event(s) — drop to 2 workers per CLAUDE.md",
@@ -4171,6 +4219,8 @@ async fn main() -> Result<()> {
                         "ts": ts_iso,
                         "window_h": window_secs / 3600,
                         "ships_24h": ships,
+                        "ships_1h": ships_1h,
+                        "fleet_stalled": fleet_stalled,
                         "auto_fixed": auto_fixed,
                         "manual_rescues": manual_rescues,
                         "stalls_gt_4h": stalls,
@@ -4191,14 +4241,19 @@ async fn main() -> Result<()> {
                 } else {
                     let window_h = window_secs / 3600;
                     println!("═══ Fleet brief (last {window_h}h) ═══");
+                    // INFRA-2013: show 1h ships alongside rolling average
                     println!(
-                        "Ships: {ships}  (≈{}/hr)",
+                        "Ships: {ships}  (≈{}/hr) | last 1h: {ships_1h}",
                         if window_h > 0 {
                             format!("{:.1}", ships as f64 / window_h as f64)
                         } else {
                             "?".to_string()
                         }
                     );
+                    // INFRA-2013: prominent STALLED banner when condition met
+                    if fleet_stalled {
+                        eprintln!("*** STALLED: 0 merges in last 1h with {pr_stuck} stuck PRs — investigate now ***");
+                    }
                     let eff = pillar_counts.get("EFFECTIVE").copied().unwrap_or(0);
                     let cre = pillar_counts.get("CREDIBLE").copied().unwrap_or(0);
                     let res = pillar_counts.get("RESILIENT").copied().unwrap_or(0);

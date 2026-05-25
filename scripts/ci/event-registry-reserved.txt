@@ -396,3 +396,6 @@ inbox_urgent_surfaced     # reason: INFRA-2016 emitted by scripts/coord/inbox-ch
 post_push_auto_close_recovered  # reason: INFRA-2026 emitted by scripts/coord/post-push-integrity-watch.sh when a chump/* PR is detected as auto-closed within 120s of a push (stale-base force-push pattern); carries pr, branch, state_reason, reopen_status
 post_push_integrity_watch_ok    # reason: INFRA-2026 heartbeat from post-push-integrity-watch.sh when scan completes with no incidents
 post_push_integrity_watch_err   # reason: INFRA-2026 emitted when daemon encounters a gh API or config error (gh_not_found, remote_parse_failed, gh_pr_list_failed)
+
+# ── INFRA-2013: fleet-brief leading-indicator stall detection ─────────────────
+fleet_stalled  # reason: INFRA-2013 emitted by scripts/dispatch/fleet-brief.sh when ships_1h==0 AND open BLOCKED PRs>=2; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS; formal EVENT_REGISTRY.yaml entry pending

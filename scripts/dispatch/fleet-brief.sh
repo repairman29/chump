@@ -2,9 +2,10 @@
 # fleet-brief.sh — INFRA-721
 #
 # 60-second operator briefing. Computes:
-#   - 24h ship count + rate trend
+#   - 24h + 1h ship count + rate trend (INFRA-2013: leading indicator)
 #   - pillar mix from shipped PR titles (RESILIENT/EFFECTIVE/CREDIBLE/ZERO-WASTE/MISSION)
 #   - open PR stalls (BLOCKED > 4h)
+#   - STALLED alert when ships_1h==0 and BLOCKED>=2 (INFRA-2013)
 #   - auto-fixed CI events (lint/flake reruns) — count of "saved" operator interventions
 #   - manual rescue events (kind=manual_rescue or stuck-PR-filer triggers)
 #   - suggested next operator action
@@ -29,20 +30,26 @@ AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 now_epoch=$(date +%s)
 day_ago=$((now_epoch - 86400))
 four_h_ago=$((now_epoch - 14400))
+one_h_ago=$((now_epoch - 3600))
 
 # INFRA-1148: git log replaces gh pr list (GraphQL) for all ship counts and
 # pillar mix. Zero API calls — always reliable, always fast (<50ms).
 # Commit subjects follow `type(DOMAIN-NNN): PILLAR — ...` convention.
 _git_log_24h() { git -C "$MAIN_REPO" log --format="%s" --after="24 hours ago" origin/main 2>/dev/null || true; }
 _git_log_6h()  { git -C "$MAIN_REPO" log --format="%s" --after="6 hours ago"  origin/main 2>/dev/null || true; }
+# INFRA-2013: 1h window for leading-indicator stall detection
+_git_log_1h()  { git -C "$MAIN_REPO" log --format="%s" --after="1 hour ago"   origin/main 2>/dev/null || true; }
 
 _subjects_24h="$(_git_log_24h)"
 _subjects_6h="$(_git_log_6h)"
+_subjects_1h="$(_git_log_1h)"
 
 ships_24h=$(echo "$_subjects_24h" | grep -c . 2>/dev/null || echo 0)
 ships_6h=$(echo "$_subjects_6h"  | grep -c . 2>/dev/null || echo 0)
+ships_1h=$(echo "$_subjects_1h"  | grep -c . 2>/dev/null || echo 0)
 [[ -z "$_subjects_24h" ]] && ships_24h=0
 [[ -z "$_subjects_6h"  ]] && ships_6h=0
+[[ -z "$_subjects_1h"  ]] && ships_1h=0
 rate_per_hr=$(awk "BEGIN{printf \"%.1f\", ($ships_24h)/24}" 2>/dev/null)
 
 # ── Classify pillar + domain from commit subjects (24h) ──────────────────
@@ -97,15 +104,28 @@ _overlap_raw=$(git -C "$MAIN_REPO" log --name-only --format="" --after="6 hours 
 
 # ── Open PR stalls (BLOCKED > 4h) ────────────────────────────────────────
 stalls_4h=()
+blocked_count=0
 while IFS=$'\t' read -r num created msstate; do
     [ "$msstate" != "BLOCKED" ] && continue
     [ -z "$created" ] && continue
+    blocked_count=$((blocked_count + 1))
     created_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s 2>/dev/null || echo 0)
     [ "$created_epoch" = "0" ] && continue
     if [ "$created_epoch" -lt "$four_h_ago" ]; then
         stalls_4h+=("#$num")
     fi
 done < <(gh pr list --state open --json number,createdAt,mergeStateStatus -q '.[] | [.number, .createdAt, .mergeStateStatus] | @tsv' 2>/dev/null)
+
+# ── INFRA-2013: Fleet stall detection (leading indicator) ────────────────
+# Condition: ships_1h == 0 AND open BLOCKED PRs >= 2
+# Emit kind=fleet_stalled to ambient so watchers can page/escalate.
+_fleet_stalled=0
+if [[ "$ships_1h" -eq 0 && "$blocked_count" -ge 2 ]]; then
+    _fleet_stalled=1
+    _stall_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"fleet_stalled","ships_1h":0,"blocked_open":%d,"source":"fleet-brief.sh"}\n' \
+        "$_stall_ts" "$blocked_count" >> "$AMBIENT_LOG" 2>/dev/null || true
+fi
 
 # ── Auto-fixed counts from ambient (last 24h) ────────────────────────────
 auto_lint_fixes=0
@@ -139,7 +159,17 @@ fi
 
 # ── Render ───────────────────────────────────────────────────────────────
 echo "═══ Fleet brief (last 24h) ═══"
-echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h"
+# INFRA-2013: show 1h ships as leading indicator alongside 24h rolling average
+echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h | last 1h: $ships_1h"
+# INFRA-2013: prominent STALLED banner when condition met
+if [[ "$_fleet_stalled" -eq 1 ]]; then
+    # Use ANSI red if terminal supports it; fallback to plain text
+    if [[ -t 1 ]]; then
+        printf '\033[1;31m*** STALLED: 0 merges in last 1h with %d BLOCKED PRs — investigate now ***\033[0m\n' "$blocked_count"
+    else
+        echo "*** STALLED: 0 merges in last 1h with ${blocked_count} BLOCKED PRs — investigate now ***"
+    fi
+fi
 pmix=""
 [ "$p_resilient" -gt 0 ] && pmix="${pmix} RESILIENT=$p_resilient"
 [ "$p_effective" -gt 0 ] && pmix="${pmix} EFFECTIVE=$p_effective"
