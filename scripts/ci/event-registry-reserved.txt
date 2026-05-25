@@ -161,6 +161,8 @@ curator_auto_decompose     # reason: planned for opus-curator auto-decompose arm
 curator_decision           # reason: planned for opus-curator gap-ranking decision emit
 decomposition_hint         # reason: planned for chump gap decompose hint injection
 disk_critical              # reason: emitter scripts/ops/disk-watchdog.sh uses variable-mediated emit (disk_alert_kind); grep pattern misses it; will fix in follow-up
+external_collab_finding    # reason: META-104 emitted by scripts/coord/external-collab-loop.sh; categories: voice_drift | surface_stale | marcus_at_risk | partnership_stalled
+external_collab_scope_override  # reason: META-104 emitted when CHUMP_EXTERNAL_COLLAB_SCOPE_OVERRIDE=1 bypasses lane guard
 feature_silent_failure     # reason: planned for feature smoke-test failure detector
 fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
 flake_autorerun_initiated  # reason: planned for RESILIENT flake-rerun orchestrator
