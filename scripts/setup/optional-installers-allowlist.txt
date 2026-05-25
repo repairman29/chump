@@ -78,3 +78,4 @@ install-oracle-refresh-launchd.sh
 install-pr-pulse-consumer-launchd.sh
 install-refresh-runner-binary-launchd.sh
 install-fleet-autopilot-launchd.sh
+install-cluster-detector-launchd.sh
