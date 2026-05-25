@@ -4652,3 +4652,22 @@ events:
       api_burner. severity is one of: proposal, warn, alert, info.
     consumers: [fleet-brief, ops-audit, observability-curator]
     fields_required: [ts, kind, category, severity, kind_or_subject, detail]
+  # META-102: curator-opus-infra-watcher SRE-lane substrate health finding.
+  # Emitted by scripts/coord/infra-watcher-loop.sh on each tick cycle when a
+  # substrate health check fires above threshold. category distinguishes the
+  # four check types; severity is critical|warning. Would have caught the
+  # 2026-05-24 incidents (17h runner ghost-online, StartInterval-missing-plist,
+  # 154 claude procs, disk_critical) within minutes of first tick.
+  - kind: infra_watcher_finding
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh (META-102)
+    trigger: >
+      One finding per substrate health violation detected during a tick cycle.
+      category is one of: daemon_plist_missing_interval, runner_ghost_online,
+      disk_pressure, process_bloat. severity is critical or warning.
+      detail is a human-readable description of the finding with threshold
+      and observed values. Emitted at most once per category per tick to
+      avoid flooding. Consumers watch for critical findings to page the
+      operator via operator-recall.sh.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, category, severity, detail]
