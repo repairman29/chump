@@ -1,0 +1,25 @@
+- id: INFRA-2012
+  domain: INFRA
+  title: "RESILIENT: cluster-detector v2 — detect cluster by SHARED-SUSPECT-COMMIT (via blame-bot) not just IDENTICAL-failing-checks"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/coord/cluster-detector.sh adds second cluster-ID heuristic: for each pair of BLOCKED PRs, if blame-bot suspect commits overlap by >=1 commit, they cluster together even if their failing-check NAMES differ"
+    - "Cluster_id formula extended: sha256(sorted-suspect-commits) OR sha256(sorted-failing-checks) — fire on EITHER hash matching ≥3 PRs"
+    - "Today's miss case: 6 PRs cascading on INFRA-2003 trunk-RED had ROOT cause = same (event-registry strict-mode) but failing-check NAMES differed per PR (some failed on test, some on audit, some on fast-checks). Cluster detector saw 6 unique check-tuples, not a cluster. Same suspect commit would have grouped them"
+    - "Smoke test scripts/ci/test-cluster-detector-v2.sh: 3 PRs with DIFFERENT failing checks but SAME blame-suspect → assert cluster fires"
+    - "Backwards-compat: existing IDENTICAL-checks detection still fires (faster path; no blame-bot call needed)"
+  description: |
+    THE FLOOR's first real miss. Phase 1 cluster-detector caught
+    "identical failures" clusters but missed "same root cause,
+    different downstream effects" — which is what trunk-RED actually
+    looks like.
+
+    Catalyst: 2026-05-25T18:08Z-19:08Z — 6 PRs (#2582/2586/2589/2593/2603/2605)
+    all blocked on INFRA-2003 trunk-RED. Cluster-detector saw 0 clusters
+    for the full hour because each PR failed on a different check
+    name. Operator ('stuck AF') noticed before the detector did.
+
+    Pairs with INFRA-1989 (blame-bot) — needs to read its emitted
+    suspect_commits from ambient.jsonl.

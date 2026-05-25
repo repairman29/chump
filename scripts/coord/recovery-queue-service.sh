@@ -198,7 +198,7 @@ _run_cycle() {
 
     # 1. Snapshot
     local backup="/tmp/recovery-ruleset-backup-${RULESET_ID}-$$.json"
-    if ! "$GH_BIN" api "repos/{owner}/{repo}/rulesets/$RULESET_ID" > "$backup" 2>/dev/null; then
+    if ! "$GH_BIN" api "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" > "$backup" 2>/dev/null; then
         echo "[fail] could not snapshot ruleset $RULESET_ID — aborting" >&2
         _emit "operator_recovery_failed" \
             "\"reason\":\"ruleset_snapshot_failed\"" \
@@ -221,7 +221,7 @@ out = {
 with open('$dropped','w') as f: json.dump(out,f)
 " 2>/dev/null
 
-    if ! "$GH_BIN" api -X PUT "repos/{owner}/{repo}/rulesets/$RULESET_ID" --input "$dropped" >/dev/null 2>&1; then
+    if ! "$GH_BIN" api -X PUT "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" --input "$dropped" >/dev/null 2>&1; then
         echo "[fail] could not drop ruleset rules — aborting" >&2
         _emit "operator_recovery_failed" \
             "\"reason\":\"ruleset_drop_failed\"" \
@@ -256,7 +256,7 @@ with open('$dropped','w') as f: json.dump(out,f)
     done
 
     # 4. Restore ruleset
-    if ! "$GH_BIN" api -X PUT "repos/{owner}/{repo}/rulesets/$RULESET_ID" --input "$backup" >/dev/null 2>&1; then
+    if ! "$GH_BIN" api -X PUT "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" --input "$backup" >/dev/null 2>&1; then
         echo "[CRITICAL] could not restore ruleset $RULESET_ID — operator action required" >&2
         _emit "operator_recovery_failed" \
             "\"reason\":\"ruleset_restore_failed_CRITICAL\"" \

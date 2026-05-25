@@ -383,3 +383,7 @@ voice_lint_violation  # reason: register-without-emit orphan; same class as voic
 # ── INFRA-1923 / META-097 (ci-audit role productize, shipped 17:22Z 2026-05-25 as #2590) ──
 ci_audit_heartbeat  # reason: emitted by scripts/coord/ci-audit-loop.sh::heartbeat (per INFRA-1923 productization); printf-direct JSON not grep-scannable by PROD_PATHS scanner; reserved pending formal EVENT_REGISTRY.yaml entry by ci-audit role owner
 ci_cluster_detected  # reason: emitted by scripts/coord/ci-audit-loop.sh::audit when ≥N PRs share failing-check set; same scanner-scope class as ci_audit_heartbeat; reserved pending formal EVENT_REGISTRY.yaml entry by ci-audit role owner
+
+# ── INFRA-2014 / META-106: inbox-injector (the 'magic' A2A live signal) ──────
+inbox_injection_executed  # reason: INFRA-2014 emitted by scripts/coord/inbox-injector.sh after tmux send-keys interrupt delivered to a recipient pane; carries urgency + sender + pane target
+inbox_injector_paused     # reason: INFRA-2014 emitted when CHUMP_INBOX_INJECTOR_PAUSE=1 disables daemon

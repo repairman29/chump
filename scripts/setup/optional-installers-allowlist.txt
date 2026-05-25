@@ -82,3 +82,4 @@ install-cluster-detector-launchd.sh
 install-wedge-state-machine-launchd.sh
 install-recovery-queue-launchd.sh
 install-recovery-queue-launchd.sh
+install-inbox-injector-launchd.sh

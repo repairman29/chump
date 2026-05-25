@@ -13,6 +13,9 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# INFRA-1978: assert schema_version before parsing any health JSON fields
+source "$REPO_ROOT/scripts/dispatch/lib/assert-schema.sh"
 SRC="$REPO_ROOT/src/fleet_health.rs"
 CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
 
@@ -74,6 +77,9 @@ set +e
 OUT4=$(CHUMP_REPO_ROOT="$WORK/repo" "$CHUMP_BIN" health --json 2>&1)
 EXIT4=$?
 set -e
+
+# INFRA-1978: assert schema_version before consuming any fields
+assert_schema "$OUT4" 1 || fail "round 4: schema_version assertion failed (got: ${OUT4:0:120})"
 
 echo "$OUT4" | grep -q '"binary_age_h"' \
     || fail "round 4: binary_age_h missing from chump health --json; got: $OUT4"
