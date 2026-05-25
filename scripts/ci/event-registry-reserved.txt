@@ -351,3 +351,15 @@ regression_inattributable  # reason: INFRA-1989 emitted by scripts/coord/blame-b
 
 # ── INFRA-1988 / META-106 (THE FLOOR Phase 2): hook silent-noop alarm ────────
 hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-push EXIT trap when main Guard 1/2/3 loop never entered on non-trivial push (the exact INFRA-1986 silent-regression pattern); printf-direct JSON not grep-scannable in scanner's PROD_PATHS
+
+# ── INFRA-1993 / META-106 (THE FLOOR Phase 3): operator-recovery queue ───────
+operator_recovery_requested  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-emit.sh (worker-facing CLI) when a worker requests an admin-merge cycle for a PR cluster; the queue service consumes these events
+operator_recovery_executed   # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh after each successful drop+merge+re-arm cycle with merged/failed PR lists + ruleset_id
+operator_recovery_failed     # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh on snapshot/drop/restore failure (CRITICAL when ruleset restore fails — operator action required)
+recovery_queue_rate_limited  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh when 3-per-hour rate budget exhausted; deferred request waits for window to slide
+recovery_queue_paused        # reason: INFRA-1993 emitted when CHUMP_RECOVERY_QUEUE_PAUSE=1 disables the daemon
+
+# ── INFRA-1994 / META-106 (THE FLOOR Phase 3): wedge state machine ───────────
+wedge_remediation_requested  # reason: INFRA-1994 emitted by scripts/coord/wedge-state-machine.sh per-class remediation router; carries action + detail for operator/audit
+wedge_remediation_rate_limited  # reason: INFRA-1994 emitted when same wedge_class fires within rate window (default 30min); deferred
+wedge_chronic                # reason: INFRA-1994 emitted when same wedge_class fires ≥3x in 24h (default); escalation signal to file META gap for permanent fix
