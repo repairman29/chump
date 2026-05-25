@@ -675,6 +675,9 @@ jobs:
       - name: subagent budget kill — parent-enforced SIGTERM+grace+SIGKILL (INFRA-1972)
         run: bash scripts/ci/test-subagent-budget-kill.sh
 
+      - name: commit-msg docs-delta trailer check (INFRA-1969)
+        run: bash scripts/ci/test-docs-delta-commit-msg.sh
+
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
 
