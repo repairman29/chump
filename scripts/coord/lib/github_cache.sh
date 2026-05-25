@@ -29,6 +29,71 @@
 [[ -n "${_CHUMP_GITHUB_CACHE_LIB:-}" ]] && return 0
 _CHUMP_GITHUB_CACHE_LIB=1
 
+# ── INFRA-1999 Phase 1: feature-flagged Rust path ────────────────────────
+# CHUMP_GITHUB_CACHE_RUST=1 routes all reader-side helpers through the
+# chump-github-cache-cli binary (crates/chump-github-cache). The 493 LOC
+# legacy bash body below is preserved untouched for the 1-week
+# parallel-run validation window — Phase 1 ships the substrate, Phase 2
+# (separate sub-gap under META-107) flips the default + decommissions
+# the bash body.
+#
+# The shim re-implements the same shape the legacy helpers expose
+# (printf to stdout, return-code semantics) on top of the Rust CLI's
+# argv surface. The CLI's `lookup-pr` prints raw_payload_json; the
+# others emit tab-separated rows that match the bash output. Callers
+# downstream of these functions do not need to be aware of the flag.
+if [[ "${CHUMP_GITHUB_CACHE_RUST:-0}" = "1" ]]; then
+    _CHUMP_GH_CACHE_CLI="${CHUMP_GH_CACHE_CLI:-chump-github-cache-cli}"
+
+    cache_lookup_pr() {
+        local number="${1:?cache_lookup_pr <number>}"
+        # The bash helper accepted `--max-age-s N` but the Rust path
+        # ignores TTL in Phase 1 (the bash body's TTL+refetch is a
+        # behaviour that comes back in Phase 2 alongside the REST
+        # refresh loop). Consume and discard any flags.
+        shift || true
+        "$_CHUMP_GH_CACHE_CLI" lookup-pr "$number"
+    }
+    cache_lookup_checks() {
+        local sha="${1:?cache_lookup_checks <head_sha>}"
+        "$_CHUMP_GH_CACHE_CLI" lookup-checks "$sha"
+    }
+    cache_query_open_prs() {
+        "$_CHUMP_GH_CACHE_CLI" query-open-prs
+    }
+    cache_query_open_prs_by_title() {
+        local substr="${1:?cache_query_open_prs_by_title <substr>}"
+        "$_CHUMP_GH_CACHE_CLI" query-open-prs-by-title "$substr"
+    }
+    cache_query_behind_prs() {
+        "$_CHUMP_GH_CACHE_CLI" query-behind-prs
+    }
+    cache_refresh_open_prs() {
+        # Phase 1 stub — Rust CLI prints `0` (nothing refilled).
+        "$_CHUMP_GH_CACHE_CLI" refresh-open-prs
+    }
+    cache_lookup_pr_files() {
+        local number="${1:?cache_lookup_pr_files <number>}"
+        # Phase 1 stub: schema doesn't store files; CLI returns empty.
+        # The legacy bash falls back to a background-tagged REST call;
+        # callers under the Rust path get an empty line (which existing
+        # callers handle as "no files known").
+        "$_CHUMP_GH_CACHE_CLI" lookup-pr-files "$number" 2>/dev/null || echo ""
+    }
+    cache_lookup_pr_by_branch() {
+        # Not yet ported in Phase 1 — fall through to the legacy bash
+        # impl below by not returning here. The function definitions
+        # below this if-block will overwrite any of the ones we just
+        # defined, BUT the legacy body uses `[[ -n "${_CHUMP_GITHUB_CACHE_LIB:-}" ]] && return 0`
+        # to no-op on re-source so we have to handle by NOT setting
+        # CHUMP_GITHUB_CACHE_RUST when the caller needs by-branch.
+        # Phase 1 acceptance: caller can flip the flag off per-call.
+        echo "" ; return 2
+    }
+    return 0
+fi
+# ── End INFRA-1999 shim ───────────────────────────────────────────────────
+
 _cache_db_path() {
     if [[ -n "${CHUMP_CACHE_DB:-}" ]]; then
         printf '%s' "$CHUMP_CACHE_DB"

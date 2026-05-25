@@ -1,0 +1,45 @@
+[package]
+name = "chump-github-cache"
+version = "0.1.0"
+edition = "2021"
+description = "Typed Rust replacement for the bash scripts/coord/lib/github_cache.sh + Python scripts/ops/github-webhook-receiver.py surfaces. Phase 1 of INFRA-1999 / META-107 Rust-first migration: GithubCache trait + SqliteCache impl over .chump/github_cache.db, plus an axum webhook receiver stub running on a different port from the Python receiver for parallel-run validation."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-github-cache"
+license = "MIT"
+keywords = ["github", "cache", "webhook", "chump", "sqlite"]
+categories = ["caching", "web-programming::http-server"]
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["macros", "json"] }
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+hmac = "0.12"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# sha2 0.10 (NOT 0.11) — hmac 0.12 still pins digest 0.10, and sha2 0.11
+# upgraded digest to 0.11. Without this pin the build fails with a
+# trait-bound mismatch on HmacSha256::new_from_slice. Workspace root uses
+# sha2 0.11 elsewhere; cargo handles two versions in the dep graph.
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "chump-github-cache-cli"
+path = "src/bin/chump-github-cache-cli.rs"
+
+[[bin]]
+name = "chump-webhook-receiver"
+path = "src/bin/chump-webhook-receiver.rs"
+
+[lints]
+workspace = true
