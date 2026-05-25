@@ -157,6 +157,24 @@ mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 
+# INFRA-2029: emit kind=worker_stuck to ambient.jsonl whenever this worker
+# exits a cycle without shipping (claim failed, preflight fail, no pickable
+# gap, lease collision, worktree create fail, stand-down, etc.).
+# Usage: _emit_worker_stuck "reason_string"
+_emit_worker_stuck() {
+    local _reason="${1:-unknown}"
+    local _amb_stuck="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb_stuck")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"worker_stuck","agent_id":"%s","session":"%s","gap_id":"%s","reason":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$AGENT_ID" \
+        "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+        "${GAP_ID:-none}" \
+        "$_reason" \
+        >> "$_amb_stuck" 2>/dev/null || true
+    log "INFRA-2029: kind=worker_stuck reason=$_reason"
+}
+
 # FLEET-042: write heartbeat file with current epoch + gap_id.
 write_heartbeat() {
     local gap_id="${1:-none}"
@@ -325,6 +343,73 @@ while :; do
         continue
     fi
 
+    # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
+    # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget.
+    # (1) fleet-hold-check.sh — exits 2 if cluster-detector wrote fleet-hold.txt
+    #     (INFRA-1987 Phase 2). On hold: pivot to triage/docs work; don't ship.
+    # (2) chump health --temp — exits 0=COLD, 1=WARM, 2=HOT (INFRA-1992).
+    #     HOT: restrict to xs/docs gaps; WARM: double-verify; COLD: normal.
+    _amb_pre="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb_pre")" 2>/dev/null || true
+
+    # (1) Fleet-hold check
+    _hold_active=0
+    _fleet_hold_check="${REPO_ROOT}/scripts/coord/fleet-hold-check.sh"
+    if [[ -x "$_fleet_hold_check" ]]; then
+        if ! bash "$_fleet_hold_check" --quiet 2>/dev/null; then
+            _hold_active=1
+        fi
+        printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"fleet_hold","hold":%s}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_hold_active" \
+            >> "$_amb_pre" 2>/dev/null || true
+        if [[ "$_hold_active" -eq 1 ]]; then
+            log "INFRA-2008: fleet-hold ACTIVE (cluster-detector signal) — skipping shipping work; next cycle"
+            # Count hold-cycles toward stand-down so the worker doesn't spin
+            # forever if the hold persists and no gaps can be claimed.
+            _starve_count=$((_starve_count + 1))
+            if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
+                _emit_worker_stuck "fleet_hold_stand_down: hold persisted >= $CHUMP_STAND_DOWN_THRESHOLD cycles"
+                log "INFRA-2008: fleet-hold persistent ($CHUMP_STAND_DOWN_THRESHOLD cycles) — standing down"
+                exit 0
+            fi
+            sleep "${IDLE_SLEEP_S:-60}"
+            continue
+        fi
+    fi
+
+    # (2) Floor-temperature check
+    _floor_temp="COLD"
+    if chump health --temp >/dev/null 2>&1; then
+        _floor_temp="COLD"
+    else
+        _temp_rc=$?
+        case "$_temp_rc" in
+            1) _floor_temp="WARM" ;;
+            2) _floor_temp="HOT" ;;
+            *) _floor_temp="COLD" ;;  # unknown / chump not available — proceed normally
+        esac
+    fi
+    printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"floor_temp","temp":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_floor_temp" \
+        >> "$_amb_pre" 2>/dev/null || true
+    if [[ "$_floor_temp" == "HOT" ]]; then
+        log "INFRA-2008: floor temp HOT — restricting to xs/docs gaps this cycle"
+        # Narrow effort filter to xs only; restore after cycle
+        _saved_effort="$FLEET_EFFORT_FILTER"
+        _saved_domain="$FLEET_DOMAIN_FILTER"
+        FLEET_EFFORT_FILTER="xs"
+        # Allow any domain but prefer docs by removing domain restriction
+        FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
+    elif [[ "$_floor_temp" == "WARM" ]]; then
+        log "INFRA-2008: floor temp WARM — double-verify mode; proceeding normally"
+        _saved_effort=""
+        _saved_domain=""
+    else
+        _saved_effort=""
+        _saved_domain=""
+    fi
+    # ── End INFRA-2008 floor-signal prelude ───────────────────────────────
+
     log "cycle $cycle: fetching origin/main"
     git fetch origin main --quiet || log "WARN: git fetch failed; continuing"
 
@@ -480,6 +565,7 @@ PY
                 "$_stand_down_reason" \
                 >> "$_amb_path" 2>/dev/null || true
             log "INFRA-613: worker_stand_down (consecutive_empty=$_starve_count >= STAND_DOWN_THRESHOLD=$CHUMP_STAND_DOWN_THRESHOLD); reason: $_stand_down_reason"
+            _emit_worker_stuck "stand_down: $_stand_down_reason"
             exit 0
         fi
 
@@ -519,6 +605,18 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     fi
 
     GAP_ID="$pick"
+
+    # INFRA-2008: restore effort/domain filters narrowed by HOT floor-temp.
+    # The filter narrowing served its purpose during pick; restore now so
+    # downstream logic (timeout scaling, model selection) uses saved values.
+    if [[ -n "${_saved_effort:-}" ]]; then
+        FLEET_EFFORT_FILTER="$_saved_effort"
+        _saved_effort=""
+    fi
+    if [[ -n "${_saved_domain:-}" ]]; then
+        FLEET_DOMAIN_FILTER="$_saved_domain"
+        _saved_domain=""
+    fi
 
     # INFRA-975: disk-pressure gate. After picker has identified a gap but
     # BEFORE we commit any resources (worktree, cargo, lease), pause the
@@ -620,6 +718,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); next cycle"
         # INFRA-544: picker wrote .gap-<ID>.lock; release it on pivot so siblings can pick.
         rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        _emit_worker_stuck "preflight_fail: gap=$GAP_ID claimed/done/missing"
         continue
     fi
 
@@ -646,6 +745,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         fi
         # INFRA-544: release gap lock on pivot so siblings can pick.
         rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        _emit_worker_stuck "gap_already_done: gap=$GAP_ID done on origin/main"
         continue
     fi
 
@@ -666,6 +766,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         log "WARN: worktree create failed for $GAP_ID; trying next pick"
         # INFRA-544: release gap lock on pivot so siblings can pick.
         rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        _emit_worker_stuck "worktree_create_fail: gap=$GAP_ID git worktree add failed"
         continue
     fi
 
