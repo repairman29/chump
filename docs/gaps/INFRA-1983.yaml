@@ -1,0 +1,9 @@
+- id: INFRA-1983
+  domain: INFRA
+  title: "MEDIUM: MCP servers run independent lifecycle; chump-mcp-lifecycle not uniformly used (critique M5)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Failure: crates/mcp-servers/{github,tavily,adb,gaps,eval,coord,memory} are 7 separate MCP processes. chump-mcp-lifecycle crate exists but each server's actual registration with it is unverified."
+
