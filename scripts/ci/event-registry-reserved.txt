@@ -149,6 +149,8 @@ circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm 
 circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
 claim_aborted_disk_full    # reason: planned for claim guard: disk < threshold aborts claim
 claim_duplicate_bypassed   # reason: INFRA-1442 #2358 emitted from src/atomic_claim.rs emit_claim_duplicate_bypassed; allowlist while EVENT_REGISTRY entry catches up
+claim_duplicate_gap_blocked   # reason: INFRA-1970 emitted from src/atomic_claim.rs emit_claim_duplicate_gap_event when same gap_id claimed by two sessions; scanner-anchor present in source
+claim_duplicate_gap_bypassed  # reason: INFRA-1970 bypass variant (CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1); same emit site as claim_duplicate_gap_blocked
 cli  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
 cognition_ab_comparison    # reason: planned for EVAL-102 LLM-judge comparison result
 cognition_ab_run_start     # reason: planned for EVAL-102 AB run start

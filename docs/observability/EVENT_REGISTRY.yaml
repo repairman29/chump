@@ -325,6 +325,27 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, existing_pr, existing_author]
 
+  - kind: claim_duplicate_gap_blocked
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_duplicate_gap_event (INFRA-1970)
+    trigger: chump claim refused because a live lease from a DIFFERENT session already
+      holds the same gap_id — prevents the duplicate-PR race documented in META-105
+      (PRs #2539 + #2540 both claimed INFRA-1950 on 2026-05-24 with different --paths).
+      Primary key is now (gap_id, session_id); path-overlap remains a secondary gate.
+      Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (emits claim_duplicate_gap_bypassed).
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, this_session, detail]
+
+  - kind: claim_duplicate_gap_bypassed
+    effect_metric: waste_risk
+    emitter: src/atomic_claim.rs emit_claim_duplicate_gap_event (INFRA-1970)
+    trigger: operator used CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 to proceed with a
+      claim despite another live session already holding the same gap_id.
+      Emitted for audit so the operator can correlate duplicate PRs back to the
+      bypass event. Same emit site as claim_duplicate_gap_blocked.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, this_session, detail]
+
   - kind: lease_broad_dir_claim
     effect_metric: self
     emitter: src/atomic_claim.rs emit_lease_broad_dir_claim (INFRA-1885)
