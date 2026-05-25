@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-chump-skill-cli.sh — INFRA-1613
 # Verifies the `chump skill` CLI surface works end-to-end against a synthetic
 # skill in a temp CHUMP_BRAIN_PATH. Tests list/view/health/record-outcome/tap-add

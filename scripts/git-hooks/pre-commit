@@ -1583,53 +1583,36 @@ if [ -n "$staged_rust" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 7. docs-delta check (INFRA-009, 2026-04-20)
+# 7. docs-delta check — MOVED to commit-msg hook (INFRA-1969, 2026-05-25)
 # ------------------------------------------------------------------
 # Red Letter #3: docs/ grew 66 → 119 → 139 files across three review
-# cycles with zero deletions. Counter-pressure: if a commit adds a
-# docs/*.md file, require EITHER a deletion of another docs/*.md OR a
-# "Net-new-docs: +N" trailer in the commit message. Advisory (warning
-# only) until 2026-04-28, blocking after. Bypass: CHUMP_DOCS_DELTA_CHECK=0.
+# cycles with zero deletions. Counter-pressure: net-new docs additions
+# require either a comparable deletion OR a "Net-new-docs: +N" trailer
+# in the commit message.
+#
+# This check used to live here. INFRA-1969 (critique C6) found it was
+# architecturally broken at pre-commit stage: $MSG_FILE doesn't exist
+# during pre-commit (git writes the message AFTER pre-commit succeeds,
+# before commit-msg). The TRAILER_VAL was always empty, the check always
+# blocked, and every author had to use CHUMP_DOCS_DELTA_CHECK=0 bypass —
+# destroying the audit signal the check was designed to provide.
+#
+# The real check now runs at scripts/git-hooks/commit-msg where $1 IS
+# the actual commit message file. Bypass is the same env var; same
+# trailer format; same INFRA-124 trailer-value-must-equal-or-exceed rule.
+#
+# Keep a non-blocking informational notice here for early visibility —
+# authors see the warning while typing the commit, the real enforcement
+# fires at commit-msg stage.
 
 if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
     ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' | wc -l | tr -d ' ')
     DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' | wc -l | tr -d ' ')
     if [ "$ADDED" -gt 0 ] && [ "$ADDED" -gt "$DELETED" ]; then
-        MSG_FILE="${1:-$(git rev-parse --git-dir)/COMMIT_EDITMSG}"
         NET=$((ADDED - DELETED))
-        # INFRA-124 (2026-05-02): parse the trailer's value, not just its
-        # presence. Previously a commit could declare "Net-new-docs: +1"
-        # while actually adding 5 docs and the guard would accept it. The
-        # trailer must now equal or exceed the computed NET delta.
-        TRAILER_VAL=""
-        if [ -f "$MSG_FILE" ]; then
-            TRAILER_VAL=$(grep -iE '^Net-new-docs:[[:space:]]*\+?[0-9]+' "$MSG_FILE" | head -1 \
-                          | sed -E 's/^[Nn]et-new-docs:[[:space:]]*\+?([0-9]+).*/\1/')
-        fi
-        # Advisory until 2026-04-28 then blocking (date-gated)
-        TODAY=$(date +%Y%m%d)
-        MODE="warn"
-        [ "$TODAY" -ge 20260428 ] && MODE="block"
-        if [ -z "$TRAILER_VAL" ]; then
-            echo ""
-            echo "⚠  docs-delta: commit adds $ADDED docs/*.md, deletes $DELETED (net +$NET)"
-            echo "   Red Letter #3 counter-pressure: either delete/archive a comparable doc,"
-            echo "   or add a commit-message trailer:    Net-new-docs: +$NET"
-            echo "   Bypass: CHUMP_DOCS_DELTA_CHECK=0 git commit ..."
-            if [ "$MODE" = "block" ]; then
-                exit 1
-            fi
-        elif [ "$TRAILER_VAL" -lt "$NET" ]; then
-            # INFRA-124: trailer present but understates the delta — reject.
-            echo ""
-            echo "✖  docs-delta (INFRA-124): trailer claims Net-new-docs: +$TRAILER_VAL"
-            echo "   but commit actually adds $ADDED docs/*.md, deletes $DELETED (net +$NET)."
-            echo "   Trailer must equal or exceed the computed delta. Update to:"
-            echo "       Net-new-docs: +$NET"
-            echo "   Bypass: CHUMP_DOCS_DELTA_CHECK=0 git commit ..."
-            exit 1
-        fi
-        # else: trailer >= NET → accepted silently (intentional declaration)
+        echo "[pre-commit] note: commit adds $ADDED docs/*.md (net +$NET);" >&2
+        echo "[pre-commit]   commit-msg stage will require 'Net-new-docs: +$NET' trailer" >&2
+        echo "[pre-commit]   (or set CHUMP_DOCS_DELTA_CHECK=0 to bypass)." >&2
     fi
 fi
 

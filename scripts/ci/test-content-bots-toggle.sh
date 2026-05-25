@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # scripts/ci/test-content-bots-toggle.sh — INFRA-1696
 #
 # Smoke test for `chump content-bots list` — the operator-facing CLI surface

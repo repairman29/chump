@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-gap-list-since.sh — EFFECTIVE-018: chump gap list --since filters by activity date
 #
 # AC3: 3 tests:

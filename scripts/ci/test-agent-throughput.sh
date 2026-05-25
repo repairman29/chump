@@ -83,6 +83,10 @@ fi
 # -- Functional test: run tracker against synthetic ambient log ---------------
 
 TMPDIR_TEST=$(mktemp -d)
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 AMBIENT="$TMPDIR_TEST/ambient.jsonl"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-auto-widen.sh — INFRA-615 tests.
 #
 # Verifies chump fleet auto-widen starvation detection and config widening:

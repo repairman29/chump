@@ -1,0 +1,32 @@
+- id: INFRA-1992
+  domain: INFRA
+  title: "RESILIENT: floor-temperature signal — chump health --temp returns COLD/WARM/HOT based on silent regressions/trunk-REDs/admin-merges in trailing window; agents read it before claim"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "chump health --temp prints one of: COLD | WARM | HOT, plus JSON via --json with the score components"
+    - "Scoring: count in trailing 24h (silent-regression events kind=hook_silent_passthrough + cluster events kind=ci_failure_cluster + ambient kind=admin_merge_executed) — COLD if 0, WARM if 1-2, HOT if 3+"
+    - "New ambient event kind=floor_temp emitted by `chump health --temp` invocations (so we can observe the signal itself; reserved in event-registry-reserved.txt pending formal EVENT_REGISTRY.yaml entry)"
+    - "scripts/dispatch/worker.sh prelude calls chump health --temp and exports CHUMP_FLOOR_TEMP env var; subagent prompt template (prompts/system.md or equivalent) injects the value"
+    - "Behavior contract: HOT → agents prefer xs+docs gaps; WARM → agents prefer non-env-mutating work + double-verify; COLD → ship aggressively (current behavior)"
+    - "Smoke test scripts/ci/test-floor-temp.sh — synthetic ambient.jsonl with N=0/2/5 fixture events; assert COLD/WARM/HOT output respectively"
+    - "Doc update: docs/process/CLAUDE_GOTCHAS.md gets a 'Floor temperature' section explaining the signal"
+  depends_on: []
+  description: |
+    See docs/strategy/THE_FLOOR.md §1 for full rationale. THIS IS THE
+    HIGHEST-LEVERAGE PHASE 1 ITEM — smallest unit-change, largest
+    behavior-change. Every agent prompt becomes adaptive without any
+    other code change.
+
+    Rough shape: (a) Rust function in src/health.rs reading ambient.jsonl
+    with 24h window, counting the 3 event kinds, returning enum; (b) CLI
+    surface in src/main.rs `chump health --temp [--json]`; (c) shell
+    wrapper sources env var into agent dispatcher; (d) prompt template
+    injection.
+
+    Source of truth: ambient.jsonl. Reuses existing wedge-watch +
+    cluster detector events. NO new state to manage.
+
+    Pairs tightly with INFRA-1987 (cluster detector) — that gap emits
+    the kind=ci_failure_cluster event this gap counts.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # scripts/ci/test-synthesis-truth.sh — INFRA-1684 (narrow follow-up to INFRA-1554)
 #
 # Synthesis docs (docs/syntheses/*.md) often reference gaps they claim to have

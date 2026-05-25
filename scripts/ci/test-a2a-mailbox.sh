@@ -19,6 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"' EXIT
 
 PASS=0

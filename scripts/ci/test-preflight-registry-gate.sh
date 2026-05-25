@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # scripts/ci/test-preflight-registry-gate.sh — INFRA-1731
 #
 # Verifies the `chump preflight` event-registry-audit gate:

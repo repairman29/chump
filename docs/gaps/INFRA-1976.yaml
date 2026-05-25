@@ -1,0 +1,9 @@
+- id: INFRA-1976
+  domain: INFRA
+  title: "HIGH: stale repo-vars invisible to infra-watcher — CHUMP_SELF_HOSTED_ENABLED sat 4d dead (critique H7)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Failure: CHUMP_SELF_HOSTED_ENABLED=false was set on 2026-05-20T21:16Z during disk_critical, never recovered. Infra-watcher (scripts/coord/infra-watcher-loop.sh) audits substrate but not repo-vars. 4-day silent CI starvation result."
+

@@ -526,6 +526,13 @@ jobs:
     # See docs/process/SELF_HOSTED_RUNNERS.md.
     # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_FAST_CHECKS (master + lane).
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-1959: force chump to use per-checkout state.db, never $HOME/.chump.
+    # Prevents r2d2 sqlite-lock contention when multiple self-hosted runs are
+    # active concurrently (each has its own _work checkout, but a stale system
+    # chump binary may default to $HOME). 2026-05-25 wedge cause.
+    env:
+      CHUMP_REPO: ${{ github.workspace }}
+      CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
     steps:
       - uses: actions/checkout@v6
 
@@ -661,6 +668,15 @@ jobs:
 
       - name: pre-commit merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-pre-commit.sh
+
+      - name: pr-terminal-state helper — mergedAt-validated (INFRA-1981)
+        run: bash scripts/ci/test-pr-terminal-state.sh
+
+      - name: subagent budget kill — parent-enforced SIGTERM+grace+SIGKILL (INFRA-1972)
+        run: bash scripts/ci/test-subagent-budget-kill.sh
+
+      - name: commit-msg docs-delta trailer check (INFRA-1969)
+        run: bash scripts/ci/test-docs-delta-commit-msg.sh
 
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
@@ -1012,6 +1028,10 @@ jobs:
     # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_CARGO_TEST (master + lane).
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
+    # INFRA-1959: per-checkout state.db (see fast-checks comment above).
+    env:
+      CHUMP_REPO: ${{ github.workspace }}
+      CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
     steps:
       - uses: actions/checkout@v6
 
@@ -1378,6 +1398,10 @@ jobs:
       github.event_name != 'pull_request'
     runs-on: ${{ vars.RUNNER_AUDIT != '' && fromJSON(vars.RUNNER_AUDIT) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
+    # INFRA-1959: per-checkout state.db (see fast-checks comment above).
+    env:
+      CHUMP_REPO: ${{ github.workspace }}
+      CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
     steps:
       - uses: actions/checkout@v6
 
@@ -1434,6 +1458,9 @@ jobs:
 
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
+
+      - name: graphql_exhausted debounce when resets_at unknown (INFRA-1968)
+        run: bash scripts/ci/test-graphql-debounce.sh
 
       - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
         run: bash scripts/ci/test-cache-mergestatestatus.sh
@@ -1542,6 +1569,14 @@ jobs:
         # implementer. Now hard-fail with CHUMP_ALLOW_STALE_DESTRUCTIVE=1
         # as the audited escape hatch.
         run: bash scripts/ci/test-stale-binary-ship-blocked.sh
+
+      - name: JIT binary refresh wired (INFRA-1977 — H8 critique fix)
+        # Structural test: stale-detection now triggers a background
+        # `cargo install` so subsequent invocations find Fresh without
+        # operator manually rebuilding. Refuses CURRENT invocation
+        # (binary can't replace itself); friendly retry message with
+        # rebuild state from .chump/binary-refresh-state.json.
+        run: bash scripts/ci/test-jit-binary-refresh.sh
       # INFRA-682: auto-detect when PR diff matches NONE of the code: patterns.
       # If filter.outputs.code is false on a PR, all required CI checks
       # (fast-checks, clippy, cargo-test, test rollup) will be SKIPPED — branch

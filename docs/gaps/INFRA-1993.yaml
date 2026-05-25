@@ -1,0 +1,39 @@
+- id: INFRA-1993
+  domain: INFRA
+  title: "RESILIENT: operator-recovery queue — worker agents emit operator_recovery_requested with reason+cluster gap; rate-limited automation services drop-gates+admin-merge+re-arm cycle without Opus on duty"
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "Worker agents emit kind=operator_recovery_requested ambient event with fields: reason, cluster_gap_id, prs_to_admin_merge (CSV), authorizing_session"
+    - "New daemon scripts/coord/recovery-queue-service.sh consumes the queue: rate-limited to max 3 admin-merge cycles per hour fleet-wide, audited"
+    - "Recovery cycle: drop required_status_checks rule from ruleset 15133729 (or env-configured) → gh pr merge --squash --admin for each PR in queue → re-arm rule with original contexts (cached at startup)"
+    - "Failure-class taxonomy: distinguish (a) recovery succeeded, (b) PR conflicted/already-merged (idempotent), (c) admin permission denied (auth failure), (d) ruleset PUT failed (transient gh API) — each emits distinct ambient kind"
+    - "Smoke test scripts/ci/test-recovery-queue.sh: stub gh api, inject 2 queue requests, assert single admin-merge cycle fires + audit ambient event recorded + original gate restored"
+    - "Operator override: CHUMP_RECOVERY_QUEUE_PAUSE=1 env disables the daemon (e.g. during planned maintenance); emits kind=recovery_queue_paused"
+    - "Audit: every cycle writes one kind=operator_recovery_executed event with full pre/post ruleset diff JSON"
+  depends_on: [INFRA-1987]
+  description: |
+    See docs/strategy/THE_FLOOR.md §5. This gap closes the "Opus on duty"
+    bottleneck. Today the admin-merge cycle (drop gates → merge → re-arm)
+    requires me + operator's bridge authorization. When neither is
+    online, pile-ups stay piled. This converts that human-mediated cycle
+    into a queue + service.
+
+    Rough shape: (a) new ambient event kind in scripts/dispatch/worker.sh
+    (any worker can emit when it detects it's blocked on a cluster);
+    (b) new launchd daemon scripts/coord/recovery-queue-service.sh polling
+    .chump-locks/ambient.jsonl every 60s; (c) drop+merge+re-arm logic
+    cribbed from this PR's commit history (we did it manually 4 times);
+    (d) rate limit via simple sliding-window file at
+    .chump-locks/recovery-queue-state.json; (e) reuse the ruleset JSON
+    backup approach (/tmp/ruleset-backup.json from this session).
+
+    SECURITY CONSIDERATION: this daemon has admin-bypass authority. The
+    rate limit + audit trail + CHUMP_RECOVERY_QUEUE_PAUSE bypass are the
+    discipline. Daemon should refuse to run on a forked PR or a PR not
+    owned by the chump bot account.
+
+    Depends on INFRA-1987 because the cluster gap ID is the queue's
+    primary input — without cluster detection, every PR would request
+    individually and the rate limit would shed requests indiscriminately.

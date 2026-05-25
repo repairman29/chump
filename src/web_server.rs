@@ -2259,49 +2259,101 @@ async fn handle_dashboard_stream(
 }
 
 // --- Autopilot control API ---
+// MISSION-007: bridge layer between the Rust autopilot (worker ship-loop)
+// and the bash fleet-autopilot.sh (10-daemon set, META-090). When the operator
+// hits the PWA toggle, BOTH layers respond. One toggle, unified state.
+fn invoke_daemon_set(subcmd: &str) -> serde_json::Value {
+    use std::process::Command;
+    let repo_root = std::env::var("CHUMP_REPO")
+        .ok()
+        .filter(|p| std::path::Path::new(p).exists())
+        .unwrap_or_else(|| "/Users/jeffadkins/Projects/Chump".to_string());
+    let script = format!("{}/scripts/coord/fleet-autopilot.sh", repo_root);
+    if !std::path::Path::new(&script).exists() {
+        return serde_json::json!({
+            "available": false,
+            "reason": format!("script not found at {}", script)
+        });
+    }
+    let args = if subcmd == "status" {
+        vec!["status", "json"]
+    } else {
+        vec![subcmd]
+    };
+    match Command::new("/bin/bash").arg(&script).args(&args).output() {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            // For status, try to parse JSON
+            if subcmd == "status" {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(
+                    stdout.trim().lines().last().unwrap_or(""),
+                ) {
+                    return serde_json::json!({"available": true, "status": parsed});
+                }
+            }
+            serde_json::json!({
+                "available": true,
+                "exit_code": out.status.code(),
+                "stdout_tail": stdout.lines().rev().take(10).collect::<Vec<_>>(),
+                "stderr_tail": stderr.lines().rev().take(5).collect::<Vec<_>>(),
+            })
+        }
+        Err(e) => serde_json::json!({"available": false, "error": e.to_string()}),
+    }
+}
+
 async fn handle_autopilot_status(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    autopilot::status_autopilot()
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    // MISSION-007 unified status: Rust worker state + bash daemon-set state.
+    let worker = autopilot::status_autopilot().unwrap_or_else(|_| serde_json::json!({}));
+    let daemon_set = invoke_daemon_set("status");
+    Ok(Json(serde_json::json!({
+        "worker": worker,
+        "daemon_set": daemon_set,
+    })))
 }
 
 async fn handle_autopilot_start(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    match autopilot::start_autopilot() {
-        Ok(state) => Ok(Json(serde_json::json!({
-            "ok": true,
-            "state": state,
-            "message": "Autopilot started"
-        }))),
-        Err(e) => Ok(Json(serde_json::json!({
-            "ok": false,
-            "error": e.to_string()
-        }))),
-    }
+    // MISSION-007: fire BOTH layers. Rust first (it's faster + state-machine
+    // managed), then bash daemon-set (idempotent — skips already-loaded plists).
+    let worker_result = match autopilot::start_autopilot() {
+        Ok(state) => serde_json::json!({"ok": true, "state": state}),
+        Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
+    };
+    let daemon_set_result = invoke_daemon_set("start");
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "worker": worker_result,
+        "daemon_set": daemon_set_result,
+        "message": "Unified autopilot start fired both layers (Rust worker + bash daemon-set)"
+    })))
 }
 
 async fn handle_autopilot_stop(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    match autopilot::stop_autopilot() {
-        Ok(state) => Ok(Json(serde_json::json!({
-            "ok": true,
-            "state": state,
-            "message": "Autopilot stopped"
-        }))),
-        Err(e) => Ok(Json(serde_json::json!({
-            "ok": false,
-            "error": e.to_string()
-        }))),
-    }
+    // MISSION-007: stop BOTH layers. Bash first (graceful launchctl unload),
+    // then Rust worker (kills ship-loop process).
+    let daemon_set_result = invoke_daemon_set("stop");
+    let worker_result = match autopilot::stop_autopilot() {
+        Ok(state) => serde_json::json!({"ok": true, "state": state}),
+        Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
+    };
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "worker": worker_result,
+        "daemon_set": daemon_set_result,
+        "message": "Unified autopilot stop fired both layers (bash daemon-set + Rust worker)"
+    })))
 }
 
 #[derive(serde::Deserialize)]

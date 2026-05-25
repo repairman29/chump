@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-claim-nugget-prefetch.sh — INFRA-1692
 #
 # CI test for the team-nugget pre-flight in `chump claim`.

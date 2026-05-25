@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # test-state-db-restore.sh — INFRA-538 CI gate
 #
 # Verifies that 'chump gap restore --from-sql' correctly rebuilds state.db

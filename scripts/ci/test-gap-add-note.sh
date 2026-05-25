@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-gap-add-note.sh — EFFECTIVE-020: chump gap set --add-note appends timestamped notes
 #
 # Tests:

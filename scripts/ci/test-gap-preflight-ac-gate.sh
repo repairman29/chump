@@ -33,6 +33,12 @@ trap 'rm -rf "$TMP"' EXIT
 echo "=== test-gap-preflight-ac-gate.sh (INFRA-1259) ==="
 
 # ── Setup: minimal gap registry ────────────────────────────────────────────────
+# W-012 (RESILIENT-020): INFRA-1959 sets CHUMP_REPO at workflow level so the
+# chump binary uses the per-checkout state.db (fixes sqlite-lock under
+# parallel CI). But this test creates its OWN $TMP/repo fixture and needs
+# the binary to operate against it — unset the workflow env override.
+unset CHUMP_REPO CHUMP_LOCK_DIR
+
 REPO="$TMP/repo"
 mkdir -p "$REPO/.chump"
 cd "$REPO"

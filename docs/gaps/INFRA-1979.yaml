@@ -1,0 +1,9 @@
+- id: INFRA-1979
+  domain: INFRA
+  title: "MEDIUM: inbox jsonl files grow unbounded — no rotation cap (critique M1)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Failure: scripts/coord/broadcast.sh appends to .chump-locks/inbox/<session-id>.jsonl without rotation cap. Yesterday's inbox files reached 50KB+ per session."
+

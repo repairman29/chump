@@ -1,0 +1,31 @@
+- id: INFRA-1952
+  domain: INFRA
+  title: "ZERO-WASTE: duplicate EVAL-101 gap ID in both docs/gaps/ and docs/gaps/closed/ — breaks gap import dedup"
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-25'
+  raised_by: cold-water
+  raised_in: RED_LETTER#13
+  description: |
+    docs/gaps/EVAL-101.yaml (status: done) and docs/gaps/closed/EVAL-101.yaml
+    both exist with the same id: EVAL-101. The gap import dedup logic and the
+    INFRA-018 duplicate-ID guard both have inconsistent behavior when an ID
+    appears in both the live and closed directories simultaneously.
+
+    Evidence:
+    - ls docs/gaps/EVAL-101.yaml docs/gaps/closed/EVAL-101.yaml — both present
+    - docs/gaps/EVAL-101.yaml: status: done (should be in closed/ only)
+    - docs/gaps/closed/EVAL-101.yaml: status: open (different record, different title)
+    - grep -h '^- id: ' docs/gaps/*.yaml | sort | uniq -c → EVAL-101 appears twice
+
+    The docs/gaps/closed/EVAL-101.yaml appears to be an older version that was never
+    merged or was filed separately. RED_LETTER#13 (2026-05-25).
+
+    Falsifying condition: EVAL-101 appears exactly once across docs/gaps/ and
+    docs/gaps/closed/ with consistent status/title.
+  acceptance_criteria:
+    - "Determine which EVAL-101 is canonical (likely docs/gaps/EVAL-101.yaml status:done)"
+    - "Remove or rename docs/gaps/closed/EVAL-101.yaml to avoid ID collision"
+    - "scripts/ci/test-gap-integrity.sh (or check-gaps-integrity.py) catches duplicate IDs across docs/gaps/ AND docs/gaps/closed/"
+    - "chump gap import does not produce a duplicate-blocked row for EVAL-101 after fix"

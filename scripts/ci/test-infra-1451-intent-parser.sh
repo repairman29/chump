@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-078)
 # scripts/ci/test-infra-1451-intent-parser.sh — INFRA-1451
 #
 # Verifies that the intent parser correctly extracts --size / --domain /

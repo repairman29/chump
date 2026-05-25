@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+#
+# commit-msg — Chump git hook (INFRA-1969 fix for C6 finding).
+#
+# Runs the docs-delta `Net-new-docs: +N` trailer check at the commit-msg
+# stage where $1 IS the path to the current commit message file. The same
+# check at pre-commit stage cannot work because git doesn't write the
+# message until pre-commit succeeds; the previous implementation at
+# scripts/git-hooks/pre-commit:1586-1633 (INFRA-009 / INFRA-124) always
+# saw empty TRAILER_VAL and always blocked, forcing every author to use
+# CHUMP_DOCS_DELTA_CHECK=0 bypass — destroying the audit signal the check
+# was designed to provide.
+#
+# This hook restores the original counter-pressure intent: net-new docs
+# additions require an explicit Net-new-docs: +N trailer that meets or
+# exceeds the actual delta. Bypass: CHUMP_DOCS_DELTA_CHECK=0.
+
+set -euo pipefail
+
+# Bypass.
+if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" = "0" ]; then
+    exit 0
+fi
+
+# $1 is the path to the in-progress commit message (real, not COMMIT_EDITMSG
+# fallback). This is the architectural difference vs. pre-commit stage.
+MSG_FILE="${1:?commit-msg hook expects \$1 = path to commit message}"
+if [ ! -f "$MSG_FILE" ]; then
+    # Shouldn't happen; if it does, fail open (warn + allow).
+    echo "[commit-msg] WARNING: \$1 ($MSG_FILE) is not a file; skipping docs-delta check." >&2
+    exit 0
+fi
+
+# Count net-new docs/*.md from the staged change. Same query as the
+# old pre-commit check, just executed at the right hook stage.
+ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' 2>/dev/null | wc -l | tr -d ' ')
+DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$ADDED" -le 0 ] || [ "$ADDED" -le "$DELETED" ]; then
+    exit 0  # no net-new docs additions; check inapplicable
+fi
+NET=$((ADDED - DELETED))
+
+# Parse the Net-new-docs: +N trailer from the actual commit message file.
+TRAILER_VAL=$(grep -iE '^Net-new-docs:[[:space:]]*\+?[0-9]+' "$MSG_FILE" 2>/dev/null \
+              | head -1 \
+              | sed -E 's/^[Nn]et-new-docs:[[:space:]]*\+?([0-9]+).*/\1/')
+
+if [ -z "$TRAILER_VAL" ]; then
+    echo "" >&2
+    echo "✖  docs-delta (INFRA-1969 / commit-msg stage): commit adds $ADDED docs/*.md, deletes $DELETED (net +$NET)" >&2
+    echo "   Red Letter #3 counter-pressure: either delete/archive a comparable doc," >&2
+    echo "   or add a commit-message trailer:    Net-new-docs: +$NET" >&2
+    echo "   Bypass: CHUMP_DOCS_DELTA_CHECK=0 git commit ..." >&2
+    echo "" >&2
+    exit 1
+elif [ "$TRAILER_VAL" -lt "$NET" ]; then
+    # Trailer present but understates the delta — reject (INFRA-124 rule preserved).
+    echo "" >&2
+    echo "✖  docs-delta (INFRA-1969 / commit-msg stage): trailer claims Net-new-docs: +$TRAILER_VAL" >&2
+    echo "   but commit actually adds $ADDED docs/*.md, deletes $DELETED (net +$NET)." >&2
+    echo "   Trailer must equal or exceed the computed delta. Update to:" >&2
+    echo "       Net-new-docs: +$NET" >&2
+    echo "   Bypass: CHUMP_DOCS_DELTA_CHECK=0 git commit ..." >&2
+    echo "" >&2
+    exit 1
+fi
+# else: trailer >= NET → accepted silently (intentional declaration)
+exit 0

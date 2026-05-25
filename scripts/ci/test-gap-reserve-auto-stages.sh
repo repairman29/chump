@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # scripts/ci/test-gap-reserve-auto-stages.sh — INFRA-1354
 #
 # Verifies that 'chump gap reserve' auto-stages docs/gaps/<ID>.yaml so it

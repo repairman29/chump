@@ -21,6 +21,10 @@ GLANCE="$REPO_ROOT/scripts/dev/chump-ambient-glance.sh"
 [[ -x "$GLANCE" ]] || { echo "FATAL: $GLANCE not executable"; exit 2; }
 
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/.chump-locks"
 

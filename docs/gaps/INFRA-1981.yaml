@@ -1,0 +1,9 @@
+- id: INFRA-1981
+  domain: INFRA
+  title: "MEDIUM: gh pr view .state returns transient CLOSED during force-push window (critique M3)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Failure: `gh pr view --jq .state` returns transient CLOSED during force-push reindex window. Observed 2x within 36h (PRs #2561 and #2566). Actual end state was MERGED both times."
+

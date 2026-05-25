@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # scripts/ci/test-decompose-uses-ast.sh — INFRA-1719 smoke test
 #
 # Asserts that `chump gap decompose --dry-run` injects the structured AST

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-078)
 # scripts/ci/test-orchestrate-llm-fallback.sh — INFRA-1452
 #
 # Verifies that chump orchestrate auto-falls back to LLM when pattern matching

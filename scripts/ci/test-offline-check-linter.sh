@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # scripts/ci/test-offline-check-linter.sh — INFRA-1418
 #
 # Validates the offline-compliance lint at `chump gap reserve` per

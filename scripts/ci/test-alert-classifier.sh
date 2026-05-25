@@ -29,6 +29,10 @@ AMBIENT_WATCH="$ROOT/scripts/dev/ambient-watch.sh"
 STUCK_FILER="$ROOT/scripts/ops/stuck-pr-filer.sh"
 
 TMPBASE="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMPBASE"' EXIT
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

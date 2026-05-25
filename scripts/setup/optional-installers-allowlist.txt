@@ -72,3 +72,10 @@ install-target-reaper-launchd.sh
 install-transient-retrigger-launchd.sh
 install-webhook-receiver-launchd.sh
 install-weekly-digest-launchd.sh
+install-daily-self-productize-launchd.sh
+install-distill-pr-skills-launchd.sh
+install-oracle-refresh-launchd.sh
+install-pr-pulse-consumer-launchd.sh
+install-refresh-runner-binary-launchd.sh
+install-fleet-autopilot-launchd.sh
+install-cluster-detector-launchd.sh

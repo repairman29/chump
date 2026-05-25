@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # scripts/ci/test-claim-open-pr-abort.sh — INFRA-1503
 #
 # Verifies that `chump claim` aborts non-zero, with the expected

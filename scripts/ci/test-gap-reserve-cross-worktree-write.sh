@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-gap-reserve-cross-worktree-write.sh — CI smoke test for INFRA-1428
 # Rust-First-Bypass: integration test for a Rust CLI fix; verifies filesystem
 #   behavior (YAML written to main repo, not linked worktree). < 80 LOC.

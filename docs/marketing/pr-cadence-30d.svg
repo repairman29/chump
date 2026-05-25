@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300">
+<style>text { font: 10px sans-serif; fill: #333; } .bar { fill: #4a9eff; } .wedge { fill: #ff6b6b; opacity: 0.3; } .title { font: bold 14px sans-serif; } .trend { font: 12px sans-serif; fill: #2a7a2a; }</style>
+<rect width="800" height="300" fill="white"/>
+<text x="40" y="20" class="title">PR Cadence — last 30 days (1886 merges, 55 wedges)</text>
+<rect class="wedge" x="637.9" y="40" width="6.1" height="220"/>
+<rect class="wedge" x="645.7" y="40" width="2.6" height="220"/>
+<rect class="wedge" x="649.6" y="40" width="21.4" height="220"/>
+<rect class="wedge" x="671.0" y="40" width="10.9" height="220"/>
+<rect class="wedge" x="682.5" y="40" width="2.4" height="220"/>
+<rect class="wedge" x="697.1" y="40" width="8.1" height="220"/>
+<rect class="wedge" x="706.7" y="40" width="2.7" height="220"/>
+<rect class="wedge" x="721.6" y="40" width="6.2" height="220"/>
+<rect class="wedge" x="733.0" y="40" width="2.7" height="220"/>
+<rect class="wedge" x="735.7" y="40" width="3.6" height="220"/>
+<rect class="bar" x="40.0" y="238.0" width="23.0" height="22.0"/>
+<rect class="bar" x="64.0" y="187.9" width="23.0" height="72.1"/>
+<rect class="bar" x="88.0" y="231.9" width="23.0" height="28.1"/>
+<rect class="bar" x="112.0" y="223.3" width="23.0" height="36.7"/>
+<rect class="bar" x="136.0" y="234.3" width="23.0" height="25.7"/>
+<rect class="bar" x="160.0" y="247.8" width="23.0" height="12.2"/>
+<rect class="bar" x="184.0" y="238.0" width="23.0" height="22.0"/>
+<rect class="bar" x="208.0" y="57.1" width="23.0" height="202.9"/>
+<rect class="bar" x="232.0" y="74.2" width="23.0" height="185.8"/>
+<rect class="bar" x="256.0" y="201.3" width="23.0" height="58.7"/>
+<rect class="bar" x="280.0" y="224.6" width="23.0" height="35.4"/>
+<rect class="bar" x="304.0" y="152.4" width="23.0" height="107.6"/>
+<rect class="bar" x="328.0" y="203.8" width="23.0" height="56.2"/>
+<rect class="bar" x="352.0" y="143.9" width="23.0" height="116.1"/>
+<rect class="bar" x="376.0" y="252.7" width="23.0" height="7.3"/>
+<rect class="bar" x="400.0" y="186.7" width="23.0" height="73.3"/>
+<rect class="bar" x="424.0" y="172.0" width="23.0" height="88.0"/>
+<rect class="bar" x="448.0" y="141.4" width="23.0" height="118.6"/>
+<rect class="bar" x="472.0" y="40.0" width="23.0" height="220.0"/>
+<rect class="bar" x="496.0" y="73.0" width="23.0" height="187.0"/>
+<rect class="bar" x="520.0" y="135.3" width="23.0" height="124.7"/>
+<rect class="bar" x="544.0" y="96.2" width="23.0" height="163.8"/>
+<rect class="bar" x="568.0" y="233.1" width="23.0" height="26.9"/>
+<rect class="bar" x="592.0" y="236.8" width="23.0" height="23.2"/>
+<rect class="bar" x="616.0" y="258.8" width="23.0" height="1.2"/>
+<rect class="bar" x="640.0" y="251.4" width="23.0" height="8.6"/>
+<rect class="bar" x="664.0" y="194.0" width="23.0" height="66.0"/>
+<rect class="bar" x="688.0" y="147.6" width="23.0" height="112.4"/>
+<rect class="bar" x="712.0" y="162.2" width="23.0" height="97.8"/>
+<rect class="bar" x="736.0" y="255.1" width="23.0" height="4.9"/>
+<text x="40" y="290" class="trend">Trend: worsening (recent 7d avg wedge 10.18h vs older 7.49h)</text>
+</svg>

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # scripts/ci/test-consolidate-apply.sh — INFRA-1435
 #
 # Validates `chump gap consolidate --apply`:

@@ -1,0 +1,9 @@
+- id: INFRA-1964
+  domain: INFRA
+  title: "CRITICAL: mission-reality gap on local-LLM — fleet workers default to claude -p; no MLX path wired (critique C1)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Failure: Chump positions as local-LLM agent but fleet workers default to WorkBackend::Headless at src/dispatch.rs:355-470 which calls `claude -p --dangerously-skip-permissions`. No mlx crate exists in workspace (Cargo.toml). The Ollama path at src/main.rs is interactive-only."
+
