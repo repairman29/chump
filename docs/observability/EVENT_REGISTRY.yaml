@@ -325,6 +325,18 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, existing_pr, existing_author]
 
+  - kind: claim_open_pr_dup_blocked
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_open_pr_dup_blocked (INFRA-1982)
+    trigger: chump claim refused because an open PR already covers this gap — either
+      the PR title contains the gap ID (case-insensitive) or the head branch starts
+      with chump/<gap-id-lowercase>. This catches the duplicate-WORK failure mode
+      (two agents file different gap IDs for the same problem, both claim+push).
+      Complement to claim_duplicate_gap_blocked (INFRA-1970) which catches same gap ID.
+      Override: CHUMP_CLAIM_ALLOW_DUPLICATE_PR=1 or --allow-duplicate-pr.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap, open_pr]
+
   - kind: claim_duplicate_gap_blocked
     effect_metric: waste_prevented
     emitter: src/atomic_claim.rs emit_claim_duplicate_gap_event (INFRA-1970)
@@ -3567,10 +3579,14 @@ events:
   - kind: gap_reserve_similarity_block
     effect_metric: self
     emitter: src/main.rs gap reserve handler (INFRA-1149)
-    trigger: chump gap reserve detected a proposed title with Jaccard similarity
-      >= CHUMP_GAP_RESERVE_SIMILARITY_BLOCK (default 0.85) against an existing
-      open or recently-closed gap. Reserve is blocked; use --force-duplicate to
-      override.
+    deprecated: true
+    deprecated_reason: "INFRA-1982 demoted similarity gate from BLOCK to WARN-only;
+      this kind is no longer emitted. Both thresholds now emit gap_reserve_similarity_warn.
+      Entry retained for historical query compatibility — ambient scans from before
+      2026-05-25 may still reference this kind."
+    trigger: "[DEPRECATED] chump gap reserve detected a proposed title with Jaccard
+      similarity >= CHUMP_GAP_RESERVE_SIMILARITY_BLOCK (default 0.85) against an
+      existing open or recently-closed gap. Was blocked; now warns only (INFRA-1982)."
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
 

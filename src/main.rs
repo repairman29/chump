@@ -6650,10 +6650,19 @@ async fn main() -> Result<()> {
                 }
 
                 // ── INFRA-1149: reserve-time title similarity check ───────────────
-                // Before allocating an ID, scan open + recently-closed gaps for
-                // near-duplicate titles. Jaccard on normalized token sets.
-                // Warn at 0.65; block at 0.85. Both thresholds are tunable via env.
-                // Bypass: --force-duplicate flag or CHUMP_GAP_RESERVE_NO_SIMILARITY=1.
+                // INFRA-1982: Demoted from BLOCK to WARN-only at >= 0.85.
+                //
+                // Rationale: title-similarity is a poor proxy for the real
+                // failure (duplicate PRs). Authors learned to bypass
+                // CHUMP_GAP_RESERVE_NO_SIMILARITY=1 reflexively, defeating the
+                // audit value. The real guard is the open-PR check at claim
+                // time (INFRA-1982). This gate is now pure telemetry — it
+                // emits gap_reserve_similarity_warn for both thresholds so the
+                // operator can see the pattern in ambient.jsonl, but it never
+                // blocks or prompts for stdin.
+                //
+                // Bypass env kept for backward compat: CHUMP_GAP_RESERVE_NO_SIMILARITY=1
+                // still suppresses the check entirely (useful in bulk imports).
                 let force_duplicate = args.iter().any(|a| a == "--force-duplicate");
                 let similarity_enabled =
                     std::env::var("CHUMP_GAP_RESERVE_NO_SIMILARITY").as_deref() != Ok("1");
@@ -6662,6 +6671,7 @@ async fn main() -> Result<()> {
                         .ok()
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0.65);
+                    // block_threshold retained for ambient event label; no longer exits.
                     let block_threshold: f64 = std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_BLOCK")
                         .ok()
                         .and_then(|v| v.parse().ok())
@@ -6689,9 +6699,12 @@ async fn main() -> Result<()> {
                                         .map(|d| d.as_secs())
                                         .unwrap_or(0)
                                 };
+                                // INFRA-1982: both warn and block thresholds now
+                                // emit a warn event and continue without blocking.
                                 if top_score >= block_threshold {
                                     eprintln!(
-                                        "[reserve] BLOCK (score {:.2} ≥ {:.2}): high similarity to {} — use --force-duplicate to override.",
+                                        "[reserve] WARN (score {:.2} ≥ {:.2}): high similarity to {} — \
+                                         check for duplicate work (open-PR gate fires at claim time).",
                                         top_score, block_threshold, top_id
                                     );
                                     let _ = std::fs::OpenOptions::new()
@@ -6701,13 +6714,13 @@ async fn main() -> Result<()> {
                                         .and_then(|mut f| {
                                             use std::io::Write;
                                             writeln!(f,
-                                                r#"{{"ts":"{ts}","kind":"gap_reserve_similarity_block","proposed_title":"{title}","top_match_id":"{top_id}","top_match_score":{top_score:.3}}}"#
+                                                r#"{{"ts":"{ts}","kind":"gap_reserve_similarity_warn","proposed_title":"{title}","top_match_id":"{top_id}","top_match_score":{top_score:.3}}}"#
                                             )
                                         });
-                                    std::process::exit(1);
+                                    // No exit — INFRA-1982: similarity is advisory only.
                                 } else {
                                     eprintln!(
-                                        "[reserve] WARN (score {:.2} ≥ {:.2}): potential overlap with {} — continue? [y/N]",
+                                        "[reserve] WARN (score {:.2} ≥ {:.2}): potential overlap with {}.",
                                         top_score, warn_threshold, top_id
                                     );
                                     let _ = std::fs::OpenOptions::new()
@@ -6720,13 +6733,6 @@ async fn main() -> Result<()> {
                                                 r#"{{"ts":"{ts}","kind":"gap_reserve_similarity_warn","proposed_title":"{title}","top_match_id":"{top_id}","top_match_score":{top_score:.3}}}"#
                                             )
                                         });
-                                    // Read one line from stdin
-                                    let mut answer = String::new();
-                                    let _ = std::io::stdin().read_line(&mut answer);
-                                    if !answer.trim().eq_ignore_ascii_case("y") {
-                                        eprintln!("[reserve] Aborted. Use --force-duplicate to override the block, or CHUMP_GAP_RESERVE_NO_SIMILARITY=1 to disable.");
-                                        std::process::exit(1);
-                                    }
                                 }
                             }
                         }

@@ -55,6 +55,16 @@ yaml_text = pathlib.Path(registry_path).read_text()
 # Registered kinds: each appears as `^  - kind: <name>`.
 registered = set(re.findall(r'^\s*-\s+kind:\s*([A-Za-z0-9_]+)', yaml_text, re.M))
 
+# INFRA-1982: Deprecated kinds — entries with `deprecated: true` are excluded
+# from orphan checks (register-without-emit) since they are intentionally no
+# longer emitted. They remain in registered so emit-without-register doesn't
+# complain if old log replays reference them.
+_deprecated_blocks = re.findall(
+    r'-\s+kind:\s*([A-Za-z0-9_]+)(?:.(?!-\s+kind:))*?deprecated:\s*true',
+    yaml_text, re.S
+)
+deprecated_kinds = set(_deprecated_blocks)
+
 # Production paths. Excludes scripts/ab-harness/, scripts/ci/,
 # scripts/git-hooks/, scripts/auto-docs/, etc. — those legitimately mention
 # `"kind":"X"` as test fixtures, doc examples, or hook bypass templates.
@@ -218,7 +228,9 @@ NOISE = {'X', 'kind', 'name', 'value', 'type', 'event', 'other', 'test'}
 emitted -= NOISE
 
 emit_without_register = sorted((emitted - registered) - allowlist)
-register_without_emit = sorted((registered - emitted) - allowlist)
+# INFRA-1982: exclude deprecated kinds from orphan check — they are intentionally
+# no longer emitted but are kept in the registry for historical query compatibility.
+register_without_emit = sorted(((registered - emitted) - allowlist) - deprecated_kinds)
 
 # ── INFRA-1371: effect_metric check ──────────────────────────────────────────
 # Parse which registered kinds have an effect_metric declaration.
