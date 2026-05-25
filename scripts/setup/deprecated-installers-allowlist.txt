@@ -1,0 +1,4 @@
+# deprecated-installers-allowlist.txt — INFRA-1810
+# Installers that are scheduled for removal. CI passes them but emits a warning.
+# Format: one filename per line (basename only, no path).
+# To remove: delete the file, remove from this list, open a cleanup PR.

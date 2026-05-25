@@ -477,6 +477,12 @@ jobs:
         # smoke itself is pure awk so it works anywhere.
         run: bash scripts/ci/test-workflow-linux-guard.sh
 
+      # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
+      # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
+      # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.
+      - name: Install manifest gate
+        run: bash scripts/ci/test-install-script-manifest.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off
