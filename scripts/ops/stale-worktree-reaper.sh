@@ -9,13 +9,16 @@
 # clutter `git status` for sibling agents, and confuse new sessions about what
 # work is in flight.
 #
-# What it does (per worktree under .claude/worktrees/):
+# What it does (per worktree under .claude/worktrees/ and /tmp/chump-*):
 #   1. Find its branch.
 #   2. Mark REAPABLE if EITHER:
 #        - the branch's tip is an ancestor of origin/main (squash-merged or
 #          fast-forwarded — work is on main), OR
 #        - origin has no ref for the branch any more (PR closed/merged and
 #          GitHub auto-deleted the head branch).
+#      For /tmp/chump-<gap-id>/ worktrees, ALSO reapable if:
+#        - The gap extracted from dirname has status=done in state.db, OR
+#        - The matching PR is MERGED or CLOSED (checked via GitHub cache).
 #   3. SKIP if any of:
 #        - worktree has uncommitted changes
 #        - any active lease in .chump-locks/*.json names this worktree
@@ -29,7 +32,15 @@
 #          that lsof might miss (e.g. burst writers between samples)
 #   4. For each reapable worktree, archive logs/ab/*.summary.json and
 #      logs/ab/*.jsonl into docs/archive/eval-runs/<branch>-YYYY-MM-DD/,
-#      then `git worktree remove --force <path>`.
+#      then `git worktree remove --force <path>` (for git-linked worktrees)
+#      or `rm -rf <path>` (for bare /tmp/chump-* directories not git-linked).
+#
+# Scan paths (INFRA-2020):
+#   Default: WORKTREE_SCAN_PATHS=".claude/worktrees /tmp/chump-*"
+#   Override via env: WORKTREE_SCAN_PATHS="/custom/path /other/path-*"
+#   The git-worktree walk (via `git worktree list --porcelain`) still handles
+#   .claude/worktrees/ (which are proper git linked worktrees). The /tmp/chump-*
+#   pass handles the chump claim convention worktrees directly.
 #
 # Usage:
 #   ./scripts/ops/stale-worktree-reaper.sh              # default: --dry-run
@@ -49,6 +60,11 @@
 #
 # Bypass per-worktree:
 #   touch <worktree-path>/.chump-no-reap   # respected by this script
+#
+# INFRA-2020: /tmp/chump-* support (disk_critical source — 43GB recovered manually)
+#   WORKTREE_SCAN_PATHS env var controls which directories are walked.
+#   Default includes both .claude/worktrees and /tmp/chump-* to cover the
+#   chump claim convention (creates /tmp/chump-<gap-id>/ directories).
 
 set -euo pipefail
 
@@ -86,6 +102,10 @@ done
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+# INFRA-2020: scan paths — default covers both .claude/worktrees (git linked worktrees)
+# and /tmp/chump-* (chump claim convention). Override via WORKTREE_SCAN_PATHS env var.
+# The /tmp/chump-* glob is intentional: claim creates /tmp/chump-<gap-id>/ directories.
+WORKTREE_SCAN_PATHS="${WORKTREE_SCAN_PATHS:-.claude/worktrees /tmp/chump-*}"
 
 # Resolve the main repo root (this script may be invoked from a worktree).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -233,13 +253,19 @@ current_branch=""
 
 process_worktree() {
     local wt_path="$1" wt_branch="$2"
+    # INFRA-2020: optional source tag for ambient event differentiation.
+    # Values: "claude_worktrees" (from .claude/worktrees/) or "tmp_chump" (from /tmp/chump-*).
+    local wt_source="${3:-claude_worktrees}"
     [[ -z "$wt_path" ]] && return 0
 
     # Only consider worktrees under the worktree-base (never the main repo).
     # INFRA-1053: the legacy .claude/worktrees/ check is preserved; additionally
     # accept anything under CHUMP_WORKTREE_BASE when configured.
+    # INFRA-2020: /tmp/chump-* paths bypass the base check — they're a separate
+    # scan path handled by the tmp_chump pass below.
     case "$wt_path" in
         */\.claude/worktrees/*) ;;
+        /tmp/chump-*) ;;
         *)
             if [[ -n "${CHUMP_WORKTREE_BASE:-}" && "$wt_path" == "${CHUMP_WORKTREE_BASE%/}/"* ]]; then
                 :
@@ -365,6 +391,38 @@ process_worktree() {
         reapable=1; reason="origin branch deleted"
     fi
 
+    # INFRA-2020: for /tmp/chump-<gap-id>/ worktrees, additionally check gap
+    # status in state.db and PR merge state via GitHub cache.
+    if [[ $reapable -eq 0 && "$wt_source" == "tmp_chump" ]]; then
+        local gap_id
+        gap_id=$(basename "$wt_path" | sed 's/^chump-//' | tr '[:lower:]-' '[:upper:]-')
+        if [[ -n "$gap_id" ]]; then
+            # Check state.db for done status.
+            local state_db="$REPO_ROOT/.chump/state.db"
+            if [[ -f "$state_db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+                local gap_status
+                gap_status=$(sqlite3 "$state_db" \
+                    "SELECT status FROM gaps WHERE id='$gap_id' LIMIT 1" 2>/dev/null || true)
+                if [[ "$gap_status" == "done" ]]; then
+                    reapable=1; reason="gap $gap_id status=done in state.db"
+                fi
+            fi
+            # Check PR merge state via GitHub cache (INFRA-1081 cache-first reads).
+            if [[ $reapable -eq 0 ]]; then
+                local cache_db="$REPO_ROOT/.chump/github_cache.db"
+                if [[ -f "$cache_db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+                    local pr_state
+                    pr_state=$(sqlite3 "$cache_db" \
+                        "SELECT state FROM pr_state WHERE LOWER(title) LIKE LOWER('%$gap_id%') AND state IN ('MERGED','CLOSED') LIMIT 1" \
+                        2>/dev/null || true)
+                    if [[ -n "$pr_state" ]]; then
+                        reapable=1; reason="gap $gap_id PR is $pr_state (cache)"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
     if [[ $reapable -eq 0 ]]; then
         info "  not reapable: branch ahead of $BASE and remote still exists — keeping"
         KEPT=$((KEPT+1)); return 0
@@ -373,6 +431,8 @@ process_worktree() {
     # Age check — when did the branch tip become reachable from main? Use
     # commit time on origin/main of the merge commit if any, else use the
     # branch's last commit time as a conservative proxy.
+    # For /tmp/chump-* with no branch (detached or bare dir), fall back to
+    # directory mtime as a conservative proxy.
     local age_check_ok=1
     if [[ -n "$wt_branch" ]]; then
         local tip_ts
@@ -380,6 +440,17 @@ process_worktree() {
         local now; now=$(date +%s)
         local age_hours=$(( (now - tip_ts) / 3600 ))
         info "  age: $age_hours h since last commit on branch"
+        if [[ $age_hours -lt $AGE_MIN_HOURS ]]; then
+            info "  below age threshold ($AGE_MIN_HOURS h) — keeping for now"
+            age_check_ok=0
+        fi
+    elif [[ "$wt_source" == "tmp_chump" ]]; then
+        # No branch info — use directory mtime.
+        local dir_mtime now age_hours
+        dir_mtime=$(stat -f%m "$wt_path" 2>/dev/null || stat -c%Y "$wt_path" 2>/dev/null || echo 0)
+        now=$(date +%s)
+        age_hours=$(( (now - dir_mtime) / 3600 ))
+        info "  age: $age_hours h since dir mtime (no branch — gap-status path)"
         if [[ $age_hours -lt $AGE_MIN_HOURS ]]; then
             info "  below age threshold ($AGE_MIN_HOURS h) — keeping for now"
             age_check_ok=0
@@ -403,7 +474,11 @@ process_worktree() {
 
     if [[ $DRY_RUN -eq 1 ]]; then
         info "  [dry-run] would archive logs/ab/* → $arch_dest"
-        info "  [dry-run] would: git worktree remove --force $wt_path"
+        if [[ "$wt_source" == "tmp_chump" ]]; then
+            info "  [dry-run] would: rm -rf $wt_path  (source=tmp_chump)"
+        else
+            info "  [dry-run] would: git worktree remove --force $wt_path"
+        fi
         REAPED=$((REAPED+1))
         return 0
     fi
@@ -416,9 +491,31 @@ process_worktree() {
         log "ARCHIVE $wt_path -> $arch_dest"
     fi
 
-    if git worktree remove --force "$wt_path" 2>>"$LOG"; then
+    # INFRA-2020: /tmp/chump-* directories may not be git-linked worktrees
+    # (chump claim creates a bare dir then does git worktree add, but after
+    # manual reaping or partial cleanup the git link may be gone). Try
+    # git worktree remove first; fall back to rm -rf for bare dirs.
+    local removed=0
+    if [[ "$wt_source" == "tmp_chump" ]]; then
+        if git worktree remove --force "$wt_path" 2>>"$LOG"; then
+            removed=1
+        elif rm -rf "$wt_path" 2>>"$LOG"; then
+            removed=1
+            log "REMOVED (rm -rf) $wt_path branch=$wt_branch reason='$reason'"
+        fi
+    else
+        if git worktree remove --force "$wt_path" 2>>"$LOG"; then
+            removed=1
+        fi
+    fi
+
+    if [[ $removed -eq 1 ]]; then
         green "  REMOVED $wt_path"
         log "REMOVED $wt_path branch=$wt_branch reason='$reason'"
+        # INFRA-2020: emit worktree_reaped with source= tag for audit differentiation.
+        # scanner-anchor: "kind":"worktree_reaped"
+        emit_reaper_event "worktree_reaped" "$wt_path" "$reason" \
+            "\"source\":\"$wt_source\",\"branch\":\"${wt_branch:-}\",\"dry_run\":0"
         REAPED=$((REAPED+1))
     else
         red "  FAILED to remove $wt_path (see $LOG)"
@@ -441,6 +538,58 @@ while IFS= read -r line; do
 done <<< "$WTLIST"
 # Final block (no trailing blank).
 process_worktree "$current_path" "$current_branch"
+
+# ── INFRA-2020: /tmp/chump-* scan pass ───────────────────────────────────────
+# The git worktree list walk above only sees git-linked worktrees. The chump
+# claim convention creates /tmp/chump-<gap-id>/ directories which may become
+# stale if the gap ships and the worktree is never cleaned up.
+# This pass walks WORKTREE_SCAN_PATHS for non-.claude entries, expanding globs.
+info "----"
+info "INFRA-2020: /tmp/chump-* scan pass (WORKTREE_SCAN_PATHS='$WORKTREE_SCAN_PATHS')"
+_TMP_REAPED=0
+_TMP_KEPT=0
+_TMP_SKIPPED=0
+
+for _scan_pattern in $WORKTREE_SCAN_PATHS; do
+    # Skip the .claude/worktrees path — already handled by git worktree list above.
+    case "$_scan_pattern" in
+        *\.claude/worktrees*) continue ;;
+        *\.claude/worktrees)  continue ;;
+    esac
+
+    # Expand glob pattern; skip if nothing matches.
+    for _wt in $_scan_pattern/; do
+        # Remove trailing slash for path checks.
+        _wt="${_wt%/}"
+        [[ -d "$_wt" ]] || continue
+
+        info "----"
+        info "tmp_chump candidate: $_wt"
+
+        # Skip if this is the main repo root itself.
+        if [[ "$_wt" == "$REPO_ROOT" ]]; then
+            info "  is repo root — skipping"
+            continue
+        fi
+
+        # Determine if this is a git-linked worktree to find its branch.
+        _tmp_branch=""
+        if [[ -f "$_wt/.git" ]]; then
+            _tmp_branch=$(git -C "$_wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+            [[ "$_tmp_branch" == "HEAD" ]] && _tmp_branch=""
+        fi
+
+        # Call shared process_worktree with source=tmp_chump.
+        _before_reaped=$REAPED
+        _before_kept=$KEPT
+        _before_skipped=$SKIPPED
+        process_worktree "$_wt" "$_tmp_branch" "tmp_chump"
+        _TMP_REAPED=$(( _TMP_REAPED + REAPED - _before_reaped ))
+        _TMP_KEPT=$(( _TMP_KEPT + KEPT - _before_kept ))
+        _TMP_SKIPPED=$(( _TMP_SKIPPED + SKIPPED - _before_skipped ))
+    done
+done
+info "tmp_chump scan: $_TMP_REAPED reapable, $_TMP_KEPT kept, $_TMP_SKIPPED skipped"
 
 echo ""
 green "=== reaper done: ${REAPED} reapable, ${KEPT} kept, ${SKIPPED} skipped ==="
