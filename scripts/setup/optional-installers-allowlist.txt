@@ -77,3 +77,4 @@ install-distill-pr-skills-launchd.sh
 install-oracle-refresh-launchd.sh
 install-pr-pulse-consumer-launchd.sh
 install-refresh-runner-binary-launchd.sh
+install-fleet-autopilot-launchd.sh
