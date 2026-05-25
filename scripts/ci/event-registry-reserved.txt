@@ -348,3 +348,6 @@ floor_temp  # reason: INFRA-1992 emitted by src/floor_temp.rs::emit_floor_temp o
 # ── INFRA-1989 / META-106 (THE FLOOR Phase 1 finisher): blame bot ────────────
 regression_attributed  # reason: INFRA-1989 emitted by scripts/coord/blame-bot.sh when green→red CI transition is mapped to suspect commits via git log green..HEAD; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
 regression_inattributable  # reason: INFRA-1989 emitted by scripts/coord/blame-bot.sh when no green baseline OR no commits in window OR mapped paths empty; printf-direct JSON not grep-scannable
+
+# ── INFRA-1988 / META-106 (THE FLOOR Phase 2): hook silent-noop alarm ────────
+hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-push EXIT trap when main Guard 1/2/3 loop never entered on non-trivial push (the exact INFRA-1986 silent-regression pattern); printf-direct JSON not grep-scannable in scanner's PROD_PATHS
