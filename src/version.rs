@@ -419,6 +419,9 @@ fn spawn_background_rebuild(repo_root: &Path, state_file: &Path, now_unix: u64) 
     );
 
     // Emit ambient event.
+    // scanner-anchor: "kind":"binary_refresh_started"
+    // scanner-anchor: "kind":"binary_refresh_completed"
+    // scanner-anchor: "kind":"binary_refresh_failed"
     emit_binary_refresh_event(repo_root, "binary_refresh_started", "", 0);
 
     // The actual rebuild + marker update is done by a small wrapper shell

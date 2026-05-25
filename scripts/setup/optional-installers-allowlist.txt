@@ -81,3 +81,4 @@ install-fleet-autopilot-launchd.sh
 install-cluster-detector-launchd.sh
 install-wedge-state-machine-launchd.sh
 install-recovery-queue-launchd.sh
+install-recovery-queue-launchd.sh
