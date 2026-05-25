@@ -227,6 +227,139 @@ _refresh_cycle() {
         "pid=$$" \
         "interval_s=$POLL_INTERVAL_S" \
         "reconcile_ok=$refreshed"
+
+    # INFRA-1927: resolve pending preflight_ci_agreement events.
+    # Scans the last 30 lines of ambient.jsonl for unresolved preflight_ci_agreement
+    # events (those lacking a paired preflight_ci_agreement_resolved with the same sha).
+    # For each unresolved sha, checks the github_cache.db check_runs table to see if
+    # CI has completed. If completed, emits preflight_ci_agreement_resolved.
+    _resolve_preflight_agreements
+}
+
+# INFRA-1927: _resolve_preflight_agreements
+# For each recent preflight_ci_agreement event without a matching
+# preflight_ci_agreement_resolved, query the check_runs cache and emit
+# the resolved event. Runs inside _refresh_cycle each liaison pass.
+# Bypass: CHUMP_PREFLIGHT_CI_AGREEMENT=0
+_resolve_preflight_agreements() {
+    [[ "${CHUMP_PREFLIGHT_CI_AGREEMENT:-1}" == "0" ]] && return 0
+    local cache_db="${CHUMP_CACHE_DB:-$REPO/.chump/github_cache.db}"
+    [[ ! -f "$AMBIENT_LOG" ]] && return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+
+    # Use python3 for reliable JSON parsing + sqlite lookup.
+    # Reads the last 500 lines of ambient.jsonl to find:
+    #   - preflight_ci_agreement  (has sha + preflight_pass)
+    #   - preflight_ci_agreement_resolved (already emitted for sha)
+    # For unresolved shas: query check_runs in cache. If a row exists with
+    # status=completed, emit preflight_ci_agreement_resolved.
+    local ambient_log="$AMBIENT_LOG"
+    local new_events
+    new_events="$(CHUMP_AMBIENT_LOG="$ambient_log" CHUMP_CACHE_DB="$cache_db" \
+        python3 - <<'PYEOF' 2>/dev/null
+import json, os, sys, sqlite3
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+
+ambient_path = os.environ.get("CHUMP_AMBIENT_LOG", "")
+cache_db = os.environ.get("CHUMP_CACHE_DB", "")
+
+if not ambient_path or not os.path.exists(ambient_path):
+    sys.exit(0)
+
+# Read last 500 lines (enough for one day of pushes in a busy fleet).
+with open(ambient_path) as f:
+    lines = f.readlines()[-500:]
+
+# Parse events, collect preflight_ci_agreement and already-resolved shas.
+pending = {}    # sha -> {preflight_pass, gap_id, branch}
+resolved = set()  # shas already having preflight_ci_agreement_resolved
+
+cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        obj = json.loads(line)
+    except Exception:
+        continue
+    kind = obj.get("kind", "")
+    ts_str = obj.get("ts", "")
+    try:
+        ts = datetime.fromisoformat(ts_str.rstrip("Z")).replace(tzinfo=timezone.utc)
+        if ts < cutoff:
+            continue
+    except Exception:
+        pass
+    sha = obj.get("sha", "")
+    if kind == "preflight_ci_agreement" and sha:
+        pending[sha] = {
+            "preflight_pass": obj.get("preflight_pass", False),
+            "gap_id": obj.get("gap_id", ""),
+            "branch": obj.get("branch", ""),
+        }
+    elif kind == "preflight_ci_agreement_resolved" and sha:
+        resolved.add(sha)
+
+# Determine which shas need resolution.
+unresolved = {sha: info for sha, info in pending.items() if sha not in resolved}
+if not unresolved:
+    sys.exit(0)
+
+# Query the check_runs cache for each unresolved sha.
+if not cache_db or not os.path.exists(cache_db):
+    sys.exit(0)
+
+now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+try:
+    conn = sqlite3.connect(cache_db, timeout=5)
+    conn.row_factory = sqlite3.Row
+    for sha, info in unresolved.items():
+        rows = conn.execute(
+            "SELECT status, conclusion FROM check_runs WHERE head_sha = ?",
+            (sha,)
+        ).fetchall()
+        if not rows:
+            continue
+        # Consider CI complete if ANY row has status=completed.
+        completed = [r for r in rows if (r["status"] or "").lower() == "completed"]
+        if not completed:
+            continue
+        # ci_pass: all completed rows have conclusion=success.
+        ci_pass = all(
+            (r["conclusion"] or "").lower() in ("success", "skipped", "neutral")
+            for r in completed
+        )
+        # ci_required_pass: same as ci_pass for now (we don't have required-check info in cache).
+        ci_required_pass = ci_pass
+        preflight_pass = info.get("preflight_pass", False)
+        if isinstance(preflight_pass, str):
+            preflight_pass = preflight_pass.lower() == "true"
+        mismatch = (preflight_pass != ci_pass)
+        event = {
+            "ts": now_iso,
+            "kind": "preflight_ci_agreement_resolved",
+            "sha": sha,
+            "gap_id": info.get("gap_id", ""),
+            "ci_pass": ci_pass,
+            "ci_required_pass": ci_required_pass,
+            "mismatch": mismatch,
+        }
+        print(json.dumps(event))
+    conn.close()
+except Exception:
+    pass
+PYEOF
+    )" || true
+
+    # Append each resolved event to ambient.jsonl.
+    if [[ -n "$new_events" ]]; then
+        while IFS= read -r ev_line; do
+            [[ -z "$ev_line" ]] && continue
+            printf '%s\n' "$ev_line" >> "$AMBIENT_LOG" 2>/dev/null || true
+        done <<<"$new_events"
+    fi
 }
 
 # ── command handling ─────────────────────────────────────────────────────────

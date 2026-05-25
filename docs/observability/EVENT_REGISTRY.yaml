@@ -4797,3 +4797,31 @@ events:
       the Monitor + ScheduleWakeup stanza for the running session.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, source, cron_ids_deleted]
+
+  # INFRA-1927: preflight↔CI agreement measurement loop. Two events per push
+  # let a weekly rollup compute how often the <60s local preflight gate agrees
+  # with the 10-12min CI gate — surfaces preflight overconfidence (false-negatives)
+  # and overcaution (false-positives).
+  - kind: preflight_ci_agreement
+    effect_metric: credible
+    emitter: scripts/git-hooks/pre-push (INFRA-1927)
+    trigger: >
+      Emitted after the chump preflight guard runs in the pre-push hook
+      (Guard 0a, INFRA-1671). Records the local preflight outcome (pass/fail)
+      and elapsed seconds for later join with the CI outcome. sha + branch
+      are the join keys. Bypass: CHUMP_PREFLIGHT_CI_AGREEMENT=0.
+    consumers: [preflight-ci-agreement-report, ops-audit]
+    fields_required: [ts, kind, sha, branch, gap_id, preflight_pass, preflight_secs]
+
+  - kind: preflight_ci_agreement_resolved
+    effect_metric: credible
+    emitter: scripts/ops/github-liaison.sh _resolve_preflight_agreements (INFRA-1927)
+    trigger: >
+      Emitted by the github-liaison daemon each refresh cycle when a
+      preflight_ci_agreement event (by sha) can be joined with completed
+      CI check-run data from github_cache.db. ci_pass reflects whether all
+      completed check-runs concluded success/skipped/neutral. mismatch=true
+      when preflight_pass != ci_pass — the primary signal for the weekly
+      agreement-rate report.
+    consumers: [preflight-ci-agreement-report, ops-audit]
+    fields_required: [ts, kind, sha, gap_id, ci_pass, ci_required_pass, mismatch]
