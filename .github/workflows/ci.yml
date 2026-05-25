@@ -1459,6 +1459,9 @@ jobs:
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
 
+      - name: graphql_exhausted debounce when resets_at unknown (INFRA-1968)
+        run: bash scripts/ci/test-graphql-debounce.sh
+
       - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
         run: bash scripts/ci/test-cache-mergestatestatus.sh
 
