@@ -1,0 +1,34 @@
+- id: INFRA-2014
+  domain: INFRA
+  title: "EFFECTIVE P0: live inbox injector — daemon watches inbox files + tmux send-keys interrupts running fleet workers when urgency:CRIT message arrives"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "New daemon scripts/coord/inbox-injector.sh runs every 10 sec via launchd; polls all .chump-locks/inbox/*.jsonl files for messages newer than last cursor + with urgency tag CRIT or EMERGENCY"
+    - "For each unread CRIT message, resolve the recipient session_id to a tmux pane via tmux list-sessions / list-panes + pane title matching; tmux send-keys C-c (cancel current input) then types '** INBOX INTERRUPT: read your inbox immediately ** bash scripts/coord/chump-inbox.sh read' + Enter"
+    - "For EMERGENCY: tmux send-keys C-c twice + 'echo INBOX_EMERGENCY > .chump-locks/<session>-restart-now; chump fleet restart --pane $TMUX_PANE_ID --read-inbox-first' (fleet restart wraps the agent with --read-inbox-first arg)"
+    - "Non-destructive default: only interrupts at next tool-completion boundary; never mid-edit. Detect via tmux capture-pane + check for active prompt (vs working) before send-keys"
+    - "Audit: every injection emits kind=inbox_injection_executed with recipient + urgency + message_id"
+    - "Bypass: CHUMP_INBOX_INJECTOR_PAUSE=1"
+    - "Smoke test scripts/ci/test-inbox-injector.sh: launch a tmux pane with `cat` (waits for input), write a CRIT message to its inbox, assert send-keys fires within 15s + pane stdin received the interrupt"
+  description: |
+    Operator constraint: "must be magical. agents understand sometimes
+    we MUST get a message in front of them. start with full stop/restart
+    on crit messages OK; eventually fast AF + non-destructive."
+
+    Phase 1 (this gap): CRIT-class interrupt via tmux send-keys.
+    Workers see the interrupt at their next tool-completion boundary,
+    finish whatever tool they're in, then read inbox before continuing.
+    Pipeline rollback (chump revert / gap state restore) means a
+    spurious interrupt costs little.
+
+    Phase 2 (INFRA-2015): typed urgency routing — INFO file-only,
+    WARN ambient, CRIT tmux-inject, EMERGENCY pane-kill+restart.
+
+    Phase 3 (INFRA-2016): in-Claude PreToolUse hook reads inbox
+    automatically every Nth tool call (no tmux interrupt needed) —
+    fully non-destructive, agent sees CRIT context before its next
+    tool runs.
+
+    INFRA-2014 is the MVP that proves the concept works TODAY.

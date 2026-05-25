@@ -70,6 +70,8 @@ AUTOPILOT_LAYERS=(
     "com.chump.cluster-detector|scripts/setup/install-cluster-detector-launchd.sh"
     # THE FLOOR Phase 3 (INFRA-1994 / META-106): wedge state machine
     "com.chump.wedge-state-machine|scripts/setup/install-wedge-state-machine-launchd.sh"
+    # THE FLOOR Phase 3 / INFRA-2014: live A2A inbox injector
+    "com.chump.inbox-injector|scripts/setup/install-inbox-injector-launchd.sh"
 )
 
 emit() {
