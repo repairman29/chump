@@ -2,7 +2,7 @@
 name = "chump-messaging"
 version = "0.1.0"
 edition = "2021"
-description = "Platform-agnostic messaging trait for LLM agents: a MessagingAdapter contract that Telegram / Slack / Matrix / Discord / web adapters implement, with capabilities-as-fields IncomingMessage / OutgoingMessage types so adapters with weaker features just leave fields empty."
+description = "Platform-agnostic messaging trait for LLM agents: MessagingAdapter contract for Telegram/Slack/Matrix/Discord/web adapters PLUS Broker trait for agent-to-agent inbox messaging (FileBroker concrete impl matches Chump's .chump-locks/inbox/<SESSION>.jsonl semantics with atomic-cursor writes)."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-messaging"
 license = "MIT"
@@ -13,10 +13,23 @@ readme = "README.md"
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "fs", "io-util"] }
+tempfile = "3"
+
+[[bin]]
+name = "chump-broadcast"
+path = "src/bin/chump-broadcast.rs"
+
+[[bin]]
+name = "chump-inbox"
+path = "src/bin/chump-inbox.rs"
 
 [lints]
 workspace = true
