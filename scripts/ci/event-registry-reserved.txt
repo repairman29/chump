@@ -341,3 +341,20 @@ required_check_health_bypass  # reason: INFRA-1522 emitted by src/required_check
 # ── INFRA-1987 / META-106 (THE FLOOR Phase 1): cluster detector ──────────────
 ci_failure_cluster  # reason: INFRA-1987 emitted by scripts/coord/cluster-detector.sh when ≥3 OPEN PRs share IDENTICAL failing-check set; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS; formal EVENT_REGISTRY.yaml entry pending file lease
 ci_failure_cluster_resolved  # reason: INFRA-1987 emitted by scripts/coord/cluster-detector.sh when a previously-detected cluster_id disappears from BLOCKED PRs (resolution signal); formal EVENT_REGISTRY.yaml entry pending file lease
+
+# ── INFRA-1992 / META-106 (THE FLOOR Phase 1): floor-temperature signal ──────
+floor_temp  # reason: INFRA-1992 emitted by src/floor_temp.rs::emit_floor_temp on every chump health --temp invocation; carries COLD/WARM/HOT classification + component counts; formal EVENT_REGISTRY.yaml entry pending file lease
+
+# ── INFRA-1989 / META-106 (THE FLOOR Phase 1 finisher): blame bot ────────────
+regression_attributed  # reason: INFRA-1989 emitted by scripts/coord/blame-bot.sh when green→red CI transition is mapped to suspect commits via git log green..HEAD; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+regression_inattributable  # reason: INFRA-1989 emitted by scripts/coord/blame-bot.sh when no green baseline OR no commits in window OR mapped paths empty; printf-direct JSON not grep-scannable
+
+# ── INFRA-1988 / META-106 (THE FLOOR Phase 2): hook silent-noop alarm ────────
+hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-push EXIT trap when main Guard 1/2/3 loop never entered on non-trivial push (the exact INFRA-1986 silent-regression pattern); printf-direct JSON not grep-scannable in scanner's PROD_PATHS
+
+# ── INFRA-1993 / META-106 (THE FLOOR Phase 3): operator-recovery queue ───────
+operator_recovery_requested  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-emit.sh (worker-facing CLI) when a worker requests an admin-merge cycle for a PR cluster; the queue service consumes these events
+operator_recovery_executed   # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh after each successful drop+merge+re-arm cycle with merged/failed PR lists + ruleset_id
+operator_recovery_failed     # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh on snapshot/drop/restore failure (CRITICAL when ruleset restore fails — operator action required)
+recovery_queue_rate_limited  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh when 3-per-hour rate budget exhausted; deferred request waits for window to slide
+recovery_queue_paused        # reason: INFRA-1993 emitted when CHUMP_RECOVERY_QUEUE_PAUSE=1 disables the daemon

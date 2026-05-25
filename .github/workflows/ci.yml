@@ -1761,6 +1761,9 @@ jobs:
       - name: INFRA-1318 Phase 2 end-to-end smoke — webhook cache + liaison slice signals (INFRA-1877)
         run: bash scripts/ci/test-liaison-webhook-cache.sh
 
+      - name: ci-audit-loop subcommands — tick/audit/heartbeat/help + scanner-anchor discipline (INFRA-1923)
+        run: bash scripts/ci/test-ci-audit-loop.sh
+
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
   # filter says to skip (skipped ≠ passing in GitHub Actions). The stub pattern

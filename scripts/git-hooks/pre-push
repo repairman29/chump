@@ -112,6 +112,50 @@ fi
 _HOOK_STDIN="$(cat || true)"
 
 # -----------------------------------------------------------------------
+# INFRA-1988 (THE FLOOR Phase 2): silent-noop alarm.
+#
+# If the main Guard 1/2/3 loop NEVER enters its body on a non-trivial push,
+# we silently sail through with rc=0 — the exact INFRA-1986 failure mode.
+# This sentinel + EXIT trap converts that invisible failure into a visible
+# ambient event so we'd catch the next regression in hours, not days.
+#
+# Non-trivial push = ≥1 line in stdin with a real (non-zero) remote_sha or
+# local_sha. New-branch pushes (all-zero remote) are exempted via the
+# default Guard 4 logic; we use the same check here.
+# -----------------------------------------------------------------------
+_HOOK_LOOP_ENTERED=0
+_HOOK_NAME="pre-push"
+_silent_alarm_check_and_emit() {
+    local rc="$?"
+    # Skip alarm if we exited non-zero (the hook reported a failure — that's
+    # the LOUD path, no alarm needed).
+    [[ "$rc" -ne 0 ]] && return "$rc"
+    # Skip if stdin was empty or zero-only (trivial push).
+    local _stdin_nontrivial=0
+    if [[ -n "$_HOOK_STDIN" ]]; then
+        # Any line with a non-zero SHA in either local_sha (col 2) or remote_sha (col 4)?
+        if echo "$_HOOK_STDIN" | awk '$2 !~ /^0+$/ || $4 !~ /^0+$/ {found=1} END {exit !found}' 2>/dev/null; then
+            _stdin_nontrivial=1
+        fi
+    fi
+    # If main loop body never executed on a non-trivial push → emit alarm.
+    if [[ "$_HOOK_LOOP_ENTERED" -eq 0 ]] && [[ "$_stdin_nontrivial" -eq 1 ]]; then
+        local _amb_root _amb_path
+        _amb_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        _amb_path="${CHUMP_AMBIENT_LOG:-$_amb_root/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"hook_silent_passthrough","source":"%s","hook":"%s","reason":"main_loop_did_not_execute_on_nontrivial_push","stdin_lines":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "pre_push_hook" \
+            "$_HOOK_NAME" \
+            "$(echo "$_HOOK_STDIN" | wc -l | xargs)" \
+            >> "$_amb_path" 2>/dev/null || true
+    fi
+    return "$rc"
+}
+trap _silent_alarm_check_and_emit EXIT
+
+# -----------------------------------------------------------------------
 # Guard 0a: chump preflight (INFRA-1671)
 #
 # The single-command local CI mirror (INFRA-1670). When the `chump` binary
@@ -853,6 +897,10 @@ detect_recent_rebase() {
 
 # Read the list of refs being pushed from stdin (format: local_ref local_sha remote_ref remote_sha)
 while read -r local_ref local_sha remote_ref remote_sha; do
+    # INFRA-1988: mark loop entered so the EXIT trap's silent-noop alarm
+    # knows we actually processed at least one ref.
+    _HOOK_LOOP_ENTERED=1
+
     branch="${remote_ref#refs/heads/}"
 
     # Skip if pushing to main/master (branch protection handles that).
