@@ -4956,3 +4956,18 @@ events:
       worker.sh respected the external value without overriding it.
     consumers: [fleet-brief]
     fields_required: [ts, kind, source, target_dir]
+
+  # INFRA-1971: force-push intent signal — pr-auto-rearm deferred for branch
+  - kind: pr_auto_rearm_deferred_for_force_push_intent
+    effect_metric: resilient
+    emitter: scripts/coord/pr-auto-rearm.sh (INFRA-1971)
+    trigger: >
+      pr-auto-rearm daemon found a fresh .chump-locks/force-push-intent-<branch_safe>.json
+      marker file (mtime within last 60s) before re-evaluating a PR's auto-merge
+      state. Skips re-arm for this sweep cycle to avoid the spurious CLOSED flash
+      observed in PRs #2561 and #2566 during legitimate operator force-pushes.
+      After the 60s TTL expires, normal re-arm logic resumes. Intent file is
+      written by scripts/dev/force-push-intent.sh before a manual force-push.
+      Bypass: CHUMP_PR_AUTO_REARM_NO_INTENT_CHECK=1.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch]

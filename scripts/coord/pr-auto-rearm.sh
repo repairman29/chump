@@ -16,6 +16,14 @@
 # Throttle: same PR won't re-arm within 30 min (.chump-locks/pr-auto-rearm-state.jsonl)
 # to avoid loops on a PR that's genuinely supposed to stay disarmed.
 #
+# Force-push intent (INFRA-1971): before re-evaluating a PR, check for a
+# .chump-locks/force-push-intent-<branch_safe>.json marker file with mtime
+# within the last 60s. If present, skip this PR to avoid closing it during
+# a legitimate operator force-push (observed in PRs #2561 and #2566 on
+# 2026-05-24/25). After the 60s TTL expires, normal re-arm logic resumes.
+# Intent file written by scripts/dev/force-push-intent.sh.
+# Bypass: CHUMP_PR_AUTO_REARM_NO_INTENT_CHECK=1.
+#
 # Bypass: CHUMP_PR_AUTO_REARM_DISABLED=1.
 
 set -uo pipefail
@@ -25,8 +33,10 @@ set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
-STATE="$REPO_ROOT/.chump-locks/pr-auto-rearm-state.jsonl"
+STATE="${CHUMP_PR_AUTO_REARM_STATE:-$REPO_ROOT/.chump-locks/pr-auto-rearm-state.jsonl}"
 THROTTLE_MIN="${CHUMP_PR_AUTO_REARM_THROTTLE_MIN:-30}"
+INTENT_TTL_SECS="${CHUMP_PR_AUTO_REARM_INTENT_TTL_SECS:-60}"
+LOCKS_DIR="$REPO_ROOT/.chump-locks"
 mkdir -p "$(dirname "$STATE")"
 touch "$STATE"
 
@@ -42,6 +52,37 @@ recent_rearm() {
             if ($4 >= cutoff) { print $4; exit }
         }
     ' "$STATE"
+}
+
+# Check if a valid (within TTL) force-push intent file exists for a branch.
+# Returns 0 (true) if intent is active, 1 (false) otherwise.
+# Args: $1 = branch name (raw, with slashes)
+force_push_intent_active() {
+    local branch="$1"
+    # Sanitize: replace / with _ to form filename
+    local branch_safe="${branch//\//_}"
+    local intent_file="$LOCKS_DIR/force-push-intent-${branch_safe}.json"
+    [[ "${CHUMP_PR_AUTO_REARM_NO_INTENT_CHECK:-0}" == "1" ]] && return 1
+    [[ -f "$intent_file" ]] || return 1
+    # Check mtime within TTL using stat (integer seconds, compatible with macOS + Linux)
+    local file_mtime now age
+    # macOS: stat -f %m; Linux: stat -c %Y
+    file_mtime="$(stat -f '%m' "$intent_file" 2>/dev/null || stat -c '%Y' "$intent_file" 2>/dev/null || echo 0)"
+    now="$(date +%s)"
+    age=$(( now - file_mtime ))
+    if (( age < INTENT_TTL_SECS )); then
+        return 0
+    fi
+    return 1
+}
+
+emit_deferred() {
+    # scanner-anchor: "kind":"pr_auto_rearm_deferred_for_force_push_intent"
+    local pr="$1" branch="$2"
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"pr_auto_rearm_deferred_for_force_push_intent","pr":%s,"branch":"%s"}\n' \
+        "$ts" "$pr" "$branch" >> "$AMBIENT"
 }
 
 emit() {
@@ -84,8 +125,23 @@ fi
 REARMED=0
 THROTTLED=0
 FAILED=0
+DEFERRED=0
 while IFS= read -r PR; do
     [[ -z "$PR" ]] && continue
+
+    # Force-push intent check (INFRA-1971): resolve branch name and check for
+    # a .chump-locks/force-push-intent-<branch_safe>.json marker within TTL.
+    BRANCH=""
+    if [[ "${CHUMP_PR_AUTO_REARM_NO_INTENT_CHECK:-0}" != "1" ]]; then
+        BRANCH="$(gh pr view "$PR" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+        if [[ -n "$BRANCH" ]] && force_push_intent_active "$BRANCH"; then
+            echo "[pr-auto-rearm] DEFER #$PR — force-push intent active for branch '$BRANCH' (${INTENT_TTL_SECS}s grace window)"
+            emit_deferred "$PR" "$BRANCH"
+            DEFERRED=$((DEFERRED + 1))
+            continue
+        fi
+    fi
+
     last="$(recent_rearm "$PR")"
     if [[ -n "$last" ]]; then
         echo "[pr-auto-rearm] SKIP #$PR — re-armed at $last (within ${THROTTLE_MIN}min throttle)"
@@ -104,5 +160,5 @@ while IFS= read -r PR; do
     fi
 done <<< "$TARGETS"
 
-echo "[pr-auto-rearm] done — rearmed=$REARMED throttled=$THROTTLED failed=$FAILED"
+echo "[pr-auto-rearm] done — rearmed=$REARMED throttled=$THROTTLED failed=$FAILED deferred=$DEFERRED"
 exit 0
