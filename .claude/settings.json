@@ -51,6 +51,10 @@
           {
             "type": "command",
             "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/coord/inbox-poll.sh\" ] && \"$REPO/scripts/coord/inbox-poll.sh\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/coord/inbox-check-urgent.sh\" ] && \"$REPO/scripts/coord/inbox-check-urgent.sh\" 2>/dev/null || true"
           }
         ]
       }
