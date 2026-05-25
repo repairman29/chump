@@ -4957,6 +4957,18 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, source, target_dir]
 
+  # INFRA-1979: inbox jsonl rotation — emitted after each prune run
+  - kind: inbox_pruned
+    effect_metric: self
+    emitter: scripts/coord/chump-inbox-prune.sh (INFRA-1979)
+    trigger: >
+      chump-inbox-prune.sh prune completed a rotation sweep of
+      .chump-locks/inbox/*.jsonl files. Emitted once per successful
+      prune run, whether or not any files were actually modified (pruned_count
+      may be 0 for a no-op run). Not emitted in --dry-run mode.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pruned_count, bytes_freed]
+
   # INFRA-1971: force-push intent signal — pr-auto-rearm deferred for branch
   - kind: pr_auto_rearm_deferred_for_force_push_intent
     effect_metric: resilient
