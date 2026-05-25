@@ -26,6 +26,7 @@ members = [
     "crates/chump-demo",
     "crates/ambient-cli",
     "crates/ast-crawler",
+    "crates/chump-git-hooks",
 ]
 resolver = "2"
 
