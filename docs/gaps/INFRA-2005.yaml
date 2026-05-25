@@ -1,0 +1,22 @@
+- id: INFRA-2005
+  domain: INFRA
+  title: "RESILIENT: Opus session worktree-base self-check before any --force-with-lease push — destroyed PR #2582 head when main checkout was on stale branch"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "New pre-push guard in scripts/git-hooks/pre-push (or shared lib): before allowing --force-with-lease push to chump/<gap>-claim branch, check that HEAD's first-parent ancestry includes the current origin/main HEAD"
+    - "If HEAD does NOT contain origin/main HEAD as ancestor, exit non-zero with diagnostic: 'force-push would replace branch head with stale base (HEAD=$sha, origin/main=$sha); rebase first or push from a fresh worktree'"
+    - "Bypass: CHUMP_FORCE_STALE_BASE=1 + commit body trailer 'Force-Stale-Base-Bypass: <reason>' (operator-explicit override)"
+    - "Smoke test scripts/ci/test-force-stale-base-guard.sh: synthetic repo where local branch is 50 commits behind origin/main; force-push attempt FAILS with expected diagnostic"
+    - "Catalyst: 2026-05-25 incident — Opus pushed stale chump/opus-shepherd-productize-2026-05-24 HEAD over chump/infra-1974-claim, auto-closing PR #2582. Recovered via gh pr reopen + restoring SHA from local object cache. Could have been silent data loss in a non-recoverable case."
+  description: |
+    Pre-push regression class. The pre-push hook already has Guard 3
+    (force-with-lease race protection, INFRA-345 / INFRA-1986 stdin fix)
+    but it protects against the REMOTE moving, not against the LOCAL
+    base being stale on the wrong branch.
+    
+    This is a small addition (~20 LOC) to the existing pre-push hook.
+    May be obsoleted by INFRA-1997 (Rust port) — coordinate with shepherd
+    who is actively porting pre-push. If INFRA-1997 lands first, this
+    guard ships as a Hook impl in the chump-git-hooks crate.
