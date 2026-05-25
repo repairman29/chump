@@ -91,6 +91,7 @@ mod fleet_spec; // INFRA-1483: declarative chump.fleet.yaml (Marcus M-B)
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
+mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
 // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
 // The rename keeps every `gap_store::*` call site compiling unchanged.
@@ -1508,7 +1509,7 @@ async fn main() -> Result<()> {
     // Emits kind=fleet_health to ambient.jsonl on each run.
     if args.get(1).map(String::as_str) == Some("health") {
         if args.iter().any(|a| a == "--help" || a == "help") {
-            println!("Usage: chump health [--json] [--watch] [--slo-check]");
+            println!("Usage: chump health [--json] [--watch] [--slo-check] [--temp]");
             println!();
             println!("Composite fleet health score (0-100) rolling up fleet-status, waste-tally,");
             println!("cost-watch, mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.");
@@ -1518,16 +1519,51 @@ async fn main() -> Result<()> {
             println!("  --json       output in JSON format");
             println!("  --watch      refresh every 30 s (clear screen between runs)");
             println!("  --slo-check  exit non-zero if any SLO is breached");
+            println!("  --temp       INFRA-1992: report floor-temperature only (COLD/WARM/HOT)");
             println!();
             println!("Example:");
             println!("  chump health");
             println!("  chump health --slo-check   # use in CI");
+            println!("  chump health --temp        # one-word floor-temp signal");
+            println!("  chump health --temp --json # full floor-temp report with component counts");
             return Ok(());
         }
         let want_json = args.iter().any(|a| a == "--json");
         let watch = args.iter().any(|a| a == "--watch");
         let slo_check = args.iter().any(|a| a == "--slo-check");
+        let want_temp = args.iter().any(|a| a == "--temp");
         let repo_root = repo_path::repo_root();
+
+        // INFRA-1992 (THE FLOOR Phase 1): floor-temperature signal.
+        // Reads ambient.jsonl over trailing 24h, counts hot event kinds
+        // (hook_silent_passthrough + ci_failure_cluster + admin_merge_executed),
+        // returns COLD/WARM/HOT. Emits kind=floor_temp on each invocation.
+        if want_temp {
+            let ambient = floor_temp::ambient_path_for(&repo_root);
+            let report = floor_temp::compute(&ambient, floor_temp::DEFAULT_WINDOW_SECS);
+            floor_temp::emit_floor_temp(&report);
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+                );
+            } else {
+                println!("{}", report.temp_str);
+                eprintln!(
+                    "  ({} hot events in trailing {}h)",
+                    report.total_hot_events,
+                    report.window_secs / 3600
+                );
+                eprintln!("  {}", report.recommendation);
+            }
+            // Exit code: HOT → 2, WARM → 1, COLD → 0 (so CI/workers can react).
+            let code = match report.temp {
+                floor_temp::FloorTemp::Cold => 0,
+                floor_temp::FloorTemp::Warm => 1,
+                floor_temp::FloorTemp::Hot => 2,
+            };
+            std::process::exit(code);
+        }
 
         if slo_check {
             let results = fleet_health::check_slos(&repo_root);
