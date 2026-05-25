@@ -1,0 +1,35 @@
+# voice-lint.yml — INFRA-1728
+#
+# CI gate: banned marketing words must not appear in docs/ changes.
+# Runs on every PR that touches docs/ files.
+# See docs/process/VOICE_GUARDRAIL.md for the ban-list and bypass instructions.
+
+name: voice-lint
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  voice-lint:
+    name: Voice ban-list lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for banned words in changed docs
+        run: |
+          bash scripts/ci/test-voice-banlist.sh \
+            --base=origin/${{ github.base_ref || 'main' }} \
+            --pr=${{ github.event.pull_request.number || '' }}
+        env:
+          CHUMP_VOICE_LINT_DISABLE: ${{ vars.CHUMP_VOICE_LINT_DISABLE || '0' }}
