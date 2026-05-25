@@ -52,13 +52,22 @@ else
     fail "web/v2/pillar-health.js not found"
 fi
 
-# ── 4. <chump-pillar-health> in index.html ────────────────────────────────────
+# ── 4. pillar grades surface in status-footer (INFRA-1919 migration) ─────────
+# Before INFRA-1919 this check looked for `<chump-pillar-health>` directly in
+# index.html. That element was removed by INFRA-1585 (PWA header consolidation)
+# and the actual pillar-grades surface migrated into <chump-status-footer>'s
+# pillars slot (rendered from web/v2/app.js — see `sf-pillar-grades` span at
+# the `data-slot="pillars"` button). INFRA-1916 restored the legacy element as
+# `<chump-pillar-health hidden>` to unwedge CI; INFRA-1919 finishes the
+# migration by checking the status-footer slot instead.
 echo
-echo "[4. <chump-pillar-health> wired into index.html]"
-if [[ -f "$INDEX" ]] && grep -q "chump-pillar-health" "$INDEX"; then
-    ok "<chump-pillar-health> element present in index.html"
+echo "[4. pillar grades surface in chump-status-footer slot]"
+APP_JS="${REPO_ROOT}/web/v2/app.js"
+if [[ -f "$INDEX" ]] && grep -q "<chump-status-footer>" "$INDEX" \
+   && [[ -f "$APP_JS" ]] && grep -q "sf-pillar-grades" "$APP_JS"; then
+    ok "chump-status-footer mounted in index.html + sf-pillar-grades slot in app.js"
 else
-    fail "<chump-pillar-health> missing from web/v2/index.html"
+    fail "pillar-grades surface missing — expected <chump-status-footer> in index.html and sf-pillar-grades in app.js (INFRA-1919 migration target)"
 fi
 
 # ── 5. Per-pillar response fields in handler ─────────────────────────────────
