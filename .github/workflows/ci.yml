@@ -735,6 +735,9 @@ jobs:
       - name: pr-auto-rebase daemon (INFRA-1777)
         run: bash scripts/ci/test-pr-auto-rebase.sh
 
+      - name: pr-auto-rebase per-branch lock — operator-race fix (INFRA-1974)
+        run: bash scripts/ci/test-rebase-coordination.sh
+
       - name: pr-auto-rebase plist installer (INFRA-1779)
         run: bash scripts/ci/test-install-pr-auto-rebase.sh
 
