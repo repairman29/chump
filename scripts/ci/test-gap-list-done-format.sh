@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # test-gap-list-done-format.sh — EFFECTIVE-024: done gaps show closed-pr + closed-date
 #
 # Tests:

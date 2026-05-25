@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # INFRA-607: CI tests for `chump rebase-stuck`.
 # Tests are offline (no gh/network) — they exercise the Rust unit tests
 # plus the binary's CLI surface via mocked git repos.

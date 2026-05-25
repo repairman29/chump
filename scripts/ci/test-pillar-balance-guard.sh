@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # scripts/ci/test-pillar-balance-guard.sh — INFRA-1152
 #
 # Tests the pillar-balance guard in `chump gap reserve`:

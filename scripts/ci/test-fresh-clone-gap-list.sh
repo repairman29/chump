@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-fresh-clone-gap-list.sh — INFRA-821
 #
 # Verifies that `chump gap list --status open` on a repo with an empty state.db

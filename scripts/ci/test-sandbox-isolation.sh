@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing CHUMP_BIN check + exit-0 skip path covers missing-binary case (CREDIBLE-078)
 # scripts/ci/test-sandbox-isolation.sh — INFRA-1454 (sandbox pilot)
 #
 # Verifies the agent-bash syscall-restriction layer:

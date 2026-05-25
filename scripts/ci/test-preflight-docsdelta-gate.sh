@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # scripts/ci/test-preflight-docsdelta-gate.sh — INFRA-1788
 #
 # Verifies the `chump preflight --pre-commit` docs-delta-trailer gate:

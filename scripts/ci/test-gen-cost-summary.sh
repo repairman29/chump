@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-gen-cost-summary.sh — INFRA-643: cost summary printed by chump gen.
 #
 # Verifies:

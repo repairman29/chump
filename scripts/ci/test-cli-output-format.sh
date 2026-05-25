@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-cli-output-format.sh — EFFECTIVE-008 CLI output format consistency
 #
 # Tests:

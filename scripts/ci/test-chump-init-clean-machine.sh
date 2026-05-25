@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: existing skip-path covers missing binary; pattern wording differs from canonical (CREDIBLE-078)
 # test-chump-init-clean-machine.sh — INFRA-799: local smoke test for chump init.
 #
 # Runs 'chump init --no-interactive' in an isolated CHUMP_HOME pointing at a

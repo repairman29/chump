@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-078)
 # test-infra-247-worktree-yaml.sh — verify `chump gap reserve` writes the
 # per-file YAML mirror to the LINKED WORKTREE's docs/gaps/, not the main
 # checkout's, even when CHUMP_REPO points at the main checkout.
