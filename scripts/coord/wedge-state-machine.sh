@@ -146,10 +146,18 @@ for line in sys.stdin:
         obj = json.loads(line)
     except Exception:
         continue
+    # ambient.jsonl can contain non-dict JSON values (numbers, strings,
+    # arrays) from misc emitters — guard before calling .get(). Without
+    # this, a single int line crashes the whole pipe + drops remaining
+    # lines on the floor.
+    if not isinstance(obj, dict):
+        continue
     if obj.get("kind") == "wedge_detected":
         # Output: class|note (note is detail field, may be empty)
-        cls = obj.get("class", "")
-        note = (obj.get("note", "") or obj.get("detail", "")).replace("|", " ")
+        # Real wedge-watch.sh emits with `wedge_class` field; some test
+        # fixtures use `class`. Accept both.
+        cls = obj.get("wedge_class") or obj.get("class") or ""
+        note = (obj.get("note") or obj.get("reason") or obj.get("detail") or "").replace("|", " ")
         if cls:
             print(f"{cls}|{note}")
 ' 2>/dev/null || true
