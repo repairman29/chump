@@ -7828,6 +7828,49 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // RESEARCH-001: scan docs/process/RESEARCH_INTEGRITY.md for gap ID
+                // references that have no corresponding docs/gaps/<ID>.yaml.
+                let phantom_doc_refs: Vec<(String, String)> = {
+                    let repo_root = repo_path::repo_root();
+                    let ri_path = repo_root.join("docs/process/RESEARCH_INTEGRITY.md");
+                    if let Ok(content) = std::fs::read_to_string(&ri_path) {
+                        // Strip fenced code blocks before scanning.
+                        let re_fence = regex::Regex::new(r"(?s)```.*?```").unwrap();
+                        let stripped = re_fence.replace_all(&content, "");
+                        // Strip inline backtick spans.
+                        let re_tick = regex::Regex::new(r"`[^`]+`").unwrap();
+                        let stripped = re_tick.replace_all(&stripped, "");
+                        // Match gap IDs: known-domain prefix + digits.
+                        let re_id = regex::Regex::new(
+                            r"\b(EVAL|RESEARCH|INFRA|META|FLEET|COG|CREDIBLE|EFFECTIVE|RESILIENT|ZERO-WASTE|MISSION|DOC)-\d+\b"
+                        ).unwrap();
+                        let gaps_dir = repo_root.join("docs/gaps");
+                        let mut seen = std::collections::HashSet::new();
+                        let mut phantoms: Vec<(String, String)> = Vec::new();
+                        for cap in re_id.captures_iter(&stripped) {
+                            let id = cap[0].to_string();
+                            if seen.contains(&id) {
+                                continue;
+                            }
+                            seen.insert(id.clone());
+                            if !all_ids.contains(id.as_str()) {
+                                // Also check filesystem in case the YAML exists but isn't
+                                // imported into state.db yet.
+                                let yaml = gaps_dir.join(format!("{id}.yaml"));
+                                if !yaml.exists() {
+                                    phantoms.push((
+                                        "docs/process/RESEARCH_INTEGRITY.md".to_string(),
+                                        id,
+                                    ));
+                                }
+                            }
+                        }
+                        phantoms
+                    } else {
+                        Vec::new()
+                    }
+                };
+
                 let open_with_closed_pr: Vec<&gap_store::GapRow> = all_gaps
                     .iter()
                     .filter(|g| g.status == "open" && g.closed_pr.is_some())
@@ -7852,6 +7895,7 @@ async fn main() -> Result<()> {
                         "vague_pickable": vague_pickable.len(),
                         "double_encoded_depends_on": double_encoded.len(),
                         "missing_dep_refs": missing_dep_pairs.len(),
+                        "phantom_doc_refs": phantom_doc_refs.len(),
                         "open_with_closed_pr": open_with_closed_pr.len(),
                         "done_with_closed_pr": done_with_closed_pr.len(),
                         "race_test_pollution": race_pollution.len(),
@@ -7901,6 +7945,22 @@ async fn main() -> Result<()> {
                     println!("Missing-dep refs: {}", missing_dep_pairs.len());
                     for (id, dep) in &missing_dep_pairs {
                         println!("  {} → {} (not in registry)", id, dep);
+                    }
+                    println!();
+                    println!(
+                        "Phantom doc refs (RESEARCH_INTEGRITY.md): {}",
+                        phantom_doc_refs.len()
+                    );
+                    for (doc, id) in &phantom_doc_refs {
+                        println!("  {} cites {} — no docs/gaps/{}.yaml found", doc, id, id);
+                        tracing::warn!(
+                            kind = "phantom_doc_ref_detected",
+                            doc = doc.as_str(),
+                            gap_id = id.as_str(),
+                            "RESEARCH_INTEGRITY.md cites {} but docs/gaps/{}.yaml not found",
+                            id,
+                            id
+                        );
                     }
                     println!();
                     println!("Open with closed_pr set: {}", open_with_closed_pr.len());

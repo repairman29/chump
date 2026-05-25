@@ -1,0 +1,29 @@
+# research-integrity-phantom-allowlist.txt — RESEARCH-001
+#
+# Gap IDs cited in docs/process/RESEARCH_INTEGRITY.md that predate the public
+# gap registry. These exist in chump-proprietary (private companion repo) and
+# are NOT expected to have docs/gaps/<ID>.yaml in this repo.
+#
+# DO NOT add new IDs here to paper over a missing gap. The correct fix for a
+# new phantom ID is to create the gap YAML (option A) or update the citation
+# to point at the correct existing ID (option B).
+#
+# Format: one ID per line, comments with #
+
+# Historical eval series (pre-public-registry, in chump-proprietary)
+EVAL-010
+EVAL-029
+EVAL-030
+EVAL-035
+EVAL-041
+EVAL-042
+EVAL-043
+EVAL-044
+EVAL-073
+EVAL-074
+EVAL-076
+EVAL-081
+EVAL-087
+EVAL-093
+INFRA-079
+RESEARCH-002

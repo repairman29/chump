@@ -4713,3 +4713,14 @@ events:
       operator via operator-recall.sh.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, category, severity, detail]
+  # RESEARCH-001: phantom doc-ref detection (chump gap audit-priorities)
+  - kind: phantom_doc_ref_detected
+    effect_metric: self
+    emitter: src/main.rs (RESEARCH-001, chump gap audit-priorities)
+    trigger: >
+      RESEARCH_INTEGRITY.md cites a gap ID (e.g. EVAL-094) but no matching
+      docs/gaps/<ID>.yaml exists in the registry. Emitted once per phantom
+      reference detected during chump gap audit-priorities --research-check.
+      Indicates a stale citation that should be removed or the gap filed.
+    consumers: [audit-log]
+    fields_required: [ts, kind, doc, gap_id]

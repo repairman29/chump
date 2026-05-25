@@ -1,0 +1,27 @@
+- id: RESEARCH-026
+  domain: RESEARCH
+  title: "CREDIBLE: fixture taxonomy for evaluation-awareness — classify the 20 EVAL-094 fixtures by susceptibility to lab-context discrimination (preamble density, rubric markers, role-header presence)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Companion qualitative analysis to EVAL-094. Before the paired naturalized-framing sweep
+    runs, each fixture must be classified by its structural susceptibility to evaluation-
+    awareness bias. This taxonomy (a) predicts which cells will show the largest B−A delta
+    in EVAL-094, (b) informs fixture redesign if the eval finds confounding, and (c) gives
+    a reusable rubric for all future fixture design in the chump eval suite.
+
+    Susceptibility signals: explicit task IDs, numbered rubrics, "evaluate / assess / score"
+    imperatives in preamble, "assistant / user" role headers, markdown tables with
+    "expected output" columns, benchmark-style framing ("test case N of M").
+  acceptance_criteria:
+    - "Taxonomy doc at docs/eval/fixture-taxonomy-eval-awareness.md with a rubric table: signal, weight (1-3), example, how to naturalize"
+    - "Each of the 20 EVAL-094 fixtures scored against the rubric: susceptibility score (0-15), predicted B−A magnitude (low/medium/high), naturalization notes"
+    - "Rubric validated against ≥ 2 published datasets from arXiv:2508.00943 or IAPS 2026 — documented in the taxonomy doc with citations"
+    - "Output includes a redesign checklist: for each high-susceptibility fixture, concrete edit to reduce lab markers (used as input to EVAL-094 naturalized framing condition)"
+    - "Cross-links EVAL-094 result doc once available; taxonomy supersedes the standing caveat in RESEARCH_INTEGRITY.md once EVAL-094 decision-rule passes"
+    - "Review: taxonomy doc reviewed by ≥1 operator before EVAL-094 sweep launches (recorded as a co-author or reviewer note in the preregistration)"
+  notes: |
+    Cited by: docs/process/RESEARCH_INTEGRITY.md §4 (phantom-ID fix: RESEARCH-001)
+    Companion: EVAL-094 (quantitative paired eval using this fixture set)
+    This is a lightweight qualitative deliverable — the main measurement is in EVAL-094.
