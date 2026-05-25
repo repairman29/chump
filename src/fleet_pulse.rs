@@ -1,9 +1,10 @@
 //! INFRA-1995 (THE FLOOR Phase 2): single-pane fleet status.
 //!
-//! `chump fleet pulse [--json]` — replaces the 5-surface manual workflow
-//!   (chump health + chump fleet status + tail ambient.jsonl + gh pr list
-//!   + launchctl list) with one command that returns operator-readable
-//!   status in one frame.
+//! `chump fleet pulse [--json]` — one command that returns
+//! operator-readable status in one frame.
+//!
+//! Replaces the 5-surface manual workflow: chump health + chump fleet
+//! status + tail ambient.jsonl + gh pr list + launchctl list.
 //!
 //! Sections:
 //!   1. floor_temp        — COLD/WARM/HOT + hot-event counts (INFRA-1992)
