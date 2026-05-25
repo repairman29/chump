@@ -48,6 +48,10 @@ FAILURES=0
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 WORK_DIR="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$WORK_DIR"' EXIT
 
 LOCK_DIR="$WORK_DIR/.chump-locks"

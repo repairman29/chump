@@ -21,6 +21,15 @@ TMP="$(mktemp -d -t test-orphan-prune.XXXXXX)"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
+# W-013 immunization (RESILIENT-024 followup): unset workflow-injected env
+# so this test's own $TMP fixtures are not hijacked by CI workflow
+# CHUMP_LOCK_DIR. scripts/lib/lease.sh and scripts/lib/worktree-iter.sh
+# both fall back via ${CHUMP_LOCK_DIR:-$repo/.chump-locks} — when the
+# workflow injects CHUMP_LOCK_DIR=/home/runner/.../.chump-locks, the
+# lease-check looks in the wrong directory and concludes "no active lease",
+# pruning the test fixture that should have been skipped.
+unset CHUMP_REPO CHUMP_LOCK_DIR
+
 # Create a minimal fake git repo in TMP (so we can add worktrees).
 FAKE_REPO="$TMP/fake-repo"
 mkdir -p "$FAKE_REPO"

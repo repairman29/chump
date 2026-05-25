@@ -16,6 +16,10 @@ BIN="${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump"
 
 PORT="${TEST_PORT:-13848}"
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"' EXIT
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; kill_server; exit 1; }

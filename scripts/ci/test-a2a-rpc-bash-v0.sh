@@ -17,6 +17,10 @@ LIB="$RPC_DIR/_rpc_lib.sh"
 [[ -r "$LIB" ]] || { echo "FAIL: $LIB missing"; exit 1; }
 
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"' EXIT
 
 # Isolate ambient + inbox writes under TMP.

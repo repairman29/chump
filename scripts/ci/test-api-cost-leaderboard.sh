@@ -18,6 +18,10 @@ INST="$REPO_ROOT/scripts/setup/install-api-cost-digest-launchd.sh"
 REG="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"' EXIT
 
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
