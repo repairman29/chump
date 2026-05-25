@@ -2782,6 +2782,32 @@ events:
     trigger: operator forces a destructive action despite stale binary detection warning
     consumers: [audit-log, operator-recall]
 
+  - kind: binary_refresh_started
+    effect_metric: self
+    emitter: src/version.rs (INFRA-1977 JIT binary refresh)
+    trigger: stale binary detected + destructive op attempted; background
+      `cargo install --path . --bin chump --force` spawned. Replaces the
+      manual rebuild step that turned CHUMP_ALLOW_STALE_DESTRUCTIVE=1 into
+      a routine bypass. State recorded at .chump/binary-refresh-state.json.
+    consumers: [audit-log, fleet-brief]
+
+  - kind: binary_refresh_completed
+    effect_metric: self
+    emitter: src/version.rs (INFRA-1977 JIT binary refresh — wrapper subshell)
+    trigger: background `cargo install` succeeded; new chump binary on PATH.
+      Next chump invocation finds Fresh and proceeds. Current invocation is
+      still the stale binary and cannot self-replace.
+    consumers: [audit-log, fleet-brief, watchdog]
+
+  - kind: binary_refresh_failed
+    effect_metric: self
+    emitter: src/version.rs (INFRA-1977 JIT binary refresh — wrapper subshell)
+    trigger: background `cargo install` failed (e.g. compile error, locked
+      cargo registry, disk full). State marker records reason (last log
+      line, truncated). Operator must rebuild manually or use
+      CHUMP_ALLOW_STALE_DESTRUCTIVE=1 override.
+    consumers: [audit-log, operator-recall]
+
   # ── Disk hygiene ─────────────────────────────────────────────────────────
   - kind: tmp_cleanup
     effect_metric: self

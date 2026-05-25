@@ -225,35 +225,278 @@ pub fn fail_if_stale_for_destructive(
                      ambient kind=stale_binary_destructive_override."
                 );
                 emit_destructive_override_ambient_event(repo_root, op_name, commits_ahead);
-                DestructiveStalenessOutcome::OverrideAccepted
+                return DestructiveStalenessOutcome::OverrideAccepted;
+            }
+
+            // INFRA-1977 (H8 critique): JIT background rebuild — kick off
+            // `cargo install --path . --bin chump --force` as a detached
+            // subprocess so the next chump invocation finds Fresh and
+            // proceeds without manual operator intervention. This invocation
+            // still refuses (it IS the stale binary; can't fix itself), but
+            // the friendlier message tells the operator a retry will work.
+            // Bypass: CHUMP_DISABLE_JIT_BINARY_REFRESH=1 (return to pre-1977
+            // hand-rebuild behavior).
+            let refresh_state = if std::env::var("CHUMP_DISABLE_JIT_BINARY_REFRESH").as_deref()
+                == Ok("1")
+            {
+                BinaryRefreshState::Disabled
             } else {
-                eprintln!(
-                    "[chump] REFUSED: '{op_name}' is a destructive bulk-YAML \
-                     operation, and this binary was built at {} ({}) but {} \
-                     gap-store-affecting commit(s) have landed since on this \
-                     repo's HEAD. Latest: {}",
-                    chump_build_sha(),
-                    chump_build_date(),
-                    commits_ahead,
-                    latest_subject,
-                );
-                eprintln!(
-                    "[chump]          Running this would risk silent revert \
-                     of merged work (see PR #1444 — META-044 wiped by a \
-                     9-commit-stale binary on 2026-05-11). Rebuild + retry:"
-                );
-                eprintln!(
-                    "[chump]            cargo install --path {} --bin chump --force",
-                    repo_root.display()
-                );
-                eprintln!(
-                    "[chump]          Override (very loud, audited): \
-                     CHUMP_ALLOW_STALE_DESTRUCTIVE=1"
-                );
-                DestructiveStalenessOutcome::Refuse
+                trigger_or_check_binary_refresh(repo_root)
+            };
+
+            eprintln!(
+                "[chump] REFUSED: '{op_name}' is a destructive bulk-YAML \
+                 operation, and this binary was built at {} ({}) but {} \
+                 gap-store-affecting commit(s) have landed since on this \
+                 repo's HEAD. Latest: {}",
+                chump_build_sha(),
+                chump_build_date(),
+                commits_ahead,
+                latest_subject,
+            );
+            eprintln!(
+                "[chump]          Running this would risk silent revert \
+                 of merged work (see PR #1444 — META-044 wiped by a \
+                 9-commit-stale binary on 2026-05-11)."
+            );
+            match refresh_state {
+                BinaryRefreshState::JustStarted => {
+                    eprintln!(
+                        "[chump]          INFRA-1977 JIT refresh: background \
+                         rebuild started just now. Retry in ~60s — next \
+                         invocation should find Fresh and proceed."
+                    );
+                }
+                BinaryRefreshState::InFlight { age_secs } => {
+                    eprintln!(
+                        "[chump]          INFRA-1977 JIT refresh: rebuild \
+                         in flight ({}s ago). Retry in ~{}s.",
+                        age_secs,
+                        std::cmp::max(5, 90_i64.saturating_sub(age_secs as i64))
+                    );
+                }
+                BinaryRefreshState::RecentlyCompleted { age_secs } => {
+                    eprintln!(
+                        "[chump]          INFRA-1977 JIT refresh: rebuild \
+                         finished {}s ago but this process is still the old \
+                         binary — close this shell and retry from a fresh \
+                         invocation.",
+                        age_secs
+                    );
+                }
+                BinaryRefreshState::Failed { reason } => {
+                    eprintln!(
+                        "[chump]          INFRA-1977 JIT refresh: background \
+                         rebuild FAILED ({}). Manual rebuild required:",
+                        reason
+                    );
+                    eprintln!(
+                        "[chump]            cargo install --path {} --bin chump --force",
+                        repo_root.display()
+                    );
+                }
+                BinaryRefreshState::Disabled => {
+                    eprintln!(
+                        "[chump]          Rebuild + retry (JIT refresh disabled \
+                         via CHUMP_DISABLE_JIT_BINARY_REFRESH=1):"
+                    );
+                    eprintln!(
+                        "[chump]            cargo install --path {} --bin chump --force",
+                        repo_root.display()
+                    );
+                }
+            }
+            eprintln!(
+                "[chump]          Override (very loud, audited): \
+                 CHUMP_ALLOW_STALE_DESTRUCTIVE=1"
+            );
+            DestructiveStalenessOutcome::Refuse
+        }
+    }
+}
+
+/// INFRA-1977 (H8): rebuild-state for the background `cargo install`.
+#[derive(Debug)]
+enum BinaryRefreshState {
+    /// Just spawned the rebuild this call. Operator should retry in ~60s.
+    JustStarted,
+    /// Rebuild started earlier; still in flight. Hint at remaining ETA.
+    InFlight { age_secs: u64 },
+    /// Rebuild finished recently — this stale process can't see the new
+    /// binary, but a fresh shell invocation will.
+    RecentlyCompleted { age_secs: u64 },
+    /// Last rebuild failed. Operator must run `cargo install` manually.
+    Failed { reason: String },
+    /// Disabled via CHUMP_DISABLE_JIT_BINARY_REFRESH=1.
+    Disabled,
+}
+
+/// INFRA-1977: read `.chump/binary-refresh-state.json` and decide whether
+/// to (re-)spawn a background `cargo install`. Idempotent across multiple
+/// concurrent invocations — if a rebuild is in flight, we don't start
+/// another. Best-effort: any I/O error is treated as "rebuild not in flight"
+/// and we trigger a fresh one.
+fn trigger_or_check_binary_refresh(repo_root: &Path) -> BinaryRefreshState {
+    let state_dir = repo_root.join(".chump");
+    let state_file = state_dir.join("binary-refresh-state.json");
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Read existing state if present.
+    if let Ok(content) = std::fs::read_to_string(&state_file) {
+        // Cheap parse: looking for "status":"in_flight"|"done"|"failed" + started_at.
+        // Avoid pulling serde_json into version.rs by hand-parsing.
+        let started_at = parse_json_u64_field(&content, "started_at").unwrap_or(0);
+        let completed_at = parse_json_u64_field(&content, "completed_at").unwrap_or(0);
+        let status = parse_json_str_field(&content, "status").unwrap_or_default();
+
+        match status.as_str() {
+            "in_flight" => {
+                let age = now_unix.saturating_sub(started_at);
+                // Reap genuinely-stuck rebuilds: if older than 10min, treat
+                // as failed and restart.
+                if age > 600 {
+                    spawn_background_rebuild(repo_root, &state_file, now_unix);
+                    return BinaryRefreshState::JustStarted;
+                }
+                return BinaryRefreshState::InFlight { age_secs: age };
+            }
+            "done" => {
+                let age = now_unix.saturating_sub(completed_at);
+                // If rebuild was recent (< 5 min), assume the operator just
+                // hasn't reinvoked yet.
+                if age < 300 {
+                    return BinaryRefreshState::RecentlyCompleted { age_secs: age };
+                }
+                // Stale "done" marker — older than 5 min and binary is still
+                // stale per our check; trigger a new rebuild.
+                spawn_background_rebuild(repo_root, &state_file, now_unix);
+                return BinaryRefreshState::JustStarted;
+            }
+            "failed" => {
+                let reason = parse_json_str_field(&content, "reason")
+                    .unwrap_or_else(|| "unknown".to_string());
+                let age = now_unix.saturating_sub(started_at);
+                // Failed too recently — don't retry yet.
+                if age < 60 {
+                    return BinaryRefreshState::Failed { reason };
+                }
+                // Failed long enough ago to retry.
+                spawn_background_rebuild(repo_root, &state_file, now_unix);
+                return BinaryRefreshState::JustStarted;
+            }
+            _ => {
+                // Unknown / corrupt marker — start fresh.
+                spawn_background_rebuild(repo_root, &state_file, now_unix);
+                return BinaryRefreshState::JustStarted;
             }
         }
     }
+
+    // No marker — first ever request. Spawn rebuild.
+    spawn_background_rebuild(repo_root, &state_file, now_unix);
+    BinaryRefreshState::JustStarted
+}
+
+/// Spawn `cargo install --path <root> --bin chump --force` as a detached
+/// subprocess. Writes "started" marker before spawn; wrapper subprocess
+/// will update the marker on completion/failure. Best-effort: failures here
+/// are treated as "rebuild not triggered" by the caller via the marker check.
+fn spawn_background_rebuild(repo_root: &Path, state_file: &Path, now_unix: u64) {
+    // Ensure .chump/ exists.
+    if let Some(parent) = state_file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    // Write "in_flight" marker BEFORE spawning so concurrent callers see it.
+    let _ = std::fs::write(
+        state_file,
+        format!(
+            "{{\"status\":\"in_flight\",\"started_at\":{},\"completed_at\":0,\"reason\":\"\"}}",
+            now_unix
+        ),
+    );
+
+    // Emit ambient event.
+    emit_binary_refresh_event(repo_root, "binary_refresh_started", "", 0);
+
+    // The actual rebuild + marker update is done by a small wrapper shell
+    // command we spawn detached. The wrapper:
+    //   1. runs `cargo install --path <root> --bin chump --force`
+    //   2. on success: writes "done" marker
+    //   3. on failure: writes "failed" marker with reason
+    //   4. emits the appropriate ambient event
+    let state_file_str = state_file.to_string_lossy().to_string();
+    let repo_root_str = repo_root.to_string_lossy().to_string();
+    let ambient = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ambient_str = ambient.to_string_lossy().to_string();
+
+    let wrapper = format!(
+        r#"
+( cargo install --path '{root}' --bin chump --force --offline >/tmp/chump-jit-rebuild.log 2>&1 \
+    || cargo install --path '{root}' --bin chump --force >>/tmp/chump-jit-rebuild.log 2>&1 ) \
+    && now=$(date +%s) \
+    && printf '{{"status":"done","started_at":{started},"completed_at":%s,"reason":""}}' "$now" > '{state}' \
+    && printf '{{"ts":"%s","kind":"binary_refresh_completed","event":"binary_refresh_completed"}}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> '{ambient}' \
+    || ( now=$(date +%s) \
+        ; reason=$(tail -1 /tmp/chump-jit-rebuild.log | tr -d '"' | head -c 200) \
+        ; printf '{{"status":"failed","started_at":{started},"completed_at":%s,"reason":"%s"}}' "$now" "$reason" > '{state}' \
+        ; printf '{{"ts":"%s","kind":"binary_refresh_failed","event":"binary_refresh_failed","reason":"%s"}}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$reason" >> '{ambient}' )
+"#,
+        root = repo_root_str,
+        started = now_unix,
+        state = state_file_str,
+        ambient = ambient_str,
+    );
+
+    // Detach: setsid + nohup so the rebuild outlives the current chump process.
+    let _ = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(&wrapper)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .spawn();
+}
+
+/// Emit ambient event for binary refresh lifecycle (best-effort).
+fn emit_binary_refresh_event(repo_root: &Path, kind: &str, reason: &str, _unused: u64) {
+    let ambient = repo_root.join(".chump-locks").join("ambient.jsonl");
+    if let Some(parent) = ambient.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\"event\":\"{kind}\",\"reason\":\"{reason}\"}}"
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+}
+
+/// Tiny JSON-field parsers (avoid pulling serde_json into version.rs).
+fn parse_json_u64_field(content: &str, field: &str) -> Option<u64> {
+    let needle = format!("\"{}\":", field);
+    let idx = content.find(&needle)? + needle.len();
+    let rest = &content[idx..];
+    let end = rest.find(|c: char| !c.is_ascii_digit() && c != '-')?;
+    rest[..end].parse().ok()
+}
+
+fn parse_json_str_field(content: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{}\":\"", field);
+    let idx = content.find(&needle)? + needle.len();
+    let rest = &content[idx..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 /// Emit an ambient event naming the override use. Best-effort: failures here
