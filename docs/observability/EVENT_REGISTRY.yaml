@@ -4623,6 +4623,38 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, failure_class, attempt_number]
 
+  # META-100: RUNNER_GHOST_ONLINE detection — operator-recall condition (e).
+  # Fired by scripts/dispatch/operator-recall.sh when queued workflow_runs
+  # older than CHUMP_RUNNER_QUEUE_THRESHOLD_S exist AND ≥1 self-hosted runner
+  # is online+idle (the contradiction that caused 14 PRs to wait 17h on
+  # 2026-05-24). This event fires before the operator_recall page so consumers
+  # can track detection frequency independently of cooldown-gated paging.
+  - kind: runner_ghost_online_detected
+    effect_metric: self
+    emitter: scripts/dispatch/operator-recall.sh (META-100)
+    trigger: >
+      operator-recall.sh detected ≥1 queued workflow_run older than
+      CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300s) while at least one
+      self-hosted runner reports status=online and busy=false. Emitted
+      unconditionally (not cooldown-gated) so detection frequency is
+      observable even when paging is suppressed by the cooldown window.
+    consumers: [operator-recall, fleet-brief, ops-audit]
+    fields_required: [ts, kind, queued_count, oldest_age_s, idle_runners, threshold_s]
+
+  # META-100: recovery script ran (scripts/ops/restart-actions-runners.sh).
+  # Emitted after launchctl unload+load cycle for all configured runner plists.
+  - kind: actions_runners_restarted
+    effect_metric: self
+    emitter: scripts/ops/restart-actions-runners.sh (META-100)
+    trigger: >
+      Operator (or automated recovery) ran restart-actions-runners.sh to
+      cycle the launchd plists for all self-hosted GitHub Actions runner
+      agents. prior_queued_count is the workflow run queue depth sampled
+      immediately before the restart so the operator can confirm the queue
+      drained after recovery.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, runners_restarted_count, prior_queued_count]
+
   # META-088: Oracle refresh cron. Periodic Opus burst (every 4h via launchd)
   # re-contemplates docs/process/THE_PATH.md against current state.db + recent
   # ambient. Emits 4 ambient kinds for observability.

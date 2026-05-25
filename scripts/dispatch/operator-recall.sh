@@ -6,16 +6,20 @@
 #   2. POSTs a JSON body to CHUMP_OPERATOR_RECALL_URL if set
 #
 # Conditions:
-#   (a) AUTH_DEAD    — ≥ CHUMP_AUTH_STORM_RECALL_THRESHOLD fleet_auth_storm
-#                      events with action=worker_exit in the last
-#                      CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600)
-#   (b) COST_CAP     — cost_cap_exceeded event in ambient.jsonl within 2 h,
-#                      OR `chump cost-watch --hard-cap` exits non-zero
-#   (c) CI_BROKEN    — ≥ CHUMP_CI_BROKEN_THRESHOLD pr_stuck events with
-#                      reason containing "ci" in CHUMP_CI_BROKEN_WINDOW_SECS
-#                      (default 3, 7200)
-#   (d) QUEUE_STARVE — fleet_queue_depth event with pickable_count=0 AND no
-#                      gap_reserved event in CHUMP_QUEUE_STARVE_SECS (default 86400)
+#   (a) AUTH_DEAD           — ≥ CHUMP_AUTH_STORM_RECALL_THRESHOLD fleet_auth_storm
+#                             events with action=worker_exit in the last
+#                             CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600)
+#   (b) COST_CAP            — cost_cap_exceeded event in ambient.jsonl within 2 h,
+#                             OR `chump cost-watch --hard-cap` exits non-zero
+#   (c) CI_BROKEN           — ≥ CHUMP_CI_BROKEN_THRESHOLD pr_stuck events with
+#                             reason containing "ci" in CHUMP_CI_BROKEN_WINDOW_SECS
+#                             (default 3, 7200)
+#   (d) QUEUE_STARVE        — fleet_queue_depth event with pickable_count=0 AND no
+#                             gap_reserved event in CHUMP_QUEUE_STARVE_SECS (default 86400)
+#   (e) RUNNER_GHOST_ONLINE — queued workflow_runs older than
+#                             CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300) exist AND
+#                             ≥1 self-hosted runner has status=online,busy=false.
+#                             Guard: CHUMP_RUNNER_GHOST_ONLINE_DETECT (default 1, set to 0 to disable)
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
@@ -30,6 +34,8 @@
 #   CHUMP_CI_BROKEN_THRESHOLD              default 3
 #   CHUMP_CI_BROKEN_WINDOW_SECS            default 7200
 #   CHUMP_QUEUE_STARVE_SECS                default 86400
+#   CHUMP_RUNNER_QUEUE_THRESHOLD_S         seconds a run stays queued before ghost-online fires (default 300)
+#   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable RUNNER_GHOST_ONLINE detection (default 1)
 #   CHUMP_AMBIENT_LOG                      path to ambient.jsonl
 
 set -uo pipefail
@@ -45,6 +51,8 @@ _auth_window="${CHUMP_AUTH_STORM_WINDOW_SECS:-3600}"
 _ci_threshold="${CHUMP_CI_BROKEN_THRESHOLD:-3}"
 _ci_window="${CHUMP_CI_BROKEN_WINDOW_SECS:-7200}"
 _queue_starve="${CHUMP_QUEUE_STARVE_SECS:-86400}"
+_runner_queue_threshold="${CHUMP_RUNNER_QUEUE_THRESHOLD_S:-300}"
+_runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
 
 _check_only=0
 _forced_condition=""
@@ -98,6 +106,109 @@ _emit_recall() {
         curl -sf -X POST -H "Content-Type: application/json" \
             -d "$payload" "$_recall_url" >/dev/null 2>&1 || \
             echo "[operator-recall] WARNING: webhook POST failed (url=${_recall_url})" >&2
+    fi
+}
+
+# ── (e) RUNNER_GHOST_ONLINE detection ─────────────────────────────────────────
+
+_detect_runner_ghost_online() {
+    local cache_db="$REPO_ROOT/.chump/github_cache.db"
+    local now_epoch; now_epoch="$(_now_epoch)"
+    local stale_threshold="$_runner_queue_threshold"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    # --- Step 1: find queued workflow_runs older than threshold ---
+    local queued_count=0
+    local oldest_age_s=0
+
+    if [[ -f "$cache_db" ]]; then
+        # Read from cache: workflow_run_cache table (INFRA-1872 shape)
+        local cache_result
+        cache_result=$(python3 - "$cache_db" "$now_epoch" "$stale_threshold" <<'PYEOF' 2>/dev/null
+import sys, sqlite3
+from datetime import datetime, timezone
+
+db_path, now_epoch, threshold = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    count = 0
+    oldest_age = 0
+    if "workflow_run_cache" in tables:
+        rows = cur.execute(
+            "SELECT created_at FROM workflow_run_cache WHERE status='queued'"
+        ).fetchall()
+        for (created_at,) in rows:
+            try:
+                created_epoch = int(datetime.fromisoformat(
+                    created_at.rstrip("Z")).replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                continue
+            age = now_epoch - created_epoch
+            if age >= threshold:
+                count += 1
+                if age > oldest_age:
+                    oldest_age = age
+    print(f"{count} {oldest_age}")
+    conn.close()
+except Exception:
+    print("0 0")
+PYEOF
+        )
+        queued_count=$(echo "$cache_result" | awk '{print $1}')
+        oldest_age_s=$(echo "$cache_result" | awk '{print $2}')
+    fi
+
+    # No stale queued runs — nothing to do.
+    if [[ -z "$queued_count" ]] || (( queued_count == 0 )); then
+        return 0
+    fi
+
+    # --- Step 2: check for online-but-idle self-hosted runners via GitHub API ---
+    local idle_runners=0
+    local runners_json
+    local _gh_repo="${GITHUB_REPOSITORY:-repairman29/chump}"
+    runners_json=$(gh api "repos/${_gh_repo}/actions/runners" --paginate 2>/dev/null || echo "")
+
+    if [[ -n "$runners_json" ]]; then
+        idle_runners=$(python3 - "$runners_json" <<'PYEOF' 2>/dev/null
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+    runners = data if isinstance(data, list) else data.get("runners", [])
+    count = sum(
+        1 for r in runners
+        if r.get("status") == "online" and not r.get("busy", True)
+        and any(l.get("name") == "self-hosted" for l in r.get("labels", []))
+    )
+    print(count)
+except Exception:
+    print(0)
+PYEOF
+        )
+    fi
+
+    idle_runners="${idle_runners//[[:space:]]/}"
+    if [[ -z "$idle_runners" ]]; then
+        idle_runners=0
+    fi
+
+    # --- Step 3: contradiction — stale queued jobs AND idle online runners ---
+    if (( idle_runners >= 1 )); then
+        # Informational pre-recall event (not cooldown-gated).
+        local detect_body
+        detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d}' \
+            "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold")"
+        printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
+
+        local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s) with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "RUNNER_GHOST_ONLINE" "$_reason"
+        fi
     fi
 }
 
@@ -238,6 +349,11 @@ if (( _pickable == 0 )); then
             _emit_recall "QUEUE_STARVE" "$_reason"
         fi
     fi
+fi
+
+# (e) RUNNER_GHOST_ONLINE — queued runs stale + runner online-but-idle contradiction
+if (( _runner_ghost_detect != 0 )); then
+    _detect_runner_ghost_online
 fi
 
 if (( _check_only && _any_halt )); then
