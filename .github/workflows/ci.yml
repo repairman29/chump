@@ -1778,6 +1778,9 @@ jobs:
       - name: ci-audit-loop subcommands — tick/audit/heartbeat/help + scanner-anchor discipline (INFRA-1923)
         run: bash scripts/ci/test-ci-audit-loop.sh
 
+      - name: inbox-prune — size + age rotation caps for inbox jsonl files (INFRA-1979)
+        run: bash scripts/ci/test-inbox-prune.sh
+
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
   # filter says to skip (skipped ≠ passing in GitHub Actions). The stub pattern
