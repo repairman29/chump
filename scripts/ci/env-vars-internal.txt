@@ -534,3 +534,23 @@ CHUMP_AMBIENT_DISABLE
 #   broadcast.sh consumer) — explicit correlation-id override for INFRA-1255.
 CHUMP_MESSAGING_RUST
 CHUMP_CORR_ID
+# INFRA-1999: chump-github-cache crate Phase 1 (Rust cache + receiver).
+# CHUMP_GITHUB_CACHE_RUST=1 routes the bash cache helper surface
+#   (scripts/coord/lib/github_cache.sh) through the chump-github-cache-cli
+#   binary; bash legacy body is preserved and runs when flag is 0.
+# CHUMP_GH_CACHE_CLI overrides the CLI binary name (default
+#   `chump-github-cache-cli`; used by the smoke test that points at a
+#   target/debug build).
+# CHUMP_WEBHOOK_RUST_PORT (default 9876) is the bind port for the
+#   chump-webhook-receiver axum server. Python receiver keeps its port
+#   (default 9097) so both can run in parallel during validation.
+# CHUMP_WEBHOOK_SECRET — HMAC-SHA256 key (already used by the Python
+#   receiver, registered here as well to keep the audit complete).
+CHUMP_GITHUB_CACHE_RUST
+CHUMP_GH_CACHE_CLI
+CHUMP_WEBHOOK_RUST_PORT
+CHUMP_WEBHOOK_SECRET
+# CHUMP_CACHE_DB (pre-existing; honoured by the new Rust CLI/receiver
+#   to override the default .chump/github_cache.db path — kept consistent
+#   with the legacy bash helper + Python receiver behaviour).
+CHUMP_CACHE_DB

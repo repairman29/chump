@@ -1530,6 +1530,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-github-cache"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "clap",
+ "hex",
+ "hmac",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [
