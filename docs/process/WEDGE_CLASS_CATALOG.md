@@ -352,6 +352,42 @@ Fixed in RESILIENT-020.
 | W-010 | <5 min | ✅ documented |
 | W-011 | <5 min | 🟡 manual (long-term: chump fleet bootstrap --check) |
 | W-012 | <5 min per test | 🟡 patch tests lazily as they surface |
+| W-013 | <5 min per test | 🟡 patch tests lazily as they surface |
+
+---
+
+## Class W-013 — Test writes ambient to workflow-injected path, asserts on local fixture
+
+**Signature**:
+- A test creates its own `$FAKE/.chump-locks/ambient.jsonl` for ambient assertions
+- Test invokes a script (detector/daemon) that emits ambient events via env-resolved path
+- Workflow injects `CHUMP_LOCK_DIR=${{ github.workspace }}/.chump-locks` (INFRA-1959)
+- Script writes ambient to WORKFLOW path; test asserts on FAKE path → claims event missing
+- Output (`$OUT`) shows the event WAS emitted; assertion fails confusingly
+
+**Time-to-recovery target**: <5 min per test
+
+**Detection**: CI fail with `expected <event-kind>` AND error message shows the event IS in `out=...`
+but `ambient=` is empty.
+
+**Recovery playbook**:
+1. Identify failing test from CI log
+2. Add `unset CHUMP_REPO CHUMP_LOCK_DIR` directly after `mktemp -d` setup
+3. Local verify in BOTH clean env AND `CHUMP_REPO=/wrong CHUMP_LOCK_DIR=/wrong` env
+4. Both must PASS → fix is correct
+5. Tiny PR + admin-merge
+
+**Hardening shipped**: RESILIENT-023 patches `test-bounced-pr-detector.sh`.
+Same pattern applies to ~5-10 other tests that emit ambient + assert locally.
+Patched lazily as they surface in CI.
+
+**Distinct from W-012**:
+- W-012 = chump BINARY reads CHUMP_REPO → uses wrong state.db
+- W-013 = ambient-emitting SCRIPT reads CHUMP_LOCK_DIR → writes wrong ambient.jsonl
+- Same root (workflow env hijack), different mechanism
+
+**First seen**: 2026-05-25 — surfaced on MISSION-007 canary (#2573) audit gate.
+Fixed in RESILIENT-023.
 
 ## When you find a new class
 
