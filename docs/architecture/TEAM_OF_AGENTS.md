@@ -161,7 +161,7 @@ Status table (2026-05-24):
 | target | ✅ shipped | ✅ shipped | ⏳ filed (INFRA-1917) | shipped |
 | handoff | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1922) | **shipped** |
 | shepherd | ⏳ filed | ⏳ filed | ⏳ filed | filed |
-| ci-audit | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| ci-audit | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1923) | **shipped** |
 | decompose | ⏳ filed | ⏳ filed | ⏳ filed | filed |
 | md-links | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1925) | **shipped** |
 
@@ -194,7 +194,7 @@ invokes the loop the same way.
 | target | shipped (INFRA-1918) | `.claude/agents/target.md` | `.claude/skills/target/SKILL.md` | `scripts/coord/target-loop.sh` (filed) | self-contributed |
 | shepherd | shipped (META-091/092/094) | filed | filed | `scripts/coord/opus-shepherd-triage.sh` + siblings | self-contributed |
 | handoff | filed (INFRA-1922) | filed | filed | filed | self-contributed |
-| ci-audit | filed (INFRA-1925) | filed | filed | filed | INFERRED |
+| ci-audit | **shipped (INFRA-1923)** | `.claude/agents/ci-audit.md` | `.claude/skills/ci-audit/SKILL.md` | `scripts/coord/ci-audit-loop.sh` | **INFERRED** |
 | **decompose** | **shipped (INFRA-1924)** | `.claude/agents/decompose.md` | `.claude/skills/decompose/SKILL.md` | `scripts/coord/decompose-loop.sh` | **INFERRED** |
 | md-links | **shipped (INFRA-1925)** | `.claude/agents/md-links.md` | `.claude/skills/md-links/SKILL.md` | `scripts/coord/md-links-loop.sh` | INFERRED |
 
