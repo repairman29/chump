@@ -1,0 +1,35 @@
+- id: META-106
+  domain: META
+  title: THE FLOOR — foundational primitives so 50/hr feels boring (umbrella; see docs/strategy/THE_FLOOR.md)
+  status: open
+  priority: P0
+  effort: l
+  acceptance_criteria:
+    - "Plan doc docs/strategy/THE_FLOOR.md sets canonical phasing for Phase 1/2/3 floor work (3 weeks total target)"
+    - "Phase 1 (Week 1, observation primitives): INFRA-1987 (cluster detector), INFRA-1989 (blame bot), INFRA-1992 (floor temp signal) — all shipped"
+    - "Phase 2 (Week 2, behavior change): INFRA-1988 (silent-noop alarm), INFRA-1990 (hook stdin gate), INFRA-1996 (silent-failure tax), INFRA-1995 (fleet pulse), and cluster auto-HOLD extension on INFRA-1987 — all shipped"
+    - "Phase 3 (Week 3, recovery + state machine): INFRA-1993 (recovery queue), INFRA-1994 (wedge state machine) — both shipped"
+    - "Success metrics from doc §Success criteria: pile-up detection <2min, regression attribution <5min, recovery without Opus <15min, 0 unannotated silent-failure surfaces, 100% agents read floor temp pre-claim, 13/13 wedge classes have detector+remediation, mean time between admin-merge cycles >4h"
+    - "Week 3+1 day: scale-up trial to 4 agents (C-V3 measurement) — if sustained 25+ merges/hr without pile-up needing Opus, floor verified"
+    - "Companion retrospective doc FLOOR_RETROSPECTIVE.md written end of Week 3"
+  depends_on: []
+  description: |
+    Umbrella for THE FLOOR plan. Subgaps INFRA-1987..INFRA-1996 deliver the
+    structural primitives (cluster detector, blame bot, floor-temp signal,
+    silent-no-op alarm, hook stdin gate, silent-failure tax, fleet pulse,
+    recovery queue, wedge state machine).
+
+    Read docs/strategy/THE_FLOOR.md FIRST. The plan doc has the rationale,
+    sequencing, and success criteria. This umbrella is just the tracker.
+
+    Phasing rationale:
+    - Phase 1 = observation; we cannot fix what we cannot measure
+    - Phase 2 = behavior change; once we measure, we act
+    - Phase 3 = autonomy; once we act reliably, we delegate
+
+    Operator sign-off gates each phase boundary. If Phase 1 data reveals
+    the model is wrong, Phase 2 plan revises before any code ships.
+
+    Out of scope (orthogonal): wedge-class fixes (infinite), more tests,
+    scaling beyond 2 agents (premature), cross-machine sync, PWA polish,
+    Marcus customer-arc work.
