@@ -173,6 +173,7 @@ mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
+mod required_check_health; // INFRA-1522: W-007 required-check health gate
 mod rescue_tally;
 mod resume_cmd; // INFRA-1456: chump resume <gap-id> — reattach wedged gap
 mod revert_pr;
@@ -522,6 +523,65 @@ fn extract_path_hints(text: &str, repo_root: &std::path::Path) -> Vec<std::path:
         }
     }
     out
+}
+
+/// INFRA-1522: probe the repo's required status checks from branch protection.
+///
+/// Shells `gh api repos/<owner>/<repo>/branches/main/protection` and extracts
+/// the contexts array. Returns empty Vec on any error (caller fails-open).
+///
+/// Resolves owner/repo from `git remote get-url origin` or the `CHUMP_GH_REPO`
+/// env var.
+fn list_required_contexts() -> Vec<String> {
+    // Allow tests / CI to inject the contexts list (skips the gh shell-out).
+    if let Ok(v) = std::env::var("CHUMP_REQUIRED_CHECKS_OVERRIDE") {
+        return v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    let repo = match std::env::var("CHUMP_GH_REPO") {
+        Ok(r) if !r.is_empty() => r,
+        _ => {
+            // Try `gh repo view` to resolve owner/repo.
+            let out = std::process::Command::new("gh")
+                .args([
+                    "repo",
+                    "view",
+                    "--json",
+                    "nameWithOwner",
+                    "-q",
+                    ".nameWithOwner",
+                ])
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                }
+                _ => return Vec::new(),
+            }
+        }
+    };
+
+    if repo.is_empty() {
+        return Vec::new();
+    }
+
+    let url = format!("repos/{}/branches/main/protection", repo);
+    let out = std::process::Command::new("gh")
+        .args(["api", &url, "--jq", ".required_status_checks.contexts[]?"])
+        .output();
+
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Load .env from CHUMP_HOME/CHUMP_REPO first (so Chump Menu / run-discord.sh always get the right .env),
@@ -4846,6 +4906,43 @@ async fn main() -> Result<()> {
                     std::process::exit(2);
                 }
 
+                // INFRA-1522 (W-007): required-check health gate.
+                // Refuse `up` if any required status check has a flake history
+                // >20% or last 5 runs all SKIPPED — that's the wedge class
+                // that cost ~50 PRs of throughput on 2026-05-25.
+                // Bypass: --force flag (emits required_check_health_bypass).
+                let want_force = args.iter().any(|a| a == "--force");
+                if !want_force {
+                    let provider = required_check_health::default_provider();
+                    // Probe required checks via `gh api branches/main/protection`.
+                    let required_contexts = list_required_contexts();
+                    if !required_contexts.is_empty() {
+                        let report = required_check_health::evaluate(&required_contexts, &provider);
+                        if report.any_unhealthy {
+                            required_check_health::emit_warn_for_unhealthy(&report, None);
+                            eprintln!("{}", report.refuse_message());
+                            eprintln!();
+                            eprintln!("  Bypass: chump fleet up --force  (emits audit event)");
+                            std::process::exit(2);
+                        }
+                    }
+                } else {
+                    // Force-bypass: emit the audit event so the operator
+                    // override is captured in ambient.jsonl.
+                    let provider = required_check_health::default_provider();
+                    let required_contexts = list_required_contexts();
+                    if !required_contexts.is_empty() {
+                        let report = required_check_health::evaluate(&required_contexts, &provider);
+                        if report.any_unhealthy {
+                            required_check_health::emit_bypass(
+                                &report,
+                                "operator --force on fleet up",
+                            );
+                            eprintln!("[fleet up] --force bypass active — required-check health gate skipped");
+                        }
+                    }
+                }
+
                 // Delegate to the same logic as "start" (shared via the start arm path).
                 let size = flag("--size")
                     .or_else(|| cfg("size"))
@@ -5419,18 +5516,53 @@ async fn main() -> Result<()> {
                     fields: vec![("status".to_string(), "diagnose_only".to_string())],
                     ..Default::default()
                 });
+
+                // INFRA-1522 (W-007): required-check health gate runs in
+                // diagnose mode too. Exits 1 on any unhealthy required
+                // check so `chump fleet doctor` becomes the trip-wire for
+                // the W-007 wedge class (path-filtered SKIPPED, flake rate
+                // >20%, etc.).
+                let provider = required_check_health::default_provider();
+                let required_contexts = list_required_contexts();
+                let health_report = if required_contexts.is_empty() {
+                    None
+                } else {
+                    let report = required_check_health::evaluate(&required_contexts, &provider);
+                    if report.any_unhealthy {
+                        required_check_health::emit_warn_for_unhealthy(&report, None);
+                    }
+                    Some(report)
+                };
+
                 if want_json {
                     println!(
                         "{}",
                         serde_json::json!({
                             "mode": "diagnose",
+                            "required_check_health": health_report.as_ref().map(|r| serde_json::json!({
+                                "any_unhealthy": r.any_unhealthy,
+                                "checks": r.checks,
+                            })),
                             "note": "--heal not requested; diagnose-only stub until INFRA-1427 strict lands"
                         })
                     );
                 } else {
                     println!("chump fleet doctor: diagnose-only mode (pass --heal to auto-fix).");
+                    if let Some(r) = &health_report {
+                        if r.any_unhealthy {
+                            println!("\n{}", r.refuse_message());
+                        } else {
+                            println!("  required-check health: {} checks OK", r.checks.len());
+                        }
+                    }
                 }
-                std::process::exit(0);
+
+                let exit_code = if health_report.as_ref().is_some_and(|r| r.any_unhealthy) {
+                    1
+                } else {
+                    0
+                };
+                std::process::exit(exit_code);
             }
             // INFRA-1483: declarative spec primitive (Marcus M-B). Plan
             // shows the gap set without mutating; apply reserves; spec-status

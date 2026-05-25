@@ -333,3 +333,7 @@ oracle_refresh_pr_opened  # reason: META-088 — scripts/coord/oracle-refresh.sh
 # ── META-093: Opus parallel sub-fleet slot tracker ───────────────────────────
 opus_slot_dispatched  # reason: META-093 emitted by scripts/coord/opus-slot-tracker.sh dispatch subcommand via python3 heredoc; not grep-scannable as kind=X literal in PROD_PATHS
 opus_slot_reaped      # reason: META-093 emitted by scripts/coord/opus-slot-tracker.sh reap subcommand via python3 heredoc; not grep-scannable as kind=X literal in PROD_PATHS
+
+# ── INFRA-1522: W-007 required-check health gate ─────────────────────────────
+required_check_health_warn  # reason: INFRA-1522 emitted by src/required_check_health.rs::emit_warn_for_unhealthy when chump fleet up/doctor finds flake>20% or skipped streak; formal EVENT_REGISTRY.yaml entry in follow-up (file currently held by INFRA-1977 lease)
+required_check_health_bypass  # reason: INFRA-1522 emitted by src/required_check_health.rs::emit_bypass when operator passes --force to fleet up; audit trail for intentional override; formal EVENT_REGISTRY.yaml entry in follow-up
