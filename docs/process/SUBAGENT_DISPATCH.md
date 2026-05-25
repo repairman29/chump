@@ -156,6 +156,29 @@ envs (`CHUMP_GAP_CHECK=0`, `CHUMP_CHECK_BUILD=0`, `CHUMP_RAW_YAML_EDIT=1` +
 `RAW_YAML_REASON: <text>` trailer) are documented in CLAUDE.md and safe
 when applicable.
 
+**PRE-EXIT VERIFICATION (mandatory, INFRA-1953) — run as the LAST executable
+step before composing the final report:**
+
+```bash
+# Asserts (a) branch on origin, (b) PR exists for branch, (c) auto-merge armed.
+# Exits 0 on all-pass; non-zero with diagnostic and emits
+# kind=subagent_idle_without_pr to ambient so the dispatcher sees the pattern.
+bash scripts/dispatch/subagent-pre-exit-check.sh <YOUR-BRANCH>
+```
+
+If the check exits non-zero with `no PR for branch`, your work has **not
+shipped** — execute the manual-recovery push+create+arm path above NOW.
+**Do not return `status=completed` with `result="waiting for monitor"` or
+similar — that is the half-ship failure mode INFRA-1953 was filed to catch
+(observed twice on 2026-05-24: INFRA-1893 #2489 + INFRA-1935 #2536).**
+
+If the check exits non-zero with `auto-merge not armed`, re-arm via GraphQL:
+```bash
+PR_ID=$(gh pr view <PR-N> --json id --jq .id)
+gh api graphql -f query='mutation($prId:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$prId,mergeMethod:SQUASH}){pullRequest{autoMergeRequest{mergeMethod}}}}' -F prId="$PR_ID"
+```
+The `gh pr merge --auto` CLI sometimes silent-fails (INFRA-1906); GraphQL is the reliable path.
+
 **Final report format** — reply with this structure under 250 words:
 ```
 PR number: #NNNN  (or "BLOCKED" + one-line reason)
