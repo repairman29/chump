@@ -1519,6 +1519,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-git-hooks"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [

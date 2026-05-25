@@ -513,3 +513,14 @@ CHUMP_OPUS_MAX_SLOTS          # 0=disabled, 1=single-slot legacy, 3=default para
 CHUMP_OPUS_SLOTS_FILE         # override path for .chump-locks/opus-slots.json (test use)
 CHUMP_OPUS_LEASE_TIMEOUT_S    # seconds before no-lease kill (default 300 = 5min)
 CHUMP_OPUS_PR_TIMEOUT_S       # seconds before no-PR kill (default 600 = 10min)
+
+# INFRA-1997: chump-git-hooks crate Phase 1 (Rust pre-push hook).
+# CHUMP_PREPUSH_RUST=1 selects the Rust hook binary; bash shim falls
+#   through to the legacy hook otherwise (1-week parallel-validation window).
+# CHUMP_FORCE_LEASE_CHECK=0 bypasses Guard 3 (INFRA-345 force-with-lease
+#   race protection); existing flag, now also read by the Rust port.
+# CHUMP_AMBIENT_DISABLE=1 muted in the smoke test to keep Phase 1 free of
+#   any new ambient event emission (registry-reserved.txt held by INFRA-2003).
+CHUMP_PREPUSH_RUST
+CHUMP_FORCE_LEASE_CHECK
+CHUMP_AMBIENT_DISABLE

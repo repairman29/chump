@@ -45,8 +45,25 @@
 # Bypass: CHUMP_BYPASS_BOT_MERGE=1 git push  (rare; add a comment why)
 #
 # Install once: ./scripts/setup/install-hooks.sh
+#
+# INFRA-1997 Phase 1: feature-flagged Rust shim. When CHUMP_PREPUSH_RUST=1
+# and the `chump-pre-push` binary is on PATH, this hook exec's the binary
+# and the legacy bash path is skipped. Otherwise the bash hook runs
+# unchanged. Both implementations stay side-by-side during a 1-week
+# parallel-validation window; cutover to Rust default is a separate gap.
+#
+# The binary handles env-immunity (scrubs GIT_DIR / GIT_WORK_TREE /
+# GITHUB_WORKSPACE / GIT_COMMON_DIR / GIT_INDEX_FILE at entry, then
+# discovers repo root via env_clear()'d git subprocess) — the failure
+# class behind INFRA-1950 / TRUNK_RED 2026-05-23.
 
 set -euo pipefail
+
+# ----- INFRA-1997 Phase 1 Rust shim ---------------------------------------
+if [[ "${CHUMP_PREPUSH_RUST:-0}" == "1" ]] && command -v chump-pre-push &>/dev/null; then
+    exec chump-pre-push "$@"
+fi
+# --------------------------------------------------------------------------
 
 # INFRA-1950: resolve repo root from the hook's own location so all internal
 # `git` calls use an explicit `-C "$REPO_ROOT"` rather than inheriting ambient
