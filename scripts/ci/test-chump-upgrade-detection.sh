@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # scripts/ci/test-chump-upgrade-detection.sh — INFRA-1504
 #
 # Verifies the binary age + upgrade detection introduced by INFRA-1504:

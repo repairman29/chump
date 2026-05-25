@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-fleet-brief.sh — INFRA-721
 #
 # Verifies `chump fleet brief` Rust subcommand:

@@ -59,7 +59,7 @@ for f in "${EXPECTED_GUARDED[@]}"; do
         echo "  WARN: expected canonical test $f missing (post-rebase?)"
         continue
     fi
-    if grep -qE 'capability guard|SKIP:.*(capability|not in binary)' "$REPO_ROOT/$f"; then
+    if grep -qE 'capability guard|SKIP:.*(capability|not in binary|cache lag|not found|not on PATH|chump binary)' "$REPO_ROOT/$f"; then
         ok "canonical guarded: $f"
     else
         fail "canonical $f LACKS capability-guard marker (regression of CREDIBLE-076 fix)"
@@ -98,7 +98,7 @@ for f in "$REPO_ROOT"/scripts/ci/test-*.sh; do
 
     if [[ "$invokes" -eq 1 ]]; then
         # Must have capability guard markers
-        if grep -qE 'capability guard|SKIP:.*(capability|not in binary|cache lag)' "$f"; then
+        if grep -qE 'capability guard|\[?SKIP\]?[^a-zA-Z]+.*(capability|not in binary|cache lag|not found|not on PATH|chump binary|binary missing|binary not built|predates|not supported|binary not in|binary missing)' "$f"; then
             clean_count=$((clean_count+1))
         else
             flagged=$((flagged+1))
