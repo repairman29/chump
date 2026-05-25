@@ -244,6 +244,7 @@ pillar_balance_warn        # reason: planned for pillar balance enforcer: warn
 planner_rank_ran           # reason: planned for gap planner ranking emit
 pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
 pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
+pr_auto_rebase_fallback # reason: INFRA-1958 emitted by scripts/coord/pr-auto-rebase.sh when gh pr update-branch returned false-positive but local git rebase succeeded; printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
 pr_bounced_relanded        # reason: emitter scripts/coord/ uses _emit function (confirmed in grep); adding to reserved while INFRA-1287 grep fixes land
 pr_bounced_unfinished      # reason: emitter scripts/coord/bounced-pr-detector.sh; _emit pattern may not cover all code paths
