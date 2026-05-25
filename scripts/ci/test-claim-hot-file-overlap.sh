@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# capability-guard-exempt: builds chump in-test via cargo; not subject to runner binary cache lag (CREDIBLE-077)
 # test-claim-hot-file-overlap.sh — INFRA-1394
 #
 # CI test for the hot-file collision check in `chump claim`.
