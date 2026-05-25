@@ -802,6 +802,9 @@ jobs:
       - name: pr-watch shepherd smoke (INFRA-354)
         run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
 
+      - name: md-links-loop smoke (INFRA-1925)
+        run: bash scripts/ci/test-md-links-loop.sh
+
       - name: pr-blocked-watch smoke (INFRA-550)
         run: bash scripts/ci/test-pr-blocked-watch.sh
 

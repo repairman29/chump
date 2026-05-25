@@ -163,7 +163,7 @@ Status table (2026-05-24):
 | shepherd | ⏳ filed | ⏳ filed | ⏳ filed | filed |
 | ci-audit | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1923) | **shipped** |
 | decompose | ⏳ filed | ⏳ filed | ⏳ filed | filed |
-| md-links | ⏳ filed | ⏳ filed | ⏳ filed | filed |
+| md-links | ✅ shipped | ✅ shipped | ✅ shipped (INFRA-1925) | **shipped** |
 
 The 5 self-contributed acceptance-criteria per role live at
 [`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
@@ -196,7 +196,7 @@ invokes the loop the same way.
 | handoff | filed (INFRA-1922) | filed | filed | filed | self-contributed |
 | ci-audit | **shipped (INFRA-1923)** | `.claude/agents/ci-audit.md` | `.claude/skills/ci-audit/SKILL.md` | `scripts/coord/ci-audit-loop.sh` | **INFERRED** |
 | **decompose** | **shipped (INFRA-1924)** | `.claude/agents/decompose.md` | `.claude/skills/decompose/SKILL.md` | `scripts/coord/decompose-loop.sh` | **INFERRED** |
-| md-links | filed (INFRA-1923) | filed | filed | filed | INFERRED |
+| md-links | **shipped (INFRA-1925)** | `.claude/agents/md-links.md` | `.claude/skills/md-links/SKILL.md` | `scripts/coord/md-links-loop.sh` | INFERRED |
 
 INFERRED AC sources are recorded in
 [`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md);
