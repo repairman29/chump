@@ -1462,6 +1462,9 @@ jobs:
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
 
+      - name: graphql_exhausted debounce when resets_at unknown (INFRA-1968)
+        run: bash scripts/ci/test-graphql-debounce.sh
+
       - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
         run: bash scripts/ci/test-cache-mergestatestatus.sh
 
@@ -1760,6 +1763,9 @@ jobs:
 
       - name: INFRA-1318 Phase 2 end-to-end smoke — webhook cache + liaison slice signals (INFRA-1877)
         run: bash scripts/ci/test-liaison-webhook-cache.sh
+
+      - name: ci-audit-loop subcommands — tick/audit/heartbeat/help + scanner-anchor discipline (INFRA-1923)
+        run: bash scripts/ci/test-ci-audit-loop.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path

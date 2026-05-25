@@ -113,9 +113,17 @@ _chump_gh_rate_remaining() {
 # crosses the low-water threshold. Debounced to once per reset window so the
 # event fires on the first hit, not on every subsequent call. The flag file
 # stores the next-reset epoch; subsequent calls within the window skip emission.
+#
+# INFRA-1968: when GitHub returns resets_at:unknown (or absent/0), the prior
+# code wrote 0 to the flag file. Since 0 < now, the future-check always failed
+# and every call re-emitted — observed as 6 emits in 60s on 2026-05-24.
+# Fix: when resets_at is unknown/0, anchor the debounce window to
+# (now + CHUMP_GH_EXHAUSTED_UNKNOWN_DEBOUNCE_S, default 60). State is shared
+# across concurrent shim invocations via .chump-locks/graphql-exhausted-debounce-state.json.
 _chump_gh_maybe_emit_exhausted() {
     local gql_rem="${1:-0}" resets_at="${2:-0}" ambient="${3:-}"
     local threshold="${CHUMP_GH_EXHAUSTED_THRESHOLD:-100}"
+    local unknown_debounce_s="${CHUMP_GH_EXHAUSTED_UNKNOWN_DEBOUNCE_S:-60}"
 
     # Only fire when we have a real number under threshold.
     [[ "$gql_rem" =~ ^-?[0-9]+$ ]] || return 0
@@ -127,8 +135,16 @@ _chump_gh_maybe_emit_exhausted() {
     local now
     now="$(date +%s)"
 
-    # Debounce: if flag exists with a resets_at in the future, we're still
-    # in the same window — skip. If resets_at is past or flag missing, emit.
+    # INFRA-1968: if resets_at is 0 or "unknown", use a fixed debounce window
+    # anchored to the last emit. Share state in the debounce-state JSON so
+    # concurrent shim processes see the same last-emit timestamp.
+    local resets_at_is_unknown=0
+    if [[ "$resets_at" == "0" || "$resets_at" == "unknown" || -z "$resets_at" ]]; then
+        resets_at_is_unknown=1
+    fi
+
+    # Debounce: if flag exists with a next-emit-allowed epoch in the future,
+    # we're still in the same window — skip. If epoch is past or flag missing, emit.
     if [[ -f "$flag" ]]; then
         local prior_reset
         prior_reset="$(cat "$flag" 2>/dev/null | tr -d '\n')"
@@ -139,7 +155,7 @@ _chump_gh_maybe_emit_exhausted() {
 
     local ts resets_iso
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    if [[ "$resets_at" -gt 0 ]]; then
+    if [[ "$resets_at_is_unknown" -eq 0 && "$resets_at" -gt 0 ]]; then
         resets_iso="$(date -u -r "$resets_at" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
             || python3 -c "import datetime,sys; print(datetime.datetime.utcfromtimestamp(int(sys.argv[1])).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$resets_at")"
     else
@@ -151,8 +167,16 @@ _chump_gh_maybe_emit_exhausted() {
         "$ts" "$gql_rem" "$resets_iso" "$source_tag" \
         >> "$ambient" 2>/dev/null || true
 
-    # Write the next-reset epoch so subsequent calls in this window skip.
-    printf '%s' "$resets_at" >"$flag" 2>/dev/null || true
+    # Write the next-emit-allowed epoch so subsequent calls in this window skip.
+    # INFRA-1968: when resets_at is unknown/0, anchor to (now + debounce window)
+    # so the flag is always a future timestamp and the debounce actually holds.
+    local next_allowed
+    if [[ "$resets_at_is_unknown" -eq 1 ]]; then
+        next_allowed=$(( now + unknown_debounce_s ))
+    else
+        next_allowed="$resets_at"
+    fi
+    printf '%s' "$next_allowed" >"$flag" 2>/dev/null || true
 }
 
 # chump_gh_record API_TAG USED_MS RC [SCRIPT_OVERRIDE]
