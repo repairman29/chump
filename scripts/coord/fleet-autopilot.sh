@@ -68,6 +68,8 @@ AUTOPILOT_LAYERS=(
     "com.chump.refresh-runner-binary|scripts/setup/install-refresh-runner-binary-launchd.sh"
     # THE FLOOR Phase 1 (INFRA-1987 / META-106): cluster detector
     "com.chump.cluster-detector|scripts/setup/install-cluster-detector-launchd.sh"
+    # THE FLOOR Phase 3 (INFRA-1994 / META-106): wedge state machine
+    "com.chump.wedge-state-machine|scripts/setup/install-wedge-state-machine-launchd.sh"
 )
 
 emit() {
