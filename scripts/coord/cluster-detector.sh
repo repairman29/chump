@@ -251,6 +251,39 @@ print(json.dumps(s))
         "\"failing_checks\":\"$checks_csv\"" \
         "\"count\":$count" \
         "\"gap_id\":\"$gap_id\""
+
+    # INFRA-2004: write fleet-hold.txt so workers can pivot to triage.
+    # Idempotent — re-writing same content on each fire is a no-op for
+    # the worker contract (workers just check existence + read latest).
+    _write_fleet_hold "$cluster_id" "$pr_csv" "$checks_csv" "$count" "$gap_id"
+}
+
+# INFRA-2004: write the fleet-hold file. Worker contract:
+#   - File exists → fleet is on HOLD; new claims should pivot to triage
+#   - File absent → normal operations
+# Format is a single JSON object so workers can `jq` it.
+_write_fleet_hold() {
+    local cluster_id="$1"
+    local pr_csv="$2"
+    local checks_csv="$3"
+    local count="$4"
+    local gap_id="$5"
+    [[ "$DRY_RUN" == "1" ]] && return
+    local hold_file="$REPO_ROOT/.chump-locks/fleet-hold.txt"
+    cat > "${hold_file}.tmp" <<HOLD
+{
+  "active": true,
+  "cluster_id": "$cluster_id",
+  "since": "$(_ts)",
+  "reason": "ci_failure_cluster",
+  "pr_numbers": "$pr_csv",
+  "failing_checks": "$checks_csv",
+  "count": $count,
+  "rca_gap": "$gap_id",
+  "advisory": "Workers: pivot to triage/docs work until cluster resolves. Run 'chump fleet hold-check' for status."
+}
+HOLD
+    mv "${hold_file}.tmp" "$hold_file"
 }
 
 # ── Detect resolved clusters (no longer firing) ───────────────────────────────
@@ -301,6 +334,20 @@ s["clusters"] = {k: v for k, v in clusters.items() if k in current}
 print(json.dumps(s))
 ')"
     _save_state "$new_state"
+
+    # INFRA-2004: if state now has zero active clusters, remove fleet-hold.txt
+    # so workers resume normal operations.
+    if [[ "$DRY_RUN" != "1" ]]; then
+        local remaining
+        remaining="$(echo "$new_state" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("clusters",{})))' 2>/dev/null || echo 1)"
+        if [[ "$remaining" == "0" ]]; then
+            local hold_file="$REPO_ROOT/.chump-locks/fleet-hold.txt"
+            if [[ -f "$hold_file" ]]; then
+                rm -f "$hold_file"
+                echo "[hold-clear] all clusters resolved → removed $hold_file" >&2
+            fi
+        fi
+    fi
 }
 
 # ── Main sweep ────────────────────────────────────────────────────────────────
