@@ -23,6 +23,14 @@ fi
 TMP="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
+# W-013 immunization (RESILIENT-024 followup): unset workflow-injected env
+# so the pre-push hook executed under this test reads $REPO_ROOT-relative
+# paths instead of a workflow-injected /home/runner/.../.chump-locks that
+# points at an unrelated repo. The hook writes ambient events and reads
+# session state from $REPO_ROOT/.chump-locks; CHUMP_LOCK_DIR override
+# poisons that lookup.
+unset CHUMP_REPO CHUMP_LOCK_DIR
+
 # 1. Set up bare "origin" + two clones.
 mkdir -p "$TMP/origin.git" && cd "$TMP/origin.git" && git init --bare -q
 cd "$TMP" && git clone -q origin.git main_clone
