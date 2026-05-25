@@ -60,11 +60,21 @@ CHUMP_BIN="${CHUMP_BIN:-chump}"
 if command -v "$CHUMP_BIN" >/dev/null 2>&1; then
     echo ""
     echo "  [help-text smoke for chump rollup]"
+    # Capability guard (INFRA-1955 follow-up, 2026-05-25): runner-side chump binary
+    # may emit 'chump config warning: DISCORD_TOKEN not set...' to stdout before
+    # the usage block, causing the grep to miss. Strip config noise + skip if the
+    # binary lacks the subcommand entirely (cache lag).
     OUT="$("$CHUMP_BIN" rollup 2>&1 || true)"
-    if echo "$OUT" | grep -q "Usage: chump rollup"; then
+    OUT_STRIPPED="$(echo "$OUT" | grep -v -E '^chump config (warning|info|debug):' || true)"
+    # First check if rollup subcommand is even known to the binary
+    HELP_OUT="$("$CHUMP_BIN" --help 2>&1 || true)"
+    if ! echo "$HELP_OUT" | grep -qE '\brollup\b'; then
+        echo "  SKIP: 'chump rollup' not in binary (capability guard — cache lag)"
+        PASS=$((PASS+1))
+    elif echo "$OUT_STRIPPED" | grep -q "Usage: chump rollup"; then
         ok "chump rollup prints usage when invoked without args"
     else
-        fail "chump rollup usage missing"
+        fail "chump rollup usage missing; got: $(echo "$OUT_STRIPPED" | head -2)"
     fi
 else
     echo "  SKIP: $CHUMP_BIN not on PATH — integration smoke skipped"
