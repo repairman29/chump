@@ -337,3 +337,7 @@ opus_slot_reaped      # reason: META-093 emitted by scripts/coord/opus-slot-trac
 # ── INFRA-1522: W-007 required-check health gate ─────────────────────────────
 required_check_health_warn  # reason: INFRA-1522 emitted by src/required_check_health.rs::emit_warn_for_unhealthy when chump fleet up/doctor finds flake>20% or skipped streak; formal EVENT_REGISTRY.yaml entry in follow-up (file currently held by INFRA-1977 lease)
 required_check_health_bypass  # reason: INFRA-1522 emitted by src/required_check_health.rs::emit_bypass when operator passes --force to fleet up; audit trail for intentional override; formal EVENT_REGISTRY.yaml entry in follow-up
+
+# ── INFRA-1987 / META-106 (THE FLOOR Phase 1): cluster detector ──────────────
+ci_failure_cluster  # reason: INFRA-1987 emitted by scripts/coord/cluster-detector.sh when ≥3 OPEN PRs share IDENTICAL failing-check set; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS; formal EVENT_REGISTRY.yaml entry pending file lease
+ci_failure_cluster_resolved  # reason: INFRA-1987 emitted by scripts/coord/cluster-detector.sh when a previously-detected cluster_id disappears from BLOCKED PRs (resolution signal); formal EVENT_REGISTRY.yaml entry pending file lease

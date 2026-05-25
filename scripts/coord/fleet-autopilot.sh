@@ -66,6 +66,8 @@ AUTOPILOT_LAYERS=(
     "com.chump.fleet-autopilot|scripts/setup/install-fleet-autopilot-launchd.sh"
     # Substrate (depends on CREDIBLE-076)
     "com.chump.refresh-runner-binary|scripts/setup/install-refresh-runner-binary-launchd.sh"
+    # THE FLOOR Phase 1 (INFRA-1987 / META-106): cluster detector
+    "com.chump.cluster-detector|scripts/setup/install-cluster-detector-launchd.sh"
 )
 
 emit() {
