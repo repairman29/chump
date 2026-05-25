@@ -241,6 +241,184 @@ cmd_check_procs() {
     return 0
 }
 
+# ── check-repo-vars ───────────────────────────────────────────────────────────
+# Compare live gh variable list against expected-repo-vars.yaml.
+# Emits kind=repo_var_stale_after_incident when a variable has deviated from its
+# expected value for more than CHUMP_INFRA_WATCHER_REPO_VAR_DRIFT_SECS (default 7200s = 2h).
+# State is tracked in .chump-locks/repo-var-divergence-state.json so each
+# infra-watcher tick can measure elapsed drift time without external timestamps.
+#
+# INFRA-1976: root cause — CHUMP_SELF_HOSTED_ENABLED=false sat unrecovered 4 days.
+cmd_check_repo_vars() {
+    _header "check-repo-vars"
+
+    local expected_yaml="${REPO_ROOT}/scripts/setup/expected-repo-vars.yaml"
+    local state_file="${REPO_ROOT}/.chump-locks/repo-var-divergence-state.json"
+    local drift_threshold="${CHUMP_INFRA_WATCHER_REPO_VAR_DRIFT_SECS:-7200}"
+    local gh_bin="${CHUMP_GH_BIN:-gh}"
+    local repo_slug
+
+    # Resolve repo slug from git remote (fail gracefully).
+    # CHUMP_INFRA_WATCHER_REPO_SLUG overrides for testing.
+    if [[ -n "${CHUMP_INFRA_WATCHER_REPO_SLUG:-}" ]]; then
+        repo_slug="$CHUMP_INFRA_WATCHER_REPO_SLUG"
+    else
+        repo_slug="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
+            | sed 's|.*github.com[:/]||; s|\.git$||')" || true
+    fi
+
+    if [[ -z "$repo_slug" ]]; then
+        printf '[infra-watcher] check-repo-vars: cannot resolve repo slug — skipping\n'
+        return 0
+    fi
+
+    if [[ ! -f "$expected_yaml" ]]; then
+        printf '[infra-watcher] check-repo-vars: expected-repo-vars.yaml not found at %s — skipping\n' \
+            "$expected_yaml"
+        return 0
+    fi
+
+    # Fetch live variable list (fail gracefully — gh may be offline)
+    local live_vars_json
+    if ! live_vars_json="$("$gh_bin" variable list \
+            --repo "$repo_slug" --json name,value 2>/dev/null)"; then
+        printf '[infra-watcher] check-repo-vars: gh variable list failed — skipping\n'
+        return 0
+    fi
+
+    # Read current divergence state (empty object if missing)
+    local state_json="{}"
+    [[ -f "$state_file" ]] && state_json="$(cat "$state_file" 2>/dev/null || echo "{}")"
+
+    local now_epoch
+    now_epoch="$(date -u +%s)"
+
+    local new_state_json="{}"
+    local findings=0
+
+    # Parse expected vars from YAML using python3 (already required by other checks).
+    # Pass the YAML path as argv[1] to avoid heredoc-vs-redirect ambiguity.
+    local expected_pairs
+    expected_pairs="$(python3 -c '
+import sys, re
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+except Exception:
+    sys.exit(0)
+
+# Simple YAML parse: extract name/expected pairs under repo_vars:
+in_vars = False
+current_name = ""
+for line in content.splitlines():
+    stripped = line.strip()
+    if stripped == "repo_vars:":
+        in_vars = True
+        continue
+    if not in_vars:
+        continue
+    m = re.match(r"- name:\s+\"?([^\"]+)\"?\s*$", stripped)
+    if m:
+        current_name = m.group(1).strip()
+        continue
+    m = re.match(r"expected:\s+\"?([^\"#]+)\"?\s*$", stripped)
+    if m and current_name:
+        print(current_name + "\t" + m.group(1).strip())
+        current_name = ""
+' "$expected_yaml" 2>/dev/null)" || true
+
+    if [[ -z "$expected_pairs" ]]; then
+        printf '[infra-watcher] check-repo-vars: no entries parsed from %s — skipping\n' \
+            "$expected_yaml"
+        return 0
+    fi
+
+    while IFS=$'\t' read -r var_name expected_val; do
+        [[ -z "$var_name" ]] && continue
+
+        # Look up live value
+        local actual_val
+        actual_val="$(printf '%s' "$live_vars_json" \
+            | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for v in data:
+    if v.get('name','') == '${var_name}':
+        print(v.get('value',''))
+        sys.exit(0)
+print('')
+" 2>/dev/null || echo "")"
+
+        if [[ "$actual_val" == "$expected_val" ]]; then
+            # Variable matches expected — clear any tracked divergence for this var
+            new_state_json="$(printf '%s' "$new_state_json" \
+                | python3 -c "
+import json, sys
+s = json.load(sys.stdin)
+s.pop('${var_name}', None)
+print(json.dumps(s))
+" 2>/dev/null || echo "$new_state_json")"
+            printf '[infra-watcher] check-repo-vars: OK %s=%s\n' "$var_name" "$actual_val"
+            continue
+        fi
+
+        # Mismatch — check how long it has diverged
+        local first_seen_epoch
+        first_seen_epoch="$(printf '%s' "$state_json" \
+            | python3 -c "
+import json, sys
+s = json.load(sys.stdin)
+print(s.get('${var_name}', {}).get('first_seen_epoch', 0))
+" 2>/dev/null || echo 0)"
+
+        if [[ "$first_seen_epoch" -eq 0 ]]; then
+            # First detection — record but don't alert yet
+            first_seen_epoch="$now_epoch"
+            printf '[infra-watcher] check-repo-vars: NEW DIVERGENCE %s: expected=%s actual=%s (monitoring for %ds before alerting)\n' \
+                "$var_name" "$expected_val" "$actual_val" "$drift_threshold"
+        fi
+
+        # Persist divergence timestamp
+        new_state_json="$(printf '%s' "$new_state_json" \
+            | python3 -c "
+import json, sys
+s = json.load(sys.stdin)
+s['${var_name}'] = {'first_seen_epoch': ${first_seen_epoch}, 'expected': '${expected_val}', 'actual': '${actual_val}'}
+print(json.dumps(s))
+" 2>/dev/null || echo "$new_state_json")"
+
+        local elapsed_secs=$(( now_epoch - first_seen_epoch ))
+
+        if [[ "$elapsed_secs" -ge "$drift_threshold" ]]; then
+            findings=$((findings + 1))
+            local diverged_since
+            diverged_since="$(date -u -r "$first_seen_epoch" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+                || python3 -c "from datetime import datetime, timezone; print(datetime.fromtimestamp(${first_seen_epoch}, timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))" 2>/dev/null \
+                || echo "unknown")"
+            local elapsed_h=$(( elapsed_secs / 3600 ))
+            local ts
+            ts="$(_ts)"
+            printf '{"ts":"%s","kind":"repo_var_stale_after_incident","var_name":"%s","expected_value":"%s","actual_value":"%s","diverged_since":"%s","elapsed_hours":%d}\n' \
+                "$ts" "$var_name" "$expected_val" "$actual_val" "$diverged_since" "$elapsed_h" \
+                >> "$AMBIENT_LOG"
+            printf '[infra-watcher] ALERT check-repo-vars: %s expected=%s actual=%s diverged_since=%s (%dh)\n' \
+                "$var_name" "$expected_val" "$actual_val" "$diverged_since" "$elapsed_h" >&2
+        else
+            local remaining=$(( drift_threshold - elapsed_secs ))
+            printf '[infra-watcher] check-repo-vars: DIVERGENCE %s expected=%s actual=%s elapsed=%ds (alert in %ds)\n' \
+                "$var_name" "$expected_val" "$actual_val" "$elapsed_secs" "$remaining"
+        fi
+    done <<< "$expected_pairs"
+
+    # Write updated state file
+    printf '%s\n' "$new_state_json" > "$state_file" 2>/dev/null || true
+
+    [[ "$findings" -eq 0 ]] && printf '[infra-watcher] check-repo-vars: audit complete — no stale vars above drift threshold\n'
+    return 0
+}
+
 # ── tick ──────────────────────────────────────────────────────────────────────
 # One full audit cycle: all subchecks in order.
 cmd_tick() {
@@ -251,6 +429,7 @@ cmd_tick() {
     cmd_check_runners
     cmd_check_disk
     cmd_check_procs
+    cmd_check_repo_vars
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
 }
 
@@ -259,13 +438,14 @@ CMD="${1:-tick}"
 shift || true
 
 case "$CMD" in
-    tick)           cmd_tick "$@" ;;
-    audit-daemons)  cmd_audit_daemons "$@" ;;
-    check-runners)  cmd_check_runners "$@" ;;
-    check-disk)     cmd_check_disk "$@" ;;
-    check-procs)    cmd_check_procs "$@" ;;
+    tick)              cmd_tick "$@" ;;
+    audit-daemons)     cmd_audit_daemons "$@" ;;
+    check-runners)     cmd_check_runners "$@" ;;
+    check-disk)        cmd_check_disk "$@" ;;
+    check-procs)       cmd_check_procs "$@" ;;
+    check-repo-vars)   cmd_check_repo_vars "$@" ;;
     *)
-        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs}\n' \
+        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars}\n' \
             "$(basename "$0")" >&2
         exit 1
         ;;

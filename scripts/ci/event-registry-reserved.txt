@@ -358,3 +358,8 @@ operator_recovery_executed   # reason: INFRA-1993 emitted by scripts/coord/recov
 operator_recovery_failed     # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh on snapshot/drop/restore failure (CRITICAL when ruleset restore fails — operator action required)
 recovery_queue_rate_limited  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh when 3-per-hour rate budget exhausted; deferred request waits for window to slide
 recovery_queue_paused        # reason: INFRA-1993 emitted when CHUMP_RECOVERY_QUEUE_PAUSE=1 disables the daemon
+
+# ── INFRA-1994 / META-106 (THE FLOOR Phase 3): wedge state machine ───────────
+wedge_remediation_requested  # reason: INFRA-1994 emitted by scripts/coord/wedge-state-machine.sh per-class remediation router; carries action + detail for operator/audit
+wedge_remediation_rate_limited  # reason: INFRA-1994 emitted when same wedge_class fires within rate window (default 30min); deferred
+wedge_chronic                # reason: INFRA-1994 emitted when same wedge_class fires ≥3x in 24h (default); escalation signal to file META gap for permanent fix

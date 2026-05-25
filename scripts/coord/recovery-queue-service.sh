@@ -99,6 +99,11 @@ for line in sys.stdin:
         obj = json.loads(line)
     except Exception:
         continue
+    # Guard against non-dict JSON values (some misc emitters write
+    # numbers/strings/arrays to ambient.jsonl). Without this, a single
+    # non-dict line crashes the pipe + drops remaining input.
+    if not isinstance(obj, dict):
+        continue
     if obj.get("kind") == "operator_recovery_requested":
         print(line)
 ' 2>/dev/null || true

@@ -4781,6 +4781,26 @@ events:
       operator via operator-recall.sh.
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, category, severity, detail]
+  # INFRA-1976: repo variable drift detection — post-incident stale variable audit.
+  # Emitted by scripts/coord/infra-watcher-loop.sh check-repo-vars when a repo
+  # variable deviates from its expected steady-state value in
+  # scripts/setup/expected-repo-vars.yaml AND the divergence has persisted >2h.
+  # Root cause: CHUMP_SELF_HOSTED_ENABLED=false sat unrecovered for 4 days
+  # (2026-05-20 to 2026-05-24) causing silent CI starvation. This kind surfaces
+  # post-incident variable drift before it becomes a multi-day outage.
+  - kind: repo_var_stale_after_incident
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh (INFRA-1976)
+    trigger: >
+      Emitted when gh variable list shows a repo variable value that differs
+      from the expected value in scripts/setup/expected-repo-vars.yaml AND
+      the divergence has persisted for more than 2 hours (tracked via
+      .chump-locks/repo-var-divergence-state.json). At most one event per
+      variable name per infra-watcher tick to avoid flooding. The var_name and
+      actual_value fields identify which variable is stale and what it currently
+      holds. Consumers should page the operator to restore the expected value.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, var_name, expected_value, actual_value, diverged_since]
   # RESEARCH-001: phantom doc-ref detection (chump gap audit-priorities)
   - kind: phantom_doc_ref_detected
     effect_metric: self
