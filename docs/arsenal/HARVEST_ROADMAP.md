@@ -18,7 +18,7 @@ This document maps Chump's **stated current needs** (productization plan + Marcu
 | **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
 | **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
 
-If you do nothing else this week from the arsenal: **#1 (BEAST-MODE → INFRA-1486)** is the highest leverage. It's already P0, it's the Marcus blocker, and BEAST-MODE has the endpoint shape sitting there ready to port.
+If you do nothing else this week from the arsenal: **#1 (BEAST-MODE → INFRA-1486)** is the highest-impact pick. It's already P0, it's the Marcus blocker, and BEAST-MODE has the endpoint shape sitting there ready to port.
 
 ---
 
@@ -75,7 +75,7 @@ The cluster has 8 repos but only `echeo` (Rust) and `echeo-internal` (Rust, inte
 ### beast-mode-qi (2 repos)
 | Repo | Health | Verdict |
 |---|---|---|
-| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+| `BEAST-MODE` | Active (67d) | **HIGHEST-impact harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
 | `beast-mode-website` | n/a | Marketing site; skip |
 
 ### jarvis-assistant (4 repos — JARVIS family)
