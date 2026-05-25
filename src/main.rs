@@ -85,6 +85,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
 mod fleet_spec; // INFRA-1483: declarative chump.fleet.yaml (Marcus M-B)
@@ -5453,6 +5454,32 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     });
                 std::process::exit(status.code().unwrap_or(1));
+            }
+            // INFRA-1995 (THE FLOOR Phase 2): single-pane fleet pulse.
+            // Aggregates floor_temp + fleet_hold + active leases + recent
+            // wedge/admin-merge/alert/cluster events into one operator-readable
+            // frame. Replaces the 5-surface query workflow.
+            "pulse" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let repo_root = repo_path::repo_root();
+                let pulse = fleet_pulse::build(&repo_root);
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&pulse).unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else {
+                    print!("{}", fleet_pulse::render_text(&pulse));
+                }
+                // Exit code: 2 if fleet HOLD active, 1 if HOT, else 0.
+                let code = if pulse.fleet_hold.active {
+                    2
+                } else if matches!(pulse.floor_temp.temp, floor_temp::FloorTemp::Hot) {
+                    1
+                } else {
+                    0
+                };
+                std::process::exit(code);
             }
             "doctor" => {
                 // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
