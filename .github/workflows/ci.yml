@@ -906,6 +906,11 @@ jobs:
           export PATH="$(pwd)/target/debug:$PATH"
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-cross-session.sh
 
+      - name: gap-ID lease uniqueness gate — duplicate-PR race prevention (INFRA-1970)
+        run: |
+          export PATH="$(pwd)/target/debug:$PATH"
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-lease-uniqueness.sh
+
       - name: bot-merge auto-close handshake (INFRA-154)
         run: |
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \

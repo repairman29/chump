@@ -525,12 +525,7 @@ fn wait_with_hang_detection(
                 // Budget enforcement (faster, graceful)
                 if !no_budget && budget_kill_in_flight.is_none() && elapsed.as_secs() > budget_secs
                 {
-                    emit_subagent_killed_at_budget(
-                        process_name,
-                        gap_id,
-                        budget_secs,
-                        child_pid,
-                    );
+                    emit_subagent_killed_at_budget(process_name, gap_id, budget_secs, child_pid);
                     // Send SIGTERM (graceful). std::process::Child::kill is
                     // SIGKILL only; use the `kill` CLI to get SIGTERM without
                     // pulling in a new crate dep (see paramedic.rs for the

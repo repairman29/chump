@@ -330,6 +330,35 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
+    // Gate 2b: INFRA-1970 — gap-ID uniqueness check (primary key is gap, not paths).
+    // Reject the claim immediately if any live lease already holds this exact gap_id
+    // from a different session. This is the structural fix for the duplicate-PR race
+    // documented in META-105 (PRs #2539 + #2540 both worked INFRA-1950 on 2026-05-24).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_co = args.repo_root.join(".chump-locks");
+        match check_gap_id_uniqueness(&lock_dir_co, &args.gap_id, &early_session) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique".to_string(),
+                    status: "pass".to_string(),
+                    message: "no live lease holds this gap_id from another session".to_string(),
+                });
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
     // Gate 3: Check hot-file collision (INFRA-1394)
     if let Some(paths) = &args.paths {
         match check_hot_file_collision(&args.repo_root, paths) {
@@ -505,6 +534,61 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             &early_session_id,
             &ambient_log_early,
         )?;
+    }
+
+    // INFRA-1970: Gap-ID uniqueness check — primary lease key is (gap_id, session_id),
+    // NOT paths. Reject the claim if any live lease already holds this exact gap_id
+    // from a different session, regardless of which paths those sessions declared.
+    //
+    // This is the structural fix for the duplicate-PR race documented in META-105:
+    // PRs #2539 and #2540 both claimed INFRA-1950 on 2026-05-24 with different --paths
+    // args, producing two competing PRs for the same gap.
+    //
+    // Must run BEFORE session_id is finalised (we derive the provisional session_id
+    // to skip self-comparison) and BEFORE the worktree is created (no dangling
+    // worktree on rejection).
+    //
+    // Bypass: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (emits claim_duplicate_gap_bypassed).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_early = args.repo_root.join(".chump-locks");
+        let allow_dup_gap = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        if !allow_dup_gap {
+            if let Err(e) = check_gap_id_uniqueness(&lock_dir_early, &args.gap_id, &early_session) {
+                let ambient_path = lock_dir_early.join("ambient.jsonl");
+                emit_claim_duplicate_gap_event(
+                    &ambient_path,
+                    &args.gap_id,
+                    &early_session,
+                    &e.to_string(),
+                );
+                bail!(
+                    "INFRA-1970: {}\n  \
+                     Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (emits audit event)",
+                    e
+                );
+            }
+        } else {
+            // Bypass active — still check and emit audit event if a conflict exists.
+            if let Err(e) = check_gap_id_uniqueness(&lock_dir_early, &args.gap_id, &early_session) {
+                let ambient_path = lock_dir_early.join("ambient.jsonl");
+                emit_claim_duplicate_gap_event(
+                    &ambient_path,
+                    &args.gap_id,
+                    &early_session,
+                    &e.to_string(),
+                );
+                eprintln!(
+                    "[claim] INFRA-1970: WARN — duplicate gap claim bypassed via CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1: {}",
+                    e
+                );
+            }
+        }
     }
 
     // 4. Session ID — explicit --session flag > derived.
@@ -2147,6 +2231,135 @@ fn check_intent_overlap(
     }
 
     Ok(())
+}
+
+// ── INFRA-1970: Gap-ID uniqueness gate ───────────────────────────────────────
+
+/// INFRA-1970: Scan `.chump-locks/` for any live lease whose `gap_id` field
+/// matches `gap_id` AND whose `session_id` differs from `this_session`.
+///
+/// Returns `Ok(())` when the gap is free (no live competing lease).
+/// Returns `Err(...)` with the colliding session ID in the message when a
+/// duplicate is found.
+///
+/// A lease is considered live when its `expires_at` timestamp is in the
+/// future. Files that are absent, unreadable, or have no `expires_at` are
+/// treated conservatively (alive). Non-JSON files in the lock dir are skipped.
+///
+/// Bypass: caller checks `CHUMP_CLAIM_ALLOW_DUPLICATE_GAP` before calling here.
+// scanner-anchor: "kind":"claim_duplicate_gap_blocked"
+fn check_gap_id_uniqueness(lock_dir: &Path, gap_id: &str, this_session: &str) -> Result<()> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let entries = match std::fs::read_dir(lock_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()), // lock dir absent — no competing leases possible
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        // Only inspect JSON files; skip ambient.jsonl and other non-lease files.
+        if p.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue; // unreadable → skip (conservative: not a blocker)
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+
+        // Extract gap_id field — only claim-style leases carry this.
+        let Some(lease_gap) = val.get("gap_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if lease_gap != gap_id {
+            continue;
+        }
+
+        // Extract session_id — skip self.
+        let Some(lease_session) = val.get("session_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if lease_session == this_session {
+            continue;
+        }
+
+        // Liveness check: expired leases are not blockers.
+        if let Some(exp_str) = val.get("expires_at").and_then(|v| v.as_str()) {
+            if let Ok(exp_secs) = parse_iso8601(exp_str) {
+                if exp_secs <= now {
+                    continue; // expired — not a live competitor
+                }
+            }
+        }
+
+        // Live competing lease found.
+        let taken_at = val
+            .get("taken_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        return Err(anyhow!(
+            "gap {} is already claimed by session {} (taken at {}).\n  \
+             Two sessions working the same gap produce duplicate PRs (see META-105).\n  \
+             Options:\n  \
+             1. Pick a different gap.\n  \
+             2. Wait for session {} to ship or release its lease.\n  \
+             3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+            gap_id,
+            lease_session,
+            taken_at,
+            lease_session,
+        ));
+    }
+
+    Ok(())
+}
+
+/// Emit a `claim_duplicate_gap_blocked` (or `_bypassed`) ambient event so the
+/// operator's peripheral-vision stream captures every duplicate-gap attempt.
+// scanner-anchor: "kind":"claim_duplicate_gap_blocked"
+fn emit_claim_duplicate_gap_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    this_session: &str,
+    detail: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let bypassed = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false);
+    let kind = if bypassed {
+        "claim_duplicate_gap_bypassed"
+    } else {
+        "claim_duplicate_gap_blocked"
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
+         \"gap_id\":\"{}\",\"this_session\":\"{}\",\"detail\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(this_session),
+        json_escape(detail),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// Check if a session's lease file exists and has a non-expired expires_at.
