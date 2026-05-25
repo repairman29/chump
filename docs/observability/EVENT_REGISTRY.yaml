@@ -541,6 +541,20 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, session]
 
+  - kind: pipeline_health_throttle
+    effect_metric: self
+    emitter: scripts/coord/ci-health-gate.sh (INFRA-1607)
+    trigger: ci-health-gate.sh transitions fleet-paused state — either writing
+      the sentinel on a SLO breach or pipeline jam (>= CHUMP_CI_HEALTH_JAM_THRESHOLD
+      % BLOCKED PRs), or removing it after 2 consecutive clean runs
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, state, reason, blocked_pct, slo_rc]
+    docs: |
+      state="paused" when the sentinel is written; state="resumed" when cleared.
+      reason is one of: slo_breach, pipeline_jam.
+      blocked_pct is the integer % of open PRs in BLOCKED/BEHIND state at check time.
+      slo_rc is the exit code from `chump health --slo-check` (0=pass, 1=breach).
+
   - kind: pager_notified
     effect_metric: self
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
@@ -783,6 +797,18 @@ events:
     trigger: new gap added to state.db
     consumers: [audit-log]
     fields_required: [gap_id, domain]
+
+  - kind: gap_reserve_blocked
+    effect_metric: self
+    emitter: src/main.rs — chump gap reserve (INFRA-1607)
+    trigger: chump gap reserve was called while .chump/fleet-paused sentinel
+      exists and CHUMP_IGNORE_WASTE_PAUSE is not set to 1; the reserve is
+      refused before any state.db write
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pause_reason, domain, title]
+    docs: |
+      pause_reason is the "reason" field from the fleet-paused JSON payload
+      (e.g. pipeline_jam, slo_breach). Bypass: set CHUMP_IGNORE_WASTE_PAUSE=1.
 
   - kind: gap_cooldown_cleared
     effect_metric: self

@@ -491,3 +491,13 @@ CHUMP_ALLOWLIST_STALE_DAYS
 # Every use emits kind=lease_broad_dir_claim to ambient.jsonl for audit.
 # Must accompany a commit-message trailer: Broad-Lease-Reason: <one sentence>
 CHUMP_LEASE_ALLOW_BROAD_DIRS
+
+# INFRA-1607: CI health gate daemon tunables
+# CHUMP_CI_HEALTH_GATE_DISABLE — set to 1 to disable the ci-health-gate.sh daemon entirely (noop exit)
+# CHUMP_CI_HEALTH_JAM_THRESHOLD — integer % of BLOCKED open PRs that triggers pipeline_jam pause (default 50)
+# CHUMP_CI_HEALTH_JAM_RECOVERY  — integer % of BLOCKED open PRs required before fleet can resume (default 30)
+# CHUMP_CI_HEALTH_CONSEC_FILE   — path to consecutive-clean-run counter file (default /tmp/chump-ci-health-recovery-count)
+CHUMP_CI_HEALTH_GATE_DISABLE
+CHUMP_CI_HEALTH_JAM_THRESHOLD
+CHUMP_CI_HEALTH_JAM_RECOVERY
+CHUMP_CI_HEALTH_CONSEC_FILE

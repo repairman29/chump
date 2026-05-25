@@ -45,6 +45,16 @@ These SLOs guard the operator's trust and recall burden.
 
 ---
 
+## Layer 4 — Pipeline Health
+
+These SLOs guard the CI pipeline from compounding jams.
+
+| SLO ID | Target | Measurement source | Escalation | Recovery |
+|--------|--------|--------------------|------------|----------|
+| L4-SLO-1 | Pipeline jam | % BLOCKED PRs > 50% over 1h | auto-pause (ci-health-gate.sh) | < 30% BLOCKED for 2 consecutive 5-min runs |
+
+---
+
 ## Measurement summary
 
 ```
