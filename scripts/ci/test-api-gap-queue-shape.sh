@@ -20,6 +20,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
+
+# W-013 immunization (RESILIENT-024): unset workflow-injected env so this
+# tests own $TMP fixtures are not hijacked by CI workflow CHUMP_LOCK_DIR.
+unset CHUMP_REPO CHUMP_LOCK_DIR
 trap 'rm -rf "$TMP"; [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true' EXIT
 
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
