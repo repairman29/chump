@@ -2286,9 +2286,9 @@ fn invoke_daemon_set(subcmd: &str) -> serde_json::Value {
             let stderr = String::from_utf8_lossy(&out.stderr).to_string();
             // For status, try to parse JSON
             if subcmd == "status" {
-                if let Ok(parsed) =
-                    serde_json::from_str::<serde_json::Value>(stdout.trim().lines().last().unwrap_or(""))
-                {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(
+                    stdout.trim().lines().last().unwrap_or(""),
+                ) {
                     return serde_json::json!({"available": true, "status": parsed});
                 }
             }
