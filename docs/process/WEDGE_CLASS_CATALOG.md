@@ -270,6 +270,72 @@ gh pr list --state open --json number,statusCheckRollup | \
 
 ---
 
+## Class W-011 — Installer-manifest drift
+
+**Signature**:
+- `pr-hygiene` job fails on every PR with `FAIL [unmapped] install-<name>.sh`
+- `scripts/ci/test-install-script-manifest.sh` exits 1
+- One or more `scripts/setup/install-*.sh` files have no entry in any of:
+  REQUIRED_DAEMONS in `scripts/setup/chump-fleet-bootstrap.sh`,
+  `scripts/setup/optional-installers-allowlist.txt`,
+  `scripts/setup/deprecated-installers-allowlist.txt`
+
+**Time-to-recovery target**: <5 min
+
+**Detection**: `bash scripts/ci/test-install-script-manifest.sh 2>&1 | grep -c "FAIL \[unmapped\]"` > 0
+
+**Recovery playbook**:
+1. Identify unmapped installer(s) from the FAIL output
+2. Decide bucket: required (load-bearing daemon) / optional (situational) / deprecated
+3. Append filename to the appropriate manifest
+4. Local verify: `bash scripts/ci/test-install-script-manifest.sh` exits 0
+5. Tiny PR + admin-merge
+
+**Hardening shipped**: none yet. Long-term: `chump fleet bootstrap --check` gate
+emits `installer_manifest_drift` ambient event when a new installer lands without
+a manifest entry (open follow-up).
+
+**First seen**: 2026-05-25 wedge recovery — 5 installers landed across
+CREDIBLE-076/META-088/INFRA-1898/INFRA-1924/META-098 without manifest updates,
+blocking every PR's pr-hygiene gate. Fixed in RESILIENT-019 (`#2567`).
+
+---
+
+## Class W-012 — Workflow-env-overhead cascade
+
+**Signature**:
+- A test creates its OWN `$TMP/repo` fixture and invokes the `chump` binary
+- The CI workflow sets `CHUMP_REPO: ${{ github.workspace }}` (INFRA-1959 et al)
+- chump binary uses the workflow CHUMP_REPO override instead of the test's `cd $REPO`
+- Test fails because the workflow's state.db lacks the test's seeded fixtures
+
+**Time-to-recovery target**: <5 min per test
+
+**Detection**: `test-*.sh` failing with gap-not-found or empty-database messages
+when run under CI but PASSING locally; symptoms emerge AFTER any PR that adds
+workflow-level CHUMP_REPO env to a job.
+
+**Recovery playbook**:
+1. Identify the failing test from the CI log
+2. Add `unset CHUMP_REPO CHUMP_LOCK_DIR` directly after `mktemp -d` setup
+3. Local verify: `bash scripts/ci/<test>.sh` PASSES from a clean env
+4. Tiny PR + admin-merge
+
+**Hardening shipped**: RESILIENT-020 patches `test-gap-preflight-ac-gate.sh`. Pattern is:
+any test using `mktemp -d` + chump binary should `unset CHUMP_REPO CHUMP_LOCK_DIR` to
+ignore workflow-level injection. About 10 such tests in tree as of 2026-05-25 — patched
+lazily as they surface.
+
+**Lesson**: workflow-level env vars can silently hijack per-test fixtures. Future broad
+env additions to ci.yml should grep `scripts/ci/test-*.sh` for naive `mktemp -d`-and-
+invoke patterns first.
+
+**First seen**: 2026-05-25 — cascade from INFRA-1959 (own fix) into
+`test-gap-preflight-ac-gate.sh`. Blocked CREDIBLE-076 § Re-arming canary #2564.
+Fixed in RESILIENT-020.
+
+---
+
 ## Recovery time SLOs
 
 | Class | Target | Current |
@@ -284,6 +350,8 @@ gh pr list --state open --json number,statusCheckRollup | \
 | W-008 | <5 min | 🟡 INFRA-1528 pending |
 | W-009 | keystone-bound | 🟡 always |
 | W-010 | <5 min | ✅ documented |
+| W-011 | <5 min | 🟡 manual (long-term: chump fleet bootstrap --check) |
+| W-012 | <5 min per test | 🟡 patch tests lazily as they surface |
 
 ## When you find a new class
 
