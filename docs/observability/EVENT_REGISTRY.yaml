@@ -2842,10 +2842,12 @@ events:
     fields_required: [ts, kind, session, host]
   # ── FLEET-048: Operator impact ratings ───────────────────────────────────
   - kind: gap_impact_rated
+    status: active
     effect_metric: self
     emitter: src/main.rs (FLEET-048, chump gap rate)
+    emitter_paths: [src/main.rs]
     trigger: operator rates a shipped gap 1-5 via 'chump gap rate <ID> <1-5>'
-    consumers: [kpi-report --impact]
+    consumers: [kpi-report --impact, atomic_claim::load_class_ratings (INFRA-1555 picker tie-break)]
     fields_required: [ts, kind, gap_id, rating, comment, pr_number]
   - kind: gap_abandoned
     effect_metric: self

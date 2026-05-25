@@ -311,10 +311,14 @@ fn print_priority_hint(store: &gap_store::GapStore, target_id: &str, repo_root: 
     }
     // Pull all open gaps; filter to higher-priority (lower priority-number),
     // exclude the target itself, sort by priority asc then created_at asc.
+    // INFRA-1555: apply rating-aware tie-break demotion using class ratings
+    // from ambient.jsonl (30-day window, threshold 2.5 mean, min 2 samples).
     let opens = match store.list(Some("open")) {
         Ok(v) => v,
         Err(_) => return,
     };
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let class_ratings = atomic_claim::load_class_ratings(&ambient_path);
     let target_rank = priority_rank(&target_priority);
     let mut candidates: Vec<_> = opens
         .into_iter()
@@ -322,8 +326,12 @@ fn print_priority_hint(store: &gap_store::GapStore, target_id: &str, repo_root: 
         .filter(|g| priority_rank(&g.priority) < target_rank)
         .collect();
     candidates.sort_by(|a, b| {
-        priority_rank(&a.priority)
-            .cmp(&priority_rank(&b.priority))
+        atomic_claim::effective_priority_rank(&a.priority, &a.id, &class_ratings)
+            .cmp(&atomic_claim::effective_priority_rank(
+                &b.priority,
+                &b.id,
+                &class_ratings,
+            ))
             .then_with(|| a.created_at.cmp(&b.created_at))
     });
     let top: Vec<_> = candidates.into_iter().take(3).collect();
@@ -341,7 +349,7 @@ fn print_priority_hint(store: &gap_store::GapStore, target_id: &str, repo_root: 
         );
     }
     // Best-effort ambient emit. Failure here is silent.
-    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    // (ambient_path already bound above for load_class_ratings)
     if let Some(parent) = ambient_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }

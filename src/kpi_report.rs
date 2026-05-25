@@ -1082,6 +1082,19 @@ pub struct ImpactRatingSection {
     pub entries: Vec<ImpactRatingEntry>,
     pub fleet_avg: Option<f64>,
     pub total_ratings: usize,
+    /// INFRA-1555: mean rating per domain class (e.g. "INFRA", "FLEET").
+    /// Populated by `build_impact_section`; empty when no ratings exist.
+    pub class_ratings: Vec<ClassRatingRow>,
+}
+
+/// One row in the "Gap rating by class" subsection (INFRA-1555).
+#[derive(Debug, Clone)]
+pub struct ClassRatingRow {
+    pub class: String,
+    pub mean: f64,
+    pub count: usize,
+    /// `true` when mean < 2.5 and count >= 2 — picker applies one-tier demotion.
+    pub demoted: bool,
 }
 
 impl ImpactRatingSection {
@@ -1117,6 +1130,34 @@ impl ImpactRatingSection {
             out.push_str(&format!("{:<14} {:>6}  {}\n", e.gap_id, e.rating, comment));
         }
         out.push('\n');
+
+        // INFRA-1555: "Gap rating by class" subsection.
+        if !self.class_ratings.is_empty() {
+            out.push_str("### Gap rating by class\n\n");
+            out.push_str(&format!(
+                "{:<12} {:>6}  {:>6}  {}\n",
+                "Class", "Mean", "Count", "Picker effect"
+            ));
+            out.push_str(&format!(
+                "{:-<12} {:->6}  {:->6}  {:-<20}\n",
+                "", "", "", ""
+            ));
+            let mut rows = self.class_ratings.clone();
+            rows.sort_by(|a, b| a.class.cmp(&b.class));
+            for row in &rows {
+                let effect = if row.demoted {
+                    "demoted 1 tier"
+                } else {
+                    "no change"
+                };
+                out.push_str(&format!(
+                    "{:<12} {:>6.2}  {:>6}  {}\n",
+                    row.class, row.mean, row.count, effect
+                ));
+            }
+            out.push('\n');
+        }
+
         out
     }
 
@@ -1148,21 +1189,40 @@ impl ImpactRatingSection {
                 )
             })
             .collect();
+        // INFRA-1555: include class_ratings in JSON output.
+        let class_json: Vec<String> = self
+            .class_ratings
+            .iter()
+            .map(|r| {
+                format!(
+                    "{{\"class\":\"{}\",\"mean\":{:.2},\"count\":{},\"demoted\":{}}}",
+                    json_escape(&r.class),
+                    r.mean,
+                    r.count,
+                    r.demoted
+                )
+            })
+            .collect();
         format!(
-            "{{\"total_ratings\":{},\"fleet_avg\":{},\"entries\":[{}]}}",
+            "{{\"total_ratings\":{},\"fleet_avg\":{},\"entries\":[{}],\"class_ratings\":[{}]}}",
             self.total_ratings,
             avg_json,
-            entries_json.join(",")
+            entries_json.join(","),
+            class_json.join(",")
         )
     }
 }
 
 /// Build impact rating section by scanning ambient.jsonl for `gap_impact_rated` events.
+/// INFRA-1555: also computes per-class (domain) mean ratings for the picker subsection.
 pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
     let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
 
     let mut entries: Vec<ImpactRatingEntry> = Vec::new();
+    // INFRA-1555: accumulate (sum, count) per domain class for the subsection.
+    let mut class_acc: std::collections::HashMap<String, (f64, usize)> =
+        std::collections::HashMap::new();
 
     for line in contents.lines() {
         let kind = extract_field(line, "kind").unwrap_or_default();
@@ -1180,6 +1240,13 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
         let comment = extract_field(line, "comment").unwrap_or_default();
         let ts = extract_field(line, "ts").unwrap_or_default();
         let pr_number = extract_int_field(line, "pr_number").map(|n| n as i64);
+
+        // Accumulate class stats (domain prefix of gap_id, e.g. "INFRA").
+        let class = gap_id.split('-').next().unwrap_or("UNKNOWN").to_uppercase();
+        let e = class_acc.entry(class).or_insert((0.0, 0));
+        e.0 += rating as f64;
+        e.1 += 1;
+
         entries.push(ImpactRatingEntry {
             gap_id,
             rating,
@@ -1197,10 +1264,29 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
         Some(sum as f64 / total_ratings as f64)
     };
 
+    // INFRA-1555: build class_ratings rows (demotion threshold mirrors atomic_claim).
+    const LOW_THRESHOLD: f64 = 2.5;
+    const MIN_SAMPLES: usize = 2;
+    let mut class_ratings: Vec<ClassRatingRow> = class_acc
+        .into_iter()
+        .map(|(class, (sum, count))| {
+            let mean = sum / count as f64;
+            let demoted = count >= MIN_SAMPLES && mean < LOW_THRESHOLD;
+            ClassRatingRow {
+                class,
+                mean,
+                count,
+                demoted,
+            }
+        })
+        .collect();
+    class_ratings.sort_by(|a, b| a.class.cmp(&b.class));
+
     ImpactRatingSection {
         entries,
         fleet_avg,
         total_ratings,
+        class_ratings,
     }
 }
 

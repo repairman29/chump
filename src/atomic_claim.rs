@@ -3401,6 +3401,161 @@ pub fn run_fuzzy_gate(
     Err(render_fuzzy_warnings(&hits))
 }
 
+// ── INFRA-1555: Rating-aware picker tie-break helpers ─────────────────────────
+//
+// `load_class_ratings` scans `.chump-locks/ambient.jsonl` for `gap_impact_rated`
+// events within a 30-day window and computes a mean rating per *class*.
+// A class is the domain prefix of the rated gap's ID (e.g. "INFRA", "FLEET").
+//
+// `effective_priority_rank` applies a one-tier demotion (adds 1 to the ordinal)
+// when the class mean rating is below the LOW_RATING_THRESHOLD (2.5).  This
+// affects tie-breaking only — a demoted P1 in a low-rated class still sorts
+// before an undemoted P2, but loses to an undemoted P1.
+//
+// Weight policy (do not change without filing a gap):
+//   - Window     : 30 days
+//   - Threshold  : mean < 2.5  → demotion (one tier)
+//   - Min samples: at least 2 ratings required to trigger demotion
+//     (single outlier should not affect class rank)
+
+/// Low-rating threshold: classes whose mean falls below this value are demoted
+/// by one priority tier in tie-breaks.
+const LOW_RATING_THRESHOLD: f64 = 2.5;
+
+/// Minimum number of ratings required before demotion can trigger.
+const MIN_RATINGS_FOR_DEMOTION: usize = 2;
+
+/// 30-day window for ambient scan (in seconds).
+const RATING_WINDOW_SECS: u64 = 30 * 24 * 3600;
+
+/// Mean rating per domain class, computed from recent ambient events.
+/// Key: domain prefix (e.g. "INFRA").  Value: (sum, count).
+pub type ClassRatingMap = std::collections::HashMap<String, (f64, usize)>;
+
+/// Scan `ambient.jsonl` and return mean ratings keyed by class (domain prefix).
+///
+/// Returns an empty map if the file is absent or unreadable (non-fatal).
+pub fn load_class_ratings(ambient_path: &Path) -> ClassRatingMap {
+    let content = match std::fs::read_to_string(ambient_path) {
+        Ok(c) => c,
+        Err(_) => return ClassRatingMap::new(),
+    };
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let cutoff = now_secs.saturating_sub(RATING_WINDOW_SECS);
+
+    let mut map: ClassRatingMap = std::collections::HashMap::new();
+
+    for line in content.lines() {
+        // Fast pre-filter before JSON parsing.
+        if !line.contains("\"gap_impact_rated\"") {
+            continue;
+        }
+
+        // Extract kind field.
+        let kind = match extract_field_simple(line, "kind") {
+            Some(k) => k,
+            None => continue,
+        };
+        if kind != "gap_impact_rated" {
+            continue;
+        }
+
+        // Timestamp gate — skip events older than 30 days.
+        if let Some(ts_str) = extract_field_simple(line, "ts") {
+            if let Ok(event_secs) = parse_iso8601_simple(&ts_str) {
+                if event_secs < cutoff {
+                    continue;
+                }
+            }
+        }
+
+        let gap_id = match extract_field_simple(line, "gap_id") {
+            Some(g) => g,
+            None => continue,
+        };
+        let rating: f64 = match extract_field_simple(line, "rating")
+            .and_then(|v| v.parse::<u8>().ok())
+            .filter(|r| (1..=5).contains(r))
+        {
+            Some(r) => r as f64,
+            None => continue,
+        };
+
+        // Class = domain prefix of gap ID (e.g. "INFRA-123" → "INFRA").
+        let class = gap_id.split('-').next().unwrap_or("UNKNOWN").to_uppercase();
+
+        let entry = map.entry(class).or_insert((0.0, 0));
+        entry.0 += rating;
+        entry.1 += 1;
+    }
+
+    map
+}
+
+/// Return `true` if the class mean rating is below the demotion threshold.
+///
+/// Requires at least `MIN_RATINGS_FOR_DEMOTION` samples; returns `false` for
+/// under-sampled classes so single outliers don't affect sort order.
+pub fn class_is_low_rated(class: &str, ratings: &ClassRatingMap) -> bool {
+    match ratings.get(class) {
+        Some((sum, count)) if *count >= MIN_RATINGS_FOR_DEMOTION => {
+            let mean = sum / (*count as f64);
+            mean < LOW_RATING_THRESHOLD
+        }
+        _ => false,
+    }
+}
+
+/// Priority rank with optional one-tier demotion for low-rated classes.
+///
+/// Used in picker tie-break sort: lower return value = higher priority.
+/// A P1 gap in a low-rated class returns 2 (same as a normal P2),
+/// meaning it yields to undemoted P1 gaps in the sort.
+pub fn effective_priority_rank(priority: &str, gap_id: &str, ratings: &ClassRatingMap) -> u8 {
+    let base = match priority {
+        "P0" => 0u8,
+        "P1" => 1,
+        "P2" => 2,
+        "P3" => 3,
+        _ => 99,
+    };
+    let class = gap_id.split('-').next().unwrap_or("UNKNOWN").to_uppercase();
+    if class_is_low_rated(&class, ratings) {
+        base.saturating_add(1)
+    } else {
+        base
+    }
+}
+
+/// Minimal field extractor for use in atomic_claim (avoids kpi_report dependency).
+fn extract_field_simple(line: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{}\":", field);
+    let start = line.find(&needle)? + needle.len();
+    let rest = line[start..].trim_start();
+    if let Some(inner) = rest.strip_prefix('"') {
+        let end = inner.find('"')?;
+        Some(inner[..end].to_string())
+    } else {
+        let end = rest.find([',', '}']).unwrap_or(rest.len());
+        let v = rest[..end].trim().to_string();
+        if v == "null" {
+            None
+        } else {
+            Some(v)
+        }
+    }
+}
+
+/// Parse an ISO-8601 timestamp to Unix seconds (best-effort, no external deps).
+fn parse_iso8601_simple(ts: &str) -> Result<u64> {
+    // Delegate to the existing parse_iso8601 helper in this module.
+    parse_iso8601(ts)
+}
+
 #[cfg(test)]
 mod fuzzy_match_tests {
     //! INFRA-1442: pure-function tests for the claim-time fuzzy-match
@@ -4439,5 +4594,152 @@ mod tests {
             .unwrap()
             .as_secs();
         assert!(is_session_lease_alive(&tmp, "fresh", now));
+    }
+}
+
+// ── INFRA-1555: unit tests for rating-aware picker helpers ────────────────────
+#[cfg(test)]
+mod rating_picker_demotion {
+    use super::*;
+    use std::io::Write;
+
+    fn write_ambient(dir: &std::path::Path, lines: &[&str]) {
+        let locks = dir.join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(locks.join("ambient.jsonl"))
+            .unwrap();
+        for line in lines {
+            writeln!(f, "{line}").unwrap();
+        }
+    }
+
+    fn now_iso() -> String {
+        // Use a fixed recent-ish timestamp so the 30-day window always includes it.
+        // In tests, SystemTime::now() is used as the reference; these events
+        // are stamped with the current time so they always fall within the window.
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let (y, mo, d, h, mi, s) = super::secs_to_ymdhms(secs);
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+    }
+
+    #[test]
+    fn load_class_ratings_empty_file_returns_empty_map() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ambient = tmp.path().join(".chump-locks/ambient.jsonl");
+        // File does not exist — should return empty map, not panic.
+        let map = load_class_ratings(&ambient);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn load_class_ratings_below_threshold_triggers_demotion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ts = now_iso();
+        // 5 ratings at 1.0 for TEST domain → mean = 1.0, well below 2.5
+        let events: Vec<String> = (1..=5)
+            .map(|i| {
+                format!(
+                    r#"{{"ts":"{ts}","kind":"gap_impact_rated","gap_id":"TEST-{i}","rating":1,"comment":"","pr_number":null}}"#
+                )
+            })
+            .collect();
+        let refs: Vec<&str> = events.iter().map(|s| s.as_str()).collect();
+        write_ambient(tmp.path(), &refs);
+
+        let map = load_class_ratings(&tmp.path().join(".chump-locks/ambient.jsonl"));
+        assert!(class_is_low_rated("TEST", &map), "TEST should be demoted");
+    }
+
+    #[test]
+    fn load_class_ratings_above_threshold_no_demotion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ts = now_iso();
+        // 3 ratings at 4.0 for FLEET domain → mean = 4.0, above 2.5
+        let events: Vec<String> = (1..=3)
+            .map(|i| {
+                format!(
+                    r#"{{"ts":"{ts}","kind":"gap_impact_rated","gap_id":"FLEET-{i}","rating":4,"comment":"","pr_number":null}}"#
+                )
+            })
+            .collect();
+        let refs: Vec<&str> = events.iter().map(|s| s.as_str()).collect();
+        write_ambient(tmp.path(), &refs);
+
+        let map = load_class_ratings(&tmp.path().join(".chump-locks/ambient.jsonl"));
+        assert!(
+            !class_is_low_rated("FLEET", &map),
+            "FLEET should NOT be demoted"
+        );
+    }
+
+    #[test]
+    fn load_class_ratings_single_sample_no_demotion() {
+        // Only 1 sample — below MIN_RATINGS_FOR_DEMOTION=2, so no demotion even if low.
+        let tmp = tempfile::tempdir().unwrap();
+        let ts = now_iso();
+        write_ambient(
+            tmp.path(),
+            &[&format!(
+                r#"{{"ts":"{ts}","kind":"gap_impact_rated","gap_id":"INFRA-1","rating":1,"comment":"","pr_number":null}}"#
+            )],
+        );
+        let map = load_class_ratings(&tmp.path().join(".chump-locks/ambient.jsonl"));
+        assert!(
+            !class_is_low_rated("INFRA", &map),
+            "single sample should NOT trigger demotion"
+        );
+    }
+
+    #[test]
+    fn effective_priority_rank_demotes_low_rated_class() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ts = now_iso();
+        let events: Vec<String> = (1..=2)
+            .map(|i| {
+                format!(
+                    r#"{{"ts":"{ts}","kind":"gap_impact_rated","gap_id":"TEST-{i}","rating":1,"comment":"","pr_number":null}}"#
+                )
+            })
+            .collect();
+        let refs: Vec<&str> = events.iter().map(|s| s.as_str()).collect();
+        write_ambient(tmp.path(), &refs);
+        let map = load_class_ratings(&tmp.path().join(".chump-locks/ambient.jsonl"));
+
+        // TEST-domain P1 should be treated as P2 (rank 1 + 1 = 2)
+        assert_eq!(
+            effective_priority_rank("P1", "TEST-99", &map),
+            2,
+            "demoted P1 should have rank 2"
+        );
+        // TEST-domain P0 stays P0 (0+1=1, but P0 is special — saturation keeps it ≥0)
+        // Actually 0u8.saturating_add(1) = 1, so P0 → rank 1 (P1 equivalent).
+        // This is intentional: even P0s in a badly-rated class yield to undemoted P0s.
+        assert_eq!(
+            effective_priority_rank("P0", "TEST-99", &map),
+            1,
+            "demoted P0 should have rank 1"
+        );
+        // Non-TEST domain is unaffected
+        assert_eq!(
+            effective_priority_rank("P1", "INFRA-999", &map),
+            1,
+            "undemoted INFRA P1 should stay rank 1"
+        );
+    }
+
+    #[test]
+    fn effective_priority_rank_normal_class_unchanged() {
+        // Empty ratings map → no class is demoted
+        let map = ClassRatingMap::new();
+        assert_eq!(effective_priority_rank("P0", "INFRA-1", &map), 0);
+        assert_eq!(effective_priority_rank("P1", "FLEET-1", &map), 1);
+        assert_eq!(effective_priority_rank("P2", "META-1", &map), 2);
+        assert_eq!(effective_priority_rank("P3", "DOC-1", &map), 3);
     }
 }
