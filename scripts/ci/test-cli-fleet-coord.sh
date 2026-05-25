@@ -29,6 +29,9 @@ PASS=0; FAIL=0
 ok()   { printf '  [PASS] %s\n' "$*"; PASS=$((PASS+1)); }
 fail() { printf '  [FAIL] %s\n' "$*" >&2; FAIL=$((FAIL+1)); }
 
+# INFRA-1978: assert schema_version before parsing any health/briefing JSON
+source "$REPO_ROOT/scripts/dispatch/lib/assert-schema.sh"
+
 # ── Locate binary ──────────────────────────────────────────────────────────
 if [[ -n "${CHUMP_BIN:-}" ]]; then
     CHUMP="$CHUMP_BIN"
@@ -82,6 +85,10 @@ fi
 
 # ── Test 2: chump health --json has required fields ───────────────────────
 JSON=$("$CHUMP" health --json 2>/dev/null || true)
+# INFRA-1978: assert schema_version before consuming any fields
+if [[ -n "$JSON" ]]; then
+    assert_schema "$JSON" 1 || fail "Test 2: schema_version assertion failed"
+fi
 if echo "$JSON" | grep -q '"kind":"fleet_health"'; then
     SCORE=$(echo "$JSON" | grep -oE '"score":[0-9]+' | grep -oE '[0-9]+' || echo "")
     if [[ -n "$SCORE" && "$SCORE" -ge 0 && "$SCORE" -le 100 ]]; then
