@@ -1812,7 +1812,7 @@ async fn main() -> Result<()> {
         let sub = args.get(2).map(String::as_str).unwrap_or("");
         if sub.is_empty() || sub == "help" || sub == "--help" {
             println!(
-                "Usage: chump fanout <plan|apply|status> <spec.yaml | name> [--dry-run] [--json]"
+                "Usage: chump fanout <plan|apply|status> <spec.yaml | name> [--dry-run] [--json] [--reference <commit-sha-or-PR-N>]"
             );
             println!();
             println!("Cross-repo fan-out (INFRA-1484, Marcus M-B). One operator command,");
@@ -1833,14 +1833,74 @@ async fn main() -> Result<()> {
                 "  apply  <spec.yaml> [--dry-run] reserve one gap per repo (fanout_group=<name>)"
             );
             println!("  status <name>                  aggregate reserved gaps by fanout_group");
+            println!();
+            println!("Flags:");
+            println!("  --reference <commit-sha-or-PR-N>  INFRA-1935 (Marcus M-B): commit SHA or PR number");
+            println!(
+                "                                    to use as reference implementation. PR-N is"
+            );
+            println!("                                    resolved to merge commit SHA via REST (not GraphQL).");
+            println!("                                    Injected into per-worktree agent dispatch payload.");
             return Ok(());
         }
+
+        // INFRA-1935: parse --reference <value> from any position in args.
+        // Consume the flag + its value so subcommand parsers see a clean arg list.
+        let reference_raw: Option<String> = {
+            let pos = args.iter().position(|a| a == "--reference");
+            pos.and_then(|i| args.get(i + 1).cloned())
+        };
+
+        // Resolve PR-N → merge commit SHA via REST (not GraphQL — fleet exhausted).
+        // Any value that is all digits is treated as a PR number.
+        // Commit SHAs and git refs (HEAD~1, main, etc.) are passed through verbatim.
+        let reference_sha: Option<String> = match &reference_raw {
+            None => None,
+            Some(v) if v.chars().all(|c| c.is_ascii_digit()) => {
+                // PR number — resolve to merge commit SHA via REST.
+                let repo_slug = std::env::var("CHUMP_GITHUB_REPO")
+                    .unwrap_or_else(|_| "repairman29/chump".to_string());
+                let api_url = format!("repos/{repo_slug}/pulls/{v}");
+                let out = std::process::Command::new("gh")
+                    .args(["api", &api_url, "--jq", ".merge_commit_sha"])
+                    .output();
+                match out {
+                    Ok(o) if o.status.success() => {
+                        let sha = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if sha.is_empty() || sha == "null" {
+                            eprintln!("warning: PR #{v} has no merge commit SHA (not merged yet?); using PR number as-is");
+                            Some(v.clone())
+                        } else {
+                            eprintln!("--reference PR #{v} resolved to {sha}");
+                            Some(sha)
+                        }
+                    }
+                    Ok(o) => {
+                        eprintln!(
+                            "warning: could not resolve PR #{v} via gh api: {}; using PR number as-is",
+                            String::from_utf8_lossy(&o.stderr).trim()
+                        );
+                        Some(v.clone())
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "warning: could not exec gh to resolve PR #{v}: {e}; using as-is"
+                        );
+                        Some(v.clone())
+                    }
+                }
+            }
+            Some(v) => Some(v.clone()), // commit SHA or git ref — pass through
+        };
+
         match sub {
             "plan" => {
                 let path = match args.get(3) {
                     Some(p) => std::path::PathBuf::from(p),
                     None => {
-                        eprintln!("Usage: chump fanout plan <spec.yaml>");
+                        eprintln!(
+                            "Usage: chump fanout plan <spec.yaml> [--reference <sha-or-PR-N>]"
+                        );
                         std::process::exit(2);
                     }
                 };
@@ -1849,7 +1909,8 @@ async fn main() -> Result<()> {
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|| std::path::PathBuf::from("."));
                 match fleet_fanout::FanoutSpec::from_path(&path) {
-                    Ok(spec) => {
+                    Ok(mut spec) => {
+                        spec.reference = reference_sha;
                         let plan = spec.plan(&spec_dir);
                         if args.iter().any(|a| a == "--json") {
                             println!("{}", serde_json::to_string_pretty(&plan).unwrap());
@@ -1878,7 +1939,8 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| std::path::PathBuf::from("."));
                 let dry_run = args.iter().any(|a| a == "--dry-run");
                 match fleet_fanout::FanoutSpec::from_path(&path) {
-                    Ok(spec) => {
+                    Ok(mut spec) => {
+                        spec.reference = reference_sha;
                         let plan = spec.plan(&spec_dir);
                         println!(
                             "fanout apply: {} repo(s) (group={}, dry_run={dry_run})",
