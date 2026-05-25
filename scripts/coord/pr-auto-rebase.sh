@@ -20,9 +20,19 @@
 #   scripts/setup/install-pr-auto-rebase-launchd.sh (follow-up gap)
 #
 # Telemetry:
-#   kind=pr_auto_rebased      — successful rebase + push
-#   kind=pr_auto_rebase_skipped — cooldown / not-armed / not-behind
-#   kind=pr_auto_rebase_failed  — gh pr update-branch returned non-zero
+#   kind=pr_auto_rebased         — successful rebase + push (via gh API)
+#   kind=pr_auto_rebase_skipped  — cooldown / not-armed / not-behind
+#   kind=pr_auto_rebase_failed   — BOTH gh API and local rebase failed (true conflict)
+#   kind=pr_auto_rebase_fallback — gh API false-positive, local rebase succeeded (INFRA-1958)
+#
+# INFRA-1958 (2026-05-24): `gh pr update-branch` returns non-zero with false-positive
+# "conflict" reports for PRs that local `git rebase origin/main` resolves cleanly with
+# zero conflicts. On 2026-05-24, 8 PRs (#2514-#2543) wedged for hours on this bug while
+# fleet throughput collapsed to ~0 merges/hour. Fix: when gh API reports conflict, try
+# local rebase in /tmp worktree; if it succeeds, push --force-with-lease and continue.
+# Only escalate to pr_auto_rebase_failed if local rebase ALSO fails.
+#
+# Bypass: CHUMP_PR_AUTO_REBASE_NO_FALLBACK=1 disables local-rebase fallback (trust gh API).
 
 set -uo pipefail
 
@@ -133,9 +143,53 @@ while IFS=$'\t' read -r PR STATE; do
         printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
         REBASED=$((REBASED+1))
     else
-        echo "[pr-auto-rebase] FAIL #$PR — gh pr update-branch returned non-zero (likely true conflict; sibling rescue or operator action needed)"
-        emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\""
-        FAILED=$((FAILED+1))
+        # INFRA-1958: gh pr update-branch returns false-positive conflicts.
+        # Try local rebase fallback before escalating to pr_auto_rebase_failed.
+        if [[ "${CHUMP_PR_AUTO_REBASE_NO_FALLBACK:-0}" == "1" ]]; then
+            echo "[pr-auto-rebase] FAIL #$PR — gh pr update-branch returned non-zero (fallback disabled by env)"
+            emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"disabled\""
+            FAILED=$((FAILED+1))
+            continue
+        fi
+        echo "[pr-auto-rebase] gh API reports conflict — trying local rebase fallback (INFRA-1958)..."
+        BRANCH="$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null)"
+        if [[ -z "$BRANCH" ]]; then
+            echo "[pr-auto-rebase] FAIL #$PR — could not resolve branch name"
+            emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"branch_resolve_failed\""
+            FAILED=$((FAILED+1))
+            continue
+        fi
+        WT="$(mktemp -d -t chump-rebase-fb-XXXXXX)"
+        # Fetch the branch fresh; ignore failures (older git may not support --quiet).
+        git -C "$REPO_ROOT" fetch origin "$BRANCH" --quiet 2>/dev/null || true
+        git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
+        if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
+            if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
+                if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
+                    echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
+                    emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""
+                    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
+                    REBASED=$((REBASED+1))
+                else
+                    echo "[pr-auto-rebase] FAIL #$PR — local rebase OK but push failed (lock contention?)"
+                    emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"push_failed\""
+                    FAILED=$((FAILED+1))
+                fi
+            else
+                # Abort any in-progress rebase before removing worktree
+                (cd "$WT" && git rebase --abort >/dev/null 2>&1) || true
+                echo "[pr-auto-rebase] FAIL #$PR — true conflict confirmed by local rebase (sibling rescue needed)"
+                emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"local_rebase_also_failed\""
+                FAILED=$((FAILED+1))
+            fi
+            git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
+        else
+            echo "[pr-auto-rebase] FAIL #$PR — could not create worktree for fallback"
+            emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"worktree_failed\""
+            FAILED=$((FAILED+1))
+        fi
+        rm -rf "$WT" 2>/dev/null || true
     fi
 done <<< "$TARGETS"
 
