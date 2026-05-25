@@ -189,3 +189,16 @@ ship and pass a 24-hour soak:
 This doc is the single source of truth for the required-check list. If
 you're adding a new test to fast-checks or changing branch protection,
 the change MUST be reflected here first.
+
+## 2026-05-25 re-arm confirmation (DOC-056 canary)
+
+After CREDIBLE-076 (design + cron + audit), CREDIBLE-077 (broaden pattern),
+CREDIBLE-078 (exempt 25 + audit --strict passes), INFRA-1958 (gh API
+false-positive fallback), and INFRA-1959 (sqlite-lock fix via CHUMP_REPO env),
+the `test` required check was re-armed on both legacy branch protection +
+ruleset 15133729 at 04:09Z. This canary PR (DOC-056) validates the closed-loop
+contract: must auto-merge through `test + audit + ACP smoke` without admin
+override within 15 minutes.
+
+If this paragraph exists on origin/main, the canary succeeded and the
+post-wedge re-arming sequence is complete.
