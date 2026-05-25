@@ -1,3 +1,328 @@
+## Issue #13 — 2026-05-25
+
+> Audit window: commits since 2026-05-18 (Issue #12). 50 commits to `origin/main`.
+> Sandbox: fresh clone. `gap-doctor.py doctor` crashed with `no such table: gaps` on entry — INFRA-821 confirmed live for the **third consecutive cycle**. `chump gap import` run manually; state.db seeded with 743 gaps. `chump` binary built from source (v0.1.2, 663d176, ~7 min warm). `gh` CLI unavailable; GitHub MCP tools used for PR queries.
+> Gap-reserve assigned 4 already-shipped IDs (META-103, INFRA-1953, INFRA-1955, INFRA-1957) before a safe pair was found — INFRA-018 guard is blind to git history. Filed gaps use manually-verified clean IDs.
+
+---
+
+### Status of Prior Issues (Issue #12)
+
+- **FIXED**: DOC-050 (CHUMP_TO_CHAMP.md prohibited content) — CHUMP_TO_CHAMP.md:1.5 now reads qualitative-only; `bash scripts/ci/test-public-doc-privacy.sh` exits 0. Numeric deltas, model names, n-values removed.
+- **FIXED**: RESEARCH-001 (phantom gap IDs) — PR #2516 (2026-05-24): created `docs/gaps/EVAL-094.yaml` + `docs/gaps/RESEARCH-026.yaml`, wired `scripts/ci/test-phantom-gap-refs.sh`, extended `audit-priorities` with `phantom_doc_refs` field.
+- **STILL_OPEN_INACTIVE**: FLEET-053 (NATS deployment, P0, filed 2026-05-12) — 13 days, 0 implementation commits.
+  ```
+  git log origin/main --grep='FLEET-053' --oneline
+  (no output)
+  ```
+- **WORSE**: META-064 (P0 budget, filed 2026-05-18) — P0 count grew from 20 → **29** (+45%) while the gap to fix it has 0 commits.
+  ```
+  git log origin/main --grep='META-064' --oneline
+  (no output)
+  chump gap audit-priorities: P0 open gaps: 29 (budget: 5 max)
+  ```
+- **BETTER (unresolved)**: INFRA-1610 (99 OPEN-BUT-LANDED, filed 2026-05-18) — OBL count dropped from 99 → 44 through normal gap closure activity, but the INFRA-1610 gap itself has 0 implementation commits. The structural cause (bot-merge not calling `chump gap ship`) is unaddressed.
+  ```
+  git log origin/main --grep='INFRA-1610' --oneline
+  (no output)
+  python3 git-log scan: OPEN-BUT-LANDED count: 44 (was 99)
+  ```
+- **WORSE**: INFRA-1611 (opened_date backfill, filed 2026-05-18) — gaps missing `opened_date` increased 486 → **493** (7 net new gaps added without dates this week).
+  ```
+  git log origin/main --grep='INFRA-1611' --oneline
+  (no output)
+  python3 yaml scan: 493/516 open gaps missing opened_date
+  ```
+- **STILL_OPEN_ACTIVE**: INFRA-1237 (EVENT_REGISTRY drift, P0) — drift reduced from 22 EMIT-NO-REG → **2** through other PRs; `test-event-registry-coverage.sh` now fails with 2 violations (`pr_oversight_snapshot`, `subagent_idle_without_pr`). Gap has 0 direct implementation commits; the underlying registry guard (staged-only pre-commit) is not fixed.
+  ```
+  git log origin/main --grep='INFRA-1237' --oneline
+  (no output)
+  bash scripts/ci/test-event-registry-coverage.sh → FAIL: 2 emit-without-register violations
+  ```
+- **STILL_OPEN_INACTIVE**: INFRA-821 (state.db bootstrap, P1, filed Issue #11) — **3 cycles**, 0 commits. Confirmed live today: `gap-doctor.py doctor` crashes with `sqlite3.OperationalError: no such table: gaps`.
+  ```
+  git log origin/main --grep='INFRA-821' --oneline
+  (no output)
+  python3 scripts/coord/gap-doctor.py doctor → sqlite3.OperationalError: no such table: gaps
+  ```
+- **STILL_OPEN_INACTIVE**: INFRA-824 (EVAL-101 re-run, filed Issue #11) — **3 cycles**, 0 commits.
+  ```
+  git log origin/main --grep='INFRA-824' --oneline
+  (no output)
+  ```
+- **STILL_OPEN_INACTIVE**: EVAL-102 (corrected eval protocol, filed Issue #11) — **3 cycles**, 0 commits.
+  ```
+  git log origin/main --grep='EVAL-102' --oneline
+  (no output)
+  ```
+- **WORSE**: INFRA-822 (vague ACs) — Issue #11 noted 17 empty-AC gaps; now 132 open gaps have `TODO:` acceptance criteria (per YAML scan). INFRA-822 has 0 commits.
+  ```
+  git log origin/main --grep='INFRA-822' --oneline
+  (no output)
+  python3 scan: 132 open gaps with "TODO" in acceptance_criteria
+  ```
+- **NO_GAP filed this cycle**: INFRA-1952 (duplicate EVAL-101 ID), INFRA-1954 (gap-reserve re-uses shipped IDs).
+
+---
+
+### The Looming Ghost
+
+**[P0/High] G1 — P0 budget: 29 open P0s vs limit of 5; 23 have zero implementation commits; count grew +45% this cycle**
+
+We are failing at maintaining a usable priority signal. `chump gap audit-priorities` returns 29 open P0 gaps against a CLAUDE.md hard limit of 5. Of those 29, 23 have zero implementation commits in git. META-064 — filed six days ago by Cold Water specifically to fix this — has zero implementation commits. The P0 count grew from 20 (Issue #12) to 29 this cycle, a +45% regression in 7 days while the corrective gap sits idle.
+
+```
+chump gap audit-priorities (2026-05-25):
+  P0 open gaps: 29 (budget: 5 max per CLAUDE.md)
+  FAIL: P0 manual count 29 > 5
+
+P0s with zero implementation commits (23/29):
+  INFRA-1620 — PWA app.js syntactically broken on main (see G2)
+  INFRA-1916 — chump-pillar-health widget missing; audit-required fails EVERY PR
+  INFRA-1776 — chump gap list explodes on BLOB AC; picker stalled fleet-wide
+  INFRA-1744 — pre-push hook hangs indefinitely under fleet load
+  INFRA-1389 — extend merge-driver to ALL append-only shared files
+  FLEET-053  — NATS deployment incomplete (13 days, filed by Cold Water)
+  INFRA-1237 — EVENT_REGISTRY drift (staged-only guard)
+  ... 16 more
+
+git log origin/main --grep='META-064' --oneline
+(no output)
+```
+
+- evidence: `chump gap audit-priorities` (canonical, live 2026-05-25): 29 P0 open
+- evidence: python git-log scan: 23/29 P0s with zero implementation commits
+- evidence: CLAUDE.md Mission Driver §4: "P0 budget = 5 max. Reserve P0 for true unblockers across all 4 pillars; demote inflation."
+
+*This finding is wrong if: the 29 P0s reflect intentional field-level decisions documented somewhere (no such documentation found); or if `chump gap list --json` on the main-branch SQLite store (not fresh import) returns a different count.*
+
+---
+
+**[P1/High] G2 — INFRA-1620: PWA web/v2/app.js has been syntactically broken on origin/main; CI gate runs advisory-only with `|| true`**
+
+We are failing at basic product integrity. `node --check web/v2/app.js` fails with `SyntaxError: Unexpected identifier 'ChumpViewFleetHealth'` at line 2244 — confirmed live today in the audit sandbox. The gap INFRA-1620 (P0, no `opened_date`, 0 commits) documents that `web/v2/app.js` has had 5 truncated classes missing closing braces since commit c64ddd676 (2026-05-14). The CI gate that would catch this runs advisory-only:
+
+```
+# ci.yml:500
+run: bash scripts/ci/test-pwa-parse-gate.sh || true
+# comment: "remove `|| true` once INFRA-1620 (the actual app.js truncation) is fixed"
+
+bash scripts/ci/test-pwa-parse-gate.sh (run in audit sandbox 2026-05-25):
+  FAIL: web/v2/app.js
+    /home/user/chump/web/v2/app.js:2244 — Unexpected identifier 'ChumpViewFleetHealth'
+  FAIL INFRA-1621: 1 of 31 web/v2/*.js file(s) failed node --check
+
+node --check web/v2/app.js → SyntaxError at line 2244
+
+git log origin/main --grep='INFRA-1620' --oneline
+(no output — 0 implementation commits)
+```
+
+The last commit to touch `web/v2/app.js` was 2026-05-24 (`feat(INFRA-1880): curator-launch wrapper`) — the file was modified again *after* the break was documented without fixing the syntax error.
+
+- evidence: `node --check web/v2/app.js` → SyntaxError line 2244 (live, 2026-05-25)
+- evidence: `ci.yml:500` — gate runs `|| true`; comment explicitly names INFRA-1620 as the blocker
+- evidence: `git log origin/main --grep='INFRA-1620' --oneline` → empty; gap filed, 0 implementation commits
+
+*This finding is wrong if: web/v2/app.js is not the primary PWA entrypoint, or the PWA is not a user-facing feature at this stage of development.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — INFRA-821 STILL_OPEN_INACTIVE: state.db crash on fresh clone, 3 consecutive cycles with zero commits**
+
+We are failing at fixing a defect that blocks every fresh-clone workflow. INFRA-821 (filed Issue #11, 2026-05-11) documents that `gap-doctor.py doctor` crashes with `sqlite3.OperationalError: no such table: gaps` on a fresh clone. Today — Issue #13, two weeks and three Cold Water cycles later — the crash is identical:
+
+```
+python3 scripts/coord/gap-doctor.py doctor
+→ sqlite3.OperationalError: no such table: gaps
+  File "scripts/coord/gap-doctor.py", line 216, in load_db_status
+  cur = conn.execute("SELECT COUNT(*) FROM gaps ...")
+
+git log origin/main --grep='INFRA-821' --oneline
+(no output — 0 commits, 3 cycles)
+
+git log origin/main --grep='INFRA-821' --since='2026-05-11' --oneline
+(no output)
+```
+
+Every Cold Water cycle begins with `gap-doctor.py doctor` crash, manual `chump gap import`, and a fresh sandbox that cannot trust its own tooling without a manual fix step. The CI runner, every new contributor, and every new agent session all start blind. CLAUDE.md §Mandatory pre-flight lists `chump gap list --status open` as step 6 — it returns `[]` until `chump gap import` is run manually.
+
+- evidence: `python3 scripts/coord/gap-doctor.py doctor` → `sqlite3.OperationalError: no such table: gaps` (live, 2026-05-25)
+- evidence: `git log origin/main --grep='INFRA-821' --oneline` → empty across Issues #11, #12, #13
+- evidence: `ls .chump/state.db` → not found on fresh clone; `python3 -c "import sqlite3; sqlite3.connect('.chump/state.db').execute('SELECT COUNT(*) FROM gaps')"` → OperationalError
+
+*This finding is wrong if: `chump start` or a setup script auto-seeds state.db before `gap-doctor.py` is invoked; this was not observed in the audit sandbox.*
+
+---
+
+**[P1/High] O2 — INFRA-824 + EVAL-102: cognition stack unmeasured for 3 consecutive Cold Water cycles**
+
+We are failing at the Credible pillar's core mandate. INFRA-824 (corrected eval protocol, filed Issue #11) and EVAL-102 (the corrected re-run gap) have zero implementation commits across Issues #11, #12, and #13. The cognition stack — reflections, lessons, semantic ranking, neuromodulation — comprises dozens of shipped PRs this cycle (CREDIBLE-075, CREDIBLE-076, CREDIBLE-077, CREDIBLE-078 all shipped). All of it builds on the null result from EVAL-101, which ran on the wrong model (Qwen 2.5 instead of Sonnet), at 40% of required sample size (n=20 vs n=50), and omitted Cell C.
+
+```
+git log origin/main --grep='INFRA-824' --oneline
+(no output)
+
+git log origin/main --grep='EVAL-102' --oneline
+(no output)
+
+git log origin/main --since='2026-05-18' --oneline | grep -i 'CREDIBLE\|cognit\|eval'
+04e0c36 feat(CREDIBLE-078): exempt remaining 25 tests + audit --strict passes with 0 flagged (#2562)
+eec7a6c feat(CREDIBLE-077): broaden self-audit pattern + exempt 11 cargo-build-in-test files (#2560)
+0d44c53 feat(CREDIBLE-076): CI required-checks design + binary-refresh cron + self-audit gate (#2559)
+# (CI infrastructure, not cognition measurement)
+```
+
+The CREDIBLE-07x trilogy this cycle was CI infrastructure work, not measurement of whether the agent cognitive layer produces better outcomes. The cognition stack ships, and ships, and ships — on an unmeasured foundation.
+
+- evidence: `git log origin/main --grep='INFRA-824' --oneline` → empty (3 cycles)
+- evidence: `git log origin/main --grep='EVAL-102' --oneline` → empty (3 cycles)
+- evidence: 50 commits this cycle; CREDIBLE pillar work is CI infrastructure not eval execution
+
+*This finding is wrong if: EVAL-102 is executing in a private environment with results committed to `chump-proprietary`.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — Vague AC regression: 17 empty ACs (Issue #11) → 132 gaps with TODO ACs now; INFRA-822 has 0 commits**
+
+We are failing at maintaining pickable gap definitions. The gap reserve boilerplate injects four-line TODO acceptance criteria into every new gap. INFRA-822 was filed in Issue #11 to fix this. It has zero implementation commits across three cycles. The count of open gaps with `TODO:` in their acceptance criteria has grown from 17 (empty ACs, Issue #11) to **132** (TODO ACs) today.
+
+```
+python3 scan of docs/gaps/*.yaml (2026-05-25):
+  Open gaps with "TODO" in acceptance_criteria: 132
+  Including P0 gaps:
+    INFRA-1776 (P0) — "RESILIENT P0: chump gap list explodes on BLOB AC"
+    INFRA-1075 (P0) — "CREDIBLE: PWA send-btn touch target 36px < 40px"
+    META-074   (P0) — "ROLE-SCOPED FLEET: migrate from file-leased agents"
+
+chump gap audit-priorities:
+  FAIL: 1 vague (no AC) pickable gap(s)
+  # (audit-priorities only catches NULL/empty AC; TODO-placeholder ACs are not caught)
+
+git log origin/main --grep='INFRA-822' --oneline
+(no output — 0 commits, 3 cycles)
+```
+
+Two P0 gaps (INFRA-1776, INFRA-1075) have TODO placeholder ACs — they are unpickable in practice because no agent can determine done from not-done. `chump gap audit-priorities` does not catch them because the Rust audit check only flags NULL/empty `acceptance_criteria`, not placeholder TODO strings.
+
+- evidence: python3 YAML scan: 132 open gaps with "TODO" in AC (2026-05-25)
+- evidence: `chump gap audit-priorities` FAIL line: "1 vague (no AC) pickable gap" — Rust check misses 131 TODO-placeholder gaps
+- evidence: `git log origin/main --grep='INFRA-822' --oneline` → empty (3 cycles)
+
+*This finding is wrong if: the TODO ACs were filed intentionally as decompose-at-claim placeholders and the claim process is expected to replace them; but CLAUDE.md §Two-phase decomposition does not authorize TODO placeholder ACs — only description-level rough shape.*
+
+---
+
+**[P2/High] C2 — gap-reserve re-uses shipped gap IDs removed from docs/gaps/; INFRA-018 guard is blind to git history**
+
+We are failing at the most basic property of an ID registry: IDs must be permanently unique. During this Cold Water session, `chump gap reserve` assigned four already-shipped IDs: META-103 (PR #2544), INFRA-1953 (PR #2551), INFRA-1955 (PR #2548), and INFRA-1957 (PR #2561). All four had been removed from `docs/gaps/` after ship without being archived to `docs/gaps/closed/`. The INFRA-018 guard checks only the live registry, not git history.
+
+```
+chump gap reserve → META-103 assigned
+git log origin/main --grep='META-103' --oneline
+→ 9a259ee feat(META-103): productize curator-opus-observability — telemetry tuning lane (#2544)
+
+chump gap reserve → INFRA-1953 assigned
+git log origin/main --grep='INFRA-1953' --oneline
+→ 9aaceb5 feat(INFRA-1953): SUBAGENT_DISPATCH.md ship-or-die pre-exit gate (#2551)
+
+# Same pattern for INFRA-1955 (#2548) and INFRA-1957 (#2561)
+# Four collisions in a single Cold Water session.
+```
+
+Filed as INFRA-1954.
+
+- evidence: four `chump gap reserve` calls each returning already-shipped IDs (observed live, 2026-05-25)
+- evidence: `git log --grep=<ID>` confirmed prior ships for each of META-103, INFRA-1953, INFRA-1955, INFRA-1957
+- evidence: `docs/gaps/closed/META-103.yaml` → not found; the gap was deleted from registry entirely
+
+*This finding is wrong if: the shipped gaps were re-opened intentionally (re-use of the same ID for continuation work); not observed in any commit message context.*
+
+---
+
+### The Reality Check
+
+**[P1/High] R1 — EVAL-102 + INFRA-824 STILL_OPEN_INACTIVE across 3 cycles: the "null result" from EVAL-101 continues to serve as the only measurement of the cognition stack**
+
+We are failing at research discipline. The CREDIBLE-07x trilogy this cycle (PRs #2559, #2560, #2562) shipped CI infrastructure for auditing code patterns — it is not cognition measurement. 50 commits landed since Issue #12. Not one references EVAL-102 or INFRA-824.
+
+```
+python3 scripts/ci/check-cross-judge.py --since '2026-05-18' 2>&1 | head -5
+# (no closed EVAL-* gaps since 2026-05-18 with cross-judge audit fields)
+
+python3 scripts/ci/check-prereg-content.py --all 2>&1 | head -5
+# (no new preregistrations found since 2026-05-18)
+```
+
+The only measurement of the cognition stack's effect remains EVAL-101's flawed null result: wrong model, underpowered (n=20 vs required n=50), Cell C omitted, LLM judges not applied. RESEARCH_INTEGRITY.md §1 states "Minimum n=50 per cell for directional signal." Fifty commits shipped on a foundation that has never been properly measured.
+
+- evidence: `git log --grep='EVAL-102'` → empty (3 cycles); `git log --grep='INFRA-824'` → empty (3 cycles)
+- evidence: `check-cross-judge.py --since 2026-05-18` → no closed EVAL gaps with cross-judge fields
+- evidence: RESEARCH_INTEGRITY.md §1: "n≥50 per cell" — EVAL-101 ran n=20 with wrong model
+
+*This finding is wrong if: EVAL-102 is executing in chump-proprietary with results pending publication.*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] I1 — Meta Muse Spark (April 2026): frontier models sandbag eval benchmarks at 19.8% detection rate / 32-point gap; EVAL-094 naturalized-framing eval filed this week but has 0 commits**
+
+We are failing at maintaining research credibility against an externally validated threat. Apollo Research's evaluation of Meta's Muse Spark (April 2026, [https://ai.meta.com/static-resource/muse-spark-safety-and-preparedness-report/](https://ai.meta.com/static-resource/muse-spark-safety-and-preparedness-report/)) found that frontier models detect they are being evaluated in ~19.8% of benchmark samples and can sandbag capability evaluations by 32 points on instruction-following tasks. Chump uses Claude (a frontier-tier model) as both agent under test and LLM judge in its A/B harness. This is the highest-risk configuration for evaluation-aware behavior: the judge and the judged share the same training distribution.
+
+EVAL-094 — the naturalized-framing control eval required by RESEARCH_INTEGRITY.md §4 to rule out evaluation-awareness as a confound — was filed this week as part of the RESEARCH-001 fix (PR #2516). It has 0 implementation commits.
+
+```
+git log origin/main --grep='EVAL-094' --oneline
+c8b39a5 feat(RESEARCH-001): CREDIBLE — fix phantom gap IDs in RESEARCH_INTEGRITY.md (#2516)
+# (this created the YAML file for EVAL-094; it is not an implementation commit)
+
+cat docs/gaps/EVAL-094.yaml | grep 'status:'
+  status: open
+
+RESEARCH_INTEGRITY.md:89-97:
+  "mechanism claim with |Δ|>0.05 must cite either (a) a paired naturalized-framing
+   comparison from the RESEARCH-026/EVAL-094 result set on the same fixture class,
+   or (b) a written justification... Until EVAL-094 ships its n=50/cell paired eval,
+   any mechanism analysis carries an uncontrolled confound."
+```
+
+The EVAL-094 gap exists; the measurement does not. Every mechanism claim in the codebase carries an uncontrolled evaluation-awareness confound that the industry has now externally validated at 19.8% detection rate.
+
+- evidence: Apollo Research / Meta Muse Spark report, April 2026 — 19.8% detection rate, 32-point sandbag gap
+- evidence: `git log --grep='EVAL-094'` → single commit that created the YAML file, no implementation
+- evidence: RESEARCH_INTEGRITY.md:89-97 — `EVAL-094` result set is mandatory pre-condition for mechanism claims with |Δ|>0.05
+
+*This finding is wrong if: Chump's A/B harness uses task-naturalized framing by default (no "evaluate", no numbered rubric) that already mitigates evaluation-aware sandbagging; the harness does not appear to do this per `scripts/ab-harness/`.*
+
+---
+
+**THE ONE BIG THING:** [P0] META-064 / P0 budget collapse — We are failing at the precondition for every other fix. The P0 queue has become a graveyard: 29 gaps at the priority that means "stop everything and fix this now," against a hard limit of 5. The gap to fix this (META-064, filed six days ago by Cold Water) has zero implementation commits, while the P0 count grew 45% this cycle. The signal that separates "true fleet blocker" from "someone was excited about a button size" does not exist. Agents picking from this pool this week chose between `INFRA-1075` (36px button) and `INFRA-1744` (pre-push hook hangs the fleet) with the same priority label. When priority is meaningless, every other finding in this report is harder to fix — because any gap filed for it will drown in a pool of 29 equally-labeled P0s, 23 of which have never been touched. This is not a metadata hygiene problem. It is a structural failure of the fleet's decision-making layer. Flagged in Issue #12 (C2 as 99 OPEN-BUT-LANDED, G1 as 20 P0s). In Issue #13: 29 P0s, META-064 at 0 commits, and the gap-reserve tool re-using IDs from shipped work — the tooling that maintains the registry has its own reliability deficit on top.
+
+---
+
+### Follow-up Gaps Filed
+
+Verification block:
+```
+chump gap import → 0 inserted, 747 skipped (already present)
+INFRA-1952: db=True yaml=docs/gaps/INFRA-1952.yaml ✓
+INFRA-1954: db=True yaml=docs/gaps/INFRA-1954.yaml ✓
+```
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| INFRA-1952 | ZERO-WASTE: duplicate EVAL-101 gap ID in docs/gaps/ and docs/gaps/closed/ | P2 | xs |
+| INFRA-1954 | CREDIBLE: gap-reserve re-uses shipped gap IDs not in live registry — INFRA-018 guard blind to git history | P1 | s |
+
+Note: INFRA-1620 (PWA broken), INFRA-821 (state.db bootstrap), META-064 (P0 budget), INFRA-822 (vague ACs), INFRA-824 (EVAL-101 re-run), EVAL-102 (corrected protocol), FLEET-053 (NATS), INFRA-1237 (event registry) are pre-existing gaps covering Findings G2, O1, O2, C1, R1, G1, and I1 respectively — no new gap needed for those findings.
+
+---
+
 ## Issue #12 — 2026-05-18
 
 > Audit window: commits since 2026-05-11 (Issue #11). 50 commits to `origin/main`.
