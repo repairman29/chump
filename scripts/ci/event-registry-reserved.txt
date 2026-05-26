@@ -412,3 +412,6 @@ worker_stuck              # reason: INFRA-2029 emitted by scripts/dispatch/worke
 
 # ── INFRA-2009 (THE FLOOR Phase 2): daemon silent-noop alarm ─────────────────
 daemon_silent_noop  # reason: INFRA-2009 emitted by scripts/coord/lib/silent-noop-guard.sh EXIT trap when a floor daemon (cluster_detector, wedge_state_machine, recovery_queue_service) exits rc=0 without executing its main work body despite non-empty input; generalizes the INFRA-1988 hook_silent_passthrough pattern; carries source=<daemon_tag> + reason=main_work_body_skipped_despite_input; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+
+# ── INFRA-2025: cross-daemon coordination — cluster-detector defers during recovery-queue drop-window ──
+cluster_detection_deferred_for_recovery  # reason: INFRA-2025 emitted by scripts/coord/cluster-detector.sh when recovery-cycle-in-flight.flag is present; prevents mis-classification of PRs as passing during the required_status_checks drop-window; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
