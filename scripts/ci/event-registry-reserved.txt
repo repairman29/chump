@@ -406,3 +406,6 @@ fleet_stalled  # reason: INFRA-2013 emitted by scripts/dispatch/fleet-brief.sh w
 # ── INFRA-2008 + INFRA-2029 (THE FLOOR Phase 2): worker prelude floor-signal reads ──
 worker_floor_signal_read  # reason: INFRA-2008 emitted by scripts/dispatch/worker.sh prelude before each claim cycle; carries signal=(fleet_hold|floor_temp), hold=0|1 or temp=COLD|WARM|HOT; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
 worker_stuck              # reason: INFRA-2029 emitted by scripts/dispatch/worker.sh _emit_worker_stuck helper in every exit-without-ship code path (stand_down, preflight_fail, gap_already_done, worktree_create_fail, no_pickable_gap); carries reason field; printf-direct JSON not grep-scannable
+
+# ── INFRA-2009 (THE FLOOR Phase 2): daemon silent-noop alarm ─────────────────
+daemon_silent_noop  # reason: INFRA-2009 emitted by scripts/coord/lib/silent-noop-guard.sh EXIT trap when a floor daemon (cluster_detector, wedge_state_machine, recovery_queue_service) exits rc=0 without executing its main work body despite non-empty input; generalizes the INFRA-1988 hook_silent_passthrough pattern; carries source=<daemon_tag> + reason=main_work_body_skipped_despite_input; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS

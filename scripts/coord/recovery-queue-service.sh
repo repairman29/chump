@@ -52,6 +52,12 @@ CHECKPOINT_MAX_AGE="${CHUMP_RECOVERY_QUEUE_CHECKPOINT_MAX_AGE:-120}"
 
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 
+# ── INFRA-2009: silent-noop guard ─────────────────────────────────────────────
+# Emits kind=daemon_silent_noop if main work body is skipped on non-empty input.
+# shellcheck source=scripts/coord/lib/silent-noop-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/silent-noop-guard.sh"
+_sng_install_guard "recovery_queue_service" "$AMBIENT"
+
 if [[ "${CHUMP_RECOVERY_QUEUE_PAUSE:-0}" == "1" ]]; then
     printf '{"ts":"%s","kind":"recovery_queue_paused","source":"recovery_queue_service","reason":"env_pause"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$AMBIENT" 2>/dev/null || true
@@ -426,6 +432,7 @@ else
     HIGHEST_LINE=0
 fi
 
+_SNG_HAD_INPUT=1   # INFRA-2009: non-empty requests → guard expects main work
 while IFS= read -r req; do
     [[ -z "$req" ]] && continue
 
@@ -443,6 +450,7 @@ while IFS= read -r req; do
 
     _run_cycle "$PRS" "$REASON"
 done <<< "$REQUESTS"
+_sng_mark_done     # INFRA-2009: main work body executed
 
 # Advance offset past everything we considered
 _advance_offset "$HIGHEST_LINE"

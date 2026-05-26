@@ -68,6 +68,12 @@ fi
 
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 
+# ── INFRA-2009: silent-noop guard ─────────────────────────────────────────────
+# Emits kind=daemon_silent_noop if main work body is skipped on non-empty input.
+# shellcheck source=scripts/coord/lib/silent-noop-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/silent-noop-guard.sh"
+_sng_install_guard "cluster_detector" "$AMBIENT"
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -355,6 +361,7 @@ DETECTED="$(_detect)"
 CURRENT_IDS=""
 
 if [[ -n "$DETECTED" ]]; then
+    _SNG_HAD_INPUT=1   # INFRA-2009: non-empty cluster data → guard expects main work
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         # Parse the cluster info
@@ -365,6 +372,7 @@ if [[ -n "$DETECTED" ]]; then
         CURRENT_IDS+="$cid "
         _file_or_update_cluster_gap "$cid" "$pr_csv" "$checks_csv" "$count"
     done <<<"$DETECTED"
+    _sng_mark_done     # INFRA-2009: main work body executed
 fi
 
 # Detect resolutions (clusters no longer firing)
