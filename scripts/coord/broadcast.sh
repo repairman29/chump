@@ -14,12 +14,18 @@
 # live session lease files in .chump-locks/.
 #
 # Usage:
-#   scripts/coord/broadcast.sh [--to <recipient>] INTENT  <gap-id> [file1,file2,...]
-#   scripts/coord/broadcast.sh [--to <recipient>] HANDOFF <gap-id> <to-session>
-#   scripts/coord/broadcast.sh [--to <recipient>] STUCK   <gap-id> "<reason>"
-#   scripts/coord/broadcast.sh [--to <recipient>] DONE    <gap-id> [commit-sha]
-#   scripts/coord/broadcast.sh [--to <recipient>] WARN    "<message>"
-#   scripts/coord/broadcast.sh [--to <recipient>] ALERT   kind=<kind> "<message>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] INTENT  <gap-id> [file1,file2,...]
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] HANDOFF <gap-id> <to-session>
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] STUCK   <gap-id> "<reason>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] DONE    <gap-id> [commit-sha]
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] WARN    "<message>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] ALERT   kind=<kind> "<message>"
+#
+# Urgency tiers (INFRA-2015):
+#   INFO      (default) — inbox + ambient only; next-session pickup
+#   WARN      — inbox + ambient + kind=urgent_broadcast event (5-min loop tick)
+#   CRIT      — inbox + ambient + URGENT-INBOX.jsonl (PostToolUse hook, ~1 tool call)
+#   EMERGENCY — all of above + inbox-injector.sh (immediate tmux send-keys)
 #
 # Event schema (all events):
 #   event    — one of: INTENT HANDOFF STUCK DONE WARN ALERT
@@ -189,6 +195,81 @@ emit_to_inbox() {
     done
 }
 
+# ── INFRA-2015: urgency-tier routing ─────────────────────────────────────────
+# Called AFTER the primary emit_to_file + emit_to_inbox so the main event
+# always lands in ambient regardless of urgency side-effects.
+#
+# Tiers (in ascending urgency order):
+#   INFO      — no extra routing; inbox + ambient is sufficient.
+#   WARN      — emit kind=urgent_broadcast to ambient so the 5-min loop tick
+#               surfaces it to watchdog consumers.
+#   CRIT      — write to .chump-locks/URGENT-INBOX.jsonl; inbox-check-urgent.sh
+#               PostToolUse hook delivers within ~1 tool call.
+#   EMERGENCY — CRIT + invoke inbox-injector.sh once explicitly for immediate
+#               tmux send-keys injection to any matching pane.
+#
+# scanner-anchor: "kind":"urgent_broadcast"
+route_by_urgency() {
+    local urgency="$1" json="$2" msg_body="$3"
+    case "$urgency" in
+        INFO|"") return 0 ;;  # no extra routing; default / legacy path
+        WARN)
+            # Emit a secondary ambient event so the 5-min loop tick sees it.
+            printf '{"ts":"%s","kind":"urgent_broadcast","urgency":"WARN","source_session":"%s","body":%s}\n' \
+                "$TS" "$SESSION_ID" \
+                "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
+                >> "$AMBIENT" 2>/dev/null || true
+            ;;
+        CRIT)
+            # Write to global urgent inbox — PostToolUse hook reads it within ~1 tool call.
+            local urgent_inbox="$LOCK_DIR/URGENT-INBOX.jsonl"
+            python3 -c "
+import json, sys
+entry = {
+    'ts': sys.argv[1],
+    'urgency': 'CRIT',
+    'from': sys.argv[2],
+    'to': sys.argv[3] if sys.argv[3] else 'fleet-wide',
+    'body': sys.argv[4],
+}
+print(json.dumps(entry))
+" "$TS" "$SESSION_ID" "$TO" "$msg_body" >> "$urgent_inbox" 2>/dev/null || true
+            # Also emit urgent_broadcast ambient marker
+            printf '{"ts":"%s","kind":"urgent_broadcast","urgency":"CRIT","source_session":"%s","body":%s}\n' \
+                "$TS" "$SESSION_ID" \
+                "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
+                >> "$AMBIENT" 2>/dev/null || true
+            ;;
+        EMERGENCY)
+            # Write to global urgent inbox (same as CRIT).
+            local urgent_inbox="$LOCK_DIR/URGENT-INBOX.jsonl"
+            python3 -c "
+import json, sys
+entry = {
+    'ts': sys.argv[1],
+    'urgency': 'EMERGENCY',
+    'from': sys.argv[2],
+    'to': sys.argv[3] if sys.argv[3] else 'fleet-wide',
+    'body': sys.argv[4],
+}
+print(json.dumps(entry))
+" "$TS" "$SESSION_ID" "$TO" "$msg_body" >> "$urgent_inbox" 2>/dev/null || true
+            # Emit urgent_broadcast ambient marker
+            printf '{"ts":"%s","kind":"urgent_broadcast","urgency":"EMERGENCY","source_session":"%s","body":%s}\n' \
+                "$TS" "$SESSION_ID" \
+                "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$msg_body")" \
+                >> "$AMBIENT" 2>/dev/null || true
+            # Invoke inbox-injector.sh once for immediate tmux send-keys injection.
+            local injector
+            injector="$(dirname "${BASH_SOURCE[0]}")/inbox-injector.sh"
+            if [[ -x "$injector" ]]; then
+                CHUMP_SESSION_ID="$SESSION_ID" \
+                    "$injector" --urgency EMERGENCY --body "$msg_body" 2>/dev/null || true
+            fi
+            ;;
+    esac
+}
+
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 [--to <recipient>] INTENT|HANDOFF|STUCK|DONE|WARN|ALERT [args...]" >&2
     exit 1
@@ -196,11 +277,20 @@ fi
 
 # INFRA-1115: optional --to <recipient> targets the inbox(es) named.
 # INFRA-1255: optional --corr <id> sets correlation_id explicitly.
-# INFRA-1299: optional --urgency <now|hours|digest> drives reach-classifier.
+# INFRA-2015: optional --urgency INFO|WARN|CRIT|EMERGENCY controls routing tier.
+#   INFO      (default) — file inbox only; next-session pickup. No extra side-effects.
+#   WARN      — file inbox + emit kind=urgent_broadcast to ambient (5 min loop tick).
+#   CRIT      — file inbox + write to .chump-locks/URGENT-INBOX.jsonl (PostToolUse
+#               hook via inbox-check-urgent.sh delivers within ~1 tool call).
+#   EMERGENCY — all of the above + invoke inbox-injector.sh once explicitly
+#               (immediate tmux send-keys for any matching pane).
+# Backwards compat: default urgency is INFO — callers that omit --urgency are unchanged.
+# INFRA-1299 note: prior values now|hours|digest are accepted as aliases for INFO
+# so legacy callers continue working without modification.
 # All flags can appear in any order before the event-type positional.
 TO=""
 CORR_FLAG=""
-URGENCY=""
+URGENCY="INFO"
 while :; do
     case "${1:-}" in
         --to)
@@ -215,8 +305,11 @@ while :; do
             ;;
         --urgency)
             URGENCY="${2:-}"
-            case "$URGENCY" in now|hours|digest) : ;;
-                *) echo "Usage: $0 --urgency now|hours|digest" >&2; exit 1 ;;
+            case "$URGENCY" in
+                INFO|WARN|CRIT|EMERGENCY) : ;;
+                # INFRA-1299 backwards compat: legacy reach-classifier values map to INFO
+                now|hours|digest) URGENCY="INFO" ;;
+                *) echo "Usage: $0 --urgency INFO|WARN|CRIT|EMERGENCY" >&2; exit 1 ;;
             esac
             shift 2
             ;;
@@ -256,7 +349,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
         emit_to_nats INTENT "gap=$GAP" "files=$FILES" "model=$MODEL" "harness=$HARNESS"
-        printf '[broadcast] INTENT  session=%s  gap=%s\n' "$SESSION_ID" "$GAP"
+        route_by_urgency "$URGENCY" "$JSON" "INTENT gap=$GAP files=$FILES"
+        printf '[broadcast] INTENT  session=%s  gap=%s  urgency=%s\n' "$SESSION_ID" "$GAP" "$URGENCY"
         ;;
 
     HANDOFF)
@@ -271,7 +365,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$EFFECTIVE_TO" "$JSON"
         emit_to_nats HANDOFF "gap=$GAP" "to=$EFFECTIVE_TO"
-        printf '[broadcast] HANDOFF gap=%s → %s\n' "$GAP" "$EFFECTIVE_TO"
+        route_by_urgency "$URGENCY" "$JSON" "HANDOFF gap=$GAP to=$EFFECTIVE_TO"
+        printf '[broadcast] HANDOFF gap=%s → %s  urgency=%s\n' "$GAP" "$EFFECTIVE_TO" "$URGENCY"
         ;;
 
     STUCK)
@@ -286,7 +381,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
         emit_to_nats STUCK "gap=$GAP" "reason=$REASON"
-        printf '[broadcast] STUCK   gap=%s  reason=%s\n' "$GAP" "$REASON"
+        route_by_urgency "$URGENCY" "$JSON" "STUCK gap=$GAP reason=$REASON"
+        printf '[broadcast] STUCK   gap=%s  reason=%s  urgency=%s\n' "$GAP" "$REASON" "$URGENCY"
         ;;
 
     DONE)
@@ -301,7 +397,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
         emit_to_nats DONE "gap=$GAP" "commit=$COMMIT" "model=$MODEL" "harness=$HARNESS"
-        printf '[broadcast] DONE    gap=%s  commit=%s\n' "$GAP" "$COMMIT"
+        route_by_urgency "$URGENCY" "$JSON" "DONE gap=$GAP commit=$COMMIT"
+        printf '[broadcast] DONE    gap=%s  commit=%s  urgency=%s\n' "$GAP" "$COMMIT" "$URGENCY"
         ;;
 
     WARN)
@@ -316,7 +413,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
         emit_to_nats WARN "reason=$MSG"
-        printf '[broadcast] WARN    %s\n' "$MSG"
+        route_by_urgency "$URGENCY" "$JSON" "$MSG"
+        printf '[broadcast] WARN    %s  urgency=%s\n' "$MSG" "$URGENCY"
         ;;
 
     ALERT)
@@ -332,7 +430,8 @@ case "$EVENT" in
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
         emit_to_nats ALERT "kind=$KIND" "reason=$MSG"
-        printf '[broadcast] ALERT   kind=%s  %s\n' "$KIND" "$MSG"
+        route_by_urgency "$URGENCY" "$JSON" "ALERT kind=$KIND $MSG"
+        printf '[broadcast] ALERT   kind=%s  %s  urgency=%s\n' "$KIND" "$MSG" "$URGENCY"
         ;;
 
     FEEDBACK)
@@ -371,7 +470,8 @@ case "$EVENT" in
         printf '%s\n' "$JSON" >> "$LOCK_DIR/feedback.jsonl"
         # NATS topic: chump.events.FEEDBACK (Phase 1 keeps the type uppercase like the rest).
         emit_to_nats FEEDBACK "kind=$FB_KIND" "subject=$FB_SUBJECT" "rationale=$FB_RATIONALE" "vote=${FB_VOTE:-0}"
-        printf '[broadcast] FEEDBACK kind=%s subject=%s\n' "$FB_KIND" "$FB_SUBJECT"
+        route_by_urgency "$URGENCY" "$JSON" "FEEDBACK kind=$FB_KIND subject=$FB_SUBJECT"
+        printf '[broadcast] FEEDBACK kind=%s subject=%s  urgency=%s\n' "$FB_KIND" "$FB_SUBJECT" "$URGENCY"
         ;;
 
     *)
