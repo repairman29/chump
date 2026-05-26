@@ -50,6 +50,12 @@ if [[ "${CHUMP_WEDGE_STATE_MACHINE_SKIP:-0}" == "1" ]]; then
     exit 0
 fi
 
+# ── INFRA-2009: silent-noop guard ─────────────────────────────────────────────
+# Emits kind=daemon_silent_noop if main work body is skipped on non-empty input.
+# shellcheck source=scripts/coord/lib/silent-noop-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/silent-noop-guard.sh"
+_sng_install_guard "wedge_state_machine" "$AMBIENT"
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 _ts()      { date -u +%Y-%m-%dT%H:%M:%SZ; }
 _ts_secs() { date +%s; }
@@ -302,6 +308,7 @@ fi
 
 echo "[state-machine] found $(echo "$DETECTIONS" | wc -l | xargs) new detection(s)" >&2
 
+_SNG_HAD_INPUT=1   # INFRA-2009: non-empty detections → guard expects main work
 while IFS='|' read -r class detail; do
     [[ -z "$class" ]] && continue
     _record_detection "$class"
@@ -317,6 +324,7 @@ while IFS='|' read -r class detail; do
         _emit_chronic "$class"
     fi
 done <<< "$DETECTIONS"
+_sng_mark_done     # INFRA-2009: main work body executed
 
 # Advance offset
 state="$(_load_state)"
