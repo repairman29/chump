@@ -44,6 +44,11 @@ WINDOW=3600
 RULESET_ID="${CHUMP_RECOVERY_QUEUE_RULESET_ID:-15133729}"
 DRY_RUN="${CHUMP_RECOVERY_QUEUE_DRY_RUN:-0}"
 GH_BIN="${CHUMP_RECOVERY_QUEUE_TEST_GH:-gh}"
+# Checkpoint: tracks mid-flight step for crash recovery.
+# Age threshold: if checkpoint is older than 2× the launchd interval (120s),
+# the daemon process that wrote it is considered dead and we auto-restore.
+CHECKPOINT="$REPO_ROOT/.chump-locks/recovery-queue-in-flight.json"
+CHECKPOINT_MAX_AGE="${CHUMP_RECOVERY_QUEUE_CHECKPOINT_MAX_AGE:-120}"
 
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 
@@ -53,6 +58,117 @@ if [[ "${CHUMP_RECOVERY_QUEUE_PAUSE:-0}" == "1" ]]; then
     echo "recovery-queue: paused via env" >&2
     exit 0
 fi
+
+# ── Checkpoint helpers (INFRA-2027) ─────────────────────────────────────────
+# Write step-name + backup-path to the in-flight checkpoint file.
+# Called BEFORE each destructive step so a crash at any stage is detectable.
+_checkpoint_step() {
+    local step="$1"
+    local backup_path="${2:-}"
+    [[ "$DRY_RUN" == "1" ]] && return
+    printf '{"step":"%s","backup_path":"%s","started_ts":"%s","pid":%d}\n' \
+        "$step" "$backup_path" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" \
+        > "$CHECKPOINT.tmp" && mv "$CHECKPOINT.tmp" "$CHECKPOINT" || true
+}
+
+# Clear the checkpoint after a successful cycle.
+_checkpoint_clear() {
+    [[ "$DRY_RUN" == "1" ]] && return
+    rm -f "$CHECKPOINT" || true
+}
+
+# At daemon startup: if an orphaned checkpoint exists (age > CHECKPOINT_MAX_AGE),
+# auto-restore the ruleset from its backup and emit operator_recovery_aborted_recovered.
+_resume_from_checkpoint_if_orphaned() {
+    [[ -f "$CHECKPOINT" ]] || return 0
+
+    local checkpoint_ts backup_path step
+    checkpoint_ts="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CHECKPOINT'))
+    print(d.get('started_ts',''))
+except Exception:
+    print('')
+" 2>/dev/null || true)"
+
+    [[ -z "$checkpoint_ts" ]] && { rm -f "$CHECKPOINT"; return 0; }
+
+    # Compute age in seconds
+    local age
+    age="$(python3 -c "
+import datetime, sys
+try:
+    ts = '$checkpoint_ts'
+    dt = datetime.datetime.fromisoformat(ts.replace('Z','+00:00'))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    print(int((now - dt).total_seconds()))
+except Exception:
+    print(9999)
+" 2>/dev/null || echo 9999)"
+
+    if [[ "$age" -lt "$CHECKPOINT_MAX_AGE" ]]; then
+        # Process may still be alive; don't interfere.
+        echo "[checkpoint] in-flight checkpoint age=${age}s < ${CHECKPOINT_MAX_AGE}s — skipping auto-restore" >&2
+        return 0
+    fi
+
+    step="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CHECKPOINT'))
+    print(d.get('step','unknown'))
+except Exception:
+    print('unknown')
+" 2>/dev/null || echo unknown)"
+
+    backup_path="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CHECKPOINT'))
+    print(d.get('backup_path',''))
+except Exception:
+    print('')
+" 2>/dev/null || true)"
+
+    echo "[checkpoint] orphaned checkpoint detected: step=$step age=${age}s backup=$backup_path" >&2
+
+    # Only attempt restore if we have a backup file and the step was AFTER the drop.
+    if [[ "$step" == "drop" || "$step" == "merge" ]] && [[ -n "$backup_path" ]] && [[ -f "$backup_path" ]]; then
+        echo "[checkpoint] restoring ruleset from backup: $backup_path" >&2
+        if [[ "$DRY_RUN" != "1" ]]; then
+            if "$GH_BIN" api -X PUT "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" \
+                    --input "$backup_path" >/dev/null 2>&1; then
+                echo "[checkpoint] ruleset auto-restored successfully" >&2
+                _emit "operator_recovery_aborted_recovered" \
+                    "\"aborted_step\":\"$step\"" \
+                    "\"checkpoint_age_s\":\"$age\"" \
+                    "\"backup_file\":\"$backup_path\"" \
+                    "\"ruleset_id\":\"$RULESET_ID\""
+                rm -f "$CHECKPOINT" "$backup_path" || true
+            else
+                echo "[checkpoint] CRITICAL: auto-restore failed — operator action required; backup=$backup_path" >&2
+                _emit "operator_recovery_failed" \
+                    "\"reason\":\"checkpoint_auto_restore_failed_CRITICAL\"" \
+                    "\"aborted_step\":\"$step\"" \
+                    "\"backup_file\":\"$backup_path\"" \
+                    "\"ruleset_id\":\"$RULESET_ID\""
+            fi
+        fi
+    elif [[ "$step" == "snapshot" ]]; then
+        # Died before drop — ruleset is still intact; just clear the checkpoint.
+        echo "[checkpoint] aborted at snapshot step — ruleset intact; clearing checkpoint" >&2
+        _emit "operator_recovery_aborted_recovered" \
+            "\"aborted_step\":\"$step\"" \
+            "\"checkpoint_age_s\":\"$age\"" \
+            "\"note\":\"died_before_drop_no_restore_needed\"" \
+            "\"ruleset_id\":\"$RULESET_ID\""
+        rm -f "$CHECKPOINT" || true
+    else
+        echo "[checkpoint] unknown step or missing backup; clearing stale checkpoint" >&2
+        rm -f "$CHECKPOINT" || true
+    fi
+}
 
 # ── State helpers ────────────────────────────────────────────────────────────
 _load_state() {
@@ -198,11 +314,13 @@ _run_cycle() {
 
     # 1. Snapshot
     local backup="/tmp/recovery-ruleset-backup-${RULESET_ID}-$$.json"
+    _checkpoint_step "snapshot" "$backup"
     if ! "$GH_BIN" api "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" > "$backup" 2>/dev/null; then
         echo "[fail] could not snapshot ruleset $RULESET_ID — aborting" >&2
         _emit "operator_recovery_failed" \
             "\"reason\":\"ruleset_snapshot_failed\"" \
             "\"prs\":\"$prs_csv\""
+        _checkpoint_clear
         return 1
     fi
 
@@ -221,16 +339,19 @@ out = {
 with open('$dropped','w') as f: json.dump(out,f)
 " 2>/dev/null
 
+    _checkpoint_step "drop" "$backup"
     if ! "$GH_BIN" api -X PUT "repos/${CHUMP_GH_REPO:-repairman29/chump}/rulesets/$RULESET_ID" --input "$dropped" >/dev/null 2>&1; then
         echo "[fail] could not drop ruleset rules — aborting" >&2
         _emit "operator_recovery_failed" \
             "\"reason\":\"ruleset_drop_failed\"" \
             "\"prs\":\"$prs_csv\""
         rm -f "$backup" "$dropped"
+        _checkpoint_clear
         return 1
     fi
 
     # 3. Admin-merge each PR
+    _checkpoint_step "merge" "$backup"
     local merged=""
     local failed=""
     IFS=',' read -ra PR_LIST <<< "$prs_csv"
@@ -267,6 +388,7 @@ with open('$dropped','w') as f: json.dump(out,f)
     fi
 
     rm -f "$backup" "$dropped"
+    _checkpoint_clear
     _record_cycle
     _emit "operator_recovery_executed" \
         "\"prs\":\"$prs_csv\"" \
@@ -279,6 +401,10 @@ with open('$dropped','w') as f: json.dump(out,f)
 }
 
 # ── Main loop ───────────────────────────────────────────────────────────────
+# On every daemon startup, check for an orphaned mid-flight checkpoint from a
+# previous process that died between steps. If found and old enough, auto-restore.
+_resume_from_checkpoint_if_orphaned
+
 LINE_NUM=0
 REQUESTS="$(_find_requests)"
 
