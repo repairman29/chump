@@ -24,6 +24,8 @@
 #   - Refuses to merge PRs from forks
 #   - CHUMP_RECOVERY_QUEUE_PAUSE=1 disables the daemon entirely
 #   - All actions audited via ambient events
+#   - INFRA-2025: writes .chump-locks/recovery-cycle-in-flight.flag during the
+#     drop-window so cluster-detector can skip mis-classified scans.
 #
 # Config (env):
 #   CHUMP_RECOVERY_QUEUE_PAUSE=1            disable daemon
@@ -49,8 +51,13 @@ GH_BIN="${CHUMP_RECOVERY_QUEUE_TEST_GH:-gh}"
 # the daemon process that wrote it is considered dead and we auto-restore.
 CHECKPOINT="$REPO_ROOT/.chump-locks/recovery-queue-in-flight.json"
 CHECKPOINT_MAX_AGE="${CHUMP_RECOVERY_QUEUE_CHECKPOINT_MAX_AGE:-120}"
+# INFRA-2025: in-flight marker so cluster-detector skips scans during drop-window
+IN_FLIGHT_FLAG="${CHUMP_RECOVERY_IN_FLIGHT_FLAG:-$REPO_ROOT/.chump-locks/recovery-cycle-in-flight.flag}"
 
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
+
+# INFRA-2025: ensure flag is always cleaned up even on unexpected exit
+trap 'rm -f "$IN_FLIGHT_FLAG"' EXIT
 
 # ── INFRA-2009: silent-noop guard ─────────────────────────────────────────────
 # Emits kind=daemon_silent_noop if main work body is skipped on non-empty input.
@@ -448,7 +455,10 @@ while IFS= read -r req; do
     REASON="$(echo "$req" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("reason",""))' 2>/dev/null)"
     [[ -z "$PRS" ]] && continue
 
+    # INFRA-2025: mark cycle in-flight before dropping required_status_checks
+    touch "$IN_FLIGHT_FLAG" 2>/dev/null || true
     _run_cycle "$PRS" "$REASON"
+    rm -f "$IN_FLIGHT_FLAG"
 done <<< "$REQUESTS"
 _sng_mark_done     # INFRA-2009: main work body executed
 

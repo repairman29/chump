@@ -45,6 +45,8 @@ WINDOW_MIN="${CHUMP_CLUSTER_DETECTOR_WINDOW_MIN:-30}"
 DEDUP_MIN="${CHUMP_CLUSTER_DETECTOR_DEDUP_MIN:-60}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STATE_FILE="$REPO_ROOT/.chump-locks/cluster-detector-state.json"
+# INFRA-2025: in-flight marker written by recovery-queue-service during drop-window
+IN_FLIGHT_FLAG="${CHUMP_RECOVERY_IN_FLIGHT_FLAG:-$REPO_ROOT/.chump-locks/recovery-cycle-in-flight.flag}"
 FORMAT=text
 DRY_RUN=0
 
@@ -73,6 +75,22 @@ mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 # shellcheck source=scripts/coord/lib/silent-noop-guard.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/silent-noop-guard.sh"
 _sng_install_guard "cluster_detector" "$AMBIENT"
+
+# ── INFRA-2025: defer scan during recovery-queue drop-window ──────────────────
+# recovery-queue-service.sh drops required_status_checks during its cycle;
+# all PRs appear "passing" in that window. Scanning now would mis-classify
+# recovered PRs as clean clusters. Skip this tick and try next invocation.
+if [[ -f "$IN_FLIGHT_FLAG" ]]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "[dry-run] would emit: cluster_detection_deferred_for_recovery" >&2
+    else
+        printf '{"ts":"%s","kind":"cluster_detection_deferred_for_recovery","source":"cluster_detector","reason":"recovery_cycle_in_flight"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$AMBIENT" 2>/dev/null || true
+    fi
+    [[ "$FORMAT" == "json" ]] && echo '{"status":"deferred","reason":"recovery_cycle_in_flight"}' \
+        || echo "cluster-detector: deferred (recovery cycle in flight — will retry next tick)"
+    exit 0
+fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
