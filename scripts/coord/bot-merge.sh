@@ -2747,6 +2747,14 @@ print(f"{incomplete} {failed} {total}")
                     # INFRA-509: state.db is canonical; no YAML file staging needed.
                     green "Auto-closed $_gid (closed_pr=$TARGET_PR) — squashed atomically by merge queue"
 
+                    # INFRA-2007: emit binary_main_updated so the event-driven watcher
+                    # in binary-refresh-event-watcher.sh triggers an immediate rebuild,
+                    # eliminating the W-002 binary-cache-lag class permanently.
+                    _bmu_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    printf '{"ts":"%s","kind":"binary_main_updated","gap_id":"%s","pr":%s,"note":"INFRA-2007 event-driven refresh trigger"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gid" "$TARGET_PR" \
+                        >> "$_bmu_amb" 2>/dev/null || true
+
                     # INFRA-1253: emit DONE a2a event with corr_id=gap-id. INFRA-1255
                     # inbox-reap will clear any matching STUCK/HANDOFF/INTENT from
                     # session inboxes — closes the lifecycle loop. Also clear any

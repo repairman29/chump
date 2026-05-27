@@ -419,3 +419,9 @@ cluster_detection_deferred_for_recovery  # reason: INFRA-2025 emitted by scripts
 # ── INFRA-2030: real auto-remediations wired into wedge-state-machine ────────
 wedge_remediated_real          # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_w002/_remediate_w007/_remediate_wagg after invoking a REAL remediation primitive (not just an advisory emit); carries class, action, detail; replaces advisory-only wedge_remediation_requested for W-002/W-007/W-AGG; printf-direct JSON not grep-scannable as kind=X literal
 cluster_detection_requested    # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_wagg when W-AGG fires; signals cluster-detector.sh to run its IDENTICAL-check-set discrimination on next tick; carries source_wedge, reason, detail; printf-direct JSON not grep-scannable as kind=X literal
+
+# ── INFRA-2007: W-002 binary-cache-lag permanent fix — event-driven refresh + cron fallback ─────────
+binary_main_updated  # reason: INFRA-2007 emitted by scripts/coord/bot-merge.sh after successful gap ship + merge; triggers binary-refresh-event-watcher.sh to rebuild immediately; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+binary_refresh_triggered_event  # reason: INFRA-2007 emitted by scripts/coord/binary-refresh-event-watcher.sh when binary_main_updated event triggers an immediate rebuild (event-driven path); printf-direct JSON not grep-scannable as kind=X literal
+binary_event_watcher_rate_limited  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when rebuild skipped because last rebuild was within CHUMP_BINARY_EVENT_RATE_LIMIT_S window; safety valve against merge bursts
+binary_event_watcher_no_tool  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when fswatch is absent; signals that polling fallback (tail -F) is active instead of zero-overhead FSEvents path
