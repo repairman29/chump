@@ -435,6 +435,56 @@ EOF_STAGED
 fi
 
 # ------------------------------------------------------------------
+# 1c. Off-rails guard (RESILIENT-025, 2026-05-27): commit subject must
+#     mention the claimed gap ID.
+#
+# Prevents the class: a sub-agent dispatched on INFRA-A commits work
+# titled "fix(INFRA-B):" in the INFRA-A worktree (off-rails). Caught
+# once manually before push; this guard makes it deterministic.
+#
+# When a .chump-locks/claim-*.json exists with a gap_id field, and the
+# commit subject does not mention that gap_id (case-insensitive), the
+# commit is blocked. Intentional pre-req integrations are bypassed via
+# trailer: `Off-Rails-Bypass: <reason>` — emits off_rails_bypassed to
+# ambient.jsonl for audit.
+#
+# Only fires when a claim file exists — human commits without a claim
+# pass through without noise.
+#
+# Bypass: add 'Off-Rails-Bypass: <reason>' trailer, or CHUMP_OFF_RAILS_CHECK=0.
+# ------------------------------------------------------------------
+
+if [ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]; then
+    _CLAIM_FILE=$(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1 || true)
+    if [ -n "$_CLAIM_FILE" ] && [ -f "$_CLAIM_FILE" ]; then
+        _CLAIMED_GAP=$(jq -r '.gap_id // empty' "$_CLAIM_FILE" 2>/dev/null || true)
+        if [ -n "$_CLAIMED_GAP" ]; then
+            # Use git rev-parse --git-dir to resolve COMMIT_EDITMSG correctly in worktrees
+            # (in a worktree .git is a file, not a directory — $REPO_ROOT/.git/COMMIT_EDITMSG fails)
+            _GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || true)
+            _EDITMSG="${_GIT_DIR}/COMMIT_EDITMSG"
+            if [ -n "$_GIT_DIR" ] && [ -f "$_EDITMSG" ]; then
+                _COMMIT_MSG=$(cat "$_EDITMSG")
+                if grep -qE '^Off-Rails-Bypass:' "$_EDITMSG"; then
+                    # Audit the bypass
+                    _BYPASS_REASON=$(grep -E '^Off-Rails-Bypass:' "$_EDITMSG" \
+                        | head -1 | sed 's/^Off-Rails-Bypass:[[:space:]]*//')
+                    printf '{"ts":"%s","kind":"off_rails_bypassed","claimed_gap":"%s","reason":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_CLAIMED_GAP" "$_BYPASS_REASON" \
+                        >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                elif ! echo "$_COMMIT_MSG" | grep -qiE "$_CLAIMED_GAP"; then
+                    echo "[pre-commit] BLOCKED (RESILIENT-025): commit subject must mention claimed gap $_CLAIMED_GAP" >&2
+                    echo "[pre-commit] Active claim: $_CLAIM_FILE" >&2
+                    echo "[pre-commit] Bypass: add 'Off-Rails-Bypass: <reason>' trailer for intentional pre-req integration" >&2
+                    echo "[pre-commit] Or: CHUMP_OFF_RAILS_CHECK=0 git commit ..." >&2
+                    exit 1
+                fi
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 2. Stomp-warning — non-blocking flag for stale staged files
 # ------------------------------------------------------------------
 #

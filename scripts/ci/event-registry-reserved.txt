@@ -442,3 +442,6 @@ wizard_dispatch_rate_limited    # reason: META-107 emitted by scripts/coord/wiza
 wizard_gap_skipped              # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step4 when a gap has wizard_skip:true in its notes field; carries gap_id, reason; skip audit trail
 wizard_cascade_rebase_triggered # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step5 when gh pr update-branch succeeds for a BEHIND sibling PR after a gap_shipped event; carries pr_number, author, head_ref; cascade-rebase audit trail
 wizard_classify_deferred        # reason: INFRA-2042 emitted by scripts/coord/wizard-daemon.sh step1 when a PR's mergeStateStatus=UNKNOWN (GitHub hasn't computed mergeability yet); PR skipped this iteration, re-evaluated next cycle; prevents DIRTY misclassification that silences recovery-queue routing
+
+# ── RESILIENT-025: off-rails guard ───────────────────────────────────────────
+off_rails_bypassed              # reason: RESILIENT-025 emitted by scripts/git-hooks/pre-commit when a commit bypasses the off-rails gap-ID check via 'Off-Rails-Bypass: <reason>' trailer; carries claimed_gap, reason; audit trail for intentional pre-req integrations; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS

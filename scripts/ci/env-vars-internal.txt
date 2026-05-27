@@ -554,3 +554,12 @@ CHUMP_WEBHOOK_SECRET
 #   to override the default .chump/github_cache.db path — kept consistent
 #   with the legacy bash helper + Python receiver behaviour).
 CHUMP_CACHE_DB
+# INFRA-2000: chump-gap-store::maintenance module Phase 1 (META-107
+#   sub-gap #4) ports gap-doctor.py, gap-gardener.py, gap-architect.py,
+#   and check-gaps-integrity.py to typed Rust.
+# CHUMP_GAP_MAINTENANCE_RUST=1 routes the four scripts/coord/gap-*.py
+#   shims (and check-gaps-integrity.py) to the new Rust binaries
+#   chump-gap-doctor / chump-gap-gardener / chump-gap-architect /
+#   chump-check-gaps-integrity; legacy Python body runs otherwise
+#   (1-week parallel-run validation window).
+CHUMP_GAP_MAINTENANCE_RUST
