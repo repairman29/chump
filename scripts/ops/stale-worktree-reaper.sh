@@ -20,7 +20,6 @@
 #        - The gap extracted from dirname has status=done in state.db, OR
 #        - The matching PR is MERGED or CLOSED (checked via GitHub cache).
 #   3. SKIP if any of:
-#        - worktree has uncommitted changes
 #        - any active lease in .chump-locks/*.json names this worktree
 #        - the merged-age is below --age-min hours (default 1h cooldown so
 #          we don't reap a worktree the agent is still cleaning up)
@@ -109,14 +108,20 @@ WORKTREE_SCAN_PATHS="${WORKTREE_SCAN_PATHS:-.claude/worktrees /tmp/chump-*}"
 
 # Resolve the main repo root (this script may be invoked from a worktree).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir 2>/dev/null \
-    | xargs -I{} dirname {} 2>/dev/null || true)"
-# common-dir returns .git or path/.git; the repo root is its parent (when
-# basename = .git) or itself (when bare). Easier: ask the toplevel of the
-# common-dir's parent.
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs dirname || true)"
-if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
-    REPO_ROOT="/Users/jeffadkins/Projects/Chump"
+# Allow tests to inject CHUMP_REPO_ROOT_OVERRIDE to redirect the reaper to a
+# synthetic repo without touching SCRIPT_DIR (RESILIENT-029).
+if [[ -n "${CHUMP_REPO_ROOT_OVERRIDE:-}" && -d "$CHUMP_REPO_ROOT_OVERRIDE" ]]; then
+    REPO_ROOT="$CHUMP_REPO_ROOT_OVERRIDE"
+else
+    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir 2>/dev/null \
+        | xargs -I{} dirname {} 2>/dev/null || true)"
+    # common-dir returns .git or path/.git; the repo root is its parent (when
+    # basename = .git) or itself (when bare). Easier: ask the toplevel of the
+    # common-dir's parent.
+    REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs dirname || true)"
+    if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
+        REPO_ROOT="/Users/jeffadkins/Projects/Chump"
+    fi
 fi
 
 LOG=/tmp/stale-worktree-reaper.log
@@ -289,18 +294,6 @@ process_worktree() {
         SKIPPED=$((SKIPPED+1)); return 0
     fi
 
-    # Uncommitted changes?
-    if ! git -C "$wt_path" diff --quiet 2>/dev/null \
-       || ! git -C "$wt_path" diff --cached --quiet 2>/dev/null; then
-        info "  has uncommitted changes — keeping"
-        KEPT=$((KEPT+1)); return 0
-    fi
-    # Untracked?
-    if [[ -n "$(git -C "$wt_path" ls-files --others --exclude-standard 2>/dev/null | head -1)" ]]; then
-        info "  has untracked files — keeping"
-        KEPT=$((KEPT+1)); return 0
-    fi
-
     if is_active_lease "$wt_name"; then
         info "  active lease references this worktree — keeping"
         # INFRA-1291: emit worktree_reap_protected (distinct from the generic
@@ -462,6 +455,97 @@ process_worktree() {
 
     red "  REAPABLE: $reason"
 
+    # RESILIENT-029: stash-and-push uncommitted/unpushed work to a wip/ branch
+    # before reaping, so no work is silently destroyed.
+    # This runs for ALL reapable worktrees — clean ones skip the push step.
+    _wip_stash_work() {
+        local wt="$1"
+        # Only meaningful for git-linked worktrees (bare /tmp dirs have no git).
+        [[ -f "$wt/.git" ]] || return 0
+
+        local uncommitted=0 unpushed=0
+        uncommitted=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        # Try @{u} first (requires tracking branch); fall back to origin/<branch>
+        # so we catch unpushed commits even when the remote branch was deleted.
+        if git -C "$wt" rev-parse '@{u}' >/dev/null 2>&1; then
+            unpushed=$(git -C "$wt" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ')
+        else
+            local _local_branch
+            _local_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+            if [[ -n "$_local_branch" && "$_local_branch" != "HEAD" ]]; then
+                # If origin/<branch> exists, count commits ahead of it.
+                # If it was deleted (the reapable case), count commits ahead of origin/main
+                # — those are local-only commits that must be preserved before reap.
+                if git -C "$wt" rev-parse "origin/${_local_branch}" >/dev/null 2>&1; then
+                    unpushed=$(git -C "$wt" log "origin/${_local_branch}..HEAD" --oneline 2>/dev/null \
+                        | wc -l | tr -d ' \n')
+                    unpushed="${unpushed:-0}"
+                else
+                    unpushed=$(git -C "$wt" log "origin/${BASE}..HEAD" --oneline 2>/dev/null \
+                        | wc -l | tr -d ' \n')
+                    unpushed="${unpushed:-0}"
+                fi
+            fi
+        fi
+
+        if [[ "$uncommitted" -eq 0 && "$unpushed" -eq 0 ]]; then
+            return 0  # nothing to stash
+        fi
+
+        # Determine gap ID from claim file (best-effort).
+        local claim_file gap_id ts wip_branch
+        claim_file=$(ls "$LOCKS_DIR/claim-"*.json 2>/dev/null | head -1 || true)
+        gap_id="unknown"
+        if [[ -n "$claim_file" && -f "$claim_file" ]]; then
+            if command -v jq >/dev/null 2>&1; then
+                gap_id=$(jq -r '.gap_id // "unknown"' "$claim_file" 2>/dev/null || echo "unknown")
+            else
+                gap_id=$(grep -oE '"gap_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$claim_file" \
+                    | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || echo "unknown")
+            fi
+        fi
+        ts=$(date +%s)
+        wip_branch="wip/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')-${ts}"
+
+        info "  RESILIENT-029: worktree has uncommitted=$uncommitted / unpushed=$unpushed — stashing to $wip_branch"
+
+        if [[ "$uncommitted" -gt 0 ]]; then
+            git -C "$wt" add -A 2>/dev/null || true
+            git -C "$wt" commit \
+                -m "[stale-worktree-reaper auto-stash] uncommitted work at ${ts}" \
+                --no-verify 2>/dev/null || true
+        fi
+
+        git -C "$wt" branch "$wip_branch" 2>/dev/null || true
+        if git -C "$wt" push "$REMOTE" "$wip_branch" 2>/dev/null; then
+            info "  pushed wip branch: $wip_branch"
+            # scanner-anchor: "kind":"worktree_work_stashed_before_reap"
+            printf '{"ts":"%s","kind":"worktree_work_stashed_before_reap","gap_id":"%s","branch":"%s","uncommitted_lines":%d,"unpushed_commits":%d,"original_worktree":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$wip_branch" \
+                "$uncommitted" "$unpushed" "$wt" \
+                >> "$LOCKS_DIR/ambient.jsonl" 2>/dev/null || true
+            log "WIP_STASH $wt gap=$gap_id branch=$wip_branch uncommitted=$uncommitted unpushed=$unpushed"
+        else
+            warn "  push of $wip_branch failed — work may be lost; check $REMOTE connectivity"
+            log "WIP_STASH_FAIL $wt gap=$gap_id branch=$wip_branch"
+        fi
+    }
+
+    if [[ $DRY_RUN -eq 0 ]]; then
+        _wip_stash_work "$wt_path"
+    else
+        # Dry-run: just report what would happen.
+        local _dr_uncommitted _dr_unpushed
+        _dr_uncommitted=$(git -C "$wt_path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        _dr_unpushed=0
+        if git -C "$wt_path" rev-parse @{u} >/dev/null 2>&1; then
+            _dr_unpushed=$(git -C "$wt_path" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ')
+        fi
+        if [[ "$_dr_uncommitted" -gt 0 || "$_dr_unpushed" -gt 0 ]]; then
+            info "  [dry-run] would stash uncommitted=$_dr_uncommitted / unpushed=$_dr_unpushed to wip/<gap>-<ts>"
+        fi
+    fi
+
     # Archive logs/ab artifacts if any.
     local arch_dest="$ARCHIVE_DIR/${wt_branch:-$wt_name}-$(date +%Y-%m-%d)"
     arch_dest="${arch_dest//\//_}"
@@ -479,6 +563,7 @@ process_worktree() {
         else
             info "  [dry-run] would: git worktree remove --force $wt_path"
         fi
+        # dry-run stash reporting already printed above in the _wip_stash_work block.
         REAPED=$((REAPED+1))
         return 0
     fi
