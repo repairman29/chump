@@ -89,6 +89,7 @@ DISPATCH_STATE="${CHUMP_WIZARD_DISPATCH_STATE:-$REPO_ROOT/.chump-locks/wizard-da
 DISPATCH_WINDOW_S="${CHUMP_WIZARD_DISPATCH_WINDOW_S:-3600}"
 CASCADE_RATE_LIMIT="${CHUMP_WIZARD_CASCADE_RATE_LIMIT:-3}"
 ALLOWED_REBASE_AUTHOR="${CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR:-repairman29}"
+DRY_RUN="${CHUMP_WIZARD_DAEMON_DRY_RUN:-0}"
 # Note: Step 3 uses an inline keyword pattern table derived from
 # docs/process/WEDGE_CLASS_CATALOG.md — update both when adding new W-NNN classes.
 
@@ -248,10 +249,24 @@ step1_classify_prs() {
     while IFS= read -r pr_num; do
         [[ -z "$pr_num" ]] && continue
 
-        # Fetch PR state — cache-first
+        # Fetch PR state — cache-first, but ALWAYS fall through to REST for
+        # mergeStateStatus: the local SQLite cache stores the REST PR shape which
+        # lacks the GraphQL-only mergeStateStatus field (INFRA-2048).
         local pr_json=""
         if [[ "$_CACHE_AVAILABLE" == "1" ]]; then
-            pr_json="$(cache_lookup_pr "$pr_num" --max-age-s 120 2>/dev/null || true)"
+            local cache_json
+            cache_json="$(cache_lookup_pr "$pr_num" --max-age-s 120 2>/dev/null || true)"
+            if [[ -n "$cache_json" ]]; then
+                # Only use cache if mergeStateStatus is present and non-empty
+                local cached_mss
+                cached_mss="$(python3 -c \
+                    "import json,sys; d=json.loads(sys.argv[1]); print(d.get('mergeStateStatus','') or '')" \
+                    "$cache_json" 2>/dev/null || true)"
+                if [[ -n "$cached_mss" ]]; then
+                    pr_json="$cache_json"
+                fi
+                # else: cache hit but mergeStateStatus missing → fall through to REST
+            fi
         fi
         if [[ -z "$pr_json" ]]; then
             pr_json="$(CHUMP_GH_CALL_CRITICALITY=background \
@@ -296,15 +311,16 @@ PY
 
         if [[ "$is_draft" == "1" ]]; then
             pr_class="DIRTY"
-        elif [[ "$merge_state" == "UNKNOWN" ]]; then
+        elif [[ "$merge_state" == "UNKNOWN" ]] || [[ -z "$merge_state" ]]; then
             # GitHub API returns UNKNOWN when mergeability hasn't been computed yet
-            # (checks haven't started, or PR was just pushed). Defer this iteration
-            # rather than misclassifying as DIRTY and triggering recovery actions.
+            # (checks haven't started, or PR was just pushed). Empty string is treated
+            # the same — defensive guard against cache-shape drift where the field is
+            # missing entirely (INFRA-2048). Defer rather than misclassify as DIRTY.
             emit_ambient "wizard_classify_deferred" \
                 "\"pr\":$pr_num,\"reason\":\"unknown_merge_state\",\"title\":\"$pr_title\""
             emit_action "step1" "PR#$pr_num" "deferred" \
                 "\"merge_state\":\"$merge_state\",\"reason\":\"unknown_merge_state_not_yet_computed\",\"auto_merge\":\"$auto_merge\",\"title\":\"$pr_title\""
-            log "Step 1: PR #$pr_num — UNKNOWN merge_state (GitHub computing), deferring this iteration"
+            log "Step 1: PR #$pr_num — UNKNOWN/empty merge_state (GitHub computing or cache drift), deferring this iteration"
             continue
         elif [[ "$merge_state" == "CONFLICTING" ]]; then
             pr_class="CONFLICTING"
@@ -727,41 +743,52 @@ step4_dispatch_pickable_gaps() {
         state_json="$(cat "$DISPATCH_STATE" 2>/dev/null || echo '{"dispatches":[]}')"
     fi
 
-    # Count still-active dispatches (within window, process still running)
-    active_count="$(python3 - "$state_json" "$now_epoch" "$DISPATCH_WINDOW_S" <<'PY' 2>/dev/null || echo 0
-import json, sys, os
+    # Count still-active dispatches (within window, process still running).
+    # Also prune dead PIDs every tick (INFRA-2049 defense-in-depth): write back
+    # the pruned list so stale entries never block future dispatches even when
+    # DRY_RUN=1 wrote phantom entries.
+    local pruned_state_json
+    pruned_state_json="$(python3 - "$state_json" "$now_epoch" "$DISPATCH_WINDOW_S" <<'PY' 2>/dev/null || echo '{"dispatches":[]}'
+import json, sys, os, datetime
 try:
     state = json.loads(sys.argv[1])
     now = int(sys.argv[2])
     window = int(sys.argv[3])
 except Exception:
-    print(0); sys.exit(0)
+    print('{"dispatches":[]}'); sys.exit(0)
 
 active = []
 for d in state.get("dispatches", []):
     try:
-        import datetime
         ts_str = d.get("ts","")
         t = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
         epoch = int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
         if (now - epoch) > window:
             continue  # expired
         pid = d.get("pid", 0)
-        # Check if process still alive
         if pid and pid > 0:
             try:
                 os.kill(pid, 0)
                 active.append(d)
             except OSError:
-                pass  # process gone
+                pass  # process gone — prune
         else:
             active.append(d)
     except Exception:
         pass
 
-print(len(active))
+print(json.dumps({"dispatches": active}, indent=2))
 PY
 )"
+    active_count="$(printf '%s\n' "$pruned_state_json" | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(len(d.get('dispatches',[])))" \
+        2>/dev/null || echo 0)"
+
+    # Persist pruned state (removes dead PIDs even if nothing new dispatched).
+    # Skip write in dry-run so the state file is never mutated during test runs (INFRA-2049).
+    if [[ "$DRY_RUN" != "1" ]] && [[ -f "$DISPATCH_STATE" ]]; then
+        printf '%s\n' "$pruned_state_json" > "$DISPATCH_STATE" 2>/dev/null || true
+    fi
 
     log "Step 4: active dispatches=$active_count max=$MAX_PARALLEL"
 
@@ -838,7 +865,15 @@ except Exception as e:
             break
         fi
 
-        # Dispatch in background
+        # Dispatch in background — skip actual spawn in dry-run (INFRA-2049)
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "Step 4: DRY_RUN=1 — would dispatch gap $gap_id (skipping spawn + state write)"
+            emit_action "step4" "gap:$gap_id" "dispatch_dry_run_skipped" \
+                "\"dry_run\":true,\"active_before\":$active_count"
+            dispatched_count=$(( dispatched_count + 1 ))
+            continue
+        fi
+
         log "Step 4: dispatching gap $gap_id via chump --execute-gap (background)"
         "$CHUMP_BIN" --execute-gap "$gap_id" >/dev/null 2>&1 &
         local dispatch_pid=$!
@@ -855,12 +890,17 @@ except Exception as e:
 
     done < <(printf '%s\n' "$gap_list")
 
-    # Persist updated dispatch state
+    # Persist updated dispatch state — skip all writes in dry-run (INFRA-2049)
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "Step 4: DRY_RUN=1 — skipping dispatch-state.json write (dispatched_count=$dispatched_count)"
+        return 0
+    fi
+
     if [[ "${#new_dispatches[@]}" -gt 0 ]]; then
         local new_entries
         new_entries="$(IFS=','; printf '%s' "${new_dispatches[*]}")"
-        # Merge with existing non-expired entries and write
-        python3 - "$state_json" "$now_epoch" "$DISPATCH_WINDOW_S" "$new_entries" <<'PY' > "$DISPATCH_STATE" 2>/dev/null || true
+        # Merge with existing non-expired + dead-PID-pruned entries and write
+        python3 - "$pruned_state_json" "$now_epoch" "$DISPATCH_WINDOW_S" "$new_entries" <<'PY' > "$DISPATCH_STATE" 2>/dev/null || true
 import json, sys, os, datetime
 
 try:

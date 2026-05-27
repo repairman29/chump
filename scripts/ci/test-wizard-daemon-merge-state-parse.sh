@@ -242,6 +242,116 @@ else
     pass "wizard_classify_deferred NOT emitted for DIRTY class (correct)"
 fi
 
+# ── Test 5: cache returns null mergeStateStatus → REST fallback (INFRA-2048) ──
+# Simulates the bug: cache_lookup_pr returns a REST-shape blob missing the
+# GraphQL-only mergeStateStatus field. The stub cache lib returns a JSON blob
+# with mergeStateStatus=null; wizard-daemon must fall through to REST for the
+# real value (BLOCKED) rather than treating empty as UNKNOWN/deferred.
+printf '\nTest 5: cache returns mergeStateStatus=null → REST fallback gets real value (INFRA-2048)\n'
+
+# Run wizard with a cache stub that returns mergeStateStatus=null, and a gh stub
+# that returns mergeStateStatus=BLOCKED via REST.
+run_wizard_cache_null_rest_fallback() {
+    local tmpdir; tmpdir="$(mktemp -d)"
+    local stub_gh="$tmpdir/gh"
+    local stub_chump="$tmpdir/chump"
+    local ambient="$tmpdir/ambient.jsonl"
+
+    # gh stub: pr list returns 42; pr view returns BLOCKED (REST direct)
+    cat > "$stub_gh" <<'GHSTUB'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "list" ]]; then
+    printf '42\n'
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+    # REST direct — returns the real mergeStateStatus
+    printf '{"number":42,"title":"test PR","mergeable":"CONFLICTED","mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false}\n'
+elif [[ "$1" == "pr" && "$2" == "checks" ]]; then
+    printf '[]\n'
+else
+    exit 0
+fi
+GHSTUB
+    chmod +x "$stub_gh"
+
+    cat > "$stub_chump" <<'CHUMPSTUB'
+#!/usr/bin/env bash
+case "$*" in
+    "health --temp") printf 'COLD\n'; exit 0 ;;
+    "gap list "*)    printf '[]\n';   exit 0 ;;
+    "gap preflight "*)                exit 1 ;;
+    *)                                exit 0 ;;
+esac
+CHUMPSTUB
+    chmod +x "$stub_chump"
+
+    mkdir -p "$tmpdir/scripts/coord/lib"
+    # Cache lib returns a blob with mergeStateStatus=null (REST-shape, missing GraphQL field)
+    cat > "$tmpdir/scripts/coord/lib/github_cache.sh" <<'CACHELIB'
+# Stub cache returning REST-shape PR (mergeStateStatus absent/null) — INFRA-2048 fixture
+cache_query_open_prs() { return 1; }
+cache_lookup_pr() {
+    # Simulate cache hit but mergeStateStatus field is null (REST shape)
+    printf '{"number":42,"title":"test PR","mergeable":"CONFLICTED","mergeStateStatus":null,"autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false}\n'
+    return 0
+}
+cache_lookup_checks() { return 1; }
+CACHELIB
+
+    mkdir -p "$tmpdir/scripts/coord"
+    cat > "$tmpdir/scripts/coord/fleet-hold-check.sh" <<'HOLDSTUB'
+#!/usr/bin/env bash
+exit 0
+HOLDSTUB
+    chmod +x "$tmpdir/scripts/coord/fleet-hold-check.sh"
+
+    cat > "$tmpdir/scripts/coord/recovery-queue-emit.sh" <<'EMITNOOPSTUB'
+#!/usr/bin/env bash
+exit 0
+EMITNOOPSTUB
+    chmod +x "$tmpdir/scripts/coord/recovery-queue-emit.sh"
+
+    cat > "$tmpdir/scripts/coord/broadcast-urgent.sh" <<'BCASTSTUB'
+#!/usr/bin/env bash
+exit 0
+BCASTSTUB
+    chmod +x "$tmpdir/scripts/coord/broadcast-urgent.sh"
+
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_GH="$stub_gh" \
+    CHUMP_WIZARD_TEST_CHUMP="$stub_chump" \
+    CHUMP_AMBIENT_LOG="$ambient" \
+    CHUMP_REPO_ROOT="$tmpdir" \
+    CHUMP_REPO="$tmpdir" \
+    bash "$SCRIPT" 2>/dev/null || true
+
+    printf '%s\n' "$ambient"
+    printf '%s\n' "$tmpdir" >> /tmp/test-wizard-tmpdirs-$$.txt
+}
+
+ambient_path="$(run_wizard_cache_null_rest_fallback | head -1)"
+
+# Must NOT classify as DIRTY (the old broken behaviour when mergeStateStatus was empty)
+if grep -q '"pr_class":"DIRTY"' "$ambient_path" 2>/dev/null && \
+   ! grep -q '"pr_class":"BLOCKED' "$ambient_path" 2>/dev/null; then
+    fail "INFRA-2048: cache null mergeStateStatus still classified as DIRTY (REST fallback broken)"
+else
+    pass "INFRA-2048: not misclassified as DIRTY when cache returns null mergeStateStatus"
+fi
+
+# Must NOT emit wizard_classify_deferred (BLOCKED is a real state, not unknown)
+if grep -q '"kind":"wizard_classify_deferred"' "$ambient_path" 2>/dev/null; then
+    fail "INFRA-2048: wizard_classify_deferred incorrectly emitted — should have fallen through to REST BLOCKED"
+else
+    pass "INFRA-2048: wizard_classify_deferred NOT emitted for REST-resolved BLOCKED state"
+fi
+
+# Must classify as BLOCKED+real-fails (from the REST direct value)
+if grep -q '"pr_class":"BLOCKED+real-fails"' "$ambient_path" 2>/dev/null; then
+    pass "INFRA-2048: REST fallback produced correct BLOCKED+real-fails classification"
+else
+    fail "INFRA-2048: expected BLOCKED+real-fails after REST fallback, not found in ambient"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n'
 printf '═══════════════════════════════════════════════════════════\n'
