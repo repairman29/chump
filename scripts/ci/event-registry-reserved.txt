@@ -388,59 +388,7 @@ ci_cluster_detected  # reason: emitted by scripts/coord/ci-audit-loop.sh::audit 
 inbox_injection_executed  # reason: INFRA-2014 emitted by scripts/coord/inbox-injector.sh after tmux send-keys interrupt delivered to a recipient pane; carries urgency + sender + pane target
 inbox_injector_paused     # reason: INFRA-2014 emitted when CHUMP_INBOX_INJECTOR_PAUSE=1 disables daemon
 
-# ── INFRA-2015: broadcast.sh --urgency typed routing ─────────────────────────
-urgent_broadcast          # reason: INFRA-2015 emitted by scripts/coord/broadcast.sh route_by_urgency() for WARN/CRIT/EMERGENCY tier; secondary ambient marker for 5-min loop tick consumers; scanner-anchor: "kind":"urgent_broadcast"
-
-# ── INFRA-2016: global URGENT-INBOX + PostToolUse check ──────────────────────
-urgent_broadcast_sent     # reason: INFRA-2016 emitted by scripts/coord/broadcast-urgent.sh when CRIT/EMERGENCY message written to .chump-locks/URGENT-INBOX.jsonl global channel; bypasses session-keyed routing
-inbox_urgent_surfaced     # reason: INFRA-2016 emitted by scripts/coord/inbox-check-urgent.sh after surfacing global-urgent messages as <system-reminder> via PostToolUse hook; carries message count + new cursor
-
-# ── INFRA-2026: post-push PR integrity watch daemon ──────────────────────────
-post_push_auto_close_recovered  # reason: INFRA-2026 emitted by scripts/coord/post-push-integrity-watch.sh when a chump/* PR is detected as auto-closed within 120s of a push (stale-base force-push pattern); carries pr, branch, state_reason, reopen_status
-post_push_integrity_watch_ok    # reason: INFRA-2026 heartbeat from post-push-integrity-watch.sh when scan completes with no incidents
-post_push_integrity_watch_err   # reason: INFRA-2026 emitted when daemon encounters a gh API or config error (gh_not_found, remote_parse_failed, gh_pr_list_failed)
-
-# ── INFRA-2027: recovery-queue mid-flight checkpoint + auto-restore ───────────
-operator_recovery_aborted_recovered  # reason: INFRA-2027 emitted by recovery-queue-service.sh when startup detects an orphaned in-flight checkpoint (age > 2× cycle interval) and successfully restores the ruleset from backup; carries aborted_step, checkpoint_age_s, backup_file, ruleset_id
-
-# ── INFRA-2013: fleet-brief leading-indicator stall detection ─────────────────
-fleet_stalled  # reason: INFRA-2013 emitted by scripts/dispatch/fleet-brief.sh when ships_1h==0 AND open BLOCKED PRs>=2; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS; formal EVENT_REGISTRY.yaml entry pending
-
-# ── INFRA-2008 + INFRA-2029 (THE FLOOR Phase 2): worker prelude floor-signal reads ──
-worker_floor_signal_read  # reason: INFRA-2008 emitted by scripts/dispatch/worker.sh prelude before each claim cycle; carries signal=(fleet_hold|floor_temp), hold=0|1 or temp=COLD|WARM|HOT; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-worker_stuck              # reason: INFRA-2029 emitted by scripts/dispatch/worker.sh _emit_worker_stuck helper in every exit-without-ship code path (stand_down, preflight_fail, gap_already_done, worktree_create_fail, no_pickable_gap); carries reason field; printf-direct JSON not grep-scannable
-
-# ── INFRA-2009 (THE FLOOR Phase 2): daemon silent-noop alarm ─────────────────
-daemon_silent_noop  # reason: INFRA-2009 emitted by scripts/coord/lib/silent-noop-guard.sh EXIT trap when a floor daemon (cluster_detector, wedge_state_machine, recovery_queue_service) exits rc=0 without executing its main work body despite non-empty input; generalizes the INFRA-1988 hook_silent_passthrough pattern; carries source=<daemon_tag> + reason=main_work_body_skipped_despite_input; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-
-# ── INFRA-2025: cross-daemon coordination — cluster-detector defers during recovery-queue drop-window ──
-cluster_detection_deferred_for_recovery  # reason: INFRA-2025 emitted by scripts/coord/cluster-detector.sh when recovery-cycle-in-flight.flag is present; prevents mis-classification of PRs as passing during the required_status_checks drop-window; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-
-# ── INFRA-2030: real auto-remediations wired into wedge-state-machine ────────
-wedge_remediated_real          # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_w002/_remediate_w007/_remediate_wagg after invoking a REAL remediation primitive (not just an advisory emit); carries class, action, detail; replaces advisory-only wedge_remediation_requested for W-002/W-007/W-AGG; printf-direct JSON not grep-scannable as kind=X literal
-cluster_detection_requested    # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_wagg when W-AGG fires; signals cluster-detector.sh to run its IDENTICAL-check-set discrimination on next tick; carries source_wedge, reason, detail; printf-direct JSON not grep-scannable as kind=X literal
-
-# ── INFRA-2007: W-002 binary-cache-lag permanent fix — event-driven refresh + cron fallback ─────────
-binary_main_updated  # reason: INFRA-2007 emitted by scripts/coord/bot-merge.sh after successful gap ship + merge; triggers binary-refresh-event-watcher.sh to rebuild immediately; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-binary_refresh_triggered_event  # reason: INFRA-2007 emitted by scripts/coord/binary-refresh-event-watcher.sh when binary_main_updated event triggers an immediate rebuild (event-driven path); printf-direct JSON not grep-scannable as kind=X literal
-binary_event_watcher_rate_limited  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when rebuild skipped because last rebuild was within CHUMP_BINARY_EVENT_RATE_LIMIT_S window; safety valve against merge bursts
-binary_event_watcher_no_tool  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when fswatch is absent; signals that polling fallback (tail -F) is active instead of zero-overhead FSEvents path
-
-# ── META-109 Phase 1: wizard-daemon — autonomous DRIVE primitive ──────────────
-wizard_daemon_action          # reason: META-109 emitted by scripts/coord/wizard-daemon.sh on every classification and decision; carries step, target, decision, rate_limit_state, and step-specific fields; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-wizard_daemon_paused          # reason: META-109 emitted by scripts/coord/wizard-daemon.sh at startup when CHUMP_WIZARD_DAEMON_PAUSE=1 kill-switch is active; carries reason field; operator kill-switch confirmation signal
-wizard_daemon_safety_refusal  # reason: META-109 emitted by scripts/coord/wizard-daemon.sh when a mandatory safety guard fires (floor_temp_HOT or pr_conflicting); carries reason + target; safety audit trail — never suppressed
-
-# ── INFRA-2040: silent-fleet-death watchdog ───────────────────────────────────
-silent_fleet_death             # reason: INFRA-2040 emitted by scripts/coord/fleet-doctor-strict.sh and scripts/dispatch/fleet-brief.sh when last merge into origin/main is >=SILENT_DEATH_MERGE_HOURS (default 12h) old AND at least one com/dev.chump.* launchd daemon has last exit code != 0; catches the 2026-05-26 class of 24h dead-floor where fleet-brief still said "healthy"; carries merge_age_h, dead_daemon_count, dead_daemons, source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-silent_fleet_death_autohealed  # reason: INFRA-2040 emitted by scripts/coord/fleet-doctor-strict.sh when CHUMP_DOCTOR_AUTOHEAL=1 and a daemon with exit=127 (command not found) is healed by restoring its script from origin/main + launchctl kickstart; carries label, script_path, source; opt-in auto-heal audit trail
-
-# ── META-107: wizard-daemon Phase 2 (steps 3+4+5) ────────────────────────────
-wizard_dispatch_executed        # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step4 when chump --execute-gap <ID> is spawned in background; carries gap_id, pid, active_before; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
-wizard_dispatch_rate_limited    # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step4 when active dispatch count >= CHUMP_WIZARD_MAX_PARALLEL; carries active_count, max_parallel; rate-limit audit trail
-wizard_gap_skipped              # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step4 when a gap has wizard_skip:true in its notes field; carries gap_id, reason; skip audit trail
-wizard_cascade_rebase_triggered # reason: META-107 emitted by scripts/coord/wizard-daemon.sh step5 when gh pr update-branch succeeds for a BEHIND sibling PR after a gap_shipped event; carries pr_number, author, head_ref; cascade-rebase audit trail
-wizard_classify_deferred        # reason: INFRA-2042 emitted by scripts/coord/wizard-daemon.sh step1 when a PR's mergeStateStatus=UNKNOWN (GitHub hasn't computed mergeability yet); PR skipped this iteration, re-evaluated next cycle; prevents DIRTY misclassification that silences recovery-queue routing
-
-# ── RESILIENT-025: off-rails guard ───────────────────────────────────────────
-off_rails_bypassed              # reason: RESILIENT-025 emitted by scripts/git-hooks/pre-commit when a commit bypasses the off-rails gap-ID check via 'Off-Rails-Bypass: <reason>' trailer; carries claimed_gap, reason; audit trail for intentional pre-req integrations; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+# ── md-links agent events (pre-existing gap, not introduced by INFRA-1982) ──
+md_links_heartbeat  # reason: emitted by scripts/coord/md-links-loop.sh (scanner-anchor present); not yet registered in EVENT_REGISTRY.yaml; pre-existing gap filed as follow-up
+md_links_lane_override  # reason: emitted by scripts/coord/md-links-loop.sh (scanner-anchor present); same class as md_links_heartbeat; pre-existing gap filed as follow-up
+md_links_scan_done  # reason: emitted by scripts/coord/md-links-loop.sh (scanner-anchor present); same class as md_links_heartbeat; pre-existing gap filed as follow-up
