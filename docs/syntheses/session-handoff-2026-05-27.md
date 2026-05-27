@@ -33,9 +33,9 @@ Next session: pick **INFRA-2067** (novel-wedge classifier, P1/s, no deps) OR **I
 
 ## What's pickable RIGHT NOW (next session's first move)
 
-Ranked by leverage. All are P0/P1, xs/s/m, no deps, concrete AC.
+Ranked by unlock-radius (how much downstream work each gap opens). All are P0/P1, xs/s/m, no deps, concrete AC.
 
-1. **INFRA-2067** (RESILIENT P1/s) — novel-wedge classifier daemon. **HIGH LEVERAGE** — unlocks INFRA-2068/2069/2070 (the rest of META-118's auto-dispatch chain). No deps.
+1. **INFRA-2067** (RESILIENT P1/s) — novel-wedge classifier daemon. **TOP UNLOCK** — opens INFRA-2068/2069/2070 (the rest of META-118's auto-dispatch chain). No deps.
 2. **INFRA-2071** (RESILIENT P1/xs) — admin-merge-cycle circuit-breaker. **INDEPENDENT** of the classifier chain. Closes today's anti-pattern (admin-merge accumulated 10+ uses without operator noticing CI debt). Parallel-pickable.
 3. **INFRA-2066** (ZERO-WASTE P1/s) — pr_stuck_cluster auto-mitigation. **Addresses 82% of daily waste** (~55m/67m in 24h). Pairs with INFRA-2012 (cluster-v2 detection).
 4. **META-117** (sub-gaps unfiled) — Wave 2 CI debt cleanup. Wave 1 ARMED as #2659.
