@@ -5094,3 +5094,31 @@ events:
       fleet instability (HOT) or PRs with genuine merge conflicts (CONFLICTING).
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, reason, target]
+
+  - kind: silent_fleet_death
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh + scripts/dispatch/fleet-brief.sh (INFRA-2040)
+    trigger: >
+      Emitted when BOTH of the following are true: (1) last merge into
+      origin/main is >= SILENT_DEATH_MERGE_HOURS (default 12h) old, AND
+      (2) at least one com/dev.chump.* launchd daemon has last exit code != 0.
+      Catches the 2026-05-26 class of 24h dead-floor where daemons exited 127
+      (stale branch — Sprint scripts existed in origin/main but not in the
+      working tree daemons pointed at) while fleet-brief still reported healthy.
+      Either condition alone is advisory only; both together indicate the floor
+      is likely dead. Triggers ALERT banner in fleet-brief output.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, source, merge_age_h, dead_daemon_count, dead_daemons]
+
+  - kind: silent_fleet_death_autohealed
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh (INFRA-2040)
+    trigger: >
+      Emitted when CHUMP_DOCTOR_AUTOHEAL=1 and a daemon with exit=127
+      (command not found) is healed by restoring its script from origin/main
+      via `git checkout origin/main -- <path>` + `launchctl kickstart`.
+      Opt-in auto-heal audit trail — only fires when operator explicitly
+      enables autoheal mode. Absence is expected in normal (CHUMP_DOCTOR_AUTOHEAL=0)
+      operation.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, label, script_path]

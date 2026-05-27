@@ -1658,6 +1658,50 @@ required sections (`## When to Use`, `## Quick Reference`, `## Procedure`, `## P
 **Agent-facing API** (`skill_manage` tool in `src/skill_tool.rs`) is the write path
 used during agent sessions; `chump skill` is the operator-facing read/inspect path.
 
+## Silent-fleet-death class — how to detect + recover (INFRA-2040, 2026-05-27)
+
+**What it is.** The fleet can die silently when two conditions combine:
+
+1. The operator's main checkout is on a stale branch (Sprint N scripts exist in `origin/main` but NOT in the working tree that launchd daemons point at).
+2. One or more `com.chump.*` / `dev.chump.*` launchd daemons exit 127 ("command not found") on every tick because the script they reference doesn't exist in the stale checkout.
+
+The dangerous part: per-daemon metrics look individually fine (each daemon ran, each daemon exited), so `fleet-brief.sh` used to say "fleet looks healthy" while 0 ships occurred for 24h.
+
+**New detection (INFRA-2040).** Both `chump fleet doctor` and `fleet-brief.sh` now carry a check:
+
+- **Check condition:** last merge into `origin/main` is `>= SILENT_DEATH_MERGE_HOURS` (default 12h) old **AND** at least one `com/dev.chump.*` daemon has `last exit code != 0`.
+- **Both conditions required.** Either alone is only advisory — a stale branch with healthy daemons means "slow fleet, not dead"; a daemon crash with a fresh merge is a transient failure.
+- **Emit:** `kind=silent_fleet_death` → `ambient.jsonl` with `merge_age_h`, `dead_daemon_count`, `dead_daemons`.
+- **Banner:** fleet-brief prints `*** ALERT: SILENT-FLEET-DEATH — last merge Nh ago + K daemon(s) dead: <labels> ***` in red.
+
+**How to recover.**
+
+```bash
+# 1. Confirm which branch your main checkout is on:
+git -C /Users/jeffadkins/Projects/Chump branch --show-current
+
+# 2. If stale, switch to main and pull:
+git -C /Users/jeffadkins/Projects/Chump checkout main
+git -C /Users/jeffadkins/Projects/Chump pull origin main
+
+# 3. Restart dead daemons:
+launchctl list | grep -E '(com|dev)\.chump\.'
+launchctl kickstart -k "gui/$(id -u)/com.chump.<label>"
+
+# 4. Verify daemons are running:
+launchctl print "gui/$(id -u)/com.chump.<label>" | grep "last exit code"
+
+# 5. Confirm fleet-doctor now passes:
+bash scripts/coord/fleet-doctor-strict.sh --verbose
+```
+
+**Optional auto-heal (operator opt-in).**
+Set `CHUMP_DOCTOR_AUTOHEAL=1` before running `chump fleet doctor`. For each daemon with exit=127, the doctor checks if the daemon's script exists in `origin/main`; if missing locally but present upstream, it restores via `git checkout origin/main -- <script>` and bounces the daemon via `launchctl kickstart`. Each heal emits `kind=silent_fleet_death_autohealed`.
+
+**Tunable threshold.** `SILENT_DEATH_MERGE_HOURS` (default 12) — set lower (e.g. 4) for tighter monitoring, higher to suppress in expected-quiescence windows.
+
+**CI smoke test:** `scripts/ci/test-silent-fleet-death.sh` — stubs a 20h-old-merge + exit=127 daemon and asserts the `silent_fleet_death` emit + ALERT.
+
 ## Local CI discipline — `chump preflight` (INFRA-1670, INFRA-1672, INFRA-1673)
 
 Before pushing, run `chump preflight` to mirror CI locally and skip the

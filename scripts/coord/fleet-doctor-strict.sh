@@ -8,20 +8,26 @@
 #   scripts/coord/fleet-doctor-strict.sh [--json] [--verbose]
 #
 # Checks (all must pass for exit 0)
-#   1. binary       — chump binary exists and is not stale vs source
-#   2. leases       — no expired leases older than LEASE_STALE_HOURS (default 2)
-#   3. disk         — free disk >= DISK_MIN_GB (default 5)
-#   4. dirty-prs    — no open PRs in DIRTY state for > DIRTY_PR_HOURS (default 24)
-#   5. gap-drift    — no unresolved gap-drift (open gaps with closed PRs, etc.)
-#   6. p0-budget    — open P0 gap count <= P0_MAX (default 5)
-#   7. pillar-cover — every pillar has >= PILLAR_MIN (default 2) pickable gaps
+#   1. binary           — chump binary exists and is not stale vs source
+#   2. leases           — no expired leases older than LEASE_STALE_HOURS (default 2)
+#   3. disk             — free disk >= DISK_MIN_GB (default 5)
+#   4. dirty-prs        — no open PRs in DIRTY state for > DIRTY_PR_HOURS (default 24)
+#   5. gap-drift        — no unresolved gap-drift (open gaps with closed PRs, etc.)
+#   6. p0-budget        — open P0 gap count <= P0_MAX (default 5)
+#   7. pillar-cover     — every pillar has >= PILLAR_MIN (default 2) pickable gaps
+#   8. silent-fleet-death — INFRA-2040: last-merge-mtime >12h AND any com/dev.chump.*
+#                           launchd daemon has last exit code != 0 → emit
+#                           kind=silent_fleet_death; optional auto-heal via
+#                           CHUMP_DOCTOR_AUTOHEAL=1
 #
 # Thresholds (override via env)
-#   LEASE_STALE_HOURS   default 2    — leases older than N hours are flagged
-#   DISK_MIN_GB         default 5    — fail if free disk below N GB
-#   DIRTY_PR_HOURS      default 24   — DIRTY PRs older than N hours are flagged
-#   P0_MAX              default 5    — fail if more than N open P0 gaps
-#   PILLAR_MIN          default 2    — fail if any pillar has fewer than N pickable gaps
+#   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
+#   DISK_MIN_GB               default 5    — fail if free disk below N GB
+#   DIRTY_PR_HOURS            default 24   — DIRTY PRs older than N hours are flagged
+#   P0_MAX                    default 5    — fail if more than N open P0 gaps
+#   PILLAR_MIN                default 2    — fail if any pillar has fewer than N pickable gaps
+#   SILENT_DEATH_MERGE_HOURS  default 12   — last-merge older than N hours triggers check 1
+#   CHUMP_DOCTOR_AUTOHEAL     default 0    — set 1 to auto-restore missing scripts + bounce daemons
 #
 # Bypass: CHUMP_FLEET_DOCTOR=0 exits 0 (for scripted contexts that want raw signal).
 #
@@ -40,6 +46,8 @@ DISK_MIN_GB="${DISK_MIN_GB:-5}"
 DIRTY_PR_HOURS="${DIRTY_PR_HOURS:-24}"
 P0_MAX="${P0_MAX:-5}"
 PILLAR_MIN="${PILLAR_MIN:-2}"
+SILENT_DEATH_MERGE_HOURS="${SILENT_DEATH_MERGE_HOURS:-12}"
+CHUMP_DOCTOR_AUTOHEAL="${CHUMP_DOCTOR_AUTOHEAL:-0}"
 
 # ── Arg parsing ────────────────────────────────────────────────────────────────
 OUTPUT="human"     # or "json"
@@ -303,6 +311,186 @@ check_pillar_coverage() {
     fi
 }
 
+# ── Check 8: Silent fleet death (INFRA-2040) ───────────────────────────────────
+# Condition: last merge into origin/main is >SILENT_DEATH_MERGE_HOURS old
+#            AND at least one com.chump.* / dev.chump.* launchd daemon has
+#            last exit code != 0.
+# When BOTH conditions hold, emit kind=silent_fleet_death to ambient and
+# register as FAIL.  Either condition alone is only a warning (skip level).
+#
+# Optional auto-heal (CHUMP_DOCTOR_AUTOHEAL=1):
+#   For each daemon with exit=127 (command not found), check if the plist's
+#   ProgramArguments script path exists; if missing but reachable in
+#   origin/main, restore via `git checkout origin/main -- <path>` and bounce
+#   the daemon with `launchctl kickstart`.
+check_silent_fleet_death() {
+    # ── Sub-check A: last-merge age ──────────────────────────────────────────
+    local last_merge_ts
+    last_merge_ts="$(git -C "$REPO_ROOT" log origin/main -1 --format="%ct" 2>/dev/null || echo 0)"
+    local now_ts
+    now_ts="$(date -u +%s)"
+    local merge_age_h=$(( (now_ts - last_merge_ts) / 3600 ))
+    local merge_stale=0
+    if [[ "$last_merge_ts" -eq 0 || "$merge_age_h" -ge "$SILENT_DEATH_MERGE_HOURS" ]]; then
+        merge_stale=1
+    fi
+
+    # ── Sub-check B: daemon exit codes ───────────────────────────────────────
+    # Only meaningful on macOS with launchctl available.
+    local dead_daemons=()
+    local dead_exit_codes=()
+    local daemon_scan_available=0
+    if command -v launchctl &>/dev/null && [[ "$(uname)" == "Darwin" ]]; then
+        daemon_scan_available=1
+        # List all loaded com.chump.* and dev.chump.* labels.
+        local labels=()
+        while IFS= read -r label; do
+            [[ -z "$label" ]] && continue
+            labels+=("$label")
+        done < <(launchctl list 2>/dev/null \
+            | awk '{print $3}' \
+            | grep -E '^(com|dev)\.chump\.' \
+            || true)
+
+        for label in "${labels[@]}"; do
+            # launchctl print gui/<uid>/<label> or system/<label>.
+            local uid
+            uid="$(id -u)"
+            local print_out
+            print_out="$(launchctl print "gui/$uid/$label" 2>/dev/null \
+                || launchctl print "system/$label" 2>/dev/null \
+                || true)"
+
+            # Extract "last exit code = N" from print output.
+            local exit_code
+            exit_code="$(echo "$print_out" \
+                | grep -E 'last exit code\s*=' \
+                | grep -oE '[-]?[0-9]+' \
+                | head -1 \
+                || true)"
+            [[ -z "$exit_code" ]] && continue
+            if [[ "$exit_code" != "0" ]]; then
+                dead_daemons+=("$label")
+                dead_exit_codes+=("$exit_code")
+            fi
+        done
+    fi
+
+    local daemon_fail=0
+    [[ "${#dead_daemons[@]}" -gt 0 ]] && daemon_fail=1
+
+    # ── Decision: BOTH conditions needed for silent_fleet_death ──────────────
+    if [[ "$merge_stale" -eq 1 && "$daemon_fail" -eq 1 ]]; then
+        local dead_list
+        dead_list="$(printf '%s(exit=%s) ' "${dead_daemons[@]}" 2>/dev/null || true)"
+        # Emit ambient event.
+        local event_ts
+        event_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        local ambient_log="$REPO_ROOT/.chump-locks/ambient.jsonl"
+        if [[ -x "$AMBIENT_EMIT" ]]; then
+            bash "$AMBIENT_EMIT" silent_fleet_death \
+                merge_age_h="$merge_age_h" \
+                dead_daemon_count="${#dead_daemons[@]}" \
+                dead_daemons="${dead_list}" \
+                2>/dev/null || true
+        else
+            # Fallback: direct printf.
+            printf '{"ts":"%s","kind":"silent_fleet_death","merge_age_h":%d,"dead_daemon_count":%d,"dead_daemons":"%s","source":"fleet-doctor-strict.sh"}\n' \
+                "$event_ts" "$merge_age_h" "${#dead_daemons[@]}" "${dead_list}" \
+                >> "$ambient_log" 2>/dev/null || true
+        fi
+
+        # ── Optional auto-heal (CHUMP_DOCTOR_AUTOHEAL=1) ─────────────────────
+        local healed_daemons=()
+        if [[ "$CHUMP_DOCTOR_AUTOHEAL" == "1" ]] && command -v launchctl &>/dev/null; then
+            local uid
+            uid="$(id -u)"
+            for i in "${!dead_daemons[@]}"; do
+                local label="${dead_daemons[$i]}"
+                local exit_code="${dead_exit_codes[$i]}"
+                [[ "$exit_code" != "127" ]] && continue  # only heal "command not found"
+
+                # Find the plist for this label.
+                local plist_path="$HOME/Library/LaunchAgents/${label}.plist"
+                [[ -f "$plist_path" ]] || continue
+
+                # Extract ProgramArguments script path from plist.
+                # Write the python snippet to a temp file to avoid heredoc-inside-$()
+                # which shellcheck (SC1073) cannot parse.
+                local _py_extract
+                _py_extract="$(mktemp /tmp/chump-plist-extract-XXXXXX.py)"
+                printf '%s\n' \
+                    'import sys, plistlib' \
+                    'with open(sys.argv[1], "rb") as f: pl = plistlib.load(f)' \
+                    'args = pl.get("ProgramArguments", [])' \
+                    'for a in args:' \
+                    '    if a.startswith("/") and not a.startswith("/bin/") and not a.startswith("/usr/"):' \
+                    '        print(a); break' \
+                    > "$_py_extract"
+                local script_path
+                script_path="$(python3 "$_py_extract" "$plist_path" 2>/dev/null || true)"
+                rm -f "$_py_extract"
+                [[ -z "$script_path" ]] && continue
+                [[ -f "$script_path" ]] && continue  # script already exists — skip
+
+                # Check if the script exists in origin/main.
+                local rel_path="${script_path#"$REPO_ROOT"/}"
+                if git -C "$REPO_ROOT" cat-file -e "origin/main:${rel_path}" 2>/dev/null; then
+                    [[ "$VERBOSE" -eq 1 ]] && echo "[fleet-doctor] auto-heal: restoring $rel_path from origin/main" >&2
+                    git -C "$REPO_ROOT" checkout origin/main -- "$rel_path" 2>/dev/null || continue
+                    chmod +x "$script_path" 2>/dev/null || true
+                    # Bounce the daemon.
+                    launchctl kickstart -k "gui/$uid/$label" 2>/dev/null || true
+                    healed_daemons+=("$label")
+                    # Emit autoheal event.
+                    if [[ -x "$AMBIENT_EMIT" ]]; then
+                        bash "$AMBIENT_EMIT" silent_fleet_death_autohealed \
+                            label="$label" \
+                            script_path="$script_path" \
+                            2>/dev/null || true
+                    else
+                        printf '{"ts":"%s","kind":"silent_fleet_death_autohealed","label":"%s","script_path":"%s","source":"fleet-doctor-strict.sh"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$label" "$script_path" \
+                            >> "$ambient_log" 2>/dev/null || true
+                    fi
+                fi
+            done
+        fi
+
+        local detail="last merge ${merge_age_h}h ago (threshold: >=${SILENT_DEATH_MERGE_HOURS}h); ${#dead_daemons[@]} daemon(s) with exit!=0: ${dead_list}"
+        local remedy="launchctl list | grep -E '(com|dev)\.chump'; git pull origin main; then launchctl kickstart -k gui/\$(id -u)/<label>"
+        if [[ "${#healed_daemons[@]}" -gt 0 ]]; then
+            detail="${detail}; auto-healed: ${healed_daemons[*]}"
+            remedy="auto-heal ran — verify daemons are now running"
+        fi
+
+        register_check "silent-fleet-death" "fail" \
+            "ALERT: silent-fleet-death — $detail" \
+            "$remedy"
+
+    elif [[ "$merge_stale" -eq 1 && "$daemon_scan_available" -eq 1 ]]; then
+        # Merge stale but daemons OK — softer warning only (pass, with note).
+        register_check "silent-fleet-death" "pass" \
+            "last merge ${merge_age_h}h ago (>=${SILENT_DEATH_MERGE_HOURS}h) but all daemons exit=0 — stale branch, fleet alive" \
+            ""
+    elif [[ "$daemon_fail" -eq 1 ]]; then
+        # Daemons failing but recent merge — likely a transient issue, not dead-floor.
+        local dead_list
+        dead_list="$(printf '%s(exit=%s) ' "${dead_daemons[@]}" 2>/dev/null || true)"
+        register_check "silent-fleet-death" "fail" \
+            "${#dead_daemons[@]} daemon(s) with exit!=0 (recent merge OK): ${dead_list}" \
+            "launchctl kickstart -k gui/\$(id -u)/<label>  # or check daemon logs"
+    elif [[ "$daemon_scan_available" -eq 0 ]]; then
+        register_check "silent-fleet-death" "skip" \
+            "launchctl not available (non-macOS or not loaded) — skipping daemon exit scan" \
+            ""
+    else
+        register_check "silent-fleet-death" "pass" \
+            "last merge ${merge_age_h}h ago; all com/dev.chump.* daemons exit=0" \
+            ""
+    fi
+}
+
 # ── Run all checks ─────────────────────────────────────────────────────────────
 check_binary
 check_leases
@@ -311,6 +499,7 @@ check_dirty_prs
 check_gap_drift
 check_p0_budget
 check_pillar_coverage
+check_silent_fleet_death
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then
