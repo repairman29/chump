@@ -1,0 +1,19 @@
+- id: INFRA-1857
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs system-integration-test (INFRA-849) gate locally (META-071 sub-gap)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    META-071 sub-gap. integration-test CI job (System integration test, INFRA-849) runs end-to-end synthetic state.db fixture + chump CLI smoke. Not mirrored in chump preflight today. Heavy mirror — needs fixture setup but fully local-runnable.
+  acceptance_criteria:
+    - "src/preflight.rs adds integration-test gate: invokes scripts/ci/test-system-integration.sh (or equivalent — the script the CI job currently runs)"
+    - "Runs under GateKind::Rust scope (needs chump binary); skip via CHUMP_PREFLIGHT_SKIP_INTEGRATION=1 with audit-trail emit"
+    - Default 300s timeout; CHUMP_PREFLIGHT_INTEGRATION_TIMEOUT_S override
+    - Sets CHUMP_BYPASS_PROOF_OF_MERGE=1 to match the env the CI job sets (per INFRA-849)
+    - "Smoke test scripts/ci/test-preflight-integration-gate.sh: assert gate runs the integration test, succeeds on clean fixture, fails on injected break, skip-env works"
+  notes: |
+    Pillar: ZERO-WASTE. META-070 sub-gap from META-071 parity audit. Heavy bucket but bounded by existing CI script.
+  closed_date: '2026-05-27'
+  closed_pr: 2558
+
