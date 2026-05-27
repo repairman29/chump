@@ -1,0 +1,19 @@
+- id: RESILIENT-027
+  domain: RESILIENT
+  title: "orphan-worktree watchdog: launchd daemon scans /tmp/chump-* every 5min for abandoned work (uncommitted/unpushed + dead process + idle) — emits orphan_worktree_detected"
+  status: done
+  priority: P0
+  effort: s
+  closed_pr: 2649
+  closed_date: '2026-05-27'
+  acceptance_criteria:
+    - "scripts/coord/orphan-worktree-watchdog.sh exists, scans /tmp/chump-* every 5min via launchd plist (StartInterval 300)"
+    - "Detection requires ALL 4: uncommitted-or-unpushed work + dead process + >15min idle + no recent push"
+    - "Emits kind=orphan_worktree_detected with worktree_path, branch, last_commit_sha, uncommitted_line_count, age_minutes, claim_gap_id"
+    - "Registered in EVENT_REGISTRY.yaml + event-registry-reserved.txt"
+    - "5-fixture smoke test scripts/ci/test-orphan-worktree-watchdog.sh"
+    - "Scan overhead <2s for 20 worktrees"
+  notes: |
+    Salvaged from poisoned PR #2644 (closed): code was correct but committed under wrong
+    gap ID (RESILIENT-026) and included a stray .chump/github_cache.db binary blob.
+    This recovery PR is the clean version with proper RESILIENT-027 labeling.

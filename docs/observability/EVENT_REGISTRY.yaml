@@ -5346,3 +5346,17 @@ events:
       autonomous systems from thrashing on gaps that need human intervention.
     consumers: [ops-audit, operator-pager]
     fields_required: [ts, kind, source, gap_id, failed_attempts, max_attempts]
+  # ── RESILIENT-026: orphan worktree watchdog ────────────────────────────────
+  - kind: orphan_worktree_detected
+    effect_metric: resilient
+    emitter: scripts/coord/orphan-worktree-watchdog.sh (RESILIENT-026)
+    trigger: >
+      A /tmp/chump-* linked worktree has uncommitted or unpushed work, its
+      owning process is no longer running (dead session_id), it has been
+      filesystem-idle for >15 min, and it has no recent push to origin.
+      Fired every 5 min by launchd (ai.chump.orphan-worktree-watchdog).
+      Indicates a sub-agent crashed mid-task (e.g. API socket error) or was
+      stopped by the operator, leaving work-on-disk that is not on origin.
+      Operator action: inspect the worktree, commit + push, or delete if stale.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, worktree_path, branch, last_commit_sha, uncommitted_line_count, age_minutes, claim_gap_id]
