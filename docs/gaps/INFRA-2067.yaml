@@ -1,0 +1,16 @@
+- id: INFRA-2067
+  domain: INFRA
+  title: "RESILIENT: novel-wedge classifier daemon (META-118 sub-gap 1) — scan ambient.jsonl + gh-api pr-checks for CI failure patterns; classify by (failing_test_name, first_error_line_signature); emit kind=wedge_class_detected when novel signature recurs N times in window W"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New script scripts/coord/novel-wedge-classifier.sh — scans last 24h of (a) ambient.jsonl pr_stuck / pr_failed events, (b) gh api pr-checks output across all open PRs (cached via chump-github-cache); extracts (failing_test_name, first_error_line_signature) tuple per failure
+    - "Classification: tuple hashed via SHA256[:12]; signature_count[hash] incremented; when count >= CHUMP_NOVEL_WEDGE_THRESHOLD (default 3) in window CHUMP_NOVEL_WEDGE_WINDOW_S (default 7200s = 2h), emit ambient kind=wedge_class_detected with fields signature_hash, sample_test_name, sample_error_line, count, sample_pr_numbers (csv)"
+    - "Distinct from KNOWN wedges: cross-check signature against W-001..W-013 catalog (scripts/coord/known-wedges.yaml); if match, emit kind=wedge_class_known (informational, no auto-dispatch); only NOVEL signatures emit wedge_class_detected"
+    - launchd plist scripts/launchd/com.chump.novel-wedge-classifier.plist with StartInterval 600s (10-min cadence); installs via scripts/setup/chump-fleet-bootstrap.sh; ProgramArguments + Description keys present (per INFRA-2046 audit class)
+    - "EVENT_REGISTRY.yaml entry for kind=wedge_class_detected (fields: signature_hash, sample_test_name, sample_error_line, count, sample_pr_numbers); kind=wedge_class_known (informational); allowlist entries in scripts/ci/event-registry-reserved.txt for both"
+    - "Smoke test scripts/ci/test-novel-wedge-classifier.sh: synth ambient.jsonl with 3 identical-signature pr_failed events in 5min; run classifier; assert kind=wedge_class_detected emit. Test KNOWN-suppression: same setup but signature matches W-001 catalog; assert kind=wedge_class_known instead"
+  notes: |
+    Sub-gap 1 of META-118 wedge auto-dispatch pipeline. Detects NOVEL CI wedges; classification feeds sub-gap 2 (auto-file gap).
+
