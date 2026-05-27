@@ -444,3 +444,6 @@ wizard_classify_deferred        # reason: INFRA-2042 emitted by scripts/coord/wi
 
 # ── RESILIENT-025: off-rails guard ───────────────────────────────────────────
 off_rails_bypassed              # reason: RESILIENT-025 emitted by scripts/git-hooks/pre-commit when a commit bypasses the off-rails gap-ID check via 'Off-Rails-Bypass: <reason>' trailer; carries claimed_gap, reason; audit trail for intentional pre-req integrations; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+
+# ── RESILIENT-026: orphan worktree watchdog ───────────────────────────────────
+orphan_worktree_detected        # reason: RESILIENT-026 emitted by scripts/coord/orphan-worktree-watchdog.sh when a /tmp/chump-* worktree has uncommitted/unpushed work + dead owning process + >15min idle; scanner-anchor present in script header; registered in EVENT_REGISTRY.yaml with full field spec
