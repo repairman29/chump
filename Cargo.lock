@@ -1494,6 +1494,7 @@ name = "chump-gap-store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "rusqlite",
  "serde",
@@ -1501,6 +1502,8 @@ dependencies = [
  "serde_yaml",
  "serial_test",
  "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

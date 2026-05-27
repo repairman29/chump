@@ -41,6 +41,14 @@
 # Cheap forward-compat: works back to 3.7 (PEP 563), no behavior change.
 from __future__ import annotations
 
+# INFRA-2000 Phase 1 feature-flag shim (META-107 Rust-first migration).
+# When CHUMP_GAP_MAINTENANCE_RUST=1 the Rust binary handles the call; the
+# legacy Python body below stays in tree for 1-week parallel-run discipline.
+import os as _infra2000_os
+import sys as _infra2000_sys
+if _infra2000_os.environ.get("CHUMP_GAP_MAINTENANCE_RUST") == "1":
+    _infra2000_os.execvp("chump-gap-doctor", ["chump-gap-doctor", *_infra2000_sys.argv[1:]])
+
 import argparse
 import datetime as dt
 import hashlib

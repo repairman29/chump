@@ -1,0 +1,64 @@
+- id: INFRA-2000
+  domain: INFRA
+  title: "EFFECTIVE: chump-gap-store::maintenance Phase 1 — port gap-doctor + gap-gardener + gap-architect + check-gaps-integrity to typed Rust (META-107 sub-gap #4)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Existing chump-gap-store crate gains pub mod maintenance with submodules doctor / gardener / architect / integrity"
+    - "doctor module: GapDoctor::heal(HealMode) -> HealReport — surfaces 4 drift buckets + 4 integrity classes (missing-dep / double-encoded depends_on / open-with-closed_pr / race-fixture title)"
+    - "gardener module: GapGardener::audit() -> AuditReport — P0 count + ages, vague pickable IDs, pillar coverage; AuditReport::failing() matches chump gap audit-priorities contract"
+    - "architect module: GapArchitect::decompose with LlmClient trait boundary + ClaudeBinaryClient default impl shelling to claude -p; DecomposeMode::DryRun | Apply"
+    - "integrity module: check_gaps_integrity(IntegritySource::PerFile | Monolithic) -> IntegrityReport — duplicate-id / missing-id / parse-failure detection"
+    - "Four new CLI binaries: chump-gap-doctor / chump-gap-gardener / chump-gap-architect / chump-check-gaps-integrity match Python tools' argument surface"
+    - "Feature-flag shim atop each .py: CHUMP_GAP_MAINTENANCE_RUST=1 routes to Rust binary; legacy Python body preserved inline for 1-week parallel-run"
+    - "Smoke test scripts/ci/test-gap-maintenance-rust-parity.sh covers 4 detection classes + Python shim routing + exit-code parity (8 PASS minimum)"
+    - "No new ambient event kinds — maintenance module never writes .chump-locks/ambient.jsonl"
+    - "No edits to docs/observability/EVENT_REGISTRY.yaml or scripts/ci/event-registry-reserved.txt"
+    - "CHUMP_GAP_MAINTENANCE_RUST registered in scripts/ci/env-vars-internal.txt under INFRA-2000 header"
+    - "cargo fmt / cargo clippy --package chump-gap-store --all-targets -D warnings / cargo check --package chump-gap-store all green"
+  depends_on:
+    - INFRA-1999
+  description: |
+    Phase 1 of META-107 (Rust-First Migration Blueprint), sub-gap #4 of 6.
+    Sibling ships: INFRA-1997 chump-git-hooks (#2605), INFRA-1998
+    chump-messaging (#2611), INFRA-1999 chump-github-cache (#2633).
+    Same recipe — smallest viable carve-out, ONE concrete impl, smoke test
+    for parity, backward-compat shims, NO new event kinds.
+
+    (a) Module surface inside the existing chump-gap-store crate (not a new
+        crate — these tools all read the same canonical state.db, and a
+        sibling module reuses GapStore::list / get / etc instead of
+        re-implementing).
+    (b) Trait boundary for the LLM call in architect::LlmClient so tests +
+        future in-process callers can swap a mock for the claude -p binary.
+        Phase 1 ships ClaudeBinaryClient as the default impl.
+    (c) Four CLI binaries match Python tools' arg surfaces 1:1 so the
+        feature-flag shim is purely transparent. Python body stays inline
+        in each .py for 1-week parallel-run validation.
+    (d) Doctor's auxiliary integrity findings (missing-dep / double-encoded
+        depends_on / ghost / race-fixture) match the chump gap
+        audit-priorities invariants — single-pass detection beats running
+        two tools against the same DB.
+
+    Discipline guardrails (avoid early META-107 failure modes):
+    - Zero new ambient event kinds — maintenance module is read-or-report-only.
+    - Zero edits to EVENT_REGISTRY.yaml (active sibling leases).
+    - Zero edits to scripts/ci/event-registry-reserved.txt (active sibling leases).
+    - Every new CHUMP_* env var appears in scripts/ci/env-vars-internal.txt
+      under an INFRA-2000 header (Phase 1 introduces exactly one:
+      CHUMP_GAP_MAINTENANCE_RUST).
+
+    Phase 1 explicit non-goals (deferred sub-gaps under META-107):
+    - Decommissioning the Python tools. Both paths live during 1-week parallel-run.
+    - Full chump-cost-tracker integration in architect. Phase 1 preserves the
+      Python tool's stderr-cost-collection behavior.
+    - Porting gap-gardener.py's seed-and-ship-a-PR path. Only the audit half
+      (--check / --audit / --json) routes to Rust; the seeding path stays in
+      Python.
+    - Porting gap-architect.py's open-gap-pool sprint planning. Only the
+      per-gap --decompose path routes to Rust.
+    - Porting gap-doctor.py's safe-sweep ambient-emit semantics. The Python
+      safe-sweep keeps that responsibility in Phase 1.
+    - Migrating callsites of the .py scripts to invoke Rust binaries directly.
+      The shim transparently routes; callsites unchanged.
