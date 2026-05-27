@@ -1,0 +1,16 @@
+- id: INFRA-2072
+  domain: INFRA
+  title: "ZERO-WASTE: md-links curator false-positive on done/archived gaps — STALE refs in WEDGE_CLASS_CATALOG.md / SUBAGENT_DISPATCH.md / etc. are historical (gap shipped, citation correct); detector should skip W-NNN pattern + soften 'gap-not-in-state-db' to advisory when referenced gap is closed"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "False-positive class 1 — INTERNAL CATALOG IDs: scripts/coord/md-links-loop.sh (or its Rust port) treats W-NNN, EVAL-NNN, COG-NNN, etc. with pattern matching <prefix-fully-uppercase>-<NNN> as POTENTIALLY internal catalog IDs (not gap IDs). For each unknown prefix found in stale-check, skip if the SAME file the citation is in DEFINES that pattern (e.g. docs/process/WEDGE_CLASS_CATALOG.md is the W-NNN authority; cite-of-self is fine)"
+    - "False-positive class 2 — HISTORICAL CITATIONS: when stale-check finds a gap-id that is NOT in state.db, query gh API for closed PRs whose title contains the gap-id. If a closed/merged PR is found citing the gap, emit advisory (not STALE) since the citation is historically correct. New verdict class: STALE_HISTORICAL with reason=\"gap-shipped-via-PR-N\" instead of \"gap-not-in-state-db\""
+    - "False-positive class 3 — RENAMED/MERGED GAPS: when gap-id not in state.db, check for a successor (e.g. INFRA-275 may have been renumbered to INFRA-1119 during the great a2a refactor). Use git log search for \"renamed INFRA-275 → INFRA-NNNN\" pattern in commit messages; surface as advisory with successor-id suggestion"
+    - "Exit-code semantics: md-links-loop.sh exits non-zero ONLY when STALE (not STALE_HISTORICAL, not STALE_RENAMED) entries found. Advisory classes log but exit 0. New flag --strict makes ALL stale classes exit non-zero for CI gate use"
+    - "Smoke test scripts/ci/test-md-links-false-positives.sh: synth a markdown file citing W-001 from inside WEDGE_CLASS_CATALOG.md → expect skip; cite a known-shipped gap → expect STALE_HISTORICAL not STALE; cite a truly-missing gap (INFRA-9999999) → expect STALE; cite a known-renamed gap → expect STALE_RENAMED with successor suggestion"
+    - "Documentation: docs/process/MD_LINKS_AUDIT.md updated with the 3 false-positive classes + how to author docs that avoid triggering them (use closed-PR cite suffix like \"INFRA-275 (shipped #1119)\" for historical refs)"
+  notes: |
+    Filed 2026-05-27 by curator-opus-shepherd after md-links scan of docs/process surfaced ~30 STALE refs, ~25 of which are false positives (internal catalog IDs + historical citations). md-links lane discipline: file one cluster gap not 30 individual gaps. Pairs with the md-links curator skill at .claude/skills/md-links/SKILL.md.
+
