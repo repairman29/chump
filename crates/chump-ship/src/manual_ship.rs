@@ -346,11 +346,12 @@ impl ManualShipPath {
             .lines()
             .rev()
             .find(|l| l.starts_with("http"))
-            .ok_or_else(|| ShipError::UnparseablePrNumber { raw: stdout.clone() })?
+            .ok_or_else(|| ShipError::UnparseablePrNumber {
+                raw: stdout.clone(),
+            })?
             .to_string();
-        let pr_num = parse_pr_number_from_url(&url).ok_or(ShipError::UnparseablePrNumber {
-            raw: url.clone(),
-        })?;
+        let pr_num = parse_pr_number_from_url(&url)
+            .ok_or(ShipError::UnparseablePrNumber { raw: url.clone() })?;
         Ok((pr_num, url))
     }
 
@@ -383,13 +384,7 @@ impl ManualShipPath {
         }
         let out = self
             .gh()
-            .args([
-                "pr",
-                "merge",
-                &pr_number.to_string(),
-                "--auto",
-                "--squash",
-            ])
+            .args(["pr", "merge", &pr_number.to_string(), "--auto", "--squash"])
             .output()
             .await?;
         if !out.status.success() {
@@ -519,8 +514,7 @@ mod tests {
     async fn new_binds_socket() {
         let tmp = TempDir::new().unwrap();
         let session = unique_session_id("bind");
-        let intent =
-            ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
+        let intent = ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
         let _shipper = ManualShipPath::new(intent, tmp.path(), true).expect("bind");
         // The socket should exist on disk.
         let p = socket_path_for(&session);
@@ -531,20 +525,8 @@ mod tests {
     async fn double_instance_is_refused() {
         let tmp = TempDir::new().unwrap();
         let session = unique_session_id("double");
-        let intent1 = ShipIntent::owned(
-            "INFRA-TEST",
-            "chump/test",
-            "main",
-            "msg",
-            session.clone(),
-        );
-        let intent2 = ShipIntent::owned(
-            "INFRA-TEST",
-            "chump/test",
-            "main",
-            "msg",
-            session.clone(),
-        );
+        let intent1 = ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
+        let intent2 = ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
         // First shipper binds the socket.
         let _first = ManualShipPath::new(intent1, tmp.path(), true).expect("first bind");
         // Second shipper for same session id must be refused.
@@ -565,35 +547,21 @@ mod tests {
     async fn socket_freed_on_drop_allows_rebind() {
         let tmp = TempDir::new().unwrap();
         let session = unique_session_id("rebind");
-        let intent1 = ShipIntent::owned(
-            "INFRA-TEST",
-            "chump/test",
-            "main",
-            "msg",
-            session.clone(),
-        );
+        let intent1 = ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
         let p = socket_path_for(&session);
         {
-            let _first =
-                ManualShipPath::new(intent1, tmp.path(), true).expect("first bind");
+            let _first = ManualShipPath::new(intent1, tmp.path(), true).expect("first bind");
             assert!(p.exists());
         } // _first dropped here.
-        // Socket file should be cleaned up (Drop on SingleInstanceGuard).
+          // Socket file should be cleaned up (Drop on SingleInstanceGuard).
         assert!(
             !p.exists(),
             "socket should be cleaned up on drop, but still exists: {:?}",
             p
         );
         // A new shipper for the same session id can rebind.
-        let intent2 = ShipIntent::owned(
-            "INFRA-TEST",
-            "chump/test",
-            "main",
-            "msg",
-            session.clone(),
-        );
-        let _second =
-            ManualShipPath::new(intent2, tmp.path(), true).expect("rebind after drop");
+        let intent2 = ShipIntent::owned("INFRA-TEST", "chump/test", "main", "msg", session.clone());
+        let _second = ManualShipPath::new(intent2, tmp.path(), true).expect("rebind after drop");
         assert!(p.exists());
     }
 
@@ -621,8 +589,7 @@ mod tests {
     async fn ship_short_circuits_on_preflight_failure() {
         let tmp = TempDir::new().unwrap();
         let session = unique_session_id("preflight-fail");
-        let intent =
-            ShipIntent::owned("INFRA-TEST", "missing-branch", "main", "msg", session);
+        let intent = ShipIntent::owned("INFRA-TEST", "missing-branch", "main", "msg", session);
         let shipper = ManualShipPath::new(intent, tmp.path(), true).expect("bind");
         let result = shipper.ship().await;
         match result {
