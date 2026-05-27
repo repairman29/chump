@@ -5,7 +5,8 @@
 # Audience: tired senior engineers — hype erodes trust.
 #
 # What is checked:
-#   • git diff against base branch, docs/ files only
+#   • git diff against base branch, docs/ files only, ADDED lines only
+#   • Pre-existing banned words in unchanged lines are NOT flagged (INFRA-2050)
 #   • Case-insensitive, word-boundary grep (Python re for portability)
 #   • Code fences (```) and inline backticks are exempt
 #
@@ -110,13 +111,16 @@ if [[ -z "$changed_files" ]]; then
   exit 0
 fi
 
-# ── Capture violations ────────────────────────────────────────────────────────
-violations=$(python3 -c "
-import sys, re, os
+# ── Capture violations (diff-hunk-only, INFRA-2050) ──────────────────────────
+# Only lines ADDED in this PR are scanned. Pre-existing content in changed files
+# is not flagged — only lines the author actually introduced (lines beginning
+# with '+' in the unified diff, excluding the '+++' file header).
+violations=$(git -C "$REPO_ROOT" diff --unified=0 --no-color "${BASE_REF}...HEAD" \
+    -- $(echo "$changed_files" | tr '\n' ' ') 2>/dev/null \
+  | python3 -c "
+import sys, re
 
-repo_root = sys.argv[1]
-banned_raw = sys.argv[2].split(',')
-files = sys.argv[3].split('\n')
+banned_raw = sys.argv[1].split(',')
 
 patterns = []
 for w in banned_raw:
@@ -129,35 +133,59 @@ for w in banned_raw:
 def strip_code_spans(line):
     return re.sub(r'\`[^\`]*\`', '', line)
 
-def is_in_code_fence(line, in_fence):
-    stripped = line.strip()
-    if stripped.startswith('\`\`\`') or stripped.startswith('~~~'):
-        return not in_fence, True
-    return in_fence, False
+# Parse unified diff: track current file, hunk line numbers, fence state.
+# Hunk header: @@ -old_start,old_count +new_start,new_count @@ [context]
+HUNK_RE = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@')
+FILE_RE = re.compile(r'^\+\+\+ b/(.+)')
 
 violations = []
-for fpath in files:
-    fpath = fpath.strip()
-    if not fpath:
+current_file = None
+current_lineno = 0
+in_fence = False
+
+for raw_line in sys.stdin:
+    line = raw_line.rstrip('\n')
+
+    # File header
+    m = FILE_RE.match(line)
+    if m:
+        current_file = m.group(1)
+        in_fence = False
+        current_lineno = 0
         continue
-    full = os.path.join(repo_root, fpath)
-    if not os.path.isfile(full):
+
+    # Hunk header — reset line counter
+    m = HUNK_RE.match(line)
+    if m:
+        current_lineno = int(m.group(1)) - 1  # will be incremented on first '+'
         continue
-    in_fence = False
-    with open(full, encoding='utf-8', errors='replace') as fh:
-        for lineno, raw_line in enumerate(fh, 1):
-            line = raw_line.rstrip('\n')
-            in_fence, is_marker = is_in_code_fence(line, in_fence)
-            if in_fence or is_marker:
-                continue
-            check_line = strip_code_spans(line)
-            for word, pat in patterns:
-                if pat.search(check_line):
-                    violations.append(f'{fpath}|{lineno}|{word}|{line.strip()[:100]}')
+
+    # Added line
+    if line.startswith('+') and not line.startswith('+++'):
+        current_lineno += 1
+        content = line[1:]  # strip leading '+'
+
+        # Track code fences in added hunks
+        stripped = content.strip()
+        if stripped.startswith('\`\`\`') or stripped.startswith('~~~'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        check_line = strip_code_spans(content)
+        for word, pat in patterns:
+            if pat.search(check_line):
+                violations.append(f'{current_file}|{current_lineno}|{word}|{content.strip()[:100]}')
+        continue
+
+    # Context / removed lines do not advance new-file line counter
+    # (removed lines '-' don't exist in new file; context lines tracked separately
+    #  but we don't need their numbers since we only scan added lines)
 
 for v in violations:
     print(v)
-" "$REPO_ROOT" "$(IFS=','; echo "${BANNED_WORDS[*]}")" "$changed_files" 2>/dev/null || true)
+" "$(IFS=','; echo "${BANNED_WORDS[*]}")" 2>/dev/null || true)
 
 if [[ -z "$violations" ]]; then
   echo "PASS: no banned words found in changed docs/"
