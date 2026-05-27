@@ -27,6 +27,7 @@ members = [
     "crates/ambient-cli",
     "crates/ast-crawler",
     "crates/chump-git-hooks",
+    "crates/chump-github-cache",
 ]
 resolver = "2"
 
