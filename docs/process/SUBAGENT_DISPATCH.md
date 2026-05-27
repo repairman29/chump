@@ -376,3 +376,57 @@ timeout if set (useful for short-lived test workers only).
   work is committed + pushed at T-30s before fleet timeout
 - [CLAUDE.md](../../CLAUDE.md) "Spawning subagents" subsection (added
   with this PR)
+
+## Detecting hung subagents (META-116, 2026-05-27)
+
+When a dispatched Agent appears abandoned, **DO NOT take over until you've ruled out a hung child process**. Today's session had 2 false-positive "Sonnet abandoned" diagnoses where the actual cause was a hung pre-commit hook child of the Sonnet's `git commit` call — killing the hook PID unblocked Sonnet's own commit + completed normally; the shepherd-takeover was duplicate work.
+
+### Symptom
+
+- Agent task notification not received after expected duration (5+ min past typical completion)
+- Lease released (`.chump-locks/claim-<gap>-*.json` gone)
+- Worktree contains recent file-mtime changes (Sonnet built code) but no commit OR no PR
+- No explicit BLOCKED report from the agent
+
+### Diagnosis (run BEFORE taking over)
+
+```bash
+ps aux | grep -E 'git.commit|pre-commit' | grep -v grep
+```
+
+If you see ANY git-commit or pre-commit children that have been running >2min, **the agent is not abandoned — it's blocked on a hung hook**.
+
+### Remediation
+
+1. Kill the hung hook process: `kill -9 <pid>`. The agent's own `git commit` call unblocks.
+2. The agent completes normally on its own (commit → push → PR → arm auto-merge → completion notification).
+3. **You don't need to take over.** Wait for the now-unblocked agent's completion notification.
+
+### Bypass discipline
+
+Shepherd-takeover IS appropriate when:
+
+- Agent task notification arrived with `BLOCKED` status (explicit failure)
+- Agent crashed without sending notification AFTER N hours (genuine death)
+- No hung children visible in `ps aux` (rules out the hook-hang class)
+
+In those cases, take over via:
+
+1. Run scoped preflight on the worktree (`cargo fmt --package X --check && cargo clippy --package X --all-targets -- -D warnings && cargo test --package X --lib`)
+2. If GREEN, amend the agent's existing commit with a real INFRA-NNNN message + push
+3. If RED, fix the small drift + commit + push
+4. Open PR + arm auto-merge + emit `operator_recovery_requested` if workspace-wide drift expected
+
+### Real-world precedent (2026-05-27)
+
+- **INFRA-2000 dispatch**: Sonnet's commit hung on pre-commit for 5+ min; shepherd assumed abandoned + tried takeover (which also hung); shepherd killed both hook PIDs at 14:56Z → Sonnet's blocked commit unblocked + completed normally (commit `e7300f5af`); shepherd takeover work was duplicate.
+- **INFRA-2053 first dispatch**: Sonnet hit "API Error: Overloaded" after only 1-line `lib.rs` edit. **Different failure class** — not a hung hook; API rate-limit. Diagnosis: `ps aux` showed no hung children. Correct remediation: re-dispatch fresh Sonnet (which completed cleanly).
+
+### Operational check (META-116 ships)
+
+Run `bash scripts/coord/dispatch-health-check.sh` to scan ps aux for hung commit children + emit `kind=dispatch_hung_hook_detected` if found. Workers and shepherd loops can wire this into their session-start preamble.
+
+## See also
+
+- [META-116](../gaps/META-116.yaml) — this addendum's source gap
+- [`scripts/coord/dispatch-health-check.sh`](../../scripts/coord/dispatch-health-check.sh) — the operational tool
