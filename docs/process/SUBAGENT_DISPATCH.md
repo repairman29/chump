@@ -126,6 +126,22 @@ scripts/dev/chump-binary-unwedge.sh
 > manual recovery NOW. Passive waiting is what stalls subagents; the doctor
 > + manual path are always faster than an indefinite hang.
 
+### `bot-merge-graphql-wedge` (INFRA-1939, 2026-05-27)
+
+If `bot-merge.sh` exits 144 with `WEDGE: bot-merge cannot proceed under
+graphql_exhausted`, the GitHub GraphQL bucket is depleted. The script
+detected a recent `kind=graphql_exhausted` ambient event and refused to
+poll (pre-INFRA-1939 it would silently retry forever, burning 144K+
+subagent tokens per stuck attempt).
+
+**Do not retry bot-merge.** Fall through to the manual INFRA-028 path
+below — it uses REST endpoints which have their own quota and stay
+available during GraphQL exhaustion. The wedge clears automatically
+when the GraphQL bucket replenishes (~1 hour).
+
+Bypass (only when you've manually verified the bucket recovered):
+`CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 bash scripts/coord/bot-merge.sh ...`
+
 **If still hung after the doctor, OR if the 15-min wall-clock budget expires** —
 fall back to manual recovery (INFRA-028 path):
 
