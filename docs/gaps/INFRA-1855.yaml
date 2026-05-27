@@ -1,0 +1,19 @@
+- id: INFRA-1855
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs cargo-test workspace gate (META-071 sub-gap; heaviest unmirrored gate)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    META-071 sub-gap. cargo-test (and identical test) CI job runs full workspace test suite. Not mirrored in chump preflight today — the single biggest cascade-prone gate. If a test fails on main (like events.rs Debug panic today, INFRA-1832), every PR hits the same CI-only failure. Heavy mirror — full cargo test workspace run, ~3-5min warm cache. Subject to INFRA-1744 600s timeout cap.
+  acceptance_criteria:
+    - "src/preflight.rs adds cargo-test gate: cargo test --workspace --lib --bins (lib + bins only by default; --with-integration flag opts in to full suite incl tests/)"
+    - "Runs under GateKind::Rust scope; skip via CHUMP_PREFLIGHT_SKIP_CARGOTEST=1 with audit-trail emit"
+    - Default test timeout 600s (matches pre-push hook cap from INFRA-1744); CHUMP_PREFLIGHT_CARGOTEST_TIMEOUT_S override
+    - "Smoke test scripts/ci/test-preflight-cargotest-gate.sh: synthetic failing test, assert gate fails; CHUMP_PREFLIGHT_SKIP_CARGOTEST=1, assert pass with audit emit"
+    - Reuses cargo-test-with-rerun.sh (existing helper) if present for flake-rerun parity with CI
+  notes: |
+    Pillar: ZERO-WASTE. Heaviest unmirrored gate per META-071 audit — would catch 60-80% of "broken on main, every PR fails" cascade pattern.
+  closed_date: '2026-05-27'
+  closed_pr: 2558
+

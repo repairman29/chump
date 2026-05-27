@@ -1,0 +1,19 @@
+- id: INFRA-1858
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs no-anthropic-smoke / chump-first-contract gate (CREDIBLE-046 cascade prevention; META-071 sub-gap)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    META-071 sub-gap. no-anthropic-smoke CI job (chump-first contract — coordination layer works without Anthropic, CREDIBLE-046) runs chump gap list/reserve/ship in a no-Anthropic env. Not mirrored in chump preflight today — and the regression that produced CREDIBLE-046 fail on every PR for hours today (2026-05-23) would have been caught locally if this had been mirrored.
+  acceptance_criteria:
+    - "src/preflight.rs adds chump-first-contract gate: spawns chump binary with ANTHROPIC_API_KEY scrubbed from env + CLAUDE_CODE_OAUTH_TOKEN scrubbed; asserts chump gap list/reserve/ship succeed"
+    - "Runs under GateKind::Rust scope; skip via CHUMP_PREFLIGHT_SKIP_CHUMPFIRST=1 with audit-trail emit"
+    - Uses existing scripts/ci/test-chump-first-contract.sh (the script CREDIBLE-046 ships) if present; falls back to inline if missing
+    - "Smoke test scripts/ci/test-preflight-chumpfirst-gate.sh: assert gate runs without ANTHROPIC env, succeeds on clean binary, fails when synthetic Anthropic dep injected (e.g. mock binary that requires API key), skip-env works"
+    - Documents that this is the CREDIBLE-046 cascade prevention layer
+  notes: |
+    Pillar: ZERO-WASTE. Today (2026-05-23) the CREDIBLE-046 regression on main cost ~3h of throughput before #2404 fixed it. Local mirror prevents recurrence.
+  closed_date: '2026-05-27'
+  closed_pr: 2558
+
