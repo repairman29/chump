@@ -32,6 +32,16 @@ git config user.name "Chump Test"
 mkdir -p docs scripts/git-hooks src
 cp "$HOOK" scripts/git-hooks/pre-commit
 chmod +x scripts/git-hooks/pre-commit
+# INFRA-1969 / META-117 Wave 1: docs-delta guard moved from pre-commit
+# to commit-msg. Copy commit-msg hook too so `git commit` runs the actual guard.
+COMMIT_MSG_HOOK="$REPO_ROOT/scripts/git-hooks/commit-msg"
+if [[ -f "$COMMIT_MSG_HOOK" ]]; then
+    cp "$COMMIT_MSG_HOOK" scripts/git-hooks/commit-msg
+    chmod +x scripts/git-hooks/commit-msg
+fi
+# NOTE: core.hooksPath is wired AFTER the init commit below — otherwise
+# the init commit triggers the hook (with a bin name that doesn't match
+# the synth repo) and fails the test setup.
 cat > Cargo.toml <<'TOML'
 [package]
 name = "infra-257-test"
@@ -47,6 +57,9 @@ echo "init" > README.md
 git add README.md scripts/git-hooks/pre-commit Cargo.toml src/main.rs
 git commit -qm "init"
 
+# Wire hooks AFTER init commit so init doesn't trigger them
+git config core.hooksPath "$TMP/scripts/git-hooks"
+
 run_check() {
     local n_docs="$1"
     local trailer_val="$2"   # empty for no trailer
@@ -61,17 +74,27 @@ run_check() {
         echo "fn main() { /* turn $RANDOM */ }" > src/main.rs
         git add src/main.rs
     fi
-    local msg_file="$TMP/.git/COMMIT_EDITMSG"
+    local msg
     if [[ -n "$trailer_val" ]]; then
-        printf "test commit\n\nNet-new-docs: +%s\n" "$trailer_val" > "$msg_file"
+        msg="$(printf "test commit\n\nNet-new-docs: +%s\n" "$trailer_val")"
     else
-        printf "test commit (no trailer)\n" > "$msg_file"
+        msg="test commit (no trailer)"
     fi
+    # INFRA-1969 / META-117 Wave 1: drive through `git commit` (runs pre-commit
+    # AND commit-msg) instead of calling pre-commit directly. The docs-delta
+    # enforcement lives in commit-msg post-INFRA-1969 — testing pre-commit alone
+    # is testing the wrong stage.
+    # Export the env vars so they propagate through git commit → hook invocations.
+    export CHUMP_CHECK_BUILD=0
+    export CHUMP_BOOK_SYNC_CHECK=0  # skip book-sync guard in synth repo
     set +e
-    CHUMP_CHECK_BUILD=0 \
-        bash scripts/git-hooks/pre-commit "$msg_file" >/tmp/infra-257-test-out 2>&1
+    git commit -m "$msg" >/tmp/infra-257-test-out 2>&1
     local rc=$?
     set -e
+    # Undo the commit if it succeeded — so the next test case has a clean slate
+    if [[ $rc -eq 0 ]]; then
+        git reset --soft HEAD~1 >/dev/null 2>&1 || true
+    fi
     return $rc
 }
 

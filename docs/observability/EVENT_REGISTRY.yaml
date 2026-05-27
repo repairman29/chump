@@ -5313,18 +5313,20 @@ events:
 
   # RESILIENT-033: register 5 orphan event kinds blocking the audit gate
   # All 5 are pre-existing emit sites that never had registry entries.
+  # META-117/A: admin_merge_cycle_restore_failed duplicate removed (also at line ~5059
+  # via RESILIENT-031 earlier); keeping only the canonical entry above.
 
-  - kind: admin_merge_cycle_restore_failed
+  # META-117 Wave 1: dispatch_hung_hook_detected — orphan from META-116 ship
+  - kind: dispatch_hung_hook_detected
     effect_metric: resilient
-    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2041)
+    emitter: scripts/coord/dispatch-health-check.sh (META-116)
     trigger: >
-      Emitted when the admin-merge cycle drops required_status_checks contexts,
-      runs the squash-merge, but then FAILS to restore the ruleset to its
-      original state. This is a CRITICAL operator-action event — leaving the
-      contexts empty would mean main is unprotected until manually fixed.
-      Operator must re-run the restore step or manually PUT the contexts back.
-    consumers: [ops-audit, operator-recall]
-    fields_required: [ts, kind, pr, ruleset_id, restore_json]
+      Emitted when dispatch-health-check.sh detects a Sonnet sub-agent process
+      stuck on a hook for longer than the configured threshold. Pattern 13
+      hang-detection — distinct from heartbeat-stale (INFRA-2056). Includes
+      session id, pid, age in seconds, and command for diagnostic context.
+    consumers: [ops-audit, wizard-daemon]
+    fields_required: [ts, kind, source, session, pid, age_s, cmd]
 
   - kind: md_links_heartbeat
     effect_metric: credible
