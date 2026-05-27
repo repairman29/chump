@@ -5408,3 +5408,17 @@ events:
       Operator action: inspect the worktree, commit + push, or delete if stale.
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, worktree_path, branch, last_commit_sha, uncommitted_line_count, age_minutes, claim_gap_id]
+
+  # ── RESILIENT-035 (INFRA-1395): required-check grace window ────────────────
+  - kind: required_check_added
+    effect_metric: self
+    emitter: scripts/coord/required-check-monitor.sh (INFRA-1395)
+    trigger: >
+      A new required CI check appears in branch-protection required-contexts
+      that was not in the prior snapshot (.chump-locks/required-check-snapshot.json).
+      Fires each time required-check-monitor.sh detects a new check name.
+      A 30-minute grace window is opened (.chump-locks/required-check-grace.json)
+      so PRs opened before grace_until are not blocked by the new check.
+    consumers: [ops-audit, fleet-brief, required-check-monitor]
+    fields_required: [ts, kind, check_name, added_at, grace_until, grace_window_mins]
+    docs: docs/process/REQUIRED_CHECK_ADDITION.md

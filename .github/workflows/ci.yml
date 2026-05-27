@@ -6,6 +6,21 @@ on:
   pull_request:
     branches: [main, master]
   merge_group:
+  # INFRA-1395: grace-window re-runs — when a new required check is added,
+  # required-check-monitor.sh dispatches this workflow with grace=1 for PRs
+  # opened before grace_until. The guard below skips the new check for those
+  # PRs during the 30-minute grace window. After grace_until expires, the
+  # dispatch no longer fires and the check is fully required.
+  workflow_dispatch:
+    inputs:
+      grace:
+        description: 'Set to 1 to skip newly added required checks (INFRA-1395 grace window)'
+        required: false
+        default: '0'
+      pr:
+        description: 'PR number receiving the grace re-run (informational)'
+        required: false
+        default: ''
 
 concurrency:
   # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
@@ -34,6 +49,11 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # INFRA-1395: grace-window flag — set to '1' by required-check-monitor.sh
+  # workflow_dispatch for PRs opened before grace_until. Jobs guarded with
+  # `if: env.SKIP_GRACE_CHECKS != '1' || github.event_name != 'workflow_dispatch'`
+  # are skipped during the grace window and treated as neutral (non-blocking).
+  SKIP_GRACE_CHECKS: ${{ github.event.inputs.grace == '1' && '1' || '0' }}
 
 jobs:
   # ── Path filter ────────────────────────────────────────────────────────────
@@ -516,6 +536,24 @@ jobs:
   # `chump` (debug, single-bin) so they can exec the resulting binary; that
   # build hits the shared rust-cache and is fast on warm runs.
   # Target wall-clock: < 5 min.
+  # INFRA-1395: grace-window guard — when workflow_dispatch fires with grace=1,
+  # this job emits a neutral conclusion so required-check enforcement does not
+  # block pre-grace PRs. The guard condition mirrors every newly added required
+  # check job: `if: env.SKIP_GRACE_CHECKS != '1' || github.event_name != 'workflow_dispatch'`
+  # After grace_until expires, required-check-monitor.sh stops dispatching with
+  # grace=1 and the check is fully required on all subsequent CI runs.
+  required-check-grace-guard:
+    name: required-check-grace-guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.grace == '1'
+    steps:
+      - name: Grace window active — new required check skipped for pre-grace PR
+        run: |
+          echo "INFRA-1395: grace window active (PR=${{ github.event.inputs.pr }})"
+          echo "This run was triggered by required-check-monitor.sh during the 30-minute"
+          echo "grace period after a new required check was added. The check is skipped"
+          echo "for this PR. After grace_until expires, the full check is required."
+
   fast-checks:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
