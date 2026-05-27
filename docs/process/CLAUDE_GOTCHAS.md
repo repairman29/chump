@@ -1816,3 +1816,19 @@ docs-delta-trailer test broken). Each was individually justified, but one cycle
 was premature (no failing checks yet — only pending). The counter-measure:
 the script now REFUSES if no checks are actually failing, preventing premature
 bypasses that mask CI state.
+
+## Stale-source false-positives (DOC-059 / META-114)
+
+> Don't trust local `ls` for "file missing" claims. See [FRESHNESS_DISCIPLINE.md](FRESHNESS_DISCIPLINE.md).
+
+**Symptom**: shell `ls path/to/X` returns 1, you conclude the file is missing.
+
+**Real cause**: your local checkout is N commits behind `origin/main` and the file was added by a merged PR you don't yet have.
+
+**Fix**: `git ls-tree origin/main path/to/X` OR the [`verify-existence`](../../.claude/skills/verify-existence/SKILL.md) skill. Pull main to rehydrate locally.
+
+**Precedent class**: 2026-05-27 shepherd + wizard both filed/considered "X is missing" gaps for files that existed on `origin/main` (local trees 48-63 commits behind). Two stale curators agreeing on missing-X is still both being wrong.
+
+**Discipline**: `bash scripts/coord/freshness-preamble.sh` (META-115) classifies session-start state into FRESH / STALE / CRITICAL_STALE. Chain `freshness-gate.sh && chump claim ...` to refuse MUTATE-class ops on stale source. Full anti-pattern catalog + decision rules in [FRESHNESS_DISCIPLINE.md](FRESHNESS_DISCIPLINE.md).
+
+**Related staleness layers** — same doc covers state.db ↔ YAML drift (`chump gap sync`, INFRA-2053), chump binary drift (`chump --rebuild-if-stale`, INFRA-2054), launchd plist drift (`chump cron health`, INFRA-2046).
