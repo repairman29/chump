@@ -60,6 +60,8 @@
 //! for test methodology and full results.
 
 use anyhow::{anyhow, Context, Result};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 use crate::agent_factory::build_chump_agent_cli;
@@ -524,9 +526,13 @@ fn validate_gap_id(gap_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// INFRA-334: emit a subagent heartbeat to ambient.jsonl.
-/// Writes kind=subagent_heartbeat so the watchdog can detect stalled agents.
-fn emit_subagent_heartbeat(gap_id: &str) {
+/// INFRA-2056: emit a subagent heartbeat to ambient.jsonl.
+/// Writes kind=subagent_heartbeat so wizard-daemon can detect stalled agents
+/// within 2min (heartbeat >120s stale → infer dying/dead).
+///
+/// Fields match the INFRA-2056 AC:
+///   gap_id, pid, last_action (last tool name), iter_count (tool call count)
+fn emit_subagent_heartbeat(gap_id: &str, pid: u32, last_action: &str, iter_count: u64) {
     use std::io::Write;
     let cwd = std::env::current_dir().unwrap_or_default();
     let ambient =
@@ -534,9 +540,16 @@ fn emit_subagent_heartbeat(gap_id: &str) {
     let _ = std::fs::create_dir_all(ambient.parent().unwrap_or(&cwd));
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let session = crate::ambient_stream::env_session_id().unwrap_or_default();
+    // Sanitise last_action: strip any chars that would break JSON (quotes, backslashes)
+    let safe_action: String = last_action
+        .chars()
+        .map(|c| if c == '"' || c == '\\' { '_' } else { c })
+        .take(64)
+        .collect();
     let line = format!(
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"subagent_heartbeat\",\
-         \"gap_id\":\"{gap_id}\",\"agent_id\":\"execute_gap\"}}"
+         \"gap_id\":\"{gap_id}\",\"pid\":{pid},\"last_action\":\"{safe_action}\",\
+         \"iter_count\":{iter_count}}}"
     );
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -649,21 +662,32 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
             let agent = build_free_tier_agent()
                 .with_context(|| format!("building free-tier agent for {}", spec.model))?;
 
-            // INFRA-334: background heartbeat task for this provider attempt.
+            // INFRA-2056: background heartbeat task for this provider attempt.
+            // Shared state updated by the agent loop (see iter_count_ft / last_action_ft).
+            let ft_iter_count = Arc::new(AtomicU64::new(0));
+            let ft_last_action: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
             let ft_hb_cancel = CancellationToken::new();
             let ft_hb_handle = {
                 let cancel = ft_hb_cancel.clone();
                 let gid = gap_id.to_string();
+                let pid = std::process::id();
+                let iter_count_ref = Arc::clone(&ft_iter_count);
+                let last_action_ref = Arc::clone(&ft_last_action);
                 tokio::spawn(async move {
                     let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
                         .ok()
                         .and_then(|s| s.parse::<u64>().ok())
-                        .unwrap_or(300);
+                        .unwrap_or(60);
                     loop {
                         tokio::select! {
                             _ = cancel.cancelled() => break,
                             _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
-                                emit_subagent_heartbeat(&gid);
+                                let count = iter_count_ref.load(Ordering::Relaxed);
+                                let action = last_action_ref
+                                    .lock()
+                                    .map(|g| g.clone())
+                                    .unwrap_or_default();
+                                emit_subagent_heartbeat(&gid, pid, &action, count);
                             }
                         }
                     }
@@ -708,21 +732,33 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     let (agent, _ready_session) = build_chump_agent_cli()
         .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
 
-    // INFRA-334: background heartbeat task — emits kind=subagent_heartbeat every 300s.
+    // INFRA-2056: background heartbeat task — emits kind=subagent_heartbeat every 60s.
+    // Shared atomic state lets the agent loop update last_action/iter_count without
+    // the heartbeat task holding a lock during the sleep interval.
+    let hb_iter_count = Arc::new(AtomicU64::new(0));
+    let hb_last_action: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let hb_cancel = CancellationToken::new();
     let hb_handle = {
         let cancel = hb_cancel.clone();
         let gid = gap_id.to_string();
+        let pid = std::process::id();
+        let iter_count_ref = Arc::clone(&hb_iter_count);
+        let last_action_ref = Arc::clone(&hb_last_action);
         tokio::spawn(async move {
             let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(300);
+                .unwrap_or(60);
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
-                        emit_subagent_heartbeat(&gid);
+                        let count = iter_count_ref.load(Ordering::Relaxed);
+                        let action = last_action_ref
+                            .lock()
+                            .map(|g| g.clone())
+                            .unwrap_or_default();
+                        emit_subagent_heartbeat(&gid, pid, &action, count);
                     }
                 }
             }
@@ -748,21 +784,31 @@ pub async fn execute_gap_with_agent(agent: &ChumpAgent, gap_id: &str) -> Result<
     let repo_root = std::env::current_dir().unwrap_or_default();
     let prompt = build_execute_gap_prompt(gap_id, &repo_root);
 
-    // INFRA-334: background heartbeat task for test-scoped subagents.
+    // INFRA-2056: background heartbeat task for test-scoped subagents.
+    let hb_iter_count = Arc::new(AtomicU64::new(0));
+    let hb_last_action: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let hb_cancel = CancellationToken::new();
     let hb_handle = {
         let cancel = hb_cancel.clone();
         let gid = gap_id.to_string();
+        let pid = std::process::id();
+        let iter_count_ref = Arc::clone(&hb_iter_count);
+        let last_action_ref = Arc::clone(&hb_last_action);
         tokio::spawn(async move {
             let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(300);
+                .unwrap_or(60);
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
-                        emit_subagent_heartbeat(&gid);
+                        let count = iter_count_ref.load(Ordering::Relaxed);
+                        let action = last_action_ref
+                            .lock()
+                            .map(|g| g.clone())
+                            .unwrap_or_default();
+                        emit_subagent_heartbeat(&gid, pid, &action, count);
                     }
                 }
             }

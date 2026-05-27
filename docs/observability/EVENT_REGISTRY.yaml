@@ -1498,11 +1498,12 @@ events:
 
   - kind: subagent_heartbeat
     effect_metric: self
-    emitter: src/execute_gap.rs (INFRA-334)
+    emitter: src/execute_gap.rs (INFRA-2056)
     trigger: subagent (chump --execute-gap) emits periodic liveness signal every
-      CHUMP_SUBAGENT_HEARTBEAT_SECS (default 300s) while agent.run() is in flight
-    consumers: [subagent-watchdog, fleet-brief]
-    fields_required: [ts, session, kind, gap_id, agent_id]
+      CHUMP_SUBAGENT_HEARTBEAT_SECS (default 60s) while agent.run() is in flight;
+      wizard-daemon infers agent dying/dead if heartbeat >120s stale (INFRA-2056)
+    consumers: [subagent-watchdog, fleet-brief, wizard-daemon]
+    fields_required: [ts, session, kind, gap_id, pid, last_action, iter_count]
 
   - kind: subagent_silent
     effect_metric: self
