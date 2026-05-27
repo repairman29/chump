@@ -1,0 +1,18 @@
+- id: INFRA-1854
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs pr-hygiene gate (META-071 sub-gap; CI-only fail class)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    META-071 sub-gap. pr-hygiene CI job (.github/workflows/ci.yml) checks PR title format + body trailers + commit-count limits. Not mirrored in chump preflight today. Easy mirror — shell script with scope filter, same pattern as INFRA-1731 (event-registry-audit) shipped at #2377.
+  acceptance_criteria:
+    - "src/preflight.rs adds new pr-hygiene gate following the INFRA-1731 pattern: skip via CHUMP_PREFLIGHT_SKIP_PRHYGIENE=1 with audit-trail emit, runs scripts/ci/check-pr-hygiene.sh (if exists) else the inline ci.yml logic"
+    - "Runs under GateKind::Scripts (not Rust) — same scope as pr-scope check in INFRA-1792"
+    - "Smoke test scripts/ci/test-preflight-prhygiene-gate.sh: fixture with bad PR title, assert gate fails; fixture with skip-env, assert pass with audit emit"
+    - Documented in docs/process/CI_PREFLIGHT_PARITY.md (META-071 — already done by parent)
+  notes: |
+    Pillar: ZERO-WASTE. META-070 sub-gap from META-071 parity audit. Easy bucket — small + scope-filterable.
+  closed_date: '2026-05-27'
+  closed_pr: 2558
+
