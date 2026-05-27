@@ -28,8 +28,10 @@ LOCK_DIR="$MAIN_REPO/.chump-locks"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 
 now_epoch=$(date +%s)
+# shellcheck disable=SC2034  # day_ago: used by sub-scripts that source fleet-brief.sh
 day_ago=$((now_epoch - 86400))
 four_h_ago=$((now_epoch - 14400))
+# shellcheck disable=SC2034  # one_h_ago: reserved for future 1h threshold callers
 one_h_ago=$((now_epoch - 3600))
 
 # INFRA-1148: git log replaces gh pr list (GraphQL) for all ship counts and
@@ -127,10 +129,53 @@ if [[ "$ships_1h" -eq 0 && "$blocked_count" -ge 2 ]]; then
         "$_stall_ts" "$blocked_count" >> "$AMBIENT_LOG" 2>/dev/null || true
 fi
 
+# ── INFRA-2040: Silent fleet death detection ──────────────────────────────
+# Condition: last merge into origin/main > SILENT_DEATH_MERGE_HOURS (default 12h)
+# AND at least one com/dev.chump.* launchd daemon has exit code != 0.
+# This catches the "brief says healthy but floor is dead" class from 2026-05-26.
+_SILENT_DEATH_MERGE_HOURS="${SILENT_DEATH_MERGE_HOURS:-12}"
+_silent_fleet_dead=0
+_sfd_merge_age_h=0
+_sfd_dead_count=0
+_sfd_dead_labels=""
+
+_last_merge_ts="$(git -C "$MAIN_REPO" log origin/main -1 --format="%ct" 2>/dev/null || echo 0)"
+if [[ "$_last_merge_ts" -gt 0 ]]; then
+    _sfd_merge_age_h=$(( (now_epoch - _last_merge_ts) / 3600 ))
+fi
+_merge_stale=0
+[[ "$_sfd_merge_age_h" -ge "$_SILENT_DEATH_MERGE_HOURS" ]] && _merge_stale=1
+
+if command -v launchctl &>/dev/null && [[ "$(uname)" == "Darwin" ]]; then
+    _uid="$(id -u)"
+    _dead_labels_arr=()
+    while IFS= read -r _lbl; do
+        [[ -z "$_lbl" ]] && continue
+        _ec="$(launchctl print "gui/$_uid/$_lbl" 2>/dev/null \
+            || launchctl print "system/$_lbl" 2>/dev/null \
+            || true)"
+        _exit_code="$(echo "$_ec" | grep -E 'last exit code\s*=' | grep -oE '[-]?[0-9]+' | head -1 || true)"
+        [[ -z "$_exit_code" ]] && continue
+        [[ "$_exit_code" != "0" ]] && _dead_labels_arr+=("${_lbl}(exit=${_exit_code})")
+    done < <(launchctl list 2>/dev/null | awk '{print $3}' | grep -E '^(com|dev)\.chump\.' || true)
+
+    _sfd_dead_count="${#_dead_labels_arr[@]}"
+    _sfd_dead_labels="${_dead_labels_arr[*]:-}"
+
+    if [[ "$_merge_stale" -eq 1 && "$_sfd_dead_count" -gt 0 ]]; then
+        _silent_fleet_dead=1
+        printf '{"ts":"%s","kind":"silent_fleet_death","merge_age_h":%d,"dead_daemon_count":%d,"dead_daemons":"%s","source":"fleet-brief.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_sfd_merge_age_h" "$_sfd_dead_count" "$_sfd_dead_labels" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+    fi
+fi
+
 # ── Auto-fixed counts from ambient (last 24h) ────────────────────────────
 auto_lint_fixes=0
 auto_flake_reruns=0
 manual_rescues=0
+# since_iso: ISO timestamp 24h ago for awk cutoff filter.
+since_iso="$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '1970-01-01T00:00:00Z')"
 if [ -f "$AMBIENT_LOG" ]; then
     auto_lint_fixes=$(awk -v cutoff="$since_iso" '$0 ~ /"kind":"auto_fix_lint"/ && $0 ~ "\"ts\":\""' "$AMBIENT_LOG" 2>/dev/null | wc -l | tr -d ' ')
     auto_flake_reruns=$(awk -v cutoff="$since_iso" '$0 ~ /"kind":"flake_rerun"/' "$AMBIENT_LOG" 2>/dev/null | wc -l | tr -d ' ')
@@ -161,6 +206,16 @@ fi
 echo "═══ Fleet brief (last 24h) ═══"
 # INFRA-2013: show 1h ships as leading indicator alongside 24h rolling average
 echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h | last 1h: $ships_1h"
+# INFRA-2040: silent-fleet-death banner — takes priority over STALLED (more severe)
+if [[ "$_silent_fleet_dead" -eq 1 ]]; then
+    if [[ -t 1 ]]; then
+        printf '\033[1;31m*** ALERT: SILENT-FLEET-DEATH — last merge %dh ago + %d daemon(s) dead: %s — run: chump fleet doctor ***\033[0m\n' \
+            "$_sfd_merge_age_h" "$_sfd_dead_count" "$_sfd_dead_labels"
+    else
+        printf '*** ALERT: SILENT-FLEET-DEATH — last merge %dh ago + %d daemon(s) dead: %s — run: chump fleet doctor ***\n' \
+            "$_sfd_merge_age_h" "$_sfd_dead_count" "$_sfd_dead_labels"
+    fi
+fi
 # INFRA-2013: prominent STALLED banner when condition met
 if [[ "$_fleet_stalled" -eq 1 ]]; then
     # Use ANSI red if terminal supports it; fallback to plain text
@@ -247,9 +302,8 @@ if [[ -x "$_chump" ]]; then
         local tag="$1"
         echo "$_open_gaps" \
             | grep -E "\[open\].*${tag}" \
-            | grep -E "P1/(xs|s|m)\)" \
-            | wc -l \
-            | tr -d ' '
+            | grep -cE "P1/(xs|s|m)\)" \
+            || true
     }
     _fmt_count() {
         local n="$1"
