@@ -10820,9 +10820,7 @@ async fn main() -> Result<()> {
                     std::process::exit(2);
                 }
                 if modes > 1 {
-                    eprintln!(
-                        "chump gap sync: --check, --pull, --push are mutually exclusive"
-                    );
+                    eprintln!("chump gap sync: --check, --pull, --push are mutually exclusive");
                     std::process::exit(2);
                 }
 
