@@ -5250,3 +5250,60 @@ events:
       routing and keep the DRIVE primitive dormant.
     consumers: [ops-audit]
     fields_required: [ts, kind, source, pr, reason]
+
+  # RESILIENT-033: register 5 orphan event kinds blocking the audit gate
+  # All 5 are pre-existing emit sites that never had registry entries.
+
+  - kind: admin_merge_cycle_restore_failed
+    effect_metric: resilient
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2041)
+    trigger: >
+      Emitted when the admin-merge cycle drops required_status_checks contexts,
+      runs the squash-merge, but then FAILS to restore the ruleset to its
+      original state. This is a CRITICAL operator-action event — leaving the
+      contexts empty would mean main is unprotected until manually fixed.
+      Operator must re-run the restore step or manually PUT the contexts back.
+    consumers: [ops-audit, operator-recall]
+    fields_required: [ts, kind, pr, ruleset_id, restore_json]
+
+  - kind: md_links_heartbeat
+    effect_metric: credible
+    emitter: scripts/coord/md-links-loop.sh cmd_heartbeat (INFRA-1925)
+    trigger: >
+      Emitted on each cron-driven md-links-loop heartbeat tick to prove the
+      curator-opus-md-links role is alive. No-op otherwise; used by heartbeat
+      watchdogs to detect stalled md-links scanners.
+    consumers: [heartbeat-shepherd, ops-audit]
+    fields_required: [ts, kind]
+
+  - kind: md_links_scan_done
+    effect_metric: credible
+    emitter: scripts/coord/md-links-loop.sh cmd_tick (INFRA-1925)
+    trigger: >
+      Emitted at the end of an md-links scan with summary fields. Used to
+      track broken-link discovery rate over time and to flag when a scan
+      finds zero broken links (which may indicate the scanner itself is
+      broken rather than the docs being clean).
+    consumers: [ops-audit, doc-health]
+    fields_required: [ts, kind, scan_path, files_checked, broken_found]
+
+  - kind: md_links_lane_override
+    effect_metric: credible
+    emitter: scripts/coord/md-links-loop.sh (INFRA-1925)
+    trigger: >
+      Emitted when the md-links curator detects an override to the standard
+      scan lane (e.g. operator-initiated targeted scan with an explicit scan
+      path argument). Used for audit visibility into non-default invocations.
+    consumers: [ops-audit]
+    fields_required: [ts, kind]
+
+  - kind: worktree_reaped
+    effect_metric: resilient
+    emitter: scripts/ops/stale-worktree-reaper.sh (INFRA-2020)
+    trigger: >
+      Emitted when stale-worktree-reaper removes a /tmp/chump-* worktree that
+      met all reap criteria (idle past threshold + no active lease + branch
+      pushed-or-deletable). Includes source tag distinguishing operator-manual
+      worktrees from agent-created ones for audit differentiation.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, branch, dry_run]
