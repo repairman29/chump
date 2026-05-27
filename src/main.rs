@@ -10783,6 +10783,195 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-2053: `chump gap sync` — bidirectional YAML <-> state.db
+            // reconciliation. Three modes (mutually exclusive):
+            //   --check  : dry-run drift report; exits non-zero on drift.
+            //   --pull   : YAML -> DB. Recovers from `chump gap reserve`
+            //              TODO-AC overwrites (INFRA-2022 class) and from
+            //              the `gap_drift_orphan` class (state.db rows w/o
+            //              YAML mirror). Atomic INSERT/UPDATE per gap.
+            //   --push   : DB -> YAML. Writes `docs/gaps/<ID>.yaml` for
+            //              every open + in-progress gap whose YAML diverges
+            //              or is missing. Atomic tempfile + rename per file
+            //              with serde_yaml round-trip validation.
+            //
+            // --dry-run pairs with --pull and --push (--check is dry-run by
+            // design). --json switches output to a single newline-delimited
+            // JSON document.
+            "sync" => {
+                let mode_check = args.iter().any(|a| a == "--check");
+                let mode_pull = args.iter().any(|a| a == "--pull");
+                let mode_push = args.iter().any(|a| a == "--push");
+                let dry_run = args.iter().any(|a| a == "--dry-run");
+                let modes = [mode_check, mode_pull, mode_push]
+                    .iter()
+                    .filter(|m| **m)
+                    .count();
+                if modes == 0 {
+                    eprintln!(
+                        "Usage: chump gap sync (--check | --pull | --push) [--dry-run] [--json] \
+                         [--state-db PATH] [--gaps-dir PATH]\n\
+                         \n\
+                         --check  drift report; exits non-zero on drift (no mutations)\n\
+                         --pull   YAML -> DB (recovers from TODO-AC overwrites)\n\
+                         --push   DB -> YAML for open + in-progress gaps\n\
+                         --dry-run  preview pull/push without writes"
+                    );
+                    std::process::exit(2);
+                }
+                if modes > 1 {
+                    eprintln!(
+                        "chump gap sync: --check, --pull, --push are mutually exclusive"
+                    );
+                    std::process::exit(2);
+                }
+
+                // --state-db override resolves to the same env var GapStore reads.
+                if let Some(p) = flag("--state-db") {
+                    std::env::set_var("CHUMP_STATE_DB", p);
+                }
+                // --gaps-dir override; default `docs/gaps` under the worktree root.
+                let gaps_dir_arg = flag("--gaps-dir");
+                let gaps_dir = match gaps_dir_arg {
+                    Some(p) => {
+                        let pb = std::path::PathBuf::from(&p);
+                        if pb.is_absolute() {
+                            pb
+                        } else {
+                            worktree_root.join(pb)
+                        }
+                    }
+                    None => worktree_root.join("docs").join("gaps"),
+                };
+
+                // Re-open the store after potential CHUMP_STATE_DB override.
+                let sync_store = match gap_store::GapStore::open(&worktree_root) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump gap sync: cannot open state.db: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                if mode_check {
+                    match gap_store::sync::sync_check(&sync_store, &gaps_dir) {
+                        Ok(report) => {
+                            if json_out {
+                                let json_entries: Vec<serde_json::Value> = report
+                                    .entries
+                                    .iter()
+                                    .map(|e| {
+                                        serde_json::json!({
+                                            "gap_id": e.gap_id,
+                                            "kind": e.kind.as_str(),
+                                            "fields": e.fields,
+                                        })
+                                    })
+                                    .collect();
+                                let summary = serde_json::json!({
+                                    "mode": "check",
+                                    "clean": report.is_clean(),
+                                    "drift_count": report.entries.len(),
+                                    "entries": json_entries,
+                                });
+                                println!("{}", summary);
+                            } else if report.is_clean() {
+                                println!("chump gap sync --check: clean (no drift)");
+                            } else {
+                                println!(
+                                    "chump gap sync --check: {} drift entries",
+                                    report.entries.len()
+                                );
+                                for e in &report.entries {
+                                    if e.fields.is_empty() {
+                                        println!("  {} | {}", e.gap_id, e.kind.as_str());
+                                    } else {
+                                        println!(
+                                            "  {} | {} | fields: {}",
+                                            e.gap_id,
+                                            e.kind.as_str(),
+                                            e.fields.join(",")
+                                        );
+                                    }
+                                }
+                            }
+                            if !report.is_clean() {
+                                std::process::exit(1);
+                            }
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("chump gap sync --check: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                if mode_pull {
+                    match gap_store::sync::sync_pull(&sync_store, &gaps_dir, dry_run) {
+                        Ok(report) => {
+                            if json_out {
+                                let summary = serde_json::json!({
+                                    "mode": "pull",
+                                    "dry_run": dry_run,
+                                    "inserted": report.inserted,
+                                    "updated": report.updated,
+                                    "skipped": report.skipped,
+                                    "changed_ids": report.changed_ids,
+                                });
+                                println!("{}", summary);
+                            } else {
+                                let prefix = if dry_run { "[dry-run] " } else { "" };
+                                println!(
+                                    "{}chump gap sync --pull: {} inserted, {} updated, {} unchanged",
+                                    prefix, report.inserted, report.updated, report.skipped
+                                );
+                                if !report.changed_ids.is_empty() {
+                                    println!("  changed: {}", report.changed_ids.join(", "));
+                                }
+                            }
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("chump gap sync --pull: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                if mode_push {
+                    match gap_store::sync::sync_push(&sync_store, &gaps_dir, dry_run) {
+                        Ok(report) => {
+                            if json_out {
+                                let summary = serde_json::json!({
+                                    "mode": "push",
+                                    "dry_run": dry_run,
+                                    "inserted": report.inserted,
+                                    "updated": report.updated,
+                                    "skipped": report.skipped,
+                                    "changed_ids": report.changed_ids,
+                                });
+                                println!("{}", summary);
+                            } else {
+                                let prefix = if dry_run { "[dry-run] " } else { "" };
+                                println!(
+                                    "{}chump gap sync --push: {} new YAMLs, {} updated, {} unchanged",
+                                    prefix, report.inserted, report.updated, report.skipped
+                                );
+                                if !report.changed_ids.is_empty() {
+                                    println!("  changed: {}", report.changed_ids.join(", "));
+                                }
+                            }
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("chump gap sync --push: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                unreachable!("mode selection should be exhaustive after guard above");
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -10820,6 +11009,8 @@ async fn main() -> Result<()> {
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
                 eprintln!("  clear-cooldown   <GAP-ID> --reason \"text\"  # INFRA-1220: operator override for post-close cooldown");
+                eprintln!("  sync             (--check | --pull | --push) [--dry-run] [--json] [--state-db PATH] [--gaps-dir PATH]");
+                eprintln!("                                # INFRA-2053: bidirectional YAML <-> state.db reconciliation");
                 std::process::exit(2);
             }
         }

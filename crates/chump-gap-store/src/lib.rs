@@ -10,6 +10,7 @@
 //!   Existing DB rows are NOT overwritten; only new gaps are inserted.
 
 pub mod maintenance;
+pub mod sync;
 
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection};
@@ -105,6 +106,16 @@ impl GapStore {
     /// without re-implementing the reserve() flow.
     #[cfg(any(test, feature = "test-helpers"))]
     pub fn conn_for_test(&self) -> &Connection {
+        &self.conn
+    }
+
+    /// INFRA-2053 sync-module accessor — direct connection reference so
+    /// `sync_pull` can issue INSERT/UPDATE that bypass the integrity
+    /// guards (recycled-ID, title-hijack) in `set_fields`. Those guards
+    /// would refuse legitimate sync operations like recovering a TODO-AC
+    /// overwrite from a clean YAML. Scoped `pub(crate)` so external
+    /// callers cannot reach it — `sync::sync_pull` is the only consumer.
+    pub(crate) fn conn_for_sync(&self) -> &Connection {
         &self.conn
     }
 
@@ -3094,6 +3105,12 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+/// INFRA-2053 sync-module shim around the private `unix_now()` — keeps
+/// sync.rs from duplicating the SystemTime/UNIX_EPOCH boilerplate.
+pub(crate) fn unix_now_pub() -> i64 {
+    unix_now()
 }
 
 /// INFRA-1392: verify that work for `gap_id` actually landed on local
