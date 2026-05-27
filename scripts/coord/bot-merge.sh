@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 
+# INFRA-2001: feature-flag shim — when CHUMP_SHIP_RUST=1 AND --mode manual (or unset/default),
+# route to the new Rust chump-ship binary instead of this 3044-LOC bash body. Legacy bash
+# preserved below for parallel-run validation during 1-week soak. Bot-merge mode still routes
+# through bash (Rust BotMergePath is stubbed in Phase 1; Phase 2 sub-gap will port it).
+if [ "${CHUMP_SHIP_RUST:-0}" = "1" ]; then
+    _mode_arg=""
+    for ((_i=1; _i<=$#; _i++)); do
+        if [ "${!_i}" = "--mode" ]; then
+            _j=$((_i+1))
+            _mode_arg="${!_j}"
+            break
+        fi
+    done
+    if [ -z "$_mode_arg" ] || [ "$_mode_arg" = "manual" ]; then
+        exec chump-ship "$@"
+    fi
+    # --mode bot-merge falls through to legacy bash (BotMergePath stubbed in Phase 1)
+fi
+
 # INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
 # shellcheck source=../lib/discover-flock.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"

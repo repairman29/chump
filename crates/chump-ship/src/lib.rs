@@ -1,16 +1,33 @@
-//! INFRA-1229 slice 1 — pure planner for the chump ship pipeline.
+//! Chump ship pipeline — pure planner (INFRA-1229 slice 1) + Ship trait
+//! and ManualShipPath executor (INFRA-2001 Phase 2 of META-107 Rust-First
+//! Migration Blueprint).
 //!
-//! This crate extracts the smallest pure kernel out of
-//! `scripts/coord/bot-merge.sh` (2668 LOC of bash): the branching logic
-//! that decides what action to take given a snapshot of PR + branch state.
+//! ## Crate shape
 //!
-//! The planner does NO I/O. It takes [`PrSnapshot`] and [`RepoSnapshot`]
-//! inputs and returns a [`ShipPlan`]. The CLI wrapper in `src/main.rs`
-//! gathers snapshots via gh API + git, calls [`plan`], and prints the
-//! result as JSON for bot-merge.sh to dispatch on (slice 2 will move the
-//! dispatch into Rust as well).
+//! - [`plan`] + [`ShipPlan`] (this file) — pure planner extracted from
+//!   `scripts/coord/bot-merge.sh`. No I/O.
+//! - [`decide_steps`] + [`ExecutorStep`] (this file) — pure step list.
+//! - [`Ship`] / [`ShipIntent`] / [`ShipMode`] / [`ShipReceipt`] /
+//!   [`ShipError`] (see [`ship`] module) — typed surface for the
+//!   executor in Phase 2.
+//! - [`ManualShipPath`] (see [`manual_ship`] module) — concrete impl
+//!   for the manual ship pipeline (subprocess `git` + `gh`).
+//!   Single-instance via PID-locked Unix socket — fixes INFRA-1532
+//!   double-instance class BY CONSTRUCTION.
+//! - [`BotMergePath`] (see [`bot_merge`] module) — STUBBED. Phase 2
+//!   sub-gap will port the 3044 LOC bash `scripts/coord/bot-merge.sh`.
 //!
-//! Decision priority (matches bot-merge.sh today):
+//! ## Phase 1 non-goals (deferred to follow-up sub-gaps)
+//!
+//! - No port of bot-merge.sh body. The 3044 LOC bash stays UNTOUCHED
+//!   below the feature-flag shim in `scripts/coord/bot-merge.sh`.
+//! - No `--stack-on` (PR stacking) support — flat-merge only.
+//! - No new ambient event kinds. Phase 1 logs via `tracing` only.
+//! - No edits to `docs/observability/EVENT_REGISTRY.yaml` or
+//!   `scripts/ci/event-registry-reserved.txt`.
+//!
+//! ## Decision priority (matches bot-merge.sh today)
+//!
 //!   1. PR merged or closed → AlreadyDone
 //!   2. No PR + commits → CreatePr
 //!   3. behind > stale_threshold → StaleBranch (refuse)
@@ -22,6 +39,14 @@
 //!   9. mergeable=null (GH computing) → WaitForChecks
 //!  10. unstable + failures (not conflict) → ConflictRecover
 //!  11. anything else → OperatorAction
+
+pub mod bot_merge;
+pub mod manual_ship;
+pub mod ship;
+
+pub use ship::{
+    PreflightGate, PreflightReport, Ship, ShipError, ShipIntent, ShipMode, ShipReceipt,
+};
 
 use serde::{Deserialize, Serialize};
 

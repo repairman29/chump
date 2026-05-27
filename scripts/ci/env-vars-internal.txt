@@ -563,3 +563,11 @@ CHUMP_CACHE_DB
 #   chump-check-gaps-integrity; legacy Python body runs otherwise
 #   (1-week parallel-run validation window).
 CHUMP_GAP_MAINTENANCE_RUST
+
+# INFRA-2001 — chump-ship Phase 2 (Ship trait + ManualShipPath + PID-locked
+#   single-instance fix for INFRA-1532). Absorbs scripts/coord/bot-merge.sh
+#   manual-mode path; BotMerge mode stubbed for Phase 2 sub-gap.
+# CHUMP_SHIP_RUST=1 routes the scripts/coord/bot-merge.sh top-shim to the
+#   new Rust chump-ship binary when --mode manual (default); legacy 3044-LOC
+#   bash body runs otherwise (1-week parallel-run validation window).
+CHUMP_SHIP_RUST
