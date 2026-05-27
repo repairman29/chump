@@ -1751,3 +1751,68 @@ mid-session).
 This is consistent with META-061 (NATS-primary delivery, file-fallback secondary):
 file-based urgent delivery uses `PreToolUse` for today's path; NATS-primary
 (INFRA-1118+) is the future path where delivery is push-based and timing is exact.
+
+## When to admin-merge — noise-class discipline (RESILIENT-031, 2026-05-27)
+
+Admin-merge (dropping `required_status_checks` to force-merge a PR) is a **last resort**.
+The wrapper `scripts/ops/admin-merge-cycle.sh` enforces the discipline mechanically.
+
+### The rule
+
+You **must** declare which known noise pattern justifies the bypass:
+
+```bash
+scripts/ops/admin-merge-cycle.sh --pr <N> --noise-class <id>
+```
+
+The script:
+1. Looks up `<id>` in `scripts/ops/known-noise-classes.yaml`
+2. Fetches actual failing check names via `gh pr checks <N>`
+3. Compares failing checks against the class's `matches` list and `pattern` regex
+4. **If they match** → proceeds with drop → merge → restore
+5. **If they don't match** → REFUSES with an explanation and exits non-zero
+
+### Emergency bypass
+
+When genuinely urgent and no matching class exists, use `--force-admin`:
+
+```bash
+scripts/ops/admin-merge-cycle.sh --pr <N> --force-admin --reason "short explanation"
+```
+
+This bypasses the class check but **requires** `--reason` and emits
+`kind=admin_merge_forced` to `ambient.jsonl` for the audit log.
+Repeated `admin_merge_forced` events signal the class list is stale.
+
+### When a class auto-expires
+
+If a class has `expires_after_ship: true` and its `upstream_fix_gap` reaches
+status `done`, the class is **automatically invalidated** — the script refuses to
+use it and prints:
+
+```
+REFUSE: noise class 'X' is EXPIRED. Upstream fix gap Y is done.
+This noise should no longer occur. If it does, file a regression gap.
+```
+
+This prevents stale bypasses from surviving long after the root cause is fixed.
+
+### Adding a new noise class
+
+1. Edit `scripts/ops/known-noise-classes.yaml`, add an entry with:
+   - `id` — unique slug (e.g. `runner-saturation-stall`)
+   - `description` — why this noise occurs
+   - `matches` — list of substrings found in failing check names (case-insensitive)
+   - `pattern` — Python regex as fallback (use `""` if not needed)
+   - `upstream_fix_gap` — gap ID that will eliminate the noise (or `null` for infra)
+   - `expires_after_ship` — `true` if the gap fix should retire this class; `false` for permanent infra noise
+2. Commit the YAML edit in the same PR as the code that first uses the class.
+3. List active classes anytime: `scripts/ops/admin-merge-cycle.sh --list-classes`
+
+### Why this matters
+
+On 2026-05-27, 7 admin-merge cycles ran for the same wedge (INFRA-2044
+docs-delta-trailer test broken). Each was individually justified, but one cycle
+was premature (no failing checks yet — only pending). The counter-measure:
+the script now REFUSES if no checks are actually failing, preventing premature
+bypasses that mask CI state.
