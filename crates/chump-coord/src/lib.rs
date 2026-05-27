@@ -65,6 +65,7 @@ pub mod mesh;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;
+pub mod worker;
 
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};

@@ -61,6 +61,33 @@
 
 set -euo pipefail
 
+# INFRA-2002 / META-107 sub-gap #6 — Rust port feature flag.
+# When CHUMP_FLEET_RUST=1, exec the chump-fleet binary. Defaults to 0
+# (run legacy tmux+bash body inline) for the 1-week parallel-run window.
+if [[ "${CHUMP_FLEET_RUST:-0}" = "1" ]]; then
+    _chump_fleet_bin="${CHUMP_FLEET_BIN:-}"
+    if [[ -z "$_chump_fleet_bin" ]]; then
+        for _cand in \
+            "$(git rev-parse --show-toplevel 2>/dev/null)/target/debug/chump-fleet" \
+            "$(git rev-parse --show-toplevel 2>/dev/null)/target/release/chump-fleet" \
+            "$(command -v chump-fleet 2>/dev/null || true)"; do
+            if [[ -n "$_cand" && -x "$_cand" ]]; then
+                _chump_fleet_bin="$_cand"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$_chump_fleet_bin" && -x "$_chump_fleet_bin" ]]; then
+        # Translate FLEET_SIZE to --size N when invoked without explicit flags.
+        if [[ "$#" -eq 0 && -n "${FLEET_SIZE:-}" ]]; then
+            exec "$_chump_fleet_bin" --size "$FLEET_SIZE"
+        else
+            exec "$_chump_fleet_bin" "$@"
+        fi
+    fi
+    echo "[run-fleet.sh] CHUMP_FLEET_RUST=1 but chump-fleet binary not found; falling back to bash body" >&2
+fi
+
 # ── CLI flag parsing ──────────────────────────────────────────────────────────
 # INFRA-634: --repo, --locks-dir, --tmux-session (non-Chump repo support).
 # INFRA-844: --restart, --dry-run, --help (clean fleet reload).

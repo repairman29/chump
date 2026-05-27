@@ -12,6 +12,18 @@ categories = ["concurrency", "development-tools"]
 name = "chump-coord"
 path = "src/main.rs"
 
+# INFRA-2002 / META-107 sub-gap #6: Rust ports of scripts/dispatch/worker.sh
+# and scripts/dispatch/run-fleet.sh. Routed via CHUMP_WORKER_RUST=1 /
+# CHUMP_FLEET_RUST=1 feature flags in the bash shims; legacy bodies stay
+# inline for the 1-week parallel-run window.
+[[bin]]
+name = "chump-worker"
+path = "src/bin/chump-worker.rs"
+
+[[bin]]
+name = "chump-fleet"
+path = "src/bin/chump-fleet.rs"
+
 [lib]
 path = "src/lib.rs"
 
@@ -28,9 +40,14 @@ sha2        = "0.11"
 tokio       = { version = "1", features = ["full"] }
 uuid        = { version = "1", features = ["v4"] }
 chump-gap-store = { path = "../chump-gap-store", version = "0.1.0" }
+# INFRA-2002: worker loop emits existing registered ambient kinds
+# (worker_exit, worker_stuck) via chump-ambient-cli's library API —
+# same path the bash worker uses today via the `ambient emit` CLI.
+chump-ambient-cli = { path = "../ambient-cli", version = "0.1.0" }
 
 [dev-dependencies]
 serial_test = "3"
+tempfile    = "3"
 
 [lints]
 workspace = true

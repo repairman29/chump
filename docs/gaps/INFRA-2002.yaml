@@ -1,0 +1,121 @@
+- id: INFRA-2002
+  domain: INFRA
+  title: "EFFECTIVE: chump-worker + chump-fleet binaries Phase 1 — port scripts/dispatch/worker.sh + run-fleet.sh to typed Rust (META-107 sub-gap #6 of 6 — the final one)"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "Existing chump-coord crate gains pub mod worker with submodules capability / loop_body / worktree"
+    - "capability module: WorkerCapability struct + from_env(WORKER_SKILLS/MACHINE/BACKEND) + matches(&GapRow) picker filter + to_manifest() adapter to INFRA-1760 CapabilityManifest"
+    - "loop_body module: run_one_cycle(&CycleEnv) -> CycleOutcome — PULL-mode happy path against state.db; pick_eligible_gap; spawn `chump --execute-gap` as tokio::process::Child with FLEET_TIMEOUT_S budget"
+    - "worktree module: create_worktree / remove_worktree / worktree_dir_for via tokio::process::Command (subprocess to git CLI; not git2 — Phase 1 keeps the dep tree small per Phase 1 non-goals)"
+    - "Two new CLI binaries: chump-worker (single-cycle --once + loop), chump-fleet (--size N supervisor that spawns N chump-worker subprocesses with linear 5s restart backoff and SIGTERM/SIGINT shutdown)"
+    - "Feature-flag shims atop both bash scripts: CHUMP_WORKER_RUST=1 in scripts/dispatch/worker.sh and CHUMP_FLEET_RUST=1 in scripts/dispatch/run-fleet.sh route to the Rust binaries; legacy bash bodies preserved inline for 1-week parallel-run"
+    - "Smoke test scripts/ci/test-chump-worker-rust.sh covers: --help banners on both binaries, single-iteration claim against synth state.db, capability filter positive+negative cases (rust gap vs python worker), 2-worker fleet against 5 gaps with 0 lease collisions (7 PASS minimum)"
+    - "No new ambient event kinds — worker emits only existing registered worker_exit + worker_stuck"
+    - "No edits to docs/observability/EVENT_REGISTRY.yaml or scripts/ci/event-registry-reserved.txt"
+    - "CHUMP_WORKER_RUST / CHUMP_FLEET_RUST / CHUMP_WORKER_BIN / CHUMP_FLEET_BIN / CHUMP_WORKER_EXEC_OVERRIDE registered in scripts/ci/env-vars-internal.txt under INFRA-2002 header"
+    - "cargo fmt / cargo clippy --package chump-coord --all-targets -D warnings / cargo check --package chump-coord all green"
+  depends_on:
+    - INFRA-1998
+    - INFRA-2001
+  description: |
+    Final Phase 1 sub-gap of the META-107 Rust-First Migration Blueprint
+    series (#6 of 6). Sibling ships: INFRA-1997 chump-git-hooks (#2605),
+    INFRA-1998 chump-messaging (#2611), INFRA-1999 chump-github-cache
+    (#2633), INFRA-2000 chump-gap-store::maintenance (#2637), INFRA-2001
+    chump-ship Phase 2 (#2641). Same recipe — smallest viable carve-out,
+    ONE concrete impl, smoke test for parity, backward-compat shims, NO
+    new event kinds.
+
+    Replaces TWO bash files (Phase 1 = parallel-run via feature flags;
+    decommissioning the bash bodies is a follow-up sub-gap):
+      - scripts/dispatch/worker.sh    (~1908 LOC, per-worker fleet loop)
+      - scripts/dispatch/run-fleet.sh (~750  LOC, fleet launcher)
+
+    Module surface inside existing chump-coord crate (not a new crate —
+    chump-coord is the natural home for fleet-coordination primitives
+    next to capability.rs / work_board.rs / help_request.rs):
+
+    (a) crates/chump-coord/src/worker/capability.rs — WorkerCapability
+        adapter mapping env (WORKER_SKILLS / WORKER_MACHINE /
+        WORKER_BACKEND) into a picker-filter struct. Distinct from
+        the wire-format CapabilityManifest in src/capability.rs
+        (INFRA-1760, chump-capability-v1 schema published into NATS
+        KV). The runtime worker only needs the picker view; KV publish
+        is deferred to a follow-up sub-gap.
+
+    (b) crates/chump-coord/src/worker/loop_body.rs — single-iteration
+        run_one_cycle(&CycleEnv) -> CycleOutcome. The CycleOutcome
+        enum classifies 7 terminal states (Shipped, ChildFailed,
+        ChildTimeout, NoPickableGap, StateError, LostClaimRace,
+        WorktreeError). Emits worker_exit on every child-exit path
+        and worker_stuck on every no-progress path; both are existing
+        registered kinds. ZERO new kinds.
+
+    (c) crates/chump-coord/src/worker/worktree.rs — create_worktree /
+        remove_worktree subprocess to `git worktree add -B <branch>
+        <path> origin/main` and `git worktree remove --force`. Scope
+        doc favored git2::Worktree for env-immunity; Phase 1 ships
+        subprocess to keep the dep tree small (60s preflight target).
+        Migrating to git2 is a follow-up gap once another caller in
+        chump-coord needs the crate.
+
+    (d) crates/chump-coord/src/bin/chump-worker.rs — CLI entry. Args:
+        --once (single iteration for tests/CI), --idle-sleep-s SECS,
+        --session-id ID. Env honors WORKER_SKILLS / WORKER_MACHINE /
+        WORKER_BACKEND / FLEET_TIMEOUT_S / CHUMP_GAP_CLAIM_TTL_SECS /
+        CHUMP_WORKER_EXEC_OVERRIDE (test seam). NATS PUSH path is
+        STUBBED — if CHUMP_NATS_URL is set, the worker emits a debug
+        line and falls through to PULL. Actual subscribe lives in
+        FLEET-034 follow-up sub-gaps.
+
+    (e) crates/chump-coord/src/bin/chump-fleet.rs — supervisor. Spawns
+        N tokio tasks each running `chump-worker` as a subprocess.
+        On worker exit, restarts with linear 5s backoff (exponential
+        deferred). SIGTERM / SIGINT trigger graceful shutdown via a
+        watch::channel. Per-worker session_id is
+        `chump-fleet-<pid>-<i>`. CHUMP_WORKER_BIN env honored to
+        override the path to chump-worker.
+
+    (f) Backward-compat shims:
+        - scripts/dispatch/worker.sh   — ~25 LOC feature-flag block at
+          top: if CHUMP_WORKER_RUST=1, exec chump-worker "$@"; legacy
+          1908 LOC bash body preserved unchanged below.
+        - scripts/dispatch/run-fleet.sh — same pattern; legacy 750
+          LOC bash body preserved unchanged below. Translates
+          FLEET_SIZE=N env to --size N when no flags given.
+
+    (g) Smoke test scripts/ci/test-chump-worker-rust.sh: builds both
+        binaries; asserts --help banners; runs single-iteration
+        chump-worker against a synth state.db (sqlite3 schema bootstrap
+        matching gap-store v6 columns); asserts the test gap got
+        claimed (lease row written) with CHUMP_WORKER_EXEC_OVERRIDE=
+        /usr/bin/true mocking the child; asserts capability filter
+        (python worker MUST NOT claim rust-tagged gap; rust worker
+        DOES); asserts 2-worker fleet against 5 pickable gaps with 0
+        lease collisions. CHUMP_REPO and CHUMP_REPO_ROOT both set to
+        the fake repo so ambient emits don't leak to the real
+        repo's ambient.jsonl.
+
+    Phase 1 NON-goals (explicitly deferred):
+      - Decommissioning the bash bodies (follow-up after parallel-run window)
+      - NATS PUSH subscribe implementation (FLEET-034)
+      - KV CapabilityManifest publish (INFRA-1760 follow-up)
+      - Speculative `replicas: N` envelopes (INFRA-311)
+      - Worker_heartbeat / worker_restarted ambient kinds (would require
+        EVENT_REGISTRY.yaml edits — forbidden by Phase 1 hygiene; deferred
+        to a sub-gap that explicitly carries the registry edit)
+      - git2::Worktree migration (defer until a second caller justifies the dep)
+
+    Closes the META-107 Rust-First Migration Blueprint umbrella (6 of 6
+    sub-gaps shipped or in-flight: INFRA-1997 / INFRA-1998 / INFRA-1999 /
+    INFRA-2000 / INFRA-2001 + this one).
+  opened_date: "2026-05-27"
+  closed_date: ""
+  closed_pr: null
+  skills_required: rust
+  preferred_backend: any
+  preferred_machine: any
+  estimated_minutes: "180"
+  required_model: any
