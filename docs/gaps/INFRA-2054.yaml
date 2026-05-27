@@ -1,0 +1,38 @@
+- id: INFRA-2054
+  domain: INFRA
+  title: 'RESILIENT P2: chump --build-info + chump self-check-staleness (META-114 binary-staleness layer)'
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Binary-staleness layer of META-114 freshness discipline cluster.
+    Phase 1: surface only — embed build metadata (full git SHA, build
+    timestamp, rustc version, workspace root) into the chump binary at
+    compile time via build.rs cargo:rustc-env outputs; expose via two
+    new CLI subcommands:
+      chump --build-info [--json]      print embedded BuildInfo
+      chump self-check-staleness       classify binary against age +
+                                       commits-behind axes; exit 0/1/2
+                                       for FRESH/STALE/CRITICAL_STALE
+    Closes the META-114 cluster (INFRA-2053 sync + META-115 preamble +
+    DOC-059 doc + META-116 hung-hook + INFRA-2054 binary = 7-layer
+    coverage). Today's "binary 2.8h old + new CLI flag missing"
+    pattern (INFRA-2032 territory) becomes a deterministic gate at the
+    binary level.
+  acceptance_criteria:
+    - "build.rs appends 4 new cargo:rustc-env outputs (CHUMP_BUILD_GIT_SHA full-SHA, CHUMP_BUILD_TIMESTAMP UTC ISO-8601, CHUMP_BUILD_RUSTC, CHUMP_BUILD_WORKSPACE_ROOT); existing INFRA-148 CHUMP_BUILD_SHA + CHUMP_BUILD_DATE unchanged"
+    - "src/staleness.rs ships BuildInfo struct (sha, timestamp, rustc, workspace_root) + StalenessClass enum (Fresh, Stale, CriticalStale with exit_code() 0/1/2) + StalenessReport struct + check_staleness(threshold_age_s, threshold_commits) -> Result<(StalenessClass, StalenessReport), StalenessError>"
+    - "CLI: chump --build-info [--json] prints embedded BuildInfo (human or JSON); chump self-check-staleness [--threshold-age-s N] [--threshold-commits N] [--json] exits 0/1/2 for FRESH/STALE/CRITICAL_STALE"
+    - "Default thresholds match META-115 preamble: 3600s (1h) soft age / 14400s (4h) critical age; 5 commits soft / 50 commits critical"
+    - "Outside-git context fail-soft: build sha sentinel 'unknown-no-git-context'; commits_behind=None classified non-fatally"
+    - "Smoke test scripts/ci/test-chump-staleness-gate.sh: --build-info exit 0 with sha line, --build-info --json parses with 4 fields, huge thresholds force FRESH (exit 0), zero thresholds force non-FRESH (exit 1 or 2), --json self-check shape validated"
+    - "Phase 1 observation-free: NO new ambient event kinds, NO touches to docs/observability/EVENT_REGISTRY.yaml or scripts/ci/event-registry-reserved.txt"
+    - "Phase 1 non-goals deferred to follow-up sub-gaps: high-risk-ops gate (chump claim / chump gap ship integration), interactive cargo install --path . --force prompt, chump --rebuild-if-stale composition flag"
+  notes: |
+    META-114 freshness cluster sub-gap #5 (last in cluster).
+    Sibling MERGED PRs: INFRA-2053 #2653 (gap sync), DOC-059 #2657 (doc).
+    Sibling ARMED PRs: META-115 #2655 (preamble), META-116 #2658 (hung-hook).
+    Stays out of the way of version.rs (INFRA-148 + INFRA-825 + INFRA-1977)
+    which already covers gap-store-specific staleness with hard-fail
+    semantics. This module is the GENERIC observer; version.rs is the
+    specialized destructive-op gate.

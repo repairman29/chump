@@ -609,3 +609,13 @@ CHUMP_FRESHNESS_STALE_COMMITS
 CHUMP_FRESHNESS_STALE_BINARY_AGE_S
 CHUMP_FRESHNESS_DISABLE_FETCH
 CHUMP_ACCEPT_STALE
+# INFRA-2054 — chump --build-info + chump self-check-staleness
+#   (META-114 freshness cluster, binary-staleness layer).
+# Four NEW cargo:rustc-env outputs emitted by build.rs (in addition to the
+# pre-existing INFRA-148 CHUMP_BUILD_SHA + CHUMP_BUILD_DATE) and consumed
+# by src/staleness.rs via env!() at compile time. They are NOT operator-set
+# at runtime; they are baked at build time and embedded in the binary.
+CHUMP_BUILD_GIT_SHA
+CHUMP_BUILD_TIMESTAMP
+CHUMP_BUILD_RUSTC
+CHUMP_BUILD_WORKSPACE_ROOT
