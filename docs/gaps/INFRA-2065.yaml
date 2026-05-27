@@ -1,0 +1,17 @@
+- id: INFRA-2065
+  domain: INFRA
+  title: "ZERO-WASTE: cutover INFRA-2002 chump-worker — remove scripts/dispatch/worker.sh (1807 LOC) + scripts/dispatch/run-fleet.sh (750 LOC) after 1-week parallel-run; tmux pane spawn migrated to chump-fleet"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Parallel-run validation: CHUMP_FLEET_RUST=1 has selected chump-fleet binary over scripts/dispatch/run-fleet.sh for 7+ consecutive days across at least 3 distinct multi-worker fleet sessions; ambient kind=worker_divergence_detected count == 0 over the window; ship rate (PRs merged / PRs opened) remained at or above baseline (≥70% per FLEET-518 gate)"
+    - Cutover PR removes scripts/dispatch/worker.sh (1807 LOC bash) + scripts/dispatch/run-fleet.sh (750 LOC bash); tmux pane spawn logic fully migrated to chump-fleet binary (which spawns chump-worker child processes; no bash trampolines remain)
+    - "Atomic worktree management verified: chump-worker uses git2::Worktree (Phase 1 already shipped); no bash invocations of git worktree add / remove remain in the worker hot-path; verified by grep + smoke run"
+    - "octocrab native: chump-worker reads PR state via chump-github-cache crate (no gh CLI text-parse); INFRA-1999 chump-github-cache crate is a HARD dependency for cutover (cannot complete INFRA-2065 until INFRA-2062 cutover lands so the cache layer is single-stack)"
+    - "Ambient emit kind=rust_migration_landed gap=INFRA-2002 lines_out=2557 lines_in=0 on cutover commit; total META-107 cutover arc emit at this point: kind=meta_107_cutover_complete with sum_lines_out=10487 (1154+583+1149+2000+3044+2557) for retrospective audit"
+    - CRITICAL — this is the FINAL cutover of the META-107 arc; PR body includes (a) full LOC-out summary across all 6 cutover gaps, (b) reference to META-107 umbrella, (c) emit kind=meta_107_complete (already-registered) as the final closing event
+  depends_on: [INFRA-2002]
+  notes: |
+    Phase 2 cutover of META-107 sub-gap INFRA-2002 (chump-worker + chump-fleet). FINAL cutover in the META-107 arc. Sibling cutovers: INFRA-2060/2061/2062/2063/2064. Recommend cutting over LAST in the sequence — chump-worker hot-path depends on the github-cache cutover (INFRA-2062) being complete first since worker reads PR state every cycle.
+

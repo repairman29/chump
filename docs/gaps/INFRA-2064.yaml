@@ -1,0 +1,17 @@
+- id: INFRA-2064
+  domain: INFRA
+  title: "ZERO-WASTE: cutover INFRA-2001 chump-ship — remove scripts/coord/bot-merge.sh body (3044 LOC bash) after 1-week parallel-run; thin shim or full removal (architect's call)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Parallel-run validation: CHUMP_SHIP_RUST=1 has been default in scripts/coord/bot-merge.sh feature-flag shim for 7+ consecutive days; ambient kind=ship_divergence_detected count == 0 over the window; scripts/ci/test-chump-ship-manual.sh has been green every PR over the window"
+    - "Cutover decision: architect picks per-section — full bash body removal (chump-ship binary becomes the sole entry point + .git/hooks/bot-merge.sh symlink retargeted) OR keep thin shim wrapper (15-line dispatch script that execs the binary). Document the choice in PR body; total LOC out must be 2900+ either way"
+    - "PID-locked single-instance verified at cutover: assert chump-ship binary uses Unix socket / PID lock (INFRA-1532 double-instance fix-by-construction); attempt-two-concurrent-bot-merge smoke test collides as expected (one wins, one errors-out cleanly)"
+    - "All operator escape-hatches still work post-cutover: CHUMP_OPERATOR_RECOVERY=1 admin-merge cycle, recovery-queue handoff to background daemon, --auto-merge arming via gh pr merge; verified by scripts/ci/test-chump-ship-recovery-paths.sh added in this PR"
+    - Ambient emit kind=rust_migration_landed gap=INFRA-2001 lines_out=3044 lines_in=0 on cutover commit; bash_loc counter in fleet stats decremented by 3044
+    - "Rollback plan documented: if Rust binary regression detected, revert PR restores bash body + shim feature flag in one commit; 24h hot-rollback window; cutover MUST NOT happen during fleet-busy window (>3 PRs in flight)"
+  depends_on: [INFRA-2001]
+  notes: |
+    Phase 2 cutover of META-107 sub-gap INFRA-2001 (chump-ship). HIGHEST-RISK cutover of the six (3044 LOC + ship-path is critical-path). Sibling cutovers: INFRA-2060/2061/2062/2063/2065. Recommend cutting over LAST or second-to-last in the sequence after the smaller cutovers prove the pattern.
+
