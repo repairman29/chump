@@ -46,6 +46,9 @@
 #   CHUMP_WIZARD_DISPATCH_WINDOW_S      sliding window for dispatch tracking (default 3600)
 #   CHUMP_WIZARD_CASCADE_RATE_LIMIT     max cascade rebases per cycle (default 3)
 #   CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR  PR author allowed for cascade rebase (default: repairman29)
+#   CHUMP_WIZARD_DISPATCH_TIMEOUT_S     seconds before a dead-PID dispatch is marked FAILED (default 900)
+#   CHUMP_WIZARD_DISPATCH_GAP_COOLDOWN_S seconds after FAILED before re-dispatch allowed (default 1800)
+#   CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS  max FAILED dispatches per gap in 24h before give-up (default 3)
 #
 # Audit events emitted:
 #   wizard_daemon_action           — every classification + decision
@@ -57,6 +60,8 @@
 #   wizard_dispatch_rate_limited   — dispatch refused (already at max parallel) (Step 4)
 #   wizard_gap_skipped             — gap skipped due to wizard_skip:true (Step 4)
 #   wizard_cascade_rebase_triggered — cascade rebase triggered for a sibling PR (Step 5)
+#   wizard_dispatch_cooldown       — dispatch skipped: gap failed recently, within cooldown window (INFRA-2051)
+#   wizard_dispatch_giveup         — dispatch abandoned: gap hit max failed attempts; gap tagged wizard_skip (INFRA-2051)
 #
 # Launchd: scripts/setup/install-wizard-daemon-launchd.sh (5-min cadence)
 # Kill switch: CHUMP_WIZARD_DAEMON_PAUSE=1 OR remove plist from ~/Library/LaunchAgents/
@@ -70,6 +75,8 @@
 # scanner-anchor: "kind":"wizard_dispatch_rate_limited"
 # scanner-anchor: "kind":"wizard_gap_skipped"
 # scanner-anchor: "kind":"wizard_cascade_rebase_triggered"
+# scanner-anchor: "kind":"wizard_dispatch_cooldown"
+# scanner-anchor: "kind":"wizard_dispatch_giveup"
 
 set -uo pipefail
 
@@ -90,6 +97,10 @@ DISPATCH_WINDOW_S="${CHUMP_WIZARD_DISPATCH_WINDOW_S:-3600}"
 CASCADE_RATE_LIMIT="${CHUMP_WIZARD_CASCADE_RATE_LIMIT:-3}"
 ALLOWED_REBASE_AUTHOR="${CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR:-repairman29}"
 DRY_RUN="${CHUMP_WIZARD_DAEMON_DRY_RUN:-0}"
+# INFRA-2051: outcome detection config
+DISPATCH_TIMEOUT_S="${CHUMP_WIZARD_DISPATCH_TIMEOUT_S:-900}"
+DISPATCH_GAP_COOLDOWN_S="${CHUMP_WIZARD_DISPATCH_GAP_COOLDOWN_S:-1800}"
+MAX_DISPATCH_ATTEMPTS="${CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS:-3}"
 # Note: Step 3 uses an inline keyword pattern table derived from
 # docs/process/WEDGE_CLASS_CATALOG.md — update both when adding new W-NNN classes.
 
@@ -721,8 +732,25 @@ PY
 #   .chump-locks/wizard-daemon-dispatch-state.json sliding window).
 # For each eligible gap: spawn `chump --execute-gap <ID>` in background.
 #
-# Dispatch state JSON schema:
-#   { "dispatches": [ { "gap_id": "X", "ts": "ISO8601", "pid": N } ] }
+# Dispatch state JSON schema (INFRA-2051 extended):
+#   {
+#     "dispatches": [
+#       { "gap_id": "X", "ts": "ISO8601", "pid": N, "outcome": null, "attempts": M }
+#     ],
+#     "history": [
+#       { "gap_id": "X", "outcome": "SHIPPED|FAILED|PR_OPENED", "ts": "ISO8601" }
+#     ]
+#   }
+#
+# Outcome states (INFRA-2051):
+#   SHIPPED    — chump gap show <id> shows status:done
+#   PR_OPENED  — gh pr list finds an open PR for this gap (work in progress)
+#   FAILED     — PID dead + no PR + gap still open + past DISPATCH_TIMEOUT_S
+#   IN_FLIGHT  — PID alive OR not yet past timeout (keep in active)
+#
+# Cooldown guard: if history[] has a FAILED within DISPATCH_GAP_COOLDOWN_S, skip.
+# Give-up guard: if history[] has >= MAX_DISPATCH_ATTEMPTS FAILEDs in 24h, tag
+#   gap with wizard_skip:true and emit wizard_dispatch_giveup.
 #
 step4_dispatch_pickable_gaps() {
     log "Step 4: querying pickable gaps for dispatch..."
@@ -733,61 +761,190 @@ step4_dispatch_pickable_gaps() {
         return 0
     fi
 
-    # Load current dispatch state (prune entries older than DISPATCH_WINDOW_S)
-    local active_count=0
     local now_epoch; now_epoch="$(date -u +%s)"
 
-    # Read + prune state
-    local state_json='{"dispatches":[]}'
+    # ── Load + migrate + prune dispatch state ─────────────────────────────────
+    # Schema migration (INFRA-2051): old shape lacks outcome/attempts/history.
+    # We migrate defensively: if an entry lacks outcome, set outcome=null + attempts=1.
+    # If the top-level history key is missing, initialize to [].
+    local raw_state_json='{"dispatches":[],"history":[]}'
     if [[ -f "$DISPATCH_STATE" ]]; then
-        state_json="$(cat "$DISPATCH_STATE" 2>/dev/null || echo '{"dispatches":[]}')"
+        raw_state_json="$(cat "$DISPATCH_STATE" 2>/dev/null || echo '{"dispatches":[],"history":[]}')"
     fi
 
-    # Count still-active dispatches (within window, process still running).
-    # Also prune dead PIDs every tick (INFRA-2049 defense-in-depth): write back
-    # the pruned list so stale entries never block future dispatches even when
-    # DRY_RUN=1 wrote phantom entries.
-    local pruned_state_json
-    pruned_state_json="$(python3 - "$state_json" "$now_epoch" "$DISPATCH_WINDOW_S" <<'PY' 2>/dev/null || echo '{"dispatches":[]}'
-import json, sys, os, datetime
+    # Prune + outcome-classify active dispatches.
+    # Outputs JSON with updated dispatches[], history[], and a "newly_failed" list.
+    local updated_state_json
+    updated_state_json="$(python3 - \
+        "$raw_state_json" "$now_epoch" "$DISPATCH_WINDOW_S" \
+        "$DISPATCH_TIMEOUT_S" "$CHUMP_BIN" "$GH" <<'PY' 2>/dev/null || echo '{"dispatches":[],"history":[],"newly_failed":[]}'
+import json, sys, os, datetime, subprocess
+
 try:
-    state = json.loads(sys.argv[1])
-    now = int(sys.argv[2])
-    window = int(sys.argv[3])
+    state       = json.loads(sys.argv[1])
+    now         = int(sys.argv[2])
+    window      = int(sys.argv[3])
+    timeout_s   = int(sys.argv[4])
+    chump_bin   = sys.argv[5]
+    gh_bin      = sys.argv[6]
 except Exception:
-    print('{"dispatches":[]}'); sys.exit(0)
+    print('{"dispatches":[],"history":[],"newly_failed":[]}'); sys.exit(0)
 
-active = []
-for d in state.get("dispatches", []):
+# ── Schema migration: add missing fields to each entry ────────────────────
+def migrate_entry(d):
+    if "outcome" not in d:
+        d["outcome"] = None
+    if "attempts" not in d:
+        d["attempts"] = 1
+    return d
+
+raw_dispatches = [migrate_entry(d) for d in state.get("dispatches", [])]
+history        = list(state.get("history", []))
+
+def parse_epoch(ts_str):
     try:
-        ts_str = d.get("ts","")
         t = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
-        epoch = int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
-        if (now - epoch) > window:
-            continue  # expired
-        pid = d.get("pid", 0)
-        if pid and pid > 0:
-            try:
-                os.kill(pid, 0)
-                active.append(d)
-            except OSError:
-                pass  # process gone — prune
-        else:
-            active.append(d)
+        return int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
     except Exception:
-        pass
+        return 0
 
-print(json.dumps({"dispatches": active}, indent=2))
+def gap_is_done(gap_id):
+    """Return True if chump gap show <id> reports status:done."""
+    try:
+        out = subprocess.check_output(
+            [chump_bin, "gap", "show", gap_id],
+            stderr=subprocess.DEVNULL, timeout=10
+        ).decode("utf-8", errors="replace")
+        return "status: done" in out or '"status":"done"' in out
+    except Exception:
+        return False
+
+def gap_has_open_pr(gap_id):
+    """Return True if gh pr list --search <gap_id> has at least one open PR."""
+    try:
+        out = subprocess.check_output(
+            [gh_bin, "pr", "list", "--search", gap_id, "--state", "open", "--json", "number"],
+            stderr=subprocess.DEVNULL, timeout=15
+        ).decode("utf-8", errors="replace")
+        data = json.loads(out or "[]")
+        return isinstance(data, list) and len(data) > 0
+    except Exception:
+        return False
+
+def pid_alive(pid):
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+now_iso = datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+active       = []
+newly_failed = []
+
+for d in raw_dispatches:
+    try:
+        dispatch_epoch = parse_epoch(d.get("ts",""))
+        age_s          = now - dispatch_epoch
+    except Exception:
+        continue
+
+    # Expire entries older than the sliding window
+    if age_s > window:
+        continue
+
+    gap_id  = d.get("gap_id","")
+    pid     = d.get("pid", 0)
+    outcome = d.get("outcome")
+    attempts = d.get("attempts", 1)
+
+    # Already resolved — keep in active list until expired (PR_OPENED case)
+    if outcome in ("SHIPPED", "PR_OPENED"):
+        # Re-check SHIPPED on every tick (status may change)
+        if outcome == "PR_OPENED":
+            if gap_is_done(gap_id):
+                d["outcome"] = "SHIPPED"
+                history.append({"gap_id": gap_id, "outcome": "SHIPPED", "ts": now_iso})
+                continue  # remove from active
+        active.append(d)
+        continue
+
+    # Classify in-flight entries
+    if pid_alive(pid):
+        # PID still running — IN_FLIGHT
+        active.append(d)
+        continue
+
+    # PID dead — determine what happened
+    if gap_is_done(gap_id):
+        d["outcome"] = "SHIPPED"
+        history.append({"gap_id": gap_id, "outcome": "SHIPPED", "ts": now_iso})
+        # Do not add to active (shipped = done)
+        continue
+
+    if gap_has_open_pr(gap_id):
+        d["outcome"] = "PR_OPENED"
+        active.append(d)
+        continue
+
+    # PID dead, no PR, gap not done — check timeout
+    if age_s < timeout_s:
+        # Give it more time
+        active.append(d)
+        continue
+
+    # FAILED
+    d["outcome"] = "FAILED"
+    d["attempts"] = attempts
+    history.append({"gap_id": gap_id, "outcome": "FAILED", "ts": now_iso})
+    newly_failed.append(gap_id)
+    # Do NOT add to active — remove from active list
+
+print(json.dumps({
+    "dispatches":   active,
+    "history":      history,
+    "newly_failed": newly_failed,
+}, indent=2))
 PY
 )"
-    active_count="$(printf '%s\n' "$pruned_state_json" | python3 -c \
+
+    # Extract components
+    local active_dispatches_json
+    active_dispatches_json="$(printf '%s\n' "$updated_state_json" | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(json.dumps({'dispatches':d.get('dispatches',[]),'history':d.get('history',[])}))" \
+        2>/dev/null || echo '{"dispatches":[],"history":[]}')"
+
+    local active_count
+    active_count="$(printf '%s\n' "$updated_state_json" | python3 -c \
         "import json,sys; d=json.load(sys.stdin); print(len(d.get('dispatches',[])))" \
         2>/dev/null || echo 0)"
 
-    # Persist pruned state (removes dead PIDs even if nothing new dispatched).
-    # Skip write in dry-run so the state file is never mutated during test runs (INFRA-2049).
+    local history_json
+    history_json="$(printf '%s\n' "$updated_state_json" | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('history',[])))" \
+        2>/dev/null || echo '[]')"
+
+    local newly_failed_list
+    newly_failed_list="$(printf '%s\n' "$updated_state_json" | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); [print(x) for x in d.get('newly_failed',[])]" \
+        2>/dev/null || true)"
+
+    # Emit ambient events for newly-failed dispatches
+    if [[ -n "$newly_failed_list" ]]; then
+        while IFS= read -r failed_gap; do
+            [[ -z "$failed_gap" ]] && continue
+            log "Step 4: gap $failed_gap classified FAILED (PID dead, no PR, timeout exceeded)"
+            emit_action "step4" "gap:$failed_gap" "dispatch_outcome_failed" \
+                "\"outcome\":\"FAILED\",\"timeout_s\":$DISPATCH_TIMEOUT_S"
+        done < <(printf '%s\n' "$newly_failed_list")
+    fi
+
+    # Persist pruned+outcome-updated state (skip in dry-run — INFRA-2049)
     if [[ "$DRY_RUN" != "1" ]] && [[ -f "$DISPATCH_STATE" ]]; then
-        printf '%s\n' "$pruned_state_json" > "$DISPATCH_STATE" 2>/dev/null || true
+        printf '%s\n' "$active_dispatches_json" > "$DISPATCH_STATE" 2>/dev/null || true
     fi
 
     log "Step 4: active dispatches=$active_count max=$MAX_PARALLEL"
@@ -853,6 +1010,90 @@ except Exception as e:
 
         local gap_id="$gap_entry"
 
+        # ── INFRA-2051: Cooldown + give-up guards before dispatch ─────────────
+        # Evaluate history for this gap_id using python (avoids bash date-math loops)
+        local guard_decision
+        guard_decision="$(python3 - "$history_json" "$gap_id" \
+            "$now_epoch" "$DISPATCH_GAP_COOLDOWN_S" "$MAX_DISPATCH_ATTEMPTS" <<'PY' 2>/dev/null || echo "OK"
+import json, sys, datetime
+
+try:
+    history         = json.loads(sys.argv[1])
+    gap_id          = sys.argv[2]
+    now             = int(sys.argv[3])
+    cooldown_s      = int(sys.argv[4])
+    max_attempts    = int(sys.argv[5])
+except Exception:
+    print("OK"); sys.exit(0)
+
+WINDOW_24H = 86400
+
+def parse_epoch(ts_str):
+    try:
+        t = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+        return int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
+    except Exception:
+        return 0
+
+# All FAILED entries for this gap in history
+failed_entries = [
+    h for h in history
+    if h.get("gap_id") == gap_id and h.get("outcome") == "FAILED"
+]
+
+# Most-recent FAILED
+recent_fails_24h = [
+    h for h in failed_entries
+    if (now - parse_epoch(h.get("ts",""))) <= WINDOW_24H
+]
+
+# Give-up guard: >= max_attempts FAILED in last 24h
+if len(recent_fails_24h) >= max_attempts:
+    print(f"GIVEUP:{len(recent_fails_24h)}")
+    sys.exit(0)
+
+# Cooldown guard: any FAILED within cooldown_s
+if failed_entries:
+    most_recent_fail_epoch = max(parse_epoch(h.get("ts","")) for h in failed_entries)
+    age = now - most_recent_fail_epoch
+    if age < cooldown_s:
+        print(f"COOLDOWN:{age}:{cooldown_s}")
+        sys.exit(0)
+
+print("OK")
+PY
+)"
+
+        if [[ "$guard_decision" == GIVEUP:* ]]; then
+            local fail_count="${guard_decision#GIVEUP:}"
+            log "Step 4: gap $gap_id — GIVE UP ($fail_count failed attempts in 24h >= $MAX_DISPATCH_ATTEMPTS) — tagging wizard_skip"
+            # Tag gap with wizard_skip in notes (skip write in dry-run)
+            if [[ "$DRY_RUN" != "1" ]]; then
+                "$CHUMP_BIN" gap set "$gap_id" \
+                    --add-note "[$(date -u +%Y-%m-%d)] wizard_skip:true — ${fail_count} failed dispatches; needs operator review." \
+                    >/dev/null 2>&1 || true
+            else
+                log "Step 4: DRY_RUN=1 — would tag gap $gap_id with wizard_skip:true"
+            fi
+            emit_ambient "wizard_dispatch_giveup" \
+                "\"gap_id\":\"$gap_id\",\"failed_attempts\":$fail_count,\"max_attempts\":$MAX_DISPATCH_ATTEMPTS,\"source\":\"wizard_daemon\""
+            emit_action "step4" "gap:$gap_id" "dispatch_giveup" \
+                "\"failed_attempts\":$fail_count,\"max_attempts\":$MAX_DISPATCH_ATTEMPTS"
+            continue
+        fi
+
+        if [[ "$guard_decision" == COOLDOWN:* ]]; then
+            local cooldown_parts="${guard_decision#COOLDOWN:}"
+            local cooldown_age="${cooldown_parts%%:*}"
+            local cooldown_limit="${cooldown_parts##*:}"
+            log "Step 4: gap $gap_id — COOLDOWN (last failure ${cooldown_age}s ago, cooldown=${cooldown_limit}s)"
+            emit_ambient "wizard_dispatch_cooldown" \
+                "\"gap_id\":\"$gap_id\",\"last_fail_age_s\":$cooldown_age,\"cooldown_s\":$cooldown_limit,\"source\":\"wizard_daemon\""
+            emit_action "step4" "gap:$gap_id" "dispatch_cooldown" \
+                "\"last_fail_age_s\":$cooldown_age,\"cooldown_s\":$cooldown_limit"
+            continue
+        fi
+
         # Check preflight — is it actually pickable?
         if ! "$CHUMP_BIN" gap preflight "$gap_id" >/dev/null 2>&1; then
             log "Step 4: gap $gap_id failed preflight — skipping"
@@ -879,7 +1120,8 @@ except Exception as e:
         local dispatch_pid=$!
 
         local dispatch_ts; dispatch_ts="$(ts)"
-        new_dispatches+=("{\"gap_id\":\"$gap_id\",\"ts\":\"$dispatch_ts\",\"pid\":$dispatch_pid}")
+        # INFRA-2051: new schema includes outcome + attempts fields
+        new_dispatches+=("{\"gap_id\":\"$gap_id\",\"ts\":\"$dispatch_ts\",\"pid\":$dispatch_pid,\"outcome\":null,\"attempts\":1}")
 
         emit_ambient "wizard_dispatch_executed" \
             "\"gap_id\":\"$gap_id\",\"pid\":$dispatch_pid,\"source\":\"wizard_daemon\""
@@ -899,8 +1141,8 @@ except Exception as e:
     if [[ "${#new_dispatches[@]}" -gt 0 ]]; then
         local new_entries
         new_entries="$(IFS=','; printf '%s' "${new_dispatches[*]}")"
-        # Merge with existing non-expired + dead-PID-pruned entries and write
-        python3 - "$pruned_state_json" "$now_epoch" "$DISPATCH_WINDOW_S" "$new_entries" <<'PY' > "$DISPATCH_STATE" 2>/dev/null || true
+        # Merge new dispatches with the already-pruned+outcome-classified active list
+        python3 - "$active_dispatches_json" "$now_epoch" "$DISPATCH_WINDOW_S" "$new_entries" <<'PY' > "$DISPATCH_STATE" 2>/dev/null || true
 import json, sys, os, datetime
 
 try:
@@ -909,18 +1151,11 @@ try:
     window  = int(sys.argv[3])
     new_raw = sys.argv[4] if len(sys.argv) > 4 else "[]"
 except Exception:
-    print('{"dispatches":[]}'); sys.exit(0)
+    print('{"dispatches":[],"history":[]}'); sys.exit(0)
 
-# Keep non-expired entries
-kept = []
-for d in state.get("dispatches", []):
-    try:
-        t = datetime.datetime.strptime(d["ts"], "%Y-%m-%dT%H:%M:%SZ")
-        epoch = int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
-        if (now - epoch) <= window:
-            kept.append(d)
-    except Exception:
-        pass
+# Keep non-expired active entries (already pruned — just copy through)
+kept = list(state.get("dispatches", []))
+history = list(state.get("history", []))
 
 # Parse new entries (passed as comma-separated JSON objects)
 try:
@@ -929,7 +1164,7 @@ try:
 except Exception:
     pass
 
-print(json.dumps({"dispatches": kept}, indent=2))
+print(json.dumps({"dispatches": kept, "history": history}, indent=2))
 PY
     fi
 
