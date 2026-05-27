@@ -45,7 +45,13 @@ chump-coord watch &                              # FLEET-006 (skip if NATS unava
 chump gap list --status open                     # canonical .chump/state.db
 chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
+bash scripts/coord/freshness-preamble.sh         # META-115: FRESH/STALE/CRITICAL_STALE session-start gate
 ```
+
+**Freshness discipline** — before any "X is missing" claim, run [`verify-existence`](./.claude/skills/verify-existence/SKILL.md)
+or `git ls-tree origin/main path/to/X`. Local `ls` lies when your checkout is 40+
+commits behind. Full rules + anti-patterns + decision table in
+[`docs/process/FRESHNESS_DISCIPLINE.md`](./docs/process/FRESHNESS_DISCIPLINE.md) (DOC-059 / META-114).
 
 The SessionStart hook (INFRA-1150 a2a-inbox-inject) auto-surfaces unread
 peer broadcasts at the top of every session digest under a `Pending

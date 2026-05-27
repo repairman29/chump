@@ -648,6 +648,17 @@ etc. Those defer to AGENTS.md for shared conventions and only carry
 tool-specific overlays. If a rule appears in both AGENTS.md and a
 tool-specific file, AGENTS.md wins.
 
+**Freshness discipline** — every harness must defend against the seven
+staleness layers (git main, state.db, chump binary, launchd plists, YAML
+gaps, fleet-registry, docs). Before any "X is missing" claim, run
+`git ls-tree origin/main path/to/X` or invoke the harness equivalent of
+the `verify-existence` check — local `ls` lies when the checkout is
+40+ commits behind. Full rules + per-layer fixes + anti-patterns in
+[`docs/process/FRESHNESS_DISCIPLINE.md`](docs/process/FRESHNESS_DISCIPLINE.md)
+(DOC-059 / META-114). The per-session preamble at
+`scripts/coord/freshness-preamble.sh` (META-115) is harness-neutral and
+classifies session-start state as FRESH/STALE/CRITICAL_STALE.
+
 ## Pull request guidelines
 
 - **Branch:** `chump/<short-codename>` (canonical, see "Naming
