@@ -31,6 +31,31 @@
 
 set -uo pipefail   # NOT -e: we want the loop to recover from individual cycle failures
 
+# INFRA-2002 / META-107 sub-gap #6 — Rust port feature flag.
+# When CHUMP_WORKER_RUST=1, exec the chump-worker binary and skip the
+# legacy bash body below. Default 0 = run legacy body inline (parallel-run
+# discipline mirroring INFRA-1997 / INFRA-1998 / INFRA-1999 / INFRA-2000).
+if [[ "${CHUMP_WORKER_RUST:-0}" = "1" ]]; then
+    # Prefer co-located binary, then PATH lookup. chump-worker is built
+    # from crates/chump-coord/src/bin/chump-worker.rs.
+    _chump_worker_bin="${CHUMP_WORKER_BIN:-}"
+    if [[ -z "$_chump_worker_bin" ]]; then
+        for _cand in \
+            "$(git rev-parse --show-toplevel 2>/dev/null)/target/debug/chump-worker" \
+            "$(git rev-parse --show-toplevel 2>/dev/null)/target/release/chump-worker" \
+            "$(command -v chump-worker 2>/dev/null || true)"; do
+            if [[ -n "$_cand" && -x "$_cand" ]]; then
+                _chump_worker_bin="$_cand"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$_chump_worker_bin" && -x "$_chump_worker_bin" ]]; then
+        exec "$_chump_worker_bin" "$@"
+    fi
+    echo "[worker.sh] CHUMP_WORKER_RUST=1 but chump-worker binary not found; falling back to bash body" >&2
+fi
+
 # INFRA-569: --dry-run flag. When set, pick a gap, print the would-be claim,
 # and exit 0 without writing a lease, creating a worktree, or spawning claude.
 # Activated by --dry-run CLI flag or CHUMP_FLEET_DRY_RUN=1 env var.

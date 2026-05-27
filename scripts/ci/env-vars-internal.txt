@@ -571,3 +571,22 @@ CHUMP_GAP_MAINTENANCE_RUST
 #   new Rust chump-ship binary when --mode manual (default); legacy 3044-LOC
 #   bash body runs otherwise (1-week parallel-run validation window).
 CHUMP_SHIP_RUST
+# INFRA-2002: chump-worker + chump-fleet binaries Phase 1 (META-107
+#   sub-gap #6) port scripts/dispatch/worker.sh + scripts/dispatch/run-fleet.sh.
+# CHUMP_WORKER_RUST=1 routes scripts/dispatch/worker.sh to the new
+#   chump-worker binary (legacy bash body runs otherwise, 1-week
+#   parallel-run discipline mirroring INFRA-1997 / INFRA-1998 /
+#   INFRA-1999 / INFRA-2000 hygiene).
+# CHUMP_FLEET_RUST=1 likewise routes scripts/dispatch/run-fleet.sh to
+#   the new chump-fleet supervisor binary.
+# CHUMP_WORKER_BIN / CHUMP_FLEET_BIN — explicit path overrides honored
+#   by the bash shims when locating the binaries.
+# CHUMP_WORKER_EXEC_OVERRIDE — test seam; overrides the binary the
+#   loop body spawns instead of `chump --execute-gap` (used by
+#   scripts/ci/test-chump-worker-rust.sh which mocks it with
+#   /usr/bin/true).
+CHUMP_WORKER_RUST
+CHUMP_FLEET_RUST
+CHUMP_WORKER_BIN
+CHUMP_FLEET_BIN
+CHUMP_WORKER_EXEC_OVERRIDE
