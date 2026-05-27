@@ -5321,3 +5321,28 @@ events:
       worktrees from agent-created ones for audit differentiation.
     consumers: [ops-audit]
     fields_required: [ts, kind, source, branch, dry_run]
+  - kind: wizard_dispatch_cooldown
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step4 (INFRA-2051)
+    trigger: >
+      Emitted when wizard-daemon step4 skips dispatching a gap because that gap
+      had a FAILED dispatch outcome recorded in dispatch history within the
+      CHUMP_WIZARD_DISPATCH_GAP_COOLDOWN_S window (default 1800s = 30min).
+      Prevents infinite wheel-spin on gaps that consistently fail to ship after
+      chump --execute-gap spawns. The gap will be reconsidered after the cooldown
+      window expires.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, gap_id, last_fail_age_s, cooldown_s]
+
+  - kind: wizard_dispatch_giveup
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step4 (INFRA-2051)
+    trigger: >
+      Emitted when wizard-daemon step4 abandons dispatching a gap after recording
+      >= CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS (default 3) FAILED dispatch outcomes
+      in the last 24 hours. The gap is tagged with wizard_skip:true via
+      chump gap set --add-note so future dispatch attempts are blocked until an
+      operator manually reviews and clears the skip flag. This prevents
+      autonomous systems from thrashing on gaps that need human intervention.
+    consumers: [ops-audit, operator-pager]
+    fields_required: [ts, kind, source, gap_id, failed_attempts, max_attempts]

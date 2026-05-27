@@ -1,0 +1,9 @@
+- id: INFRA-2045
+  domain: INFRA
+  title: "RESILIENT: wizard-daemon step4 outcome detection — prevent infinite dispatch wheel-spin"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "step4_dispatch_pickable_gaps classifies each dispatch entry as SHIPPED/PR_OPENED/FAILED/IN_FLIGHT on every tick; FAILED dispatches enter cooldown before re-dispatch; cooldown guard emits wizard_dispatch_cooldown; give-up guard emits wizard_dispatch_giveup and tags wizard_skip:true; schema migration handles old-shape files; DRY_RUN=1 leaves state file unchanged; event kinds registered in EVENT_REGISTRY.yaml and event-registry-reserved.txt; test T1-T6 all pass"
+
