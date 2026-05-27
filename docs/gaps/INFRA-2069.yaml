@@ -1,0 +1,17 @@
+- id: INFRA-2069
+  domain: INFRA
+  title: "RESILIENT: wedge-fixer auto-dispatch with template library (META-118 sub-gap 3) — for well-characterized templates (fmt-drift, orphan-event, printf|grep), auto-dispatch Sonnet via templated prompt; rate-limited; PR tagged wedge_auto_fix:true"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New file scripts/coord/wedge-fixer-templates.yaml — declarative template library; each entry has {signature_pattern: regex, template_name: str, prompt_template: str, max_loc: int, smoke_test: str}; ships with 3 templates: fmt-drift (signature \"cargo fmt\" → prompt \"run cargo fmt --all and commit\"), orphan-event (signature \"event registry violation\" → prompt \"register kind=X in EVENT_REGISTRY.yaml\"), printf-grep (signature \"printf race\" → prompt \"convert printf | grep to case statement per RESILIENT-031\")"
+    - "New script scripts/coord/wedge-fixer-dispatch.sh — consumes auto-filed gaps (notes contain wedge_auto_filed:true); for each, matches signature against template library; if match found, dispatches Sonnet via Agent tool with rendered prompt; tags resulting PR with wedge_auto_fix:true label"
+    - "Rate limiting: max CHUMP_WEDGE_FIXER_DISPATCH_PER_HOUR (default 3) concurrent dispatches; persisted in .chump-locks/wedge-fixer-cursor.json; emit kind=wedge_fixer_rate_limited when blocked"
+    - "Safety guards: refuse to dispatch when (a) CHUMP_OPERATOR_PRESENT=1 (operator-only window), (b) recent admin_merge_burst event in last 30min, (c) > N (default 5) wedge_auto_fix PRs already open; each refusal emits kind=wedge_fixer_skipped with reason"
+    - "Smoke test scripts/ci/test-wedge-fixer-dispatch.sh: synth auto-filed gap with fmt-drift signature; run dispatcher --dry-run; assert prompt rendered correctly; assert wedge_auto_fix label would be set; cover 3 template matches + 1 no-match (safety: no dispatch when no template)"
+    - EVENT_REGISTRY.yaml entries kind=wedge_fixer_dispatched (gap_id, template_name, sonnet_session_id, pr_number when known), kind=wedge_fixer_rate_limited, kind=wedge_fixer_skipped; allowlist entries
+  depends_on: [INFRA-2068]
+  notes: |
+    Sub-gap 3 of META-118. Depends on INFRA-2068 (auto-filed gaps to consume). HIGHEST-RISK sub-gap of the 5 — auto-dispatching Sonnet on auto-filed work is the irreversible move. Rate limit + safety guards are mandatory.
+
