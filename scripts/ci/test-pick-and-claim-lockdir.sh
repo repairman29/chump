@@ -39,6 +39,11 @@ git -C "$FAKE_MAIN" commit -q -m seed
 LINKED="$TMPDIR_BASE/linked"
 git -C "$FAKE_MAIN" worktree add -q -b linked-test "$LINKED" main 2>/dev/null
 
+# INFRA-2073: unset CHUMP_LOCK_DIR + REPO_ROOT to prevent CI runner env from
+# bleeding into the synth resolution. Without this, the CI runner's
+# /Users/.../actions-runner-chump/.../.chump-locks beats the synth path.
+unset CHUMP_LOCK_DIR REPO_ROOT
+
 # --- Test 1: invoking get_lock_dir() from main returns main's .chump-locks ---
 RESOLVED_MAIN=$(cd "$FAKE_MAIN" && python3 -c "
 import sys

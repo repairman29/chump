@@ -43,6 +43,12 @@ git init -q -b main "$SANDBOX"
 mkdir -p "$SANDBOX/scripts/git-hooks" "$SANDBOX/src" "$SANDBOX/docs"
 cp "$REPO_ROOT/scripts/git-hooks/pre-commit" "$SANDBOX/scripts/git-hooks/pre-commit"
 chmod +x "$SANDBOX/scripts/git-hooks/pre-commit"
+# INFRA-1969 / META-117 Wave 2: docs-delta guard relocated from pre-commit
+# to commit-msg. Copy commit-msg too so the sandbox runs the actual check.
+if [[ -f "$REPO_ROOT/scripts/git-hooks/commit-msg" ]]; then
+    cp "$REPO_ROOT/scripts/git-hooks/commit-msg" "$SANDBOX/scripts/git-hooks/commit-msg"
+    chmod +x "$SANDBOX/scripts/git-hooks/commit-msg"
+fi
 echo "# existing" > "$SANDBOX/docs/existing.md"
 cat > "$SANDBOX/Cargo.toml" <<'EOF'
 [package]
