@@ -1721,3 +1721,33 @@ runs only the gate buckets relevant to the staged diff:
 Auto-scoping mirrors the `changes:` path-filter section of
 `.github/workflows/ci.yml`. Unrecognized paths fall back to `--scope all`
 so we never ship a regression because an exotic path was misclassified.
+
+## Claude Code hook output channels — PreToolUse vs PostToolUse (INFRA-2043, 2026-05-27)
+
+Claude Code hook types have **different stdout routing**:
+
+| Hook type | stdout fate | Use for |
+|---|---|---|
+| `PreToolUse` | **Injected into next-tool context** as `<system-reminder>` | Live A2A interrupts, urgent inbox, any message that must reach the mid-session agent |
+| `PostToolUse` | **Suppressed** — discarded after the tool call completes | Audit-only fire-and-forget (ambient emit, session-keyed digest append) |
+| `SessionStart` | **Injected into session digest** at startup | Session-scoped state (inbox digest, lease list, ambient glance) |
+
+**Consequence for A2A delivery (INFRA-2016 + INFRA-2043):**
+
+`inbox-check-urgent.sh` was originally wired as a `PostToolUse` hook. The hook fired
+correctly, emitted `inbox_urgent_surfaced` audit events, and advanced the cursor — but
+agents never saw the URGENT message because PostToolUse stdout is suppressed.
+
+Fix: move `inbox-check-urgent.sh` to `PreToolUse` so its `<system-reminder>` XML is
+injected as additional context for the very next tool call. `inbox-poll.sh` remains in
+`PostToolUse` because it only appends to the next session's digest (session-keyed, not
+mid-session).
+
+**Rule of thumb for future hooks:**
+- Need the agent to act on something *right now*? → `PreToolUse`
+- Just logging / updating state for later? → `PostToolUse` or `async: true`
+- Session-wide setup (lease info, inbox digest)? → `SessionStart`
+
+This is consistent with META-061 (NATS-primary delivery, file-fallback secondary):
+file-based urgent delivery uses `PreToolUse` for today's path; NATS-primary
+(INFRA-1118+) is the future path where delivery is push-based and timing is exact.
