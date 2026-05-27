@@ -5022,6 +5022,51 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, source, target_dir]
 
+  # RESILIENT-031: admin-merge discipline audit trail
+  - kind: admin_merge_forced
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (RESILIENT-031)
+    trigger: >
+      Operator used --force-admin --reason to bypass the noise-class discipline
+      gate and run an admin-merge cycle without a matching known-noise-classes.yaml
+      entry. Emitted so the operator can audit the frequency and justification of
+      emergency admin-merge bypasses. Each event carries the PR number, reason
+      text, and operator identity (USER). High frequency signals the class list
+      needs updating.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, reason, operator]
+
+  - kind: admin_merge_cycle_ok
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2041 + RESILIENT-031)
+    trigger: >
+      Admin-merge cycle completed successfully: required_status_checks dropped,
+      PR merged with --admin --squash, ruleset restored. Emitted at the end of
+      a successful cycle as the primary success signal for the ops-audit log.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, ruleset_id]
+
+  - kind: admin_merge_cycle_merge_failed
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2041 + RESILIENT-031)
+    trigger: >
+      gh pr merge exited non-zero during an admin-merge cycle. The ruleset
+      was still restored (so branch protection is intact), but the PR was not
+      merged. Operator must investigate the merge failure and retry.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, ruleset_id, merge_exit]
+
+  - kind: admin_merge_cycle_restore_failed
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2041 + RESILIENT-031)
+    trigger: >
+      CRITICAL: the ruleset PUT to restore required_status_checks failed after
+      the merge step. Branch protection is now in a degraded state (rules
+      dropped). Operator must manually restore using the snapshot file logged
+      in the event. Exit code 2 from the script signals this condition.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, pr, ruleset_id, restore_json, severity]
+
   # INFRA-1979: inbox jsonl rotation — emitted after each prune run
   - kind: inbox_pruned
     effect_metric: self

@@ -1,0 +1,73 @@
+# scripts/ops/known-noise-classes.yaml — RESILIENT-031
+#
+# Documented noise patterns that justify an admin-merge-cycle bypass.
+# Each entry must be added here before admin-merge-cycle.sh will accept it
+# as a --noise-class argument.
+#
+# Schema per class:
+#   id:                  (required) unique string identifier; pass to --noise-class
+#   description:         (required) human-readable explanation of why this noise occurs
+#   matches:             (required) list of substrings; any failing check name
+#                        containing one of these (case-insensitive) is a match
+#   pattern:             (required) Python regex; applied against failing check name
+#                        if no matches[] entry matched. Use "" if not needed.
+#   upstream_fix_gap:    (recommended) gap ID that will eliminate this noise.
+#                        When done, class auto-expires if expires_after_ship=true.
+#   expires_after_ship:  (required) true  → class becomes invalid once upstream_fix_gap
+#                                           status = done (prevents stale bypasses)
+#                                  false → class is permanent (infrastructure flakes,
+#                                           external check instability, etc.)
+#
+# Adding a new class:
+#   1. Edit this file with the new class entry.
+#   2. Commit together with the PR that triggers the first use.
+#   3. File an upstream_fix_gap if the noise is code-fixable.
+#
+# Discipline note (RESILIENT-031):
+#   Each class here represents a known, documented, pre-existing failure mode.
+#   admin-merge-cycle.sh --noise-class <id> verifies that the PR's actual failing
+#   checks match the class before allowing the bypass. If they don't match, the
+#   cycle is REFUSED — use --force-admin --reason for true emergencies (audit-logged).
+
+classes:
+
+  # ── Pre-existing audit orphan (INFRA-2044) ────────────────────────────────
+  - id: audit-orphan-pre-existing
+    description: >
+      Audit gate (test-infra-124-docs-delta-trailer or fast-checks-required) fails
+      because some emit-site lacks an EVENT_REGISTRY.yaml entry — a pre-existing
+      gap not introduced by this PR. Introduced at scale; upstream fix is INFRA-2044.
+    matches:
+      - "audit"
+      - "audit-required"
+      - "fast-checks-required"
+      - "test-infra-124"
+    pattern: "audit|docs.delta.trailer"
+    upstream_fix_gap: INFRA-2044
+    expires_after_ship: true
+
+  # ── Runner saturation stall ───────────────────────────────────────────────
+  - id: runner-saturation-stall
+    description: >
+      A required check stalls indefinitely because all self-hosted runners are
+      busy with other CI work. The check never reaches a terminal state (pass/fail)
+      within the merge window. This is an infrastructure constraint, not a code
+      failure; the fix is adding runner capacity.
+    matches:
+      - "ACP protocol smoke test"
+      - "smoke-test"
+    pattern: "still in progress|runner"
+    upstream_fix_gap: null
+    expires_after_ship: false
+
+  # ── Workspace-wide scope drift (INFRA-682) ───────────────────────────────
+  - id: workspace-scope-drift
+    description: >
+      fast-checks job fails because a workspace-wide linting pass (md_links,
+      fleet_pulse, dispatch_ prefixed checks) picks up files outside the PR's
+      scope. Pre-existing; tracked as INFRA-682.
+    matches:
+      - "fast-checks"
+    pattern: "md_links_|fleet_pulse_|dispatch_"
+    upstream_fix_gap: INFRA-682
+    expires_after_ship: true
