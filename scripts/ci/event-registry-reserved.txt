@@ -184,7 +184,8 @@ gap_reserve_open_pr_scan_failed  # reason: INFRA-1893 emitted from crates/chump-
 gap_reserve_open_pr_scan_inconsistent  # reason: INFRA-1893 emitted from crates/chump-gap-store/src/lib.rs when scan fails but gh smoke (gh api user) returns 200 — spurious-401 forensics; no EVENT_REGISTRY entry yet
 gap_resumed                # reason: INFRA-1456 #2351 emitted from src/resume_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
 gap_scrapped               # reason: INFRA-1456 #2351 emitted from src/scrap_cmd.rs; allowlist while EVENT_REGISTRY entry catches up
-gap_shipped                # reason: planned for chump gap ship emit (currently ship silently succeeds)
+gap_blocked                # reason: INFRA-2055 — emitted by src/main.rs --execute-gap on every non-clean exit; scanner-anchor in execute_gap.rs
+gap_deferred               # reason: INFRA-2055 — emitted by src/main.rs --execute-gap when agent explicitly defers; scanner-anchor in execute_gap.rs
 gate_check_result          # reason: planned for chump gate --check result emission
 gate_check_start           # reason: planned for chump gate --check start emission
 gh_shim_worktree_install_blocked # reason: planned for gh-shim install blocked by security policy
