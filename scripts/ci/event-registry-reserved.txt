@@ -458,3 +458,6 @@ off_rails_bypassed              # reason: RESILIENT-025 emitted by scripts/git-h
 
 # ── RESILIENT-026: orphan worktree watchdog ───────────────────────────────────
 orphan_worktree_detected        # reason: RESILIENT-026 emitted by scripts/coord/orphan-worktree-watchdog.sh when a /tmp/chump-* worktree has uncommitted/unpushed work + dead owning process + >15min idle; scanner-anchor present in script header; registered in EVENT_REGISTRY.yaml with full field spec
+
+# ── META-115: per-session source-freshness preamble (META-114 cluster) ───────
+freshness_critical_stale_bypassed  # reason: META-115 emitted by scripts/coord/freshness-gate.sh when a CRITICAL_STALE classification (commits-behind > CHUMP_FRESHNESS_COMMITS_THRESHOLD or binary-age > CHUMP_FRESHNESS_BINARY_AGE_S or cron-health=FAIL) is overridden via CHUMP_ACCEPT_STALE=1; carries commits_behind, binary_age_s; bypass audit trail — never suppressed; Phase 1 ships reserved here, EVENT_REGISTRY.yaml integration deferred to follow-up sub-gap

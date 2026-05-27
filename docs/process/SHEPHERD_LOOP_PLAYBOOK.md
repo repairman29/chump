@@ -194,6 +194,44 @@ chump gap ship <gap-id> --closed-pr <N> --update-yaml
 This 3-env stack is annoying. **Filed as META-085 FIX 3**: `chump gap ship-orphan`
 subcommand that bundles this without the bypass-stacking ceremony.
 
+## Pattern 12 — Verify-at-source via freshness preamble (META-115)
+
+Before filing a **"file missing"** gap or running a **destructive op** against
+state.db / hooks / launchd plists / branches, **run the freshness preamble**
+to know your stale state up front:
+
+```bash
+bash scripts/coord/freshness-preamble.sh         # exits 0/1/2
+# or chain via the gate:
+bash scripts/coord/freshness-gate.sh && chump claim INFRA-NNNN
+```
+
+The preamble classifies your local view into **FRESH / STALE / CRITICAL_STALE**
+based on four signals:
+- `commits-behind` — `git fetch origin main && git rev-list HEAD..origin/main --count`
+- `binary-age` — seconds since `$(which chump)` was last rebuilt
+- `cron-health` — `chump cron health` (fail-soft to "unavailable" if not present)
+- `bootstrap` — `chump fleet-bootstrap --check` exit code
+
+The gate refuses the chained operation on `CRITICAL_STALE` unless
+`CHUMP_ACCEPT_STALE=1` is set (audit emit: `kind=freshness_critical_stale_bypassed`).
+
+The `verify-existence` skill is the canonical check for the actual file/symbol;
+the preamble is the surrounding-context check that catches **why** verify-existence
+might lie (your local tree is 60+ commits behind, so the file truly DOES exist
+on origin/main but not in your view).
+
+**Real-world precedent — 2026-05-27 shepherd session:** the shepherd hit
+**3+ stale-tree false-positives** in one loop:
+- `recovery-queue-emit.sh phantom-missing` — local main was 48-63 commits behind,
+  file existed on origin/main; shepherd was about to file a "file missing" gap.
+- `fleet-hold-check.sh` false-missing earlier in the same session.
+- `chump --temp` returning multi-line output instead of enum.
+
+In all three cases, running the preamble first would have surfaced
+`CRITICAL_STALE` and prompted a rebase before the operator/curator went
+chasing ghosts.
+
 ## What NOT to do
 
 | Anti-pattern | Why it hurts |

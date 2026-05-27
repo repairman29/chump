@@ -590,3 +590,22 @@ CHUMP_FLEET_RUST
 CHUMP_WORKER_BIN
 CHUMP_FLEET_BIN
 CHUMP_WORKER_EXEC_OVERRIDE
+
+# ── META-115: per-session source-freshness preamble (META-114 cluster) ──────
+# scripts/coord/freshness-preamble.sh classifies session-start state into
+# FRESH / STALE / CRITICAL_STALE based on git commits-behind + binary-age +
+# (fail-soft) chump cron health. scripts/coord/freshness-gate.sh wraps the
+# preamble and refuses MUTATE-class ops on CRITICAL_STALE unless bypassed.
+#
+# CHUMP_FRESHNESS_COMMITS_THRESHOLD  CRITICAL_STALE above this commits-behind count (default 50)
+# CHUMP_FRESHNESS_BINARY_AGE_S       CRITICAL_STALE above this binary-age in seconds (default 14400 = 4h)
+# CHUMP_FRESHNESS_STALE_COMMITS      STALE above this commits-behind count (default 15)
+# CHUMP_FRESHNESS_STALE_BINARY_AGE_S STALE above this binary-age in seconds (default 3600 = 1h)
+# CHUMP_FRESHNESS_DISABLE_FETCH      skip `git fetch origin main` (offline-safe tests)
+# CHUMP_ACCEPT_STALE                 force gate to proceed on CRITICAL_STALE (emits audit ambient)
+CHUMP_FRESHNESS_COMMITS_THRESHOLD
+CHUMP_FRESHNESS_BINARY_AGE_S
+CHUMP_FRESHNESS_STALE_COMMITS
+CHUMP_FRESHNESS_STALE_BINARY_AGE_S
+CHUMP_FRESHNESS_DISABLE_FETCH
+CHUMP_ACCEPT_STALE

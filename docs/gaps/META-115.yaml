@@ -1,0 +1,46 @@
+- id: META-115
+  domain: META
+  title: "RESILIENT: per-session source-freshness preamble Phase 1 — classify local state FRESH/STALE/CRITICAL_STALE + gate MUTATE ops (META-114 freshness cluster sub-gap)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "NEW scripts/coord/freshness-preamble.sh classifies session-start state into FRESH/STALE/CRITICAL_STALE based on (a) git commits-behind via fetch+rev-list, (b) binary-age via stat-mtime $(which chump), (c) chump cron health (fail-soft to unavailable), (d) chump fleet-bootstrap --check exit code (fail-soft); emits single-line stdout summary + exits 0/1/2 reflecting state; --json variant for programmatic use"
+    - "Env-tunable thresholds: CHUMP_FRESHNESS_COMMITS_THRESHOLD (default 50 = CRITICAL_STALE above), CHUMP_FRESHNESS_BINARY_AGE_S (default 14400 = 4h CRITICAL_STALE above), CHUMP_FRESHNESS_STALE_COMMITS (default 15 = STALE above), CHUMP_FRESHNESS_STALE_BINARY_AGE_S (default 3600 = 1h STALE above), CHUMP_FRESHNESS_DISABLE_FETCH (skip fetch for offline tests)"
+    - "NEW scripts/coord/freshness-gate.sh is a thin wrapper: calls freshness-preamble.sh, refuses chained op on CRITICAL_STALE (exit 2) unless CHUMP_ACCEPT_STALE=1; on bypass emits kind=freshness_critical_stale_bypassed to ambient with commits_behind, binary_age_s fields"
+    - "freshness_critical_stale_bypassed kind allowlisted in scripts/ci/event-registry-reserved.txt with reason; EVENT_REGISTRY.yaml integration deferred to follow-up sub-gap (Phase 1 stays additive)"
+    - "All 6 new env vars (CHUMP_FRESHNESS_COMMITS_THRESHOLD, CHUMP_FRESHNESS_BINARY_AGE_S, CHUMP_FRESHNESS_STALE_COMMITS, CHUMP_FRESHNESS_STALE_BINARY_AGE_S, CHUMP_FRESHNESS_DISABLE_FETCH, CHUMP_ACCEPT_STALE) documented in scripts/ci/env-vars-internal.txt under META-115 header"
+    - "NEW Pattern 12 in docs/process/SHEPHERD_LOOP_PLAYBOOK.md (Verify-at-source via freshness preamble) documents the workflow with the 2026-05-27 shepherd 3-stale-false-positive precedent (recovery-queue-emit.sh phantom-missing + fleet-hold-check.sh + chump --temp multi-line)"
+    - "Smoke test scripts/ci/test-freshness-preamble.sh covers (1) file existence, (2) default invocation, (3) simulated STALE via binary-age threshold override, (4) simulated CRITICAL_STALE, (5) gate refusal exit=2, (6) gate bypass with ambient audit emit, (7) valid --json output, (8) env-vars-internal.txt + event-registry-reserved.txt allowlisting; test sets CHUMP_AMBIENT_DISABLE=1 + CHUMP_FRESHNESS_DISABLE_FETCH=1 for hermeticity; exit 0 required"
+    - "Phase 1 NON-GOALS (deferred to follow-up sub-gaps): SessionStart hook wiring at ~/.claude/hooks/SessionStart.sh; chump fleet-bootstrap --check integration; per-event kind registration in EVENT_REGISTRY.yaml; chump CLI subcommand wrapper (`chump freshness check`)"
+  depends_on: []
+  description: |
+    Sub-gap of META-114 freshness discipline cluster. Phase 1 of three.
+
+    Failure mode this closes: every "stale-tree false-positive" gap (e.g.
+    shepherd's 2026-05-27 recovery-queue-emit.sh phantom-missing) starts
+    with a MUTATE operation against a stale local view. Operator's local
+    main is 48-63 commits behind origin/main; a file that exists on
+    origin/main appears missing locally; operator/curator files a "file
+    missing" gap or runs a destructive op against a phantom state.
+
+    Phase 1 SHIPS THE SCRIPTS but is intentionally NON-INVASIVE: no hook
+    wiring, no chump fleet-bootstrap --check integration, no EVENT_REGISTRY
+    addition (uses event-registry-reserved.txt allowlist). Integration is
+    a separate sub-gap so Phase 1 is reviewable + ship-able as additive.
+
+    Real-world precedent (2026-05-27 shepherd session):
+      - recovery-queue-emit.sh phantom-missing (worst) — shepherd filed
+        an almost-gap for a file that existed on origin/main
+      - fleet-hold-check.sh false-missing earlier same session
+      - chump --temp returning multi-line instead of enum
+
+    All three would have been caught by running freshness-preamble.sh at
+    session-start; CRITICAL_STALE classification would have prompted a
+    rebase + binary reinstall before the operator went chasing ghosts.
+
+    Related: META-114 (parent umbrella), INFRA-2053 (chump gap sync —
+    bidirectional state.db <-> YAML drift; today's session shipped that
+    as the OTHER half of the freshness layer), META-110/INFRA-2046
+    (chump cron health subcommand; this script fail-softs if not present),
+    META-066 (chump-fleet-bootstrap --check; this script fail-softs).
