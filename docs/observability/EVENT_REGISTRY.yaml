@@ -4969,6 +4969,53 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pruned_count, bytes_freed]
 
+  # INFRA-2007: W-002 binary-cache-lag permanent fix — event-driven refresh
+  - kind: binary_main_updated
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh (INFRA-2007)
+    trigger: >
+      Emitted by bot-merge.sh immediately after a successful chump gap ship
+      (auto-close rc=0). Signals that origin/main has a new commit and the
+      installed runner binary may now be stale. The binary-refresh-event-watcher
+      daemon subscribes to this kind and triggers refresh-runner-binary.sh
+      within CHUMP_BINARY_EVENT_RATE_LIMIT_S (default 60s). This is the event
+      source that eliminates the W-002 binary-cache-lag class structurally.
+    consumers: [binary-refresh-event-watcher]
+    fields_required: [ts, kind, gap_id, pr]
+
+  - kind: binary_refresh_triggered_event
+    effect_metric: resilient
+    emitter: scripts/coord/binary-refresh-event-watcher.sh (INFRA-2007)
+    trigger: >
+      Emitted by binary-refresh-event-watcher.sh when a binary_main_updated
+      event triggers an immediate rebuild via the event-driven path. Confirms
+      the event-driven refresh fired (as opposed to the 5-min cron fallback).
+      Carries since_last_s field so operators can verify zero-lag behavior.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, trigger, since_last_s]
+
+  - kind: binary_event_watcher_rate_limited
+    effect_metric: resilient
+    emitter: scripts/coord/binary-refresh-event-watcher.sh (INFRA-2007)
+    trigger: >
+      Emitted when a binary_main_updated event arrives within
+      CHUMP_BINARY_EVENT_RATE_LIMIT_S (default 60s) of the last rebuild.
+      The rebuild is skipped for this event; the cron fallback will catch
+      it within 5 minutes. Prevents rebuild storms during merge bursts.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, since_last_s, rate_limit_s]
+
+  - kind: binary_event_watcher_no_tool
+    effect_metric: resilient
+    emitter: scripts/coord/binary-refresh-event-watcher.sh (INFRA-2007)
+    trigger: >
+      Emitted once at daemon startup when fswatch is not found on PATH.
+      Signals that the watcher is using the portable tail -F polling fallback
+      instead of zero-overhead FSEvents. Install fswatch via brew install
+      fswatch to eliminate this signal and get sub-second event latency.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, note]
+
   # INFRA-1971: force-push intent signal — pr-auto-rearm deferred for branch
   - kind: pr_auto_rearm_deferred_for_force_push_intent
     effect_metric: resilient
