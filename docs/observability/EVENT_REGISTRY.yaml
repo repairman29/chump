@@ -5174,3 +5174,16 @@ events:
       (default repairman29) to prevent fork takeover.
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, pr_number, author, head_ref]
+
+  - kind: wizard_classify_deferred
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step1 (INFRA-2042)
+    trigger: >
+      Emitted when wizard-daemon step1 encounters a PR whose mergeStateStatus is
+      UNKNOWN (GitHub API hasn't computed mergeability yet — typically: checks
+      haven't started, or PR was just pushed). The PR is skipped this iteration
+      and will be re-evaluated on the next wizard-daemon cycle. This prevents
+      misclassification as DIRTY which would incorrectly suppress recovery-queue
+      routing and keep the DRIVE primitive dormant.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, pr, reason]
