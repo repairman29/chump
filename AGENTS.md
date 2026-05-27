@@ -670,6 +670,7 @@ tool-specific file, AGENTS.md wins.
 - **Commit messages:** conventional-commits style — `feat(<gap-id>): summary`,
   `fix(<scope>): summary`, `docs(<scope>): summary`. The gap ID in the
   commit subject lets the pre-push hook validate scope.
+- **Off-rails guard (RESILIENT-025): commit subject must mention the claimed gap ID.** When a `.chump-locks/claim-*.json` exists, the pre-commit hook blocks commits whose subject doesn't contain the claimed gap ID — preventing sub-agents from committing work for a different gap than dispatched. Intentional pre-req integrations: add `Off-Rails-Bypass: <reason>` trailer (emits `kind=off_rails_bypassed` for audit). Bypass: `CHUMP_OFF_RAILS_CHECK=0`.
 
 ### Stacked PRs (INFRA-061 / M3)
 

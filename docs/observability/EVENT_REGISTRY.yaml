@@ -5175,6 +5175,19 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, pr_number, author, head_ref]
 
+  - kind: off_rails_bypassed
+    effect_metric: resilient
+    emitter: scripts/git-hooks/pre-commit (RESILIENT-025)
+    trigger: >
+      Emitted when a commit bypasses the off-rails gap-ID check via an
+      'Off-Rails-Bypass: <reason>' trailer. The check normally blocks commits
+      whose subject does not mention the claimed gap ID, preventing sub-agents
+      from committing work for a different gap than they were dispatched on.
+      This event records intentional bypasses (e.g. integrating a prerequisite
+      from a sibling PR) for audit visibility.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, claimed_gap, reason]
+
   - kind: wizard_classify_deferred
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step1 (INFRA-2042)

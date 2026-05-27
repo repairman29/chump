@@ -187,6 +187,7 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **Auto-merge is the default.** `bot-merge.sh --auto-merge` arms it. Once armed, treat PR as frozen — new work → new PR.
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
+- **Off-rails guard (RESILIENT-025): commit subject must mention the claimed gap ID.** When a `.chump-locks/claim-*.json` exists, the pre-commit hook blocks any commit whose subject doesn't contain the claimed gap ID — preventing sub-agents from committing work for a different gap than dispatched. Intentional pre-req integrations: add `Off-Rails-Bypass: <reason>` trailer (emits `kind=off_rails_bypassed` to `ambient.jsonl` for audit). Bypass entirely: `CHUMP_OFF_RAILS_CHECK=0`.
 - **`chump gap reserve` applies title similarity check (INFRA-1149).** Jaccard similarity >= `CHUMP_GAP_RESERVE_SIMILARITY_WARN` (default 0.65) prompts y/N to continue; >= `CHUMP_GAP_RESERVE_SIMILARITY_BLOCK` (default 0.85) blocks the reserve. Thresholds are tunable via env. Bypass: `--force-duplicate` flag or `CHUMP_GAP_RESERVE_NO_SIMILARITY=1`.
 
 ## Local CI discipline (mandatory, INFRA-1673)
