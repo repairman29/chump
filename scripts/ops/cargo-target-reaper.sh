@@ -167,6 +167,13 @@ fi
 _TMP_GLOB="${CHUMP_CARGO_REAPER_TMP_GLOB:-/tmp/chump-*}"
 echo "[cargo-target-reaper] Scanning ${_TMP_GLOB}/target/ (orphaned worktrees)…"
 [[ "$_skip_tmp_scan" == "1" ]] && echo "  SKIP (git worktree list failed — fail-safe)" && _TMP_GLOB=""
+
+# META-117/B: materialize _registered_wts to a tempfile once before loop
+# (avoids printf | grep -q pipefail race — CLAUDE_GOTCHAS INFRA-755 class)
+_META117_REG_WTS_BUF="$(mktemp)"
+trap 'rm -f "$_META117_REG_WTS_BUF"' EXIT
+printf '%s' "$_registered_wts" > "$_META117_REG_WTS_BUF"
+
 for _wt_candidate in ${_TMP_GLOB}/; do
     [[ -d "$_wt_candidate" ]] || continue
     _wt_candidate="${_wt_candidate%/}"
@@ -174,7 +181,7 @@ for _wt_candidate in ${_TMP_GLOB}/; do
     [[ -d "$_target_candidate" ]] || continue
 
     # Skip if this worktree is still registered with git.
-    if printf '%s' "$_registered_wts" | grep -qxF "$_wt_candidate" 2>/dev/null; then
+    if grep -qxF "$_wt_candidate" "$_META117_REG_WTS_BUF" 2>/dev/null; then
         echo "  skip (registered worktree): ${_wt_candidate}"
         continue
     fi

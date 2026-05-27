@@ -117,11 +117,14 @@ for PR in $PRS; do
         continue
     fi
 
+    # META-117/B: avoid printf | grep -q pipefail race — materialize once before loop
+    _META117_MATCH_BUF="$(mktemp)"
+    printf '%s\n%s\n' "$FILES" "$TITLE" > "$_META117_MATCH_BUF"
     # Match each pattern against the file list + title
     for pattern_entry in "${PATTERNS[@]}"; do
         IFS='|' read -r match scope priority directive <<< "$pattern_entry"
         # Match: any file in the PR matches the regex/glob OR the title matches
-        if printf '%s\n%s\n' "$FILES" "$TITLE" | grep -qE "$match"; then
+        if grep -qE "$match" "$_META117_MATCH_BUF"; then
             # Idempotency check: directive + scope already in the table?
             existing=$(sqlite3 "$DB" \
                 "SELECT id FROM chump_improvement_targets WHERE directive = $(printf '%s' "$directive" | sed "s/'/''/g; s/^/'/; s/$/'/") AND scope = $(printf '%s' "$scope" | sed "s/'/''/g; s/^/'/; s/$/'/") LIMIT 1;" 2>/dev/null || true)
@@ -161,6 +164,8 @@ SQL
             fi
         fi
     done
+    # META-117/B: clean up the match-buffer tempfile
+    rm -f "$_META117_MATCH_BUF"
 done
 
 say "Distillation complete: ${TOTAL_NEW} new improvement_target row(s)."

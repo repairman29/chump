@@ -184,7 +184,12 @@ fi
 _floor_temp="UNKNOWN"
 if command -v "$CHUMP_BIN" >/dev/null 2>&1; then
     _temp_out="$("$CHUMP_BIN" health --temp 2>/dev/null || true)"
-    if printf '%s\n' "$_temp_out" | grep -qi "HOT"; then
+    # META-117/B: avoid printf | grep -q pipefail race (CLAUDE_GOTCHAS INFRA-755 class)
+    case "$_temp_out" in
+        *HOT*|*hot*|*Hot*) _is_hot=1 ;;
+        *) _is_hot=0 ;;
+    esac
+    if [ "$_is_hot" = "1" ]; then
         _floor_temp="HOT"
         emit_safety_refusal "floor_temp_HOT" "fleet"
         emit_action "preflight" "fleet" "stand_down" \
