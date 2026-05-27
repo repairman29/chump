@@ -48,6 +48,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # Stub gh for the smoke test.
 # - `gh pr list ...` returns a deterministic fixture
+# - `gh pr view <N> --json headRefName` returns a synthetic branch name (INFRA-2059)
 # - `gh pr update-branch <N>` returns 0 silently
 case "$1" in
     pr)
@@ -61,6 +62,13 @@ case "$1" in
   {"number": 9003, "mergeStateStatus": "DIRTY", "autoMergeRequest": null}
 ]
 JSON
+                ;;
+            view)
+                # INFRA-2059: pr-auto-rebase.sh calls `gh pr view <PR> --json headRefName`
+                # to resolve the branch name. Without this case, the stub falls through
+                # to `exit 0` (empty output) and the script logs "could not resolve branch name".
+                PR_NUM="$3"
+                printf '{"headRefName":"chump/synth-pr-%s-claim"}\n' "$PR_NUM"
                 ;;
             update-branch)
                 # Succeed silently for the smoke fixture.
