@@ -47,6 +47,8 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STATE_FILE="$REPO_ROOT/.chump-locks/cluster-detector-state.json"
 # INFRA-2025: in-flight marker written by recovery-queue-service during drop-window
 IN_FLIGHT_FLAG="${CHUMP_RECOVERY_IN_FLIGHT_FLAG:-$REPO_ROOT/.chump-locks/recovery-cycle-in-flight.flag}"
+# INFRA-2012: path to blame-bot (can be overridden in tests)
+BLAME_BOT="${CHUMP_BLAME_BOT_PATH:-$(dirname "${BASH_SOURCE[0]}")/blame-bot.sh}"
 FORMAT=text
 DRY_RUN=0
 
@@ -107,6 +109,18 @@ _emit() {
         "$(_ts)" "$kind" "$extra" >> "$AMBIENT" 2>/dev/null || true
 }
 
+# Like _emit but takes a single pre-built extra-fields string (no loop overhead).
+# Used when the caller constructs the JSON fragment directly.
+_emit_raw() {
+    local kind="$1"
+    local fields="${2:-}"
+    [[ "$DRY_RUN" == "1" ]] && { echo "[dry-run] would emit: $kind $fields" >&2; return; }
+    local extra=""
+    [[ -n "$fields" ]] && extra=",$fields"
+    printf '{"ts":"%s","kind":"%s","source":"cluster_detector"%s}\n' \
+        "$(_ts)" "$kind" "$extra" >> "$AMBIENT" 2>/dev/null || true
+}
+
 # ── Load dedup state ──────────────────────────────────────────────────────────
 # State format:
 #   { "clusters": { "<cluster_id>": {"first_seen":"<ts>","last_seen":"<ts>","gap_id":"META-NNN","pr_numbers":[…]} } }
@@ -121,6 +135,83 @@ _load_state() {
 _save_state() {
     [[ "$DRY_RUN" == "1" ]] && return
     echo "$1" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+
+# ── INFRA-2012: Fetch suspect commits from blame-bot ─────────────────────────
+# Calls blame-bot.sh --json and returns sorted, deduped suspect SHAs.
+# Returns empty string if blame-bot is unavailable or finds no suspects.
+# Env override: CHUMP_BLAME_BOT_SUSPECTS_CSV (test injection).
+_fetch_blame_suspects() {
+    # Test injection path: bypass real blame-bot entirely
+    if [[ -n "${CHUMP_BLAME_BOT_SUSPECTS_CSV:-}" ]]; then
+        echo "$CHUMP_BLAME_BOT_SUSPECTS_CSV"
+        return
+    fi
+
+    [[ ! -x "$BLAME_BOT" ]] && return
+    local out
+    out="$(CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_REPO="$REPO_ROOT" \
+        bash "$BLAME_BOT" --json 2>/dev/null)" || return
+
+    # Extract suspect_commits list from JSON output
+    echo "$out" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+suspects = d.get("suspect_commits", [])
+if suspects:
+    print(",".join(sorted(s for s in suspects if s)))
+' 2>/dev/null || true
+}
+
+# ── INFRA-2012: Build suspect-commit cluster entries ─────────────────────────
+# For each BLOCKED PR (any failing checks), assign the shared suspect-commit
+# cluster ID (sha256 of sorted suspect SHAs). Returns same JSON shape as
+# _fetch_blocked_with_failures but with cluster_type=suspect_commit.
+# Output: one JSON object per PR (only if suspect SHAs were found).
+_fetch_blocked_for_suspect_clustering() {
+    local suspects_csv="$1"
+    [[ -z "$suspects_csv" ]] && return
+
+    gh pr list --state open \
+        --json number,mergeStateStatus,statusCheckRollup \
+        --limit 50 2>/dev/null | python3 -c '
+import json, sys, hashlib
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+suspects_csv = "'"$suspects_csv"'"
+suspects = sorted(s for s in suspects_csv.split(",") if s)
+if not suspects:
+    sys.exit(0)
+
+# Cluster ID for this suspect set: sha256(sorted-suspects)
+cluster_id = hashlib.sha256(",".join(suspects).encode()).hexdigest()[:12]
+
+for p in prs:
+    if p.get("mergeStateStatus") != "BLOCKED":
+        continue
+    # Any failing checks at all — we cluster on suspect, not check-name
+    fails = [
+        (c.get("name") or c.get("context") or "").strip()
+        for c in p.get("statusCheckRollup", [])
+        if c.get("conclusion") == "FAILURE"
+    ]
+    fails = [f for f in fails if f]
+    if not fails:
+        continue
+    print(json.dumps({
+        "pr": p["number"],
+        "fails": sorted(set(fails)),
+        "cluster_id": cluster_id,
+        "cluster_type": "suspect_commit",
+        "suspect_commits": suspects,
+    }))
+' 2>/dev/null
 }
 
 # ── Fetch BLOCKED PRs + their failing-check sets ──────────────────────────────
@@ -160,17 +251,38 @@ for p in prs:
 }
 
 # ── Detect clusters ───────────────────────────────────────────────────────────
-# Group PRs by cluster_id; fire if any group has >= THRESHOLD entries.
+# Two-pass detection (INFRA-2012):
+#   Pass 1 (fast): group by IDENTICAL failing-check set (sha256 of sorted names)
+#   Pass 2 (blame): group by SHARED SUSPECT COMMIT from blame-bot
+# Fire if any group in either pass has >= THRESHOLD entries.
+# Output: one JSON cluster object per qualifying group.
 _detect() {
+    # Pass 1: identical-checks clustering (original INFRA-1987 heuristic)
     local pr_data; pr_data="$(_fetch_blocked_with_failures)"
-    [[ -z "$pr_data" ]] && return 0
 
-    echo "$pr_data" | python3 -c '
+    # Pass 2: INFRA-2012 suspect-commit clustering
+    local suspects_csv; suspects_csv="$(_fetch_blame_suspects)"
+    local suspect_pr_data=""
+    if [[ -n "$suspects_csv" ]]; then
+        suspect_pr_data="$(_fetch_blocked_for_suspect_clustering "$suspects_csv")"
+    fi
+
+    # Merge both passes; deduplicate cluster_ids across passes (same ID wins once)
+    local combined
+    combined="$(printf '%s\n%s\n' "$pr_data" "$suspect_pr_data" | grep -v '^$' || true)"
+    [[ -z "$combined" ]] && return 0
+
+    echo "$combined" | python3 -c '
 import json, sys, hashlib
 from collections import defaultdict
 THRESHOLD = int("'"$THRESHOLD"'")
-buckets = defaultdict(list)
+
+# Track per-cluster_id: prs list, representative fields
+buckets = defaultdict(set)
 fails_by_id = {}
+type_by_id = {}
+suspects_by_id = {}
+
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -179,26 +291,42 @@ for line in sys.stdin:
         e = json.loads(line)
     except Exception:
         continue
-    buckets[e["cluster_id"]].append(e["pr"])
-    fails_by_id[e["cluster_id"]] = e["fails"]
+    cid = e["cluster_id"]
+    buckets[cid].add(e["pr"])
+    # Keep fails from first entry seen for this cluster_id
+    if cid not in fails_by_id:
+        fails_by_id[cid] = e.get("fails", [])
+    # suspect_commit clusters carry explicit type; check-set clusters default
+    if cid not in type_by_id:
+        type_by_id[cid] = e.get("cluster_type", "identical_checks")
+    if "suspect_commits" in e and cid not in suspects_by_id:
+        suspects_by_id[cid] = e["suspect_commits"]
+
 for cid, prs in buckets.items():
     if len(prs) >= THRESHOLD:
-        print(json.dumps({
+        obj = {
             "cluster_id": cid,
             "pr_numbers": sorted(prs),
-            "failing_checks": fails_by_id[cid],
+            "failing_checks": fails_by_id.get(cid, []),
+            "cluster_type": type_by_id.get(cid, "identical_checks"),
             "count": len(prs),
-        }))
+        }
+        if cid in suspects_by_id:
+            obj["suspect_commits"] = suspects_by_id[cid]
+        print(json.dumps(obj))
 '
 }
 
 # ── File META cluster RCA gap (idempotent via state file) ─────────────────────
 # If already filed in this dedup window, only update state's last_seen + PRs.
+# Args: cluster_id pr_csv checks_csv count cluster_type [suspect_commits_csv]
 _file_or_update_cluster_gap() {
     local cluster_id="$1"
     local pr_csv="$2"
     local checks_csv="$3"
     local count="$4"
+    local cluster_type="${5:-identical_checks}"
+    local suspect_commits_csv="${6:-}"
     local state; state="$(_load_state)"
 
     local existing_gap
@@ -237,7 +365,13 @@ print(json.dumps(s))
     fi
 
     # File new META gap (idempotent: chump gap reserve with similarity bypass)
-    local title="CLUSTER RCA: $count PRs blocked on [$checks_csv] (cluster $cluster_id)"
+    # Title varies by cluster type so the RCA gap is self-describing.
+    local title
+    if [[ "$cluster_type" == "suspect_commit" ]]; then
+        title="CLUSTER RCA: $count PRs blocked — shared suspect commit [$suspect_commits_csv] (cluster $cluster_id)"
+    else
+        title="CLUSTER RCA: $count PRs blocked on [$checks_csv] (cluster $cluster_id)"
+    fi
     local gap_id="UNFILED"
     if [[ "$DRY_RUN" != "1" ]]; then
         gap_id="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
@@ -263,41 +397,45 @@ s.setdefault("clusters", {})[cid] = {
     "last_seen": ts,
     "gap_id": "'"$gap_id"'",
     "pr_numbers": prs,
+    "cluster_type": "'"$cluster_type"'",
 }
 print(json.dumps(s))
 ')"
     _save_state "$new_state"
-    echo "[file] cluster $cluster_id → new gap $gap_id (PRs: $pr_csv)" >&2
+    echo "[file] cluster $cluster_id (type=$cluster_type) → new gap $gap_id (PRs: $pr_csv)" >&2
 
-    _emit "ci_failure_cluster" \
-        "\"cluster_id\":\"$cluster_id\"" \
-        "\"pr_numbers\":\"$pr_csv\"" \
-        "\"failing_checks\":\"$checks_csv\"" \
-        "\"count\":$count" \
-        "\"gap_id\":\"$gap_id\""
+    # Emit ci_failure_cluster with cluster_type field (INFRA-2012)
+    local extra_fields="\"cluster_id\":\"$cluster_id\",\"pr_numbers\":\"$pr_csv\",\"failing_checks\":\"$checks_csv\",\"count\":$count,\"gap_id\":\"$gap_id\",\"cluster_type\":\"$cluster_type\""
+    if [[ -n "$suspect_commits_csv" ]]; then
+        extra_fields="$extra_fields,\"suspect_commits\":\"$suspect_commits_csv\""
+    fi
+    _emit_raw "ci_failure_cluster" "$extra_fields"
 
     # INFRA-2004: write fleet-hold.txt so workers can pivot to triage.
     # Idempotent — re-writing same content on each fire is a no-op for
     # the worker contract (workers just check existence + read latest).
-    _write_fleet_hold "$cluster_id" "$pr_csv" "$checks_csv" "$count" "$gap_id"
+    _write_fleet_hold "$cluster_id" "$pr_csv" "$checks_csv" "$count" "$gap_id" "$cluster_type"
 }
 
 # INFRA-2004: write the fleet-hold file. Worker contract:
 #   - File exists → fleet is on HOLD; new claims should pivot to triage
 #   - File absent → normal operations
 # Format is a single JSON object so workers can `jq` it.
+# INFRA-2012: now includes cluster_type field.
 _write_fleet_hold() {
     local cluster_id="$1"
     local pr_csv="$2"
     local checks_csv="$3"
     local count="$4"
     local gap_id="$5"
+    local cluster_type="${6:-identical_checks}"
     [[ "$DRY_RUN" == "1" ]] && return
     local hold_file="$REPO_ROOT/.chump-locks/fleet-hold.txt"
     cat > "${hold_file}.tmp" <<HOLD
 {
   "active": true,
   "cluster_id": "$cluster_id",
+  "cluster_type": "$cluster_type",
   "since": "$(_ts)",
   "reason": "ci_failure_cluster",
   "pr_numbers": "$pr_csv",
@@ -382,13 +520,15 @@ if [[ -n "$DETECTED" ]]; then
     _SNG_HAD_INPUT=1   # INFRA-2009: non-empty cluster data → guard expects main work
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        # Parse the cluster info
+        # Parse the cluster info (INFRA-2012: also extract cluster_type + suspect_commits)
         cid="$(echo "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["cluster_id"])' 2>/dev/null)"
         pr_csv="$(echo "$line" | python3 -c 'import json,sys; print(",".join(map(str,json.load(sys.stdin)["pr_numbers"])))' 2>/dev/null)"
         checks_csv="$(echo "$line" | python3 -c 'import json,sys; print("|".join(json.load(sys.stdin)["failing_checks"]))' 2>/dev/null)"
         count="$(echo "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])' 2>/dev/null)"
+        cluster_type="$(echo "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("cluster_type","identical_checks"))' 2>/dev/null)"
+        suspect_commits_csv="$(echo "$line" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(",".join(d.get("suspect_commits",[])))' 2>/dev/null)"
         CURRENT_IDS+="$cid "
-        _file_or_update_cluster_gap "$cid" "$pr_csv" "$checks_csv" "$count"
+        _file_or_update_cluster_gap "$cid" "$pr_csv" "$checks_csv" "$count" "$cluster_type" "$suspect_commits_csv"
     done <<<"$DETECTED"
     _sng_mark_done     # INFRA-2009: main work body executed
 fi
