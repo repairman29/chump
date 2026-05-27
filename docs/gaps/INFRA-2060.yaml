@@ -1,0 +1,16 @@
+- id: INFRA-2060
+  domain: INFRA
+  title: "ZERO-WASTE: cutover INFRA-1997 chump-git-hooks — remove scripts/git-hooks/pre-push (1154 LOC bash) after 1-week parallel-run validation; flip symlink to chump-pre-push binary"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Parallel-run validation: scripts/ci/test-prepush-rust-parity.sh has been green for 7+ consecutive days; CHUMP_PREPUSH_RUST=1 has been the default in the bootstrap layer for 7+ days; no operator manual rollback events to bash hook recorded in ambient.jsonl over the same window"
+    - Cutover PR removes scripts/git-hooks/pre-push (1154 LOC bash body); .git/hooks/pre-push symlink updated to target the chump-pre-push binary directly (no shim layer); scripts/setup/chump-fleet-bootstrap.sh updated to install the new symlink target
+    - Smoke test scripts/ci/test-prepush-rust-parity.sh updated — bash-side assertion removed, only Rust path tested (since bash body no longer exists); all 11 numbered guards from the original bash hook still assert green via the Rust path
+    - "Ambient emit kind=rust_migration_landed gap=INFRA-1997 lines_out=1154 lines_in=0 on cutover commit; EVENT_REGISTRY.yaml rust_migration_landed kind already registered per META-107 AC #4"
+    - "Rollback plan documented in PR description: if Rust hook regression detected post-cutover, revert PR restores symlink + bash body in one commit; window is 24h hot-rollback then file new fix-forward gap"
+  depends_on: [INFRA-1997]
+  notes: |
+    Phase 2 cutover of META-107 sub-gap INFRA-1997 (chump-git-hooks). Phase 1 shipped Rust binary feature-flagged in parallel. This gap removes the 1154 LOC bash body after 1-week parallel-run proves no regressions. Sibling cutover gaps: INFRA-2061..INFRA-2065 (the other 5 META-107 sub-gaps). Sequence: file all 6 cutover gaps now (today 2026-05-27); pick up the first cutover ~2026-06-03 once parallel-run window elapses.
+
