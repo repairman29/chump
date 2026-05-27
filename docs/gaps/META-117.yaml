@@ -1,0 +1,17 @@
+- id: META-117
+  domain: META
+  title: "MAIN-CI-DEBT umbrella: 10+ accumulated wedges in main CI gates that block every PR's natural merge — needs systematic scrub"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Today 2026-05-27 surfaced 10+ accumulated CI wedges in main that block every PR's natural merge. The pattern: each PR exposes a different combination of pre-existing-but-untriggered wedges. Admin-merge bypassed them all under the radar for weeks/months. Now that admin-merge discipline gate (RESILIENT-031) is on main, the next session-day will hit these wedges over and over unless triaged systematically.\n\nINVENTORY (as of 19:00Z 2026-05-27):\n\nFIXED today:\n  - INFRA-2044 docs-delta test (PR #2634)\n  - INFRA-2048+2049 wizard cache + dry-run guards (PR #2636)\n  - INFRA-2050 voice-banlist diff-hunk scoping (PR #2635)\n  - RESILIENT-033 5 orphan event registrations (PR #2645)\n  - RESILIENT-034 pre-commit bloat budget (PR #2654)\n  - INFRA-2058 manual_ship.rs fmt drift (PR #2652)\n  - INFRA-2059 pr-auto-rebase synth-gh stub + src/main.rs fmt drift (PR #2656)\n\nSTILL OPEN (next session's first work):\n  - Sub-gap A: 2 more orphan event registrations needed (admin_merge_cycle_ok + admin_merge_cycle_merge_failed) — emitted by scripts/ops/admin-merge-cycle.sh, never registered in EVENT_REGISTRY.yaml\n  - Sub-gap B: printf '%s\\n' | grep -qi pipefail race in scripts/coord/wizard-daemon.sh:187 — flagged by CI per CLAUDE_GOTCHAS.md 'printf | grep -q pipefail race'; same pattern likely elsewhere in today's wizard-daemon ships\n  - Sub-gap C: rust fmt drift sweep — run cargo fmt --all and ship a single PR to bring main back into compliance (today found drift in manual_ship.rs + src/main.rs; there may be more)\n  - Sub-gap D: scan ALL ci/audit gates for failures triggered by today's diff types (docs+rust+shell+yaml) on a no-op canary; file each as separate sub-gap\n\nROOT CAUSE: admin-merge bypassed individual wedges as they appeared, but never tracked the cumulative debt. Each PR's wedge was 'fixable' (someone could ship a fix) but no one had the systemic view that 10+ were accumulating. Today's natural-CI attempts exposed them all at once.\n\nFIX STRATEGY: 4-sub-gap decomposition. Goal: 5 consecutive Rust PRs ship via natural CI in a row, no admin-merge. That's the validation criterion for retirement of META-117.
+  acceptance_criteria:
+    - "Sub-gap A shipped: admin_merge_cycle_ok + admin_merge_cycle_merge_failed registered in EVENT_REGISTRY.yaml"
+    - "Sub-gap B shipped: printf|grep -q pipefail race eliminated from wizard-daemon.sh and any other shell scripts that use the pattern"
+    - "Sub-gap C shipped: cargo fmt --all clean on main; no fmt drift remaining"
+    - "Sub-gap D shipped: comprehensive CI gate audit on canary PRs of each file-type (docs/rust/shell/yaml) — file each new wedge as separate gap"
+    - META-117 closes when 5 consecutive Rust-touching PRs ship via natural CI (no admin-merge) over a single session
+  notes: |
+    [2026-05-27T19:40:02Z] 2026-05-27 ~19:30Z curator-opus-shepherd: ran cargo fmt --all -- --check on origin/main HEAD cb981f42e — EXIT 0, no drift. Sub-gap C (rust fmt drift sweep) effectively satisfied at this point in time; no action needed unless future drift surfaces. Sub-gap D (canary CI audit on each file-type) is the remaining Wave 2 work.
+
