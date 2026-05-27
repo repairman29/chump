@@ -461,3 +461,6 @@ orphan_worktree_detected        # reason: RESILIENT-026 emitted by scripts/coord
 
 # ── META-115: per-session source-freshness preamble (META-114 cluster) ───────
 freshness_critical_stale_bypassed  # reason: META-115 emitted by scripts/coord/freshness-gate.sh when a CRITICAL_STALE classification (commits-behind > CHUMP_FRESHNESS_COMMITS_THRESHOLD or binary-age > CHUMP_FRESHNESS_BINARY_AGE_S or cron-health=FAIL) is overridden via CHUMP_ACCEPT_STALE=1; carries commits_behind, binary_age_s; bypass audit trail — never suppressed; Phase 1 ships reserved here, EVENT_REGISTRY.yaml integration deferred to follow-up sub-gap
+
+# ── META-116 / META-119: Sonnet hang-detection (META-114 cluster) ────────────
+dispatch_hung_hook_detected     # reason: META-116 emitted by scripts/coord/dispatch-health-check.sh when a git-commit or pre-commit child process exceeds CHUMP_DISPATCH_HUNG_THRESHOLD_S (default 120s); carries pid, age_s, cmd; precedent 2026-05-27 14:56Z INFRA-2000 dispatch where pre-commit wedged 5+ min and looked like Sonnet-abandoned; killing the hook PID unblocked Sonnet's own commit — the kill IS the rescue, not the takeover; Phase 1 ships reserved here, EVENT_REGISTRY.yaml integration deferred to follow-up sub-gap

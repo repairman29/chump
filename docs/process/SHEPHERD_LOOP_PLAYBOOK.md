@@ -232,6 +232,42 @@ In all three cases, running the preamble first would have surfaced
 `CRITICAL_STALE` and prompted a rebase before the operator/curator went
 chasing ghosts.
 
+## Pattern 13 — Hung-hook detection before Sonnet-takeover (META-116)
+
+When a dispatched Agent appears **abandoned** (no completion notification +
+lease released + worktree state-fresh + no PR opened), **DO NOT take over
+until you've ruled out a hung pre-commit child**:
+
+```bash
+ps aux | grep -E 'git.commit|pre-commit' | grep -v grep
+# Or use the operational tool:
+bash scripts/coord/dispatch-health-check.sh        # report-only; non-zero on detection
+bash scripts/coord/dispatch-health-check.sh --kill # also kills hung children
+```
+
+If the check surfaces a `pre-commit` or `git commit` child older than
+`CHUMP_DISPATCH_HUNG_THRESHOLD_S` (default 120s), the agent is **blocked, not
+abandoned**. Killing the hook PID unblocks the agent's own commit. The agent
+then completes normally on its own (commit → push → PR → arm auto-merge →
+completion notification). **The kill IS the rescue; takeover is a mistake.**
+
+Shepherd-takeover IS appropriate when:
+- Agent task notification arrived with `BLOCKED` status (explicit failure)
+- Agent crashed without sending notification AFTER N hours (genuine death)
+- No hung children visible in `ps aux` (rules out hook-hang class)
+
+**Real-world precedent — 2026-05-27 14:56Z, INFRA-2000 dispatch:** Sonnet's
+commit hung on pre-commit for 5+ min; shepherd assumed Sonnet abandoned and
+tried takeover with `--no-verify`; the takeover ALSO wedged on the same hook.
+Shepherd killed both hook PIDs at 14:56Z → Sonnet's blocked commit unblocked
++ completed normally (commit `e7300f5af`). Takeover work was duplicate.
+
+Full diagnosis-before-takeover discipline lives in
+[`SUBAGENT_DISPATCH.md`](SUBAGENT_DISPATCH.md) "Detecting hung subagents"
+subsection. Pattern 13 here is the shepherd-side trigger; the operational
+script + smoke test are at `scripts/coord/dispatch-health-check.sh` +
+`scripts/ci/test-dispatch-hang-detection.sh` (both shipped via META-116 #2658).
+
 ## What NOT to do
 
 | Anti-pattern | Why it hurts |
@@ -242,6 +278,7 @@ chasing ghosts.
 | **Send orchestrator a status ping every cycle** | Spam. Heartbeat every 4 cycles is the contract. |
 | **Manually resolve event-registry-reserved.txt conflicts line-by-line** | Slow + error-prone. Pattern 3 takes 5 sec; manual takes 5 min. |
 | **Fix a sibling's PR without the X-of-Y context** | Next operator can't tell if more PRs need the same fix. |
+| **Take over a Sonnet dispatch without `ps aux` check first** | 2026-05-27 INFRA-2000 was a hung hook, not an abandoned agent. The kill is the rescue (Pattern 13). |
 
 ## Stopping criteria
 
