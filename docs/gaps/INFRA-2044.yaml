@@ -1,0 +1,18 @@
+- id: INFRA-2044
+  domain: INFRA
+  title: test-infra-124-docs-delta-trailer.sh broken since INFRA-1969 hook relocation
+  status: done
+  closed_pr: 2634
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-1969 (commit 4c769f67a, PR #2574) moved the docs-delta trailer check from the pre-commit hook to the commit-msg hook to fix C6 critical. The self-test scripts/ci/test-infra-124-docs-delta-trailer.sh still drives the fixture through pre-commit, so Test 2 (under-claimed +1 trailer should be REJECTED when actual is +5) now fails because pre-commit no longer enforces. Impact: every PR's fast-checks job fails on this single test, gating CI for unrelated work. Currently the wedge-class 'real test fails on unrelated CI surface' — admin-merge bypass churn. The actual guard works in production (commit-msg fires), but the test asserts on the wrong stage.
+  acceptance_criteria:
+    - scripts/ci/test-infra-124-docs-delta-trailer.sh drives the fixture through git commit (which runs commit-msg) instead of pre-commit-only
+    - Test 2 (under-claimed trailer) is REJECTED as expected after the fix
+    - "All 4 test cases pass: matching+accept, understated+reject, overstated+reject, no-trailer+reject"
+    - fast-checks job goes green on a no-op canary commit after the fix lands
+  links:
+    - "INFRA-1969 (PR #2574) — commit 4c769f67a (the relocation that broke it)"
+    - "PR #2629 (INFRA-2041) — exhibit failure proving the wedge is general"
+
