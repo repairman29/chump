@@ -1216,4 +1216,56 @@ if [[ -n "$_CI_REG_GUARD" ]] && [[ -x "$_CI_REG_GUARD" ]] && [[ "${CHUMP_CI_REGR
     fi
 fi
 
+# -----------------------------------------------------------------------
+# Guard 5: Branch-name claim contract (RESILIENT-026, 2026-05-27)
+#
+# When a .chump-locks/claim-*.json exists with a gap_id, the current
+# branch name MUST be chump/<gap-id>-claim (case-insensitive compare).
+# Prevents "pushed my work on the wrong branch" — an off-rails push
+# pattern complementary to RESILIENT-025/026 pre-commit guards.
+#
+# Only fires when a claim file is present — human pushes without a
+# claim pass through without noise.
+#
+# Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit.
+# Or: CHUMP_OFF_RAILS_CHECK=0 git push
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
+    _pp_claim_file="$(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1 || true)"
+    if [[ -n "$_pp_claim_file" && -f "$_pp_claim_file" ]]; then
+        _pp_claimed_gap="$(jq -r '.gap_id // empty' "$_pp_claim_file" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+        _pp_current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+        if [[ -n "$_pp_claimed_gap" && -n "$_pp_current_branch" ]]; then
+            _pp_expected="chump/${_pp_claimed_gap}-claim"
+            if [[ "$_pp_current_branch" != "$_pp_expected" ]]; then
+                # Check for bypass trailer on HEAD commit
+                _pp_head_msg="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
+                if grep -qE '^Off-Rails-Bypass:' <<<"$_pp_head_msg"; then
+                    # Audit the bypass — log which field was bypassed
+                    _pp_bypass_reason="$(grep -E '^Off-Rails-Bypass:' <<<"$_pp_head_msg" \
+                        | head -1 | sed -E 's/^Off-Rails-Bypass:[[:space:]]*//')"
+                    _pp_ambient="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    mkdir -p "$(dirname "$_pp_ambient")" 2>/dev/null || true
+                    printf '{"ts":"%s","kind":"off_rails_bypassed","claimed_gap":"%s","bypassed_field":"branch","current_branch":"%s","expected_branch":"%s","reason":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pp_claimed_gap" \
+                        "$_pp_current_branch" "$_pp_expected" "$_pp_bypass_reason" \
+                        >> "$_pp_ambient" 2>/dev/null || true
+                else
+                    echo "" >&2
+                    echo "[pre-push] BLOCKED (RESILIENT-026): branch name mismatch for claimed gap." >&2
+                    echo "[pre-push]   Current branch: $_pp_current_branch" >&2
+                    echo "[pre-push]   Expected:       $_pp_expected" >&2
+                    echo "[pre-push]   Claim file:     $_pp_claim_file" >&2
+                    echo "" >&2
+                    echo "[pre-push] Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit:" >&2
+                    echo "[pre-push]   git commit --amend  # add the trailer at end of body" >&2
+                    echo "[pre-push] Or: CHUMP_OFF_RAILS_CHECK=0 git push" >&2
+                    echo "" >&2
+                    exit 1
+                fi
+            fi
+        fi
+    fi
+fi
+
 exit 0
