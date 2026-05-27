@@ -210,6 +210,7 @@ mod slack;
 mod spawn_worker_tool;
 mod speculative_execution;
 mod stack_detect;
+mod staleness;
 mod state_db;
 mod stream_events;
 mod streaming_provider;
@@ -664,6 +665,8 @@ fn print_help() {
     println!("  chump <command> [options]");
     println!("  chump <command> --help        show help for that command");
     println!("  chump --version               print version + build SHA");
+    println!("  chump --build-info [--json]   print baked build metadata (INFRA-2054)");
+    println!("  chump self-check-staleness    classify binary FRESH/STALE/CRITICAL (INFRA-2054)");
     println!("  chump --verbose               escalate RUST_LOG to debug");
     println!("  chump --debug                 debug header (version, args, timestamp) + verbose");
     println!();
@@ -916,6 +919,87 @@ async fn main() -> Result<()> {
             version::chump_build_date(),
         );
         return Ok(());
+    }
+
+    // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):
+    // `chump --build-info [--json]` prints the build-time metadata baked
+    // in by build.rs (full git SHA, build timestamp, rustc version,
+    // workspace root). Separate from --version because consumers want the
+    // structured form. Falls through unchanged if the flag is absent.
+    if args.iter().any(|a| a == "--build-info") {
+        let want_json = args.iter().any(|a| a == "--json");
+        std::process::exit(staleness::run_build_info_cli(want_json));
+    }
+
+    // INFRA-2054: `chump self-check-staleness [--threshold-age-s N]
+    // [--threshold-commits N] [--json]` classifies the running binary
+    // against two axes (file mtime age, commits-behind origin/main) and
+    // exits 0/1/2 for FRESH/STALE/CRITICAL_STALE. Defaults match the
+    // META-115 freshness preamble (3600s / 5 commits soft; 4x / 10x crit).
+    if args.get(1).map(String::as_str) == Some("self-check-staleness") {
+        let mut threshold_age_s: u64 = staleness::DEFAULT_THRESHOLD_AGE_S;
+        let mut threshold_commits: u64 = staleness::DEFAULT_THRESHOLD_COMMITS;
+        let mut want_json = false;
+        let mut i = 2;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--threshold-age-s" => {
+                    if let Some(v) = args.get(i + 1).and_then(|s| s.parse::<u64>().ok()) {
+                        threshold_age_s = v;
+                        i += 2;
+                        continue;
+                    } else {
+                        eprintln!("error: --threshold-age-s requires a non-negative integer");
+                        std::process::exit(2);
+                    }
+                }
+                "--threshold-commits" => {
+                    if let Some(v) = args.get(i + 1).and_then(|s| s.parse::<u64>().ok()) {
+                        threshold_commits = v;
+                        i += 2;
+                        continue;
+                    } else {
+                        eprintln!("error: --threshold-commits requires a non-negative integer");
+                        std::process::exit(2);
+                    }
+                }
+                "--json" => {
+                    want_json = true;
+                    i += 1;
+                }
+                "--help" | "-h" => {
+                    println!("chump self-check-staleness — INFRA-2054 (META-114 cluster)");
+                    println!();
+                    println!("USAGE");
+                    println!("  chump self-check-staleness [options]");
+                    println!();
+                    println!("OPTIONS");
+                    println!(
+                        "  --threshold-age-s <N>     Soft age threshold in seconds (default {})",
+                        staleness::DEFAULT_THRESHOLD_AGE_S
+                    );
+                    println!(
+                        "  --threshold-commits <N>   Soft commits-behind threshold (default {})",
+                        staleness::DEFAULT_THRESHOLD_COMMITS
+                    );
+                    println!("  --json                    Emit StalenessReport as JSON");
+                    println!();
+                    println!("EXIT CODES");
+                    println!("  0   FRESH          — both axes inside threshold");
+                    println!("  1   STALE          — at least one axis past soft threshold");
+                    println!("  2   CRITICAL_STALE — at least one axis past critical threshold");
+                    std::process::exit(0);
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        std::process::exit(staleness::run_self_check_staleness_cli(
+            threshold_age_s,
+            threshold_commits,
+            want_json,
+        ));
     }
 
     // EFFECTIVE-009: no-args → help; `chump help` → help. Must come before
