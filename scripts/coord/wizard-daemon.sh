@@ -51,6 +51,7 @@
 #   wizard_daemon_action           — every classification + decision
 #   wizard_daemon_paused           — emitted once when PAUSE=1 is detected
 #   wizard_daemon_safety_refusal   — HOT-temp or CONFLICTING refusal
+#   wizard_classify_deferred       — PR skipped this iteration: GitHub returned UNKNOWN merge state (INFRA-2042)
 #   wedge_detected                 — W-NNN match for BLOCKED+real-fails PR (Step 3)
 #   wizard_dispatch_executed       — gap dispatch fired via chump --execute-gap (Step 4)
 #   wizard_dispatch_rate_limited   — dispatch refused (already at max parallel) (Step 4)
@@ -63,6 +64,7 @@
 # scanner-anchor: "kind":"wizard_daemon_action"
 # scanner-anchor: "kind":"wizard_daemon_paused"
 # scanner-anchor: "kind":"wizard_daemon_safety_refusal"
+# scanner-anchor: "kind":"wizard_classify_deferred"
 # scanner-anchor: "kind":"wedge_detected"
 # scanner-anchor: "kind":"wizard_dispatch_executed"
 # scanner-anchor: "kind":"wizard_dispatch_rate_limited"
@@ -294,6 +296,16 @@ PY
 
         if [[ "$is_draft" == "1" ]]; then
             pr_class="DIRTY"
+        elif [[ "$merge_state" == "UNKNOWN" ]]; then
+            # GitHub API returns UNKNOWN when mergeability hasn't been computed yet
+            # (checks haven't started, or PR was just pushed). Defer this iteration
+            # rather than misclassifying as DIRTY and triggering recovery actions.
+            emit_ambient "wizard_classify_deferred" \
+                "\"pr\":$pr_num,\"reason\":\"unknown_merge_state\",\"title\":\"$pr_title\""
+            emit_action "step1" "PR#$pr_num" "deferred" \
+                "\"merge_state\":\"$merge_state\",\"reason\":\"unknown_merge_state_not_yet_computed\",\"auto_merge\":\"$auto_merge\",\"title\":\"$pr_title\""
+            log "Step 1: PR #$pr_num — UNKNOWN merge_state (GitHub computing), deferring this iteration"
+            continue
         elif [[ "$merge_state" == "CONFLICTING" ]]; then
             pr_class="CONFLICTING"
         elif [[ "$merge_state" == "BEHIND" ]] && [[ "$auto_merge" == "1" ]]; then
