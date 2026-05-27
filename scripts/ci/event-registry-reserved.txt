@@ -415,3 +415,7 @@ daemon_silent_noop  # reason: INFRA-2009 emitted by scripts/coord/lib/silent-noo
 
 # ── INFRA-2025: cross-daemon coordination — cluster-detector defers during recovery-queue drop-window ──
 cluster_detection_deferred_for_recovery  # reason: INFRA-2025 emitted by scripts/coord/cluster-detector.sh when recovery-cycle-in-flight.flag is present; prevents mis-classification of PRs as passing during the required_status_checks drop-window; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+
+# ── INFRA-2030: real auto-remediations wired into wedge-state-machine ────────
+wedge_remediated_real          # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_w002/_remediate_w007/_remediate_wagg after invoking a REAL remediation primitive (not just an advisory emit); carries class, action, detail; replaces advisory-only wedge_remediation_requested for W-002/W-007/W-AGG; printf-direct JSON not grep-scannable as kind=X literal
+cluster_detection_requested    # reason: INFRA-2030 emitted by scripts/coord/wedge-state-machine.sh _remediate_wagg when W-AGG fires; signals cluster-detector.sh to run its IDENTICAL-check-set discrimination on next tick; carries source_wedge, reason, detail; printf-direct JSON not grep-scannable as kind=X literal
