@@ -74,6 +74,11 @@ AUTOPILOT_LAYERS=(
     "com.chump.inbox-injector|scripts/setup/install-inbox-injector-launchd.sh"
     # INFRA-2026: post-push PR integrity watch — auto-reopen stale-base force-close incidents
     "com.chump.post-push-integrity|scripts/setup/install-post-push-integrity-launchd.sh"
+    # META-109 Phase 1: wizard-daemon — autonomous DRIVE primitive (default-OFF)
+    # NOTE: this entry loads the launchd plist but the daemon stays INERT until
+    # CHUMP_WIZARD_DAEMON_ENABLED=1 is set. The installer default is ENABLED=0.
+    # Validate Sprint 1-3 floor primitives before flipping the enable bit.
+    "com.chump.wizard-daemon|scripts/setup/install-wizard-daemon-launchd.sh"
 )
 
 emit() {
@@ -143,6 +148,7 @@ cmd_stop() {
         local label="${entry%%|*}"
         local plist="$HOME/Library/LaunchAgents/${label}.plist"
         if [[ -f "$plist" ]]; then
+            # shellcheck disable=SC2015  # pre-existing; A&&B||C intentional here (unload best-effort)
             launchctl unload "$plist" 2>/dev/null && stopped=$((stopped+1)) && log "  ⊘ $label" || log "  ✗ $label (unload failed)"
         else
             absent=$((absent+1))
