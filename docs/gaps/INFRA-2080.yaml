@@ -1,0 +1,16 @@
+- id: INFRA-2080
+  domain: INFRA
+  title: "RESILIENT P0 trunk-RED: test-gap-reserve-padding.sh sandbox isolation broken after gap-reserve.sh migrated to state.db (INFRA-2000) — sandbox seeds docs/gaps.yaml but no state.db; script falls through to REAL state.db; got EVAL-125 expected EVAL-088 (real EVAL space)"
+  status: open
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "Reproduce: bash scripts/ci/test-gap-reserve-padding.sh; expect Failed: 3 (EVAL-088→125, BIG-10000→001, TINY-003→001) — sandbox is bleeding through to real state.db"
+    - "Root cause: scripts/coord/gap-reserve.sh now uses .chump/state.db (post-INFRA-2000 migration to chump-gap-store::maintenance) but sandbox_setup() seeds docs/gaps.yaml only — no fake state.db; the cd $sandbox does not isolate state.db access"
+    - "Fix option A (preferred): sandbox_setup() also creates an empty $sandbox/.chump/state.db then seeds gaps from fixture via chump gap import; reserve_in_sandbox() then sets CHUMP_HOME=$sandbox so state.db lookup honors the sandbox"
+    - "Fix option B: gap-reserve.sh learns a CHUMP_GAP_STORE_PATH env var that overrides the canonical state.db location; sandbox sets this to $sandbox/.chump/state.db"
+    - "Verify post-fix: test passes 3 times in a row + CHUMP_HOME unset+set both work + no real-state.db reads when sandbox env active (audit by adding ambient kind=gap_store_read with path field in debug mode and grep for non-sandbox paths during test run)"
+    - "Trunk-RED gate: after PR merges, gh run list --branch main --workflow CI --limit 3 shows latest 3 runs at success conclusion (fast-checks no longer fails on this test)"
+  notes: |
+    Filed 2026-05-27 by curator-opus-shepherd. Blocking INFRA-2077 #2672 dispatch test fix from landing — main is RED on multiple wedges, this is one of them. The bug existed on main since gap-reserve.sh migrated to state.db (INFRA-2000 PR #2637 ~3 days ago) but was masked until today's gap-reservation rate pushed real EVAL IDs into the test's expected range. META-117 MAIN-CI-DEBT class — each PR exposes a different combination of accumulated wedges.
+
