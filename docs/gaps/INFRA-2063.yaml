@@ -1,0 +1,17 @@
+- id: INFRA-2063
+  domain: INFRA
+  title: "ZERO-WASTE: cutover INFRA-2000 chump-gap-store::maintenance — remove 4 Python tools (gap-architect + gap-gardener + gap-doctor + check-gaps-integrity ~2000 LOC) after 1-week parallel-run"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Parallel-run validation: 7+ consecutive days with chump-gap-store::maintenance modules + CLI shims as default + Python tools available as fallback; ambient kind=maintenance_divergence_detected count == 0 over the window; all 4 launchd plists / cron entries run the Rust path successfully"
+    - "Cutover PR removes 4 Python tools: scripts/coord/gap-architect.py (~600 LOC) + scripts/coord/gap-gardener.py (~500 LOC) + scripts/coord/gap-doctor.py (~500 LOC) + scripts/ci/check-gaps-integrity.py (~400 LOC); total LOC out = ~2000"
+    - Cutover PR also removes serde_yaml dependency from any Python venv requirements file (was the drift class Phase 1 attacked); audit confirms no Python deserialization of docs/gaps/*.yaml remains anywhere in the codebase
+    - "CLI shims (the 4 entry points that bash/launchd callers invoke) updated: either renamed without .py suffix and exec the Rust binary, OR fully removed and callers migrated to chump gap doctor / chump gap garden / chump gap architect / chump gap integrity subcommands directly (architect choice per-tool; document the choice in PR body)"
+    - Smoke test scripts/ci/test-gap-maintenance-parity.sh updated — Python-side assertion removed; all maintenance invariants (no orphan gaps, no double-encoded depends_on, no race-* fixtures, integrity check exits green on healthy state.db) still assert via the Rust path
+    - Ambient emit kind=rust_migration_landed gap=INFRA-2000 lines_out=2000 lines_in=0 on cutover commit; this completes the Python-eradication arc started by INFRA-1999 cutover
+  depends_on: [INFRA-2000]
+  notes: |
+    Phase 2 cutover of META-107 sub-gap INFRA-2000 (chump-gap-store::maintenance). Combined with INFRA-2062 (github-cache Python receiver cutover), this PR + INFRA-2062 eliminate Python from the entire orchestration hot-path. Sibling cutovers: INFRA-2060/2061/2062/2064/2065.
+
