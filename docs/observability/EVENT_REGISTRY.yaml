@@ -5122,3 +5122,55 @@ events:
       operation.
     consumers: [ops-audit]
     fields_required: [ts, kind, source, label, script_path]
+
+  - kind: wedge_detected
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step3 (META-107)
+    trigger: >
+      Emitted when a BLOCKED+real-fails PR's failing check names match a known
+      W-NNN signature pattern from WEDGE_CLASS_CATALOG.md. The wedge-state-machine
+      consumes this event and runs the corresponding W-NNN remediation playbook.
+      Carries wedge_class (e.g. W-004), pr_number, pr_title, failing_checks.
+    consumers: [wedge-state-machine, ops-audit]
+    fields_required: [ts, kind, source, wedge_class, pr_number, failing_checks]
+
+  - kind: wizard_dispatch_executed
+    effect_metric: effective
+    emitter: scripts/coord/wizard-daemon.sh step4 (META-107)
+    trigger: >
+      Emitted when wizard-daemon step4 successfully spawns chump --execute-gap
+      for a pickable P0/P1 gap in background. Carries gap_id and the background
+      pid. Rate-limited by CHUMP_WIZARD_MAX_PARALLEL (default 4 concurrent).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, gap_id, pid]
+
+  - kind: wizard_dispatch_rate_limited
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step4 (META-107)
+    trigger: >
+      Emitted when wizard-daemon step4 cannot dispatch a new gap because the
+      active concurrent dispatch count has already reached CHUMP_WIZARD_MAX_PARALLEL.
+      Carries active_count and max_parallel for rate-limit visibility.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, active_count, max_parallel]
+
+  - kind: wizard_gap_skipped
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step4 (META-107)
+    trigger: >
+      Emitted when wizard-daemon step4 skips a gap that has wizard_skip:true
+      in its YAML notes field. This is a deliberate operator stop-list mechanism
+      to prevent the wizard from auto-dispatching gaps that require human oversight.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, gap_id, reason]
+
+  - kind: wizard_cascade_rebase_triggered
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh step5 (META-107)
+    trigger: >
+      Emitted when wizard-daemon step5 successfully triggers gh pr update-branch
+      for a BEHIND sibling PR after a gap_shipped event resolves a cluster.
+      Safety guard: only fires for PRs authored by CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR
+      (default repairman29) to prevent fork takeover.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, pr_number, author, head_ref]

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/ci/test-wizard-daemon.sh — META-109 Phase 1
+# scripts/ci/test-wizard-daemon.sh — META-109 Phase 1 + META-107 Phase 2
 #
-# Smoke tests for wizard-daemon.sh Phase 1 (steps 1, 2, 6 + safety + bypass).
+# Smoke tests for wizard-daemon.sh (all phases).
 #
-# Test cases:
+# Phase 1 test cases (steps 1, 2, 6 + safety + bypass):
 #   1. CHUMP_WIZARD_DAEMON_ENABLED unset → daemon exits 0, no action
 #   2. CHUMP_WIZARD_DAEMON_PAUSE=1 → emits wizard_daemon_paused, exits 0
 #   3. Floor temp HOT → emits wizard_daemon_safety_refusal, exits 0
@@ -18,6 +18,16 @@
 #  12. Step 6: stall event outside lookback window → no broadcast
 #  13. Step 6: dedup — second run doesn't re-broadcast within window
 #  14. No open PRs → cycle completes cleanly
+#
+# Phase 2 test cases (steps 3, 4, 5 + rate limits + safety):
+#  15. Step 3: BLOCKED+real-fails with known W-NNN check → wedge_detected emitted
+#  16. Step 3: BLOCKED+real-fails with unknown check → URGENT-INBOX broadcast + author tagged
+#  17. Step 3: BLOCKED+stale-base → step3 skipped (not real-fails)
+#  18. Step 4: pickable gap dispatched → wizard_dispatch_executed emitted
+#  19. Step 4: gap with wizard_skip:true → wizard_gap_skipped emitted, not dispatched
+#  20. Step 4: at MAX_PARALLEL concurrent → wizard_dispatch_rate_limited emitted
+#  21. Step 5: BEHIND PR from allowed author → cascade rebase triggered
+#  22. Step 5: BEHIND PR from non-allowed author → cascade rebase refused (safety)
 
 set -uo pipefail
 
@@ -483,6 +493,400 @@ if [[ "$RC" -eq 0 ]] && grep -q '"decision":"done"' "$AMBIENT" 2>/dev/null; then
     ok "T14: clean exit with cycle_complete + done for empty PR queue"
 else
     fail "T14: rc=$RC; ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty)"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 2 tests — Steps 3, 4, 5 (META-107)
+# ══════════════════════════════════════════════════════════════════════════════
+
+echo
+echo "=== META-107 Phase 2: wizard-daemon steps 3+4+5 smoke tests ==="
+
+# Helper: extend make_env with Phase 2 stubs
+make_env_p2() {
+    local dir="$1"
+    make_env "$dir"
+
+    # Stub chump binary with gap list + preflight + --execute-gap support
+    local chump_bin="$dir/bin/chump"
+    mkdir -p "$dir/bin"
+    cat > "$chump_bin" <<'CHUMP'
+#!/usr/bin/env bash
+# Stub chump for Phase 2 tests
+case "$*" in
+    "health --temp")
+        echo "floor_temp: COLD"
+        exit 0
+        ;;
+    "gap list"*"--json"*)
+        # Return from GAP_LIST_JSON env if set, else empty
+        echo "${GAP_LIST_JSON:-[]}"
+        exit 0
+        ;;
+    "gap preflight"*)
+        # Return from GAP_PREFLIGHT_RC env if set, else 0
+        exit "${GAP_PREFLIGHT_RC:-0}"
+        ;;
+    "--execute-gap"*)
+        # Log the dispatch call
+        echo "execute-gap: $*" >> "${EXECUTE_GAP_LOG:-/dev/null}"
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+CHUMP
+    chmod +x "$chump_bin"
+    export PATH="$dir/bin:$PATH"
+}
+
+# ── Test 15: Step 3 — known W-NNN failure → wedge_detected emitted ────────────
+section "T15: Step 3 — BLOCKED+real-fails with known W-NNN check → wedge_detected"
+D="$TMP/t15"; make_env_p2 "$D"
+
+# Fake gh: returns 1 BLOCKED PR with a failing check matching W-004 (r2d2/sqlite)
+GH15="$TMP/t15-gh"
+cat > "$GH15" <<'GH15_EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *"pr list"*)
+        if printf '%s\n' "$@" | grep -q '\[\]\.number'; then
+            printf '500\n'
+        else
+            echo '[{"number":500}]'
+        fi
+        exit 0
+        ;;
+    *"pr view"*500*)
+        # BLOCKED PR (real fails, no hold active)
+        echo '{"number":500,"title":"test real-fails","mergeable":"UNKNOWN","mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false,"headRefOid":"abc123","author":{"login":"repairman29"}}'
+        exit 0
+        ;;
+    *"pr checks"*500*)
+        # Returns a check that matches W-004 signature (sqlite/r2d2)
+        echo '[{"name":"cargo-test / r2d2-lock","state":"FAILURE","conclusion":"failure"}]'
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+GH15_EOF
+chmod +x "$GH15"
+
+run_daemon "$D" "$GH15" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+if grep -q '"kind":"wedge_detected"' "$AMBIENT" 2>/dev/null \
+   && grep -q '"wedge_class":"W-004"' "$AMBIENT" 2>/dev/null; then
+    ok "T15: wedge_detected with W-004 emitted for r2d2 failure"
+else
+    fail "T15: expected wedge_detected W-004 (ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty))"
+fi
+
+# ── Test 16: Step 3 — unknown failure class → URGENT-INBOX broadcast + author tag ──
+section "T16: Step 3 — unknown check name → URGENT-INBOX broadcast with author"
+D="$TMP/t16"; make_env_p2 "$D"
+
+GH16="$TMP/t16-gh"
+cat > "$GH16" <<'GH16_EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *"pr list"*)
+        if printf '%s\n' "$@" | grep -q '\[\]\.number'; then
+            printf '501\n'
+        else
+            echo '[{"number":501}]'
+        fi
+        exit 0
+        ;;
+    *"pr view"*501*)
+        echo '{"number":501,"title":"unknown fail PR","mergeable":"UNKNOWN","mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false,"headRefOid":"def456","author":{"login":"somedev"}}'
+        exit 0
+        ;;
+    *"pr checks"*501*)
+        # Returns a check that does NOT match any W-NNN signature
+        echo '[{"name":"totally-custom-check-xyz","state":"FAILURE","conclusion":"failure"}]'
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+GH16_EOF
+chmod +x "$GH16"
+
+run_daemon "$D" "$GH16" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+# Should broadcast CRIT with author tag
+if [[ -f "$D/bcast-calls.log" ]] && grep -q "CRIT" "$D/bcast-calls.log" 2>/dev/null; then
+    ok "T16: URGENT-INBOX broadcast fired for unknown failure class"
+else
+    fail "T16: no CRIT broadcast for unknown failure (bcast=$(cat "$D/bcast-calls.log" 2>/dev/null || echo empty))"
+fi
+# Should mention the author in the broadcast
+if [[ -f "$D/bcast-calls.log" ]] && grep -q "somedev" "$D/bcast-calls.log" 2>/dev/null; then
+    ok "T16b: broadcast message contains author tag (somedev)"
+else
+    fail "T16b: author not found in broadcast (bcast=$(cat "$D/bcast-calls.log" 2>/dev/null || echo empty))"
+fi
+if grep -q '"decision":"urgent_inbox_broadcast"' "$AMBIENT" 2>/dev/null; then
+    ok "T16c: urgent_inbox_broadcast action emitted in ambient"
+else
+    fail "T16c: urgent_inbox_broadcast not in ambient"
+fi
+
+# ── Test 17: Step 3 — BLOCKED+stale-base → step3 skipped ─────────────────────
+section "T17: Step 3 — BLOCKED+stale-base PR → step3 not invoked"
+D="$TMP/t17"; make_env_p2 "$D"
+
+GH17="$TMP/t17-gh"
+make_fake_gh "$GH17" '[{"number":502}]' \
+    '{"number":502,"title":"stale-base PR","mergeable":"UNKNOWN","mergeStateStatus":"BEHIND","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false}'
+
+run_daemon "$D" "$GH17" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+# wedge_detected must NOT appear for a stale-base PR
+if ! grep -q '"kind":"wedge_detected"' "$AMBIENT" 2>/dev/null; then
+    ok "T17: wedge_detected NOT emitted for BLOCKED+stale-base"
+else
+    fail "T17: wedge_detected wrongly emitted for stale-base PR"
+fi
+
+# ── Test 18: Step 4 — pickable gap dispatched ─────────────────────────────────
+section "T18: Step 4 — pickable gap → wizard_dispatch_executed emitted"
+D="$TMP/t18"; make_env_p2 "$D"
+
+# Provide a gap list with one pickable gap
+export GAP_LIST_JSON='[{"id":"TEST-001","priority":"P1","acceptance_criteria":"must do X","notes":""}]'
+
+GH18="$TMP/t18-gh"
+make_fake_gh "$GH18" '[]' '{}'
+
+EXECUTE_GAP_LOG="$D/execute-gap.log"
+run_daemon "$D" "$GH18" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" \
+    GAP_LIST_JSON="$GAP_LIST_JSON" \
+    EXECUTE_GAP_LOG="$EXECUTE_GAP_LOG" >/dev/null 2>&1 || true
+
+unset GAP_LIST_JSON
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+if grep -q '"kind":"wizard_dispatch_executed"' "$AMBIENT" 2>/dev/null; then
+    ok "T18: wizard_dispatch_executed emitted for pickable gap"
+else
+    fail "T18: wizard_dispatch_executed not found (ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty))"
+fi
+if [[ -f "$EXECUTE_GAP_LOG" ]] && grep -q "TEST-001" "$EXECUTE_GAP_LOG" 2>/dev/null; then
+    ok "T18b: chump --execute-gap called with TEST-001"
+else
+    fail "T18b: execute-gap log missing TEST-001 (log=$(cat "$EXECUTE_GAP_LOG" 2>/dev/null || echo empty))"
+fi
+
+# ── Test 19: Step 4 — wizard_skip:true gap → skipped ─────────────────────────
+section "T19: Step 4 — gap with wizard_skip:true → wizard_gap_skipped"
+D="$TMP/t19"; make_env_p2 "$D"
+
+SKIP_GAP_JSON='[{"id":"SKIP-001","priority":"P1","acceptance_criteria":"must do X","notes":"wizard_skip: true"}]'
+
+GH19="$TMP/t19-gh"
+make_fake_gh "$GH19" '[]' '{}'
+
+EXECUTE_GAP_LOG19="$D/execute-gap.log"
+run_daemon "$D" "$GH19" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" \
+    GAP_LIST_JSON="$SKIP_GAP_JSON" \
+    EXECUTE_GAP_LOG="$EXECUTE_GAP_LOG19" >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+if grep -q '"kind":"wizard_gap_skipped"' "$AMBIENT" 2>/dev/null; then
+    ok "T19: wizard_gap_skipped emitted for wizard_skip:true gap"
+else
+    fail "T19: wizard_gap_skipped not found (ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty))"
+fi
+if [[ ! -f "$EXECUTE_GAP_LOG19" ]] || ! grep -q "SKIP-001" "$EXECUTE_GAP_LOG19" 2>/dev/null; then
+    ok "T19b: SKIP-001 was NOT dispatched via --execute-gap"
+else
+    fail "T19b: SKIP-001 was wrongly dispatched"
+fi
+
+# ── Test 20: Step 4 — at MAX_PARALLEL → wizard_dispatch_rate_limited ─────────
+section "T20: Step 4 — at MAX_PARALLEL concurrent → rate limited"
+D="$TMP/t20"; make_env_p2 "$D"
+
+GH20="$TMP/t20-gh"
+make_fake_gh "$GH20" '[]' '{}'
+
+# Pre-populate dispatch state with MAX_PARALLEL=2 active dispatches
+# pid=0 → bypasses liveness check, always counted as active
+TS_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+mkdir -p "$D/.chump-locks"
+cat > "$D/.chump-locks/wizard-daemon-dispatch-state.json" <<STATE_EOF
+{"dispatches":[
+  {"gap_id":"OLD-001","ts":"${TS_NOW}","pid":0},
+  {"gap_id":"OLD-002","ts":"${TS_NOW}","pid":0}
+]}
+STATE_EOF
+
+MULTI_GAP_JSON='[{"id":"NEW-001","priority":"P1","acceptance_criteria":"AC","notes":""}]'
+
+run_daemon "$D" "$GH20" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" \
+    GAP_LIST_JSON="$MULTI_GAP_JSON" \
+    CHUMP_WIZARD_MAX_PARALLEL=2 \
+    CHUMP_WIZARD_DISPATCH_STATE="$D/.chump-locks/wizard-daemon-dispatch-state.json" >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+if grep -q '"kind":"wizard_dispatch_rate_limited"' "$AMBIENT" 2>/dev/null; then
+    ok "T20: wizard_dispatch_rate_limited emitted when at MAX_PARALLEL"
+else
+    fail "T20: wizard_dispatch_rate_limited not found (ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty))"
+fi
+# Must NOT have dispatched new gap
+if ! grep -q '"kind":"wizard_dispatch_executed"' "$AMBIENT" 2>/dev/null; then
+    ok "T20b: no dispatch_executed when rate limited"
+else
+    fail "T20b: dispatch_executed found despite rate limit"
+fi
+
+# ── Test 21: Step 5 — BEHIND PR from allowed author → cascade rebase ──────────
+section "T21: Step 5 — BEHIND PR from allowed author → cascade rebase triggered"
+D="$TMP/t21"; make_env_p2 "$D"
+
+# Inject a recent gap_shipped event into ambient
+TS_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"ts":"%s","kind":"gap_shipped","gap_id":"INFRA-999","cluster_id":"W-002","source":"fleet"}\n' \
+    "$TS_NOW" > "$D/.chump-locks/ambient.jsonl"
+
+# Track rebase calls
+REBASE_LOG="$D/rebase-calls.log"
+
+GH21="$TMP/t21-gh"
+cat > "$GH21" <<GH21_EOF
+#!/usr/bin/env bash
+REBASE_LOG="${REBASE_LOG}"
+case "\$*" in
+    *"pr list"*)
+        if printf '%s\n' "\$@" | grep -q '\[\]\.number'; then
+            printf '600\n'
+        else
+            echo '[{"number":600}]'
+        fi
+        exit 0
+        ;;
+    *"pr view"*600*)
+        echo '{"number":600,"title":"sibling PR","mergeable":"UNKNOWN","mergeStateStatus":"BEHIND","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false,"headRefName":"chump/sibling","author":{"login":"repairman29"}}'
+        exit 0
+        ;;
+    *"pr update-branch"*600*)
+        echo "rebase called: \$*" >> "\${REBASE_LOG}"
+        exit 0
+        ;;
+    *"pr checks"*)
+        echo '[]'
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+GH21_EOF
+chmod +x "$GH21"
+
+run_daemon "$D" "$GH21" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" \
+    CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR=repairman29 >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+if grep -q '"kind":"wizard_cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null; then
+    ok "T21: wizard_cascade_rebase_triggered emitted for allowed-author PR"
+else
+    fail "T21: wizard_cascade_rebase_triggered not found (ambient=$(cat "$AMBIENT" 2>/dev/null || echo empty))"
+fi
+if [[ -f "$REBASE_LOG" ]] && grep -q "600" "$REBASE_LOG" 2>/dev/null; then
+    ok "T21b: gh pr update-branch called for PR #600"
+else
+    fail "T21b: gh pr update-branch not called (log=$(cat "$REBASE_LOG" 2>/dev/null || echo empty))"
+fi
+
+# ── Test 22: Step 5 — BEHIND PR from non-allowed author → refused ─────────────
+section "T22: Step 5 — BEHIND PR from non-allowed author → cascade rebase refused"
+D="$TMP/t22"; make_env_p2 "$D"
+
+TS_NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '{"ts":"%s","kind":"gap_shipped","gap_id":"INFRA-998","source":"fleet"}\n' \
+    "$TS_NOW" > "$D/.chump-locks/ambient.jsonl"
+
+REBASE_LOG22="$D/rebase-calls.log"
+
+GH22="$TMP/t22-gh"
+cat > "$GH22" <<GH22_EOF
+#!/usr/bin/env bash
+REBASE_LOG22="${REBASE_LOG22}"
+case "\$*" in
+    *"pr list"*)
+        if printf '%s\n' "\$@" | grep -q '\[\]\.number'; then
+            printf '700\n'
+        else
+            echo '[{"number":700}]'
+        fi
+        exit 0
+        ;;
+    *"pr view"*700*)
+        # PR from a FORK author — not allowed
+        echo '{"number":700,"title":"fork PR","mergeable":"UNKNOWN","mergeStateStatus":"BEHIND","autoMergeRequest":{"enabledAt":"2026-01-01"},"isDraft":false,"headRefName":"fork/feature","author":{"login":"external-fork-user"}}'
+        exit 0
+        ;;
+    *"pr update-branch"*700*)
+        echo "rebase called: \$*" >> "\${REBASE_LOG22}"
+        exit 0
+        ;;
+    *"pr checks"*)
+        echo '[]'
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+GH22_EOF
+chmod +x "$GH22"
+
+run_daemon "$D" "$GH22" \
+    CHUMP_WIZARD_DAEMON_ENABLED=1 \
+    CHUMP_WIZARD_TEST_CHUMP="$D/bin/chump" \
+    CHUMP_WIZARD_ALLOWED_REBASE_AUTHOR=repairman29 >/dev/null 2>&1 || true
+
+AMBIENT="$D/.chump-locks/ambient.jsonl"
+# Must NOT have triggered rebase
+if ! grep -q '"kind":"wizard_cascade_rebase_triggered"' "$AMBIENT" 2>/dev/null; then
+    ok "T22: cascade rebase NOT triggered for non-allowed author"
+else
+    fail "T22: cascade rebase wrongly triggered for fork user"
+fi
+if [[ ! -f "$REBASE_LOG22" ]] || [[ ! -s "$REBASE_LOG22" ]]; then
+    ok "T22b: gh pr update-branch NOT called for non-allowed author"
+else
+    fail "T22b: gh pr update-branch was called for fork user (safety violation)"
+fi
+# Should emit skip_author_not_allowed action
+if grep -q '"decision":"skip_author_not_allowed"' "$AMBIENT" 2>/dev/null; then
+    ok "T22c: skip_author_not_allowed action emitted in ambient"
+else
+    fail "T22c: skip_author_not_allowed action not found in ambient"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
