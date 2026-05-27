@@ -43,6 +43,10 @@ RATE_MIN="${CHUMP_WEDGE_REMEDIATION_RATE_MIN:-30}"
 CHRONIC="${CHUMP_WEDGE_CHRONIC_THRESHOLD:-3}"
 DRY_RUN="${CHUMP_WEDGE_STATE_MACHINE_DRY_RUN:-0}"
 
+# Paths to real remediation primitives (overridable in tests)
+BROADCAST_URGENT="${CHUMP_BROADCAST_URGENT_BIN:-$REPO_ROOT/scripts/coord/broadcast-urgent.sh}"
+REFRESH_RUNNER_BIN="${CHUMP_REFRESH_RUNNER_BIN:-$REPO_ROOT/scripts/setup/refresh-runner-binary.sh}"
+
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 
 if [[ "${CHUMP_WEDGE_STATE_MACHINE_SKIP:-0}" == "1" ]]; then
@@ -81,6 +85,120 @@ _save_state() {
     echo "$1" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
+# ── Real remediation helpers (INFRA-2030) ────────────────────────────────────
+
+# W-002: invoke refresh-runner-binary.sh inline, then CRIT if it fails
+_remediate_w002() {
+    local detail="$1"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "[dry-run] W-002: would invoke $REFRESH_RUNNER_BIN + emit wedge_remediated_real" >&2
+        _emit "wedge_remediated_real" \
+            "\"class\":\"W-002\"" \
+            "\"action\":\"dry-run: refresh-runner-binary.sh\"" \
+            "\"detail\":\"$detail\""
+        return
+    fi
+    echo "[state-machine] W-002: invoking refresh-runner-binary.sh" >&2
+    local refresh_rc=0
+    if [[ -x "$REFRESH_RUNNER_BIN" ]]; then
+        CHUMP_REPO_ROOT="$REPO_ROOT" bash "$REFRESH_RUNNER_BIN" >&2 2>&1 || refresh_rc=$?
+    else
+        echo "[state-machine] W-002: refresh-runner-binary.sh not found at $REFRESH_RUNNER_BIN" >&2
+        refresh_rc=1
+    fi
+
+    if [[ "$refresh_rc" -eq 0 ]]; then
+        _emit "wedge_remediated_real" \
+            "\"class\":\"W-002\"" \
+            "\"action\":\"refresh-runner-binary.sh invoked\"" \
+            "\"detail\":\"$detail\""
+    else
+        # Binary refresh failed — CRIT broadcast so every agent sees it
+        _emit "wedge_remediated_real" \
+            "\"class\":\"W-002\"" \
+            "\"action\":\"refresh-runner-binary.sh FAILED — CRIT broadcast sent\"" \
+            "\"outcome\":\"failed\"" \
+            "\"detail\":\"$detail\""
+        if [[ -x "$BROADCAST_URGENT" ]]; then
+            bash "$BROADCAST_URGENT" \
+                --urgency CRIT \
+                --from "wedge_state_machine" \
+                "W-002 binary-refresh failed (rc=$refresh_rc) — manual: cargo install --path $REPO_ROOT --bin chump --force && cp ~/.cargo/bin/chump /opt/homebrew/bin/chump" \
+                >&2 2>&1 || true
+        fi
+    fi
+}
+
+# W-007: run chump health required-check audit (INFRA-1522) + CRIT broadcast
+_remediate_w007() {
+    local detail="$1"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "[dry-run] W-007: would run 'chump health required-check-audit' + CRIT broadcast" >&2
+        _emit "wedge_remediated_real" \
+            "\"class\":\"W-007\"" \
+            "\"action\":\"dry-run: health required-check-audit + CRIT broadcast\"" \
+            "\"detail\":\"$detail\""
+        return
+    fi
+    echo "[state-machine] W-007: running chump health required-check-audit" >&2
+    local audit_out=""
+    local audit_rc=0
+    # INFRA-1522: chump health required-check-audit (may not be fully shipped yet;
+    # we fall back gracefully if the subcommand is absent)
+    if command -v chump >/dev/null 2>&1; then
+        audit_out="$(chump health required-check-audit --json 2>&1)" || audit_rc=$?
+    else
+        audit_rc=127
+        audit_out="chump not on PATH"
+    fi
+
+    _emit "wedge_remediated_real" \
+        "\"class\":\"W-007\"" \
+        "\"action\":\"health required-check-audit invoked (INFRA-1522)\"" \
+        "\"audit_rc\":$audit_rc" \
+        "\"detail\":\"$detail\""
+
+    # Always CRIT-broadcast for W-007: required-check drift blocks ALL PRs
+    local msg="W-007 required-status-check absent — required-check-audit rc=$audit_rc — check ci.yml + branch protection ruleset; see INFRA-1522"
+    if [[ -x "$BROADCAST_URGENT" ]]; then
+        bash "$BROADCAST_URGENT" \
+            --urgency CRIT \
+            --from "wedge_state_machine" \
+            "$msg" \
+            >&2 2>&1 || true
+    fi
+    echo "[state-machine] W-007: CRIT broadcast sent" >&2
+}
+
+# W-AGG: emit cluster_detection_requested so cluster-detector picks it up
+_remediate_wagg() {
+    local detail="$1"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "[dry-run] W-AGG: would emit cluster_detection_requested" >&2
+        _emit "cluster_detection_requested" \
+            "\"source_wedge\":\"W-AGG\"" \
+            "\"reason\":\"dry-run: >=3 BLOCKED PRs detected by wedge-watch\"" \
+            "\"detail\":\"$detail\""
+        _emit "wedge_remediated_real" \
+            "\"class\":\"W-AGG\"" \
+            "\"action\":\"dry-run: cluster_detection_requested emitted\"" \
+            "\"detail\":\"$detail\""
+        return
+    fi
+    echo "[state-machine] W-AGG: emitting cluster_detection_requested for cluster-detector" >&2
+    # cluster-detector.sh consumes cluster_detection_requested on its next tick
+    # and applies IDENTICAL-check-set discrimination (sharper than W-AGG's count-only)
+    _emit "cluster_detection_requested" \
+        "\"source_wedge\":\"W-AGG\"" \
+        "\"reason\":\"wedge-state-machine: >=3 BLOCKED PRs detected; deferring to cluster-detector for cluster_id classification\"" \
+        "\"detail\":\"$detail\""
+    _emit "wedge_remediated_real" \
+        "\"class\":\"W-AGG\"" \
+        "\"action\":\"cluster_detection_requested emitted — cluster-detector will classify on next tick\"" \
+        "\"detail\":\"$detail\""
+    echo "[state-machine] W-AGG: cluster_detection_requested emitted" >&2
+}
+
 # Per-class remediation router. Edit this case to add real remediations
 # for each W-NNN class. Default: advisory emit (no state mutation).
 _remediate() {
@@ -89,24 +207,21 @@ _remediate() {
     case "$class" in
         W-001)
             # gh API false-positive merge conflicts — advise re-fetch + retry
+            # (INFRA-1958 shipped automated local-rebase fallback; advisory here is sufficient)
             _emit "wedge_remediation_requested" \
                 "\"class\":\"$class\"" \
                 "\"action\":\"advisory: pr-auto-rebase re-fetch + retry\"" \
                 "\"detail\":\"$detail\""
             ;;
         W-002)
-            # Binary cache lag — advise reinstall on runner
-            _emit "wedge_remediation_requested" \
-                "\"class\":\"$class\"" \
-                "\"action\":\"advisory: rebuild chump binary on runner (cargo install --path . --force)\"" \
-                "\"detail\":\"$detail\""
+            # Binary cache lag — REAL: invoke refresh-runner-binary.sh inline
+            # (INFRA-2030)
+            _remediate_w002 "$detail"
             ;;
         W-007)
-            # Required-status-check missing — high-impact; route to operator
-            _emit "wedge_remediation_requested" \
-                "\"class\":\"$class\"" \
-                "\"action\":\"operator: audit ruleset 15133729 required checks via INFRA-1522 health gate\"" \
-                "\"detail\":\"$detail\""
+            # Required-status-check missing — REAL: audit + CRIT broadcast
+            # (INFRA-2030; INFRA-1522 health gate)
+            _remediate_w007 "$detail"
             ;;
         W-008)
             # CLEAN state stuck — auto-merge race; can route to recovery queue
@@ -116,15 +231,14 @@ _remediate() {
                 "\"detail\":\"$detail\""
             ;;
         W-AGG)
-            # Aggregate signature: ≥3 BLOCKED PRs — defer to cluster detector
-            # (INFRA-1987) which has sharper IDENTICAL-checks discrimination
-            _emit "wedge_remediation_requested" \
-                "\"class\":\"$class\"" \
-                "\"action\":\"defer to cluster-detector (INFRA-1987) for finer cluster_id classification\"" \
-                "\"detail\":\"$detail\""
+            # Aggregate signature: ≥3 BLOCKED PRs — REAL: emit cluster_detection_requested
+            # so cluster-detector (INFRA-1987) can apply IDENTICAL-check discrimination
+            # (INFRA-2030)
+            _remediate_wagg "$detail"
             ;;
         *)
             # Unknown / not-yet-instrumented class — log + emit advisory
+            # Follow-up: W-003/005/009/010/011/012/013 real remediations tracked in INFRA-NEXT
             _emit "wedge_remediation_requested" \
                 "\"class\":\"$class\"" \
                 "\"action\":\"advisory: no automated remediation yet; see docs/process/WEDGE_CLASS_CATALOG.md\"" \
