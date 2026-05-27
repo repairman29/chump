@@ -5030,3 +5030,67 @@ events:
       Bypass: CHUMP_PR_AUTO_REARM_NO_INTENT_CHECK=1.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, branch]
+
+  # INFRA-2013: fleet-brief leading-indicator stall detection
+  - kind: fleet_stalled
+    effect_metric: credible
+    emitter: scripts/dispatch/fleet-brief.sh (INFRA-2013)
+    trigger: >
+      Emitted by fleet-brief.sh when ships_1h==0 AND there are 2+ open
+      BLOCKED PRs. Signals that the fleet has gone quiet — no ships in the
+      last hour despite PRs waiting. Consumed by wizard-daemon.sh (Step 6)
+      to broadcast a CRIT alert to URGENT-INBOX so any active
+      operator/agent sees it within one tool call.
+    consumers: [wizard-daemon, ops-audit, fleet-brief]
+    fields_required: [ts, kind, ships_1h, blocked_prs]
+
+  # INFRA-2029: worker exit-without-ship (THE FLOOR Phase 2)
+  - kind: worker_stuck
+    effect_metric: resilient
+    emitter: scripts/dispatch/worker.sh (INFRA-2029)
+    trigger: >
+      Emitted by worker.sh in every exit-without-ship code path: stand_down
+      (fleet-hold), preflight_fail, gap_already_done, worktree_create_fail,
+      no_pickable_gap. Carries a reason field identifying which exit path
+      fired. Consumed by wizard-daemon.sh (Step 6) to broadcast a CRIT
+      alert when multiple stuck events appear within the lookback window.
+    consumers: [wizard-daemon, ops-audit, fleet-brief]
+    fields_required: [ts, kind, reason]
+
+  # META-109 Phase 1: wizard-daemon autonomous DRIVE primitive
+  - kind: wizard_daemon_action
+    effect_metric: effective
+    emitter: scripts/coord/wizard-daemon.sh (META-109)
+    trigger: >
+      Emitted by wizard-daemon.sh on every PR classification and orchestration
+      decision in the 5-minute cycle. Carries step (step1/step2/step6/
+      cycle_complete), target (PR#N or fleet), decision (classified,
+      recovery_queue_emitted, rate_limited, broadcast_crit, etc.), and
+      rate_limit_state. Primary audit trail for the autonomous DRIVE loop.
+      Default-OFF: only emitted when CHUMP_WIZARD_DAEMON_ENABLED=1.
+    consumers: [ops-audit, fleet-brief, wizard-daemon-dedup-check]
+    fields_required: [ts, kind, source, step, target, decision, rate_limit_state]
+
+  - kind: wizard_daemon_paused
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh (META-109)
+    trigger: >
+      Emitted at daemon startup when the CHUMP_WIZARD_DAEMON_PAUSE=1
+      kill-switch is active. Operator kill-switch confirmation signal —
+      confirms the daemon saw the pause flag and did nothing this cycle.
+      Monitor for absence: if plist is loaded but this event stops appearing,
+      the daemon may have crashed or the env var was cleared unintentionally.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, reason]
+
+  - kind: wizard_daemon_safety_refusal
+    effect_metric: credible
+    emitter: scripts/coord/wizard-daemon.sh (META-109)
+    trigger: >
+      Emitted when a mandatory safety guard fires: floor_temp_HOT (chump
+      health --temp reports HOT, cascade preventer) or pr_conflicting
+      (mergeStateStatus=CONFLICTING, real conflict needs human judgment).
+      Safety audit trail — never suppressed. Frequent occurrences indicate
+      fleet instability (HOT) or PRs with genuine merge conflicts (CONFLICTING).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, reason, target]

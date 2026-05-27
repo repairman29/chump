@@ -425,3 +425,8 @@ binary_main_updated  # reason: INFRA-2007 emitted by scripts/coord/bot-merge.sh 
 binary_refresh_triggered_event  # reason: INFRA-2007 emitted by scripts/coord/binary-refresh-event-watcher.sh when binary_main_updated event triggers an immediate rebuild (event-driven path); printf-direct JSON not grep-scannable as kind=X literal
 binary_event_watcher_rate_limited  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when rebuild skipped because last rebuild was within CHUMP_BINARY_EVENT_RATE_LIMIT_S window; safety valve against merge bursts
 binary_event_watcher_no_tool  # reason: INFRA-2007 emitted by binary-refresh-event-watcher.sh when fswatch is absent; signals that polling fallback (tail -F) is active instead of zero-overhead FSEvents path
+
+# ── META-109 Phase 1: wizard-daemon — autonomous DRIVE primitive ──────────────
+wizard_daemon_action          # reason: META-109 emitted by scripts/coord/wizard-daemon.sh on every classification and decision; carries step, target, decision, rate_limit_state, and step-specific fields; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+wizard_daemon_paused          # reason: META-109 emitted by scripts/coord/wizard-daemon.sh at startup when CHUMP_WIZARD_DAEMON_PAUSE=1 kill-switch is active; carries reason field; operator kill-switch confirmation signal
+wizard_daemon_safety_refusal  # reason: META-109 emitted by scripts/coord/wizard-daemon.sh when a mandatory safety guard fires (floor_temp_HOT or pr_conflicting); carries reason + target; safety audit trail — never suppressed

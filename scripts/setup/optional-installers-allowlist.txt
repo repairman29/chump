@@ -84,3 +84,4 @@ install-recovery-queue-launchd.sh
 install-inbox-injector-launchd.sh
 install-inbox-prune-launchd.sh
 install-post-push-integrity-launchd.sh
+install-wizard-daemon-launchd.sh
