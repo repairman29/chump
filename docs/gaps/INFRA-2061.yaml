@@ -1,0 +1,16 @@
+- id: INFRA-2061
+  domain: INFRA
+  title: "ZERO-WASTE: cutover INFRA-1998 chump-messaging — remove scripts/coord/broadcast.sh + chump-inbox.sh bodies (583 LOC) after 1-week parallel-run; thin shim-only wrappers remain"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Parallel-run validation: scripts/ci/test-messaging-rust-parity.sh has been green for 7+ consecutive days; CHUMP_MESSAGING_RUST=1 has been default in shims for 7+ days; ambient cursor-divergence audit confirms zero stale-read races over the window (FileBroker + NatsBroker both pass)"
+    - Cutover PR removes scripts/coord/broadcast.sh body (keeps thin 3-line wrapper) + scripts/coord/chump-inbox.sh body (same); shim execs chump-broadcast / chump-inbox binary directly; no feature-flag branch remaining (CHUMP_MESSAGING_RUST env var deleted from shims)
+    - All existing callsites in fleet scripts (broadcast.sh, chump-inbox.sh as used in worker.sh, shepherd loop, etc.) continue to work with the wrapper-only shim — verified via grep + smoke run of one representative caller (shepherd-loop iteration sending then reading a test message)
+    - Ambient emit kind=rust_migration_landed gap=INFRA-1998 lines_out=583 lines_in=0 on cutover commit
+    - "Backward-compat: CLI argument parity — broadcast.sh --to / --kind / --level flags + chump-inbox.sh read|read-no-advance|tail subcommands all still accepted by the shim path (verified by smoke test scripts/ci/test-messaging-shim-compat.sh, added in this same PR)"
+  depends_on: [INFRA-1998]
+  notes: |
+    Phase 2 cutover of META-107 sub-gap INFRA-1998 (chump-messaging). Sibling cutovers: INFRA-2060/2062/2063/2064/2065.
+
