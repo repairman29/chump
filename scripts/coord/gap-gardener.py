@@ -1,4 +1,16 @@
 #!/usr/bin/env python3.12
+# INFRA-2000 Phase 1 feature-flag shim (META-107 Rust-first migration).
+# When CHUMP_GAP_MAINTENANCE_RUST=1 AND the operator passes one of the
+# audit-only flags (--check / --audit / --json), the Rust binary handles
+# the call. The seeding path stays in the Python body below for 1-week
+# parallel-run discipline.
+import os as _infra2000_os, sys as _infra2000_sys
+if (
+    _infra2000_os.environ.get("CHUMP_GAP_MAINTENANCE_RUST") == "1"
+    and any(a in {"--check", "--audit", "--json"} for a in _infra2000_sys.argv[1:])
+):
+    _infra2000_os.execvp("chump-gap-gardener", ["chump-gap-gardener", *_infra2000_sys.argv[1:]])
+
 # scripts/coord/gap-gardener.py — automatic gap queue filler
 # Run hourly via cron. Seeds gaps.yaml when open count < MIN_QUEUE_DEPTH.
 #

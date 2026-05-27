@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# INFRA-2000 Phase 1 feature-flag shim (META-107 Rust-first migration).
+# When CHUMP_GAP_MAINTENANCE_RUST=1 the Rust binary handles the call; the
+# legacy Python body below stays in tree for 1-week parallel-run discipline.
+import os as _infra2000_os, sys as _infra2000_sys
+if _infra2000_os.environ.get("CHUMP_GAP_MAINTENANCE_RUST") == "1":
+    _infra2000_os.execvp("chump-check-gaps-integrity", ["chump-check-gaps-integrity", *_infra2000_sys.argv[1:]])
+
 # check-gaps-integrity.py — INFRA-075 CI check.
 #
 # Validates the gap registry: parses as YAML, has no duplicate `id:` values,

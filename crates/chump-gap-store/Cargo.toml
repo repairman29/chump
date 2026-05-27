@@ -12,11 +12,16 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
+async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# INFRA-2000: needed by the maintenance::architect module's LlmClient trait
+# (async fn complete) plus the chump-gap-architect bin's tokio runtime.
+tokio = { version = "1", features = ["rt", "macros", "process"] }
+thiserror = "2"
 
 [features]
 # Opt-in test helpers (`conn_for_test`) for downstream crates that want to
@@ -27,6 +32,27 @@ test-helpers = []
 [dev-dependencies]
 serial_test = "3"
 tempfile = "3"
+
+# INFRA-2000: Phase 1 of META-107 — maintenance-module CLI binaries
+# (chump-gap-doctor / chump-gap-gardener / chump-gap-architect /
+# chump-check-gaps-integrity). Selected via the CHUMP_GAP_MAINTENANCE_RUST=1
+# feature flag in the four sibling scripts/coord/gap-*.py shims; Python
+# bodies stay inline for 1-week parallel-run discipline.
+[[bin]]
+name = "chump-gap-doctor"
+path = "src/bin/chump-gap-doctor.rs"
+
+[[bin]]
+name = "chump-gap-gardener"
+path = "src/bin/chump-gap-gardener.rs"
+
+[[bin]]
+name = "chump-gap-architect"
+path = "src/bin/chump-gap-architect.rs"
+
+[[bin]]
+name = "chump-check-gaps-integrity"
+path = "src/bin/chump-check-gaps-integrity.rs"
 
 [lints]
 workspace = true
