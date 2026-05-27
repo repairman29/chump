@@ -11528,6 +11528,16 @@ async fn main() -> Result<()> {
         match execute_gap::execute_gap(gap_id).await {
             Ok(reply) => {
                 print!("{reply}");
+                // INFRA-2055: emit gap_shipped on every clean exit so wizard-daemon
+                // gets an explicit signal instead of heuristic-guessing from PID death.
+                // Parse the PR number from the agent reply (best-effort; empty = not found).
+                let pr_number = execute_gap::parse_pr_number_from_reply(&reply);
+                let commit_sha = execute_gap::current_head_sha();
+                execute_gap::emit_terminal_outcome(&execute_gap::ExecuteGapOutcome::Shipped {
+                    gap_id: gap_id.to_string(),
+                    pr_number,
+                    commit_sha,
+                });
                 return Ok(());
             }
             Err(e) => {
@@ -11543,6 +11553,19 @@ async fn main() -> Result<()> {
                 if let Some(marker) = kind.stderr_marker() {
                     eprintln!("{marker}");
                 }
+                // INFRA-2055: emit gap_blocked on EVERY error exit so wizard-daemon
+                // gets an explicit terminal signal instead of guessing from PID death.
+                let reason = format!("{e:#}");
+                let recoverable_by = match kind {
+                    execute_gap::ExecuteGapErrorKind::BillingExhausted => "fix_billing",
+                    execute_gap::ExecuteGapErrorKind::TransportUnreachable => "restart_daemon",
+                    execute_gap::ExecuteGapErrorKind::Other => "manual_rescue",
+                };
+                execute_gap::emit_terminal_outcome(&execute_gap::ExecuteGapOutcome::Blocked {
+                    gap_id: gap_id.to_string(),
+                    reason,
+                    recoverable_by: recoverable_by.to_string(),
+                });
                 std::process::exit(kind.exit_code());
             }
         }

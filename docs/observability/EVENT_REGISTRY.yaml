@@ -866,10 +866,44 @@ events:
 
   - kind: gap_shipped
     effect_metric: self
-    emitter: chump gap ship
-    trigger: gap status flipped to done
-    consumers: [audit-log, kpi-report]
-    fields_required: [gap_id, closed_pr]
+    emitter: "chump gap ship; src/main.rs --execute-gap arm (INFRA-2055)"
+    trigger: "gap status flipped to done, OR chump --execute-gap exits cleanly after agent reply"
+    consumers: [audit-log, kpi-report, wizard-daemon]
+    fields_required: [gap_id, pr_number, commit_sha]
+    docs: |
+      Emitted by two paths: (1) chump gap ship on manual ship, (2) the
+      chump --execute-gap arm in src/main.rs on every clean Ok(reply) exit
+      (INFRA-2055 terminal-outcome guarantee). pr_number is parsed from the
+      agent reply (may be empty if agent did not print one); commit_sha is
+      the HEAD SHA at ship time. wizard-daemon reads this kind to confirm
+      a dispatched gap reached a terminal state without heuristic guessing.
+
+  - kind: gap_blocked
+    effect_metric: self
+    emitter: "src/main.rs --execute-gap arm (INFRA-2055)"
+    trigger: "chump --execute-gap exits with any error, timeout, panic, or signal"
+    consumers: [wizard-daemon, fleet-brief, audit-log]
+    fields_required: [gap_id, reason, recoverable_by]
+    docs: |
+      Emitted on EVERY non-clean exit from chump --execute-gap: uncaught
+      error, provider exhaustion, timeout, unexpected exit. reason is the
+      formatted anyhow error chain (truncated); recoverable_by is a hint
+      tag (fix_billing | restart_daemon | manual_rescue | signal_term).
+      wizard-daemon reads this to stop re-dispatching a blocked gap.
+      INFRA-2055: authoritative fix for the wheel-spin class observed in
+      the 2026-05-27 trial run.
+
+  - kind: gap_deferred
+    effect_metric: self
+    emitter: "src/main.rs --execute-gap arm (INFRA-2055)"
+    trigger: "chump --execute-gap agent explicitly punts to wait for an external event"
+    consumers: [wizard-daemon, fleet-brief]
+    fields_required: [gap_id, reason, defer_until_event]
+    docs: |
+      Emitted when the agent decides it cannot make progress without an
+      external event (e.g. upstream_pr_landed, ci_green, billing_resolved).
+      defer_until_event is a short tag naming the event; wizard-daemon uses
+      it to schedule a re-dispatch check rather than immediately retrying.
 
   - kind: gap_workflow_phase
     effect_metric: self

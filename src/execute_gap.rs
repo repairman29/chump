@@ -68,6 +68,167 @@ use crate::ambient_stream::locate_ambient;
 use crate::model_overlay::{detect_model_family, maybe_overlay_from_env, ModelFamily};
 use crate::plan_mode::{self, PlanOutcome};
 
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-2055 — terminal outcome emission
+// Every exit path from chump --execute-gap MUST emit exactly one of:
+//   gap_shipped  — PR opened, status flipped to done
+//   gap_blocked  — any non-clean exit (error, timeout, panic, signal)
+//   gap_deferred — agent explicitly punted to wait for external event
+//
+// This is the authoritative fix for the wizard wheel-spin: wizard-daemon
+// was re-dispatching the same gap forever because chump --execute-gap
+// could exit silently with no structured outcome. Now wizard reads the
+// explicit kind instead of heuristic-guessing from PID death + PR state.
+// ──────────────────────────────────────────────────────────────────────
+
+/// The three terminal outcome kinds a chump --execute-gap run can emit.
+/// # scanner-anchor: "kind":"gap_shipped"
+/// # scanner-anchor: "kind":"gap_blocked"
+/// # scanner-anchor: "kind":"gap_deferred"
+#[derive(Debug, Clone)]
+pub enum ExecuteGapOutcome {
+    /// Happy path: PR was opened and gap status flipped to done.
+    Shipped {
+        gap_id: String,
+        /// PR number parsed from the agent reply (empty string if not found).
+        pr_number: String,
+        /// HEAD commit SHA at ship time (empty string if unavailable).
+        commit_sha: String,
+    },
+    /// Any non-clean exit: uncaught error, timeout, panic, signal, or
+    /// an explicit "I can't make progress" return.
+    Blocked {
+        gap_id: String,
+        /// Human-readable reason phrase (max ~200 chars).
+        reason: String,
+        /// Optional hint for recovery (e.g. "wait_for_ci", "fix_billing",
+        /// "manual_rescue"). Empty string when unknown.
+        recoverable_by: String,
+    },
+    /// Agent decided to pause and wait for an external event.
+    Deferred {
+        gap_id: String,
+        reason: String,
+        /// Name of the event the agent is waiting on (e.g. "upstream_pr_landed").
+        defer_until_event: String,
+    },
+}
+
+/// Emit one terminal outcome to ambient.jsonl. Call this ONCE per
+/// `chump --execute-gap` run, immediately before process exit.
+///
+/// Best-effort: write failures are silently discarded so they can never
+/// prevent the parent process from exiting with the right code.
+pub fn emit_terminal_outcome(outcome: &ExecuteGapOutcome) {
+    use std::io::Write;
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let ambient =
+        locate_ambient(&cwd).unwrap_or_else(|| cwd.join(".chump-locks").join("ambient.jsonl"));
+    let _ = std::fs::create_dir_all(ambient.parent().unwrap_or(&cwd));
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let session = crate::ambient_stream::env_session_id().unwrap_or_default();
+    let line = match outcome {
+        ExecuteGapOutcome::Shipped {
+            gap_id,
+            pr_number,
+            commit_sha,
+        } => format!(
+            "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"gap_shipped\",\
+             \"gap_id\":\"{gap_id}\",\"pr_number\":\"{pr_number}\",\
+             \"commit_sha\":\"{commit_sha}\",\"emitter\":\"execute_gap\"}}"
+        ),
+        ExecuteGapOutcome::Blocked {
+            gap_id,
+            reason,
+            recoverable_by,
+        } => {
+            let reason_esc = escape_json(reason);
+            let rec_esc = escape_json(recoverable_by);
+            format!(
+                "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"gap_blocked\",\
+                 \"gap_id\":\"{gap_id}\",\"reason\":\"{reason_esc}\",\
+                 \"recoverable_by\":\"{rec_esc}\",\"emitter\":\"execute_gap\"}}"
+            )
+        }
+        ExecuteGapOutcome::Deferred {
+            gap_id,
+            reason,
+            defer_until_event,
+        } => {
+            let reason_esc = escape_json(reason);
+            let evt_esc = escape_json(defer_until_event);
+            format!(
+                "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"gap_deferred\",\
+                 \"gap_id\":\"{gap_id}\",\"reason\":\"{reason_esc}\",\
+                 \"defer_until_event\":\"{evt_esc}\",\"emitter\":\"execute_gap\"}}"
+            )
+        }
+    };
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+/// Minimal JSON string escaping for the reason/event fields.
+/// Only handles the subset that can appear in error messages and gap IDs.
+fn escape_json(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| match c {
+            '"' => vec!['\\', '"'],
+            '\\' => vec!['\\', '\\'],
+            '\n' => vec!['\\', 'n'],
+            '\r' => vec!['\\', 'r'],
+            '\t' => vec!['\\', 't'],
+            c => vec![c],
+        })
+        .collect()
+}
+
+/// Parse a PR number from the agent reply string. Returns empty string if
+/// not found. Accepts numeric sequences that follow "PR #NNN", "#NNN", or
+/// are standalone digit-only tokens.
+pub fn parse_pr_number_from_reply(reply: &str) -> String {
+    // Try "PR #NNN" or "#NNN" first (most common agent reply shapes).
+    for token in reply.split_whitespace() {
+        let digits = token.trim_start_matches('#');
+        if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+            // Only accept if the preceding token was "PR" or token starts with '#'
+            if token.starts_with('#') {
+                return digits.to_string();
+            }
+        }
+    }
+    // Fallback: first standalone number in the reply
+    for token in reply.split_whitespace() {
+        if !token.is_empty() && token.chars().all(|c| c.is_ascii_digit()) {
+            return token.to_string();
+        }
+    }
+    String::new()
+}
+
+/// Read HEAD commit SHA from git. Returns empty string if git is unavailable.
+pub fn current_head_sha() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
 /// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
 /// so reflection rows from both backends compare apples-to-apples on COG-026 A/B.
 /// Reads `docs/process/CHUMP_DISPATCH_RULES.md` from `repo_root` and injects it inline so
