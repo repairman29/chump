@@ -3086,6 +3086,20 @@ events:
     consumers: [fleet-brief, reaper-heartbeat-watchdog]
     fields_required: [ts, kind, worktree, lease, ttl_s]
 
+  # ── RESILIENT-029: wip-stash before reap ────────────────────────────────
+  - kind: worktree_work_stashed_before_reap
+    effect_metric: self
+    emitter: scripts/ops/stale-worktree-reaper.sh (_wip_stash_work, RESILIENT-029)
+    trigger: >
+      A reapable worktree had uncommitted changes or unpushed commits at reap
+      time. The reaper committed any loose changes (git add -A + commit
+      --no-verify) and pushed them to a wip/<gap_id>-<ts> branch on origin
+      before calling git worktree remove --force. Emitted only when the push
+      succeeds; push failure is logged to /tmp/stale-worktree-reaper.log with
+      a WARN banner but does not block the reap.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, branch, uncommitted_lines, unpushed_commits, original_worktree]
+
   # ── ZERO-WASTE-001: read-only stale-worktree audit ───────────────────────
   - kind: worktree_stale_detected
     effect_metric: disk_used_bytes{component="worktree"} (fleet-brief surfaces stale count; drop to 0 = all cleaned)
