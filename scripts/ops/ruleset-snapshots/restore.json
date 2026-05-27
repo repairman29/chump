@@ -1,0 +1,27 @@
+{
+  "name": "Protect main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": ["~DEFAULT_BRANCH"]
+    }
+  },
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "pull_request"},
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          {"context": "test", "integration_id": 15368},
+          {"context": "audit", "integration_id": 15368},
+          {"context": "ACP protocol smoke test (Zed / JetBrains compatible)", "integration_id": 15368}
+        ]
+      }
+    }
+  ]
+}
