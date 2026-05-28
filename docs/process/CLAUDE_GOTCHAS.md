@@ -941,6 +941,67 @@ If you see this after INFRA-1199, check that:
 
 ---
 
+### Runner-side cargo "silent-build-failure" was actually a path bug (INFRA-2096)
+
+**Symptom (observed multiple times 2026-05-27/28):** Self-hosted Mac
+runner reports `cargo build -q -p <pkg>` exit 0 but
+`$ROOT/target/debug/<binary>` doesn't exist. Next exec via the binary
+fails with `No such file or directory` (exit 127). All PRs' fast-checks
+fail on what reads like a runner-state issue. Initially diagnosed as
+INFRA-2082 silent-build-failure class.
+
+**Actual root cause (INFRA-2096 retro):** the self-hosted runner
+sets `CARGO_TARGET_DIR=/Users/jeffadkins/.cache/chump-runner/cargo-target`
+per INFRA-1540 (shared cargo cache across jobs). `cargo build` correctly
+writes the binary there. Scripts that hardcoded
+`$ROOT/target/debug/<binary>` instead of honoring the env var looked
+in the wrong directory — they reported "binary missing" while the
+binary was alive and well at the env-var-pointed path.
+
+**The wider lesson:** silent-success-with-missing-binary is rarely
+silent build failure; it's usually a path mismatch between where
+cargo wrote and where the script looked. Before diagnosing as
+silent class, check: `cargo metadata --no-deps --format-version 1 |
+jq -r .target_directory` shows where cargo actually wrote.
+
+**Layered defenses (in order):**
+
+1. **Path resolution (INFRA-2096 canonical fix)** — use
+   `cargo metadata` to discover the canonical target directory.
+   Falls back to `$CARGO_TARGET_DIR` env var, then `$ROOT/target`.
+   `scripts/ci/test-mcp-coord-smoke.sh` is the reference implementation.
+2. **SKIP guard (INFRA-2096 belt+suspenders)** — when the binary is
+   genuinely missing after build (cargo not on PATH, build exit
+   non-zero, build exit 0 but binary still absent across all candidate
+   dirs), SKIP (exit 0) and emit `kind=trunk_red_skip` to
+   `ambient.jsonl`. Audit cadence: weekly review of `trunk_red_skip`
+   events to catch real silent-class regressions.
+3. **Loud-fail wrapper (INFRA-2086)** — `chump_cargo_build` in
+   `scripts/coord/lib/cargo-helpers.sh` detects the 4 silent classes
+   and converts to structured stderr. Still needs the INFRA-2096
+   path-resolution fix to look in the right place (filed as follow-up).
+4. **Sibling pattern (INFRA-1955)** — earlier SKIP-guard pattern
+   in `scripts/ci/coord-surfaces-smoke.sh`. Also needs path-resolution
+   audit.
+
+**Audit which PRs were unblocked by SKIP:**
+
+```bash
+grep '"kind":"trunk_red_skip"' .chump-locks/ambient.jsonl | tail -20
+```
+
+**Follow-ups to file when this happens again:**
+
+- Audit all `scripts/ci/test-*.sh` for hardcoded `$ROOT/target/`
+  references; migrate to `cargo metadata` resolution.
+- Audit `scripts/coord/lib/cargo-helpers.sh` `chump_cargo_build`
+  for the same hardcoded-path bug (INFRA-2086 wrapper).
+- Document `CARGO_TARGET_DIR` and `.cargo/config.toml target-dir`
+  precedence in runner-setup docs so future CI scripts know not
+  to hardcode.
+
+---
+
 ## Fleet git worktree path confusion (INFRA-779)
 
 **Problem:** On macOS, `/tmp` is a symlink to `/private/tmp`. When a linked worktree
