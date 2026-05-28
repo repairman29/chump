@@ -1,0 +1,17 @@
+- id: INFRA-2084
+  domain: INFRA
+  title: "RESILIENT P0 STRUCTURAL: chump preflight ≡ ALL CI gates parity — every CI step also runnable locally in <60s; eliminates 80% of today's CI-rot saga by surfacing wedges at commit time instead of post-push"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "Inventory phase: scripts/ci/preflight-vs-ci-parity-audit.sh emits a list of (a) CI gates present in .github/workflows/ci.yml fast-checks + audit + cargo-test shards; (b) gates currently in chump preflight (per crates/chump-preflight/ or scripts/coord/preflight.sh); (c) DELTA — gates in CI but not in preflight. Today the delta is ~30%"
+    - "Coverage phase: for each gate in DELTA, add to chump preflight OR explicitly mark in preflight-vs-ci-parity-allowlist.txt with reason (e.g. e2e-pwa requires browser stack that does not run locally — allowlist with reason \"browser-stack-required\"). Default is parity; allowlist is opt-out"
+    - "Gate phase: scripts/ci/test-preflight-ci-parity.sh asserts every CI gate not in allowlist is reachable from chump preflight. Runs in fast-checks shard. Adding a new CI gate without preflight coverage AND without allowlist entry FAILS this gate"
+    - "Performance: chump preflight wall-clock budget <60s warm + <120s cold. If parity adds >60s, parallelize via tokio::spawn (most gates are independent grep / cargo check)"
+    - "Trunk-RED elimination: after this gap ships, any wedge that surfaces in CI was ALSO visible at chump preflight — operator philosophy of <60s local catch becomes structural truth, not aspirational"
+    - "Sibling: META-070 + META-071 partially shipped this; this gap is the COMPLETION + parity-audit gate. Audit the 6+ already-shipped META-070 sub-gaps for coverage gaps"
+    - "Smoke test: synth a fresh CI gate that always fails; assert chump preflight catches it; assert preflight-ci-parity-audit reports 0 delta"
+  notes: |
+    Filed 2026-05-27 by curator-opus-shepherd after today's CI-rot saga: 4 independent wedges all surfacing post-push because preflight didn't mirror CI. Today's 4-PR cascade (#2672/#2674/#2677/#2678) would have been visible at commit time with parity coverage. ESTIMATED IMPACT: 80% reduction in 'PR fails CI' round-trips.
+
