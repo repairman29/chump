@@ -48,6 +48,7 @@ test-ci-heavy-jobs-cross-platform.sh  # reason: audits CI cross-platform apt-get
 
 # ── Cargo test (Tier B — pre-push hook mirrors it, not preflight) ─────────────
 cargo-test-with-rerun.sh   # reason: `cargo test --workspace`; runtime > preflight 60s target; Tier-B (pre-push hook)
+nextest via INFRA-764      # reason: INFRA-2094 step name fragment — `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script only reads the FIRST line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content (which starts with the if-conditional first line).
 
 # ── Advisory-only gates (|| true — not blocking; low mirror ROI) ─────────────
 test-no-claude-leak.sh     # reason: warn-only in CI (|| true not yet removed); gap: INFRA-1793
