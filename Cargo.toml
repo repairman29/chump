@@ -158,9 +158,9 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "44"
-wasmtime-wasi = "44"
-wasi-common = "44"
+wasmtime = "45"
+wasmtime-wasi = "45"
+wasi-common = "45"
 sha2 = "0.11.0"
 hex = "0.4.3"
 
