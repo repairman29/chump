@@ -65,8 +65,12 @@ EOF
 
 (
     cd "$SANDBOX"
-    CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
-    CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap ship SANDBOX-001 \
+    # INFRA-2080 follow-up: gap-store reads state.db via CHUMP_STATE_DB / repo_root,
+    # not CHUMP_REPO_ROOT. Add CHUMP_HOME + CHUMP_STATE_DB so the sandbox actually isolates.
+    CHUMP_HOME="$SANDBOX" CHUMP_REPO="$SANDBOX" CHUMP_STATE_DB="$SANDBOX/.chump/state.db" \
+        CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
+    CHUMP_HOME="$SANDBOX" CHUMP_REPO="$SANDBOX" CHUMP_STATE_DB="$SANDBOX/.chump/state.db" \
+        CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap ship SANDBOX-001 \
         --closed-pr 999 \
         --update-yaml >/dev/null 2>&1
 )
@@ -105,7 +109,8 @@ fi
 # ── Verify `chump gap ship` is idempotent on a second call (already done) ────
 (
     cd "$SANDBOX"
-    if CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap ship SANDBOX-001 \
+    if CHUMP_HOME="$SANDBOX" CHUMP_REPO="$SANDBOX" CHUMP_STATE_DB="$SANDBOX/.chump/state.db" \
+            CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap ship SANDBOX-001 \
             --closed-pr 999 --update-yaml >/dev/null 2>&1; then
         echo "  (second ship returned 0 — accepted)"
     fi
@@ -115,7 +120,8 @@ pass "second ship call did not crash the harness (auto-close idempotent-on-error
 # ── Verify `chump gap dump --out` regenerates the SQL diff cleanly ───────────
 (
     cd "$SANDBOX"
-    CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap dump \
+    CHUMP_HOME="$SANDBOX" CHUMP_REPO="$SANDBOX" CHUMP_STATE_DB="$SANDBOX/.chump/state.db" \
+        CHUMP_REPO_ROOT="$SANDBOX" "$CHUMP_BIN" gap dump \
         --out "$SANDBOX/.chump/state.sql" >/dev/null 2>&1 || true
 )
 if [ -s "$SANDBOX/.chump/state.sql" ] || [ ! -d "$SANDBOX/.chump" ]; then
@@ -130,10 +136,13 @@ fi
 mkdir -p "$SANDBOX2/docs/gaps"
 (
     cd "$SANDBOX2"
-    # Initialize the database (empty import) so gap reserve has a store to write to
-    CHUMP_REPO_ROOT="$SANDBOX2" "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
+    # Initialize the database (empty import) so gap reserve has a store to write to.
+    # INFRA-2080 follow-up: also set CHUMP_HOME + CHUMP_STATE_DB so gap-store isolates.
+    CHUMP_HOME="$SANDBOX2" CHUMP_REPO="$SANDBOX2" CHUMP_STATE_DB="$SANDBOX2/.chump/state.db" \
+        CHUMP_REPO_ROOT="$SANDBOX2" "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
     # Skip ambient glance in test context (sandbox doesn't have scripts/coord/)
-    CHUMP_REPO_ROOT="$SANDBOX2" FLEET_029_AMBIENT_GLANCE_SKIP=1 "$CHUMP_BIN" gap reserve \
+    CHUMP_HOME="$SANDBOX2" CHUMP_REPO="$SANDBOX2" CHUMP_STATE_DB="$SANDBOX2/.chump/state.db" \
+        CHUMP_REPO_ROOT="$SANDBOX2" FLEET_029_AMBIENT_GLANCE_SKIP=1 "$CHUMP_BIN" gap reserve \
         --domain INFRA --title "reserve-mirror-smoke" \
         --priority P3 --effort xs >/dev/null 2>&1 || true
 )
