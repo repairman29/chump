@@ -54,6 +54,28 @@ env:
   # `if: env.SKIP_GRACE_CHECKS != '1' || github.event_name != 'workflow_dispatch'`
   # are skipped during the grace window and treated as neutral (non-blocking).
   SKIP_GRACE_CHECKS: ${{ github.event.inputs.grace == '1' && '1' || '0' }}
+  # INFRA-2093: sccache + Cloudflare R2 shared compile cache. First runner to
+  # build any crate version writes to R2; every other runner (and PR) reads
+  # the compiled artifact from R2. Target: 50-70% cargo build wall-clock
+  # reduction on cache hits across Wave-1 cohort (INFRA-2094 nextest +
+  # INFRA-2095 merge queue + this).
+  #
+  # Required GH Actions secrets (operator action — see docs/process/SCCACHE_R2_CACHE.md):
+  #   R2_ACCOUNT_ID        — 32-char Cloudflare account ID (from dashboard URL)
+  #   R2_ACCESS_KEY_ID     — R2 API token's access key ID
+  #   R2_SECRET_ACCESS_KEY — R2 API token's secret access key
+  #
+  # NOTE: RUSTC_WRAPPER is NOT set at workflow level — set per-job only
+  # in cargo-test where sccache install also lives. Workflow-level
+  # RUSTC_WRAPPER caused other jobs (audit, etc.) to try sccache without
+  # the binary on PATH. Per-job scoping is the safer pattern.
+  SCCACHE_BUCKET: ${{ vars.SCCACHE_BUCKET || 'chump-sccache' }}
+  SCCACHE_REGION: auto
+  SCCACHE_ENDPOINT: ${{ secrets.R2_ACCOUNT_ID && format('https://{0}.r2.cloudflarestorage.com', secrets.R2_ACCOUNT_ID) || '' }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  SCCACHE_ERROR_LOG: /tmp/sccache.log
+  SCCACHE_LOG: info
 
 jobs:
   # ── Path filter ────────────────────────────────────────────────────────────
@@ -474,6 +496,17 @@ jobs:
         # INFRA-1556/1539/1561). A new external CLI in a workflow step makes
         # this gate fail until the canary surface is taught about it.
         run: bash scripts/ci/test-broad-canary-coverage.sh
+
+      - name: Merge-queue trigger coverage (INFRA-2095, advisory)
+        # Verifies every required status check on main has its source workflow
+        # firing on merge_group events. Missing trigger = merge queue blocks
+        # forever (textbook footgun). Sibling of INFRA-1377 merge-queue-armed
+        # gate; this one ensures the queue WILL succeed once enabled.
+        # Set CHUMP_MERGE_GROUP_STRICT=1 to make blocking.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: bash scripts/ci/test-merge-group-coverage.sh
 
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
@@ -1128,18 +1161,45 @@ jobs:
         with:
           tool: nextest
 
+      # INFRA-2093: detect R2 secret presence via env-routed indirection
+      # (GH Actions disallows secrets.X directly in if: on PR-trigger workflows).
+      - name: Detect R2 secret presence
+        id: r2detect
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "${R2_KEY:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install sccache
+        if: steps.r2detect.outputs.configured == 'true'
+        uses: mozilla-actions/sccache-action@v0.0.5
+
       - name: cargo test (nextest via INFRA-764 flake auto-rerun wrapper)
         # INFRA-2094: cargo nextest run replaces cargo test for 60% faster parallel test runs.
         # The wrapper's flake-autorerun still works on the wrapped command's exit code; nextest's
         # different failure-line format means per-test flake matching falls through to unknown-flake
         # path (which is the safe default — re-runs the full suite once if any tests fail).
         # Bypass: CARGO_NEXTEST_DISABLE=1 reverts to plain `cargo test`. See INFRA-2094 / INFRA-764.
+        # INFRA-2093: per-step RUSTC_WRAPPER pairs sccache binary with its install (above).
+        env:
+          RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
         run: |
           if [ "${CARGO_NEXTEST_DISABLE:-0}" = "1" ]; then
             bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
           else
             bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace
           fi
+
+      # INFRA-2093: emit cache stats for observability — hits/misses/cache size
+      # tells operators if R2 is healthy. Non-blocking (continue-on-error).
+      - name: sccache --show-stats
+        if: always() && steps.r2detect.outputs.configured == 'true'
+        continue-on-error: true
+        run: sccache --show-stats || true
 
   # ── CREDIBLE-006: code coverage (llvm-cov) ───────────────────────────────
   # Non-blocking — continue-on-error:true so a coverage regression is a

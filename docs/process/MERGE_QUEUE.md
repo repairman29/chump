@@ -1,7 +1,9 @@
 # GitHub Merge Queue — Operator Runbook
 
-> **INFRA-1377** (2026-05-16) — Enables GitHub's first-party convoy fix.
-> Maintained by the ZERO-WASTE pillar; CI gate: `scripts/ci/test-merge-queue-armed.sh`.
+> **INFRA-1377** (2026-05-16) — Enables GitHub's first-party convoy fix. Detection + adapter.
+> **INFRA-2095** (2026-05-28) — Wave-1 CI scaling. Merge_group trigger coverage + pre-flip readiness gate.
+> Maintained by the ZERO-WASTE pillar.
+> CI gates: `scripts/ci/test-merge-queue-armed.sh`, `scripts/ci/test-merge-group-coverage.sh`.
 
 ## Problem: convoy CI thrash
 
@@ -23,6 +25,43 @@ Chump's `auto-merge-armer.sh` automatically detects when merge queue is active
 and adjusts its behavior:
 - Skips the REST-direct fast-path (which would bypass queue ordering).
 - Omits `--squash` from the arm call (the queue uses its own configured method).
+
+## Pre-flip readiness check (INFRA-2095)
+
+Before enabling merge queue, verify every required status check on `main`
+fires on `merge_group:` events. A required check without a `merge_group`
+trigger will block the queue forever — the queue waits for a check that
+never runs against its synthetic merge commit.
+
+```bash
+bash scripts/ci/test-merge-group-coverage.sh
+```
+
+Sample passing output (as of 2026-05-28):
+
+```
+[2. Required status checks on main]
+PASS Found 3 required status check(s):
+    - ACP protocol smoke test (Zed / JetBrains compatible)
+    - audit
+    - test
+
+[3. Source-workflow merge_group trigger audit]
+PASS   ACP protocol smoke test (Zed / JetBrains compatible) → editor-integration.yml (job=acp-smoke) merge_group-wired
+PASS   audit → ci.yml (job=audit) merge_group-wired
+PASS   test → ci.yml (job=test) merge_group-wired
+
+=== Summary: 4 pass, 0 fail, 0 warn (missing=0) ===
+```
+
+The test is wired into ci.yml's `pr-hygiene` job as advisory
+(continue-on-error). To block PRs on coverage regressions instead:
+set `CHUMP_MERGE_GROUP_STRICT=1` in the workflow env or flip the
+`continue-on-error` to false in `.github/workflows/ci.yml`.
+
+When this check goes RED on any future PR, the merge queue is unsafe
+to enable (or will start blocking new PRs whose required-check
+workflow was added without the merge_group trigger).
 
 ## Enable merge queue (one-time setup)
 
@@ -130,4 +169,26 @@ automatically on the next invocation.
 - **INFRA-1378**: `concurrency: cancel-in-progress` in CI workflows — kills old
   CI runs instantly on re-push. Belt-and-suspenders with merge queue.
 - **INFRA-1076**: GitHub App installation split (separate mutation/read Apps).
+- **INFRA-2094**: cargo-nextest swap (Wave 1 sibling). 60% test speedup
+  compounds with merge-queue batching — each queue batch finishes ~60% faster.
+- **INFRA-2093**: sccache + R2 backend (Wave 1 sibling). 50-70% compile
+  speedup compounds across the queue's serialized CI runs.
 - **docs/process/CI_LANES.md**: CI lane configuration for path-filtered jobs.
+- **docs/strategy/CI_SCALING_REFERENCE.md**: full Wave 1 + Wave 2 hardware
+  decision tree (compounds shown together).
+
+## Current readiness (2026-05-28)
+
+| Component | Status |
+|---|---|
+| Required-check workflows wired for `merge_group:` | ✅ all 3 of 3 (ci.yml × 2 jobs + editor-integration.yml × 1) |
+| `auto-merge-armer.sh` adapts when queue is active | ✅ INFRA-1377 |
+| Coverage regression gate (`test-merge-group-coverage.sh`) | ✅ INFRA-2095 (advisory, wired into pr-hygiene job) |
+| Live detection (`test-merge-queue-armed.sh`) | ✅ INFRA-1377 |
+| Merge queue **enabled** in branch protection | ❌ Operator action |
+
+**Next operator action** to activate (5 min, reversible in 30 sec):
+
+1. https://github.com/repairman29/chump/settings/branches → Edit `main` → enable "Require merge queue" with settings from "Option A" above.
+2. Watch one batch run end-to-end: `gh api graphql -f query='query{repository(owner:"repairman29",name:"chump"){mergeQueue(branch:"main"){entries(first:5){nodes{id headCommit{oid}}}}}}'`
+3. If anything regresses: Web UI → uncheck "Require merge queue" → done.
