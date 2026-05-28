@@ -1,0 +1,17 @@
+- id: INFRA-2088
+  domain: INFRA
+  title: "RESILIENT P1 STRUCTURAL: chump test-sandbox primitive — single canonical sandbox setup that all CI test scripts use (kills INFRA-2080 class where CHUMP_REPO_ROOT vs CHUMP_HOME drift causes silent test-vs-real-state.db bleed)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New shell helper scripts/coord/lib/test-sandbox.sh — exports two bash functions: (a) chump_test_sandbox_setup <sandbox-dir> [--seed-yaml <fixture-yaml>] — creates sandbox-dir with .chump/state.db (seeded via chump gap import if fixture given) + sets ALL of CHUMP_HOME=$sandbox CHUMP_REPO=$sandbox CHUMP_STATE_DB=$sandbox/.chump/state.db CHUMP_LOCK_DIR=$sandbox/.chump-locks CHUMP_REPO_ROOT=$sandbox correctly; (b) chump_test_sandbox_cleanup <sandbox-dir> — removes everything atomically"
+    - "CRITICAL: single source-of-truth for \"which env vars must be set to fully isolate from real state.db\". When code adds a new env var (next year someone adds CHUMP_SOMETHING_DB), they update chump_test_sandbox_setup once + all tests inherit the fix. NO MORE per-test env-var drift like INFRA-2080"
+    - "Migration: identify all CI scripts that mkdir a sandbox + cd into it + run chump commands (grep -l \"mktemp.*SANDBOX\\|sandbox_setup\" scripts/ci/*.sh; expect ~15 hits per today audit). Migrate each to chump_test_sandbox_setup + chump_test_sandbox_cleanup. Specifically: test-gap-reserve-padding.sh + test-bot-merge-auto-close.sh + test-ac-coverage-gate.sh + others"
+    - "Smoke test scripts/ci/test-chump-test-sandbox.sh: (a) call setup with fixture, verify state.db has expected gaps + env vars all set; (b) run chump gap reserve from sandbox, verify it lands in sandbox state.db NOT real state.db; (c) cleanup removes everything; (d) test that \"real state.db\" is untouched after sandbox use (assert no INFRA-XXXX with sandbox-test-title appears in main .chump/state.db)"
+    - "CI gate: scripts/ci/test-sandbox-discipline.sh asserts no NEW test script (added in the diff) writes mktemp-then-sets-env-vars manually — must use chump_test_sandbox_setup. Lint-style gate in fast-checks"
+    - "Rust equivalent: crates/chump-test-helpers/src/sandbox.rs (or similar) — same primitive for Rust tests via TempDir + env::set_var wrappers. Sibling tests in src/dispatch.rs:1305 (INFRA-2077 class) get the same isolation"
+    - "Trunk-RED elimination: after migration, INFRA-2080 class (sandbox bleeds through to real state.db) impossible by construction — tests that try to set up sandboxes manually fail the lint gate"
+  notes: |
+    Filed 2026-05-27 by curator-opus-shepherd after INFRA-2080 surfaced + had a HIDDEN SIBLING (test-bot-merge-auto-close.sh) that Sonnet missed. The cluster was supposed to be 0 but was 1+. With chump_test_sandbox_setup primitive, the cluster impossible by construction. Today's saga's INFRA-2080 class (broken sandbox) would be 0% likely instead of being a recurring class.
+
