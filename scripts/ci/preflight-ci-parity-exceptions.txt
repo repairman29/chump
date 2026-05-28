@@ -325,6 +325,9 @@ scripts/ci/test-ci-audit-loop.sh             # reason: INFRA-1923 ci-audit-loop 
 scripts/ci/test-inbox-prune.sh               # reason: INFRA-1979 inbox jsonl rotation caps; daemon-side, not preflight
 Grace window active                          # reason: INFRA-1395 required-check-grace-guard is a workflow-dispatch-time inline guard, not a per-commit gate; mirroring in preflight would require simulating workflow_dispatch env which is out of scope
 gap-ID lease uniqueness gate                 # reason: INFRA-1970 inline race-window guard in fast-checks; tests a duplicate-PR race during claim; ideally migrated to a script later (INFRA-2099 sweep)
+Detect R2 secret presence                    # reason: INFRA-2093 secret-presence detector — sets a step output to gate downstream sccache steps. GH Actions doesn't allow `secrets.X` in `if:` (PR-trigger security model), so this env-routed indirection is required; pure CI-side plumbing, not preflight-shaped.
+sccache --show-stats                         # reason: INFRA-2093 observability emit at end of cargo-test (only runs when R2 configured). Pure runtime stats reporting, no source code dependency; not preflight-shaped.
+nextest via INFRA-764                        # reason: INFRA-2094 step-name fragment for `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script reads only first line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content.
 
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
