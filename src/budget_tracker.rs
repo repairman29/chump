@@ -373,6 +373,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn file_touch_breach_at_max() {
         let _g = setup_ambient_log();
         let budget = Budget {
@@ -403,6 +404,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn dep_add_with_zero_ceiling_breaches_immediately() {
         let _g = setup_ambient_log();
         let mut t = BudgetTracker::new("INFRA-TEST", Budget::default()); // max_dep_adds = 0
@@ -413,6 +415,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn llm_cost_breach_emits_event() {
         let g = setup_ambient_log();
         let budget = Budget {
@@ -430,6 +433,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn bypass_env_short_circuits() {
         let _g = setup_ambient_log();
         std::env::set_var("CHUMP_BUDGET_ENFORCE", "0");
@@ -441,6 +445,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn event_emit_is_idempotent_per_threshold() {
         let g = setup_ambient_log();
         let mut t = BudgetTracker::new(
