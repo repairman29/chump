@@ -1,0 +1,18 @@
+- id: INFRA-2085
+  domain: INFRA
+  title: "RESILIENT P0 STRUCTURAL: canary-PR daemon — every 4h opens no-op PR touching docs+rust+shell+yaml, runs full CI, auto-files INFRA-XXXX gap per failing check (surfaces wedges proactively, not after a real PR exposes them)"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "New daemon scripts/coord/canary-pr-daemon.sh — runs every CHUMP_CANARY_INTERVAL_H (default 4h) via launchd plist. Per cycle: (a) git checkout new branch chump/canary-YYYY-MM-DD-HH from origin/main, (b) touch one file per type: docs/syntheses/canary-touch.md + crates/chump-noop/src/touch.rs + scripts/coord/canary-touch.sh + docs/gaps/canary-touch.yaml — each with a no-op change like adding a timestamp comment, (c) commit + push + open PR, (d) wait for all required CI checks to complete or timeout (90 min), (e) collect failing-check list"
+    - "Per failing check: auto-file gap via chump gap reserve with title=\"canary-detected wedge: <check_name> failed on no-op PR <PR-N> at <ts>\", priority P0, effort xs, AC stub citing the failing check log URL. Tag gap in notes with canary_filed:true and canary_pr_number for traceability"
+    - "After CI cycle: close the canary PR (do not merge — it is a probe, not a fix). Cleanup branch via git push --delete origin chump/canary-YYYY-MM-DD-HH. Idempotent: re-running canary daemon does not leave dangling branches"
+    - "Dedup: before filing a gap, query state.db for existing OPEN gaps with notes containing \"canary_filed: true\" AND title-substring matching failing check; if found, append \"re-detection at <ts>\" to notes rather than file duplicate. Counter \"redetect_count\" in notes"
+    - "Safety: refuse to run when (a) operator-window CHUMP_OPERATOR_PRESENT=1, (b) > 3 open canary PRs already (back-pressure), (c) GraphQL rate < 20% remaining, (d) recent admin_merge_burst in last hour"
+    - launchd plist scripts/launchd/com.chump.canary-pr-daemon.plist with StartInterval 14400s (4h); ProgramArguments + Description per INFRA-2046 audit class; installs via scripts/setup/chump-fleet-bootstrap.sh
+    - "Smoke test scripts/ci/test-canary-pr-daemon.sh: --dry-run prints the would-be PR title + would-touch file list + would-file gaps; no actual side effects"
+    - "EVENT_REGISTRY.yaml entry kind=canary_pr_opened (fields: pr_number, branch, file_types_touched), kind=canary_wedge_detected (fields: failing_check, gap_filed_id, canary_pr_number); allowlist entries"
+  notes: |
+    Filed 2026-05-27 by curator-opus-shepherd. Today's CI-rot saga: 4 wedges accumulated on main for weeks/months under admin-merge bypass; only surfaced when natural CI started running again post-RESILIENT-031. Canary daemon would have caught each within 4h of introduction, not weeks later. PROACTIVE wedge surfacing.
+
