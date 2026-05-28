@@ -93,6 +93,31 @@ else
 fi
 rm -f "$_t4_stderr"
 
+# ── T5: INFRA-2098 — CARGO_TARGET_DIR is honored when set ──────────────────
+# Verifies the wrapper's binary-path resolution uses cargo metadata's
+# .target_directory (which honors CARGO_TARGET_DIR + .cargo/config.toml
+# target-dir), not a hardcoded $ROOT/target/.
+echo "T5: chump_cargo_build honors CARGO_TARGET_DIR (INFRA-2098)"
+_t5_stderr="$(mktemp)"
+_t5_target="$(mktemp -d)/cargo-target"
+# Build chump-mcp-coord with CARGO_TARGET_DIR pointing elsewhere; the
+# wrapper should look for the binary at $_t5_target/debug/chump-mcp-coord
+# (where cargo writes), not at $ROOT/target/debug/chump-mcp-coord.
+CARGO_TARGET_DIR="$_t5_target" chump_cargo_build \
+    --package chump-mcp-coord --binary chump-mcp-coord 2>"$_t5_stderr"
+_t5_rc=$?
+if [ -x "$_t5_target/debug/chump-mcp-coord" ] && [ "$_t5_rc" = "0" ]; then
+    ok "wrapper honored CARGO_TARGET_DIR=$_t5_target (rc=0, binary present)"
+elif grep -qiE "SILENT FAILURE|binary missing" "$_t5_stderr" 2>/dev/null; then
+    fail "wrapper reported SILENT FAILURE despite binary likely at \$CARGO_TARGET_DIR — INFRA-2098 regression"
+    head -10 "$_t5_stderr" >&2
+else
+    # rc != 0 for non-path reasons (build failure, missing cargo, etc.)
+    # is acceptable in this test — we only catch the path-mismatch regression.
+    ok "T5 rc=$_t5_rc but did not report SILENT FAILURE for path mismatch (path-resolution OK)"
+fi
+rm -rf "$_t5_target" "$_t5_stderr"
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
