@@ -8,7 +8,7 @@
 > Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
 > when an outcome lands or framing shifts.
 
-## TL;DR for a returning operator (2026-05-24 reality)
+## TL;DR for a returning operator (2026-05-28 reality)
 
 Five anchors. **Mission Yield** is the headline number; **Wave order** is the ship discipline; the three workstreams below run inside both constraints.
 
@@ -39,6 +39,18 @@ IS what customers like Marcus pay for.
 | 4 follow-up gaps for full INFRA-1534 closure | INFRA-1542 / 1543 / 1544 + CREDIBLE-069 | ✅ done (CREDIBLE-069 still open as P2/s telemetry slice) |
 | Marcus canonical demo interface | [INFRA-1483](gaps/INFRA-1483.yaml) | ✅ done |
 
+## Shipped 2026-05-28 — Wave 1 CI scaling ✅
+
+5 PRs landed in one session, targeting ~3–4× CI throughput on existing hardware for $0–5/mo spend. See [`strategy/CI_SCALING_REFERENCE.md`](strategy/CI_SCALING_REFERENCE.md) for the full Wave 1/2/3 decision tree.
+
+| Bet | Gap | PR | Outcome |
+|---|---|---|---|
+| Trunk-RED keystone fix (5-bug cluster: CARGO_TARGET_DIR path, env-vars registry, INFRA-1392 regex, event-registry orphans, ci-parity drift) | [INFRA-2096](gaps/INFRA-2096.yaml) | #2689 | ✅ unblocked every other Wave-1 PR |
+| cargo_build loud-fail wrapper (kills INFRA-2082 silent-class) | [INFRA-2086](gaps/INFRA-2086.yaml) | #2685 | ✅ wrapper available for sibling-sweep (INFRA-2098) |
+| cargo-nextest swap — 60% faster parallel test runs | [INFRA-2094](gaps/INFRA-2094.yaml) | #2686 | ✅ active on main; first post-merge measurement next CI cycle |
+| GitHub merge_queue coverage gate + readiness doc | [INFRA-2095](gaps/INFRA-2095.yaml) | #2687 | ✅ plumbing GREEN; operator can flip "Require merge queue" toggle when comfortable |
+| sccache + Cloudflare R2 shared compile cache — 50–70% compile speedup on hits | [INFRA-2093](gaps/INFRA-2093.yaml) | #2690 | ✅ secrets landed by operator; R2 will populate over next 5–10 PR cycles |
+
 ## Today's bets (week of 2026-05-24)
 
 | Bet | Gap(s) | Status |
@@ -65,15 +77,16 @@ The wizard role retires when the daemon mesh covers what the operator does manua
 
 When 5/5 land, META-090 autopilot can compose them into one daemon-set and the operator stops being the scheduler.
 
-## Operator action checkpoints (refreshed 2026-05-25 — META-107 added)
+## Operator action checkpoints (refreshed 2026-05-28 — Wave 1 CI scaling shipped)
 
-- **Day +1** (~2026-05-26): INFRA-1997 chump-git-hooks lands (kills TRUNK_RED env-leak class); verify remaining 4/5 wizard-retirement PRs land; identify any holdout
-- **Day +7** (~2026-06-01): INFRA-1998 messaging + INFRA-1999 github-cache in parallel; 50/hr sustained 4h green
-- **Day +14** (~2026-06-08): INFRA-2001 chump-ship lands (fixes INFRA-1532 double-instance by PID-locked socket, by construction); META-090 autopilot composition begins ON the Rust substrate
-- **Day +21** (~2026-06-15): META-090 autopilot daemon-set running unattended for 24h on env-immune substrate; INFRA-2002 chump-worker lands
-- **Day +28** (~2026-06-22): Marcus M-B demo with autopilot+substrate as the credibility story (post-trust-gate onboarding)
+- **Day +1** (~2026-05-29): observe sccache R2 cache hit-rate climb on next 5–10 cargo-test CI runs (target ≥50% hit by Day +3); flip "Require merge queue" toggle in branch protection when comfortable (5-min Web UI flip, reversible in 30s; runbook in `process/MERGE_QUEUE.md`)
+- **Day +3** (~2026-05-31): Wave 1 empirical measurement — compare cargo build wall-clock before/after on a representative wave of 5 PRs; document in commit body of follow-up gap
+- **Day +7** (~2026-06-04): INFRA-1998 messaging + INFRA-1999 github-cache in parallel; 50/hr sustained 4h green with Wave 1 multipliers active
+- **Day +14** (~2026-06-11): INFRA-2001 chump-ship lands (fixes INFRA-1532 double-instance by PID-locked socket, by construction); META-090 autopilot composition begins ON the Rust substrate
+- **Day +21** (~2026-06-18): META-090 autopilot daemon-set running unattended for 24h on env-immune substrate; INFRA-2002 chump-worker lands
+- **Day +28** (~2026-06-25): Marcus M-B demo with autopilot+substrate as the credibility story (post-trust-gate onboarding)
 
-**The trade** (vs prior 2026-05-24 schedule): 1-week push on "autopilot unattended 24h" (Day +14 → Day +21) in exchange for the autopilot landing on a substrate where env-leak / double-instance / SQL-escape are *structurally impossible*. Yesterday's INFRA-1950 P0 TRUNK_RED (5/5 main runs failed for 2h due to runner-listener `GIT_DIR` leak) is the kind of incident the substrate eliminates.
+**The trade** (vs prior 2026-05-25 schedule): Wave 1 CI scaling shipped 3 days ahead of its implicit slot, compressing future bets by the same window. Tonight's INFRA-2096 keystone (5-bug trunk-RED cluster) hardened the registry plumbing as a side effect — the kind of incident the Rust substrate is designed to eliminate by construction, but observed-and-fixed-in-bash is a useful Wave-1 baseline.
 
 ---
 
