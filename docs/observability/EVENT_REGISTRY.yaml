@@ -5458,3 +5458,26 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, script, gap, reason]
     docs: docs/process/CLAUDE_GOTCHAS.md (see "Runner-side cargo silent-build-failure")
+  # ── INFRA-2086: chump_cargo_build loud-fail wrapper events ─────────────────
+  - kind: cargo_build_failed
+    effect_metric: resilient
+    emitter: scripts/coord/lib/cargo-helpers.sh chump_cargo_build (INFRA-2086)
+    trigger: >
+      Emitted by chump_cargo_build() when a cargo build invocation fails for
+      any of 4 classes: timeout (rc=124), registry_corruption (tauri/proc-macro
+      pattern in stderr), compile_error (any non-zero rc), or missing_binary
+      (rc=0 but expected binary path doesn't exist after build — the silent-
+      failure class that surfaced as INFRA-2082).
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, package, binary, exit_code, duration_s, suspected_class]
+
+  - kind: cargo_registry_corruption
+    effect_metric: resilient
+    emitter: scripts/coord/lib/cargo-helpers.sh chump_cargo_build (INFRA-2086)
+    trigger: >
+      Emitted when cargo build stderr matches the tauri/proc-macro registry-
+      cache-corruption pattern. Carries the suspect crate name + suggested
+      fix command (cargo clean -p <crate>) so the operator can recover
+      without grep-archaeology.
+    consumers: [ops-audit, fleet-doctor, infra-watcher]
+    fields_required: [ts, kind, crate, suggested_fix]
