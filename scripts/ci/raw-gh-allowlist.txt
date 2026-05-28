@@ -18,6 +18,7 @@ scripts/coord/orphan-pr-closer.sh         # migration gap: INFRA-1249
 scripts/coord/pr-stuck-announcer.sh       # migration gap: INFRA-1249
 scripts/coord/pr-watch.sh                 # migration gap: INFRA-1249
 scripts/coord/rebase-stacked-prs.sh       # migration gap: INFRA-1249
+scripts/coord/required-check-monitor.sh   # INFRA-1395: branch-protection API not covered by cache wrapper (only PR/check-runs are); raw gh appropriate
 
 # Dispatch scripts (scripts/dispatch/)
 scripts/dispatch/control.sh               # migration gap: INFRA-1249

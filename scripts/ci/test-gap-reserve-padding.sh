@@ -56,6 +56,15 @@ FLOCK_EOF
     # a remote pointing back at this sandbox (so origin/main resolves).
     git -C "$sandbox" remote add origin "$sandbox" 2>/dev/null || true
     git -C "$sandbox" fetch -q origin 2>/dev/null || true
+    # INFRA-2080: gap-reserve.sh was migrated from docs/gaps.yaml to state.db
+    # (INFRA-2000 / PR #2637). Seed the sandbox's own state.db with the fixture
+    # YAML so `chump gap reserve` reads the sandbox data, not the real repo's db.
+    # CHUMP_GAP_IMPORT_NO_SIMILARITY=1 bypasses the title-dedup check that would
+    # otherwise open and compare against the real db.
+    CHUMP_HOME="$sandbox" \
+    CHUMP_REPO="$sandbox" \
+    CHUMP_GAP_IMPORT_NO_SIMILARITY=1 \
+    chump gap import --yaml "$sandbox/docs/gaps.yaml" >/dev/null 2>&1 || true
 }
 
 reserve_in_sandbox() {
@@ -65,6 +74,11 @@ reserve_in_sandbox() {
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
+        # INFRA-2080: point CHUMP_HOME and CHUMP_REPO at the sandbox so that
+        # `chump gap reserve` (invoked by gap-reserve.sh) resolves its state.db
+        # to $sandbox/.chump/state.db rather than the real repo's db.
+        CHUMP_HOME="$sandbox" \
+        CHUMP_REPO="$sandbox" \
         CHUMP_GAP_RESERVE_SKIP_PR=1 \
         CHUMP_RESERVE_SCAN_OPEN_PRS=0 \
         CHUMP_SESSION_ID="test-pad-$$" \
