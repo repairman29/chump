@@ -619,3 +619,27 @@ CHUMP_BUILD_GIT_SHA
 CHUMP_BUILD_TIMESTAMP
 CHUMP_BUILD_RUSTC
 CHUMP_BUILD_WORKSPACE_ROOT
+
+# ── INFRA-2096 follow-up — env-vars that surfaced after recent PRs ────────
+# Tier 2/3 — debug, runtime, test bypass, or operator-recovery flags. Not
+# Tier 1 because they are not safe for new operators to set unconsidered.
+# Bypass env for `chump gap reserve` similarity gate (INFRA-1149)
+CHUMP_CLAIM_ALLOW_DUPLICATE_GAP
+CHUMP_CLAIM_ALLOW_DUPLICATE_PR
+# Skip JIT chump binary refresh in claim/preflight (debug / recovery)
+CHUMP_DISABLE_JIT_BINARY_REFRESH
+# Override GH repo identity (used by tests + tools when not under git)
+CHUMP_GH_REPO
+# Bypass fleet waste-pause gate during gap reserve/claim (operator recovery)
+CHUMP_IGNORE_WASTE_PAUSE
+# Per-gate skip flags for `chump preflight` (INFRA-1670)
+CHUMP_PREFLIGHT_SKIP_ACPSMOKE
+CHUMP_PREFLIGHT_SKIP_CARGOTEST
+CHUMP_PREFLIGHT_SKIP_CHUMPFIRST
+CHUMP_PREFLIGHT_SKIP_INTEGRATION
+CHUMP_PREFLIGHT_SKIP_PRHYGIENE
+# Operator override for required-check enforcement (RESILIENT-031 admin-merge guard)
+CHUMP_REQUIRED_CHECKS_OVERRIDE
+# Wall-clock budgets for dispatched subagents (META-069 dispatch defaults)
+CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S
+CHUMP_SUBAGENT_BUDGET_S

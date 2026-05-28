@@ -304,6 +304,28 @@ CI regression guard suite               # reason: multi-line block with env expo
 CI gate promotion no-regression (INFRA-1869)  # reason: INFRA-1869 meta-gate compares CI workflow gates against the promotion ledger; runs only in CI context where ledger has cloud-side history; INFRA-1900 piggyback parity addition
 INFRA-1318 Phase 2 end-to-end smoke      # reason: INFRA-1877 — spins up python webhook receiver on ephemeral port + github-liaison.sh; multi-process bash integration test, not suitable for chump preflight inline; runs <15s in CI; gap: INFRA-1877
 
+# ── INFRA-2096 follow-up: 13 unmirrored gates added since INFRA-1867 base ───
+# Sweep done 2026-05-28 02:30Z while unwedging a 5-bug trunk-RED cluster on
+# PR #2689 keystone. Each entry has filed gap or rationale. Most are CI-only
+# infrastructure smokes (not relevant for local preflight) or specialized
+# integration tests; a proper preflight mirror would add value but is not
+# blocking. Audit owner: each gap below. INFRA-2099 sweep will revisit.
+scripts/ci/test-install-script-manifest.sh   # reason: INFRA-1810 install-script manifest is a setup-time gate, not relevant to per-PR preflight; long-running brew-install dry-run; CI-only by design
+scripts/ci/test-pr-terminal-state.sh         # reason: INFRA-1981 helper needs gh API + PR context; not exposed to local preflight
+scripts/ci/test-subagent-budget-kill.sh      # reason: INFRA-1972 parent-enforced kill is a runtime supervisor test; spawns + kills child processes; not preflight-shaped
+scripts/ci/test-docs-delta-commit-msg.sh     # reason: INFRA-1969 commit-msg gate runs as a git hook, not as preflight; mirror would duplicate hook logic
+scripts/ci/test-rebase-coordination.sh       # reason: INFRA-1974 per-branch lock test simulates concurrent rebase; needs git fixture + race window; CI-only
+scripts/ci/test-open-pr-dup-detection.sh     # reason: INFRA-1982 needs gh API + repo state; not preflight-shaped
+scripts/ci/test-md-links-loop.sh             # reason: INFRA-1925 md-links curator smoke; tests a curator loop, not a per-commit gate
+scripts/ci/test-schema-version-assert.sh     # reason: schema-version helper unit test; runs in <5s but is helper-validation, not a gate proper
+scripts/ci/test-graphql-debounce.sh          # reason: INFRA-1968 debounce when resets_at unknown; tests timer logic, not a per-commit gate
+scripts/ci/test-jit-binary-refresh.sh        # reason: INFRA-1977 H8 critique fix; tests JIT binary refresh during claim; needs full claim fixture
+scripts/ci/test-stale-worktree-reaper-tmp.sh # reason: INFRA-2020 reaper extension; tests /tmp/chump-* worktree cleanup; reaper is daemon-side, not preflight
+scripts/ci/test-ci-audit-loop.sh             # reason: INFRA-1923 ci-audit-loop subcommands + scanner-anchor discipline; CI-loop test, not preflight
+scripts/ci/test-inbox-prune.sh               # reason: INFRA-1979 inbox jsonl rotation caps; daemon-side, not preflight
+Grace window active                          # reason: INFRA-1395 required-check-grace-guard is a workflow-dispatch-time inline guard, not a per-commit gate; mirroring in preflight would require simulating workflow_dispatch env which is out of scope
+gap-ID lease uniqueness gate                 # reason: INFRA-1970 inline race-window guard in fast-checks; tests a duplicate-PR race during claim; ideally migrated to a script later (INFRA-2099 sweep)
+
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
 # (tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path are in INFRA_JOBS skip list)
