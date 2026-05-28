@@ -73,7 +73,23 @@ chump_cargo_build() {
         _profile="release"
         _flags="--release"
     fi
-    local _bin_path="$_repo_root/target/$_profile/$_bin"
+    # INFRA-2098: resolve canonical target dir via `cargo metadata` (mirrors the
+    # INFRA-2096 fix on scripts/ci/test-mcp-coord-smoke.sh). Handles three cases:
+    #   1. ENV-set CARGO_TARGET_DIR (INFRA-1540 runner-shared cache on self-hosted)
+    #   2. .cargo/config.toml [build] target-dir = "..." (INFRA-202 sccache config)
+    #   3. Default cargo behavior ($_repo_root/target)
+    # Pre-INFRA-2098, the hardcoded `$_repo_root/target/$_profile/$_bin` lookup
+    # caused the wrapper to falsely report SILENT FAILURE on the self-hosted
+    # runner (where CARGO_TARGET_DIR points at the shared cache) — the binary
+    # IS built, just at a different path than the wrapper looked.
+    local _target_dir=""
+    if command -v cargo >/dev/null 2>&1; then
+        _target_dir="$(cargo metadata --no-deps --format-version 1 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("target_directory",""))' \
+            2>/dev/null)"
+    fi
+    _target_dir="${_target_dir:-${CARGO_TARGET_DIR:-$_repo_root/target}}"
+    local _bin_path="$_target_dir/$_profile/$_bin"
     local _start_ts
     _start_ts=$(date +%s)
     local _stderr_log
