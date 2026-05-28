@@ -173,6 +173,7 @@ test-mcp-coord-smoke.sh
 test-merge-driver-ci-yml.sh
 test-merge-driver-pre-commit.sh
 test-merge-driver-state-sql.sh
+test-merge-group-coverage.sh  # reason: INFRA-2095 — merge-queue trigger coverage gate (advisory; gh-api driven, queries branch protection); not preflight-shaped because it requires GitHub repo context
 test-meta-011-git-stomp.sh
 test-migration-pipeline-gates.sh
 test-model-registry.sh
