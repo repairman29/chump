@@ -123,6 +123,15 @@ register_step "cargo-test"                          "bash scripts/ci/cargo-test-
 # INFRA-1561 (chump --acp silent) directly.
 register_step "acp-smoke"                           "CHUMP_BIN=./target/debug/chump OPENAI_API_BASE=http://localhost:11434/v1 OPENAI_API_KEY=smoke-test OPENAI_MODEL=smoke-model bash scripts/ci/test-acp-smoke.sh"
 
+# INFRA-2093: sccache --show-stats is invoked at end of ci.yml cargo-test job
+# (when RUSTC_WRAPPER=sccache, i.e. when R2 secrets are present). Canary
+# exercises a no-op invocation that doesn't require R2 to be reachable —
+# `sccache --version` proves the binary is callable, which is what the
+# canary contract requires. Skipped gracefully if sccache isn't installed
+# (test-runner-lane-broad-canary is meant for runner-side validation; local
+# dev machines without sccache see SKIP, not FAIL).
+register_step "sccache-version"                     "command -v sccache >/dev/null 2>&1 && sccache --version >/dev/null || echo 'SKIP: sccache not installed'"
+
 # ── Execute steps ────────────────────────────────────────────────────────
 declare -a FAILED=()
 declare -a STEP_EXITS=()
