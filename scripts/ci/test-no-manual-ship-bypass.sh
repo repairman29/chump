@@ -32,12 +32,20 @@ NONZERO_SHA="aabbccddeeff00112233445566778899aabbccdd"
 ZERO_SHA="0000000000000000000000000000000000000000"
 LOCAL_SHA="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')"
 
+# INFRA-2097: synthetic commit SHA with NO Bot-Merge-Bypass trailer.
+# Real HEAD's commit message may legitimately contain the trailer (from manual
+# recovery PRs); Test 2 verifies the no-trailer-blocked path, so it MUST use a
+# commit with no trailer. git commit-tree creates a detached commit object —
+# no ref updated, no working tree touch.
+LOCAL_SHA_NO_TRAILER="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" commit-tree 'HEAD^{tree}' -m 'fixture: no Bot-Merge-Bypass trailer' 2>/dev/null || echo "$LOCAL_SHA")"
+
 run_hook() {
     local env_line="$1"       # extra env vars (KEY=val space-separated)
     local remote_sha="$2"     # remote sha (zeros = new branch)
     local branch="$3"         # branch name
+    local local_sha_override="${4:-$LOCAL_SHA}"  # INFRA-2097: Test 2 passes LOCAL_SHA_NO_TRAILER
     local stdin_line
-    stdin_line="refs/heads/$branch $LOCAL_SHA refs/heads/$branch $remote_sha"
+    stdin_line="refs/heads/$branch $local_sha_override refs/heads/$branch $remote_sha"
 
     # Build env prefix
     local env_cmd=""
@@ -77,7 +85,8 @@ fi
 # Current HEAD commit does not have that trailer, so exit 1 is expected.
 echo ""
 echo "Test 2: CHUMP_BYPASS_BOT_MERGE=1 (no trailer) → exit 1 (INFRA-1441: trailer required)"
-rc=$(run_hook "CHUMP_BYPASS_BOT_MERGE=1" "$ZERO_SHA" "chump/infra-999-claim")
+# INFRA-2097: pass synthetic no-trailer SHA so test works regardless of real HEAD state
+rc=$(run_hook "CHUMP_BYPASS_BOT_MERGE=1" "$ZERO_SHA" "chump/infra-999-claim" "$LOCAL_SHA_NO_TRAILER")
 if [[ "$rc" -eq 1 ]]; then
     echo "[PASS] blocked as expected (trailer missing)"
     PASS=$((PASS + 1))
