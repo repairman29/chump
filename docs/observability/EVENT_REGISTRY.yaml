@@ -5422,3 +5422,39 @@ events:
     consumers: [ops-audit, fleet-brief, required-check-monitor]
     fields_required: [ts, kind, check_name, added_at, grace_until, grace_window_mins]
     docs: docs/process/REQUIRED_CHECK_ADDITION.md
+
+  # ── INFRA-1939 wedge guard (bot-merge graphql exhaustion) ────────────────
+  # Emitted by scripts/coord/bot-merge.sh at script top when the last 200
+  # ambient events show a `graphql_exhausted` within CHUMP_GRAPHQL_WEDGE_LOOKBACK_S
+  # (default 1800s). Aborts the ship to prevent piling on an already-throttled
+  # GraphQL bucket. Backlog drains once the secondary rate-limit window resets.
+  # INFRA-2096 follow-up: registered here (was emit-without-register prior, kept
+  # the audit's emit-without-register count at 1 and blocked the keystone PR).
+  - kind: bot_merge_graphql_wedge_aborted
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1939)
+    trigger: |
+      bot-merge.sh detected a recent graphql_exhausted event in ambient.jsonl
+      within the wedge-lookback window, and aborted to avoid worsening GraphQL
+      starvation. The aborted ship can be retried after CHUMP_GRAPHQL_WEDGE_LOOKBACK_S
+      seconds (default 1800s = 30min).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, last_graphql_exhausted, lookback_s]
+    docs: scripts/coord/bot-merge.sh (INFRA-1939 wedge-guard comment block at top)
+
+  # ── RESILIENT-trunk-RED guard (INFRA-2096): test SKIP because runner-side ──
+  # capability missing (cargo, binary build, etc.). Audit-only; SKIPs are
+  # transient unblocks while the underlying runner-side issue (INFRA-2086
+  # silent-build-failure class) is being resolved.
+  - kind: trunk_red_skip
+    effect_metric: self
+    emitter: scripts/ci/test-mcp-coord-smoke.sh (INFRA-2096); future similar SKIP guards.
+    trigger: |
+      A CI smoke test that requires a built binary (or other runtime capability)
+      detected the capability missing AND chose to SKIP rather than fail. This
+      lets PRs through despite runner-side trunk-RED, but each SKIP is logged
+      here so the operator can audit which PRs were unblocked by SKIP vs. real
+      PASS — and flip back to blocking once the runner state is healthy.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, script, gap, reason]
+    docs: docs/process/CLAUDE_GOTCHAS.md (see "Runner-side cargo silent-build-failure")
