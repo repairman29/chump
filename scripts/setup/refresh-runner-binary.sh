@@ -90,23 +90,43 @@ if [[ -z "$CARGO" ]]; then
 fi
 log "using cargo: $CARGO"
 
-# Build via cargo install (writes to ~/.cargo/bin/chump)
-log "cargo install --path . --bin chump --force …"
-if ! PATH="$(dirname "$CARGO"):$PATH" "$CARGO" install --path "$REPO_ROOT" --bin chump --force >>"$LOG" 2>&1; then
-    log "FATAL: cargo install failed; see $LOG"
-    emit runner_binary_refresh_failed "\"reason\":\"cargo_install_failed\""
+# INFRA-2101 fix: build from a detached worktree at origin/main HEAD instead of
+# the operator's local working tree. Pre-fix, `cargo install --path "$REPO_ROOT"`
+# built from the local checkout — when the operator had WIP and main was 100+
+# commits behind origin/main (the operationalization-debt case), the "refresh"
+# emitted prev_sha==new_sha forever. Operator's installed binary stuck at the
+# stale local sha while origin/main advanced. Wizard-retirement criterion #1
+# was met on paper, broken in production.
+BUILD_WORKTREE="${CHUMP_BINARY_REFRESH_WORKTREE:-/tmp/chump-binary-refresh-$$}"
+log "creating detached worktree at origin/main ($MAIN_SHA) → $BUILD_WORKTREE"
+if ! git -C "$REPO_ROOT" worktree add -d -f "$BUILD_WORKTREE" "origin/main" >>"$LOG" 2>&1; then
+    log "FATAL: failed to create build worktree at $BUILD_WORKTREE"
+    emit runner_binary_refresh_failed "\"reason\":\"worktree_add_failed\""
+    exit 1
+fi
+# Always tear down the worktree on exit (success OR failure path)
+trap 'git -C "$REPO_ROOT" worktree remove --force "$BUILD_WORKTREE" >>"$LOG" 2>&1 || true' EXIT
+
+# Build --release in the detached worktree. Use cargo build (not cargo install)
+# so we write to BUILD_WORKTREE/target/release/chump and nothing else.
+log "cargo build --release --bin chump (in $BUILD_WORKTREE) …"
+if ! PATH="$(dirname "$CARGO"):$PATH" \
+     "$CARGO" build --release --bin chump --manifest-path "$BUILD_WORKTREE/Cargo.toml" >>"$LOG" 2>&1; then
+    log "FATAL: cargo build failed; see $LOG"
+    emit runner_binary_refresh_failed "\"reason\":\"cargo_build_failed\""
     exit 1
 fi
 
-if [[ ! -x "$CARGO_BIN" ]]; then
-    log "FATAL: $CARGO_BIN missing after cargo install"
+BUILT_BIN="$BUILD_WORKTREE/target/release/chump"
+if [[ ! -x "$BUILT_BIN" ]]; then
+    log "FATAL: $BUILT_BIN missing after cargo build"
     emit runner_binary_refresh_failed "\"reason\":\"binary_missing_post_build\""
     exit 1
 fi
 
-# Hardcopy (not symlink) to /opt/homebrew/bin so cargo cleanups don't break runners
-log "hardcopy $CARGO_BIN → $TARGET_BIN"
-if ! cp -f "$CARGO_BIN" "$TARGET_BIN.new" 2>>"$LOG"; then
+# Hardcopy build artifact → /opt/homebrew/bin (atomic via tempfile + rename).
+log "hardcopy $BUILT_BIN → $TARGET_BIN"
+if ! cp -f "$BUILT_BIN" "$TARGET_BIN.new" 2>>"$LOG"; then
     log "FATAL: cp to $TARGET_BIN.new failed"
     emit runner_binary_refresh_failed "\"reason\":\"cp_failed\""
     exit 1
@@ -115,8 +135,25 @@ chmod +x "$TARGET_BIN.new"
 mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
-log "OK: $TARGET_BIN now at sha $NEW_SHA (origin/main = $MAIN_SHA)"
+
+# INFRA-2101 guard: detect the silent-failure mode (prev_sha == new_sha despite
+# origin/main advance). If we built from origin/main and new_sha STILL matches
+# the prior installed sha, something is wrong — either:
+#   - origin/main didn't actually advance (no commits since last run; OK)
+#   - the build produced the same artifact (genuinely no source change; OK)
+#   - the cp/mv silently no-op'd (BAD; new file should win)
+# Emit a separate kind=runner_binary_advance with delta_commits so the
+# operator can audit whether the daemon is making forward progress.
+DELTA_COMMITS="$(git -C "$REPO_ROOT" rev-list --count "${INSTALLED_SHA}..origin/main" 2>/dev/null || echo unknown)"
+if [[ "$NEW_SHA" == "$INSTALLED_SHA" && "$DELTA_COMMITS" != "0" && "$DELTA_COMMITS" != "unknown" ]]; then
+    log "WARN: prev_sha == new_sha ($NEW_SHA) despite $DELTA_COMMITS commits on origin/main since last install — possible silent staleness"
+    emit runner_binary_refresh_failed "\"reason\":\"silent_staleness\",\"prev_sha\":\"$INSTALLED_SHA\",\"main_sha\":\"$MAIN_SHA\",\"delta_commits\":$DELTA_COMMITS"
+    exit 1
+fi
+
+log "OK: $TARGET_BIN now at sha $NEW_SHA (origin/main = $MAIN_SHA, delta_commits=$DELTA_COMMITS)"
 emit runner_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\""
+emit runner_binary_advance "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\",\"delta_commits\":\"$DELTA_COMMITS\""
 
 # Prune old logs (keep last 24)
 ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -I{} rm -f {} 2>/dev/null || true
