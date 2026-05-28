@@ -475,6 +475,17 @@ jobs:
         # this gate fail until the canary surface is taught about it.
         run: bash scripts/ci/test-broad-canary-coverage.sh
 
+      - name: Merge-queue trigger coverage (INFRA-2095, advisory)
+        # Verifies every required status check on main has its source workflow
+        # firing on merge_group events. Missing trigger = merge queue blocks
+        # forever (textbook footgun). Sibling of INFRA-1377 merge-queue-armed
+        # gate; this one ensures the queue WILL succeed once enabled.
+        # Set CHUMP_MERGE_GROUP_STRICT=1 to make blocking.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: bash scripts/ci/test-merge-group-coverage.sh
+
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
       # script always exit 0 after emitting `kind=ac_coverage_miss` events
