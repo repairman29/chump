@@ -3457,6 +3457,11 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let run_fleet_sh = repo_root.join("scripts/dispatch/run-fleet.sh");
         let fleet_status_sh = repo_root.join("scripts/dispatch/fleet-status.sh");
+        // EFFECTIVE-025: CLI proxy for META-090 autopilot. Bash orchestrator
+        // is the source of truth; this arm forwards subcommand + flags so the
+        // operator gets identical UX from `chump fleet autopilot ...` and
+        // direct `bash scripts/coord/fleet-autopilot.sh ...`.
+        let fleet_autopilot_sh = repo_root.join("scripts/coord/fleet-autopilot.sh");
         let flag = |name: &str| -> Option<String> {
             args.iter()
                 .position(|a| a == name)
@@ -5919,9 +5924,35 @@ async fn main() -> Result<()> {
                 }
                 std::process::exit(0);
             }
+            // EFFECTIVE-025: chump fleet autopilot — META-090 CLI parity arm.
+            // Proxies to scripts/coord/fleet-autopilot.sh (bash orchestrator) with
+            // pass-through of subcommand + remaining args. Subcommands:
+            // start/stop/status/restart/heartbeat. Default = "status" when no
+            // subcommand given (mirrors fleet-autopilot.sh's own default).
+            "autopilot" => {
+                if !fleet_autopilot_sh.exists() {
+                    eprintln!(
+                        "chump fleet autopilot: {} not found — META-090 may not be installed",
+                        fleet_autopilot_sh.display()
+                    );
+                    std::process::exit(1);
+                }
+                let autopilot_sub = args.get(3).map(String::as_str).unwrap_or("status");
+                let passthrough: Vec<String> = args.iter().skip(4).cloned().collect();
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&fleet_autopilot_sh).arg(autopilot_sub);
+                for a in &passthrough {
+                    cmd.arg(a);
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet autopilot: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|plan|apply|spec-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -5929,6 +5960,8 @@ async fn main() -> Result<()> {
                 eprintln!("  down        [--session NAME]  (alias for stop)");
                 eprintln!("  status      [--json]");
                 eprintln!("  scale       N [--session NAME]");
+                eprintln!("  autopilot   <start|stop|status|restart|heartbeat> [--json]");
+                eprintln!("              -- META-090 single-command operator playbook (10-layer daemon set)");
                 eprintln!("Aliases / advanced:");
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]  (alias for up, no idempotency check)");
                 eprintln!("  stop        [--session NAME]  (alias for down)");
