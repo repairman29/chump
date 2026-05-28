@@ -321,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn empty_pulse_has_all_sections() {
         let dir = tempdir().unwrap();
         let locks = dir.path().join(".chump-locks");
@@ -335,6 +336,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn fleet_hold_active_when_file_present() {
         let dir = tempdir().unwrap();
         let locks = dir.path().join(".chump-locks");
@@ -394,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn render_text_includes_all_sections() {
         let dir = tempdir().unwrap();
         let locks = dir.path().join(".chump-locks");
