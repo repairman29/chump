@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2001,SC2016,SC2018,SC2019,SC2086,SC1091  # pre-existing file-wide style/info — moved up from line 25 by INFRA-1939 so scope covers source-on-line-24 too
 
 # INFRA-2001: feature-flag shim — when CHUMP_SHIP_RUST=1 AND --mode manual (or unset/default),
 # route to the new Rust chump-ship binary instead of this 3044-LOC bash body. Legacy bash
@@ -22,7 +23,7 @@ fi
 # INFRA-1600: brew util-linux flock not on default PATH on self-hosted CI runners.
 # shellcheck source=../lib/discover-flock.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
-# shellcheck disable=SC2001,SC2016,SC2018,SC2019,SC2086,SC1091  # pre-existing style/info issues; not introduced by INFRA-1241
+# (INFRA-1939: file-wide shellcheck disable moved to line 2 so source-on-line-24 is covered.)
 #
 # bot-merge.sh — Automated ship pipeline for agent branches.
 #
@@ -405,6 +406,58 @@ done
 GAP_IDS=()
 if [[ ${#_filtered[@]} -gt 0 ]]; then
     GAP_IDS=("${_filtered[@]}")
+fi
+
+# ── INFRA-1939: graphql_exhausted wedge guard ───────────────────────────────
+# Detects when ambient.jsonl shows a recent kind=graphql_exhausted event
+# (within CHUMP_BOT_MERGE_GRAPHQL_WEDGE_LOOKBACK_S, default 1800s = 30min)
+# and exits 144 with a clear WEDGE message instead of silently polling.
+#
+# Pre-INFRA-1939: subagents would burn 144K+ tokens stuck in 'waiting for
+# monitor notification' loops while GraphQL was exhausted (observed
+# 2026-05-24T16Z: ci-audit + md-links agents wasted 144K + 157K tokens
+# producing zero artifacts). Now bot-merge fails fast + subagent falls
+# through to the manual INFRA-028 recovery path documented in
+# docs/process/SUBAGENT_DISPATCH.md.
+#
+# Bypass: CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1
+if [ "${CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE:-0}" != "1" ]; then
+    _wedge_lookback_s="${CHUMP_BOT_MERGE_GRAPHQL_WEDGE_LOOKBACK_S:-1800}"
+    _wedge_ambient="${CHUMP_AMBIENT_LOG:-${CHUMP_REPO_ROOT:-$(pwd)}/.chump-locks/ambient.jsonl}"
+    if [ -r "$_wedge_ambient" ]; then
+        _wedge_cutoff_ts=$(date -u -v-"${_wedge_lookback_s}"S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+            || date -u -d "@$(( $(date +%s) - _wedge_lookback_s ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+            || echo "")
+        if [ -n "$_wedge_cutoff_ts" ]; then
+            # Look at last 200 events for graphql_exhausted within window.
+            _wedge_hit=$(tail -200 "$_wedge_ambient" 2>/dev/null | python3 -c "
+import json, sys
+cutoff = '''$_wedge_cutoff_ts'''
+for line in sys.stdin:
+    try:
+        o = json.loads(line.strip())
+    except Exception:
+        continue
+    if isinstance(o, dict) and o.get('kind') == 'graphql_exhausted' and o.get('ts', '') > cutoff:
+        print(o.get('ts', '?'))
+        sys.exit(0)
+" 2>/dev/null)
+            if [ -n "$_wedge_hit" ]; then
+                echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
+                echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
+                echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
+                echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
+                # Emit ambient event for audit trail
+                _ambient_dir=$(dirname "$_wedge_ambient")
+                if [ -w "$_ambient_dir" ]; then
+                    printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_aborted","last_graphql_exhausted":"%s","lookback_s":%d}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_lookback_s" \
+                        >> "$_wedge_ambient" 2>/dev/null || true
+                fi
+                exit 144
+            fi
+        fi
+    fi
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
