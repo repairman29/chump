@@ -1122,8 +1122,24 @@ jobs:
         with:
           shared-key: ci-cargo-test
 
-      - name: cargo test (with INFRA-764 flake auto-rerun)
-        run: bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
+      # INFRA-2094: install cargo-nextest (parallel test runner, ~60% faster)
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: cargo test (nextest via INFRA-764 flake auto-rerun wrapper)
+        # INFRA-2094: cargo nextest run replaces cargo test for 60% faster parallel test runs.
+        # The wrapper's flake-autorerun still works on the wrapped command's exit code; nextest's
+        # different failure-line format means per-test flake matching falls through to unknown-flake
+        # path (which is the safe default — re-runs the full suite once if any tests fail).
+        # Bypass: CARGO_NEXTEST_DISABLE=1 reverts to plain `cargo test`. See INFRA-2094 / INFRA-764.
+        run: |
+          if [ "${CARGO_NEXTEST_DISABLE:-0}" = "1" ]; then
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
+          else
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace
+          fi
 
   # ── CREDIBLE-006: code coverage (llvm-cov) ───────────────────────────────
   # Non-blocking — continue-on-error:true so a coverage regression is a
