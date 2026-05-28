@@ -295,9 +295,14 @@ check_output "--help shows full command list"         "gap|fleet|dispatch|health
 echo ""
 echo "--- 9. High-priority error paths ---"
 
-# gap ship missing --closed-pr (may first fail on rebase check if branch is stale)
-check_error "gap ship NOTEXIST → error (not found, rebase, or usage)" \
-    "not found|Usage|error|behind|Rebase" \
+# gap ship missing --closed-pr (may first fail on rebase check if branch is stale,
+# or hit INFRA-1392 PROOF-OF-MERGE refusal when commit is absent from local main).
+# INFRA-2096 follow-up: expanded regex to include PROOF-OF-MERGE wording that
+# landed when INFRA-1392 added the proof-of-merge gate — caused this test to
+# fail with the new error message "refusing to flip NOTEXIST-000 to status=done
+# — no commit on local main carr..." not matching the old regex.
+check_error "gap ship NOTEXIST → error (not found, rebase, usage, or INFRA-1392 PROOF-OF-MERGE refusal)" \
+    "not found|Usage|error|behind|Rebase|PROOF-OF-MERGE|refusing|no commit on local main" \
     gap ship NOTEXIST-000 --closed-pr 9999
 
 # claim invalid GAP-ID format (error message says "not found" for unknown IDs)
