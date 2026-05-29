@@ -5594,3 +5594,35 @@ events:
       signal that the policy is wrong, not that the bypass is wrong).
     consumers: [ops-audit, fleet-doctor]
     fields_required: [ts, kind, pr, session]
+
+  - kind: gap_auto_flipped
+    effect_metric: effective
+    emitter: .github/workflows/auto-flip-on-merge.yml (INFRA-2121)
+    trigger: >
+      Emitted when the auto-flip-on-merge workflow successfully runs
+      chump gap ship <ID> --closed-pr <PR#> on a merged PR whose title
+      contains a gap-ID. Closes the gap-registry-drift loop CI-REVIEW
+      Lever 5 identified.
+    consumers: [ops-audit, fleet-brief, pr-watch]
+    fields_required: [ts, kind, gap, pr, outcome]
+
+  - kind: gap_auto_flip_failed
+    effect_metric: resilient
+    emitter: .github/workflows/auto-flip-on-merge.yml (INFRA-2121)
+    trigger: >
+      Emitted when chump gap ship exits non-zero from the auto-flip
+      workflow (gap unknown, YAML malformed, etc.). Non-fatal — the PR
+      already merged; this only signals that the registry-side update
+      did not land for operator follow-up.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, gap, pr, reason]
+
+  - kind: gap_backfill_flipped
+    effect_metric: effective
+    emitter: scripts/ops/backfill-shipped-gaps.sh (INFRA-2121)
+    trigger: >
+      Emitted by the one-time backfill script for each gap whose status
+      it successfully flipped from open → done. Lets the operator audit
+      which gaps the backfill touched without re-running it in dry-run.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, gap, pr, source]
