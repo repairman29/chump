@@ -1,0 +1,27 @@
+[package]
+name = "chump-fleet-server"
+version = "0.1.0"
+edition = "2021"
+description = "Fleet visualization HTTP + WebSocket query server (INFRA-2175 / INFRA-2164 sub-slice b). Reads from .chump/fleet_events.db and serves events, derived agent_segments, and a WS live-tail endpoint."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-fleet-server"
+license = "MIT"
+keywords = ["chump", "fleet", "visualization", "axum", "websocket"]
+categories = ["web-programming::http-server"]
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8", features = ["macros", "json", "ws"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[bin]]
+name = "chump-fleet-server"
+path = "src/main.rs"
+
+[lints]
+workspace = true
