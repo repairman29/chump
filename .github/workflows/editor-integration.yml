@@ -33,6 +33,12 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # INFRA-2126: per-run unique key prevents concurrent PRs from fighting over the
+          # same cache slot (Cargo.lock-keyed) and failing at cache-save phase. Only main
+          # writes the shared cache; PR runs restore-only, preventing cache pollution.
+          key-suffix: ${{ github.run_id }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install system dependencies
         if: runner.os == 'Linux'
