@@ -1,0 +1,16 @@
+- id: INFRA-2200
+  domain: INFRA
+  title: "RESILIENT P0 trunk-RED: ci.yml workflow has failed to QUEUE since 2026-05-27 14:30Z (2 days); 'workflow file issue', 0 jobs run; PRs landing only because ruleset required_status_checks rule has been empty/relaxed; need actionlint pass + root-cause specific line; supersedes INFRA-2191 (was a symptom)"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: gh run list --branch main --workflow .github/workflows/ci.yml --limit 5 — last 50+ runs all conclusion=failure, 0 jobs queued. gh run view <id> → \"This run likely failed because of a workflow file issue.\" Started 2026-05-27 14:30Z (~265 commits ago)"
+    - "Diagnose: run actionlint on .github/workflows/ci.yml (or use `gh workflow view ci.yml --yaml | actionlint -`). Identify the specific line/job/expression causing the parser to reject the workflow. Candidate culprits: INFRA-2117 (#2719 containerization 2026-05-28), INFRA-2118 (#2720 cache isolation 2026-05-29), or older silent breakage"
+    - Fix the specific syntax/reference error. Smoke test by pushing to a branch and observing the workflow run; assert at least one job conclusion!=skipped
+    - "Verify post-fix: gh run list --branch main --workflow ci.yml --limit 3 shows non-failure runs; gh pr checks on a doc-only PR shows audit-required/cargo-test-required/fast-checks-required/ACP smoke all present"
+    - Restore ruleset 15133729 required_status_checks to include audit-required + cargo-test-required + fast-checks-required + ACP protocol smoke test (NOT the bare audit/test names — those break on doc-only PRs per INFRA-2191 root cause). Currently RULESET HAS NO REQUIRED CHECKS as recovery state
+    - Closes INFRA-2191 (was a symptom of this deeper issue — ruleset cant point at gateway checks if the workflow that emits them is broken)
+  notes: |
+    Filed 2026-05-29T22:35Z by curator-opus-shepherd. Discovered while debugging queue stall. CI has been failing silently for 2 days; PRs landed regardless because: (1) ruleset's required_status_checks rule was empty/relaxed during cascade-break windows, (2) auto-merge with admin permissions can bypass missing checks, (3) tooling reported PRs as 'merging' even when underlying CI never ran. EFFECT: zero CI signal on every PR landed since 2026-05-27 14:30Z — full 2 days of merges without CI verification. URGENCY: every merge for 2 days has been unverified; this is the deepest CI-rot we've had.
+
