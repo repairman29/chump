@@ -65,13 +65,19 @@ cmd_audit_daemons() {
         local basename
         basename="$(basename "$plist" .plist)"
 
-        # Check for StartInterval or StartCalendarInterval
+        # Check for StartInterval or StartCalendarInterval or KeepAlive=true.
+        # KeepAlive=true long-runners (actions-runners, nats-server, smee-tunnel,
+        # fleet-daemon, curator-jit-scheduler, github-webhook-receiver) are
+        # legitimately always-on and don't need a StartInterval.
         if grep -q "StartInterval\|StartCalendarInterval" "$plist" 2>/dev/null; then
             printf '[infra-watcher] OK daemon=%s has scheduling key\n' "$basename"
+        elif grep -q "<key>KeepAlive</key>" "$plist" 2>/dev/null && \
+             grep -A1 "<key>KeepAlive</key>" "$plist" 2>/dev/null | grep -q "<true/>"; then
+            printf '[infra-watcher] OK daemon=%s is KeepAlive=true long-runner (no StartInterval needed)\n' "$basename"
         else
             findings=$((findings + 1))
             _emit_finding "daemon_plist_missing_interval" "critical" \
-                "plist ${plist} has neither StartInterval nor StartCalendarInterval — daemon will never fire automatically"
+                "plist ${plist} has neither StartInterval nor StartCalendarInterval nor KeepAlive=true — daemon will never fire automatically"
         fi
     done < <(find "${CHUMP_INFRA_WATCHER_PLIST_DIR:-$plist_dir}" \
                   -maxdepth 1 -name "com.chump.*.plist" -print0 2>/dev/null)
