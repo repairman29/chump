@@ -638,6 +638,46 @@ events:
     trigger: oauth token file re-read with new value
     consumers: [audit-log]
 
+  - kind: oauth_token_refreshed
+    effect_metric: self
+    emitter: scripts/coord/oauth-token-refresh.sh (INFRA-2124)
+    trigger: keychain extraction + atomic write to ~/.chump/oauth-token.json succeeded
+    consumers: [audit-log, infra-watcher]
+    fields_required: [ts, kind, source, prev_age_seconds, new_age_seconds, token_len]
+    docs: |
+      Standalone refresh daemon independent of run-fleet.sh; fills the
+      CLAUDE.md INFRA-622 5-min refresh promise. Drives subscription-mode
+      headless `claude -p` subprocesses (Oracle, JIT scheduler) so they
+      inherit a fresh CLAUDE_CODE_OAUTH_TOKEN. Plist:
+      launchd/com.chump.oauth-refresh.plist; installer:
+      scripts/setup/install-oauth-refresh-launchd.sh.
+
+  - kind: oauth_token_refresh_failed
+    effect_metric: self
+    emitter: scripts/coord/oauth-token-refresh.sh (INFRA-2124)
+    trigger: keychain miss / JSON parse fail / empty token / write fail
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, reason, prev_age_seconds]
+    docs: |
+      reason ∈ {keychain_miss, json_parse_or_missing_field, empty_access_token}.
+      Distinguishes "operator hasn't installed plist" (no event ever) from
+      "daemon ran and failed" (event fires every 5min). Loud signal that
+      auth chain is broken; pairs with oauth_token_stale_despite_daemon.
+
+  - kind: oauth_token_stale_despite_daemon
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh (INFRA-2124)
+    trigger: ~/.chump/oauth-token.json age > CHUMP_OAUTH_STALE_S (default 900s) AND com.chump.oauth-refresh plist loaded
+    consumers: [audit-log, operator-recall, infra-watcher]
+    fields_required: [ts, kind, category, severity, detail]
+    docs: |
+      Catch-net for wedged refresher: launchd thinks the plist is alive but
+      the file hasn't been touched in 15+ min. Common causes: keychain
+      permission revoked after macOS update, python3 removed from refresher
+      PATH, refresh-once subprocess hangs without timeout. Critical-severity
+      infra_watcher_finding shape (re-emitted through the same category/severity/detail
+      contract for dashboard compatibility).
+
   - kind: credential_scrub_run
     effect_metric: self
     emitter: scripts/coord/scrub-credential-logs.sh (INFRA-871)

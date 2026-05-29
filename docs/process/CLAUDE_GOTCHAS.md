@@ -1027,6 +1027,50 @@ The autopilot daemons assume **6 live `claude --loop` curator sessions** exist (
 
 ---
 
+## OAuth token chain silently stale — Oracle/JIT/dispatch flatline cascade (INFRA-2124, 2026-05-29)
+
+**Symptom (observed 2026-05-29):** Headless `claude -p` subprocesses return `"Not logged in"`. Operator's interactive `claude` CLI works fine; macOS Keychain entry `Claude Code-credentials` is populated correctly. But Oracle silently fails (INFRA-2122), JIT scheduler reads stale priorities, and `kind=dispatch_flatline` fires after a quiet 2h+ window.
+
+**Why it stays invisible:** the operator never sees the failure. Each piece (login, keychain, subprocess) looks fine in isolation. The break is in the glue file `~/.chump/oauth-token.json` — subprocesses inherit `CLAUDE_CODE_OAUTH_TOKEN` from this file (per CLAUDE.md INFRA-622 auth-modes spec), and the file went 3+ weeks stale because **no daemon was actually refreshing it**.
+
+**Root cause:** the CLAUDE.md INFRA-622 spec promises "OAUTH tokens are refreshed to `~/.chump/oauth-token.json` every 5 min". The implementation lived inside `scripts/dispatch/run-fleet.sh` (lines 574–614), but that refresher is a backgrounded `while true` only spawned when subscription-mode `run-fleet.sh` is alive. When the fleet stops (or never starts), the refresher dies. The file goes stale within hours; subprocess `claude -p` calls silently fail with the stale token.
+
+**Diagnostic checklist:**
+```bash
+# 1. Is the token file fresh? (Should be <15 min)
+ls -la ~/.chump/oauth-token.json
+python3 -c "import json; d=json.load(open('$HOME/.chump/oauth-token.json')); print('written_at:', d['written_at'])"
+
+# 2. Is the keychain entry healthy? (Should print a `sk-ant-oat01-...` access token)
+security find-generic-password -a "$(whoami)" -s "Claude Code-credentials" -w | \
+  python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["claudeAiOauth"]["accessToken"][:30] + "...")'
+
+# 3. Is the refresh daemon loaded?
+launchctl list | grep com.chump.oauth-refresh
+```
+
+**Fix shipped in INFRA-2124:**
+
+1. **Standalone refresh daemon** `scripts/coord/oauth-token-refresh.sh` — extracts `claudeAiOauth.accessToken` from macOS Keychain (`Claude Code-credentials`), parses JSON, atomically writes `~/.chump/oauth-token.json` with `{"token":"...","written_at":"<iso8601>","source":"keychain"}`. Independent of `run-fleet.sh`; works whether the fleet is up or not.
+
+2. **LaunchAgent** `launchd/com.chump.oauth-refresh.plist` with `StartInterval=300` (5 min per spec) and `RunAtLoad=true`. Installed via `scripts/setup/install-oauth-refresh-launchd.sh` (operator action — one-time).
+
+3. **Three new ambient kinds** (registered in `scripts/ci/event-registry-reserved.txt` + `docs/observability/EVENT_REGISTRY.yaml`): `oauth_token_refreshed`, `oauth_token_refresh_failed`, `oauth_token_stale_despite_daemon`.
+
+4. **Wedge detector**: `scripts/coord/infra-watcher-loop.sh check-oauth-freshness` (rolled into `tick`) — if the file is older than `CHUMP_OAUTH_STALE_S` (default 900s) AND the plist is loaded, emits `kind=oauth_token_stale_despite_daemon` (critical). Loud signal that the daemon ran but is wedged (keychain perm revoked / python3 PATH gone / refresh-once subprocess hung).
+
+**Operator first-time install:**
+```bash
+bash scripts/setup/install-oauth-refresh-launchd.sh
+launchctl list | grep com.chump.oauth-refresh
+launchctl start com.chump.oauth-refresh        # force one cycle
+tail -1 /tmp/chump-oauth-refresh.out.log       # should print "OK: wrote ..."
+```
+
+**Related class** — same shape as INFRA-2101 binary refresh (daemon-promised-but-never-shipped) and INFRA-2122 Oracle staleness (downstream consumer of this token chain). The general lesson: any CLAUDE.md spec that says "X is refreshed every Y minutes" should be checked for a corresponding plist + install helper + ambient emit — the "background `while true` inside another script" pattern is a stall trap.
+
+---
+
 ## Fleet git worktree path confusion (INFRA-779)
 
 **Problem:** On macOS, `/tmp` is a symlink to `/private/tmp`. When a linked worktree

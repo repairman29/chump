@@ -41,6 +41,11 @@ REQUIRED_DAEMONS=(
     "com.chump.claude-reaper|scripts/setup/install-claude-reaper.sh"
     "com.chump.stale-process-watchdog|scripts/setup/install-stale-process-watchdog.sh"
     "com.chump.main-health-watchdog|scripts/setup/install-main-health-watchdog.sh"
+    # INFRA-2124: OAuth refresh daemon — fills CLAUDE.md INFRA-622 5-min refresh
+    # promise. Without this, ~/.chump/oauth-token.json goes stale within hours
+    # and headless `claude -p` subprocesses (Oracle, JIT scheduler) silently
+    # return "Not logged in". Symptom cascade: INFRA-2122 Oracle silent fail.
+    "com.chump.oauth-refresh|scripts/setup/install-oauth-refresh-launchd.sh"
 )
 UID_VAL="$(id -u)"
 
