@@ -35,6 +35,7 @@ members = [
     "crates/chump-policy",
     "crates/chump-integrator",
     "crates/chump-curator-supervisor",
+    "crates/chump-disk-inventory",
 ]
 resolver = "2"
 

@@ -6593,3 +6593,40 @@ events:
     fields_required: [ts, kind, reason, prior_pid, prior_gap_id]
     expected_volume: "low; one per skipped tick while incident is open"
     status: stable
+  # ── INFRA-2193: chump-disk-inventory-daemon (META-128/C2) ─────────────────
+
+  - kind: disk_inventory_updated
+    effect_metric: resilient
+    emitter: crates/chump-disk-inventory/src/main.rs (INFRA-2193)
+    trigger: >
+      Emitted on every successful poll cycle (default every 30s,
+      CHUMP_DISK_POLL_S) by chump-disk-inventory-daemon. Carries the
+      full snapshot: node_id, free_gb, used_gb, total_gb, headroom_gb,
+      threshold_gb. Primary data feed for fleet-level disk pressure
+      dashboards and proactive reaper triggers (INFRA-2181). Published
+      to NATS chump.disk.inventory.<node-id> when CHUMP_NATS_URL is set;
+      file-only fallback to ~/.chump/disk-inventory.json otherwise.
+    consumers: [fleet-brief, ops-audit, infra-watcher, chump-fleet-recorder]
+    fields_required: [ts, kind, node_id, free_gb, used_gb, total_gb, headroom_gb, threshold_gb]
+    related_kinds: [disk_critical]
+    expected_volume: "1 per node per poll interval (default 2/min)"
+    status: stable
+    # payload: {ts: string, kind: "disk_inventory_updated", node_id: string, free_gb: number, used_gb: number, total_gb: number, headroom_gb: number, threshold_gb: number}
+
+  - kind: disk_critical
+    effect_metric: resilient
+    emitter: crates/chump-disk-inventory/src/main.rs (INFRA-2193)
+    trigger: >
+      Emitted by chump-disk-inventory-daemon when free_gb < threshold_gb
+      (default 5 GB, CHUMP_DISK_THRESHOLD_GB). Fired on every poll where
+      the condition holds — rate-limiting is left to consumers. Carries
+      node_id, free_gb, threshold_gb, headroom_gb (negative when critical),
+      and top_consumers (sorted by size_gb desc) to identify the pressure
+      source. Cross-reference INFRA-2188 (cargo-runner cache leak) and
+      INFRA-2181 (reaper post-ship trigger).
+    consumers: [fleet-brief, ops-audit, infra-watcher, operator-recall]
+    fields_required: [ts, kind, node_id, free_gb, threshold_gb, headroom_gb, top_consumers]
+    related_kinds: [disk_inventory_updated, cargo_target_reaped]
+    expected_volume: "0 at steady state; N per poll when disk pressure active"
+    status: stable
+    # payload: {ts: string, kind: "disk_critical", node_id: string, free_gb: number, threshold_gb: number, headroom_gb: number, top_consumers: Array<{path: string, size_gb: number, mtime: string}>}

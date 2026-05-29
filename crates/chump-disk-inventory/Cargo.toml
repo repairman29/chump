@@ -1,0 +1,27 @@
+[package]
+name = "chump-disk-inventory"
+version = "0.1.0"
+edition = "2021"
+description = "Disk inventory daemon — polls df+du, writes ~/.chump/disk-inventory.json, publishes to NATS (INFRA-2193, META-128/C2)"
+repository = "https://github.com/repairman29/chump"
+license = "MIT"
+keywords = ["agent", "disk", "inventory", "nats", "daemon"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "chump-disk-inventory-daemon"
+path = "src/main.rs"
+
+[dependencies]
+anyhow      = "1.0"
+async-nats  = "0.48"
+chrono      = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+hostname    = "0.4"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1.0"
+tokio       = { version = "1", features = ["full"] }
+tracing     = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
