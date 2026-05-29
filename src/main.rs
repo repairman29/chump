@@ -5961,9 +5961,34 @@ async fn main() -> Result<()> {
                 });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // INFRA-2176: open Fleet Scrubber UI in the default browser.
+            // Delegates to scripts/dev/chump-fleet-view.sh which handles
+            // macOS (`open`) and Linux (`xdg-open`) and the --fixtures flag
+            // for dev/demo mode without the server.
+            "view" => {
+                let view_sh = repo_root.join("scripts/dev/chump-fleet-view.sh");
+                if !view_sh.exists() {
+                    eprintln!(
+                        "chump fleet view: {} not found — INFRA-2176 may not be installed",
+                        view_sh.display()
+                    );
+                    std::process::exit(1);
+                }
+                let passthrough: Vec<String> = args.iter().skip(3).cloned().collect();
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&view_sh);
+                for a in &passthrough {
+                    cmd.arg(a);
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet view: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -5995,6 +6020,12 @@ async fn main() -> Result<()> {
                 eprintln!("                 workflow end-to-end; exit 0 iff every step passes.");
                 eprintln!(
                     "  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)"
+                );
+                eprintln!(
+                    "  view        [--fixtures]  -- open Fleet Scrubber UI in browser (INFRA-2176)"
+                );
+                eprintln!(
+                    "              -- with --fixtures: serves web/fleet-scrubber/ locally, no server needed"
                 );
                 std::process::exit(2);
             }
