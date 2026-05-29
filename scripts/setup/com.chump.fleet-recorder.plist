@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.fleet-recorder.plist — INFRA-2174
+  Launchd user agent that keeps chump-fleet-recorder running at all times.
+
+  chump-fleet-recorder is the capture layer for the fleet visualization umbrella
+  (INFRA-2164). It subscribes to chump.events.> and chump.work.> via JetStream
+  durable consumers and tails .chump-locks/ambient.jsonl, writing all events into
+  .chump/fleet_events.db (SQLite). The query API (INFRA-2175) and scrubber
+  frontend (INFRA-2176) read from this database.
+
+  Install:   scripts/setup/install-fleet-recorder-launchd.sh
+  Uninstall: scripts/setup/install-fleet-recorder-launchd.sh --uninstall
+  Status:    launchctl print gui/$(id -u)/com.chump.fleet-recorder
+  Logs:      ~/Library/Logs/Chump/fleet-recorder.out.log
+
+  Tunable env vars (set in ~/.chump/secrets.env or launchctl setenv):
+    CHUMP_NATS_URL                   (default nats://127.0.0.1:4222)
+    CHUMP_FLEET_EVENTS_DB            (default .chump/fleet_events.db)
+    CHUMP_AMBIENT_LOG                (default .chump-locks/ambient.jsonl)
+    CHUMP_FLEET_RECORDER_TTL_DAYS    (default 7)
+    RUST_LOG                         (default info)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.fleet-recorder</string>
+
+    <!-- Run immediately on load and keep running if it exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Back off 10s on crash rather than tight-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>RECORDER_BIN_PLACEHOLDER</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT_PLACEHOLDER</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:CARGO_BIN_PLACEHOLDER:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>HOME_PLACEHOLDER</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>LOG_DIR_PLACEHOLDER/fleet-recorder.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>LOG_DIR_PLACEHOLDER/fleet-recorder.err.log</string>
+</dict>
+</plist>
