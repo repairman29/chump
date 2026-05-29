@@ -120,6 +120,13 @@ installers:
     depends_on: [chump-binary, github-liaison-launchd]
     adds: ~/Library/LaunchAgents/com.chump.ci-health-gate.plist + 5-min run
 
+  - id: fleet-recorder-launchd
+    why: INFRA-2174 — capture daemon that writes NATS+ambient events to .chump/fleet_events.db. Required by the fleet visualization umbrella (INFRA-2164); without it the query API (INFRA-2175) and scrubber (INFRA-2176) have no data.
+    priority: P1
+    install: bash scripts/setup/install-fleet-recorder-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.fleet-recorder
+    adds: ~/Library/LaunchAgents/com.chump.fleet-recorder.plist + KeepAlive daemon writing to .chump/fleet_events.db
+
   - id: fleet-server-launchd
     why: INFRA-2175 — HTTP + WebSocket query server for fleet visualization (INFRA-2164 sub-slice b). Reads from .chump/fleet_events.db and serves /api/events, /api/segments, /api/sessions/active, /api/trace/pr/:n, and WS /api/live on 127.0.0.1:7070. Without this daemon the scrubber frontend (INFRA-2176) has no data source.
     priority: P2

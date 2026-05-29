@@ -653,3 +653,10 @@ CHUMP_SUBAGENT_BUDGET_S
 # dispatch path routes through ExternalRepoContract (INFRA-2111) instead of
 # the standard internal worker path. Source: crates/chump-coord/src/worker/capability.rs
 CHUMP_EXTERNAL_REPO_PICK_OK
+
+# ── INFRA-2174 — chump-fleet-recorder (INFRA-2164 capture layer) ──────────
+# Tunable env vars for the fleet capture daemon. All are Tier 2 (operator-
+# settable in ~/.chump/secrets.env or launchctl setenv; not required in .env).
+CHUMP_FLEET_EVENTS_DB          # path override for .chump/fleet_events.db
+CHUMP_FLEET_RECORDER_TTL_DAYS  # event retention days (default 7)
+CHUMP_FLEET_RECORDER_BIN       # path override for chump-fleet-recorder binary (install script)
