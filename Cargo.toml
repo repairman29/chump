@@ -31,6 +31,7 @@ members = [
     "crates/chump-handoff",
     "crates/chump-fleet-server",
     "crates/chump-fleet-recorder",
+    "crates/chump-reviewer-routing",
 ]
 resolver = "2"
 

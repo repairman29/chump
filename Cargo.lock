@@ -1734,6 +1734,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-reviewer-routing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "chump-ship"
 version = "0.2.0"
 dependencies = [
