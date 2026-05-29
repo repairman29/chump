@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.oauth-refresh — INFRA-2124 LaunchAgent.
+
+  Refreshes ~/.chump/oauth-token.json every 5 minutes by re-extracting the
+  current Claude Code OAuth access token from macOS Keychain (service:
+  "Claude Code-credentials"). This is the daemon CLAUDE.md INFRA-622
+  promised but that never actually existed — workers and headless `claude -p`
+  subprocesses (Oracle, JIT scheduler, dispatch_flatline) read this file to
+  inherit a fresh CLAUDE_CODE_OAUTH_TOKEN. Without this daemon the file goes
+  stale within hours and downstream subprocesses silently return
+  "Not logged in" (symptom cascade: INFRA-2122 Oracle silent fail).
+
+  StartInterval=300 (5 min, per CLAUDE.md INFRA-622 spec).
+  RunAtLoad=true so the file is fresh the moment the operator logs in.
+
+  INSTALLATION (operator-action — first-time setup only):
+    bash scripts/setup/install-oauth-refresh-launchd.sh
+    launchctl list | grep com.chump.oauth-refresh
+    # Verify file is fresh:
+    cat ~/.chump/oauth-token.json | python3 -c 'import json,sys; print(json.load(sys.stdin))'
+
+  Manual run (smoke):
+    launchctl start com.chump.oauth-refresh
+    tail -1 /tmp/chump-oauth-refresh.out.log
+
+  UNINSTALL:
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.chump.oauth-refresh.plist
+    rm ~/Library/LaunchAgents/com.chump.oauth-refresh.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.oauth-refresh</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/coord/oauth-token-refresh.sh refresh-once</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 5 minutes per CLAUDE.md INFRA-622 spec. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-oauth-refresh.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-oauth-refresh.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Throttle so launchd can't fire two refreshes overlapping. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

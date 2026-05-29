@@ -419,6 +419,55 @@ print(json.dumps(s))
     return 0
 }
 
+# ── check-oauth-freshness ────────────────────────────────────────────────────
+# INFRA-2124: verify ~/.chump/oauth-token.json is fresh. If the file is older
+# than CHUMP_OAUTH_STALE_S (default 900s = 15 min) AND launchd shows the
+# com.chump.oauth-refresh plist loaded, emit
+# kind=oauth_token_stale_despite_daemon — refresher daemon is wedged. If the
+# file is stale and the plist is NOT loaded, that's just "operator hasn't
+# installed it yet" — emit a warning but a different (less alarming) kind.
+# scanner-anchor: "kind":"oauth_token_stale_despite_daemon"
+cmd_check_oauth_freshness() {
+    _header "check-oauth-freshness"
+    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
+    local stale_s="${CHUMP_OAUTH_STALE_S:-900}"
+    local plist_label="com.chump.oauth-refresh"
+
+    if [[ ! -f "$token_file" ]]; then
+        printf '[infra-watcher] check-oauth-freshness: token file not present: %s\n' "$token_file"
+        return 0
+    fi
+
+    local now mtime age
+    now="$(date +%s)"
+    if stat -f %m "$token_file" >/dev/null 2>&1; then
+        mtime="$(stat -f %m "$token_file")"
+    else
+        mtime="$(stat -c %Y "$token_file")"
+    fi
+    age=$((now - mtime))
+    printf '[infra-watcher] check-oauth-freshness: %s age=%ds (threshold=%ds)\n' \
+        "$token_file" "$age" "$stale_s"
+
+    if (( age <= stale_s )); then
+        return 0
+    fi
+
+    # Is the refresh daemon supposedly loaded?
+    local daemon_loaded=0
+    if launchctl list 2>/dev/null | grep -q "$plist_label"; then
+        daemon_loaded=1
+    fi
+
+    if (( daemon_loaded == 1 )); then
+        _emit_finding "oauth_token_stale_despite_daemon" "critical" \
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/loaded — refresher is wedged, manual investigation required"
+    else
+        _emit_finding "oauth_token_stale_no_daemon" "warning" \
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/not-loaded — install via scripts/setup/install-oauth-refresh-launchd.sh"
+    fi
+}
+
 # ── tick ──────────────────────────────────────────────────────────────────────
 # One full audit cycle: all subchecks in order.
 cmd_tick() {
@@ -430,6 +479,7 @@ cmd_tick() {
     cmd_check_disk
     cmd_check_procs
     cmd_check_repo_vars
+    cmd_check_oauth_freshness
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
 }
 
@@ -438,14 +488,15 @@ CMD="${1:-tick}"
 shift || true
 
 case "$CMD" in
-    tick)              cmd_tick "$@" ;;
-    audit-daemons)     cmd_audit_daemons "$@" ;;
-    check-runners)     cmd_check_runners "$@" ;;
-    check-disk)        cmd_check_disk "$@" ;;
-    check-procs)       cmd_check_procs "$@" ;;
-    check-repo-vars)   cmd_check_repo_vars "$@" ;;
+    tick)                    cmd_tick "$@" ;;
+    audit-daemons)           cmd_audit_daemons "$@" ;;
+    check-runners)           cmd_check_runners "$@" ;;
+    check-disk)              cmd_check_disk "$@" ;;
+    check-procs)             cmd_check_procs "$@" ;;
+    check-repo-vars)         cmd_check_repo_vars "$@" ;;
+    check-oauth-freshness)   cmd_check_oauth_freshness "$@" ;;
     *)
-        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars}\n' \
+        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars|check-oauth-freshness}\n' \
             "$(basename "$0")" >&2
         exit 1
         ;;
