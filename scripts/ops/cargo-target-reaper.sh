@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# cargo-target-reaper.sh — INFRA-1250 + INFRA-1170 + INFRA-2125
+# cargo-target-reaper.sh — INFRA-1250 + INFRA-1170 + INFRA-2125 + INFRA-2181
 # Reclaim stale cargo build artifacts (60GB+ unbounded growth).
 #
 # Usage:
 #   bash scripts/ops/cargo-target-reaper.sh [--execute] [--fingerprint-age-d N] [--fleet-age-d N]
+#   bash scripts/ops/cargo-target-reaper.sh --event-listen [--execute]
 #
 # By default: dry-run only. Pass --execute to actually delete.
+#
+# --event-listen (INFRA-2181): tail-poll ambient.jsonl for kind=integration_cycle_shipped
+#   at 30s cadence; fire a full reap (--execute if passed) within 60s of each event.
+#   Keeps running indefinitely as a daemon. Exits 0 on SIGTERM/SIGINT.
+#   Falls through to a one-shot run if the ambient log is unavailable (fail-open).
 #
 # Reaps:
 #   (a) target/debug/.fingerprint/*        mtime > FINGERPRINT_AGE_D days
@@ -28,6 +34,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 EXECUTE=0
+EVENT_LISTEN=0
 FINGERPRINT_AGE_D="${CHUMP_CARGO_REAPER_FINGERPRINT_AGE_D:-14}"
 FLEET_AGE_D="${CHUMP_CARGO_REAPER_FLEET_AGE_D:-7}"
 MIN_FREE_GB=1
@@ -35,16 +42,87 @@ MIN_FREE_GB=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --execute)            EXECUTE=1 ;;
+        --event-listen)       EVENT_LISTEN=1 ;;
         --fingerprint-age-d)  FINGERPRINT_AGE_D="$2"; shift ;;
         --fleet-age-d)        FLEET_AGE_D="$2"; shift ;;
         --help|-h)
-            sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# //'
+            sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# //'
             exit 0
             ;;
         *) echo "Unknown flag: $1" >&2; exit 1 ;;
     esac
     shift
 done
+
+# ── Event-listener mode (INFRA-2181) ────────────────────────────────────────
+# When --event-listen is passed, tail-poll ambient.jsonl for
+# kind=integration_cycle_shipped and trigger a full reap within 60s.
+# Runs indefinitely as a daemon; exits cleanly on SIGTERM/SIGINT.
+if [[ $EVENT_LISTEN -eq 1 ]]; then
+    _ambient_log="${CHUMP_CARGO_REAPER_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+    _poll_interval="${CHUMP_CARGO_REAPER_EVENT_POLL_S:-30}"
+    _reaper_self="${BASH_SOURCE[0]}"
+    _execute_flag=""
+    [[ $EXECUTE -eq 1 ]] && _execute_flag="--execute"
+
+    echo "[cargo-target-reaper] event-listen mode: polling ${_ambient_log} every ${_poll_interval}s for kind=integration_cycle_shipped"
+    printf '{"ts":"%s","kind":"cargo_target_reaper_event_listener_started","poll_interval_s":%d,"execute":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_poll_interval" \
+        "$([[ $EXECUTE -eq 1 ]] && echo 'true' || echo 'false')" \
+        >> "${_ambient_log}" 2>/dev/null || true
+
+    _last_seen_ts=""
+    _stop=0
+    trap '_stop=1' SIGTERM SIGINT
+
+    # Fall back to one-shot if ambient log is not readable
+    if [[ ! -f "$_ambient_log" ]]; then
+        echo "[cargo-target-reaper] WARN: ambient log not found at ${_ambient_log} — running one-shot reap (fail-open)" >&2
+        exec bash "$_reaper_self" ${_execute_flag}
+    fi
+
+    while [[ $_stop -eq 0 ]]; do
+        # Find any integration_cycle_shipped events newer than _last_seen_ts
+        _new_event=""
+        while IFS= read -r _line; do
+            _kind=$(printf '%s' "$_line" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('kind',''))" 2>/dev/null || true)
+            if [[ "$_kind" == "integration_cycle_shipped" ]]; then
+                _event_ts=$(printf '%s' "$_line" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ts',''))" 2>/dev/null || true)
+                if [[ -z "$_last_seen_ts" || "$_event_ts" > "$_last_seen_ts" ]]; then
+                    _new_event="$_line"
+                    _last_seen_ts="$_event_ts"
+                fi
+            fi
+        done < <(tail -200 "$_ambient_log" 2>/dev/null || true)
+
+        if [[ -n "$_new_event" ]]; then
+            _gap_id=$(printf '%s' "$_new_event" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('gap_id','unknown'))" 2>/dev/null || echo unknown)
+            echo "[cargo-target-reaper] integration_cycle_shipped detected (gap=${_gap_id}, ts=${_last_seen_ts}) — triggering reap…"
+            printf '{"ts":"%s","kind":"cargo_target_reaper_event_triggered","trigger_event_ts":"%s","gap_id":"%s","execute":%s}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_last_seen_ts" "$_gap_id" \
+                "$([[ $EXECUTE -eq 1 ]] && echo 'true' || echo 'false')" \
+                >> "${_ambient_log}" 2>/dev/null || true
+            # Run reap inline (not subprocess) so EXECUTE flag propagates cleanly
+            # Re-exec as a child to get a fresh process with safety guards reset
+            bash "$_reaper_self" ${_execute_flag} &
+            _reap_pid=$!
+            wait "$_reap_pid" || true
+        fi
+
+        # Sleep in small chunks so SIGTERM is caught promptly
+        _slept=0
+        while [[ $_stop -eq 0 && $_slept -lt $_poll_interval ]]; do
+            sleep 5
+            _slept=$(( _slept + 5 ))
+        done
+    done
+
+    echo "[cargo-target-reaper] event-listen mode: received stop signal, exiting cleanly."
+    printf '{"ts":"%s","kind":"cargo_target_reaper_event_listener_stopped"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        >> "${_ambient_log}" 2>/dev/null || true
+    exit 0
+fi
 
 # ── Safety guards ────────────────────────────────────────────────────────────
 
