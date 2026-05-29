@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# scripts/ci/test-fleet-autopilot.sh — META-090
+# scripts/ci/test-fleet-autopilot.sh — META-090 / META-122
 #
 # Smoke test for the chump fleet autopilot orchestrator. Validates the source
 # contract + status command + bypass env, without actually installing any
 # launchd plists (skip cleanly on Linux CI).
+#
+# META-122 additions: validates curator session config, bypass env, and new
+# ambient event kinds are present in the script.
 #
 # capability-guard-exempt: source-contract assertions only; no chump binary invocation
 
@@ -55,6 +58,48 @@ for needle in \
     fi
 done
 
+# META-122: curator session contract checks
+echo
+echo "--- META-122 curator session contract ---"
+for needle in \
+    "CURATOR_ROLES=" \
+    "CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH" \
+    "CURATOR_TMUX_SESSION" \
+    "curator_session_launched" \
+    "curator_session_respawned" \
+    "curator_sessions_stopped" \
+    "curator_check_and_respawn" \
+    "cmd_launch_curators" \
+    "cmd_stop_curators" \
+    "curator_status_lines" \
+    "chump-curators" \
+    "handoff-loop.sh" \
+    "ci-audit-loop.sh" \
+    "decompose-loop.sh" \
+    "md-links-loop.sh"; do
+    if grep -qF "$needle" "$TARGET"; then
+        ok "META-122 contract: $needle"
+    else
+        fail "META-122 contract missing: $needle"
+    fi
+done
+
+# META-122: 6 curator roles declared
+curator_role_count=$(grep -c '"shepherd\|"target\|"handoff\|"ci-audit\|"decompose\|"md-links' "$TARGET" 2>/dev/null || echo 0)
+if [[ "$curator_role_count" -ge 6 ]]; then
+    ok "META-122: 6 curator roles present in CURATOR_ROLES"
+else
+    fail "META-122: expected 6 curator roles, found $curator_role_count"
+fi
+
+# META-122: bypass env honored (CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH)
+if CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH=1 CHUMP_AUTOPILOT_DISABLED=1 \
+    "$TARGET" start 2>&1 | grep -qE "BYPASS|CHUMP_AUTOPILOT_DISABLED"; then
+    ok "META-122: CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH bypass present"
+else
+    fail "META-122: CHUMP_AUTOPILOT_SKIP_CURATOR_LAUNCH not wired to start"
+fi
+
 # (2) AC#1 requirement: >=10 daemons configured (post-RESILIENT-021: dev.* + com.* mix)
 layer_count=$(grep -cE '^\s+"(com|dev)\.chump\.' "$TARGET")
 if [[ "$layer_count" -ge 10 ]]; then
@@ -94,11 +139,19 @@ else
     fail "status command exits non-zero unexpectedly"
 fi
 
-# (6) status --json produces parseable JSON
-if "$TARGET" status json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'layers' in d and 'loaded' in d" 2>/dev/null; then
-    ok "status json output parseable + has layers/loaded keys"
+# (6) status --json produces parseable JSON with both daemon + curator keys
+if "$TARGET" status json 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+assert 'layers' in d and 'loaded' in d, 'missing daemon keys'
+assert 'curator_tmux_session' in d, 'missing curator_tmux_session (META-122)'
+assert 'curator_session_alive' in d, 'missing curator_session_alive (META-122)'
+assert 'curators' in d and isinstance(d['curators'], list), 'missing curators list (META-122)'
+assert len(d['curators']) == 6, f'expected 6 curators, got {len(d[\"curators\"])}'
+" 2>/dev/null; then
+    ok "status json output parseable + has layers/loaded/curator keys (META-122)"
 else
-    fail "status json output not parseable"
+    fail "status json output not parseable or missing META-122 curator fields"
 fi
 
 # (7) bypass env honored
