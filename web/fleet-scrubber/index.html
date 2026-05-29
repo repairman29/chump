@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleet Scrubber</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* ── Activity color map (CSS variables) ──────────────────────────────── */
+    :root {
+      --color-claim:   #f59e0b;
+      --color-edit:    #3b82f6;
+      --color-push:    #10b981;
+      --color-merge:   #8b5cf6;
+      --color-blocked: #ef4444;
+      --color-idle:    #9ca3af;
+
+      --bg:        #0f172a;
+      --bg2:       #1e293b;
+      --bg3:       #334155;
+      --text:      #f1f5f9;
+      --text-muted:#94a3b8;
+      --border:    #334155;
+      --header-h:  50px;
+      --scrub-h:   80px;
+      --lane-h:    30px;
+      --panel-w:   400px;
+      --label-w:   160px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    #header {
+      height: var(--header-h);
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 12px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    #header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .hbar-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+    }
+
+    #live-toggle {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #live-toggle.live-on {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    #replay-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #replay-btn:hover { color: var(--text); }
+
+    #speed-select {
+      padding: 3px 6px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 11px;
+    }
+
+    .zoom-btn {
+      padding: 2px 8px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1;
+    }
+    .zoom-btn:hover { color: var(--text); }
+
+    #window-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex: 1;
+      text-align: center;
+    }
+
+    /* ── Legend ─────────────────────────────────────────────────────────── */
+    #legend {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Main area ───────────────────────────────────────────────────────── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Lanes area ──────────────────────────────────────────────────────── */
+    #lanes-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    #lanes {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    #lanes-inner {
+      position: relative;
+      width: 100%;
+    }
+
+    .lane-row {
+      display: flex;
+      align-items: center;
+      height: var(--lane-h);
+      border-bottom: 1px solid var(--border);
+    }
+    .lane-row:hover { background: rgba(255,255,255,0.02); }
+
+    .lane-label {
+      width: var(--label-w);
+      flex-shrink: 0;
+      padding: 0 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-right: 1px solid var(--border);
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+    .lane-label.live-session {
+      color: #10b981;
+      font-weight: 700;
+    }
+
+    .lane-canvas-wrap {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .lane-canvas-wrap svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Timeline scrub bar ──────────────────────────────────────────────── */
+    #timeline-wrap {
+      height: var(--scrub-h);
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #timeline {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Side panel ──────────────────────────────────────────────────────── */
+    #side-panel {
+      width: var(--panel-w);
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: width 0.2s;
+    }
+    #side-panel.collapsed {
+      width: 0;
+      border-left: none;
+    }
+
+    #panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    #panel-close {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+    #panel-close:hover { color: var(--text); }
+
+    #panel-meta {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .meta-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .meta-key { color: var(--text-muted); min-width: 72px; }
+    .meta-val { color: var(--text); word-break: break-all; }
+
+    #panel-events {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+
+    .evt-item {
+      padding: 5px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+    }
+    .evt-item:hover { background: rgba(255,255,255,0.04); }
+    .evt-ts { font-size: 9px; color: var(--text-muted); }
+    .evt-kind { font-size: 10px; color: var(--text); font-weight: 600; margin: 2px 0; }
+    .evt-payload {
+      font-size: 9px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 360px;
+    }
+    .evt-payload.expanded {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Replay cursor ───────────────────────────────────────────────────── */
+    .replay-cursor {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255,255,255,0.7);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ── Segment flash ───────────────────────────────────────────────────── */
+    .seg-flash {
+      filter: brightness(1.8);
+      transition: filter 0.2s;
+    }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <h1>Fleet Scrubber</h1>
+  <div class="hbar-sep"></div>
+  <button id="live-toggle">LIVE</button>
+  <button id="replay-btn">&#9654; REPLAY</button>
+  <select id="speed-select">
+    <option value="1">1&times;</option>
+    <option value="10" selected>10&times;</option>
+    <option value="60">60&times;</option>
+  </select>
+  <div class="hbar-sep"></div>
+  <button class="zoom-btn" id="zoom-in">+</button>
+  <button class="zoom-btn" id="zoom-out">&#8722;</button>
+  <div id="window-label">Loading…</div>
+  <div id="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-claim)"></div>claim</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-edit)"></div>edit</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-push)"></div>push</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-merge)"></div>merge</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-blocked)"></div>blocked</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-idle)"></div>idle</div>
+  </div>
+</div>
+
+<!-- Main area -->
+<div id="main">
+  <!-- Lanes + timeline scrub -->
+  <div id="lanes-wrap">
+    <div id="lanes">
+      <div id="lanes-inner"></div>
+    </div>
+    <div id="timeline-wrap">
+      <svg id="timeline"></svg>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div id="side-panel" class="collapsed">
+    <div id="panel-header">
+      <span id="panel-title">Segment detail</span>
+      <span id="panel-close">&#215;</span>
+    </div>
+    <div id="panel-meta"></div>
+    <div id="panel-events"></div>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const PARAMS = new URLSearchParams(location.search);
+const USE_FIXTURES = PARAMS.has('fixtures');
+const BASE_URL = USE_FIXTURES ? '.' : 'http://localhost:7070';
+
+const API = {
+  segments: (from, to) =>
+    USE_FIXTURES
+      ? `${BASE_URL}/fixtures/segments.json`
+      : `${BASE_URL}/api/segments?from=${from}&to=${to}`,
+  events: (from, to) =>
+    USE_FIXTURES
+      ? `${BASE_URL}/fixtures/events.json`
+      : `${BASE_URL}/api/events?from=${from}&to=${to}`,
+  sessions: () =>
+    USE_FIXTURES
+      ? null
+      : `${BASE_URL}/api/sessions/active`,
+  wsLive: () => `${BASE_URL.replace(/^http/, 'ws')}/api/live`,
+};
+
+const ACTIVITY_COLOR = {
+  claim:   'var(--color-claim)',
+  edit:    'var(--color-edit)',
+  push:    'var(--color-push)',
+  merge:   'var(--color-merge)',
+  blocked: 'var(--color-blocked)',
+  idle:    'var(--color-idle)',
+};
+
+const LANE_H = 30;
+const LABEL_W = 160;
+const MIN_WINDOW_S = 5 * 60;       // 5 min
+const MAX_WINDOW_S = 24 * 60 * 60; // 24 h
+
+// ── State ────────────────────────────────────────────────────────────────────
+let allSegments = [];
+let allEvents   = [];
+let activeSessions = new Set();
+
+// Visible window [viewStart, viewEnd] as Date objects
+let viewStart, viewEnd;
+let totalStart, totalEnd;
+
+let isLive = false;
+let wsConn = null;
+let replayCancelFn = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const lanesInner   = document.getElementById('lanes-inner');
+const timelineSvg  = d3.select('#timeline');
+const windowLabel  = document.getElementById('window-label');
+const liveToggle   = document.getElementById('live-toggle');
+const replayBtn    = document.getElementById('replay-btn');
+const speedSelect  = document.getElementById('speed-select');
+const sidePanel    = document.getElementById('side-panel');
+const panelMeta    = document.getElementById('panel-meta');
+const panelEvents  = document.getElementById('panel-events');
+const panelClose   = document.getElementById('panel-close');
+
+// ── Time helpers ─────────────────────────────────────────────────────────────
+const fmtTs = (d) => {
+  const p = (n, w=2) => String(n).padStart(w, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+const fmtDate = (d) => {
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${fmtTs(d)}`;
+};
+const fmtDur = (s) => {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+};
+
+// ── Fetch & init ─────────────────────────────────────────────────────────────
+async function fetchData() {
+  const now = new Date();
+  const twoHoursAgo = new Date(now - 2 * 3600 * 1000);
+  const fromIso = twoHoursAgo.toISOString();
+  const toIso = now.toISOString();
+
+  const [segRes, evtRes] = await Promise.all([
+    fetch(API.segments(fromIso, toIso)).then(r => r.json()),
+    fetch(API.events(fromIso, toIso)).then(r => r.json()),
+  ]);
+
+  allSegments = segRes;
+  allEvents   = evtRes;
+
+  if (!USE_FIXTURES && API.sessions()) {
+    try {
+      const sess = await fetch(API.sessions()).then(r => r.json());
+      activeSessions = new Set(sess.map(s => s.session_id || s));
+    } catch (_) {}
+  }
+
+  // Determine total time range from data
+  const allStarts = allSegments.map(s => new Date(s.start).getTime());
+  const allEnds   = allSegments.map(s => new Date(s.end).getTime());
+  totalStart = new Date(Math.min(...allStarts));
+  totalEnd   = new Date(Math.max(...allEnds));
+
+  // Initial view: all data
+  viewStart = new Date(totalStart);
+  viewEnd   = new Date(totalEnd);
+
+  render();
+}
+
+// ── Render lanes ─────────────────────────────────────────────────────────────
+function render() {
+  updateWindowLabel();
+  renderLanes();
+  renderTimeline();
+}
+
+function segmentsInView() {
+  const vsMs = viewStart.getTime();
+  const veMs = viewEnd.getTime();
+  return allSegments.filter(s => {
+    const sMs = new Date(s.start).getTime();
+    const eMs = new Date(s.end).getTime();
+    return eMs >= vsMs && sMs <= veMs;
+  });
+}
+
+function sessionsInView() {
+  const segs = segmentsInView();
+  const order = [];
+  const seen = new Set();
+  for (const s of segs) {
+    if (!seen.has(s.session_id)) {
+      seen.add(s.session_id);
+      order.push(s.session_id);
+    }
+  }
+  return order;
+}
+
+function renderLanes() {
+  lanesInner.innerHTML = '';
+  const sessions = sessionsInView();
+  if (sessions.length === 0) {
+    lanesInner.innerHTML = '<div style="padding:16px;color:var(--text-muted)">No segments in visible window.</div>';
+    return;
+  }
+
+  const vsMs = viewStart.getTime();
+  const veMs = viewEnd.getTime();
+  const windowMs = veMs - vsMs;
+
+  sessions.forEach(sid => {
+    const row = document.createElement('div');
+    row.className = 'lane-row';
+
+    const label = document.createElement('div');
+    label.className = 'lane-label' + (activeSessions.has(sid) ? ' live-session' : '');
+    label.title = sid;
+    label.textContent = sid.length > 20 ? sid.slice(0, 20) + '…' : sid;
+    row.appendChild(label);
+
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'lane-canvas-wrap';
+
+    const svg = d3.create('svg')
+      .attr('width', '100%')
+      .attr('height', LANE_H);
+
+    const segsForSession = segmentsInView().filter(s => s.session_id === sid);
+
+    svg.selectAll('rect')
+      .data(segsForSession)
+      .join('rect')
+        .attr('x', d => {
+          const startMs = new Date(d.start).getTime();
+          return `${Math.max(0, ((startMs - vsMs) / windowMs) * 100)}%`;
+        })
+        .attr('width', d => {
+          const startMs = Math.max(new Date(d.start).getTime(), vsMs);
+          const endMs   = Math.min(new Date(d.end).getTime(), veMs);
+          return `${Math.max(0.2, ((endMs - startMs) / windowMs) * 100)}%`;
+        })
+        .attr('y', 4)
+        .attr('height', LANE_H - 8)
+        .attr('rx', 2)
+        .attr('fill', d => ACTIVITY_COLOR[d.activity] || 'var(--color-idle)')
+        .attr('opacity', 0.85)
+        .style('cursor', 'pointer')
+        .attr('data-seg-id', d => d.id)
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          openPanel(d);
+        });
+
+    canvasWrap.appendChild(svg.node());
+    row.appendChild(canvasWrap);
+    lanesInner.appendChild(row);
+  });
+
+  lanesInner.style.height = `${sessions.length * LANE_H}px`;
+}
+
+// ── Timeline brush ───────────────────────────────────────────────────────────
+let brushG, xScaleTotal, brushFn;
+
+function renderTimeline() {
+  const node = document.getElementById('timeline');
+  const W = node.clientWidth || 800;
+  const H = node.clientHeight || 80;
+
+  timelineSvg.selectAll('*').remove();
+
+  timelineSvg
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('preserveAspectRatio', 'none');
+
+  const margin = { left: LABEL_W, right: 10, top: 16, bottom: 20 };
+  const innerW = W - margin.left - margin.right;
+  const innerH = H - margin.top - margin.bottom;
+
+  xScaleTotal = d3.scaleTime()
+    .domain([totalStart, totalEnd])
+    .range([0, innerW]);
+
+  const g = timelineSvg.append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Background
+  g.append('rect')
+    .attr('width', innerW)
+    .attr('height', innerH)
+    .attr('fill', 'var(--bg3)')
+    .attr('rx', 3);
+
+  // Mini segments in overview
+  g.selectAll('.mini-seg')
+    .data(allSegments)
+    .join('rect')
+      .attr('class', 'mini-seg')
+      .attr('x', d => xScaleTotal(new Date(d.start)))
+      .attr('width', d => Math.max(1, xScaleTotal(new Date(d.end)) - xScaleTotal(new Date(d.start))))
+      .attr('y', 2)
+      .attr('height', innerH - 4)
+      .attr('fill', d => ACTIVITY_COLOR[d.activity] || 'var(--color-idle)')
+      .attr('opacity', 0.5);
+
+  // Axis
+  const xAxis = d3.axisBottom(xScaleTotal)
+    .ticks(6)
+    .tickFormat(d => fmtTs(d));
+
+  g.append('g')
+    .attr('transform', `translate(0,${innerH})`)
+    .call(xAxis)
+    .selectAll('text')
+      .style('fill', 'var(--text-muted)')
+      .style('font-size', '9px');
+  g.selectAll('.domain,.tick line').style('stroke', 'var(--border)');
+
+  // Brush
+  brushFn = d3.brushX()
+    .extent([[0, 0], [innerW, innerH]])
+    .on('brush end', ({ selection, sourceEvent }) => {
+      if (!selection || !sourceEvent) return;
+      const [x0, x1] = selection;
+      viewStart = xScaleTotal.invert(x0);
+      viewEnd   = xScaleTotal.invert(x1);
+      renderLanes();
+      updateWindowLabel();
+    });
+
+  brushG = g.append('g')
+    .attr('class', 'brush')
+    .call(brushFn);
+
+  // Set initial brush to view window
+  const bx0 = xScaleTotal(viewStart);
+  const bx1 = xScaleTotal(viewEnd);
+  brushG.call(brushFn.move, [bx0, bx1]);
+
+  // Style brush selection
+  brushG.select('.selection')
+    .attr('fill', 'rgba(148,163,184,0.2)')
+    .attr('stroke', 'var(--text-muted)')
+    .attr('stroke-width', 1);
+}
+
+// ── Window label ─────────────────────────────────────────────────────────────
+function updateWindowLabel() {
+  const durMs = viewEnd - viewStart;
+  const durS = Math.round(durMs / 1000);
+  windowLabel.textContent =
+    `${fmtDate(viewStart)} → ${fmtDate(viewEnd)}  (${fmtDur(durS)})`;
+}
+
+// ── Zoom ─────────────────────────────────────────────────────────────────────
+function zoom(factor) {
+  const centerMs = (viewStart.getTime() + viewEnd.getTime()) / 2;
+  const halfMs   = (viewEnd.getTime() - viewStart.getTime()) / 2;
+  const newHalf  = Math.min(
+    Math.max(halfMs * factor, (MIN_WINDOW_S * 500)),
+    (MAX_WINDOW_S * 500)
+  );
+  viewStart = new Date(Math.max(totalStart.getTime(), centerMs - newHalf));
+  viewEnd   = new Date(Math.min(totalEnd.getTime(),   centerMs + newHalf));
+  render();
+  if (brushG && xScaleTotal) {
+    brushG.call(brushFn.move, [xScaleTotal(viewStart), xScaleTotal(viewEnd)]);
+  }
+}
+
+document.getElementById('zoom-in').addEventListener('click',  () => zoom(0.5));
+document.getElementById('zoom-out').addEventListener('click', () => zoom(2.0));
+
+// Scroll to zoom
+document.getElementById('lanes').addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom(e.deltaY > 0 ? 1.3 : 0.77);
+}, { passive: false });
+
+// ── LIVE toggle ───────────────────────────────────────────────────────────────
+liveToggle.addEventListener('click', () => {
+  isLive = !isLive;
+  if (isLive) {
+    liveToggle.textContent = '● LIVE';
+    liveToggle.classList.add('live-on');
+    // Snap view to now
+    const now = new Date();
+    const windowMs = viewEnd - viewStart;
+    viewEnd   = now;
+    viewStart = new Date(now - windowMs);
+    render();
+    connectWs();
+  } else {
+    liveToggle.textContent = 'LIVE';
+    liveToggle.classList.remove('live-on');
+    disconnectWs();
+  }
+});
+
+function connectWs() {
+  if (USE_FIXTURES) return; // no WS in fixture mode
+  try {
+    wsConn = new WebSocket(API.wsLive());
+    wsConn.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'segment') {
+          allSegments.unshift(msg.data);
+          totalEnd = new Date(Math.max(totalEnd.getTime(), new Date(msg.data.end).getTime()));
+          if (isLive) {
+            const now = new Date();
+            const windowMs = viewEnd - viewStart;
+            viewEnd   = now;
+            viewStart = new Date(now - windowMs);
+          }
+          render();
+        } else if (msg.type === 'event') {
+          allEvents.unshift(msg.data);
+        }
+      } catch (_) {}
+    };
+    wsConn.onerror = () => {};
+    wsConn.onclose = () => {
+      if (isLive) setTimeout(connectWs, 3000);
+    };
+  } catch (_) {}
+}
+
+function disconnectWs() {
+  if (wsConn) { wsConn.close(); wsConn = null; }
+}
+
+// ── REPLAY ───────────────────────────────────────────────────────────────────
+replayBtn.addEventListener('click', () => {
+  if (replayCancelFn) {
+    replayCancelFn();
+    replayCancelFn = null;
+    replayBtn.textContent = '▶ REPLAY';
+    return;
+  }
+  startReplay();
+});
+
+function startReplay() {
+  const speed = parseFloat(speedSelect.value);
+  const durationMs = viewEnd - viewStart;
+  const realMs = durationMs / speed;  // wall-clock ms to animate
+  const startWall = performance.now();
+
+  replayBtn.textContent = '■ CANCEL';
+
+  // Create cursor overlay on lanes
+  const lanesEl = document.getElementById('lanes');
+  const cursor = document.createElement('div');
+  cursor.className = 'replay-cursor';
+  lanesEl.style.position = 'relative';
+  lanesEl.appendChild(cursor);
+
+  let animId;
+  let canceled = false;
+
+  const animate = (now) => {
+    if (canceled) return;
+    const elapsed = now - startWall;
+    const progress = Math.min(elapsed / realMs, 1);
+
+    // Position cursor
+    const lanesInnerEl = lanesEl.querySelector('#lanes-inner') || lanesEl;
+    const totalW = lanesInnerEl.clientWidth || lanesEl.clientWidth;
+    const xPx = LABEL_W + progress * (totalW - LABEL_W);
+    cursor.style.left = `${xPx}px`;
+
+    // Flash segments under cursor
+    const cursorTime = new Date(viewStart.getTime() + progress * durationMs);
+    document.querySelectorAll('[data-seg-id]').forEach(rect => {
+      const segId = rect.getAttribute('data-seg-id');
+      const seg = allSegments.find(s => s.id === segId);
+      if (seg) {
+        const sMs = new Date(seg.start).getTime();
+        const eMs = new Date(seg.end).getTime();
+        const tMs = cursorTime.getTime();
+        if (tMs >= sMs && tMs <= eMs) {
+          rect.classList.add('seg-flash');
+          setTimeout(() => rect.classList.remove('seg-flash'), 200);
+        }
+      }
+    });
+
+    if (progress < 1) {
+      animId = requestAnimationFrame(animate);
+    } else {
+      cleanup();
+    }
+  };
+
+  const cleanup = () => {
+    cursor.remove();
+    replayBtn.textContent = '▶ REPLAY';
+    replayCancelFn = null;
+  };
+
+  replayCancelFn = () => {
+    canceled = true;
+    cancelAnimationFrame(animId);
+    cleanup();
+  };
+
+  animId = requestAnimationFrame(animate);
+}
+
+// ── Side panel ───────────────────────────────────────────────────────────────
+function openPanel(seg) {
+  sidePanel.classList.remove('collapsed');
+
+  panelMeta.innerHTML = `
+    <div class="meta-row"><span class="meta-key">session</span><span class="meta-val">${seg.session_id}</span></div>
+    <div class="meta-row"><span class="meta-key">activity</span><span class="meta-val" style="color:${ACTIVITY_COLOR[seg.activity]||'inherit'}">${seg.activity}</span></div>
+    <div class="meta-row"><span class="meta-key">gap_id</span><span class="meta-val">${seg.gap_id || '—'}</span></div>
+    <div class="meta-row"><span class="meta-key">start</span><span class="meta-val">${seg.start}</span></div>
+    <div class="meta-row"><span class="meta-key">end</span><span class="meta-val">${seg.end}</span></div>
+    <div class="meta-row"><span class="meta-key">duration</span><span class="meta-val">${fmtDur(seg.duration_s || 0)}</span></div>
+  `;
+
+  // Events for this segment
+  const segEvts = allEvents.filter(e => e.segment_id === seg.id);
+  panelEvents.innerHTML = '';
+
+  if (segEvts.length === 0) {
+    panelEvents.innerHTML = '<div style="padding:10px;color:var(--text-muted)">No events.</div>';
+    return;
+  }
+
+  segEvts.forEach(evt => {
+    const item = document.createElement('div');
+    item.className = 'evt-item';
+
+    const payloadStr = JSON.stringify(evt.payload || {});
+    const payloadTrunc = payloadStr.length > 80
+      ? payloadStr.slice(0, 80) + '…'
+      : payloadStr;
+
+    item.innerHTML = `
+      <div class="evt-ts">${evt.ts}</div>
+      <div class="evt-kind">${evt.kind}</div>
+      <div class="evt-payload" data-full="${encodeURIComponent(payloadStr)}">${payloadTrunc}</div>
+    `;
+
+    const payloadEl = item.querySelector('.evt-payload');
+    item.addEventListener('click', () => {
+      if (payloadEl.classList.contains('expanded')) {
+        payloadEl.classList.remove('expanded');
+        payloadEl.textContent = payloadTrunc;
+      } else {
+        payloadEl.classList.add('expanded');
+        payloadEl.textContent = decodeURIComponent(payloadEl.dataset.full || '');
+      }
+    });
+
+    panelEvents.appendChild(item);
+  });
+}
+
+panelClose.addEventListener('click', () => {
+  sidePanel.classList.add('collapsed');
+});
+
+// Click on lanes background closes panel
+document.getElementById('lanes').addEventListener('click', () => {
+  sidePanel.classList.add('collapsed');
+});
+
+// ── Live poll in LIVE mode ───────────────────────────────────────────────────
+setInterval(() => {
+  if (isLive && !USE_FIXTURES) {
+    const now = new Date();
+    const windowMs = viewEnd - viewStart;
+    viewEnd   = now;
+    viewStart = new Date(now - windowMs);
+    renderLanes();
+    updateWindowLabel();
+  }
+}, 2000);
+
+// ── Window resize ─────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  renderTimeline();
+  renderLanes();
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+fetchData().catch(err => {
+  lanesInner.innerHTML = `<div style="padding:16px;color:var(--color-blocked)">
+    Error loading data: ${err.message}<br>
+    Add <code>?fixtures=1</code> to URL to use fixture data.
+  </div>`;
+  windowLabel.textContent = 'Error';
+});
+</script>
+</body>
+</html>

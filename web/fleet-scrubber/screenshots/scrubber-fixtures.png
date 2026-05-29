@@ -1,0 +1,28 @@
+PLACEHOLDER: Browser screenshot capture not available in this CI environment.
+
+Text-art preview of the Fleet Scrubber in fixture mode (?fixtures=1):
+
++--------------------------------------------------------------+---------+
+| Fleet Scrubber  LIVE  REPLAY  10x  +  -  13:00-15:00 (2h)   | legend  |
++--------------------------------------------------------------+---------+
+| opus-shepherd-abc12   |##(claim)#|==(edit)===========|>(push)|#(merge) |
+| sonnet-worker-def34   |  (idle)  |==(edit)==|##(blocked)##|==(edit)=  |
+| sonnet-worker-ghi56   |==(edit)==============|>(push)|  (idle)  |=(ed) |
++-----------------------+---------------------------------------+---------+
+|     [              #########brush-selection#########              ]     |
++-----------------------------------------------------------------------+
+
+Colors:
+  ## claim   #f59e0b orange
+  == edit    #3b82f6 blue
+  >> push    #10b981 green
+  ## merge   #8b5cf6 purple
+  ## blocked #ef4444 red
+     idle    #9ca3af gray
+
+To capture a real screenshot:
+  1. python3 web/fleet-scrubber/fixtures/gen.py
+  2. open web/fleet-scrubber/index.html?fixtures=1
+  3. Screenshot and replace this file with the PNG.
+
+Filed as follow-up in INFRA-2176 notes.
