@@ -9498,26 +9498,19 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                let messages = vec![axonerai::provider::Message {
-                    role: "user".into(),
-                    content: user_msg,
-                }];
+                let user_content = user_msg.clone();
 
-                let resp = match provider
-                    .complete(messages, None, Some(4096), Some(system_prompt))
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        eprintln!("chump gap decompose: LLM call failed: {e:#}");
-                        std::process::exit(1);
-                    }
-                };
-
-                let raw_text = resp.text.unwrap_or_default();
-                let json_start = raw_text.find('[').unwrap_or(0);
-                let json_end = raw_text.rfind(']').map(|i| i + 1).unwrap_or(raw_text.len());
-                let json_slice = &raw_text[json_start..json_end];
+                // ── INFRA-2173: truncation-aware LLM call with retry ────────
+                //
+                // Large umbrella gaps (l-class, 8+ AC, ~3K char description)
+                // can exhaust a 4096-token budget mid-JSON, producing a parse
+                // failure.  Strategy:
+                //   1. Call with initial budget (4096).
+                //   2. If stop_reason is MaxTokens OR the raw text ends without
+                //      a closing ']', double the budget and retry (up to 16384).
+                //   3. On final failure, attempt partial recovery: scan for
+                //      complete objects before the truncation point and import
+                //      the parseable prefix as "partial decomposition recovered".
 
                 #[derive(Debug, serde::Deserialize)]
                 struct SliceSuggestion {
@@ -9529,17 +9522,157 @@ async fn main() -> Result<()> {
                     depends_on: Vec<usize>,
                 }
 
-                let suggestions: Vec<SliceSuggestion> = match serde_json::from_str(json_slice) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("chump gap decompose: failed to parse LLM response as JSON: {e}");
-                        eprintln!(
-                            "Raw response (first 500 chars): {}",
-                            &raw_text[..raw_text.len().min(500)]
-                        );
-                        std::process::exit(1);
+                /// Heuristic: response is likely truncated if it ends without
+                /// a closing ']' after the last JSON content character.
+                fn looks_truncated(text: &str) -> bool {
+                    let trimmed = text.trim_end();
+                    !trimmed.ends_with(']') && text.contains('[')
+                }
+
+                /// Attempt to recover complete JSON objects from a truncated
+                /// array string.  Scans from the start and keeps objects that
+                /// parse cleanly, stopping before the first broken one.
+                fn recover_partial_slices(raw: &str) -> Vec<SliceSuggestion> {
+                    let start = match raw.find('[') {
+                        Some(i) => i + 1,
+                        None => return vec![],
+                    };
+                    let content = &raw[start..];
+                    let mut recovered = Vec::new();
+                    let mut depth: i32 = 0;
+                    let mut obj_start: Option<usize> = None;
+                    let chars: Vec<char> = content.chars().collect();
+                    let mut i = 0;
+                    while i < chars.len() {
+                        match chars[i] {
+                            '{' => {
+                                if depth == 0 {
+                                    obj_start = Some(i);
+                                }
+                                depth += 1;
+                            }
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    if let Some(start_idx) = obj_start {
+                                        let candidate: String =
+                                            chars[start_idx..=i].iter().collect();
+                                        if let Ok(s) =
+                                            serde_json::from_str::<SliceSuggestion>(&candidate)
+                                        {
+                                            recovered.push(s);
+                                        }
+                                        obj_start = None;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        i += 1;
                     }
-                };
+                    recovered
+                }
+
+                const MAX_TOKENS_INITIAL: u32 = 4096;
+                const MAX_TOKENS_RETRY: u32 = 8192;
+                const MAX_TOKENS_FINAL: u32 = 16384;
+                let token_budgets = [MAX_TOKENS_INITIAL, MAX_TOKENS_RETRY, MAX_TOKENS_FINAL];
+
+                let mut suggestions: Vec<SliceSuggestion> = Vec::new();
+                let mut partial_recovery = false;
+
+                'retry: for (attempt, &budget) in token_budgets.iter().enumerate() {
+                    let msgs = vec![axonerai::provider::Message {
+                        role: "user".into(),
+                        content: user_content.clone(),
+                    }];
+                    let resp = match provider
+                        .complete(msgs, None, Some(budget), Some(system_prompt.clone()))
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            eprintln!("chump gap decompose: LLM call failed: {e:#}");
+                            std::process::exit(1);
+                        }
+                    };
+                    let truncated_by_provider =
+                        resp.stop_reason == axonerai::provider::StopReason::MaxTokens;
+                    let raw_text = resp.text.unwrap_or_default();
+
+                    if looks_truncated(&raw_text) || truncated_by_provider {
+                        eprintln!(
+                            "chump gap decompose: response truncated at budget={budget} \
+                             (stop_reason={:?}); {}",
+                            if truncated_by_provider {
+                                "MaxTokens"
+                            } else {
+                                "heuristic"
+                            },
+                            if attempt + 1 < token_budgets.len() {
+                                format!("retrying with budget={}", token_budgets[attempt + 1])
+                            } else {
+                                "attempting partial recovery".to_string()
+                            }
+                        );
+                        // Not the last attempt — try again with bigger budget.
+                        if attempt + 1 < token_budgets.len() {
+                            continue 'retry;
+                        }
+                        // Final attempt also truncated — recover partial prefix.
+                        let recovered = recover_partial_slices(&raw_text);
+                        if recovered.is_empty() {
+                            eprintln!(
+                                "chump gap decompose: failed to parse LLM response as JSON \
+                                 after {} attempts; partial recovery found no complete objects",
+                                token_budgets.len()
+                            );
+                            eprintln!(
+                                "Raw response (first 500 chars): {}",
+                                &raw_text[..raw_text.len().min(500)]
+                            );
+                            std::process::exit(1);
+                        }
+                        eprintln!(
+                            "chump gap decompose: partial decomposition recovered — \
+                             {} of potentially more slices parsed before truncation",
+                            recovered.len()
+                        );
+                        suggestions = recovered;
+                        partial_recovery = true;
+                        break 'retry;
+                    }
+
+                    // No truncation — parse normally.
+                    let json_start = raw_text.find('[').unwrap_or(0);
+                    let json_end = raw_text.rfind(']').map(|i| i + 1).unwrap_or(raw_text.len());
+                    let json_owned = raw_text[json_start..json_end].to_owned();
+
+                    match serde_json::from_str(&json_owned) {
+                        Ok(s) => {
+                            suggestions = s;
+                            break 'retry;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "chump gap decompose: failed to parse LLM response as JSON: {e}"
+                            );
+                            eprintln!(
+                                "Raw response (first 500 chars): {}",
+                                &raw_text[..raw_text.len().min(500)]
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                if partial_recovery {
+                    eprintln!(
+                        "chump gap decompose: WARNING — partial decomposition only; \
+                         review and re-run with a larger model or --no-description \
+                         to get remaining slices"
+                    );
+                }
 
                 if suggestions.is_empty() {
                     eprintln!("chump gap decompose: LLM returned no slices");

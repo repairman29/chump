@@ -234,13 +234,12 @@ fn print_reviewer_set(set: &ReviewerSet, json: bool) {
             .reviewers
             .iter()
             .map(|r| {
-                let vias: Vec<String> =
-                    r.via.iter().map(|v| format!("\"{}\"", v.as_str())).collect();
-                format!(
-                    "{{\"login\":\"{}\",\"via\":[{}]}}",
-                    r.login,
-                    vias.join(",")
-                )
+                let vias: Vec<String> = r
+                    .via
+                    .iter()
+                    .map(|v| format!("\"{}\"", v.as_str()))
+                    .collect();
+                format!("{{\"login\":\"{}\",\"via\":[{}]}}", r.login, vias.join(","))
             })
             .collect();
         println!("{{\"reviewers\":[{}]}}", entries.join(","));
@@ -319,8 +318,8 @@ fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
     let y = yoe as i32 + (era * 400) as i32;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
 }
