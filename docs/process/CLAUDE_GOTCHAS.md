@@ -1002,6 +1002,30 @@ grep '"kind":"trunk_red_skip"' .chump-locks/ambient.jsonl | tail -20
 
 ---
 
+## Autopilot "alive but idle" — wizard-retirement criteria met on paper, broken in production (INFRA-2101)
+
+**Symptom (observed 2026-05-28):** `chump fleet autopilot status` reports daemons loaded; ambient stream shows `autopilot_heartbeat` and `daemon_tick` events firing every few minutes. But `sub_agent_dispatched` count is **0 for 24+ hours**. Ship rate drops from 40 PRs/24h → 12 PRs/24h, mostly natural-CI merges of operator-armed PRs (no new autonomous claims). The fleet is alive but producing nothing.
+
+**Why it stays invisible:** every existing monitor checks per-daemon health (heartbeat-fired? plist-loaded? PID-alive?). None checks the end-to-end dispatch chain. Daemons "pass" individually while the chain produces zero output collectively.
+
+**Root cause (one of multiple):** the JIT binary refresh daemon (`refresh-runner-binary.sh`) was running `cargo install --path "$REPO_ROOT"` — which builds from the operator's local working tree, not `origin/main`. When the operator has WIP and the local main is N commits behind origin/main, the "refresh" silently emits `prev_sha == new_sha` forever. The operator's installed `chump` binary stays stuck at the local stale SHA while origin/main advances. Wizard-retirement criterion #1 (INFRA-1892 JIT scheduler) was technically shipped but practically broken.
+
+**Fixes shipped in INFRA-2101:**
+
+1. `scripts/setup/refresh-runner-binary.sh` now builds in a detached worktree at `origin/main` (`git worktree add -d /tmp/chump-binary-refresh origin/main`), not the local working tree. Hardcopies `target/release/chump` to `/opt/homebrew/bin/chump`. Worktree is torn down on EXIT trap.
+
+2. New ambient kind `runner_binary_advance` records `{prev_sha, new_sha, main_sha, delta_commits}` so the operator can audit whether the daemon is actually making forward progress (not just exiting cleanly).
+
+3. Silent-staleness guard: if `new_sha == prev_sha` AND `delta_commits > 0` (origin/main advanced but our build produced the same SHA), emit `runner_binary_refresh_failed` with `reason:silent_staleness` instead of `runner_binary_refreshed`. Catches the failure mode that originally let this hide for days.
+
+4. New detector `scripts/ops/dispatch-flatline-detector.sh` — reads ambient.jsonl for `sub_agent_dispatched` events over a rolling window (default 2h). When count is 0 AND `autopilot_heartbeat > 0` (alive-but-idle), emits `kind=dispatch_flatline`. Operator sees it in SessionStart digest's `Alerts(30m)` counter. Wire to launchd cron via `scripts/setup/install-dispatch-flatline-detector-launchd.sh` (filed as follow-up).
+
+**Operator action when `kind=dispatch_flatline` fires:**
+
+The autopilot daemons assume **6 live `claude --loop` curator sessions** exist (per OPERATOR_PLAYBOOK §2). Without them, JIT scheduler has nothing to dispatch to. Check: `ls .chump-locks/sessions/` should be non-empty; `ps -eo command | grep "claude --loop"` should show 6 curator processes. If absent, the playbook expects the operator to spawn them by hand. Filed as a separate concern (auto-launch curators on autopilot start would be a discrete gap — see WIZARD_STRATEGIC_BACKLOG).
+
+---
+
 ## Fleet git worktree path confusion (INFRA-779)
 
 **Problem:** On macOS, `/tmp` is a symlink to `/private/tmp`. When a linked worktree
