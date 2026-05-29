@@ -325,6 +325,157 @@ Rules:
     }
 }
 
+// ── (d) ExternalRepoContract ──────────────────────────────────────────────
+
+/// Input: what repo to touch, where it is locally, and what change to make.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExternalRepoInput {
+    /// External repo in `owner/repo` form (e.g. `ehippy/derelict`).
+    pub external_repo: String,
+    /// Absolute path to a local clone of the external repo.
+    pub repo_local_path: String,
+    /// Description of the change to ship (gap description style).
+    pub proposed_gap_description: String,
+    /// Base branch to open the PR against (e.g. `main`).
+    pub base_branch: String,
+    /// Fork owner for fork-PR mode (e.g. `repairman29`). `None` means
+    /// direct-push to a branch on the upstream (only valid if the subagent
+    /// has push rights).
+    pub fork_owner: Option<String>,
+}
+
+/// Output: evidence the change was shipped — PR URL + supporting metadata.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExternalRepoOutput {
+    /// Full GitHub PR URL, e.g. `https://github.com/ehippy/derelict/pull/42`.
+    pub pr_url: String,
+    /// Head branch name the PR was opened from.
+    pub head_ref: String,
+    /// Base branch the PR targets.
+    pub base_ref: String,
+    /// Repo-relative paths the change touches (used for lease-overlap audit).
+    pub files_touched: Vec<String>,
+    /// Full commit SHA of the head commit.
+    pub commit_sha: String,
+    /// Free-form notes on what was done (for operator review).
+    pub notes: String,
+}
+
+/// Returns `true` if `url` matches `https://github.com/<owner>/<repo>/pull/<N>`
+/// where `<N>` is one or more digits. No external crate needed.
+fn is_valid_github_pr_url(url: &str) -> bool {
+    // Must start with the canonical prefix.
+    let Some(rest) = url.strip_prefix("https://github.com/") else {
+        return false;
+    };
+    // Expect <owner>/<repo>/pull/<N>
+    let parts: Vec<&str> = rest.splitn(4, '/').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    let (owner, repo, pull_literal, pr_number) = (parts[0], parts[1], parts[2], parts[3]);
+    !owner.is_empty()
+        && !repo.is_empty()
+        && pull_literal == "pull"
+        && !pr_number.is_empty()
+        && pr_number.chars().all(|c| c.is_ascii_digit())
+}
+
+impl Validate for ExternalRepoOutput {
+    fn validate(&self) -> Result<(), ValidationError> {
+        if self.pr_url.trim().is_empty() {
+            return Err(ValidationError::new("pr_url cannot be empty"));
+        }
+        // Require a well-formed GitHub PR URL: https://github.com/<owner>/<repo>/pull/<N>
+        if !is_valid_github_pr_url(self.pr_url.trim()) {
+            return Err(ValidationError::new(
+                "pr_url must match https://github.com/<owner>/<repo>/pull/<N>",
+            ));
+        }
+        if self.files_touched.is_empty() {
+            return Err(ValidationError::new("files_touched cannot be empty"));
+        }
+        if self.commit_sha.trim().is_empty() {
+            return Err(ValidationError::new("commit_sha cannot be empty"));
+        }
+        Ok(())
+    }
+}
+
+/// Subagent ships a change into an external repo and opens a PR.
+///
+/// Use case: META-123 flow — Scout proposes, external-collab reviews, Target
+/// picks, then this contract dispatches a Sonnet worker that clones (or uses an
+/// existing clone at `repo_local_path`), branches, makes the change described
+/// in `proposed_gap_description`, commits, pushes, and opens the PR. The typed
+/// output gives the parent a PR URL it can track without regex-parsing free text.
+pub struct ExternalRepoContract;
+
+impl HandoffContract for ExternalRepoContract {
+    type Input = ExternalRepoInput;
+    type Output = ExternalRepoOutput;
+
+    fn name() -> &'static str {
+        "ExternalRepoContract"
+    }
+
+    fn prompt(input: &Self::Input) -> String {
+        let fork_line = match &input.fork_owner {
+            Some(owner) => format!(
+                "Fork owner: {owner} (open the PR from a fork, not directly on the upstream)"
+            ),
+            None => "Fork owner: none (push directly to a branch on the upstream)".to_string(),
+        };
+        format!(
+            r#"You are shipping a change into an external repository on behalf of the Chump fleet.
+
+External repo   : {external_repo}
+Local clone path: {repo_local_path}
+Base branch     : {base_branch}
+{fork_line}
+
+Proposed change:
+{proposed_gap_description}
+
+Steps:
+1. `cd {repo_local_path}`; confirm the clone is on a clean checkout of `{base_branch}`.
+2. Create a short descriptive branch name and check it out.
+3. Make the minimal change that satisfies the proposed description.
+4. `git add` + `git commit` (conventional-commit style message).
+5. Push the branch and open a PR against `{base_branch}` on `{external_repo}`.
+6. Emit a single fenced JSON block with the exact shape below — no other JSON, no extra commentary outside the block.
+
+```json
+{{
+  "pr_url": "https://github.com/{external_repo}/pull/<N>",
+  "head_ref": "<branch-you-pushed>",
+  "base_ref": "{base_branch}",
+  "files_touched": ["<repo-relative path>", ...],
+  "commit_sha": "<full 40-char SHA>",
+  "notes": "<what you did and why>"
+}}
+```
+
+Rules:
+- `pr_url` MUST be the real URL returned by `gh pr create` — do not fabricate it.
+- `files_touched` MUST list every file the diff modifies.
+- `commit_sha` MUST be the full 40-character SHA of the head commit (`git rev-parse HEAD`).
+- Keep `notes` factual: what changed and why, no filler.
+"#,
+            external_repo = input.external_repo,
+            repo_local_path = input.repo_local_path,
+            base_branch = input.base_branch,
+            proposed_gap_description = input.proposed_gap_description,
+            fork_line = fork_line,
+        )
+    }
+
+    fn model_tier() -> ModelTier {
+        // Execution work — Sonnet is the standard tier for workers that ship code.
+        ModelTier::Sonnet
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,5 +629,73 @@ mod tests {
         assert_eq!(GapReviewContract::model_tier(), ModelTier::Sonnet);
         assert_eq!(CodeFixContract::model_tier(), ModelTier::Sonnet);
         assert_eq!(DecomposeContract::model_tier(), ModelTier::Opus);
+        assert_eq!(ExternalRepoContract::model_tier(), ModelTier::Sonnet);
+    }
+
+    // ExternalRepoOutput validation ───────────────────────────────────────────
+
+    fn good_external_output() -> ExternalRepoOutput {
+        ExternalRepoOutput {
+            pr_url: "https://github.com/ehippy/derelict/pull/42".into(),
+            head_ref: "chump/fix-foo".into(),
+            base_ref: "main".into(),
+            files_touched: vec!["src/main.rs".into()],
+            commit_sha: "abc123def456abc123def456abc123def456abc1".into(),
+            notes: "Fixed the thing".into(),
+        }
+    }
+
+    #[test]
+    fn external_repo_accepts_valid_output() {
+        assert!(good_external_output().validate().is_ok());
+    }
+
+    #[test]
+    fn external_repo_rejects_bad_pr_url() {
+        let mut out = good_external_output();
+        out.pr_url = "https://github.com/ehippy/derelict/issues/42".into();
+        let err = out.validate().unwrap_err();
+        assert!(err.message().contains("pr_url must match"));
+
+        let mut out2 = good_external_output();
+        out2.pr_url = "not-a-url".into();
+        assert!(out2.validate().is_err());
+
+        let mut out3 = good_external_output();
+        out3.pr_url = "https://github.com/ehippy/derelict/pull/abc".into();
+        assert!(out3.validate().is_err());
+    }
+
+    #[test]
+    fn external_repo_rejects_empty_files_touched() {
+        let mut out = good_external_output();
+        out.files_touched = vec![];
+        let err = out.validate().unwrap_err();
+        assert!(err.message().contains("files_touched cannot be empty"));
+    }
+
+    #[test]
+    fn external_repo_rejects_empty_commit_sha() {
+        let mut out = good_external_output();
+        out.commit_sha = "".into();
+        let err = out.validate().unwrap_err();
+        assert!(err.message().contains("commit_sha cannot be empty"));
+    }
+
+    #[test]
+    fn external_repo_prompt_includes_inputs() {
+        let input = ExternalRepoInput {
+            external_repo: "ehippy/derelict".into(),
+            repo_local_path: "/tmp/derelict".into(),
+            proposed_gap_description: "Add retry logic to fetch".into(),
+            base_branch: "main".into(),
+            fork_owner: Some("repairman29".into()),
+        };
+        let p = ExternalRepoContract::prompt(&input);
+        assert!(p.contains("ehippy/derelict"));
+        assert!(p.contains("/tmp/derelict"));
+        assert!(p.contains("Add retry logic to fetch"));
+        assert!(p.contains("main"));
+        assert!(p.contains("repairman29"));
     }
 }

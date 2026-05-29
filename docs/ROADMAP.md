@@ -55,15 +55,15 @@ IS what customers like Marcus pay for.
 
 | Bet | Gap(s) | Status |
 |---|---|---|
-| Chump fleet autopilot — operator playbook as one daemon set | [META-090](gaps/META-090.yaml) P0/m | open, strategic productization; unblocked by 4/5 wizard-retirement criteria below |
-| Marcus arc M-B → M-C (post-demo trust + first-customer-onboard) | new gap TBD when M-B framing lands | breathing room from 50/hr; next P1 |
+| Chump fleet autopilot — operator playbook as one daemon set | [META-090](gaps/META-090.yaml) P0/m | ✅ done — composes the 5 wizard-retirement daemons; reconciliation shipped via #2570 (RESILIENT-021) |
+| Marcus arc M-B → M-C (post-demo trust + first-customer-onboard) | new gap TBD when M-B framing lands | **next operator decision** — defines this week's bet list. M-A (per-gap budgets INFRA-1486) shipped; M-B chump.fleet.yaml spec INFRA-1483 + multi-repo fan-out INFRA-1484 still open |
 | 50-PRs/hr Phase 2 — sustained 4h verification | INFRA-1540/1542 instrumentation follow-up | shipped capacity; now needs the 4h-green run |
-| A2A-first communication discipline (presence ledger + auto-mirror + passive emit) | [INFRA-1932](gaps/INFRA-1932.yaml) P1/m | partial-shipped via #2524 (Pattern 0 in shepherd playbook); 6 ACs remaining |
-| Rust-first orchestration substrate (Wave-3) — port 16.8K LOC bash+Python to ~6K LOC Rust across 6 sub-gaps | [META-107](gaps/META-107.yaml) P1/xl umbrella + [INFRA-1997](gaps/INFRA-1997.yaml) P0/m keystone | open; INFRA-1997 chump-git-hooks is pickable now (smallest blast radius, kills INFRA-1950 env-leak class). Prerequisite for META-090 autopilot landing on env-immune substrate; blueprint at [strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md](strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md) |
+| A2A-first communication discipline (presence ledger + auto-mirror + passive emit) | [INFRA-1932](gaps/INFRA-1932.yaml) P1/m | ✅ done — partial-shipped via #2524 + later land closed the 6 follow-up ACs |
+| Rust-first orchestration substrate (Wave-3) — port 16.8K LOC bash+Python to ~6K LOC Rust across 6 sub-gaps | [META-107](gaps/META-107.yaml) P1/xl umbrella + [INFRA-1997](gaps/INFRA-1997.yaml) P0/m keystone | ✅ done at umbrella level; cutover follow-ups INFRA-2060..2065 + META-120 filed for the 7–14d parallel-run validation window per blueprint [strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md](strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md) |
 
 **Chained, not competing.** META-107 IS the substrate that META-090 composes. Without META-107, autopilot inherits 16.8K LOC of bash spaghetti (race conditions in `bot-merge.sh`, env-leak in `pre-push`, `sed`-escape in `broadcast.sh`). With it, autopilot is composed from `chump-ship` + `chump-messaging` + `chump-worker` Rust traits where env-leak / double-instance / SQL-escape bugs are *structurally impossible*.
 
-### Wizard-retirement criteria — 4/5 in flight (META-090 unblock signal)
+### Wizard-retirement criteria — 5/5 ✅ shipped (META-090 unblock COMPLETE)
 
 The wizard role retires when the daemon mesh covers what the operator does manually 10×/day. Criteria:
 
@@ -71,11 +71,13 @@ The wizard role retires when the daemon mesh covers what the operator does manua
 |---|---|---|
 | 1 | curator-jit-scheduler | ✅ shipped INFRA-1892 (PR #2463) |
 | 2 | transient-retrigger | ✅ shipped INFRA-1899 (PR #2482) |
-| 3 | pr-pulse consumer | 🚧 in flight (#2497 INFRA-1898) |
-| 4 | oracle-refresh cron | 🚧 in flight (#2510 META-088) |
-| 5 | curator-launch automation | 🚧 in flight (#2518) |
+| 3 | pr-pulse consumer | ✅ shipped INFRA-1898 (PR #2497) |
+| 4 | oracle-refresh cron | ✅ shipped META-088 (PR #2510); ongoing observability INFRA-2122 caught silent failures 2026-05-29 |
+| 5 | curator-launch automation | ✅ shipped INFRA-1880 (PR #2518) |
 
-When 5/5 land, META-090 autopilot can compose them into one daemon-set and the operator stops being the scheduler.
+All 5 shipped. META-090 autopilot is composing them (#2570). **The wizard role can retire when the operator validates the autopilot daemon-set runs 24h unattended** (Day +14 checkpoint).
+
+The remaining substrate-quality work is OAuth refresh chain (INFRA-2124) + Oracle silent-failure detection (INFRA-2122 observability) — these don't block wizard-retirement but they make the autopilot loop reliable.
 
 ## Operator action checkpoints (refreshed 2026-05-28 — Wave 1 CI scaling shipped)
 

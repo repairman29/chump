@@ -4842,6 +4842,43 @@ events:
       branch name (chump/oracle-refresh-<stamp>).
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, branch]
+  # INFRA-2122: oracle-refresh silent-failure visibility. Replaces the
+  # stderr-swallowing 2>/dev/null path that masked INFRA-2124 OAuth chain
+  # breakage and let THE_PATH.md sit 4d stale despite a 4h cadence claim.
+  - kind: oracle_refresh_failed
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (INFRA-2122)
+    trigger: >
+      claude -p exited non-zero (auth failures like "Not logged in", OAuth
+      chain breakage, transport errors). Carries exit_code + elapsed_s plus
+      truncated stderr (500 chars) so the real cause surfaces in ambient
+      instead of being swallowed by 2>/dev/null. Distinct from
+      oracle_refresh_empty which is exit-0-but-no-output.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, exit_code, elapsed_s, stderr]
+  - kind: oracle_refresh_empty
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (INFRA-2122)
+    trigger: >
+      claude -p exited 0 but returned empty/too-short output (<200 chars).
+      Discriminates "model returned empty" from "auth failed" — the legacy
+      oracle_refresh_skipped conflated both. Carries body_len + elapsed_s
+      + stderr so operators can tell if the model just refused vs. tripped
+      a transient error.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, exit_code, elapsed_s, body_len, stderr]
+  - kind: oracle_stale_despite_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/oracle-refresh.sh (INFRA-2122)
+    trigger: >
+      META-alarm — detector for the detector failing. THE_PATH.md mtime is
+      older than CHUMP_ORACLE_STALE_THRESHOLD_S (default 12h) but the
+      oracle-refresh state file was touched within CHUMP_ORACLE_HEARTBEAT_WINDOW_S
+      (default 6h) — i.e., daemon is alive but its output is stale. Same
+      class as INFRA-2101 binary-refresh silent-staleness. Use to alert
+      operators before another 4d quiet-failure window opens.
+    consumers: [fleet-brief, ops-audit, slo-watchdog]
+    fields_required: [ts, kind, path_age_s, state_age_s, stale_threshold_s]
   # META-098: daily self-productization wave. Once per day a launchd cron
   # sends 6 A2A broadcast.sh DMs (one per curator role) asking the curator
   # to contemplate what changed in their lane and add delta-AC to their

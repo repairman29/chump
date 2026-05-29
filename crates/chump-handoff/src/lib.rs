@@ -57,6 +57,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 pub mod contracts;
+pub mod external_repo_schema;
 pub mod transport;
 pub mod validate;
 

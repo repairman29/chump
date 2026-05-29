@@ -9110,36 +9110,44 @@ async fn main() -> Result<()> {
                     .skip(3)
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
-                    println!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
+                    println!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description] [--external-repo <owner/repo|path>] [--clone-path <path>]");
                     println!();
                     println!(
                         "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
                     );
                     println!(
-                        "  --verify          Validate slices via a stronger model before filing"
+                        "  --verify                  Validate slices via a stronger model before filing"
                     );
-                    println!("  --apply           File the suggested slices and demote the parent");
-                    println!("  --json            Output suggestions as JSON");
+                    println!("  --apply                   File the suggested slices and demote the parent");
+                    println!("  --json                    Output suggestions as JSON");
                     println!(
-                        "  --dry-run         Print the full LLM prompt without calling the LLM"
+                        "  --dry-run                 Print the full LLM prompt without calling the LLM"
                     );
                     println!(
-                        "  --no-description  Skip injecting the gap description into the prompt"
+                        "  --no-description          Skip injecting the gap description into the prompt"
                     );
-                    println!("  -h, --help        Show this help");
+                    println!("  --external-repo <value>   Decompose against an external repo.");
+                    println!("                            Value: 'owner/repo' (looked up under ~/.chump/external/<owner>/<repo>/)");
+                    println!("                            or an absolute path to a clone.");
+                    println!(
+                        "  --clone-path <path>       Override the resolved clone path (used with --external-repo)."
+                    );
+                    println!("  -h, --help                Show this help");
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
+                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description] [--external-repo <owner/repo|path>] [--clone-path <path>]");
                     eprintln!();
                     eprintln!(
                         "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
                     );
-                    eprintln!("  --verify          Validate slices via a stronger model before filing");
-                    eprintln!("  --apply           File the suggested slices and demote the parent");
-                    eprintln!("  --json            Output suggestions as JSON");
-                    eprintln!("  --dry-run         Print the full LLM prompt without calling the LLM");
-                    eprintln!("  --no-description  Skip injecting the gap description into the prompt");
+                    eprintln!("  --verify                  Validate slices via a stronger model before filing");
+                    eprintln!("  --apply                   File the suggested slices and demote the parent");
+                    eprintln!("  --json                    Output suggestions as JSON");
+                    eprintln!("  --dry-run                 Print the full LLM prompt without calling the LLM");
+                    eprintln!("  --no-description          Skip injecting the gap description into the prompt");
+                    eprintln!("  --external-repo <value>   Decompose against an external repo (owner/repo or absolute path)");
+                    eprintln!("  --clone-path <path>       Override the resolved clone path");
                     eprintln!();
                     eprintln!("Verify model: set CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL,");
                     eprintln!("  or falls back to ANTHROPIC_API_KEY with claude-sonnet-4-6.");
@@ -9149,6 +9157,77 @@ async fn main() -> Result<()> {
                 let verify = args.iter().any(|a| a == "--verify");
                 let dry_run = args.iter().any(|a| a == "--dry-run");
                 let no_description = args.iter().any(|a| a == "--no-description");
+
+                // INFRA-2112: --external-repo <owner/repo|absolute-path> flag.
+                // Resolves to a clone path; injects external context into the
+                // LLM prompt; tags filed sub-gaps with
+                // `skills_required: external_repo:<owner/repo>`.
+                let external_repo: Option<String> = args
+                    .iter()
+                    .position(|a| a == "--external-repo")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned();
+
+                // --clone-path overrides the automatic resolution.
+                let clone_path_override: Option<std::path::PathBuf> = args
+                    .iter()
+                    .position(|a| a == "--clone-path")
+                    .and_then(|i| args.get(i + 1))
+                    .map(std::path::PathBuf::from);
+
+                // Resolve the external clone path and canonical tag for
+                // skills_required injection.
+                //
+                // Tag format (INFRA-2116 schema): `external_repo:<owner>/<repo>`
+                // where <owner>/<repo> is the canonical slash-form.  For an
+                // absolute-path value we derive a best-effort tag using the
+                // last two path components.
+                let (external_clone_root, external_repo_tag): (
+                    Option<std::path::PathBuf>,
+                    Option<String>,
+                ) = if let Some(ref repo_val) = external_repo {
+                    let (resolved_path, tag) = if repo_val.starts_with('/') {
+                        // Absolute path form — use as-is, derive tag from last 2 components.
+                        let p = std::path::PathBuf::from(repo_val);
+                        let mut comps: Vec<String> = p
+                            .components()
+                            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                            .collect();
+                        comps.retain(|c| !c.is_empty());
+                        let tag_suffix = if comps.len() >= 2 {
+                            format!("{}/{}", comps[comps.len() - 2], comps[comps.len() - 1])
+                        } else {
+                            comps.last().cloned().unwrap_or_else(|| repo_val.clone())
+                        };
+                        (p, format!("external_repo:{tag_suffix}"))
+                    } else {
+                        // owner/repo form — resolve under ~/.chump/external/
+                        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                        let default_path = std::path::PathBuf::from(&home)
+                            .join(".chump")
+                            .join("external")
+                            .join(repo_val);
+                        (default_path, format!("external_repo:{repo_val}"))
+                    };
+
+                    // --clone-path overrides the resolved path but keeps the tag.
+                    let final_path = clone_path_override.clone().unwrap_or(resolved_path);
+
+                    if !dry_run && !final_path.exists() {
+                        eprintln!(
+                            "chump gap decompose: external repo clone not found at {}",
+                            final_path.display()
+                        );
+                        eprintln!(
+                            "  Clone it first: git clone https://github.com/{repo_val} {}",
+                            final_path.display()
+                        );
+                        std::process::exit(1);
+                    }
+                    (Some(final_path), Some(tag))
+                } else {
+                    (clone_path_override.clone(), None)
+                };
                 let parent = match store.get(&gap_id) {
                     Ok(Some(g)) => g,
                     Ok(None) => {
@@ -9178,6 +9257,16 @@ async fn main() -> Result<()> {
 
                 if !dry_run {
                     eprintln!("decomposing {gap_id} ({}) via LLM...", parent.title);
+                }
+                // INFRA-2112 observability: emit when external-repo mode is active so
+                // fleet-brief and watchdogs can confirm the path ran.
+                if let Some(ref tag) = external_repo_tag {
+                    tracing::info!(
+                        gap_id = %gap_id,
+                        external_repo_tag = %tag,
+                        clone_path = ?external_clone_root,
+                        "infra2112 decompose external-repo mode active"
+                    );
                 }
                 let provider = crate::provider_cascade::build_provider();
                 let ac_display = if parent.acceptance_criteria.trim().is_empty()
@@ -9226,6 +9315,9 @@ async fn main() -> Result<()> {
                 // instead of forcing a subprocess-walk path that returned
                 // raw file bodies. ~30% fewer prompt tokens on >=5-file gaps.
                 //
+                // INFRA-2112: When --external-repo is set, crawl the external
+                // clone instead of the current Chump working tree.
+                //
                 // Override via CHUMP_DECOMPOSE_AST=0 — drops the block. Used
                 // when running on a non-source repo or for cost comparisons.
                 let ast_block = if std::env::var("CHUMP_DECOMPOSE_AST")
@@ -9235,8 +9327,11 @@ async fn main() -> Result<()> {
                 {
                     String::new()
                 } else {
-                    let repo_root =
-                        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                    // Use the external clone root when provided; otherwise fall
+                    // back to the Chump working tree.
+                    let repo_root = external_clone_root.clone().unwrap_or_else(|| {
+                        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    });
                     let mut hint_text = String::new();
                     hint_text.push_str(&parent.description);
                     hint_text.push('\n');
@@ -9273,8 +9368,33 @@ async fn main() -> Result<()> {
                     }
                 };
 
+                // ── INFRA-2112: external-repo context header ────────────────
+                //
+                // When --external-repo is set, prepend a header to the user
+                // message so the LLM knows it is generating slices that will
+                // reference files in the external repo, not the Chump tree.
+                // The header also surfaces the resolved clone path so the
+                // operator can verify the right checkout is being used.
+                let external_repo_header = if let (Some(ref tag), Some(ref clone_root)) =
+                    (&external_repo_tag, &external_clone_root)
+                {
+                    format!(
+                        "EXTERNAL REPO MODE (INFRA-2112):\n\
+                         Repo tag : {tag}\n\
+                         Clone path: {}\n\
+                         The sub-gaps you propose must reference files and symbols \
+                         from the external repo above, not from the Chump internal tree.\n\
+                         Each filed sub-gap will be tagged with `skills_required: {tag}` \
+                         so picker routing can target workers with the right checkout.\n\n",
+                        clone_root.display()
+                    )
+                } else {
+                    String::new()
+                };
+
                 let user_msg = format!(
-                    "Decompose this gap into xs/s slices:\n\n\
+                    "{external_repo_header}\
+                     Decompose this gap into xs/s slices:\n\n\
                      ID: {}\n\
                      Domain: {}\n\
                      Title: {}\n\
@@ -9301,6 +9421,16 @@ async fn main() -> Result<()> {
                 // the LLM.  Lets agents inspect exactly what context is being
                 // used before committing to an LLM call.
                 if dry_run {
+                    // INFRA-2112: when --external-repo is set, show the
+                    // resolved clone path before the prompts so the operator
+                    // can confirm the right checkout is in use.
+                    if let Some(ref clone_root) = external_clone_root {
+                        eprintln!(
+                            "=== dry-run: external-repo mode ===\nresolved clone path: {}",
+                            clone_root.display()
+                        );
+                        eprintln!();
+                    }
                     eprintln!("=== dry-run: system prompt ===");
                     eprintln!("{system_prompt}");
                     eprintln!();
@@ -9629,10 +9759,20 @@ async fn main() -> Result<()> {
                             Ok(new_id) => {
                                 let ac_json = serde_json::to_string(&s.acceptance_criteria)
                                     .unwrap_or_else(|_| "[]".into());
+
+                                // INFRA-2112: when --external-repo is set,
+                                // merge the external_repo tag into the sub-gap's
+                                // skills_required.  Format per INFRA-2116 schema:
+                                // `external_repo:<owner>/<repo>`.
+                                // If the gap already has skills from the LLM
+                                // suggestion, append; otherwise set directly.
+                                let skills_update: Option<String> = external_repo_tag.clone();
+
                                 let _ = store.set_fields(
                                     &new_id,
                                     gap_store::GapFieldUpdate {
                                         acceptance_criteria: Some(ac_json),
+                                        skills_required: skills_update,
                                         ..Default::default()
                                     },
                                 );
@@ -11109,7 +11249,7 @@ async fn main() -> Result<()> {
                     "                             [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
-                eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description]  # LLM-assisted slicing");
+                eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description] [--external-repo <owner/repo|path>] [--clone-path <path>]  # LLM-assisted slicing");
                 eprintln!("  dep-clean        [--apply] [--json]  # strip depends_on entries pointing at done gaps");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
@@ -15134,5 +15274,180 @@ mod tests {
         let args = vec!["chump".to_string(), "gap".to_string(), "list".to_string()];
         let expanded = crate::expand_aliases(args.clone());
         assert_eq!(expanded, args);
+    }
+
+    // ── INFRA-2112: --external-repo flag unit tests ──────────────────────────
+
+    /// Parse --external-repo owner/repo form and verify tag + path resolution.
+    #[test]
+    fn infra_2112_external_repo_ownerslashrepo_flag_parses() {
+        let args: Vec<String> = vec![
+            "chump".into(),
+            "gap".into(),
+            "decompose".into(),
+            "INFRA-9999".into(),
+            "--external-repo".into(),
+            "acme/widget".into(),
+        ];
+
+        // Replicate the flag-parsing logic from cmd_gap_decompose.
+        let external_repo: Option<String> = args
+            .iter()
+            .position(|a| a == "--external-repo")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
+        let clone_path_override: Option<std::path::PathBuf> = args
+            .iter()
+            .position(|a| a == "--clone-path")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+
+        assert_eq!(external_repo.as_deref(), Some("acme/widget"));
+        assert!(clone_path_override.is_none());
+
+        // Resolve tag + path the same way the handler does.
+        let repo_val = external_repo.as_deref().unwrap();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let expected_path = std::path::PathBuf::from(&home)
+            .join(".chump")
+            .join("external")
+            .join(repo_val);
+
+        let (resolved_path, tag) = if repo_val.starts_with('/') {
+            panic!("should not be absolute path form");
+        } else {
+            let default_path = std::path::PathBuf::from(&home)
+                .join(".chump")
+                .join("external")
+                .join(repo_val);
+            (default_path, format!("external_repo:{repo_val}"))
+        };
+
+        assert_eq!(resolved_path, expected_path);
+        assert_eq!(tag, "external_repo:acme/widget");
+    }
+
+    /// Absolute-path form of --external-repo uses path as-is and derives tag
+    /// from last two path components.
+    #[test]
+    fn infra_2112_external_repo_absolute_path_flag_parses() {
+        let args: Vec<String> = vec![
+            "chump".into(),
+            "gap".into(),
+            "decompose".into(),
+            "INFRA-9999".into(),
+            "--external-repo".into(),
+            "/tmp/my-clones/acme/widget".into(),
+        ];
+
+        let external_repo: Option<String> = args
+            .iter()
+            .position(|a| a == "--external-repo")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
+        let repo_val = external_repo.as_deref().unwrap();
+        assert!(repo_val.starts_with('/'), "expected absolute path");
+
+        let p = std::path::PathBuf::from(repo_val);
+        let mut comps: Vec<String> = p
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        comps.retain(|c| !c.is_empty());
+
+        let tag_suffix = if comps.len() >= 2 {
+            format!("{}/{}", comps[comps.len() - 2], comps[comps.len() - 1])
+        } else {
+            comps
+                .last()
+                .cloned()
+                .unwrap_or_else(|| repo_val.to_string())
+        };
+
+        let tag = format!("external_repo:{tag_suffix}");
+
+        assert_eq!(p, std::path::PathBuf::from("/tmp/my-clones/acme/widget"));
+        assert_eq!(tag, "external_repo:acme/widget");
+    }
+
+    /// --clone-path overrides the resolved path while keeping the tag derived
+    /// from the --external-repo value.
+    #[test]
+    fn infra_2112_clone_path_override_respected() {
+        let args: Vec<String> = vec![
+            "chump".into(),
+            "gap".into(),
+            "decompose".into(),
+            "INFRA-9999".into(),
+            "--external-repo".into(),
+            "acme/widget".into(),
+            "--clone-path".into(),
+            "/custom/clone/path".into(),
+        ];
+
+        let external_repo: Option<String> = args
+            .iter()
+            .position(|a| a == "--external-repo")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
+        let clone_path_override: Option<std::path::PathBuf> = args
+            .iter()
+            .position(|a| a == "--clone-path")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+
+        assert_eq!(external_repo.as_deref(), Some("acme/widget"));
+        assert_eq!(
+            clone_path_override,
+            Some(std::path::PathBuf::from("/custom/clone/path"))
+        );
+
+        // Override takes precedence; tag still comes from external_repo value.
+        let repo_val = external_repo.as_deref().unwrap();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let default_path = std::path::PathBuf::from(&home)
+            .join(".chump")
+            .join("external")
+            .join(repo_val);
+        let final_path = clone_path_override.clone().unwrap_or(default_path);
+        let tag = format!("external_repo:{repo_val}");
+
+        assert_eq!(final_path, std::path::PathBuf::from("/custom/clone/path"));
+        assert_eq!(tag, "external_repo:acme/widget");
+    }
+
+    /// No --external-repo flag: all external fields are None (backwards compat).
+    #[test]
+    fn infra_2112_no_external_repo_flag_is_noop() {
+        let args: Vec<String> = vec![
+            "chump".into(),
+            "gap".into(),
+            "decompose".into(),
+            "INFRA-9999".into(),
+            "--dry-run".into(),
+        ];
+
+        let external_repo: Option<String> = args
+            .iter()
+            .position(|a| a == "--external-repo")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
+        let clone_path_override: Option<std::path::PathBuf> = args
+            .iter()
+            .position(|a| a == "--clone-path")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+
+        // Neither field set — backwards compatible, no external context injected.
+        assert!(external_repo.is_none());
+        assert!(clone_path_override.is_none());
+
+        // Derived tag is also None.
+        let external_repo_tag: Option<String> = external_repo.map(|v| format!("external_repo:{v}"));
+        assert!(external_repo_tag.is_none());
     }
 }

@@ -30,6 +30,36 @@ use chump_gap_store::GapRow;
 use serde::{Deserialize, Serialize};
 use std::env;
 
+/// Prefix used in `skills_required` to tag a gap as external-repo demo work.
+///
+/// Format: `external_repo:<owner>/<repo>` (e.g. `external_repo:ehippy/derelict`).
+/// When present the picker skips the gap unless `CHUMP_EXTERNAL_REPO_PICK_OK=1`.
+/// Picked gaps are routed through `ExternalRepoContract` (INFRA-2111) instead
+/// of the standard internal worker path.
+pub const EXTERNAL_REPO_SKILL_PREFIX: &str = "external_repo:";
+
+/// Returns `true` if any entry in `skills_required` starts with
+/// [`EXTERNAL_REPO_SKILL_PREFIX`], indicating this gap targets an external
+/// repository rather than the Chump codebase itself.
+pub fn has_external_repo_tag(gap: &GapRow) -> bool {
+    gap.skills_required
+        .split(',')
+        .any(|s| s.trim().starts_with(EXTERNAL_REPO_SKILL_PREFIX))
+}
+
+/// Extract the `owner/repo` portion from the first `external_repo:<owner>/<repo>`
+/// tag found in `skills_required`. Returns `None` if no such tag is present or
+/// if the repo portion is empty.
+pub fn extract_external_repo(gap: &GapRow) -> Option<String> {
+    gap.skills_required.split(',').find_map(|s| {
+        let trimmed = s.trim();
+        trimmed
+            .strip_prefix(EXTERNAL_REPO_SKILL_PREFIX)
+            .filter(|repo| !repo.is_empty())
+            .map(|repo| repo.to_string())
+    })
+}
+
 /// Per-worker capability view used by [`crate::worker::loop_body`].
 ///
 /// Skills are matched against `gap.skills_required`; machine against
@@ -92,12 +122,29 @@ impl WorkerCapability {
     /// - If `gap.preferred_backend` is set, it must equal `self.backend`
     ///   (or be `"any"`).
     pub fn matches(&self, gap: &GapRow) -> bool {
+        // External-repo gate (INFRA-2113): gaps tagged `external_repo:<owner>/<repo>`
+        // are only pickable when CHUMP_EXTERNAL_REPO_PICK_OK=1. Standard fleet
+        // workers skip them; the target curator opts-in explicitly. When picked,
+        // the dispatch path must route through ExternalRepoContract (INFRA-2111).
+        if has_external_repo_tag(gap) {
+            let pick_ok = env::var("CHUMP_EXTERNAL_REPO_PICK_OK")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
+            if !pick_ok {
+                return false;
+            }
+        }
+
         // Skills: parse comma-separated string from gap.
         let gap_skills: Vec<String> = gap
             .skills_required
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            // External-repo tags are routing hints, not skill requirements —
+            // strip them before the standard skill-match logic so they do not
+            // cause unrelated workers to be filtered out when the env gate is open.
+            .filter(|s| !s.starts_with(EXTERNAL_REPO_SKILL_PREFIX))
             .collect();
         if !gap_skills.is_empty() {
             if self.skills.is_empty() {
@@ -155,6 +202,7 @@ impl WorkerCapability {
 mod tests {
     use super::*;
     use chump_gap_store::GapRow;
+    use serial_test::serial;
 
     fn gap_with(skills: &str, machine: &str, backend: &str) -> GapRow {
         GapRow {
@@ -243,6 +291,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn from_env_parses_comma_skills() {
         std::env::set_var("WORKER_SKILLS", "rust, shell , python");
         std::env::set_var("WORKER_MACHINE", "rpi");
@@ -275,5 +324,120 @@ mod tests {
         assert_eq!(m.session_id, "sess-1");
         assert_eq!(m.skills, vec!["rust".to_string()]);
         assert_eq!(m.machine.as_deref(), Some("m"));
+    }
+
+    // ── external_repo tag tests (INFRA-2113) ─────────────────────────────────
+    // These tests mutate CHUMP_EXTERNAL_REPO_PICK_OK, so they must run serially
+    // to avoid races with other tests that read the same env var.
+
+    #[test]
+    #[serial]
+    fn external_repo_gap_skipped_by_default() {
+        // Gap has external_repo tag; env var NOT set — must be skipped.
+        std::env::remove_var("CHUMP_EXTERNAL_REPO_PICK_OK");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("external_repo:ehippy/derelict", "", "");
+        assert!(
+            !w.matches(&g),
+            "external-repo gap must be skipped when CHUMP_EXTERNAL_REPO_PICK_OK is unset"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn external_repo_gap_picked_when_opt_in() {
+        // Gap has external_repo tag; env var IS set to 1 — must match.
+        std::env::set_var("CHUMP_EXTERNAL_REPO_PICK_OK", "1");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("external_repo:ehippy/derelict", "", "");
+        assert!(
+            w.matches(&g),
+            "external-repo gap must be picked when CHUMP_EXTERNAL_REPO_PICK_OK=1"
+        );
+        std::env::remove_var("CHUMP_EXTERNAL_REPO_PICK_OK");
+    }
+
+    #[test]
+    #[serial]
+    fn external_repo_tag_does_not_count_as_skill_requirement() {
+        // A gap with ONLY an external_repo tag and the opt-in set must still
+        // match a worker with no WORKER_SKILLS — the tag is a routing hint,
+        // not a skill requirement.
+        std::env::set_var("CHUMP_EXTERNAL_REPO_PICK_OK", "1");
+        let w = WorkerCapability {
+            skills: vec![],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("external_repo:ehippy/derelict", "", "");
+        assert!(
+            w.matches(&g),
+            "external_repo tag alone must not act as a skill filter"
+        );
+        std::env::remove_var("CHUMP_EXTERNAL_REPO_PICK_OK");
+    }
+
+    #[test]
+    #[serial]
+    fn external_repo_mixed_with_real_skill() {
+        // Gap has both external_repo tag and a real skill requirement.
+        // With opt-in set AND matching skill — should match.
+        std::env::set_var("CHUMP_EXTERNAL_REPO_PICK_OK", "1");
+        let w = WorkerCapability {
+            skills: vec!["rust".to_string()],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        let g = gap_with("external_repo:ehippy/derelict,rust", "", "");
+        assert!(
+            w.matches(&g),
+            "worker with matching skill should pick external-repo+rust gap"
+        );
+
+        // Without the matching skill — should not match.
+        let w2 = WorkerCapability {
+            skills: vec!["python".to_string()],
+            machine: None,
+            backend: None,
+            session_id: "s".to_string(),
+        };
+        assert!(
+            !w2.matches(&g),
+            "python worker must not match external-repo+rust gap"
+        );
+        std::env::remove_var("CHUMP_EXTERNAL_REPO_PICK_OK");
+    }
+
+    #[test]
+    fn has_external_repo_tag_detects_prefix() {
+        let g_yes = gap_with("external_repo:ehippy/derelict", "", "");
+        let g_no = gap_with("rust,python", "", "");
+        let g_empty = gap_with("", "", "");
+        assert!(has_external_repo_tag(&g_yes));
+        assert!(!has_external_repo_tag(&g_no));
+        assert!(!has_external_repo_tag(&g_empty));
+    }
+
+    #[test]
+    fn extract_external_repo_returns_owner_repo() {
+        let g = gap_with("external_repo:ehippy/derelict", "", "");
+        assert_eq!(
+            extract_external_repo(&g).as_deref(),
+            Some("ehippy/derelict")
+        );
+        let g2 = gap_with("rust", "", "");
+        assert_eq!(extract_external_repo(&g2), None);
     }
 }
