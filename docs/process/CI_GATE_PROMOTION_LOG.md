@@ -45,7 +45,22 @@ Each entry is a markdown sub-heading with a structured body:
 > into this log is a follow-up gap so we don't conflate "promoted from
 > warn-only" with "born strict".
 
-(no entries yet)
+## test-preflight-ci-parity
+
+- **Promoted at:** 2026-05-29 00:00:00 UTC
+- **CI file:** .github/workflows/ci.yml
+- **CI line (anchor):** preflight-vs-CI parity smoke (INFRA-1867)
+- **Promoted by:** INFRA-2120
+- **Reason:** allowlist drift between `.github/workflows/ci.yml` and
+  `chump preflight` is the rank-2 CI-rot class (~15% of recent CI failures
+  per docs/strategy/CI_REVIEW_2026-05-29.md Lever 4). Gate must stay strict
+  so a CI-config addition without a matching preflight mirror (or
+  exceptions entry) fails at the workflow step instead of leaking out as
+  silent "local-green-CI-red" surprises. Also fired locally by the
+  pre-commit hook (see CLAUDE.md "Local CI discipline"). The slug
+  `test-preflight-ci-parity` matches the script basename, which is
+  referenced in `bash scripts/ci/test-preflight-ci-parity.sh` on the
+  promoted step.
 
 ## Demoted gates
 
