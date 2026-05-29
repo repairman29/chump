@@ -1331,6 +1331,7 @@ dependencies = [
  "chump-cancel-registry",
  "chump-cost-tracker",
  "chump-gap-store",
+ "chump-handoff",
  "chump-mcp-lifecycle",
  "chump-messaging",
  "chump-orchestrator",
