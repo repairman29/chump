@@ -643,3 +643,13 @@ CHUMP_REQUIRED_CHECKS_OVERRIDE
 # Wall-clock budgets for dispatched subagents (META-069 dispatch defaults)
 CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S
 CHUMP_SUBAGENT_BUDGET_S
+
+# ── INFRA-2113 — external-repo picker gate (META-123 C5) ─────────────────
+# Gaps tagged `external_repo:<owner>/<repo>` in skills_required are skipped
+# by standard fleet workers unless this env var is set to "1". Set it only
+# in the specific session that owns external-repo demo work (curator-opus-target).
+# Never export fleet-wide — accidental claims by unqualified workers are the
+# failure mode this gate prevents. When a gap is picked with this set, the
+# dispatch path routes through ExternalRepoContract (INFRA-2111) instead of
+# the standard internal worker path. Source: crates/chump-coord/src/worker/capability.rs
+CHUMP_EXTERNAL_REPO_PICK_OK
