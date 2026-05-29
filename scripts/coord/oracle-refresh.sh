@@ -50,6 +50,28 @@ emit() {
     printf '{"ts":"%s","kind":"%s",%s}\n' "$ts" "$kind" "$payload" >> "$AMBIENT"
 }
 
+# INFRA-2122: META-alarm — detector for the detector failing.
+# If THE_PATH.md hasn't been touched in >12h AND we have recent heartbeats
+# in oracle-refresh-state.jsonl, we're in the silent-failure mode this gap
+# was filed to fix. Emit alert class signal.
+STALE_THRESHOLD_S="${CHUMP_ORACLE_STALE_THRESHOLD_S:-43200}"  # 12h default
+HEARTBEAT_WINDOW_S="${CHUMP_ORACLE_HEARTBEAT_WINDOW_S:-21600}"  # 6h default
+if [[ -f "$THE_PATH" ]]; then
+    # mtime in epoch — macOS uses -f %m, linux uses -c %Y
+    path_mtime="$(stat -f %m "$THE_PATH" 2>/dev/null || stat -c %Y "$THE_PATH" 2>/dev/null || echo 0)"
+    now_s="$(date +%s)"
+    path_age_s=$(( now_s - path_mtime ))
+    if [[ $path_age_s -gt $STALE_THRESHOLD_S && -s "$STATE" ]]; then
+        # State file has content AND was touched in window → daemon is "alive"
+        state_mtime="$(stat -f %m "$STATE" 2>/dev/null || stat -c %Y "$STATE" 2>/dev/null || echo 0)"
+        state_age_s=$(( now_s - state_mtime ))
+        if [[ $state_age_s -lt $HEARTBEAT_WINDOW_S ]]; then
+            # scanner-anchor: "kind":"oracle_stale_despite_heartbeat"
+            emit "oracle_stale_despite_heartbeat" "\"path_age_s\":${path_age_s},\"state_age_s\":${state_age_s},\"stale_threshold_s\":${STALE_THRESHOLD_S}"
+        fi
+    fi
+fi
+
 # Snapshot current THE_PATH hash
 before_hash="$(shasum "$THE_PATH" 2>/dev/null | cut -d' ' -f1)"
 
@@ -112,13 +134,35 @@ _to=""
 if command -v timeout >/dev/null 2>&1; then _to="timeout ${WALL_BUDGET_S}s";
 elif command -v gtimeout >/dev/null 2>&1; then _to="gtimeout ${WALL_BUDGET_S}s";
 fi
-new_body="$(printf '%s\n' "$PROMPT" | $_to claude -p --bare 2>/dev/null | head -c 6000)"
+# INFRA-2122: don't suppress stderr; capture to tempfile + check exit code so
+# auth failures ("Not logged in") and other LLM errors surface in ambient.jsonl
+# instead of silently degrading to oracle_refresh_skipped.
+STDERR_TMP="$(mktemp)"
+START_TS="$(date +%s)"
+# scanner-anchor: "kind":"oracle_refresh_failed"
+# scanner-anchor: "kind":"oracle_refresh_empty"
+new_body="$(printf '%s\n' "$PROMPT" | $_to claude -p --bare 2>"$STDERR_TMP" | head -c 6000)"
+LLM_EXIT=$?
+ELAPSED_S=$(( $(date +%s) - START_TS ))
 
-if [[ -z "$new_body" || "${#new_body}" -lt 200 ]]; then
-    echo "[oracle-refresh] burst returned empty/too-short output; skipping"
-    emit "oracle_refresh_skipped" "\"reason\":\"empty_or_short_output\""
+if [[ $LLM_EXIT -ne 0 ]]; then
+    # Capture stderr (truncated 500 chars) and emit hard-failure event.
+    err_msg="$(head -c 500 "$STDERR_TMP" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g')"
+    echo "[oracle-refresh] claude -p failed (exit=$LLM_EXIT elapsed=${ELAPSED_S}s): $err_msg" >&2
+    emit "oracle_refresh_failed" "\"exit_code\":${LLM_EXIT},\"elapsed_s\":${ELAPSED_S},\"stderr\":\"${err_msg}\""
+    rm -f "$STDERR_TMP"
     exit 0
 fi
+
+if [[ -z "$new_body" || "${#new_body}" -lt 200 ]]; then
+    err_msg="$(head -c 500 "$STDERR_TMP" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g')"
+    echo "[oracle-refresh] burst returned empty/too-short output (exit=$LLM_EXIT elapsed=${ELAPSED_S}s); skipping"
+    emit "oracle_refresh_empty" "\"exit_code\":${LLM_EXIT},\"elapsed_s\":${ELAPSED_S},\"body_len\":${#new_body},\"stderr\":\"${err_msg}\""
+    rm -f "$STDERR_TMP"
+    exit 0
+fi
+
+rm -f "$STDERR_TMP"
 
 # ── Idempotency check — content hash ───────────────────────────────────────
 # Write to tempfile + compare hash
