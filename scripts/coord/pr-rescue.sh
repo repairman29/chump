@@ -9,6 +9,22 @@
 # This unwedges PRs like #1433 (17h stall: checks failed transiently on an
 # older main, later passed on main, but the PR branch never got rebased).
 #
+# Fork-aware rescue (INFRA-2114):
+#   When a PR is opened from a fork (isCrossRepository=true), the standard
+#   same-repo rebase+push path would fail because the head branch lives in a
+#   different repository. The fork-aware path:
+#     1. Clones the upstream (base) repo
+#     2. Adds the fork owner as a named git remote (idempotent — falls back to
+#        set-url if the remote already exists)
+#     3. Fetches the fork's head branch
+#     4. Checks out a local tracking branch named <fork_owner>-<head_ref>
+#     5. Rebases onto upstream main
+#     6. Pushes back to the FORK remote (not origin/upstream)
+#   Same-repo PRs continue through the original logic unchanged.
+#
+# Don't: push fork PRs to origin — that would create a branch on the upstream
+#         repo rather than updating the contributor's fork branch.
+#
 # Usage:
 #   bash scripts/coord/pr-rescue.sh [--pr <N>] [--repo <owner/repo>]
 #
@@ -154,6 +170,21 @@ for PR_NUM in ${PR_NUMBERS}; do
     PR_BRANCH="$(echo "${PR_META}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['head']['ref'])")"
     PR_CREATED="$(echo "${PR_META}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['created_at'])")"
 
+    # ── INFRA-2114: fork detection ─────────────────────────────────────────────
+    # Query isCrossRepository + headRepositoryOwner to detect fork PRs.
+    # Same-repo PRs have isCrossRepository=false (or field absent) — skip this
+    # extra gh call for those once we know the base REST meta doesn't surface it.
+    FORK_META="$(chump_gh pr view "${PR_NUM}" \
+        --repo "${REPO}" \
+        --json isCrossRepository,headRepositoryOwner,baseRepositoryOwner \
+        2>/dev/null || echo '{}')"
+    IS_CROSS_REPO="$(echo "${FORK_META}" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(str(d.get('isCrossRepository',False)).lower())")"
+    FORK_OWNER="$(echo "${FORK_META}" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print((d.get('headRepositoryOwner') or {}).get('login',''))")"
+    # Derive base repo name from REPO (owner/repo → repo)
+    BASE_REPO_NAME="${REPO##*/}"
+
     if [[ "${PR_STATE}" != "open" ]]; then
         log "PR #${PR_NUM}: not open — skip."
         SKIPPED=$((SKIPPED + 1))
@@ -218,32 +249,81 @@ for PR_NUM in ${PR_NUMBERS}; do
         continue
     fi
 
-    log "PR #${PR_NUM} (branch: ${PR_BRANCH}): rescue candidate — rebasing onto main."
-    emit_ambient "pr_rescue_triggered" "${PR_NUM}" "branch=${PR_BRANCH} age=${AGE_HOURS}h"
+    if [[ "${IS_CROSS_REPO}" == "true" ]]; then
+        log "PR #${PR_NUM} (branch: ${PR_BRANCH}): fork PR from ${FORK_OWNER} — fork-aware rescue."
+    else
+        log "PR #${PR_NUM} (branch: ${PR_BRANCH}): rescue candidate — rebasing onto main."
+    fi
+    emit_ambient "pr_rescue_triggered" "${PR_NUM}" "branch=${PR_BRANCH} age=${AGE_HOURS}h fork=${IS_CROSS_REPO}"
 
     # ── Rebase via temp clone ─────────────────────────────────────────────────
     TEMP_DIR="$(mktemp -d)"
     RESCUE_OK=0
 
-    (
-        set -euo pipefail
-        git clone --quiet \
-            "$(git -C "${REPO_ROOT}" remote get-url origin)" \
-            "${TEMP_DIR}/repo" \
-            --depth 50 --branch "${PR_BRANCH}" 2>&1 | tail -2
+    if [[ "${IS_CROSS_REPO}" == "true" && -n "${FORK_OWNER}" ]]; then
+        # ── INFRA-2114: fork-aware rescue path ────────────────────────────────
+        # Fork PR: head lives in a different repo than base. We must:
+        #   (a) clone the upstream (base) repo
+        #   (b) add the fork as a named remote (idempotent)
+        #   (c) fetch the fork's head branch
+        #   (d) checkout a local tracking branch
+        #   (e) rebase onto upstream main
+        #   (f) push back to the FORK (not upstream)
+        UPSTREAM_URL="$(git -C "${REPO_ROOT}" remote get-url origin)"
+        FORK_URL="https://github.com/${FORK_OWNER}/${BASE_REPO_NAME}.git"
+        (
+            set -euo pipefail
+            git clone --quiet \
+                "${UPSTREAM_URL}" \
+                "${TEMP_DIR}/repo" \
+                --depth 50 2>&1 | tail -2
 
-        git -C "${TEMP_DIR}/repo" config user.name  "chump-pr-rescue"
-        git -C "${TEMP_DIR}/repo" config user.email "chump-pr-rescue@users.noreply.github.com"
+            git -C "${TEMP_DIR}/repo" config user.name  "chump-pr-rescue"
+            git -C "${TEMP_DIR}/repo" config user.email "chump-pr-rescue@users.noreply.github.com"
 
-        # Fetch main and rebase
-        git -C "${TEMP_DIR}/repo" fetch --quiet origin main 2>&1 | tail -2
-        CHUMP_GIT_IDENTITY_CHECK=0 CHUMP_GAPS_LOCK=0 \
-            git -C "${TEMP_DIR}/repo" rebase origin/main
+            # (b) Add fork remote — idempotent (ignore error if already exists)
+            git -C "${TEMP_DIR}/repo" remote add "${FORK_OWNER}" "${FORK_URL}" 2>/dev/null \
+                || git -C "${TEMP_DIR}/repo" remote set-url "${FORK_OWNER}" "${FORK_URL}"
 
-        # Force-push with lease
-        git -C "${TEMP_DIR}/repo" push origin "${PR_BRANCH}" \
-            --force-with-lease --quiet 2>&1 | tail -2
-    ) && RESCUE_OK=1 || RESCUE_OK=0
+            # (c) Fetch fork branch
+            git -C "${TEMP_DIR}/repo" fetch --quiet "${FORK_OWNER}" "${PR_BRANCH}" 2>&1 | tail -2
+
+            # (d) Checkout local tracking branch
+            git -C "${TEMP_DIR}/repo" checkout -b "${FORK_OWNER}-${PR_BRANCH}" \
+                "${FORK_OWNER}/${PR_BRANCH}"
+
+            # (e) Fetch main and rebase
+            git -C "${TEMP_DIR}/repo" fetch --quiet origin main 2>&1 | tail -2
+            CHUMP_GIT_IDENTITY_CHECK=0 CHUMP_GAPS_LOCK=0 \
+                git -C "${TEMP_DIR}/repo" rebase origin/main
+
+            # (f) Push back to fork, NOT to upstream
+            git -C "${TEMP_DIR}/repo" push "${FORK_OWNER}" \
+                "HEAD:${PR_BRANCH}" \
+                --force-with-lease --quiet 2>&1 | tail -2
+        ) && RESCUE_OK=1 || RESCUE_OK=0
+    else
+        # ── Same-repo rescue path (original logic, unchanged) ─────────────────
+        (
+            set -euo pipefail
+            git clone --quiet \
+                "$(git -C "${REPO_ROOT}" remote get-url origin)" \
+                "${TEMP_DIR}/repo" \
+                --depth 50 --branch "${PR_BRANCH}" 2>&1 | tail -2
+
+            git -C "${TEMP_DIR}/repo" config user.name  "chump-pr-rescue"
+            git -C "${TEMP_DIR}/repo" config user.email "chump-pr-rescue@users.noreply.github.com"
+
+            # Fetch main and rebase
+            git -C "${TEMP_DIR}/repo" fetch --quiet origin main 2>&1 | tail -2
+            CHUMP_GIT_IDENTITY_CHECK=0 CHUMP_GAPS_LOCK=0 \
+                git -C "${TEMP_DIR}/repo" rebase origin/main
+
+            # Force-push with lease
+            git -C "${TEMP_DIR}/repo" push origin "${PR_BRANCH}" \
+                --force-with-lease --quiet 2>&1 | tail -2
+        ) && RESCUE_OK=1 || RESCUE_OK=0
+    fi
 
     rm -rf "${TEMP_DIR}"
 
@@ -261,11 +341,11 @@ for PR_NUM in ${PR_NUMBERS}; do
                 2>/dev/null || true
             log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
         fi
-        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY}"
+        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY} fork=${IS_CROSS_REPO}"
         RESCUED=$((RESCUED + 1))
     else
         log "PR #${PR_NUM}: rebase failed (conflicts?). FAILED."
-        emit_ambient "pr_rescue_failed" "${PR_NUM}" "branch=${PR_BRANCH} reason=rebase_conflict"
+        emit_ambient "pr_rescue_failed" "${PR_NUM}" "branch=${PR_BRANCH} reason=rebase_conflict fork=${IS_CROSS_REPO}"
         FAILED=$((FAILED + 1))
     fi
 done
