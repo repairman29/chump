@@ -208,6 +208,7 @@ when no `--gap` was given, or when the chump binary doesn't support
 - **Branch-protection / workflow-job alignment (CREDIBLE-058, 2026-05-14).** Branch protection requires three check contexts: `test`, `audit`, `ACP protocol smoke test (Zed / JetBrains compatible)`. If you rename any of these workflow jobs in `.github/workflows/`, branch protection still expects the OLD name and every PR will stall with "required check missing." The pre-commit hook now catches this: any staged change to `.github/workflows/*.yml` triggers `scripts/ci/audit-branch-protection.sh --baseline --check-staged`, which verifies every required context matches a job name in the staged YAML. If you intentionally rename a job and update branch protection, run `scripts/ci/audit-branch-protection.sh --update-baseline` to commit the new baseline. Bypass: `CHUMP_BRANCH_PROTECTION_AUDIT=0 git commit ...`. Drift is also signalled via `kind=branch_protection_drift` in ambient.jsonl.
 - **Workflow-only / gap-only PR path-filter trap (INFRA-272, 2026-05-02).** Required CI checks (`test`, `audit`, `ACP smoke test`) are gated by `dorny/paths-filter` inside `.github/workflows/ci.yml`'s `changes` job, which uses an **allowlist** in the `code:` filter. If a PR's diff matches NONE of the allowlist patterns, the gated jobs mark "skipped" and branch protection treats that as missing-not-passing — auto-merge can never satisfy it (killed PR #803 entirely, almost killed PR #874 on 2026-05-02). **Decision: option (a) — extend the allowlist.** `.github/workflows/**` and `docs/gaps/**` are now in `code:`, so workflow-only and gap-filing PRs trigger all required checks. If you add a new top-level path that PRs may exclusively touch (e.g. a new config dir), add it to the `code:` filter or your PR will get stuck. PR #874 is the regression fixture: gap+workflow+script diff, all three required checks fired green. Bypass for genuine docs-only sweeps: keep diffs in `docs/` (excluding `docs/gaps/`) and accept the skip — branch protection lets the rollup pass when shards skip uniformly.
 - **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `chump gap preflight <GAP-ID>` first if you are gap-scoped. After a manual ship, run `chump gap ship <GAP-ID> --update-yaml` to flip status in `.chump/state.db` and regenerate `docs/gaps/<GAP-ID>.yaml` on the same branch, and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
+- **`bot_merge_hung` — webhook-cache MERGED wait (INFRA-2119, 2026-05-29).** The `bot_merge_hung` ALERT (33 events / 14d as of 2026-05-29) historically fired when bot-merge.sh's overall budget watchdog (CHUMP_BOT_MERGE_BUDGET_SECS, default 600s) tripped while waiting for a downstream step that never returned. Two same-day wedges (INFRA-2122, INFRA-2128) forced manual `git push --no-verify + gh pr create` rescues. The fix: bot-merge.sh now exposes an opt-in webhook-cache MERGED wait — set `CHUMP_BOT_MERGE_WAIT_MERGED=1` to make bot-merge block until `cache_lookup_pr` (the webhook-populated `.chump/github_cache.db` reader from INFRA-1081) reports `merged_at` non-null. Tunables: `CHUMP_BOT_MERGE_WAIT_TIMEOUT_S` (default 900s = 15 min hard cap), `CHUMP_BOT_MERGE_WAIT_POLL_INTERVAL_S` (default 5s), `CHUMP_BOT_MERGE_WAIT_WEBHOOK_GRACE_S` (default 60s, fed to the cache TTL). On MERGED → emits `kind=bot_merge_webhook_hit` (consumers can compute webhook-hit vs poll-fallback ratio). On timeout → emits `kind=bot_merge_timeout` and exits **4** so the bash caller (typically a sub-agent dispatch wrapper per SUBAGENT_DISPATCH.md) knows to switch to the INFRA-028 manual recovery path above. Default OFF preserves backward compat — `queue-driver.sh`, `ghost-gap-reaper.sh`, and other arm-and-exit callers see no behavior change.
 - **If auto-merge is stuck.** (Pre-INFRA-201 framing was "queue stuck"; in practice the symptoms and recovery are identical because there is no queue — see auto-merge note above.) Symptoms: `gh pr view <n> --json autoMergeRequest` shows auto-merge armed but PR state is still `OPEN` long after CI finished. Recovery (in order — try least-destructive first):
   0. **Confirm it's actually stuck (INFRA-306).** `gh pr view <n> --json state -q .state` first. If `MERGED`, abandon recovery — the PR landed and your "stuck" view was 30s stale. `bot-merge.sh` and `pr-watch.sh` both run this check before any force-push since INFRA-306; manual recovery should too.
   1. **Diagnose.** `gh pr checks <n>` + open `https://github.com/repairman29/chump/queue/main` — identify the blocking PR. Common causes: CI failure on the queue's temp merge branch, required-check timeout, a rebase conflict the queue couldn't resolve, or auto-merge silently disarmed by a force-push / branch-protection change.
@@ -1023,6 +1024,50 @@ grep '"kind":"trunk_red_skip"' .chump-locks/ambient.jsonl | tail -20
 **Operator action when `kind=dispatch_flatline` fires:**
 
 The autopilot daemons assume **6 live `claude --loop` curator sessions** exist (per OPERATOR_PLAYBOOK §2). Without them, JIT scheduler has nothing to dispatch to. Check: `ls .chump-locks/sessions/` should be non-empty; `ps -eo command | grep "claude --loop"` should show 6 curator processes. If absent, the playbook expects the operator to spawn them by hand. Filed as a separate concern (auto-launch curators on autopilot start would be a discrete gap — see WIZARD_STRATEGIC_BACKLOG).
+
+---
+
+## OAuth token chain silently stale — Oracle/JIT/dispatch flatline cascade (INFRA-2124, 2026-05-29)
+
+**Symptom (observed 2026-05-29):** Headless `claude -p` subprocesses return `"Not logged in"`. Operator's interactive `claude` CLI works fine; macOS Keychain entry `Claude Code-credentials` is populated correctly. But Oracle silently fails (INFRA-2122), JIT scheduler reads stale priorities, and `kind=dispatch_flatline` fires after a quiet 2h+ window.
+
+**Why it stays invisible:** the operator never sees the failure. Each piece (login, keychain, subprocess) looks fine in isolation. The break is in the glue file `~/.chump/oauth-token.json` — subprocesses inherit `CLAUDE_CODE_OAUTH_TOKEN` from this file (per CLAUDE.md INFRA-622 auth-modes spec), and the file went 3+ weeks stale because **no daemon was actually refreshing it**.
+
+**Root cause:** the CLAUDE.md INFRA-622 spec promises "OAUTH tokens are refreshed to `~/.chump/oauth-token.json` every 5 min". The implementation lived inside `scripts/dispatch/run-fleet.sh` (lines 574–614), but that refresher is a backgrounded `while true` only spawned when subscription-mode `run-fleet.sh` is alive. When the fleet stops (or never starts), the refresher dies. The file goes stale within hours; subprocess `claude -p` calls silently fail with the stale token.
+
+**Diagnostic checklist:**
+```bash
+# 1. Is the token file fresh? (Should be <15 min)
+ls -la ~/.chump/oauth-token.json
+python3 -c "import json; d=json.load(open('$HOME/.chump/oauth-token.json')); print('written_at:', d['written_at'])"
+
+# 2. Is the keychain entry healthy? (Should print a `sk-ant-oat01-...` access token)
+security find-generic-password -a "$(whoami)" -s "Claude Code-credentials" -w | \
+  python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["claudeAiOauth"]["accessToken"][:30] + "...")'
+
+# 3. Is the refresh daemon loaded?
+launchctl list | grep com.chump.oauth-refresh
+```
+
+**Fix shipped in INFRA-2124:**
+
+1. **Standalone refresh daemon** `scripts/coord/oauth-token-refresh.sh` — extracts `claudeAiOauth.accessToken` from macOS Keychain (`Claude Code-credentials`), parses JSON, atomically writes `~/.chump/oauth-token.json` with `{"token":"...","written_at":"<iso8601>","source":"keychain"}`. Independent of `run-fleet.sh`; works whether the fleet is up or not.
+
+2. **LaunchAgent** `launchd/com.chump.oauth-refresh.plist` with `StartInterval=300` (5 min per spec) and `RunAtLoad=true`. Installed via `scripts/setup/install-oauth-refresh-launchd.sh` (operator action — one-time).
+
+3. **Three new ambient kinds** (registered in `scripts/ci/event-registry-reserved.txt` + `docs/observability/EVENT_REGISTRY.yaml`): `oauth_token_refreshed`, `oauth_token_refresh_failed`, `oauth_token_stale_despite_daemon`.
+
+4. **Wedge detector**: `scripts/coord/infra-watcher-loop.sh check-oauth-freshness` (rolled into `tick`) — if the file is older than `CHUMP_OAUTH_STALE_S` (default 900s) AND the plist is loaded, emits `kind=oauth_token_stale_despite_daemon` (critical). Loud signal that the daemon ran but is wedged (keychain perm revoked / python3 PATH gone / refresh-once subprocess hung).
+
+**Operator first-time install:**
+```bash
+bash scripts/setup/install-oauth-refresh-launchd.sh
+launchctl list | grep com.chump.oauth-refresh
+launchctl start com.chump.oauth-refresh        # force one cycle
+tail -1 /tmp/chump-oauth-refresh.out.log       # should print "OK: wrote ..."
+```
+
+**Related class** — same shape as INFRA-2101 binary refresh (daemon-promised-but-never-shipped) and INFRA-2122 Oracle staleness (downstream consumer of this token chain). The general lesson: any CLAUDE.md spec that says "X is refreshed every Y minutes" should be checked for a corresponding plist + install helper + ambient emit — the "background `while true` inside another script" pattern is a stall trap.
 
 ---
 

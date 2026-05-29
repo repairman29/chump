@@ -605,6 +605,11 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
+      # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
+      # DOC-063 showed .cargo-test-target / /tmp/chump-coord-linux-build* poisoning
+      # was a top-3 CI failure class. Each run gets a fresh dir; cleaned up by
+      # runner after the job.
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -651,6 +656,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-fast-checks
+          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
+          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
@@ -1068,6 +1075,9 @@ jobs:
     # Feature-flag fallback: CHUMP_SELF_HOSTED_CLIPPY=true reverts this lane.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
+    # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1104,6 +1114,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-clippy
+          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
+          # Different PRs may have different Cargo.toml manifests; sharing the
+          # cache silently poisons incremental builds (the "works on my PR but
+          # not yours" class of flake).
+          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -1123,6 +1138,8 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
+      # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1157,6 +1174,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-cargo-test
+          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
+          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
 
       # INFRA-2094: install cargo-nextest (parallel test runner, ~60% faster)
       - name: Install cargo-nextest
@@ -1540,6 +1559,8 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
+      # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
+      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1565,6 +1586,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-audit
+          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
+          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
 
       - name: INFRA-503 — cargo audit moved to nightly cron
         run: |
