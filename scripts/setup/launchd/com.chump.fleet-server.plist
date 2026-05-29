@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.fleet-server.plist — INFRA-2175
+  Launchd user agent that keeps chump-fleet-server running at all times.
+
+  The server listens on 127.0.0.1:7070 (CHUMP_FLEET_SERVER_PORT) and serves
+  the fleet visualization REST + WebSocket API for INFRA-2164.
+
+  Install:   scripts/setup/install-fleet-server.sh
+  Uninstall: scripts/setup/install-fleet-server.sh --uninstall
+  Status:    launchctl print gui/$(id -u)/com.chump.fleet-server
+  Logs:      ~/Library/Logs/Chump/fleet-server.out.log
+             ~/Library/Logs/Chump/fleet-server.err.log
+
+  Tunable env vars:
+    CHUMP_FLEET_SERVER_PORT  (default 7070)
+    CHUMP_FLEET_DB           (default <repo>/.chump/fleet_events.db)
+    RUST_LOG                 (default info)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.fleet-server</string>
+
+    <!-- Run immediately on load and keep alive on exit. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Back off 5s on crash to avoid tight-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- Binary path substituted by install-fleet-server.sh -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>CHUMP_FLEET_SERVER_BIN_PLACEHOLDER</string>
+    </array>
+
+    <!-- Environment — repo root substituted at install time. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>CHUMP_FLEET_DB</key>
+        <string>CHUMP_REPO_ROOT_PLACEHOLDER/.chump/fleet_events.db</string>
+        <key>CHUMP_FLEET_SERVER_PORT</key>
+        <string>7070</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/fleet-server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/fleet-server.err.log</string>
+</dict>
+</plist>
