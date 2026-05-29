@@ -132,6 +132,70 @@ cache_query_behind_prs() {
     fi
 }
 
+# cache_query_dirty_armed_prs (INFRA-2186)
+#   - Returns one PR number per line where mergeable_state='DIRTY' AND
+#     auto_merge_enabled=1 AND merged_at IS NULL. Mirrors cache_query_behind_prs
+#     for the DIRTY axis. Used by queue-driver.sh DIRTY auto-resolve loop.
+#   - Empty cache or no rows -> empty output + cache_miss event; caller falls
+#     back to `gh pr list`.
+cache_query_dirty_armed_prs() {
+    local db; db="$(_cache_db_path)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_dirty_armed_prs","target":"dirty_prs","reason":"db_not_found"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    result="$(sqlite3 "$db" "SELECT number FROM pr_state \
+        WHERE mergeable_state = 'DIRTY' \
+          AND auto_merge_enabled = 1 \
+          AND merged_at IS NULL \
+        ORDER BY number ASC" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_dirty_armed_prs","target":"dirty_prs","reason":"no_rows"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_dirty_armed_prs","target":"dirty_prs","age_s":0,"count":%s}\n' \
+            "$ts" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
+}
+
+# cache_query_open_non_draft_prs (INFRA-2186)
+#   - Returns one PR number per line for all open non-draft PRs (merged_at IS
+#     NULL AND draft=0). Replaces `gh pr list --state open --json
+#     number,isDraft` in queue-driver.sh cascade_rebase_if_hot. That call was
+#     burning ~48 GraphQL points per hour during multi-PR cascade-rebase waves.
+#   - Empty cache or no rows -> empty output + cache_miss event; caller falls
+#     back to `gh pr list`.
+cache_query_open_non_draft_prs() {
+    local db; db="$(_cache_db_path)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_open_non_draft_prs","target":"open_prs","reason":"db_not_found"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    result="$(sqlite3 "$db" "SELECT number FROM pr_state \
+        WHERE merged_at IS NULL \
+          AND draft = 0 \
+        ORDER BY number ASC" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_open_non_draft_prs","target":"open_prs","reason":"no_rows"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_open_non_draft_prs","target":"open_prs","age_s":0,"count":%s}\n' \
+            "$ts" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
+}
+
 # cache_lookup_pr <number> [--max-age-s N]
 #   - Returns the cache row's raw_payload_json on stdout (if present).
 #   - On miss: rc=2, empty stdout.

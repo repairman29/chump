@@ -3776,6 +3776,27 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, reaped_count, bytes_freed, execute, worktree_orphan_count]
 
+  - kind: cargo_target_reaper_event_listener_started
+    effect_metric: self
+    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-2181)
+    trigger: cargo-target-reaper.sh started in --event-listen daemon mode.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, poll_interval_s, execute]
+
+  - kind: cargo_target_reaper_event_listener_stopped
+    effect_metric: self
+    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-2181)
+    trigger: cargo-target-reaper.sh event-listen daemon received SIGTERM/SIGINT and exited cleanly.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind]
+
+  - kind: cargo_target_reaper_event_triggered
+    effect_metric: self
+    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-2181)
+    trigger: cargo-target-reaper.sh detected kind=integration_cycle_shipped in ambient.jsonl and fired a reap.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, trigger_event_ts, gap_id, execute]
+
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.
   # Discovered by scripts/ci/test-event-registry-coverage.sh, registered here
