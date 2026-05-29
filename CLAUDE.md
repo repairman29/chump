@@ -512,3 +512,4 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 - Script taxonomy, canonical tool per task, entry points per directory: [`scripts/README.md`](./scripts/README.md)
 - Coordination script entry points, decision guide, full coord/ reference: [`scripts/coord/README.md`](./scripts/coord/README.md)
 - A2A frontier roadmap — six layers from NATS-primary delivery to signed provenance, mapped onto today's chump-coord primitives: [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) (META-061; sub-gaps INFRA-1118 through INFRA-1123)
+- Integration-cycle ship pipeline — strategy + architecture for batched fleet output (Mode A/B/C/D), bisect-on-red, migration phases, and metrics: [`docs/strategy/INTEGRATION_CYCLE_2026-05-29.md`](./docs/strategy/INTEGRATION_CYCLE_2026-05-29.md)
