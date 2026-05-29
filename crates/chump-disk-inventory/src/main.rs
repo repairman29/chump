@@ -291,7 +291,7 @@ pub fn build_snapshot(node_id: &str, threshold_gb: f64) -> Result<DiskSnapshot> 
         free_gb: df.free_gb,
         used_gb: df.used_gb,
         threshold_gb,
-        headroom_gb: (df.free_gb - threshold_gb * 100.0).round() / 100.0,
+        headroom_gb: ((df.free_gb - threshold_gb) * 100.0).round() / 100.0,
         top_consumers,
     })
 }
