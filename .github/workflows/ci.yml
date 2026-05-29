@@ -609,7 +609,7 @@ jobs:
       # DOC-063 showed .cargo-test-target / /tmp/chump-coord-linux-build* poisoning
       # was a top-3 CI failure class. Each run gets a fresh dir; cleaned up by
       # runner after the job.
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1077,7 +1077,7 @@ jobs:
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1139,7 +1139,7 @@ jobs:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
       # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1560,7 +1560,7 @@ jobs:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
       # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
