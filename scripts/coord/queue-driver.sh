@@ -130,12 +130,25 @@ cascade_rebase_if_hot() {
 
     echo "queue-driver: workspace hot-file '$triggered_by' changed on main — cascade rebasing all open PRs"
 
-    local all_prs
-    all_prs=$(chump_gh pr list \
-        --state open \
-        --limit 100 \
-        --json number,isDraft \
-        -q '[.[] | select(.isDraft == false) | .number] | sort | .[]')
+    # INFRA-2186: prefer webhook cache over `gh pr list` (which routes via
+    # GraphQL when isDraft is requested). Multi-PR cascade waves (e.g. a 9-PR
+    # admin-merge batch) fire this branch per merged hot-file commit and were
+    # burning ~48 pr-list calls/hr -> graphql_exhausted spam. Fall back to
+    # gh pr list only on cache miss.
+    local all_prs=""
+    if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
+        # shellcheck source=lib/github_cache.sh
+        # shellcheck disable=SC1091
+        source "$(dirname "$0")/lib/github_cache.sh"
+        all_prs="$(cache_query_open_non_draft_prs)"
+    fi
+    if [[ -z "$all_prs" ]]; then
+        all_prs=$(chump_gh pr list \
+            --state open \
+            --limit 100 \
+            --json number,isDraft \
+            -q '[.[] | select(.isDraft == false) | .number] | sort | .[]')
+    fi
 
     if [[ -z "$all_prs" ]]; then
         echo "queue-driver: cascade — no open non-draft PRs to rebase"
@@ -338,11 +351,9 @@ if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
     # shellcheck disable=SC1091
     source "$(dirname "$0")/lib/github_cache.sh"
     behind_candidates="$(cache_query_behind_prs)"
-    # DIRTY rows are also in the cache — same shape, different mergeable_state.
-    dirty_candidates="$(sqlite3 "$(_cache_db_path)" \
-        "SELECT number FROM pr_state \
-         WHERE mergeable_state='DIRTY' AND auto_merge_enabled=1 AND merged_at IS NULL \
-         ORDER BY number ASC" 2>/dev/null || true)"
+    # INFRA-2186: DIRTY analog via dedicated helper (was inline sqlite). Emits
+    # consistent cache_hit/cache_miss events to ambient.
+    dirty_candidates="$(cache_query_dirty_armed_prs)"
 fi
 # Fallback: cache empty (or library missing) → one direct gh pr list call.
 if [[ -z "$behind_candidates" && -z "$dirty_candidates" ]]; then
