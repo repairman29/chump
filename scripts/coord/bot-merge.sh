@@ -2853,6 +2853,101 @@ print(f"{incomplete} {failed} {total}")
                     exit 2
                 fi
             fi
+
+            # ── INFRA-2119: webhook-cache MERGED wait (opt-in) ──────────────
+            # Replaces the legacy poll-sleep `gh pr checks` watchdog pattern
+            # that caused bot_merge_hung wedges (33 events / 14d as of
+            # 2026-05-29). Consumes GH webhook events from the cache instead
+            # of polling. Default OFF for backward compat — set
+            # CHUMP_BOT_MERGE_WAIT_MERGED=1 in callers that need to block until
+            # the PR transitions to state=MERGED (e.g. sub-agent dispatch
+            # wrappers per docs/process/SUBAGENT_DISPATCH.md).
+            #
+            # Algorithm:
+            #   1. Sample cache_lookup_pr every 5s. Webhook-receiver writes
+            #      merged_at when GitHub fires `pull_request.closed` with
+            #      merged=true; cache_lookup_pr returns that JSON.
+            #   2. If merged_at is non-null → emit bot_merge_webhook_hit, exit 0.
+            #   3. If cache is stale > CHUMP_BOT_MERGE_WAIT_WEBHOOK_GRACE_S
+            #      (default 60s) AND no transition seen → fall back to a
+            #      `gh api pulls/N` direct REST poll (cache_lookup_pr also
+            #      auto-refetches on stale, so this is implicit).
+            #   4. Hard timeout at CHUMP_BOT_MERGE_WAIT_TIMEOUT_S (default
+            #      900s = 15 min) → emit bot_merge_timeout, exit non-zero so
+            #      the bash caller knows to switch to manual recovery per
+            #      the SUBAGENT_DISPATCH.md STOP-block contract.
+            #
+            # Exit codes preserved: 0 on MERGED, non-zero on timeout. Other
+            # tools (queue-driver, ghost-reaper, etc.) continue to call
+            # bot-merge without CHUMP_BOT_MERGE_WAIT_MERGED and see the
+            # original "arm-and-exit" semantics.
+            if [[ "${CHUMP_BOT_MERGE_WAIT_MERGED:-0}" == "1" ]] \
+                    && [[ $DRY_RUN -eq 0 ]] \
+                    && [[ -n "$TARGET_PR" ]] \
+                    && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]]; then
+                stage_start "INFRA-2119: webhook-cache MERGED wait (PR #$TARGET_PR)"
+                _wait_timeout_s="${CHUMP_BOT_MERGE_WAIT_TIMEOUT_S:-900}"
+                _wait_poll_interval_s="${CHUMP_BOT_MERGE_WAIT_POLL_INTERVAL_S:-5}"
+                _wait_webhook_grace_s="${CHUMP_BOT_MERGE_WAIT_WEBHOOK_GRACE_S:-60}"
+                _wait_started_at=$(date -u +%s)
+                _wait_deadline=$(( _wait_started_at + _wait_timeout_s ))
+                _wait_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                _wait_polls=0
+                _wait_source="cache"
+                _wait_done=0
+                _wait_first_seen_age_s=""
+                while :; do
+                    _wait_now=$(date -u +%s)
+                    if (( _wait_now >= _wait_deadline )); then
+                        # scanner-anchor: "kind":"bot_merge_timeout"
+                        printf '{"ts":"%s","kind":"bot_merge_timeout","pr":%s,"gap":"%s","elapsed_s":%s,"timeout_s":%s,"polls":%s,"source":"%s","note":"INFRA-2119 15m hard cap — switch to manual recovery"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                            "$TARGET_PR" "${GAP_IDS[*]:-}" \
+                            "$(( _wait_now - _wait_started_at ))" \
+                            "$_wait_timeout_s" "$_wait_polls" "$_wait_source" \
+                            >> "$_wait_amb" 2>/dev/null || true
+                        red "INFRA-2119: bot-merge wait timed out after ${_wait_timeout_s}s waiting for PR #$TARGET_PR to MERGE."
+                        red "  Switch to manual recovery — see docs/process/CLAUDE_GOTCHAS.md → 'bot_merge_hung'."
+                        exit 4
+                    fi
+                    _wait_polls=$(( _wait_polls + 1 ))
+                    # Cache-first read; helper auto-fetches on stale or miss.
+                    _wait_pr_json="$(cache_lookup_pr "$TARGET_PR" \
+                        --max-age-s "$_wait_webhook_grace_s" 2>/dev/null || true)"
+                    if [[ -n "$_wait_pr_json" ]]; then
+                        # merged_at non-null → PR has merged.
+                        _wait_merged_at="$(printf '%s' "$_wait_pr_json" | \
+                            python3 -c "import json,sys
+try:
+    d=json.load(sys.stdin)
+    v=d.get('merged_at')
+    print(v if v else '')
+except Exception:
+    print('')
+" 2>/dev/null || true)"
+                        if [[ -n "$_wait_merged_at" ]]; then
+                            _wait_done=1
+                            # The most recent successful cache_lookup_pr
+                            # returned within CHUMP_CACHE_TTL_S (default 60s)
+                            # → "webhook hit". A stale-then-refetch path
+                            # would have emitted cache_miss earlier in the
+                            # ambient stream, but here we just record the
+                            # provenance for the bot_merge_webhook_hit ratio.
+                            # scanner-anchor: "kind":"bot_merge_webhook_hit"
+                            printf '{"ts":"%s","kind":"bot_merge_webhook_hit","pr":%s,"gap":"%s","elapsed_s":%s,"polls":%s,"merged_at":"%s","note":"INFRA-2119 MERGED transition observed via webhook cache"}\n' \
+                                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                                "$TARGET_PR" "${GAP_IDS[*]:-}" \
+                                "$(( _wait_now - _wait_started_at ))" \
+                                "$_wait_polls" "$_wait_merged_at" \
+                                >> "$_wait_amb" 2>/dev/null || true
+                            green "INFRA-2119: PR #$TARGET_PR MERGED at $_wait_merged_at (wait=${_wait_polls} poll(s), cache-driven)."
+                            break
+                        fi
+                    fi
+                    sleep "$_wait_poll_interval_s"
+                done
+                stage_done
+            fi
         fi
 
         # ── INFRA-1030: Auto-close gap AFTER auto-merge arm ──────────────────────

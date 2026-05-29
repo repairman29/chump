@@ -1426,6 +1426,29 @@ events:
     trigger: many bot-merges touching same file
     consumers: [audit-log]
 
+  # ── INFRA-2119: webhook-cache MERGED wait ─────────────────────────────────
+  - kind: bot_merge_webhook_hit
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-2119 webhook-cache MERGED wait)
+    trigger: bot-merge observed the PR's merged_at field via cache_lookup_pr
+      (webhook-populated github_cache.db) while waiting for MERGED transition
+      under CHUMP_BOT_MERGE_WAIT_MERGED=1. Used to measure the webhook-hit vs
+      poll-fallback ratio that motivated killing the bot_merge_hung wedge class.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, pr, gap, elapsed_s, polls, merged_at, note]
+
+  - kind: bot_merge_timeout
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-2119 webhook-cache MERGED wait)
+    trigger: bot-merge's CHUMP_BOT_MERGE_WAIT_MERGED=1 wait loop hit
+      CHUMP_BOT_MERGE_WAIT_TIMEOUT_S (default 900s = 15 min) without
+      observing the PR's merged_at transition. The bash caller (typically a
+      sub-agent dispatch wrapper) should switch to manual recovery per the
+      SUBAGENT_DISPATCH.md STOP-block contract. Replaces silent bot_merge_hung
+      wedges with an explicit non-zero exit.
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, kind, pr, gap, elapsed_s, timeout_s, polls, source, note]
+
   - kind: bot_merge_contention_avoided
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh (INFRA-860 mutex)
