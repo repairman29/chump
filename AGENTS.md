@@ -792,6 +792,84 @@ the `verify-existence` check — local `ls` lies when the checkout is
 `scripts/coord/freshness-preamble.sh` (META-115) is harness-neutral and
 classifies session-start state as FRESH/STALE/CRITICAL_STALE.
 
+## Decision protocol — consensus over operator-pinging
+
+When you reach a decision point with more than one reasonable answer (architecture
+choice, naming, sequencing, scope split, tradeoff), **do not bounce the question to
+the operator.** The operator is not always present; blocking on their reply stalls the
+fleet. Use the team consensus protocol instead.
+
+### Step 1 — broadcast a FEEDBACK proposal
+
+```bash
+scripts/coord/broadcast.sh FEEDBACK proposal "<your question + 2-3 options with tradeoffs>"
+```
+
+This dual-publishes to `.chump-locks/ambient.jsonl` AND NATS subject
+`chump.events.feedback` so every curator-opus-* subscriber sees it.
+
+**Known workaround (INFRA-2147):** `broadcast.sh --to` glob expansion is
+currently broken for multi-recipient patterns. Until the fix lands, send to each
+curator individually:
+
+```bash
+scripts/coord/broadcast.sh --to handoff FEEDBACK proposal "..."
+scripts/coord/broadcast.sh --to ci-audit FEEDBACK proposal "..."
+```
+
+### Step 2 — target specific curators for lane-specific input
+
+Use `--to <curator-name>` for questions in a specific lane:
+
+| Lane | Curator | When to target |
+|---|---|---|
+| typed-contracts, handoff format | `handoff` | interface/schema decisions |
+| flake vs logic-bug calls | `ci-audit` | CI failure triage |
+| prior-art checks, duplication | `harvester` | new primitive decisions |
+| telemetry, observability design | `observability` | event-kind / metric decisions |
+
+### Step 3 — for real-time consensus, dispatch curators in parallel
+
+The orchestrator dispatches each relevant curator as an Agent sub-agent with a
+focused brief (one message per curator, all dispatched in a single `Agent`-tool
+call batch). Each curator reads its inbox, evaluates through its lane, replies
+via `broadcast.sh FEEDBACK`. The orchestrator aggregates votes and decides at
+quorum-or-timeout (default timeout: 5 min).
+
+**This works today without waiting for META-125 daemons.** The 2026-05-29
+session validated the pattern twice: 9 curators dispatched in parallel for the
+META-124 review returned substantive findings in under 5 min; the same pattern
+on the sequence-alignment review yielded a clean recommendation from 8 of 9
+curators in under 5 min. Six new gaps filed from the first pass alone.
+
+Every consensus decision emits an ambient event:
+
+```bash
+# Emitted automatically by the aggregation step; or manually:
+printf '{"ts":"%s","kind":"consensus_decision_emitted","question":"%s","votes":%d,"decision":"%s"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "<question>" <N> "<decision>" \
+  >> .chump-locks/ambient.jsonl
+```
+
+### Operator escalation gate
+
+Ping the operator only when **both** conditions hold:
+
+1. Consensus genuinely deadlocks at quorum (equal split, no tiebreaker), **AND**
+2. The decision requires operator personal authority: license/legal/spend/external-system
+   permissions/identity matters.
+
+All other decisions must be resolved by consensus. Filing a gap with the
+decision recorded in its `notes` field is always acceptable when you have low
+confidence — that is not the same as asking the operator.
+
+### Cross-references
+
+- META-125 — consensus pipeline umbrella (productizes this into a daemon)
+- META-127 — curator suite standard role template (this protocol is part of the template)
+- INFRA-2147 — broadcast.sh `--to` glob expansion bug (workaround above)
+- INFRA-2185 — ring-the-bell adjacent piece
+
 ## Pull request guidelines
 
 - **Branch:** `chump/<short-codename>` (canonical, see "Naming

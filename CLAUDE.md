@@ -199,6 +199,8 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 
 ## Hard rules
 
+- **Decision protocol — consensus over operator-pinging.** When unsure, broadcast a FEEDBACK proposal to curator-opus-* inboxes via `scripts/coord/broadcast.sh FEEDBACK proposal "..."` rather than bouncing the question to the operator. Dispatch curators in parallel as Agent sub-agents for real-time consensus. Only escalate to the operator when consensus genuinely deadlocks AND the decision requires operator personal authority. Full protocol: [AGENTS.md §Decision protocol](./AGENTS.md#decision-protocol--consensus-over-operator-pinging).
+
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
 - **Default model: haiku for IDE sessions, sonnet for fleet workers.** Cost-sensitive sweeps: `FLEET_MODEL=haiku`. Opus is ~50× haiku per token.
 - **Never push directly to `main`.** See [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01).
