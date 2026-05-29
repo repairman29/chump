@@ -5954,3 +5954,17 @@ events:
     expected_volume: "1 per gap shipped via any path"
     status: stable
     # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
+  - kind: per_gap_branch_pruned
+    effect_metric: zero-waste
+    emitter: scripts/ops/chump-post-integration-prune.sh (INFRA-2138)
+    trigger: >
+      Emitted when chump-post-integration-prune.sh deletes a per-gap
+      branch from origin after the 24h grace window following an
+      integration_cycle_shipped event. One event per branch pruned.
+      Also emitted in dry-run mode (dry_run=true) for auditability.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, branch, gap_id, cycle_id, dry_run]
+    related_kinds: [integration_cycle_shipped]
+    expected_volume: "N per integration cycle (one per gap in cycle)"
+    status: stable
+    # payload: {branch: string, gap_id: string, cycle_id: string, dry_run: bool, ts: string}
