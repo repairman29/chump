@@ -541,6 +541,19 @@ staleToggle.addEventListener('click', () => {
   render();
 });
 
+// Compute segment duration in seconds — prefer pre-computed field, fall back
+// to ISO start/end subtraction so duration is never 0s after INFRA-2189
+// normalization (which made start/end ISO strings, leaving duration_s absent).
+const computeDurS = (seg) => {
+  if (seg.duration_s && seg.duration_s > 0) return Math.round(seg.duration_s);
+  const startMs = new Date(seg.start).getTime();
+  const endMs   = new Date(seg.end).getTime();
+  if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+    return Math.round((endMs - startMs) / 1000);
+  }
+  return 0;
+};
+
 // ── Fetch & init ─────────────────────────────────────────────────────────────
 async function fetchData() {
   const now = new Date();
@@ -955,11 +968,42 @@ function openPanel(seg) {
     <div class="meta-row"><span class="meta-key">gap_id</span><span class="meta-val">${seg.gap_id || '—'}</span></div>
     <div class="meta-row"><span class="meta-key">start</span><span class="meta-val">${seg.start}</span></div>
     <div class="meta-row"><span class="meta-key">end</span><span class="meta-val">${seg.end}</span></div>
-    <div class="meta-row"><span class="meta-key">duration</span><span class="meta-val">${fmtDur(seg.duration_s || 0)}</span></div>
+    <div class="meta-row"><span class="meta-key">duration</span><span class="meta-val">${fmtDur(computeDurS(seg))}</span></div>
   `;
 
-  // Events for this segment
-  const segEvts = allEvents.filter(e => e.segment_id === seg.id);
+  // Events for this segment — prefer segment_id match, fall back to
+  // session_id + time-window filter, then fall back to nearest context events.
+  const segStartMs = new Date(seg.start).getTime();
+  const segEndMs   = new Date(seg.end).getTime();
+
+  const evtToMs = (e) => {
+    // e.ts may be ISO string or epoch-ms number
+    if (typeof e.ts === 'number') return e.ts;
+    const parsed = Number(e.ts);
+    if (!isNaN(parsed) && parsed > 1e12) return parsed;
+    return new Date(e.ts).getTime();
+  };
+
+  let segEvts = allEvents.filter(e => e.segment_id === seg.id);
+  if (segEvts.length === 0) {
+    // Fall back: session_id + time window
+    segEvts = allEvents.filter(e => {
+      if (e.session_id !== seg.session_id) return false;
+      const tMs = evtToMs(e);
+      return tMs >= segStartMs && tMs <= segEndMs;
+    });
+  }
+  if (segEvts.length === 0) {
+    // Context fallback: last 3 events before window + first 3 after
+    const sorted = allEvents
+      .filter(e => e.session_id === seg.session_id)
+      .slice()
+      .sort((a, b) => evtToMs(a) - evtToMs(b));
+    const before = sorted.filter(e => evtToMs(e) <  segStartMs).slice(-3);
+    const after  = sorted.filter(e => evtToMs(e) >= segEndMs).slice(0, 3);
+    segEvts = [...before, ...after];
+  }
+
   panelEvents.innerHTML = '';
 
   if (segEvts.length === 0) {
