@@ -1363,6 +1363,17 @@ add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 **Workaround when already blocked:** Re-trigger the flaky check.
 If it fails again: `gh pr merge <N> --squash --admin` to bypass.
 
+### Known flaky tests (demoted, awaiting root-cause)
+
+- **`e2e/tests/pwa-onboarding-consolidation.spec.ts` (INFRA-2128, 2026-05-29).**
+  All 3 tests in this file are wrapped with `test.fixme()` because the suite
+  flakes with `TimeoutError` in the required `e2e-pwa` check and was blocking
+  orthogonal PRs (#2706, #2704, #2698). The functional regression this guards
+  against (duplicate onboarding surface from INFRA-1585) is not actively
+  breaking — the flake is in test machinery, not product. **Real fix needs a
+  separate gap** to root-cause the `TimeoutError` (likely a `networkidle` vs.
+  wizard-render race). Until then, treat as advisory.
+
 ## bot-merge.sh shadow ship-plan advisory stream (INFRA-1346, 2026-05-15)
 
 `bot-merge.sh` emits a `ship_plan_advisory` ambient event at **main-flow entry**
