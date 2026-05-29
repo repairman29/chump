@@ -32,6 +32,7 @@ members = [
     "crates/chump-fleet-server",
     "crates/chump-fleet-recorder",
     "crates/chump-reviewer-routing",
+    "crates/chump-policy",
 ]
 resolver = "2"
 

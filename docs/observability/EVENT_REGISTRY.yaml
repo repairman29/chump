@@ -5651,3 +5651,24 @@ events:
       are the audit trail behind Marcus M-E.
     consumers: [ops-audit, pr-watch]
     fields_required: [ts, kind, pr, reviewers]
+  - kind: auto_merge_policy_evaluated
+    effect_metric: effective
+    emitter: crates/chump-policy/src/bin/chump-policy.rs (INFRA-1489)
+    trigger: >
+      Emitted by `chump-policy check` when the layered policy chain
+      (fleet + operator + repo, most-restrictive wins) allows auto-merge
+      under the current configuration. Operator-facing audit trail for
+      Marcus M-E trust-cliff knob.
+    consumers: [ops-audit, bot-merge.sh integration]
+    fields_required: [ts, kind, outcome]
+
+  - kind: auto_merge_policy_blocked
+    effect_metric: resilient
+    emitter: crates/chump-policy/src/bin/chump-policy.rs (INFRA-1489)
+    trigger: >
+      Emitted by `chump-policy check` when the layered policy chain
+      blocks auto-merge. Carries the contributing scope(s) so the
+      operator can see WHICH scope (fleet / operator / repo) drove the
+      block — kills the "silent auto-merge refused, why?" debugging tax.
+    consumers: [ops-audit, bot-merge.sh integration]
+    fields_required: [ts, kind, reason, contributing]
