@@ -1012,25 +1012,35 @@ impl GapStore {
         let domain_upper = domain.to_uppercase();
         let now = unix_now();
 
-        // INFRA-070: backfill any docs/gaps.yaml drift before reserving so the counter seed
-        // can't be lower than the YAML max. import_from_yaml is INSERT OR IGNORE — idempotent
-        // and safe to call on every reserve.
+        // INFRA-2177: dropped the import_from_yaml() call that used to run here.
         //
-        // INFRA-143: previously this was `let _ = self.import_from_yaml(...)` — silently
-        // swallowing the error. A schema break in gaps.yaml (e.g. gap[17] writing source_doc
-        // as a sequence under stale binaries) caused import to fail, the counter stayed
-        // seeded from the older DB max, and reserve handed out IDs that already existed in
-        // YAML — exactly the EVAL-089 (PR #558 ↔ #601) collision pattern. Fail loud so
-        // operators see the drift and fix it before it accumulates.
-        self.import_from_yaml(&self.repo_root.clone())
-            .with_context(|| {
-                format!(
-                    "reserve({domain_upper}) aborted: docs/gaps.yaml is unreadable so the \
-                     ID counter cannot be backfilled. Fix the YAML (or reset the binary) \
-                     before retrying — reserving now would risk colliding with an ID that \
-                     exists in YAML but not in the DB."
-                )
-            })?;
+        // History:
+        //   INFRA-070 / INFRA-143 added import_from_yaml to seed the counter from
+        //   docs/gaps.yaml so reserve couldn't collide with IDs in YAML that weren't
+        //   yet in state.db. That made sense when the per-file YAML files were the
+        //   canonical source and state.db was a derived cache.
+        //
+        //   INFRA-498 / INFRA-228 inverted the relationship: state.db is now the
+        //   single source of truth; per-file YAMLs are dump artifacts. Crucially,
+        //   `chump gap reserve` itself writes the per-file YAML *after* inserting the
+        //   DB row, so any ID that exists in docs/gaps/*.yaml also exists in
+        //   state.db — the import is redundant.
+        //
+        //   Side-effect of keeping the call: a single malformed sibling YAML (e.g.
+        //   INFRA-2170, where numbered AC items with colon-space patterns broke
+        //   YAML mapping/sequence ambiguity) caused `serde_yaml::from_str` to fail,
+        //   which aborted reserve for *every* domain fleet-wide for 30+ minutes.
+        //   Five concurrent curator sessions stalled (META-124 Wave 1 incident,
+        //   2026-05-29).
+        //
+        //   The ID-collision risk that INFRA-143 guarded against is fully covered by
+        //   the SELECT MAX query below plus the gap_counters upsert: both read
+        //   exclusively from state.db, which is always up to date because reserve
+        //   writes there first. No YAML read is needed.
+        //
+        //   Nightly gap-curate.sh (INFRA-637) still calls import_from_yaml to
+        //   reconcile any manual YAML edits back into state.db — that's the right
+        //   home for the reconciliation pass, not the hot reserve path.
 
         // Seed the counter from existing gaps if this is the first reserve for the domain.
         // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
@@ -4105,13 +4115,18 @@ mod tests {
         assert_eq!(id2, "INFRA-002");
     }
 
-    /// INFRA-143 regression: a malformed gaps.yaml must abort reserve with a
-    /// clear error, not silently fall through and risk handing out an ID that
-    /// already exists in the YAML the import couldn't read. (Pre-fix: reserve
-    /// returned Ok(...) and the binary on 2026-04-27 reserved EVAL-089 right
-    /// over an existing PR #558 EVAL-089 row.)
+    /// INFRA-2177 regression: a malformed docs/gaps.yaml (or per-file YAML) must
+    /// NOT abort reserve. Reserve reads exclusively from state.db; per-file YAMLs
+    /// are dump artifacts only. A single corrupt sibling file blocked the fleet
+    /// fleet-wide for 30+ minutes (META-124 Wave 1 incident, 2026-05-29).
+    ///
+    /// Historical note: INFRA-143 previously inverted this assertion — reserve was
+    /// *required* to fail on unreadable YAML as a guard against ID collisions.
+    /// That guard became a liability once state.db became the canonical source
+    /// (INFRA-498). The SELECT MAX + gap_counters upsert below provides the same
+    /// collision safety purely from state.db.
     #[test]
-    fn test_reserve_aborts_on_unreadable_yaml() {
+    fn test_reserve_succeeds_despite_malformed_yaml() {
         let dir = TempDir::new().unwrap();
         let repo_root = dir.path().to_path_buf();
         std::fs::create_dir_all(repo_root.join("docs")).unwrap();
@@ -4121,38 +4136,54 @@ mod tests {
             "gaps: this is not a list\n",
         )
         .unwrap();
-        let store = GapStore::open(&repo_root).unwrap();
-        let err = store
-            .reserve("INFRA", "new gap", "P1", "s")
-            .expect_err("reserve must fail when YAML is unreadable");
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("aborted") && msg.contains("ID counter cannot be backfilled"),
-            "expected loud-failure message, got: {msg}"
-        );
-    }
-
-    /// INFRA-070 regression: when docs/gaps.yaml has gaps the DB hasn't
-    /// imported, reserve must NOT return an ID that already exists in YAML.
-    #[test]
-    fn test_reserve_skips_yaml_drift() {
-        let dir = TempDir::new().unwrap();
-        let repo_root = dir.path().to_path_buf();
-        std::fs::create_dir_all(repo_root.join("docs")).unwrap();
+        // Also corrupt one per-file YAML to simulate the INFRA-2170 incident.
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        std::fs::create_dir_all(&per_file_dir).unwrap();
         std::fs::write(
-            repo_root.join("docs").join("gaps.yaml"),
-            "gaps:\n\
-             - id: INFRA-005\n  domain: INFRA\n  title: hand-added\n  status: open\n\
-             - id: INFRA-042\n  domain: INFRA\n  title: hand-added\n  status: open\n",
+            per_file_dir.join("INFRA-001.yaml"),
+            // Numbered AC items with colon-space: trips YAML mapping/sequence ambiguity
+            "- id: INFRA-001\n  acceptance_criteria:\n    1. deploy: succeeds\n    2. test: passes\n",
         )
         .unwrap();
         let store = GapStore::open(&repo_root).unwrap();
+        let id = store
+            .reserve("INFRA", "new gap", "P1", "s")
+            .expect("reserve must succeed even when YAML files are malformed");
+        assert_eq!(
+            id, "INFRA-001",
+            "first reserve in empty DB should be INFRA-001"
+        );
+    }
+
+    /// INFRA-070 regression: reserve must NOT return an ID that already exists
+    /// in state.db. The counter seeds from SELECT MAX(id) so any pre-existing
+    /// rows are skipped. (Formerly guarded by import_from_yaml; now relies
+    /// solely on state.db per INFRA-2177.)
+    #[test]
+    fn test_reserve_skips_db_existing_ids() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        let store = GapStore::open(&repo_root).unwrap();
+        // Seed state.db directly so reserve has existing IDs to skip past.
+        store
+            .conn
+            .execute(
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at) \
+                 VALUES('INFRA-005','INFRA','hand-added','P2','m','open',0)",
+                [],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at) \
+                 VALUES('INFRA-042','INFRA','hand-added','P2','m','open',0)",
+                [],
+            )
+            .unwrap();
         let id = store.reserve("INFRA", "new gap", "P1", "s").unwrap();
         // Must skip past INFRA-042 — not collide with it or INFRA-005.
-        assert_eq!(
-            id, "INFRA-043",
-            "reserve should skip past YAML max, got {id}"
-        );
+        assert_eq!(id, "INFRA-043", "reserve should skip past DB max, got {id}");
     }
 
     #[test]
