@@ -22,13 +22,8 @@ mod db;
 mod routes;
 mod segmenter;
 
-fn resolve_db_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CHUMP_FLEET_DB") {
-        if !p.is_empty() {
-            return std::path::PathBuf::from(p);
-        }
-    }
-    let root = std::process::Command::new("git")
+fn resolve_repo_root() -> std::path::PathBuf {
+    std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .ok()
@@ -39,10 +34,33 @@ fn resolve_db_path() -> std::path::PathBuf {
                 None
             }
         })
-        .unwrap_or_else(|| ".".to_string());
-    std::path::PathBuf::from(root)
-        .join(".chump")
-        .join("fleet_events.db")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+fn resolve_db_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_FLEET_DB") {
+        if !p.is_empty() {
+            return std::path::PathBuf::from(p);
+        }
+    }
+    resolve_repo_root().join(".chump").join("fleet_events.db")
+}
+
+/// Resolve the directory the scrubber SPA lives in.
+///
+/// Order: `CHUMP_FLEET_SCRUBBER_DIR` env override → `<repo-root>/web/fleet-scrubber`.
+/// Returns `None` when the resolved directory does not exist on disk so the
+/// router silently skips the mount instead of 500-ing on startup. INFRA-2189.
+fn resolve_scrubber_dir() -> Option<std::path::PathBuf> {
+    if let Ok(p) = std::env::var("CHUMP_FLEET_SCRUBBER_DIR") {
+        if !p.is_empty() {
+            let pb = std::path::PathBuf::from(p);
+            return pb.is_dir().then_some(pb);
+        }
+    }
+    let candidate = resolve_repo_root().join("web").join("fleet-scrubber");
+    candidate.is_dir().then_some(candidate)
 }
 
 fn main() -> ExitCode {
@@ -96,7 +114,13 @@ async fn run() -> anyhow::Result<()> {
         segmenter::run_segmenter_loop(seg_store).await;
     });
 
-    let router = routes::build_router(Arc::clone(&store));
+    let scrubber_dir = resolve_scrubber_dir();
+    if let Some(ref d) = scrubber_dir {
+        tracing::info!(scrubber_dir = %d.display(), "scrubber SPA mounted at /scrubber");
+    } else {
+        tracing::warn!("scrubber dir not found — /scrubber will 404 (set CHUMP_FLEET_SCRUBBER_DIR to override)");
+    }
+    let router = routes::build_router(Arc::clone(&store), scrubber_dir);
 
     // Localhost only — do NOT bind 0.0.0.0 (security requirement).
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));

@@ -275,15 +275,18 @@ impl FleetStore {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn row_to_event(r: &rusqlite::Row<'_>) -> rusqlite::Result<EventRow> {
+    // INFRA-2189: the recorder writes NULLs for unset session_id / gap_id /
+    // subject; coerce to empty string so the existing String fields don't
+    // explode on r.get. Filed as a follow-up to harden the recorder writer.
     Ok(EventRow {
         id: r.get(0)?,
         ts: r.get(1)?,
         ts_ms: r.get(2)?,
         source: r.get(3)?,
-        subject: r.get(4)?,
+        subject: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
         event_kind: r.get(5)?,
-        session_id: r.get(6)?,
-        gap_id: r.get(7)?,
+        session_id: r.get::<_, Option<String>>(6)?.unwrap_or_default(),
+        gap_id: r.get::<_, Option<String>>(7)?.unwrap_or_default(),
         payload: r.get(8)?,
     })
 }

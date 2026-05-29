@@ -1496,6 +1496,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-fleet-recorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "chrono",
+ "futures",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-fleet-server"
 version = "0.1.0"
 dependencies = [
@@ -1505,6 +1522,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1740,6 +1758,15 @@ dependencies = [
  "anyhow",
  "serde",
  "tempfile",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "chump-reviewer-routing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
  "toml 0.8.2",
 ]
 
