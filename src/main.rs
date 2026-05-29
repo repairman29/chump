@@ -6606,6 +6606,9 @@ async fn main() -> Result<()> {
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
                 let quiet = args.iter().any(|a| a == "--quiet");
+                // INFRA-2177: --json emits machine-readable {"id":"...","yaml_path":"..."}
+                // to stdout so operator scripts can parse without grep.
+                let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
@@ -7220,7 +7223,11 @@ async fn main() -> Result<()> {
                             // No-op path. state.db is canonical, state.sql is
                             // the tracked mirror. Use 'chump gap show <ID>'
                             // for per-gap human-readable rendering.
-                            println!("{}", id);
+                            if json_out {
+                                println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
+                            } else {
+                                println!("{}", id);
+                            }
                             return Ok(());
                         };
                         match store.dump_per_file_single(&id, &per_file_dir) {
@@ -7311,7 +7318,17 @@ async fn main() -> Result<()> {
                                 eprintln!("warning: dump-per-file write failed for {id}: {e}")
                             }
                         }
-                        println!("{}", id);
+                        // INFRA-2177: --json emits {id, yaml_path} for operator scripts.
+                        if json_out {
+                            let yaml_path_str = per_file_dir
+                                .join(format!("{id}.yaml"))
+                                .display()
+                                .to_string()
+                                .replace('\\', "/");
+                            println!("{{\"id\":\"{id}\",\"yaml_path\":\"{yaml_path_str}\"}}");
+                        } else {
+                            println!("{}", id);
+                        }
                         return Ok(());
                     }
                     Err(e) => {
