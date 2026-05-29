@@ -268,6 +268,71 @@ subsection. Pattern 13 here is the shepherd-side trigger; the operational
 script + smoke test are at `scripts/coord/dispatch-health-check.sh` +
 `scripts/ci/test-dispatch-hang-detection.sh` (both shipped via META-116 #2658).
 
+## Pattern 14 — Verify-before-alarm (don't conflate workflows with checks)
+
+**The mistake this pattern prevents** (2026-05-29 retrospective): the
+shepherd saw `gh run list --workflow=ci.yml --branch=main` showing
+"failure" on every recent run, traced it to a real syntax bug, fixed it
+— and along the way broadcast an ALERT claiming "2 days of PR merges
+landed without CI verification, deepest CI-rot we've had." That claim
+was **completely wrong**. PRs were verified the whole time, by
+check-runs produced by *different* workflows (`Repo health`, `Editor
+Integration (ACP)`, `Gap Status Guard`, `voice-lint`,
+`no-anthropic-smoke`, `Release`). The confusion: those workflows
+produce check-runs *with the same names as jobs inside ci.yml*
+(`fast-checks`, `gap-status-check`, `gaps-integrity`, etc.). The named
+checks in the PR's `statusCheckRollup` are what gate merges, not the
+ci.yml workflow conclusion.
+
+**The discipline.** Before broadcasting any ALERT-class message that
+implies "CI is broken" / "PRs aren't being verified" / "the queue is
+unverified," **prove the claim against a specific PR's
+`statusCheckRollup`**, not against a workflow's run-list. Concrete
+check:
+
+```bash
+# Step 1. Pick the most recent landed PR (or 3 of them).
+PRN=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number')
+
+# Step 2. Dump its rollup with the workflow source per check.
+gh pr view "$PRN" --json statusCheckRollup --jq \
+  '.statusCheckRollup[] | "\(.conclusion // .status) \(.name) ← \(.workflowName // "github-check")"'
+
+# Step 3. Cross-check against the ruleset's required names.
+gh api repos/<owner>/<repo>/rulesets/<id> | jq '.rules[]
+  | select(.type == "required_status_checks")
+  | .parameters.required_status_checks | map(.context)'
+
+# Step 4. If every ruleset-required name shows SUCCESS in step 2,
+#         PRs ARE being verified — even if some workflow is noisy.
+#         Do NOT alarm about queue-wide verification breakage.
+```
+
+**Distinct failure classes — keep separate:**
+
+| Symptom | What it actually means | What it does NOT mean |
+|---|---|---|
+| `gh run list --workflow=X.yml` all failure | Workflow X has a bug. File a gap for that bug. | "CI is broken" — other workflows likely still gate PRs correctly |
+| One required check name shows `failure` on a real PR | That specific check failed. Look at *that* job. | All PRs are stalled — only the ones gated by the failing check are |
+| Ruleset `required_status_checks` is empty | Main is unguarded — restore immediately. | History of merges was unverified — those merges had whatever gating was active at their merge time |
+| `gh pr view <N> --json mergeStateStatus` is `BLOCKED` with 0 fail / 0 pending | A required check name in the ruleset never produced a check-run on the PR. Look at the WORKFLOW SOURCE of that name (Pattern 14 step 2). | Something specific failed — there's nothing to fix until you find why the named check didn't fire |
+
+**Forbidden phrasings without verifying-on-rollup first:**
+
+- "N days of unverified merges" — requires at least 3 specific landed PRs with empty/failing rollup as evidence.
+- "Deepest CI-rot we've had" — requires comparison against a baseline + numerical specificity.
+- "Main is unguarded" — requires either an empty `required_status_checks` rule OR a rollup showing the required checks didn't fire on recent merges.
+
+When the diagnosis is *uncertain*, the ALERT broadcast wording must be
+"Investigating: SYMPTOM observed; root cause unconfirmed; will follow
+up with verification" — never the conclusion-shaped "CI is broken /
+queue unverified."
+
+Bake this into the alarm-emit reflex: if you're about to type "this is
+the worst X we've had," stop and run the 4 steps above first. The fleet
+runs hot enough that getting alarms wrong costs real coordination
+cycles across curator A2A.
+
 ## What NOT to do
 
 | Anti-pattern | Why it hurts |
