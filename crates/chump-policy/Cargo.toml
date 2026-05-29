@@ -1,0 +1,25 @@
+[package]
+name = "chump-policy"
+version = "0.1.0"
+edition = "2021"
+description = "Per-operator + per-repo auto-merge policy resolution. Three scopes (fleet / operator / repo) merged with most-restrictive-wins semantics. Marcus M-E trust-cliff knob (INFRA-1489)."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-policy"
+license = "MIT"
+keywords = ["policy", "auto-merge", "agent", "governance"]
+categories = ["development-tools"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.0"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "chump-policy"
+path = "src/bin/chump-policy.rs"
