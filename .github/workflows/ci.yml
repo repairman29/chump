@@ -609,7 +609,7 @@ jobs:
       # DOC-063 showed .cargo-test-target / /tmp/chump-coord-linux-build* poisoning
       # was a top-3 CI failure class. Each run gets a fresh dir; cleaned up by
       # runner after the job.
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1077,7 +1077,7 @@ jobs:
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1139,7 +1139,7 @@ jobs:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
       # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1560,7 +1560,7 @@ jobs:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
       # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
 
@@ -2064,12 +2064,23 @@ jobs:
             exit 1
           fi
 
-  # ── audit-stub: passes when code-filter skips audit ──────────────────────
-  # Currently audit runs unconditionally (~15min). Once this pattern is wired
-  # into branch protection, audit can be gated by 'code' to skip on docs-only
-  # PRs — audit-stub ensures branch protection still passes.
+  # ── audit-stub: emits as `audit` check-run when real audit skips ─────────
+  # INFRA-2191 (2026-05-29): the stub's `name:` is intentionally `audit` (not
+  # `audit-stub`). Branch protection rulesets historically required the bare
+  # `audit` context — on doc/yaml-only PRs the real `audit` job's `if:` short-
+  # circuits to skip, so without a stub emitting under the same name, no
+  # `audit` check-run ever exists and the PR sits BLOCKED with 0 fails 0
+  # pending forever (the wedge that took down 6 PRs on 2026-05-29, requiring
+  # manual cascade-break: temporarily removing required_status_checks from
+  # ruleset 15133729 + merging armed PRs + restoring the rule).
+  #
+  # Mutual exclusion contract (validated by scripts/ci/test-ruleset-doc-only-pr.sh):
+  #   real `audit`  if: docs_only != 'true' || event != 'pull_request'
+  #   `audit-stub`  if: (code != 'true' || docs_only == 'true') && event == 'pull_request'
+  # → For any PR, exactly one of {audit, audit-stub} runs and emits `audit`.
+  # → For push/merge_group, real `audit` runs; stub skips (event != PR).
   audit-stub:
-    name: audit-stub
+    name: audit  # INFRA-2191: emit as `audit` to satisfy ruleset required-check on doc-only PRs
     needs: changes
     # INFRA-1379: fire when code filter is empty (original condition) OR when
     # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
@@ -2082,7 +2093,7 @@ jobs:
       - name: audit skipped (no code changes or docs-only lane detected)
         run: |
           echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
-          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub."
+          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub (emits as 'audit')."
 
   # ── audit-required: rollup that branch protection enforces ───────────────
   audit-required:
@@ -2121,6 +2132,8 @@ jobs:
         run: bash scripts/ci/test-pillar-dashboard.sh
       - name: ci-yml merge-driver orphan-step rejection (INFRA-1199)
         run: bash scripts/ci/test-merge-driver-ci-yml-add-row.sh
+      - name: ruleset doc-only-PR wedge guard (INFRA-2191)
+        run: bash scripts/ci/test-ruleset-doc-only-pr.sh
       - name: write-ahead log recovery — wrap/replay round-trip (INFRA-1200)
         run: bash scripts/ci/test-edit-replay.sh
       - name: PWA auth-toast dedup — fleet_auth_fallback stream + unit (INFRA-991)

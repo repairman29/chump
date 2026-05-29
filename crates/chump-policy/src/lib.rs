@@ -279,9 +279,7 @@ impl PolicyChain {
             Ok(())
         } else {
             Err(AutoMergeBlocked {
-                reason: eff
-                    .block_reason()
-                    .unwrap_or_else(|| "unknown".into()),
+                reason: eff.block_reason().unwrap_or_else(|| "unknown".into()),
                 contributing,
             })
         }
@@ -299,11 +297,7 @@ pub struct AutoMergeBlocked {
 
 impl std::fmt::Display for AutoMergeBlocked {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let scopes_str: Vec<&str> = self
-            .contributing
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
+        let scopes_str: Vec<&str> = self.contributing.iter().map(|s| s.as_str()).collect();
         write!(
             f,
             "auto-merge blocked by [{}]: {}",
@@ -346,10 +340,7 @@ mod tests {
             ..Policy::default()
         };
         assert!(!p.is_auto_merge_allowed());
-        assert!(p
-            .block_reason()
-            .unwrap()
-            .contains("require_human_review"));
+        assert!(p.block_reason().unwrap().contains("require_human_review"));
     }
 
     #[test]
@@ -405,8 +396,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("bad.toml");
         let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(b"this is { not valid toml")
-            .unwrap();
+        f.write_all(b"this is { not valid toml").unwrap();
         assert!(Policy::from_file(&path).is_err());
     }
 
@@ -427,11 +417,7 @@ mod tests {
 
     // ── PolicyChain precedence tests (AC #3: most-restrictive wins) ────
 
-    fn chain_with(
-        fleet: Policy,
-        operator: Policy,
-        repo: Policy,
-    ) -> PolicyChain {
+    fn chain_with(fleet: Policy, operator: Policy, repo: Policy) -> PolicyChain {
         PolicyChain {
             fleet,
             operator,
@@ -441,11 +427,7 @@ mod tests {
 
     #[test]
     fn chain_all_permissive_allows() {
-        let chain = chain_with(
-            Policy::default(),
-            Policy::default(),
-            Policy::default(),
-        );
+        let chain = chain_with(Policy::default(), Policy::default(), Policy::default());
         let (eff, _) = chain.effective();
         assert!(eff.is_auto_merge_allowed());
         assert!(chain.require_auto_merge_allowed().is_ok());
@@ -455,11 +437,7 @@ mod tests {
     fn chain_repo_disables_overrides_permissive_fleet() {
         let mut repo = Policy::default();
         repo.enabled = false;
-        let chain = chain_with(
-            Policy::default(),
-            Policy::default(),
-            repo,
-        );
+        let chain = chain_with(Policy::default(), Policy::default(), repo);
         let res = chain.require_auto_merge_allowed();
         assert!(res.is_err());
         let blocked = res.unwrap_err();
@@ -471,11 +449,7 @@ mod tests {
     fn chain_operator_require_review_propagates() {
         let mut operator = Policy::default();
         operator.require_human_review = true;
-        let chain = chain_with(
-            Policy::default(),
-            operator,
-            Policy::default(),
-        );
+        let chain = chain_with(Policy::default(), operator, Policy::default());
         let res = chain.require_auto_merge_allowed();
         assert!(res.is_err());
         let blocked = res.unwrap_err();
@@ -503,11 +477,7 @@ mod tests {
         let mut operator = Policy::default();
         operator.trust_threshold_pr_count = 5;
         operator.reviewed_pr_count = 5;
-        let chain = chain_with(
-            Policy::default(),
-            operator,
-            Policy::default(),
-        );
+        let chain = chain_with(Policy::default(), operator, Policy::default());
         let (eff, _) = chain.effective();
         assert!(eff.is_auto_merge_allowed());
     }

@@ -196,8 +196,8 @@ pub fn compute_reviewer_set(
         .map(|s| s.trim_start_matches('@').to_string())
         .collect();
     if let Some(author) = pr_author {
-        acc.remove(&author.to_string());
-        acc.remove(&author.trim_start_matches('@').to_string());
+        acc.remove(author);
+        acc.remove(author.trim_start_matches('@'));
     }
     for ex in &exclude {
         acc.remove(ex);
@@ -555,10 +555,7 @@ crates/chump-policy/** @policy-team
 
     #[test]
     fn pattern_match_exact_path() {
-        assert!(pattern_matches(
-            "README.md",
-            &PathBuf::from("README.md")
-        ));
+        assert!(pattern_matches("README.md", &PathBuf::from("README.md")));
         assert!(!pattern_matches(
             "README.md",
             &PathBuf::from("docs/README.md")
@@ -577,10 +574,7 @@ crates/chump-policy/** @policy-team
                 owners: vec!["docs-team".into()],
             },
         ];
-        let touched = vec![
-            PathBuf::from("src/lib.rs"),
-            PathBuf::from("docs/foo.md"),
-        ];
+        let touched = vec![PathBuf::from("src/lib.rs"), PathBuf::from("docs/foo.md")];
         let mut owners = match_codeowners(&rules, &touched);
         owners.sort();
         assert_eq!(owners, vec!["docs-team", "rust-team"]);
@@ -595,8 +589,7 @@ crates/chump-policy/** @policy-team
             always_request: vec!["@marcus".into()],
             ..Default::default()
         };
-        let set =
-            compute_reviewer_set(dir.path(), &[], &cfg, None).unwrap();
+        let set = compute_reviewer_set(dir.path(), &[], &cfg, None).unwrap();
         // No files touched, no codeowners, no git history — but operator
         // override still produces a reviewer.
         let logins: Vec<&str> = set.reviewers.iter().map(|r| r.login.as_str()).collect();
@@ -607,11 +600,7 @@ crates/chump-policy/** @policy-team
     #[test]
     fn compute_unions_codeowners_with_override() {
         let dir = tmp();
-        fs::write(
-            dir.path().join("CODEOWNERS"),
-            "*.rs @rust-team\n",
-        )
-        .unwrap();
+        fs::write(dir.path().join("CODEOWNERS"), "*.rs @rust-team\n").unwrap();
         let cfg = ReviewerConfig {
             always_request: vec!["@marcus".into()],
             ..Default::default()
@@ -649,8 +638,7 @@ crates/chump-policy/** @policy-team
             always_request: vec!["@author".into(), "@reviewer".into()],
             ..Default::default()
         };
-        let set =
-            compute_reviewer_set(dir.path(), &[], &cfg, Some("author")).unwrap();
+        let set = compute_reviewer_set(dir.path(), &[], &cfg, Some("author")).unwrap();
         let logins: Vec<&str> = set.reviewers.iter().map(|r| r.login.as_str()).collect();
         assert_eq!(logins, vec!["reviewer"]);
     }
@@ -679,13 +667,7 @@ crates/chump-policy/** @policy-team
     fn recent_committers_outside_git_repo_returns_empty() {
         let dir = tmp();
         // No `git init`; git log will fail.
-        let r = recent_committers(
-            dir.path(),
-            &[PathBuf::from("doesnotmatter.rs")],
-            90,
-            3,
-        )
-        .unwrap();
+        let r = recent_committers(dir.path(), &[PathBuf::from("doesnotmatter.rs")], 90, 3).unwrap();
         assert!(r.is_empty());
     }
 }

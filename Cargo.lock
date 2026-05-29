@@ -1496,6 +1496,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-fleet-recorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "chrono",
+ "futures",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-fleet-server"
 version = "0.1.0"
 dependencies = [
@@ -1587,6 +1604,24 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "chump-integrator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "chrono",
+ "chump-ambient-cli",
+ "chump-coord",
+ "chump-gap-store",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "uuid 1.23.1",
 ]
 
 [[package]]
@@ -1740,6 +1775,15 @@ dependencies = [
  "anyhow",
  "serde",
  "tempfile",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "chump-reviewer-routing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
  "toml 0.8.2",
 ]
 
