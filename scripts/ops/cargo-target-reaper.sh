@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cargo-target-reaper.sh — INFRA-1250 + INFRA-1170
+# cargo-target-reaper.sh — INFRA-1250 + INFRA-1170 + INFRA-2125
 # Reclaim stale cargo build artifacts (60GB+ unbounded growth).
 #
 # Usage:
@@ -14,6 +14,13 @@
 #       no live process has CARGO_TARGET_DIR pointing at <dir>
 #   (d) INFRA-1170: /tmp/chump-*/target/   where originating git worktree no
 #       longer exists in `git worktree list --porcelain` (orphaned target dirs)
+#   (e) INFRA-2125/A: /tmp/chump-coord-linux-build* + /tmp/chump-cross-build-*
+#       (Linux cross-build artifacts from scripts/dev/cross-build-linux.sh)
+#   (f) INFRA-2125/B: /tmp/chump-*/.cargo-test-target/
+#       (hidden cargo target dirs from Sonnet workers using custom CARGO_TARGET_DIR)
+#   (g) INFRA-2125/C: /tmp/chump-*/target/ in worktrees with ACTIVE lease but
+#       whose PR is open + auto-merge armed + local HEAD matches remote tip
+#       (work is safely on origin; rebuild cost is bounded)
 
 set -euo pipefail
 
@@ -223,6 +230,101 @@ for _wt_candidate in ${_TMP_GLOB}/; do
     fi
 done
 
+# ── (e) INFRA-2125/A: Linux cross-build artifacts ───────────────────────────
+# /tmp/chump-coord-linux-build* and /tmp/chump-cross-build-* from cross-build-linux.sh
+_cross_build_count=0
+echo "[cargo-target-reaper] Scanning /tmp/chump-coord-linux-build* and /tmp/chump-cross-build-* (Class A cross-build artifacts)…"
+for _cross_dir in /tmp/chump-coord-linux-build* /tmp/chump-cross-build-*; do
+    [[ -d "$_cross_dir" ]] || continue
+    _cb_size=$(du -sk "$_cross_dir" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
+    _cb_age=$(( ( $(date +%s) - $(stat -f%m "$_cross_dir" 2>/dev/null || stat -c%Y "$_cross_dir" 2>/dev/null || echo 0) ) / 86400 ))
+    echo "${_dry_label}  cross-build artifact: ${_cross_dir} (${_cb_age}d old, ~$(( _cb_size / 1024 / 1024 ))MB)"
+    if [[ $EXECUTE -eq 1 ]]; then
+        rm -rf "$_cross_dir" 2>/dev/null || true
+    fi
+    _total_bytes=$(( _total_bytes + _cb_size ))
+    _reaped_count=$(( _reaped_count + 1 ))
+    _cross_build_count=$(( _cross_build_count + 1 ))
+    printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"cross_build"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_cross_dir" "$_cb_size" "$_cb_age" \
+        "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+done
+
+# ── (f) INFRA-2125/B: hidden .cargo-test-target/ dirs ───────────────────────
+# /tmp/chump-*/.cargo-test-target/ — Sonnet workers setting custom CARGO_TARGET_DIR
+_cargo_test_target_count=0
+echo "[cargo-target-reaper] Scanning /tmp/chump-*/.cargo-test-target/ (Class B worker cargo-test-target dirs)…"
+for _wt_dir in ${_TMP_GLOB:-/tmp/chump-*}/; do
+    [[ -d "$_wt_dir" ]] || continue
+    _ctt="${_wt_dir%/}/.cargo-test-target"
+    [[ -d "$_ctt" ]] || continue
+    _ctt_size=$(du -sk "$_ctt" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
+    _ctt_age=$(( ( $(date +%s) - $(stat -f%m "$_ctt" 2>/dev/null || stat -c%Y "$_ctt" 2>/dev/null || echo 0) ) / 86400 ))
+    echo "${_dry_label}  cargo-test-target: ${_ctt} (${_ctt_age}d old, ~$(( _ctt_size / 1024 / 1024 ))MB)"
+    if [[ $EXECUTE -eq 1 ]]; then
+        rm -rf "$_ctt" 2>/dev/null || true
+    fi
+    _total_bytes=$(( _total_bytes + _ctt_size ))
+    _reaped_count=$(( _reaped_count + 1 ))
+    _cargo_test_target_count=$(( _cargo_test_target_count + 1 ))
+    printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"cargo_test_target"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_ctt" "$_ctt_size" "$_ctt_age" \
+        "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+done
+
+# ── (g) INFRA-2125/C: lease-active worktrees with pushed+auto-merge PR ──────
+# Reap target/ in a worktree that has an active lease IF:
+#   1. A PR exists for the branch
+#   2. That PR has autoMergeRequest != null (auto-merge armed)
+#   3. Local HEAD matches origin/<branch> (work is safely on origin)
+# Reasoning: work is on origin; rebuild cost is bounded if CI bounces.
+_lease_armed_count=0
+echo "[cargo-target-reaper] Scanning lease-active worktrees for pushed+auto-merge PRs (Class C)…"
+for _lease_file in "${REPO_ROOT}/.chump-locks"/*.json; do
+    [[ -f "$_lease_file" ]] || continue
+    _lease_wt=$(python3 -c "import json,sys; d=json.load(open('$_lease_file')); print(d.get('worktree',''))" 2>/dev/null || true)
+    [[ -n "$_lease_wt" ]] || continue
+    _lease_target="${_lease_wt}/target"
+    [[ -d "$_lease_target" ]] || continue
+
+    # Get branch name from worktree
+    _branch=$(git -C "$_lease_wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    [[ -n "$_branch" ]] || continue
+
+    # Check: does a PR exist for this branch?
+    _pr_json=$(gh pr list --head "$_branch" --json number,autoMergeRequest,headRefOid --limit 1 2>/dev/null || true)
+    [[ -n "$_pr_json" ]] || continue
+    _pr_count=$(echo "$_pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))" 2>/dev/null || echo 0)
+    [[ "$_pr_count" -gt 0 ]] || continue
+
+    # Check: auto-merge armed?
+    _auto_merge=$(echo "$_pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d[0].get('autoMergeRequest') else 'no')" 2>/dev/null || echo no)
+    [[ "$_auto_merge" == "yes" ]] || continue
+
+    # Check: local HEAD matches remote tip?
+    _local_head=$(git -C "$_lease_wt" rev-parse HEAD 2>/dev/null || true)
+    _remote_head=$(git -C "$_lease_wt" rev-parse "origin/${_branch}" 2>/dev/null || true)
+    [[ -n "$_local_head" && -n "$_remote_head" ]] || continue
+    [[ "$_local_head" == "$_remote_head" ]] || continue
+
+    _lt_size=$(du -sk "$_lease_target" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
+    _lt_age=$(( ( $(date +%s) - $(stat -f%m "$_lease_target" 2>/dev/null || stat -c%Y "$_lease_target" 2>/dev/null || echo 0) ) / 86400 ))
+    _pr_num=$(echo "$_pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'])" 2>/dev/null || echo unknown)
+    echo "${_dry_label}  lease+auto-merge target: ${_lease_target} (PR #${_pr_num} auto-merge armed, HEAD pushed, ${_lt_age}d old, ~$(( _lt_size / 1024 / 1024 ))MB)"
+    if [[ $EXECUTE -eq 1 ]]; then
+        rm -rf "$_lease_target" 2>/dev/null || true
+    fi
+    _total_bytes=$(( _total_bytes + _lt_size ))
+    _reaped_count=$(( _reaped_count + 1 ))
+    _lease_armed_count=$(( _lease_armed_count + 1 ))
+    printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"lease_auto_merge","pr_number":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_lease_target" "$_lt_size" "$_lt_age" \
+        "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" "$_pr_num" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+done
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 _total_mb=$(( _total_bytes / 1024 / 1024 ))
 echo ""
@@ -231,9 +333,9 @@ if [[ $EXECUTE -eq 0 && $_reaped_count -gt 0 ]]; then
     echo "[cargo-target-reaper] Re-run with --execute to actually delete."
 fi
 
-# Summary ambient event — includes worktree_orphan_count (INFRA-1170).
-printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s,"worktree_orphan_count":%d}\n' \
+# Summary ambient event — includes worktree_orphan_count (INFRA-1170) + INFRA-2125 class counts.
+printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s,"worktree_orphan_count":%d,"cross_build_count":%d,"cargo_test_target_count":%d,"lease_auto_merge_count":%d}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_reaped_count" "$_total_bytes" \
     "$([[ $EXECUTE -eq 1 ]] && echo 'true' || echo 'false')" \
-    "$_tmp_orphan_count" \
+    "$_tmp_orphan_count" "$_cross_build_count" "$_cargo_test_target_count" "$_lease_armed_count" \
     >> "$AMBIENT_LOG" 2>/dev/null || true
