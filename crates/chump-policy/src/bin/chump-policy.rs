@@ -90,7 +90,7 @@ fn home_dir() -> PathBuf {
 }
 
 fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
-    let json = args.iter().any(|a| *a == "--json");
+    let json = args.contains(&"--json");
     let chain = PolicyChain::load(&repo_root(), &home_dir())?;
     let (eff, contributing) = chain.effective();
 
@@ -109,35 +109,31 @@ fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
 \"contributing_scopes\":[{}],\
 \"fleet\":{},\"operator\":{},\"repo\":{}\
 }}",
-                eff.enabled,
-                eff.require_human_review,
-                eff.trust_threshold_pr_count,
-                eff.reviewed_pr_count,
-                eff.is_auto_merge_allowed(),
-                match eff.block_reason() {
-                    Some(r) => format!("\"{}\"", r.replace('"', "\\\"")),
-                    None => "null".into(),
-                },
-                scopes.join(","),
-                policy_to_json(&chain.fleet),
-                policy_to_json(&chain.operator),
-                policy_to_json(&chain.repo),
-            );
+            eff.enabled,
+            eff.require_human_review,
+            eff.trust_threshold_pr_count,
+            eff.reviewed_pr_count,
+            eff.is_auto_merge_allowed(),
+            match eff.block_reason() {
+                Some(r) => format!("\"{}\"", r.replace('"', "\\\"")),
+                None => "null".into(),
+            },
+            scopes.join(","),
+            policy_to_json(&chain.fleet),
+            policy_to_json(&chain.operator),
+            policy_to_json(&chain.repo),
+        );
     } else {
         println!("Effective auto-merge policy:");
         println!("  enabled:                {}", eff.enabled);
-        println!(
-            "  require_human_review:   {}",
-            eff.require_human_review
-        );
+        println!("  require_human_review:   {}", eff.require_human_review);
         println!(
             "  trust_threshold:        {} (reviewed: {})",
             eff.trust_threshold_pr_count, eff.reviewed_pr_count
         );
         if let Some(reason) = eff.block_reason() {
             println!("  status:                 BLOCKED — {}", reason);
-            let scopes_str: Vec<&str> =
-                contributing.iter().map(|s| s.as_str()).collect();
+            let scopes_str: Vec<&str> = contributing.iter().map(|s| s.as_str()).collect();
             println!("  blocked_by:             [{}]", scopes_str.join(", "));
         } else {
             println!("  status:                 ALLOWED");
@@ -188,7 +184,9 @@ fn cmd_set(args: &[&str]) -> anyhow::Result<()> {
                     "operator" => Scope::Operator,
                     "repo" => Scope::Repo,
                     other => {
-                        anyhow::bail!("invalid --scope value: {other}; expected fleet|operator|repo")
+                        anyhow::bail!(
+                            "invalid --scope value: {other}; expected fleet|operator|repo"
+                        )
                     }
                 });
                 i += 2;
@@ -211,9 +209,8 @@ fn cmd_set(args: &[&str]) -> anyhow::Result<()> {
             other => anyhow::bail!("unknown flag: {other}"),
         }
     }
-    let scope = scope.ok_or_else(|| {
-        anyhow::anyhow!("set: --scope <fleet|operator|repo> is required")
-    })?;
+    let scope =
+        scope.ok_or_else(|| anyhow::anyhow!("set: --scope <fleet|operator|repo> is required"))?;
     let path = scope_path(scope);
 
     // Load existing then overlay only the fields the operator changed.
@@ -228,7 +225,11 @@ fn cmd_set(args: &[&str]) -> anyhow::Result<()> {
         p.trust_threshold_pr_count = v;
     }
     p.save_to_file(&path)?;
-    println!("[chump-policy] wrote {} (scope={})", path.display(), scope.as_str());
+    println!(
+        "[chump-policy] wrote {} (scope={})",
+        path.display(),
+        scope.as_str()
+    );
     Ok(())
 }
 
@@ -325,8 +326,8 @@ fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
     let y = yoe as i32 + (era * 400) as i32;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
 }
