@@ -38,6 +38,7 @@ install-lint-storm-detector-launchd.sh
 install-merge-drivers.sh
 install-merge-queue-monitor.sh
 install-mission-grade-launchd.sh
+install-nats-server-launchd.sh
 install-operator-leverage-launchd.sh
 install-operator-recall-channel.sh
 install-overnight-research-launchd.sh
