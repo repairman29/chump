@@ -5672,3 +5672,121 @@ events:
       block — kills the "silent auto-merge refused, why?" debugging tax.
     consumers: [ops-audit, bot-merge.sh integration]
     fields_required: [ts, kind, reason, contributing]
+
+  # ── Integration-cycle pipeline (META-124 / INFRA-2130) ────────────────────
+  - kind: integration_cycle_started
+    effect_metric: effective
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted at the very beginning of an integration-cycle run, before
+      candidate selection. Operator can correlate this ts with
+      integration_cycle_shipped to measure wall-clock cycle latency.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, cycle_id, trigger_reason, candidate_count]
+    expected_volume: "1 per integration cycle run"
+    # payload: {cycle_id: string, trigger_reason: string, candidate_count: number, ts: string}
+
+  - kind: integration_candidates_selected
+    effect_metric: effective
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted after the cycle selects its candidate set but before any
+      merging begins. The manifest array lets post-mortem queries
+      reconstruct exactly which branches were in-flight for a given cycle.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, cycle_id, manifest]
+    expected_volume: "1 per integration cycle run"
+    # payload: {cycle_id: string, manifest: Array<{gap_id: string, branch: string, loc: number, priority: string, queue_age_s: number}>, ts: string}
+
+  - kind: integration_cycle_merges
+    effect_metric: effective
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Per-cycle AGGREGATE emitted once after all branch merges in a
+      cycle complete (replaces per-merge fanout). Carries a merges array
+      summarising every branch merged in the cycle — lower ambient noise
+      while preserving full audit trail. Observability-curator amendment
+      per INFRA-2132: prefer aggregate over per-event fanout for
+      high-frequency in-cycle events.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, cycle_id, merges]
+    expected_volume: "1 per integration cycle run"
+    # payload: {cycle_id: string, merges: Array<{gap_id: string, branch: string, parent_sha: string, merge_sha: string}>, ts: string}
+
+  - kind: integration_preflight_started
+    effect_metric: resilient
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted when the cycle begins running the preflight checks on the
+      assembled integration branch. Pairs with integration_preflight_failed
+      or integration_cycle_shipped to bound preflight duration.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, cycle_id, branch, expected_duration_s]
+    expected_volume: "1 per integration cycle run"
+    # payload: {cycle_id: string, branch: string, expected_duration_s: number, ts: string}
+
+  - kind: integration_preflight_failed
+    effect_metric: resilient
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted when the integration-branch preflight fails before a ship
+      attempt. Carries the failure_class so the CI-audit loop can bucket
+      this as flake vs. logic-bug without re-reading logs manually.
+    consumers: [fleet-brief, ci-audit, ops-audit]
+    fields_required: [ts, kind, cycle_id, branch, failure_class, log_path]
+    expected_volume: "0-N per integration cycle run; 0 on green cycles"
+    # payload: {cycle_id: string, branch: string, failure_class: string, log_path: string, ts: string}
+
+  - kind: ship_bisect_root_cause
+    effect_metric: resilient
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted when a post-ship bisect identifies the offending gap
+      (commit) that caused a cycle failure. Carries bisect_steps_taken
+      so tooling can monitor bisect efficiency over time.
+    consumers: [ci-audit, ops-audit, fleet-brief]
+    fields_required: [ts, kind, cycle_id, offending_gap_id, failure_signature, bisect_steps_taken]
+    expected_volume: "0-1 per failed cycle that runs bisect"
+    # payload: {cycle_id: string, offending_gap_id: string, failure_signature: string, bisect_steps_taken: number, ts: string}
+
+  - kind: bisect_quarantine
+    effect_metric: resilient
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted when the bisect result is used to quarantine a gap branch,
+      pulling it out of the integration queue. requeue_status indicates
+      whether the gap was re-opened for rework ("requeued") or held
+      ("held") pending operator review.
+    consumers: [ci-audit, ops-audit, waste-tally]
+    fields_required: [ts, kind, cycle_id, quarantined_gap_id, reason, requeue_status]
+    expected_volume: "0-1 per ship_bisect_root_cause event"
+    # payload: {cycle_id: string, quarantined_gap_id: string, reason: string, requeue_status: "requeued"|"held", ts: string}
+
+  - kind: integration_cycle_shipped
+    effect_metric: effective
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Emitted once after a full integration cycle lands successfully on
+      main. Carries the final manifest, PR URL, and wall_time_s so
+      kpi-report can compute throughput and cycle latency without log
+      parsing. Cross-reference: pr_merged events for individual GAP PRs
+      within the cycle.
+    consumers: [fleet-brief, kpi-report, ops-audit, waste-tally]
+    fields_required: [ts, kind, cycle_id, final_manifest, pr_url, merge_sha, total_loc, wall_time_s]
+    related_kinds: [pr_merged]
+    expected_volume: "1 per successful integration cycle"
+    # payload: {cycle_id: string, final_manifest: Array<{gap_id: string, branch: string}>, pr_url: string, merge_sha: string, total_loc: number, wall_time_s: number, ts: string}
+
+  - kind: cycle_sampling_decision
+    effect_metric: credible
+    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    trigger: >
+      Phase 2 marker. Emitted when the cycle's sampling logic decides
+      whether to include or exclude a candidate gap based on probabilistic
+      or priority-weighted selection. Enables post-hoc analysis of
+      sampling fairness across gap classes.
+    consumers: [kpi-report, ops-audit]
+    fields_required: [ts, kind, cycle_id, gap_id, decision, reason]
+    expected_volume: "N per cycle (one per candidate evaluated)"
+    status: stable
+    # payload: {cycle_id: string, gap_id: string, decision: "include"|"exclude", reason: string, ts: string}
