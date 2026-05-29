@@ -513,3 +513,4 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 - Coordination script entry points, decision guide, full coord/ reference: [`scripts/coord/README.md`](./scripts/coord/README.md)
 - A2A frontier roadmap — six layers from NATS-primary delivery to signed provenance, mapped onto today's chump-coord primitives: [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) (META-061; sub-gaps INFRA-1118 through INFRA-1123)
 - Integration-cycle ship pipeline — strategy + architecture for batched fleet output (Mode A/B/C/D), bisect-on-red, migration phases, and metrics: [`docs/strategy/INTEGRATION_CYCLE_2026-05-29.md`](./docs/strategy/INTEGRATION_CYCLE_2026-05-29.md)
+- Disk-aware fleet — 4-layer architecture (inventory daemon / cost model / `chump disk plan` / adaptive scaler), 4-wave migration, open questions: [`docs/strategy/DISK_AWARE_FLEET_2026-05-29.md`](./docs/strategy/DISK_AWARE_FLEET_2026-05-29.md) (META-128)
