@@ -1,0 +1,256 @@
+# INFRA-1605: pwa-visual-diff — bring PR-bot visual diffs to the reviewer's eye.
+#
+# Triggers on PRs touching the PWA shell. Runs the INFRA-1591 snapshot suite
+# (when present), captures baseline + PR-version + diff overlay images per
+# view, and posts a single PR comment with a markdown table so external
+# design collaborators (Marcus, ultrareview operators) can review visual
+# changes inline without checking out the branch.
+#
+# Stitching pattern: bring the operator's eye to the PR, not the PR to the
+# operator's eye. The comment is upserted (find-and-replace), not appended,
+# so subsequent pushes do not spam the PR thread.
+#
+# Forward-compat (AC #6): if the INFRA-1591 snapshot suite is not yet wired
+# (no `e2e/tests/pwa-visual.spec.ts` or `e2e/tests/pwa-visual/` directory),
+# the job no-ops with a single explanatory comment instead of failing — the
+# workflow is wired ahead of the snapshot suite on purpose so the routing
+# layer is ready the moment INFRA-1591 lands.
+#
+# Bot identity: chump-visual-diff-bot. Author may revert the comment or
+# disable the workflow via `gh workflow disable pwa-visual-diff`.
+#
+# This workflow is NOT in the required-checks set — failure here does NOT
+# block merges. It is a design-review surface, not a gate. The
+# `continue-on-error` on the inner step matches the visual-review-as-signal
+# pattern from e2e-pwa-advisory.yml (INFRA-1332).
+#
+# Documentation: docs/process/PWA_VISUAL_DIFF_BOT.md.
+
+name: pwa-visual-diff
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'web/**'
+      - 'desktop/src-tauri/**'
+      - 'e2e/tests/pwa-visual**'
+      - 'e2e/playwright.config.ts'
+      - '.github/workflows/pwa-visual-diff.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Per-PR concurrency: cancel an in-flight diff if a new push lands.
+concurrency:
+  group: pwa-visual-diff-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-diff:
+    name: PWA visual diff (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # design-review signal, never blocks merge.
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BOT_MARKER: "<!-- chump-visual-diff-bot:INFRA-1605 -->"
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Detect INFRA-1591 snapshot suite
+        id: detect
+        run: |
+          set -euo pipefail
+          # AC #6: forward-compat. Only run the suite if INFRA-1591 has
+          # actually wired the visual snapshot specs. Look for either a
+          # standalone spec file or a directory matching `pwa-visual*`.
+          if find e2e/tests -maxdepth 2 \( -name 'pwa-visual*.spec.ts' -o -name 'pwa-visual*.spec.js' \) 2>/dev/null | grep -q .; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 visual snapshot suite detected — running diff."
+          elif [ -d e2e/tests/pwa-visual ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 visual snapshot directory detected — running diff."
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 snapshot suite not yet wired — bot will no-op with comment."
+          fi
+
+      - name: Setup Node (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright + chromium (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build chump binary (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build chump (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        run: cargo build --bin chump
+
+      - name: Run visual snapshot suite (only if wired)
+        id: snapshot
+        if: steps.detect.outputs.wired == 'true'
+        working-directory: e2e
+        continue-on-error: true
+        env:
+          # When the suite runs against a PR branch, baselines that drift
+          # produce diff artifacts under test-results/ rather than failing
+          # the job — we capture the diff, we don't block the merge.
+          CHUMP_E2E_VISUAL_MODE: 'diff-only'
+        run: |
+          set -uo pipefail
+          mkdir -p test-results
+          # Match BOTH the standalone spec layout and the directory layout
+          # so whatever shape INFRA-1591 lands with works without a
+          # follow-up edit.
+          npx playwright test --grep "@visual|pwa-visual" \
+            --reporter=json --output=test-results \
+            > test-results/playwright.json 2>&1 \
+            || echo "::warning::visual snapshot suite reported diffs (this is informational)"
+
+      - name: Collect diff manifest (only if wired)
+        id: manifest
+        if: steps.detect.outputs.wired == 'true'
+        run: |
+          set -euo pipefail
+          # The snapshot suite (INFRA-1591) writes diff PNGs under
+          # e2e/test-results/<spec>/<name>-{baseline,actual,diff}.png and
+          # a JSON manifest at e2e/test-results/visual-diffs.json with
+          # rows: {view, viewport, pixel_delta_pct, baseline_path,
+          # actual_path, diff_path}.
+          #
+          # If the manifest is missing (the suite ran but produced no
+          # diffs OR the suite is older than the INFRA-1591 contract),
+          # we still proceed — the comment-poster will emit the no-diff
+          # variant.
+          if [ -f e2e/test-results/visual-diffs.json ]; then
+            DIFF_COUNT=$(python3 -c "import json,sys; d=json.load(open('e2e/test-results/visual-diffs.json')); print(len(d.get('diffs',[])))" 2>/dev/null || echo "0")
+            echo "diff_count=$DIFF_COUNT" >> "$GITHUB_OUTPUT"
+            echo "has_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "diff_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload diff artifacts (only if wired and diffs present)
+        id: upload
+        if: >-
+          steps.detect.outputs.wired == 'true' &&
+          steps.manifest.outputs.has_manifest == 'true' &&
+          steps.manifest.outputs.diff_count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-visual-diffs-pr-${{ github.event.pull_request.number }}
+          path: e2e/test-results/
+          retention-days: 14
+
+      - name: Build PR comment body
+        id: body
+        run: |
+          set -euo pipefail
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts"
+          BODY_FILE="$RUNNER_TEMP/visual-diff-comment.md"
+
+          if [ "${{ steps.detect.outputs.wired }}" != "true" ]; then
+            # AC #6: forward-compat no-op variant.
+            cat > "$BODY_FILE" <<EOF
+          ${BOT_MARKER}
+          ### Visual diff bot — waiting on INFRA-1591
+
+          The PWA visual snapshot suite (INFRA-1591) has not landed yet. Once
+          it ships, this bot will post a side-by-side baseline/diff table on
+          every PR that touches \`web/**\` so design collaborators can review
+          visual changes inline without checking out the branch.
+
+          *Bot is INFRA-1605. This message is a no-op pending the snapshot suite.*
+          EOF
+          elif [ "${{ steps.manifest.outputs.diff_count }}" = "0" ]; then
+            cat > "$BODY_FILE" <<EOF
+          ${BOT_MARKER}
+          ### Visual diff — no changes detected
+
+          The INFRA-1591 snapshot suite ran against this PR and found no
+          pixel-level diffs against the committed baselines.
+
+          - Re-baseline locally if you intended a visual change:
+            \`(cd e2e && npx playwright test --grep "@visual|pwa-visual" --update-snapshots)\`
+
+          *Bot is INFRA-1605.*
+          EOF
+          else
+            DIFF_COUNT='${{ steps.manifest.outputs.diff_count }}'
+            {
+              echo "${BOT_MARKER}"
+              echo "### Visual diff — ${DIFF_COUNT} view(s) changed"
+              echo ""
+              echo "| View | Viewport | Pixel delta | Diff |"
+              echo "|---|---|---|---|"
+              python3 <<PYEOF
+          import json
+          d = json.load(open('e2e/test-results/visual-diffs.json'))
+          run_url = "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          for row in d.get('diffs', []):
+              view     = row.get('view', '?')
+              viewport = row.get('viewport', '?')
+              pct      = row.get('pixel_delta_pct', '?')
+              diff_rel = row.get('diff_path', '')
+              # Diff PNGs live in the uploaded artifact bundle; link to
+              # the run artifact tab. Marcus / external reviewers click
+              # through once to grab the bundle and inspect the PNG set.
+              link = f"[{diff_rel.split('/')[-1]}]({run_url}#artifacts)"
+              print(f"| {view} | {viewport} | {pct} | {link} |")
+          PYEOF
+              echo ""
+              echo "**Artifact bundle:** [Download diff PNGs](${ARTIFACT_URL})"
+              echo ""
+              echo "**Re-baseline locally** if these changes are intentional:"
+              echo "\`(cd e2e && npx playwright test --grep \"@visual|pwa-visual\" --update-snapshots)\`"
+              echo ""
+              echo "*Bot is INFRA-1605. External design reviewers (Marcus, ultrareview operators) see the diff inline.*"
+            } > "$BODY_FILE"
+          fi
+
+          echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert PR comment (find-and-replace, never spam)
+        env:
+          BODY_FILE: ${{ steps.body.outputs.body_file }}
+        run: |
+          set -euo pipefail
+          # AC #4: upsert, not append. Find an existing comment by our
+          # BOT_MARKER and edit it in place; only post a new one if none
+          # exists.
+          EXISTING_ID=$(gh api "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --jq "[.[] | select(.body | contains(\"${BOT_MARKER}\"))] | .[0].id // empty" \
+              2>/dev/null || true)
+
+          if [ -n "${EXISTING_ID}" ]; then
+            echo "::notice::Updating existing visual-diff comment ${EXISTING_ID}"
+            gh api -X PATCH "/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
+              -F body=@"${BODY_FILE}" > /dev/null
+          else
+            echo "::notice::Posting new visual-diff comment"
+            gh pr comment "${PR_NUMBER}" --body-file "${BODY_FILE}"
+          fi
