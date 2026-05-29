@@ -409,3 +409,14 @@ oauth_token_stale_despite_daemon  # reason: INFRA-2124 emitted by scripts/coord/
 
 # ── INFRA-2174: chump-fleet-recorder (INFRA-2164 capture layer) ──────────────
 fleet_recorder_ttl_pruned         # reason: INFRA-2174 emitted by chump-fleet-recorder in-process TTL pruner task (fires every 60min) when it deletes events older than CHUMP_FLEET_RECORDER_TTL_DAYS (default 7d). Carries deleted_count, ttl_days, cutoff_ms. scanner-anchor present in crates/chump-fleet-recorder/src/main.rs.
+
+# ── INFRA-2132: META-124 integration-cycle pipeline event kinds ──────────────
+integration_cycle_started         # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped — reserved so coverage gate stays green until emitter lands.
+integration_candidates_selected   # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+integration_cycle_merges          # reason: INFRA-2132 / META-124; per-cycle AGGREGATE kind (observability-curator amendment replacing per-merge fanout); registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+integration_preflight_started     # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+integration_preflight_failed      # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+ship_bisect_root_cause            # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+bisect_quarantine                 # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+integration_cycle_shipped         # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped; related_kinds: [pr_merged] cross-ref set in registry.
+cycle_sampling_decision           # reason: INFRA-2132 / META-124 Phase 2 marker; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
