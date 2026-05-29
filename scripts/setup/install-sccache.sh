@@ -48,6 +48,14 @@ cat > .cargo/config.toml <<'EOF'
 #
 # .gitignore'd because per-machine: a CI runner without sccache would
 # break here.
+#
+# Linux / Docker cross-build gotcha (INFRA-2104 / INFRA-2105):
+#   This rustc-wrapper breaks `cargo build` inside containers that don't
+#   have sccache on PATH. To cross-build chump-coord for Linux without
+#   the env-var dance, use:
+#       bash scripts/dev/cross-build-linux.sh
+#   It sets CARGO_BUILD_RUSTC_WRAPPER="" automatically and uses an
+#   isolated target dir so failed runs don't poison state.
 [build]
 rustc-wrapper = "sccache"
 
