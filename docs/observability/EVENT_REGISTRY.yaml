@@ -5626,3 +5626,28 @@ events:
       which gaps the backfill touched without re-running it in dry-run.
     consumers: [ops-audit]
     fields_required: [ts, kind, gap, pr, source]
+  - kind: reviewer_routing_computed
+    effect_metric: effective
+    emitter: crates/chump-reviewer-routing/src/bin/chump-reviewer-routing.rs (INFRA-1491)
+    trigger: >
+      Emitted by `chump-reviewer-routing show` and `route` whenever a
+      reviewer set is computed. Discloses the count + suggested logins
+      so an operator audit trail exists even when `route` exits without
+      actually requesting (dry-run, empty set, error mid-way). Emitted
+      on stderr so stdout stays parseable JSON for callers consuming
+      `show --json`.
+    consumers: [ops-audit, pr-watch]
+    fields_required: [ts, kind, reviewer_count]
+
+  - kind: reviewer_routing_requested
+    effect_metric: effective
+    emitter: crates/chump-reviewer-routing/src/bin/chump-reviewer-routing.rs (INFRA-1491)
+    trigger: >
+      Emitted by `chump-reviewer-routing route` only after a successful
+      `gh pr edit --add-reviewer ...` call. Disambiguates "we computed a
+      set" (reviewer_routing_computed) from "we actually asked GitHub to
+      request these humans" (reviewer_routing_requested). Pairs cleanly
+      with the auto_merge_policy_evaluated event from INFRA-1489 — both
+      are the audit trail behind Marcus M-E.
+    consumers: [ops-audit, pr-watch]
+    fields_required: [ts, kind, pr, reviewers]
