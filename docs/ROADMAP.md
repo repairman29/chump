@@ -19,6 +19,7 @@ Five anchors. **Mission Yield** is the headline number; **Wave order** is the sh
 | **🚀 50 PRs/hour push** | [strategy/ROADMAP_50_PER_HOUR.md](strategy/ROADMAP_50_PER_HOUR.md) | Capacity to sustain Mission Yield at scale. 15 days. |
 | **👤 Marcus customer arc** | [strategy/ROADMAP_MARCUS.md](strategy/ROADMAP_MARCUS.md) | The customer the product is for. 5 milestones M-A → M-E. |
 | **🛠️ Backlog decisions** | [strategy/ROADMAP_BACKLOG.md](strategy/ROADMAP_BACKLOG.md) | 8 design-conversation items decided 2026-05-16 — what's build/defer/fold. |
+| **🔄 Integration-cycle ship pipeline** | [strategy/INTEGRATION_CYCLE_2026-05-29.md](strategy/INTEGRATION_CYCLE_2026-05-29.md) | How the fleet ships: batched cycles (Mode A) vs per-PR (Mode B) vs hot-fix (Mode C) vs external-repo (Mode D). |
 
 **Read order:** Mission Yield first (the why), Waves second (the order), then the three workstreams (what's pickable now).
 
