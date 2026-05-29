@@ -80,6 +80,11 @@ description:
 - **Ship or report BLOCKED.** Every session ends with either a PR number or
   a one-line BLOCKED reason. "I wasn't sure" is not a valid BLOCKED reason —
   make the call and ship.
+- **Decision points go to consensus, not operator.** If your work surfaces a
+  decision point, broadcast a FEEDBACK proposal to curator-opus-* inboxes:
+  `scripts/coord/broadcast.sh FEEDBACK proposal "<question + options>"`.
+  Do not return the question to the operator. See AGENTS.md
+  §Decision protocol for the full protocol.
 ```
 
 This single addition is responsible for the majority of the expected ship-rate

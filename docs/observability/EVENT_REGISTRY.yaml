@@ -6406,3 +6406,31 @@ events:
     expected_volume: "low; target <10% of total merges once enforce mode is active"
     status: stable
     # payload: {pr: number, corr_id: string, reason: string, operator_session_id: string, mode: string, gap_id: string, ts: string}
+  - kind: operator_ping_anti_pattern
+    effect_metric: effective
+    emitter: scripts/ci/test-operator-ping-anti-pattern.sh (INFRA-2209)
+    trigger: >
+      Emitted by the operator-ping audit script when it finds session
+      transcript lines matching question patterns directed at the operator
+      ("should I", "would you like me to", "what should", etc.) instead of
+      using the NATS A2A consensus protocol. Audit surface only — not a hard
+      gate. Consumers use the count field to track doctrine adoption over time.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, count]
+    expected_volume: "0-N per audit run (target: 0 as doctrine adoption improves)"
+    status: stable
+    # payload: {count: int, note: string, ts: string}
+
+  - kind: consensus_decision_emitted
+    effect_metric: effective
+    emitter: orchestrator (INFRA-2209 consensus protocol)
+    trigger: >
+      Emitted by the orchestrator after aggregating curator FEEDBACK votes
+      and reaching a decision. Records the question, vote count, and final
+      decision for audit replay. Part of the consensus-over-operator-pinging
+      discipline (AGENTS.md §Decision protocol, INFRA-2209).
+    consumers: [fleet-brief, ops-audit, kpi-report]
+    fields_required: [ts, kind, question, votes, decision]
+    expected_volume: "0-N per session (grows as consensus protocol adoption increases)"
+    status: stable
+    # payload: {question: string, votes: int, decision: string, ts: string}
