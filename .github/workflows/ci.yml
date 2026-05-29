@@ -591,12 +591,13 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
-    # INFRA-1534: opt-in routing to self-hosted runner when CHUMP_SELF_HOSTED_ENABLED=true.
-    # Defaults to ubuntu-latest so this is a safe no-op until the var is flipped via
-    #   gh variable set CHUMP_SELF_HOSTED_ENABLED --body true -R repairman29/chump
-    # See docs/process/SELF_HOSTED_RUNNERS.md.
-    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_FAST_CHECKS (master + lane).
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
+    # Self-hosted Mac caused ~50% of CI-rot tax (rustup conflicts, tauri-2.11.2
+    # corruption, wasmtime_wasi .d orphans, runner_binary_refresh_failed — see
+    # DOC-063 14d post-mortem). Linux fmt/clippy work runs cleanly on ubuntu.
+    # Feature-flag fallback: per-lane CHUMP_SELF_HOSTED_FAST_CHECKS=true reverts
+    # this single lane to self-hosted if needed for diagnosis.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     # INFRA-1959: force chump to use per-checkout state.db, never $HOME/.chump.
     # Prevents r2d2 sqlite-lock contention when multiple self-hosted runs are
     # active concurrently (each has its own _work checkout, but a stale system
@@ -1062,9 +1063,10 @@ jobs:
   clippy:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1534/1535 stage 1: self-hosted routing
-    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_CLIPPY (master + lane).
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CLIPPY != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
+    # Self-hosted Mac caused ~50% of CI-rot tax (DOC-063 post-mortem).
+    # Feature-flag fallback: CHUMP_SELF_HOSTED_CLIPPY=true reverts this lane.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
       - uses: actions/checkout@v6
@@ -1112,9 +1114,10 @@ jobs:
   cargo-test:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1535 stage 2: self-hosted routing
-    # INFRA-1567: per-lane toggle CHUMP_SELF_HOSTED_CARGO_TEST (master + lane).
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
+    # Self-hosted Mac caused ~50% of CI-rot tax (DOC-063 post-mortem).
+    # Feature-flag fallback: CHUMP_SELF_HOSTED_CARGO_TEST=true reverts this lane.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     # INFRA-1959: per-checkout state.db (see fast-checks comment above).
     env:
@@ -1527,6 +1530,10 @@ jobs:
     if: |
       needs.changes.outputs.docs_only != 'true' ||
       github.event_name != 'pull_request'
+    # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): audit already defaults to GH-hosted
+    # ubuntu via RUNNER_AUDIT-unset path; keep this lane on GH-hosted to eliminate
+    # the self-hosted-Mac CI-rot tax (DOC-063 post-mortem). Override: set RUNNER_AUDIT
+    # repo var to a JSON labels array if needed for diagnosis.
     runs-on: ${{ vars.RUNNER_AUDIT != '' && fromJSON(vars.RUNNER_AUDIT) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     # INFRA-1959: per-checkout state.db (see fast-checks comment above).
