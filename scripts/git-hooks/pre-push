@@ -721,8 +721,26 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # (~3-5 min observed) but below the indefinite-hang failure mode.
             _PREPUSH_TEST_TIMEOUT_S="${CHUMP_PREPUSH_TEST_TIMEOUT_S:-600}"
             _RERUN_SCRIPT="$REPO_ROOT_T/scripts/ci/cargo-test-with-rerun.sh"
+
+            # INFRA-2184: probe the configured RUSTC_WRAPPER (typically sccache,
+            # set in .cargo/config.toml). If the binary is missing or fails
+            # --version, clear CARGO_BUILD_RUSTC_WRAPPER for the cargo test
+            # invocation so a host-level sccache breakage (the binary that
+            # actually shells out to rustc returns ENOENT mid-build) does NOT
+            # block every push across the fleet. Cargo's env CARGO_BUILD_*
+            # overrides the [build] section in config.toml.
+            _PREPUSH_WRAPPER_OVERRIDE=()
+            _PREPUSH_WRAPPER_BIN="${RUSTC_WRAPPER:-$(awk -F\" '/^[[:space:]]*rustc-wrapper[[:space:]]*=/ {print $2; exit}' "$REPO_ROOT_T/.cargo/config.toml" 2>/dev/null)}"
+            if [[ -n "$_PREPUSH_WRAPPER_BIN" ]]; then
+                if [[ ! -x "$_PREPUSH_WRAPPER_BIN" ]] || ! "$_PREPUSH_WRAPPER_BIN" --version >/dev/null 2>&1; then
+                    echo "[pre-push] INFRA-2184: RUSTC_WRAPPER ($_PREPUSH_WRAPPER_BIN) failed --version probe — disabling wrapper for test gate (push proceeds without sccache caching)." >&2
+                    _PREPUSH_WRAPPER_OVERRIDE=(env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER=)
+                fi
+            fi
+
             if [[ -x "$_RERUN_SCRIPT" ]]; then
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    "${_PREPUSH_WRAPPER_OVERRIDE[@]}" \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     bash "$_RERUN_SCRIPT" -- \
                         cargo test --bin chump --tests --no-fail-fast --quiet \
@@ -763,7 +781,9 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                 # Fallback (RESILIENT-012): direct cargo test with post-failure parse
                 # against KNOWN_FLAKES.yaml for auto-bypass when wrapper is absent.
                 # INFRA-1744: same timeout protection as the rerun-script path above.
+                # INFRA-2184: same sccache liveness override as the rerun path.
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                    "${_PREPUSH_WRAPPER_OVERRIDE[@]}" \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     cargo test --bin chump --tests --no-fail-fast --quiet \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \

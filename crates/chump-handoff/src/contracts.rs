@@ -476,6 +476,247 @@ Rules:
     }
 }
 
+// ── (e) IntegrationCycleContract ─────────────────────────────────────────
+
+/// Why the integration cycle was triggered.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum TriggerReason {
+    /// Scheduled cadence (e.g. nightly, weekly).
+    Cadence,
+    /// Gap-count threshold crossed.
+    Volume,
+    /// LOC-budget threshold crossed.
+    LocBudget,
+    /// Operator explicitly triggered.
+    OperatorManual,
+}
+
+/// Input: everything the integrator daemon knows when it kicks off a cycle.
+#[derive(Debug, Clone, Serialize)]
+pub struct IntegrationCycleInput {
+    /// Cycle identifier — must match `^integration-\d{4}-\d{2}-\d{2}-\d{4}$`.
+    pub cycle_id: String,
+    /// Gap IDs the integrator wants to land in this cycle.
+    pub candidate_gap_ids: Vec<String>,
+    /// Git branch the cycle lands onto (non-empty).
+    pub integration_branch: String,
+    /// Repo-relative path to the preflight log produced before landing.
+    pub preflight_log_path: String,
+    /// Why this cycle was triggered.
+    pub trigger_reason: TriggerReason,
+}
+
+/// Final disposition of the cycle.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum CycleStatus {
+    /// All candidates landed successfully.
+    Shipped,
+    /// Bisect ran; some candidates quarantined.
+    BisectQuarantined,
+    /// Could not determine success or failure.
+    Inconclusive,
+    /// Cycle aborted (e.g. preflight fail, operator cancel).
+    Aborted,
+}
+
+/// One entry in the shipped manifest.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ManifestEntry {
+    /// Gap ID that landed.
+    pub gap_id: String,
+    /// Full 40-char commit SHA on the integration branch.
+    pub commit_sha: String,
+}
+
+/// Output from the integration cycle subagent.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct IntegrationCycleOutput {
+    /// Disposition of the cycle.
+    pub cycle_status: CycleStatus,
+    /// Gaps that landed, with their commit SHAs.
+    pub manifest: Vec<ManifestEntry>,
+    /// Gap IDs quarantined by bisect (empty if no bisect ran).
+    pub quarantined_gap_ids: Vec<String>,
+    /// Bisect-derived failure signature, if any.
+    pub root_cause_signature: Option<String>,
+    /// Number of bisect runs executed (0 if bisect did not run).
+    pub bisect_runs: u32,
+}
+
+impl Validate for IntegrationCycleOutput {
+    fn validate(&self) -> Result<(), ValidationError> {
+        // cycle_status + manifest coherence
+        if self.cycle_status == CycleStatus::Shipped && !self.quarantined_gap_ids.is_empty() {
+            return Err(ValidationError::new(
+                "cycle_status Shipped but quarantined_gap_ids is non-empty",
+            ));
+        }
+        if self.cycle_status == CycleStatus::BisectQuarantined
+            && self.quarantined_gap_ids.is_empty()
+        {
+            return Err(ValidationError::new(
+                "cycle_status BisectQuarantined but quarantined_gap_ids is empty",
+            ));
+        }
+        // All manifest entries must have non-empty gap_id and commit_sha.
+        for (i, entry) in self.manifest.iter().enumerate() {
+            if entry.commit_sha.trim().is_empty() {
+                return Err(ValidationError::new(format!(
+                    "manifest[{i}].commit_sha cannot be empty"
+                )));
+            }
+            if entry.gap_id.trim().is_empty() {
+                return Err(ValidationError::new(format!(
+                    "manifest[{i}].gap_id cannot be empty"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl IntegrationCycleOutput {
+    /// Cross-field validation against the input — checks the conservation law.
+    ///
+    /// `manifest.len() + quarantined_gap_ids.len() == candidate_gap_ids.len()`
+    /// Also validates `cycle_id` regex and `integration_branch` non-empty.
+    pub fn validate_against_input(
+        &self,
+        input: &IntegrationCycleInput,
+    ) -> Result<(), ValidationError> {
+        // Output-internal checks first.
+        self.validate()?;
+
+        // cycle_id regex: ^integration-\d{4}-\d{2}-\d{2}-\d{4}$
+        let id = &input.cycle_id;
+        if !is_valid_cycle_id(id) {
+            return Err(ValidationError::new(format!(
+                "cycle_id {id:?} does not match \
+                 ^integration-\\d{{4}}-\\d{{2}}-\\d{{2}}-\\d{{4}}$"
+            )));
+        }
+
+        if input.integration_branch.trim().is_empty() {
+            return Err(ValidationError::new("integration_branch cannot be empty"));
+        }
+
+        let shipped = self.manifest.len();
+        let quarantined = self.quarantined_gap_ids.len();
+        let total = shipped + quarantined;
+        let expected = input.candidate_gap_ids.len();
+        if total != expected {
+            return Err(ValidationError::new(format!(
+                "manifest ({shipped}) + quarantined ({quarantined}) = {total}, \
+                 expected {expected} (candidate_gap_ids.len())"
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Returns `true` if `id` matches `^integration-\d{4}-\d{2}-\d{2}-\d{4}$`.
+fn is_valid_cycle_id(id: &str) -> bool {
+    // "integration-" prefix = 12 chars; remainder = "YYYY-MM-DD-HHMM" = 15 chars
+    let Some(rest) = id.strip_prefix("integration-") else {
+        return false;
+    };
+    if rest.len() != 15 {
+        return false;
+    }
+    let b = rest.as_bytes();
+    // b: 0123-56-89-1234  (dashes at indices 4, 7, 10)
+    b[0..4].iter().all(|c| c.is_ascii_digit())
+        && b[4] == b'-'
+        && b[5..7].iter().all(|c| c.is_ascii_digit())
+        && b[7] == b'-'
+        && b[8..10].iter().all(|c| c.is_ascii_digit())
+        && b[10] == b'-'
+        && b[11..15].iter().all(|c| c.is_ascii_digit())
+}
+
+/// Subagent runs an integration cycle — preflight, land candidates, bisect on
+/// failure — and returns typed evidence of what landed and what was quarantined.
+///
+/// Use case: META-124 C2 (the Mode A integrator daemon, INFRA-2130) dispatches
+/// this contract to coordinate a batched land. The typed output lets the daemon
+/// update `state.db` without regex-parsing free text.
+pub struct IntegrationCycleContract;
+
+impl HandoffContract for IntegrationCycleContract {
+    type Input = IntegrationCycleInput;
+    type Output = IntegrationCycleOutput;
+
+    fn name() -> &'static str {
+        "IntegrationCycleContract"
+    }
+
+    fn prompt(input: &Self::Input) -> String {
+        let candidates_json =
+            serde_json::to_string_pretty(&input.candidate_gap_ids).unwrap_or_default();
+        let trigger = serde_json::to_string(&input.trigger_reason).unwrap_or_default();
+        format!(
+            r#"You are the Chump integration-cycle executor for cycle {cycle_id}.
+
+Integration branch : {integration_branch}
+Trigger reason     : {trigger_reason}
+Preflight log      : {preflight_log_path}
+
+Candidate gap IDs (land all of these, or bisect-quarantine those that break CI):
+```json
+{candidates_json}
+```
+
+Steps:
+1. Verify the integration branch exists and is clean.
+2. Cherry-pick / merge each candidate in order, running CI after each batch.
+3. If CI breaks, bisect to find the culprit gap(s) and quarantine them.
+4. Record the final commit SHA for each gap that landed.
+5. Emit a single fenced JSON block with this exact shape (no other JSON, no extra
+   commentary outside the block):
+
+```json
+{{
+  "cycle_status": "Shipped" | "BisectQuarantined" | "Inconclusive" | "Aborted",
+  "manifest": [
+    {{ "gap_id": "<gap-id>", "commit_sha": "<40-char SHA>" }},
+    ...
+  ],
+  "quarantined_gap_ids": ["<gap-id>", ...],
+  "root_cause_signature": "<short failure description>" | null,
+  "bisect_runs": <integer>
+}}
+```
+
+Conservation law (HARD CONSTRAINT):
+  manifest.len() + quarantined_gap_ids.len() MUST equal {candidate_count}
+  (the total number of candidates). Every candidate must appear in exactly one
+  of the two lists — no silent drops.
+
+Rules:
+- `cycle_status` MUST be one of: Shipped, BisectQuarantined, Inconclusive, Aborted.
+- Each `manifest` entry needs a real 40-char commit SHA (`git rev-parse HEAD`).
+- `quarantined_gap_ids` is empty when `cycle_status` is `Shipped`.
+- `root_cause_signature` is null unless bisect identified a specific root cause.
+- `bisect_runs` is 0 if no bisect was needed.
+"#,
+            cycle_id = input.cycle_id,
+            integration_branch = input.integration_branch,
+            trigger_reason = trigger,
+            preflight_log_path = input.preflight_log_path,
+            candidates_json = candidates_json,
+            candidate_count = input.candidate_gap_ids.len(),
+        )
+    }
+
+    fn model_tier() -> ModelTier {
+        // Integration execution is Sonnet-class work: sequential steps,
+        // well-specified output shape, no ambiguous pillar trade-offs.
+        ModelTier::Sonnet
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,6 +871,7 @@ mod tests {
         assert_eq!(CodeFixContract::model_tier(), ModelTier::Sonnet);
         assert_eq!(DecomposeContract::model_tier(), ModelTier::Opus);
         assert_eq!(ExternalRepoContract::model_tier(), ModelTier::Sonnet);
+        assert_eq!(IntegrationCycleContract::model_tier(), ModelTier::Sonnet);
     }
 
     // ExternalRepoOutput validation ───────────────────────────────────────────
@@ -697,5 +939,104 @@ mod tests {
         assert!(p.contains("Add retry logic to fetch"));
         assert!(p.contains("main"));
         assert!(p.contains("repairman29"));
+    }
+
+    // IntegrationCycleContract tests ──────────────────────────────────────────
+
+    fn good_cycle_input() -> IntegrationCycleInput {
+        IntegrationCycleInput {
+            cycle_id: "integration-2026-05-29-1430".into(),
+            candidate_gap_ids: vec!["INFRA-100".into(), "INFRA-101".into()],
+            integration_branch: "integration/2026-05-29".into(),
+            preflight_log_path: "logs/preflight-2026-05-29-1430.log".into(),
+            trigger_reason: TriggerReason::Cadence,
+        }
+    }
+
+    fn good_cycle_output() -> IntegrationCycleOutput {
+        IntegrationCycleOutput {
+            cycle_status: CycleStatus::Shipped,
+            manifest: vec![
+                ManifestEntry {
+                    gap_id: "INFRA-100".into(),
+                    commit_sha: "aabbccddaabbccddaabbccddaabbccddaabbccdd".into(),
+                },
+                ManifestEntry {
+                    gap_id: "INFRA-101".into(),
+                    commit_sha: "1122334411223344112233441122334411223344".into(),
+                },
+            ],
+            quarantined_gap_ids: vec![],
+            root_cause_signature: None,
+            bisect_runs: 0,
+        }
+    }
+
+    #[test]
+    fn accept_valid_output() {
+        let input = good_cycle_input();
+        let output = good_cycle_output();
+        assert!(output.validate_against_input(&input).is_ok());
+    }
+
+    #[test]
+    fn reject_manifest_quarantined_mismatch() {
+        let input = good_cycle_input(); // 2 candidates
+        let mut output = good_cycle_output();
+        // Remove one manifest entry — total becomes 1, expected 2.
+        output.manifest.pop();
+        let err = output.validate_against_input(&input).unwrap_err();
+        assert!(
+            err.message().contains("expected 2"),
+            "unexpected error: {}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn reject_bad_cycle_id_format() {
+        let mut input = good_cycle_input();
+        input.cycle_id = "run-2026-05-29-1430".into(); // wrong prefix
+        let output = good_cycle_output();
+        let err = output.validate_against_input(&input).unwrap_err();
+        assert!(err.message().contains("cycle_id"));
+
+        let mut input2 = good_cycle_input();
+        input2.cycle_id = "integration-26-05-29-1430".into(); // short year
+        let err2 = good_cycle_output()
+            .validate_against_input(&input2)
+            .unwrap_err();
+        assert!(err2.message().contains("cycle_id"));
+    }
+
+    #[test]
+    fn reject_empty_branch() {
+        let mut input = good_cycle_input();
+        input.integration_branch = "   ".into();
+        let output = good_cycle_output();
+        let err = output.validate_against_input(&input).unwrap_err();
+        assert!(err.message().contains("integration_branch"));
+    }
+
+    #[test]
+    fn prompt_includes_all_inputs() {
+        let input = good_cycle_input();
+        let p = IntegrationCycleContract::prompt(&input);
+        assert!(
+            p.contains("integration-2026-05-29-1430"),
+            "missing cycle_id"
+        );
+        assert!(p.contains("INFRA-100"), "missing candidate gap id");
+        assert!(p.contains("INFRA-101"), "missing candidate gap id");
+        assert!(
+            p.contains("integration/2026-05-29"),
+            "missing integration_branch"
+        );
+        assert!(
+            p.contains("logs/preflight-2026-05-29-1430.log"),
+            "missing preflight_log_path"
+        );
+        // TriggerReason::Cadence serialises to "Cadence"
+        assert!(p.contains("Cadence"), "missing trigger_reason");
     }
 }

@@ -160,6 +160,18 @@ filed as META-NEW). Verify via `chump fleet doctor` reporting HEALTHY.
 
 Typical use: `git rebase origin/main` fails on 5 sibling PRs all touching `scripts/ci/event-registry-reserved.txt`. Each rescue takes ~10s with this tool vs ~3min via manual Edit. See the script docstring for the safety contract.
 
+### Ship pipeline (integration-cycle model)
+
+The default ship path is **batched integration cycles** — not per-gap PRs. Full strategy, mode definitions (A/B/C/D), bisect-on-red logic, and migration phases:
+
+- [`docs/strategy/INTEGRATION_CYCLE_2026-05-29.md`](../strategy/INTEGRATION_CYCLE_2026-05-29.md) — operator-reviewed strategy doc
+
+**Quick reference:**
+- **Mode A (Batched, DEFAULT):** `chump claim → work → push → mark ready` — integrator daemon batches and ships
+- **Mode B (Per-PR, REVIEW-REQUIRED):** prefix gap title with `REVIEW:` — ships as individual PR today
+- **Mode C (Hot-fix):** `chump gap hot-fix INFRA-NNNN` — elevated priority, bypasses queue
+- **Mode D (External-repo):** META-123 lane — ships to customer repo, not chump main
+
 ## 8. Wizard Retirement Criteria
 
 The wizard can drop from /loop 2m to weekly cadence when ALL FIVE hold:

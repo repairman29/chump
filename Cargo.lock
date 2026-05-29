@@ -1608,6 +1608,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-integrator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-nats",
+ "chrono",
+ "chump-ambient-cli",
+ "chump-coord",
+ "chump-gap-store",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "uuid 1.23.1",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [
