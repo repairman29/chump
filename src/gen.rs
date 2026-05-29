@@ -247,14 +247,30 @@ pub async fn run(opts: GenOptions) -> Result<()> {
         (in_chars, out_chars)
     };
 
-    // Verify the edit compiles.
-    let status = Command::new("cargo")
-        .arg("check")
-        .current_dir(work_dir)
-        .status()
-        .context("spawn cargo check")?;
-    if !status.success() {
-        bail!("cargo check failed after applying gen edits");
+    // Verify the edit compiles. INFRA-2106: only run cargo check if work_dir is
+    // a Rust project (has a Cargo.toml). For non-Rust targets (TypeScript repos,
+    // arbitrary scratch dirs, etc.) skip the verify step and trust the agent's
+    // own iteration loop — the agent has run_cli and can invoke whatever build
+    // tool the target uses. Operator can also opt out unconditionally via
+    // CHUMP_GEN_SKIP_VERIFY=1.
+    let skip_verify = std::env::var("CHUMP_GEN_SKIP_VERIFY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let has_cargo_toml = work_dir.join("Cargo.toml").exists();
+    if !skip_verify && has_cargo_toml {
+        let status = Command::new("cargo")
+            .arg("check")
+            .current_dir(work_dir)
+            .status()
+            .context("spawn cargo check")?;
+        if !status.success() {
+            bail!("cargo check failed after applying gen edits");
+        }
+    } else if !has_cargo_toml {
+        tracing::info!(
+            work_dir = %work_dir.display(),
+            "gen: no Cargo.toml in work_dir — skipping cargo check (non-Rust target)"
+        );
     }
 
     // Commit the result.
@@ -301,11 +317,14 @@ pub async fn run(opts: GenOptions) -> Result<()> {
 fn build_gen_agent(provider: Box<dyn axonerai::provider::Provider + Send + Sync>) -> ChumpAgent {
     let system = format!(
         "You are a coding assistant. Use read_file and list_dir to explore the \
-         codebase, patch_file to apply changes, and run_cli to run `cargo check` \
-         or `cargo test` and iterate on any errors. When all changes are correct, \
-         output ONLY the final modified files using this exact format:\n\n\
-         {FILE_BEGIN} path/to/file.rs===\n<complete file content>\n{FILE_END}\n\n\
-         Do not include any explanation outside these delimited blocks."
+         codebase, patch_file to apply changes, and run_cli to invoke the \
+         project's own build / type-check / test tools (e.g. `cargo check`, \
+         `cargo test`, `pnpm typecheck`, `pnpm test`, `pytest`, `go test`) and \
+         iterate on any errors. When all changes are correct, output ONLY the \
+         final modified files using this exact format:\n\n\
+         {FILE_BEGIN} path/to/file.ext===\n<complete file content>\n{FILE_END}\n\n\
+         Do not include any explanation outside these delimited blocks. Each \
+         file block must contain the COMPLETE file content (not a diff)."
     );
     let mut registry = axonerai::tool::ToolRegistry::new();
     crate::tool_inventory::register_gen_tools(&mut registry);
