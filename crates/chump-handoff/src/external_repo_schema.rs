@@ -533,7 +533,9 @@ mod tests {
         let repo_dir = dir.path();
         let snap = sample_snapshot(repo_dir);
         save_snapshot(repo_dir, &snap).unwrap();
-        let loaded = load_snapshot(repo_dir).unwrap().expect("snapshot not found");
+        let loaded = load_snapshot(repo_dir)
+            .unwrap()
+            .expect("snapshot not found");
         assert_eq!(snap, loaded);
     }
 
@@ -572,7 +574,12 @@ mod tests {
         let path = repo_dir.join("signals").join("issues.jsonl");
         let content = fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 2, "expected exactly 2 lines, got {}", lines.len());
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected exactly 2 lines, got {}",
+            lines.len()
+        );
         for line in &lines {
             assert!(!line.trim().is_empty(), "blank line found");
             let _: serde_json::Value = serde_json::from_str(line).expect("not valid JSON");
