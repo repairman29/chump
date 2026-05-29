@@ -46,6 +46,34 @@ fn resolve_db_path() -> std::path::PathBuf {
 }
 
 fn main() -> ExitCode {
+    // INFRA-2205: minimal hand-rolled CLI arg parsing — no clap dep.
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!(
+            "chump-fleet-server — fleet visualization HTTP + WebSocket query server (INFRA-2175)."
+        );
+        println!();
+        println!("Usage: chump-fleet-server [--port N] [--help] [--version]");
+        println!();
+        println!("Env vars:");
+        println!("  CHUMP_FLEET_SERVER_PORT  (default 7070)");
+        println!("  CHUMP_FLEET_DB           (default <repo>/.chump/fleet_events.db)");
+        println!(
+            "  CHUMP_FLEET_SCRUBBER_DIR (default <repo>/web/fleet-scrubber; mounted at /scrubber)"
+        );
+        return ExitCode::SUCCESS;
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("chump-fleet-server {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    // Optional --port N (alternative to CHUMP_FLEET_SERVER_PORT env var).
+    let port_override: Option<u16> = args
+        .windows(2)
+        .find(|w| w[0] == "--port")
+        .and_then(|w| w[1].parse().ok());
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -65,7 +93,7 @@ fn main() -> ExitCode {
     };
 
     rt.block_on(async {
-        match run().await {
+        match run(port_override).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("[chump-fleet-server] {err}");
@@ -75,10 +103,13 @@ fn main() -> ExitCode {
     })
 }
 
-async fn run() -> anyhow::Result<()> {
-    let port: u16 = std::env::var("CHUMP_FLEET_SERVER_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
+async fn run(port_override: Option<u16>) -> anyhow::Result<()> {
+    let port: u16 = port_override
+        .or_else(|| {
+            std::env::var("CHUMP_FLEET_SERVER_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+        })
         .unwrap_or(7070);
 
     let db_path = resolve_db_path();
