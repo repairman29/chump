@@ -28,6 +28,7 @@ members = [
     "crates/ast-crawler",
     "crates/chump-git-hooks",
     "crates/chump-github-cache",
+    "crates/chump-handoff",
 ]
 resolver = "2"
 
