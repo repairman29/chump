@@ -226,6 +226,41 @@ PATH=$HOME/.cargo/bin:$PATH cargo check --workspace
 
 **Pairs with:** INFRA-1670 (the tool), INFRA-1671 (pre-push hook enforcement), INFRA-1672 (smart scoping for speed).
 
+### preflight-vs-CI parity allowlist (INFRA-2120 / INFRA-1867)
+
+When you add a new `run:` step to `.github/workflows/ci.yml`, the pre-commit
+hook (`scripts/git-hooks/pre-commit`, block 18) and the CI step
+`preflight-vs-CI parity smoke (INFRA-1867)` will both fail unless the new
+gate satisfies **one** of three classifications:
+
+1. **Mirrored in preflight** — add the same `scripts/ci/test-foo.sh` (or
+   `cargo fmt|clippy|check` invocation) to `src/preflight.rs` so it also
+   runs in `chump preflight`. Preferred path — local + CI stay in sync.
+2. **Tier-D (cannot mirror)** — if the gate genuinely can't run locally
+   (e.g. it talks to GitHub APIs or the merge queue), add it to the
+   `## Tier D` section of `docs/process/CI_GATES_INVENTORY.md` with a
+   reason. The parity script's matcher uses substring matching against
+   the step name + run command, so a Tier-D entry like
+   `gap-status-guard.yml` matches any step whose name or run-line
+   contains that string.
+3. **Allowlist exception** — last-resort escape hatch. Append a line to
+   `scripts/ci/preflight-ci-parity-exceptions.txt` of the form:
+   ```
+   <step-name-or-script-basename>       # reason: <why this can't mirror>
+   ```
+   Bare entries match the step name, the `scripts/ci/...sh` path, OR a
+   substring of either. Keep entries narrow (prefer the exact script
+   basename) so the allowlist doesn't silently absorb future drift.
+
+Adding a step without doing one of (1)/(2)/(3) is what produces the
+"unmirrored gate in job=" failure surface (rank-2 CI-rot class per
+`docs/strategy/CI_REVIEW_2026-05-29.md` Lever 4). The pre-commit hook
+fires *only* when ci.yml is staged, so the cost is paid by the contributor
+making the change, not by every push.
+
+Bypass (rare): `CHUMP_PREFLIGHT_PARITY_CHECK=0 git commit ...` — file a
+follow-up gap to add a proper classification, don't leave it bypassed.
+
 ## Rust-first vs. shell-OK (META-064, 2026-05-14)
 
 When you reach for `nano scripts/coord/foo.sh`, pause and check the criteria

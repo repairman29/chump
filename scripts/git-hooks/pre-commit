@@ -1857,6 +1857,23 @@ if [ "${CHUMP_BRANCH_PROTECTION_AUDIT:-1}" != "0" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 18. preflight-vs-CI parity smoke (INFRA-2120, 2026-05-29)
+# ------------------------------------------------------------------
+# Fast-mode wrapper: fires ONLY when .github/workflows/ci.yml is staged
+# (the sub-hook short-circuits otherwise). When ci.yml IS staged, runs
+# the full scripts/ci/test-preflight-ci-parity.sh smoke (~50ms wall-clock)
+# so allowlist drift catches locally instead of at PR-time. Rank-2
+# CI-rot class per docs/strategy/CI_REVIEW_2026-05-29.md Lever 4.
+# Bypass: CHUMP_PREFLIGHT_PARITY_CHECK=0 (with reason).
+
+PREFLIGHT_PARITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-preflight-ci-parity.sh"
+if [ -x "$PREFLIGHT_PARITY_HOOK" ]; then
+    if ! "$PREFLIGHT_PARITY_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0
 # 11. Acceptance-criteria enforcement (CREDIBLE-054): refuse commits that
 #     add or modify gaps without a non-empty `acceptance_criteria:` list.
