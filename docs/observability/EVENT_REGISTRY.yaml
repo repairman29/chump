@@ -5518,3 +5518,16 @@ events:
       without grep-archaeology.
     consumers: [ops-audit, fleet-doctor, infra-watcher]
     fields_required: [ts, kind, crate, suggested_fix]
+
+  - kind: auto_merge_policy_bypassed
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh (INFRA-2155)
+    trigger: >
+      Emitted by bot-merge.sh when CHUMP_BYPASS_AUTO_MERGE_POLICY=1
+      skips the chump-policy check before arming auto-merge. Used for
+      genuine recovery scenarios where the operator needs to ship past
+      a policy gate; every bypass is auditable so the operator can
+      review patterns (frequent bypasses on a given operator-repo =
+      signal that the policy is wrong, not that the bypass is wrong).
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, pr, session]

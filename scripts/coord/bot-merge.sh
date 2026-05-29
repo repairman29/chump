@@ -2767,6 +2767,79 @@ print(f"{incomplete} {failed} {total}")
             fi
 
             if [[ $_rest_direct_merged -eq 0 ]]; then
+                # ── INFRA-2155: chump-policy check (Marcus M-E auto-merge knob) ─
+                # Gate the auto-merge arming behind the layered policy chain
+                # (fleet + operator + repo). If the policy blocks, skip arming
+                # and post the block reason as a PR comment so the operator
+                # sees the WHY. Bypass via CHUMP_BYPASS_AUTO_MERGE_POLICY=1 for
+                # genuine recovery scenarios; each bypass is auditable in
+                # ambient via the kind=auto_merge_policy_bypassed emit below.
+                _chump_policy_bin=""
+                for _cpb in "$REPO_ROOT/target/debug/chump-policy" \
+                            "$HOME/Projects/Chump/target/debug/chump-policy" \
+                            "$(command -v chump-policy 2>/dev/null)"; do
+                    if [[ -n "$_cpb" ]] && [[ -x "$_cpb" ]]; then
+                        _chump_policy_bin="$_cpb"
+                        break
+                    fi
+                done
+                if [[ -n "$_chump_policy_bin" ]] && [[ "${CHUMP_BYPASS_AUTO_MERGE_POLICY:-0}" != "1" ]]; then
+                    stage_start "INFRA-2155: chump-policy check (PR $TARGET_PR)"
+                    _policy_out=""
+                    if _policy_out=$(CHUMP_REPO="$REPO_ROOT" "$_chump_policy_bin" check 2>/dev/null); then
+                        info "  policy → allowed; arming auto-merge"
+                        # Forward the emit to ambient.jsonl for the audit trail.
+                        printf '%s\n' "$_policy_out" >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                        stage_done
+                    else
+                        red "  policy → blocked; skipping auto-merge arm"
+                        printf '%s\n' "$_policy_out" >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                        # Post the block reason as a PR comment so the operator
+                        # sees the WHY without grep-archaeology.
+                        _block_reason=$(printf '%s' "$_policy_out" | python3 -c 'import json,sys;d=json.loads(sys.stdin.read()); print(d.get("reason","unknown") + " [scopes: " + ",".join(d.get("contributing",[])) + "]")' 2>/dev/null || echo "auto-merge policy blocked")
+                        gh pr comment "$TARGET_PR" --body "🤖 INFRA-2155: auto-merge NOT armed. Reason: $_block_reason. Adjust policy via \`chump-policy set\` or bypass with \`CHUMP_BYPASS_AUTO_MERGE_POLICY=1\`." 2>/dev/null || true
+                        stage_done
+                        # Skip the auto-merge-armer call below by entering the
+                        # else branch unconditionally; PR is still open for
+                        # human review.
+                        _policy_blocked=1
+                    fi
+                elif [[ "${CHUMP_BYPASS_AUTO_MERGE_POLICY:-0}" == "1" ]]; then
+                    info "INFRA-2155: CHUMP_BYPASS_AUTO_MERGE_POLICY=1 — skipping policy check"
+                    printf '{"ts":"%s","kind":"auto_merge_policy_bypassed","pr":%s,"session":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET_PR" "${CHUMP_SESSION_ID:-unknown}" \
+                        >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                fi
+
+                # ── INFRA-2155: chump-reviewer-routing (Marcus M-E notification) ──
+                # Deterministic reviewer routing — add (recent committers ∪
+                # CODEOWNERS ∪ operator override) as PR reviewers via gh API.
+                # Runs even if policy check blocked auto-merge — Marcus's pain
+                # was MISSED notifications, and a human-reviewed PR still wants
+                # the right reviewers attached. Bypass via
+                # CHUMP_BYPASS_REVIEWER_ROUTING=1 for ad-hoc PRs.
+                _chump_routing_bin=""
+                for _crb in "$REPO_ROOT/target/debug/chump-reviewer-routing" \
+                            "$HOME/Projects/Chump/target/debug/chump-reviewer-routing" \
+                            "$(command -v chump-reviewer-routing 2>/dev/null)"; do
+                    if [[ -n "$_crb" ]] && [[ -x "$_crb" ]]; then
+                        _chump_routing_bin="$_crb"
+                        break
+                    fi
+                done
+                if [[ -n "$_chump_routing_bin" ]] && [[ "${CHUMP_BYPASS_REVIEWER_ROUTING:-0}" != "1" ]]; then
+                    stage_start "INFRA-2155: chump-reviewer-routing (PR $TARGET_PR)"
+                    # 2>&1 captures the stderr audit event; we tee both into
+                    # ambient.jsonl while suppressing console noise on success.
+                    if CHUMP_REPO="$REPO_ROOT" "$_chump_routing_bin" route --pr "$TARGET_PR" 2>>"$REPO_ROOT/.chump-locks/ambient.jsonl" >/dev/null; then
+                        info "  reviewer routing: ✓ requested"
+                    else
+                        info "  reviewer routing: skipped (no suggestions OR gh add-reviewer failed; PR open without prefilled reviewers)"
+                    fi
+                    stage_done
+                fi
+            fi
+            if [[ $_rest_direct_merged -eq 0 ]] && [[ "${_policy_blocked:-0}" != "1" ]]; then
                 # INFRA-1113: delegate to centralized armer to enforce 5s spacing.
                 # INFRA-1311: auto-merge-armer.sh now enforces per-PR exponential
                 # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts
