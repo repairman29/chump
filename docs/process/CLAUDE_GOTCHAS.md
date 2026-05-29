@@ -1292,6 +1292,47 @@ investigation.
 
 **Do not "fix" this by widening the workflow-level group back to per-PR-number** — that re-introduces the failure class. If cost is the concern, set `cancel-in-progress: true` at workflow level (already is) and trust the per-SHA group to dedupe same-SHA re-runs; the job-level override on audit will still hold.
 
+## doc-only PR wedge — required-check never emits, PR sits BLOCKED forever (INFRA-2191, 2026-05-29)
+
+**Symptom:** A doc/yaml-only PR (only touches `docs/**`, `*.md`, gap YAMLs) sits in `mergeStateStatus: BLOCKED` with `gh pr checks` showing **0 failures AND 0 pending**. `gh pr view --json statusCheckRollup` does NOT include the `audit` check-run at all — neither passing nor pending, simply absent. Operator has to either admin-merge or temporarily remove the required-status-checks rule from the ruleset. Took down 6 PRs in one slot on 2026-05-29 before the structural fix landed.
+
+**Root cause:** Branch protection ruleset (15133729 on main) historically required the bare context name `audit`. The real `audit` job in `ci.yml` is gated by `if: needs.changes.outputs.docs_only != 'true' || github.event_name != 'pull_request'` — so on a doc-only PR it SKIPS, emitting no check-run with the name `audit`. Without that check-run, branch protection waits forever for a context that will never exist. Same class as INFRA-2128 (pwa-onboarding) but for hard-required (not advisory) checks.
+
+**Fix (INFRA-2191):** The `audit-stub` job already covered the inverse case (fires when real audit skips), but its `name:` was `audit-stub` — so its check-run was published under a DIFFERENT context than what branch protection required. We renamed `audit-stub.name` from `audit-stub` to `audit`. The job-key stays `audit-stub` (so `audit-required` rollup's `needs: [audit, audit-stub]` chain still resolves), but the published check-run context is now `audit`. Mutual exclusion via the existing `if:` conditions guarantees exactly one of {real audit, audit-stub} runs per PR — never both, never neither.
+
+```yaml
+# Real audit (line 1534):
+audit:
+  if: |
+    needs.changes.outputs.docs_only != 'true' ||
+    github.event_name != 'pull_request'
+
+# audit-stub (line 2082 — INFRA-2191):
+audit-stub:
+  name: audit  # <-- emits as 'audit' to satisfy ruleset on doc-only PRs
+  if: |
+    (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
+    github.event_name == 'pull_request'
+```
+
+**Why `test` doesn't need a stub:** the real `test` job is itself a rollup with `if: always()` and `needs:` includes `pr-hygiene` (which runs on every PR regardless of path-filter). It always fires and always emits a check-run under name `test`, so no stub is needed. Guarded by assertion #4 in `scripts/ci/test-ruleset-doc-only-pr.sh` — if someone replaces `if: always()` with a gated condition, the test fails.
+
+**Regression guard:** `scripts/ci/test-ruleset-doc-only-pr.sh` (INFRA-2191) — 5 static-lint assertions over `ci.yml`:
+1. `audit-stub.name == 'audit'`
+2. real `audit.if` skips on `docs_only`
+3. `audit-stub.if` fires on PR + docs_only/code-empty
+4. `audit-required.needs` still references both job-keys
+5. `test.if == always()`
+
+Mirrored into preflight via `preflight-ci-parity-exceptions.txt`.
+
+**Recovery procedure if you see this in production (PR stuck BLOCKED, 0 fails 0 pending):**
+1. Verify: `gh pr view <N> --json statusCheckRollup | python3 -c "import sys,json; d=json.load(sys.stdin); print([c['name'] for c in d['statusCheckRollup'] if 'audit' in c['name'].lower()])"` — if empty list, you're hit by this wedge.
+2. Confirm INFRA-2191 fix is on main: `git ls-tree origin/main .github/workflows/ci.yml -- | head -1` and grep for `name: audit  # INFRA-2191`. If absent, the branch needs rebase onto main.
+3. Last-resort (operator-only): temporarily remove `required_status_checks` rule from ruleset 15133729 via `gh api`, merge, restore. **This is the manual-cascade-break that 2026-05-29 had to use 6 times** — the whole point of the INFRA-2191 fix is to eliminate the need for it.
+
+**Pairs with:** INFRA-2128 (advisory class — pwa-onboarding), INFRA-1379 (lane flag `docs_only` that enables the audit-stub gating).
+
 ## e2e-pwa shadow DOM traversal — `#msg-input` locator pattern (INFRA-817, INFRA-1018, INFRA-1066)
 
 **Symptom:** Five e2e-pwa Playwright tests time out waiting for `page.locator("#msg-input")`.
