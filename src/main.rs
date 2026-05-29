@@ -138,6 +138,7 @@ mod model_overlay;
 mod model_probe;
 mod neuromodulation;
 mod notify_tool;
+mod onboard; // INFRA-2108: chump onboard <repo-url-or-path>
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
@@ -674,6 +675,7 @@ fn print_help() {
     println!("  gap <sub>  (alias: g)  list, show, reserve, ship, audit-priorities …");
     println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
     println!("  ship <GAP-ID>   (alias: s)  shorthand for 'gap ship <GAP-ID>'");
+    println!("  onboard <repo-url-or-path>  first-touch external-repo scanner (INFRA-2108)");
     println!("  gen <task>         AI-driven single-shot coding task (offline-LLM)");
     println!();
     println!("FLEET");
@@ -1219,6 +1221,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("session-summary") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(session_summary::run(&sub_args));
+    }
+
+    // `chump onboard <repo-url-or-path>` (INFRA-2108, META-123 Wave 2) —
+    // first-touch external-repo scanner: shallow-clone, read intent docs,
+    // propose 5–10 next-step gaps via provider cascade, print markdown table.
+    // --apply reserves each gap with skills_required: external_repo:<owner>/<repo>.
+    if args.get(1).map(String::as_str) == Some("onboard") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(onboard::run(&sub_args));
     }
 
     // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.
