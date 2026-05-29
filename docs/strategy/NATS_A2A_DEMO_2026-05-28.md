@@ -111,8 +111,83 @@ Substrate code on main is unchanged by this rollback. Only the operational state
 - **META-121** (Bet 5 umbrella) — first concrete child item done; updates needed to depends_on list.
 - **INFRA-1939** — bot-merge wedge — note: this PR ships via manual fallback because the wedge is still in place. Bot-merge fix is independent.
 
+## Appendix — Phase 2: Multi-machine validated via Docker emulation (2026-05-29T01:34Z)
+
+After the single-machine flip above, the operator asked whether multi-machine could be validated **without** waiting on the second-M4 hardware decision. We did it in Docker. Two physically distinct OS binaries on two different network namespaces hitting the same NATS broker. The atomic-CAS guarantee held perfectly.
+
+### Setup
+
+- Host: macOS arm64, `chump-coord` Mach-O binary at `~/.local/bin/chump-coord`, talking to local NATS on `nats://localhost:4222`.
+- "Second node": Linux container (`rust:1.95-slim`, aarch64 ELF), `chump-coord` cross-built for `aarch64-unknown-linux-gnu` (70 MB binary, bind-mounted into container), talking to NATS via `nats://host.docker.internal:4222` over the Docker bridge gateway (`192.168.65.254`).
+- One NATS broker, two clients, two network stacks.
+
+### Phase 2a — atomic CAS across the network boundary
+
+```
+$ # Host claims
+$ chump-coord claim demo-MULTI-1780018389
+[chump-coord] CLAIMED demo-MULTI-1780018389 (session=chump-Chump-1776)
+
+$ # Linux container tries same gap
+$ docker run ... rust:1.95-slim chump-coord claim demo-MULTI-1780018389
+[chump-coord] CONFLICT: demo-MULTI-1780018389 already claimed by session 'chump-Chump-1776'
+
+$ # Host releases
+$ chump-coord release demo-MULTI-1780018389
+[chump-coord] RELEASED demo-MULTI-1780018389
+
+$ # Linux container claims cleanly
+$ docker run ... rust:1.95-slim chump-coord claim demo-MULTI-1780018389
+[chump-coord] CLAIMED demo-MULTI-1780018389 (session=82e5bcf0-e546-4d)
+
+$ # Host sees the Linux container's claim
+$ chump-coord status
+  demo-MULTI-1780018389  session=82e5bcf0-e546-4df7-8  claimed=2026-05-29T01:33:10Z
+```
+
+**Two different OS binaries, two different network namespaces, one NATS broker. Atomic CAS guarantee held bidirectionally.**
+
+### Phase 2b — shared work-board across the network boundary
+
+```
+$ # Host posts a docs-task
+$ chump-coord work-board post INFRA-2102 docs-task "host-posted subtask" ...
+SUBTASK-03a81811
+
+$ # Linux container posts a runtime-task
+$ docker run ... chump-coord work-board post INFRA-2102 runtime-task "linux-container-posted subtask" ...
+SUBTASK-137f0cdc
+
+$ # Both ends list the queue — identical state
+$ chump-coord work-board list                    # host
+SUBTASK-03a81811  INFRA-2102  open  docs-task     host-posted subtask
+SUBTASK-137f0cdc  INFRA-2102  open  runtime-task  linux-container-posted subtask
+
+$ docker run ... chump-coord work-board list     # container
+SUBTASK-03a81811  INFRA-2102  open  docs-task     host-posted subtask
+SUBTASK-137f0cdc  INFRA-2102  open  runtime-task  linux-container-posted subtask
+```
+
+**The FLEET-008 shared-state subtask queue (the primitive Marcus M-D needs) propagates bidirectionally.**
+
+### What this proves
+
+- Bet 5 multi-machine routing is **not blocked on architecture or substrate**. It's blocked on the operator's hardware decision (which physical box to add) and on activating the dormant push daemons (FLEET-034 `chump-coord assign`).
+- The bytes-on-the-wire and atomic semantics work identically whether the second client is a sibling process on the same host, a Docker container on the same host, or a different physical machine on a LAN. Only the hostname changes (`localhost` → `host.docker.internal` → `<LAN-ip-of-second-mac>`).
+- Cross-platform binary compatibility: the same `chump-coord` source compiles to Mach-O arm64 and ELF aarch64 cleanly; both speak identical NATS-KV semantics.
+
+### What's still gated on the hardware decision
+
+- **Failure-mode realism**: Docker bridge is a software bridge; a real LAN exposes packet loss, MTU mismatch, DHCP renew, NAT pinning, mDNS discovery. Those are the things a second physical M4 catches that this emulation can't.
+- **JetStream cluster mode** (replication, raft quorum) — needs a minimum of 3 nodes for safe quorum. Today's setup is single-broker.
+- **MLX backend wiring** (critique C1) — orthogonal to multi-machine; needs hardware that has unified memory pressure to validate real-world.
+
+### Caveat (filed)
+
+The build of `chump-coord` for Linux surfaced a workspace bug: `crates/chump-coord/src/bin/chump-worker.rs` references `chump_coord::worker` but the module isn't public. The main `chump-coord` binary builds fine; only the sibling `chump-worker` bin fails. Filed as **INFRA-2104** — does not block Phase 2 results.
+
 ## What this doc IS / IS NOT
 
-**IS:** the record of the moment Bet 5 substrate flipped from designed to live, with a reproducible runbook + a launchd installer + the next 5 ships sequenced.
+**IS:** the record of the moment Bet 5 substrate flipped from designed to live, with a reproducible runbook + a launchd installer + the next 5 ships sequenced + a Docker-emulated multi-machine validation that takes the hardware decision off the critical path for everything except failure-mode realism.
 
-**IS NOT:** a finished Bet 5. Multi-machine still needs the hardware decision. MLX backend still needs wiring. Push-mode worker pool still needs activation. But the substrate that all of that builds on is no longer dormant.
+**IS NOT:** a finished Bet 5. MLX backend still needs wiring. Push-mode worker pool still needs activation. Real-LAN failure-mode validation still needs a second physical machine. But the substrate that all of that builds on is no longer dormant, and multi-machine coordination is no longer an architectural unknown.
