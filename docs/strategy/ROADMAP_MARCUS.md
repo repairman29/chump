@@ -20,23 +20,25 @@ A single operator command that does this:
 
 Each milestone has a clear "Marcus would notice if this didn't exist" test.
 
-### M-A — Trust gate (P0)
+### M-A — Trust gate (P0) — **shipped**
 
 Marcus's stated **disqualifying** behavior: "By 2 hours in, 14 files modified, 3 deps I'd never allow — Frankenstein monster." Without budgets nothing else matters because he won't leave the fleet unattended.
 
 | Gap | Effort | Pri | Status |
 |---|---|---|---|
-| INFRA-1486 per-gap budgets (wallclock, files, deps, $) | m | **P0** | open |
+| INFRA-1486 per-gap budgets (wallclock, files, deps, $) | m | **P0** | done (PR #2296) |
 
-### M-B — Canonical demo (P1)
+### M-B — Canonical demo (P1) — **substrate shipped, demo gates in flight**
 
 The "minute-20 hook" the persona script was designed to test: write one fleet.yaml, watch 12 agents work. After this Marcus can run his actual day-job use case (12-microservices upgrade) once end-to-end.
 
 | Gap | Effort | Pri | Status |
 |---|---|---|---|
-| INFRA-1483 chump.fleet.yaml spec | m | **P1** | open |
-| INFRA-1484 multi-repo fan-out from single command | l | **P1** | open |
+| INFRA-1483 chump.fleet.yaml spec | m | **P1** | done (PR #2303) |
+| INFRA-1484 multi-repo fan-out from single command | l | **P1** | done (PR #2340) |
 | INFRA-1487 reference-implementation primitive | m | P2 | open (supporting) |
+| INFRA-1813 HITL approval gate before fan-out | m | P1 | in flight (claimed) |
+| INFRA-1605 PR-bot visual-diff comments on every PWA PR | m | P1 | in flight (claimed) |
 
 ### M-C — Daily-tax killer (P1)
 
@@ -57,16 +59,17 @@ The two named reasons Marcus would swipe the $49/op/mo Team-tier card. Both l-ef
 | INFRA-1473 shared team vector-space for cross-agent context | l | **P1** | open |
 | INFRA-1475 cross-operator fleet queue | l | **P1** | open |
 
-### M-E — Trust polish (P2 / P3)
+### M-E — Trust polish (P2 / P3) — **partial**
 
-After M-A through M-D ship, these complete the experience.
+After M-A through M-D ship, these complete the experience. Two of four already landed.
 
 | Gap | Effort | Pri | Status |
 |---|---|---|---|
-| INFRA-1489 per-op + per-repo auto-merge policy override | s | P2 | open |
+| INFRA-1489 per-op + per-repo auto-merge policy override | s | P2 | done (chump-policy crate, 2026-05-29) |
 | INFRA-1479 flaky-test detection + retry-aware sandbox | m | P2 | open |
 | INFRA-1480 SAST + dep-vulnerability scan pre-PR | m | P3 | open |
-| INFRA-1491 smart reviewer routing + notification | s | P3 | open |
+| INFRA-1491 smart reviewer routing + notification | s | P3 | done (chump-reviewer-routing, 2026-05-29) |
+| INFRA-2155 wire chump-policy check into bot-merge.sh (1489 integration) | s | P1 | open |
 
 ## Sequencing rationale
 
@@ -91,3 +94,15 @@ After M-A through M-D ship, these complete the experience.
 ## Open question for operator
 
 After M-A ships, do we run a check-in interview with Marcus to validate the trust-gate UX before investing in M-B? Cheap signal, high value if the budget defaults are wrong.
+
+> **Update 2026-05-29:** M-A is done (PR #2296). M-B substrate (1483 spec + 1484 fan-out)
+> is also done; the remaining M-B work is the demo-grade HITL approval gate (INFRA-1813)
+> and the PR-bot visual-diff (INFRA-1605), both currently claimed. The
+> check-in interview the operator wants to run is now unblocked on substrate —
+> only blocked on Marcus's calendar. M-E partially landed today (INFRA-1489
+> chump-policy + INFRA-1491 reviewer routing); follow-up INFRA-2155 wires
+> chump-policy into `bot-merge.sh` for live enforcement.
+
+---
+
+_Last refreshed: 2026-05-29_
