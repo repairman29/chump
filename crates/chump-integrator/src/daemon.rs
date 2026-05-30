@@ -40,6 +40,7 @@ use crate::cycle::CycleManifest;
 use crate::policy::{evaluate, PolicyDecision};
 
 use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
+use chump_gap_store::GapFieldUpdate;
 
 /// Integration slot key in the NATS KV `chump_gaps` bucket.
 const INTEGRATION_SLOT_KEY: &str = "integration_slot";
@@ -186,21 +187,140 @@ impl IntegratorDaemon {
             );
         }
 
-        // ── Step 5: PREFLIGHT ─────────────────────────────────────────────
-        emit_event(
-            "integration_preflight_started",
-            &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
-        );
+        // ── Step 5: PREFLIGHT + bisect-quarantine loop (INFRA-2137) ──────────
+        // Max 3 quarantine cycles: on each preflight failure we bisect to find
+        // the offending gap, quarantine it, rebuild the integration branch
+        // without it, and retry.  After 3 quarantine passes we abort entirely.
+        const MAX_QUARANTINE_CYCLES: usize = 3;
+        let mut remaining_candidates = candidates.clone();
+        let mut quarantine_count: usize = 0;
 
-        let preflight_ok = self.run_preflight(&integration_branch).await;
+        loop {
+            if remaining_candidates.is_empty() {
+                eprintln!("[integrator] no candidates remain after quarantine — aborting cycle {cycle_id}");
+                return Ok(());
+            }
 
-        if !preflight_ok {
+            emit_event(
+                "integration_preflight_started",
+                &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
+            );
+
+            let preflight_ok = self.run_preflight(&integration_branch).await;
+
+            if preflight_ok {
+                // Preflight passed — proceed to DECISION below.
+                break;
+            }
+
             emit_event(
                 "integration_preflight_failed",
                 &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
             );
-            eprintln!("[integrator] preflight FAILED for cycle {cycle_id}");
-            return Ok(());
+            eprintln!("[integrator] preflight FAILED for cycle {cycle_id} (quarantine_count={quarantine_count})");
+
+            if quarantine_count >= MAX_QUARANTINE_CYCLES {
+                eprintln!(
+                    "[integrator] reached max quarantine cycles ({MAX_QUARANTINE_CYCLES}) — aborting cycle {cycle_id}"
+                );
+                return Ok(());
+            }
+            quarantine_count += 1;
+
+            // Bisect: identify the offending gap (currently: first candidate as
+            // a conservative heuristic; INFRA-2136 replaces with git-bisect oracle).
+            let offending = remaining_candidates[0].clone();
+            eprintln!(
+                "[integrator] quarantining {} (cycle {cycle_id}, pass {quarantine_count})",
+                offending.gap_id
+            );
+
+            // Quarantine in state.db.
+            if let Ok(store) = chump_gap_store::GapStore::open(&self.repo_root) {
+                let reason = format!(
+                    "Quarantined from integration-{cycle_id}: preflight failure (quarantine pass {quarantine_count})"
+                );
+                let _ = store.set_fields(
+                    &offending.gap_id,
+                    GapFieldUpdate {
+                        status: Some("bisect_quarantined".to_string()),
+                        ..Default::default()
+                    },
+                );
+                let _ = store.append_notes_for_gap(&offending.gap_id, &reason);
+            }
+
+            // Emit ambient bisect_quarantine event.
+            emit_event(
+                "bisect_quarantine",
+                &[
+                    ("cycle_id", &cycle_id),
+                    ("gap_id", &offending.gap_id),
+                    ("quarantine_pass", &quarantine_count.to_string()),
+                ],
+            );
+
+            // Post to work-board for operator review (best-effort; NATS may be absent).
+            if let Some(coord) = &self.coord {
+                use chump_coord::work_board::{Requirement, Subtask};
+                let mut subtask = Subtask::new(
+                    &offending.gap_id,
+                    &format!(
+                        "Manual review needed: {} failed integration {}",
+                        offending.gap_id, cycle_id
+                    ),
+                    "chump-integrator",
+                    Requirement {
+                        task_class: "bisect-review".to_string(),
+                        ..Default::default()
+                    },
+                );
+                subtask.description = format!(
+                    "Gap {} was quarantined by the integration daemon on cycle {} \
+                     (quarantine pass {}). Run `chump gap requeue {}` after fixing \
+                     the underlying failure.",
+                    offending.gap_id, cycle_id, quarantine_count, offending.gap_id
+                );
+                if let Err(e) = coord.post_subtask(&subtask).await {
+                    eprintln!("[integrator] work-board post failed (best-effort): {e:#}");
+                }
+            }
+
+            // Remove offending gap from remaining candidates and rebuild branch.
+            remaining_candidates.retain(|c| c.gap_id != offending.gap_id);
+
+            if remaining_candidates.is_empty() {
+                eprintln!(
+                    "[integrator] no candidates remain after quarantining {} — aborting",
+                    offending.gap_id
+                );
+                return Ok(());
+            }
+
+            // Rebuild integration branch without the offending gap.
+            let _ = tokio::process::Command::new("git")
+                .args(["checkout", "-B", &integration_branch, "HEAD"])
+                .current_dir(&self.repo_root)
+                .status()
+                .await;
+            match build_integration_branch(
+                &remaining_candidates,
+                &integration_branch,
+                &self.repo_root,
+            )
+            .await
+            {
+                Ok(_) => {
+                    eprintln!(
+                        "[integrator] rebuilt integration branch without {} — retrying preflight",
+                        offending.gap_id
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[integrator] failed to rebuild integration branch: {e:#}");
+                    return Ok(());
+                }
+            }
         }
 
         // ── Step 6: DECISION (dry-run) ────────────────────────────────────

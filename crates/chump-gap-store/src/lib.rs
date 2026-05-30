@@ -445,6 +445,29 @@ impl GapStore {
             END;
             ",
         )?;
+
+        // INFRA-2137: register `bisect_quarantined` and `ready_to_ship` as
+        // valid status values via an advisory metadata table.  SQLite TEXT
+        // columns carry no CHECK constraints (ALTER TABLE cannot add them
+        // idempotently), so we track known statuses explicitly. The table is
+        // used by `valid_statuses()` and by the `requeue_gap` guard.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gap_status_registry (
+                 status TEXT PRIMARY KEY,
+                 added_by TEXT NOT NULL DEFAULT '',
+                 note TEXT NOT NULL DEFAULT ''
+             );
+             INSERT OR IGNORE INTO gap_status_registry (status, added_by, note)
+             VALUES
+               ('open',                'legacy',       'default status at reserve time'),
+               ('claimed',             'legacy',       'active claim lease'),
+               ('done',                'legacy',       'shipped and merged'),
+               ('wontfix',             'legacy',       'will not be implemented'),
+               ('ready_to_ship',       'INFRA-2130',   'passed preflight; awaiting integration batch'),
+               ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review');
+            ",
+        );
+
         Ok(())
     }
 }
@@ -1855,6 +1878,95 @@ impl GapStore {
         }
 
         Ok(repo)
+    }
+
+    // ── INFRA-2137: quarantine / requeue helpers ──────────────────────────────
+
+    /// Append a timestamped note to the gap's `notes` field.
+    ///
+    /// Format: `[YYYY-MM-DDTHH:MM:SSZ] <text>` — same convention as
+    /// `--add-note` in `chump gap set`.  Multiple calls accumulate newline-
+    /// separated entries; the first entry seeds an empty notes field.
+    pub fn append_notes_for_gap(&self, gap_id: &str, text: &str) -> Result<()> {
+        let existing: String = self
+            .conn
+            .query_row("SELECT notes FROM gaps WHERE id=?1", params![gap_id], |r| {
+                r.get(0)
+            })
+            .optional()?
+            .unwrap_or_default();
+        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let new_entry = format!("[{}] {}", ts, text);
+        let combined = if existing.trim().is_empty() {
+            new_entry
+        } else {
+            format!("{}\n{}", existing.trim_end(), new_entry)
+        };
+        let changed = self.conn.execute(
+            "UPDATE gaps SET notes=?1 WHERE id=?2",
+            params![combined, gap_id],
+        )?;
+        if changed == 0 {
+            bail!("append_notes_for_gap: gap {} not found", gap_id);
+        }
+        Ok(())
+    }
+
+    /// Count gaps with `status = 'bisect_quarantined'`.
+    ///
+    /// Used by `chump health --slo-check` (L2-SLO-6) to flag saturation
+    /// when more than 5 gaps are stuck awaiting operator review.
+    pub fn count_bisect_quarantined(&self) -> Result<u64> {
+        let n: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM gaps WHERE status='bisect_quarantined'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        Ok(n.max(0) as u64)
+    }
+
+    /// Move a gap from `bisect_quarantined` → `ready_to_ship` after operator
+    /// review.  Appends a note recording who requeued it and when.
+    ///
+    /// Fails if the gap is not in `bisect_quarantined` status (guard against
+    /// accidental requeue of arbitrary gaps).
+    pub fn requeue_gap(&self, gap_id: &str) -> Result<()> {
+        let cur: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT status FROM gaps WHERE id=?1",
+                params![gap_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match cur.as_deref() {
+            None => bail!("requeue_gap: gap {} not found", gap_id),
+            Some(s) if s != "bisect_quarantined" => bail!(
+                "requeue_gap: gap {} has status='{}'; only bisect_quarantined gaps \
+                 can be requeued (expected bisect_quarantined)",
+                gap_id,
+                s
+            ),
+            _ => {}
+        }
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status='ready_to_ship' WHERE id=?1 AND status='bisect_quarantined'",
+            params![gap_id],
+        )?;
+        if changed == 0 {
+            bail!(
+                "requeue_gap: gap {} was not updated (concurrent modification?)",
+                gap_id
+            );
+        }
+        self.append_notes_for_gap(
+            gap_id,
+            "requeued: operator review complete (chump gap requeue)",
+        )?;
+        Ok(())
     }
 
     /// Dump gaps as canonical YAML, lossless across all DB columns.
@@ -6335,6 +6447,176 @@ meta:
         assert_ne!(
             after.acceptance_criteria, todo_ac,
             "stored AC must not still be the original TODO stubs"
+        );
+    }
+}
+
+// ── INFRA-2137: bisect_quarantined + requeue tests ────────────────────────────
+#[cfg(test)]
+mod quarantine_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    // 1. status_registry_seeded: after open(), gap_status_registry contains
+    //    both 'bisect_quarantined' and 'ready_to_ship'.
+    #[test]
+    fn status_registry_seeded() {
+        let (store, _dir) = test_store();
+        let count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM gap_status_registry WHERE status IN ('bisect_quarantined','ready_to_ship')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2, "registry must contain both new statuses");
+    }
+
+    // 2. append_notes_seeds_empty: appending to a gap with no notes yields a
+    //    single timestamped entry.
+    #[test]
+    fn append_notes_seeds_empty() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "notes-seed-test", "P1", "xs")
+            .unwrap();
+        store.append_notes_for_gap(&id, "first note").unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(
+            row.notes.contains("first note"),
+            "notes must contain appended text"
+        );
+        assert!(row.notes.contains('['), "notes must have timestamp bracket");
+    }
+
+    // 3. append_notes_accumulates: two appends accumulate, newline-separated.
+    #[test]
+    fn append_notes_accumulates() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "notes-accum-test", "P1", "xs")
+            .unwrap();
+        store.append_notes_for_gap(&id, "alpha").unwrap();
+        store.append_notes_for_gap(&id, "beta").unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(row.notes.contains("alpha"), "first note must persist");
+        assert!(row.notes.contains("beta"), "second note must be appended");
+        let count = row.notes.matches('[').count();
+        assert_eq!(count, 2, "exactly two bracketed timestamps expected");
+    }
+
+    // 4. count_bisect_quarantined_zero: fresh store has zero quarantined gaps.
+    #[test]
+    fn count_bisect_quarantined_zero() {
+        let (store, _dir) = test_store();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 0);
+    }
+
+    // 5. count_bisect_quarantined_counts: after setting status, count reflects it.
+    #[test]
+    fn count_bisect_quarantined_counts() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "quarantine-count-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 1);
+
+        let id2 = store
+            .reserve("INFRA", "quarantine-count-test-2", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id2,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 2);
+    }
+
+    // 6. requeue_transitions_status: requeue_gap moves bisect_quarantined → ready_to_ship.
+    #[test]
+    fn requeue_transitions_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-status-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store.requeue_gap(&id).unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert_eq!(
+            row.status, "ready_to_ship",
+            "status must be ready_to_ship after requeue"
+        );
+        assert!(
+            row.notes.contains("requeued"),
+            "notes must record the requeue operation"
+        );
+    }
+
+    // 7. requeue_rejects_wrong_status: requeue_gap fails on a non-quarantined gap.
+    #[test]
+    fn requeue_rejects_wrong_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-reject-test", "P1", "xs")
+            .unwrap();
+        // Still 'open' — requeue must fail.
+        let err = store.requeue_gap(&id).unwrap_err();
+        assert!(
+            err.to_string().contains("bisect_quarantined"),
+            "error must name the expected status; got: {err}"
+        );
+    }
+
+    // 8. requeue_appends_note: note mentions operator review.
+    #[test]
+    fn requeue_appends_note() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-note-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store.requeue_gap(&id).unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(
+            row.notes.contains("operator review"),
+            "note must mention operator review; got: {:?}",
+            row.notes
         );
     }
 }
