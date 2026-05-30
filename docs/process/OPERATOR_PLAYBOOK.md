@@ -288,6 +288,41 @@ bash scripts/coord/broadcast.sh --to orchestrator-opus-$(date +%Y-%m-%d) DONE \
 
 ---
 
+## Disk hygiene
+
+Full architecture: [`docs/strategy/DISK_AWARE_FLEET_2026-05-29.md`](../strategy/DISK_AWARE_FLEET_2026-05-29.md) (META-128).
+Cost estimates: [`docs/process/DISK_COST_MODEL.yaml`](./DISK_COST_MODEL.yaml).
+
+**Quick operator actions when disk pressure appears:**
+
+```bash
+# Check current disk state
+df -h .                                          # filesystem summary
+du -sk /tmp/chump-* ~/.cache/chump-runner        # top consumers
+
+# Emergency reap (safe — only touches chump artifacts)
+scripts/ops/cargo-target-reaper.sh --execute     # reclaim cargo target dirs
+scripts/ops/stale-worktree-reaper.sh --execute   # reclaim merged worktrees
+
+# Measure how much an action will cost before running it
+scripts/dev/measure-disk-cost.sh <action-class> -- <command>
+# e.g.: measure-disk-cost.sh cargo_build_debug -- cargo build --workspace
+```
+
+**Thresholds (from META-128):**
+
+| Free headroom | Fleet response |
+|---|---|
+| > 60 GB | Scale up allowed |
+| 20–60 GB | Normal operation |
+| < 20 GB | Auto-scale DOWN (Wave 2+) |
+| < 5 GB | Hard refuse new claims (Wave 2+) |
+
+Until Wave 2 ships (`chump disk plan` CLI), manual reap is the recovery path.
+Bypass override: `CHUMP_DISK_PLAN_BYPASS=1` (emits `kind=disk_plan_bypassed` to ambient).
+
+---
+
 ## When to wake the wizard (post-retirement)
 
 - A new STRATEGIC PIVOT (e.g. "we have first customer on the hook")

@@ -1122,6 +1122,24 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         ),
     });
 
+    // L2-SLO-6: bisect_quarantined count <= 5 (INFRA-2137 / INFRA-2142)
+    // More than 5 gaps stuck awaiting operator review indicates saturation.
+    let quarantined_count = if let Ok(store) = crate::gap_store::GapStore::open(repo_root) {
+        store.count_bisect_quarantined().unwrap_or(0)
+    } else {
+        0
+    };
+    results.push(SloResult {
+        id: "L2-SLO-6",
+        target: "bisect_quarantined count ≤ 5",
+        current: format!("{}", quarantined_count),
+        breached: quarantined_count > 5,
+        detail: format!(
+            "{} gap(s) in bisect_quarantined (target: ≤5; use `chump gap requeue <ID>` to release)",
+            quarantined_count
+        ),
+    });
+
     // L4-SLO-1: paramedic heartbeat freshness (INFRA-1397 AC §7)
     // Only breach if a leader has been seen in the last hour (otherwise daemon
     // simply isn't installed yet, which is not a fleet health regression).

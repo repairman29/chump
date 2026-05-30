@@ -1,0 +1,118 @@
+# Chump per-action disk cost model
+#
+# Schema: each key is an action_class with fields:
+#   avg_gb       — average GB consumed (seeded from observed measurements)
+#   p95_gb       — 95th-percentile GB (use for headroom planning; worst-case estimate)
+#   observed_n   — number of real observations backing this estimate (0 = seeded/estimated)
+#   last_updated — ISO-8601 date of last update
+#   notes        — context on what the action includes / how to measure
+#
+# Consumer: chump disk plan <action-class> (META-128/C5)
+# Populated by: scripts/dev/measure-disk-cost.sh + observability curator auto-tune
+# Rolling log:  ~/.chump/disk-cost-observed.jsonl
+#
+# Cross-references:
+#   META-128        — umbrella design doc
+#   C1              — docs/strategy/DISK_AWARE_FLEET_2026-05-29.md (architecture)
+#   C2              — chump-disk-inventory-daemon (reads this at startup)
+#   C3              — chump disk plan CLI (consumes this for OK/WAIT/REFUSE decisions)
+#
+# Maintenance: observability curator updates entries when observed_n >= 5 and
+#   the rolling mean differs from avg_gb by more than 20%. Values outside
+#   mean ± 2σ of the rolling log are flagged for operator review before update.
+#
+# Last seeded: 2026-05-29 (META-123 cascade session measurements + operator estimates)
+
+chump_claim_worktree:
+  avg_gb: 0.05
+  p95_gb: 0.12
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    git worktree add + initial checkout. Mostly index + HEAD tree copy.
+    Does not include any subsequent build artifacts.
+    Measure: df delta across `chump claim <gap>` in an otherwise-idle worktree.
+
+cargo_build_debug:
+  avg_gb: 2.0
+  p95_gb: 3.5
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    `cargo build` (debug profile) on the full workspace from a cold target/ dir.
+    Includes incremental artifacts, proc-macro expansions, and dep rlibs.
+    Hot rebuild (unchanged crates) is ~0.1 GB delta.
+    Measure: df delta across `cargo build --workspace` on a fresh worktree.
+
+cargo_build_release:
+  avg_gb: 0.8
+  p95_gb: 1.4
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    `cargo build --release` on the full workspace. Release artifacts are stripped
+    and LTO-compressed; smaller than debug despite more optimisation passes.
+    Measure: df delta across `cargo build --workspace --release` on a fresh worktree.
+
+integration_cycle_per_gap:
+  avg_gb: 1.5
+  p95_gb: 2.8
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    One full META-124 integration cycle for a single gap: claim worktree + cargo build
+    debug (incremental from shared cache) + test run + ambient emit + worktree cleanup.
+    For N gaps in parallel multiply by N (no shared target/ across worktrees).
+    Measure: df delta from cycle start to post-cleanup.
+
+preflight_full:
+  avg_gb: 0.5
+  p95_gb: 0.9
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    `chump preflight` full run: cargo fmt --check + cargo clippy + cargo check + test scripts.
+    Primarily incremental build artifacts from clippy/check passes.
+    Does not include a fresh debug build if target/ is already warm.
+    Measure: df delta across `chump preflight` on a warm worktree.
+
+cross_build_linux:
+  avg_gb: 0.8
+  p95_gb: 1.5
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    Cross-compile to x86_64-unknown-linux-musl via the `chump-coord-linux-build*`
+    container / toolchain. Separate target/ tree under /tmp/chump-coord-linux-build*.
+    Measure: du -sk /tmp/chump-coord-linux-build* delta across a cross-build invocation.
+
+sonnet_dispatch_with_worktree:
+  avg_gb: 2.5
+  p95_gb: 4.0
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    Full Sonnet sub-agent dispatch: worktree claim + incremental cargo build debug +
+    test run + ambient events + PR push. Represents the dominant disk consumer per fleet cycle.
+    The 6–12 GB burst concern (META-128) is 4–5 concurrent dispatches at this cost.
+    Measure: df delta from `chump --execute-gap <ID>` start to post-cleanup.
+
+e2e_pwa:
+  avg_gb: 0.3
+  p95_gb: 0.6
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    End-to-end PWA test run: Playwright browser cache + screenshot artifacts + coverage reports.
+    Does not include a fresh Rust build (assumes target/ warm).
+    Measure: df delta across `scripts/ci/test-e2e-pwa.sh` from a warm worktree.
+
+cargo_test_full:
+  avg_gb: 1.2
+  p95_gb: 2.0
+  observed_n: 0
+  last_updated: "2026-05-29"
+  notes: >
+    `cargo test --workspace` including doctests. Compiles test harness binaries (distinct
+    from regular debug build artifacts) + writes any fixture temp files.
+    Measure: df delta across `cargo test --workspace` on a warm worktree.

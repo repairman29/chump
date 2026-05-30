@@ -27,20 +27,31 @@
 //! | `CHUMP_INTEGRATOR_MAX_BATCH` | `10` | Hard cap on batch size |
 //! | `CHUMP_INTEGRATOR_PREFLIGHT_TIMEOUT_S` | `480` | Preflight command timeout |
 //! | `CHUMP_INTEGRATOR_DRY_RUN` | `1` | 1 = dry-run (Phase 1 default); 0 = live |
+//! | `CHUMP_INTEGRATOR_SAMPLING_PCT` | `100` | Phase 2 live-cycle sampling rate 0-100 |
+//!
+//! ## Phase 2 sampling gate (`sampling` module)
+//!
+//! After CLAIM, before SELECT, each cycle rolls a deterministic value in
+//! `[1, 100]` derived from `fnv1a(cycle_id) % 100 + 1`. If `roll <=
+//! sampling_pct` the cycle proceeds LIVE; otherwise it falls back to DRY-RUN.
+//! The Phase 2 installer plist sets `CHUMP_INTEGRATOR_SAMPLING_PCT=10`.
+//! CLI override: `--sampling-pct N` (env wins over CLI).
 //!
 //! ## Cross-references
 //!
 //! - INFRA-2130 — parent C2 gap (daemon skeleton + lifecycle)
+//! - INFRA-2139 — C11 Phase 2 sampling gate (this gap)
 //! - INFRA-2171 — C2a cycle::select module
 //! - INFRA-2172 — C2b cycle::merge_branch module
 //! - INFRA-2132 — ambient event kinds registered
-//! - INFRA-2136 — C8 SHIP/BISECT step (Phase 2)
+//! - INFRA-2136 — C8 SHIP/BISECT step (deferred)
 //! - INFRA-2135 — Batched-Under trailer spec
 
 pub mod config;
 pub mod cycle;
 pub mod daemon;
 pub mod policy;
+pub mod sampling;
 
 pub use config::IntegratorConfig;
 pub use daemon::IntegratorDaemon;
