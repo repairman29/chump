@@ -1,5 +1,6 @@
 //! Axum router: REST endpoints + WebSocket live-tail.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
@@ -10,6 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::time::{interval, Duration};
+use tower_http::services::ServeDir;
 
 use crate::db::{now_ms, FleetStore};
 
@@ -17,15 +19,28 @@ use crate::db::{now_ms, FleetStore};
 
 pub type SharedStore = Arc<FleetStore>;
 
-pub fn build_router(store: SharedStore) -> Router {
-    Router::new()
+/// Build the application router.
+///
+/// `scrubber_dir`, when `Some`, mounts the static SPA at `/scrubber/*` so the
+/// scrubber loads from the same origin as `/api/*` and avoids CORS dance.
+/// Resolved by `resolve_scrubber_dir()` in `main.rs` (INFRA-2189).
+pub fn build_router(store: SharedStore, scrubber_dir: Option<PathBuf>) -> Router {
+    let mut router = Router::new()
         .route("/api/events", get(get_events))
         .route("/api/segments", get(get_segments))
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/trace/pr/{n}", get(get_trace_pr))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
-        .with_state(store)
+        .with_state(store);
+
+    if let Some(dir) = scrubber_dir {
+        // Serve the scrubber SPA from the same origin so its hardcoded
+        // `http://localhost:7070/api/*` fetches go same-origin (no CORS).
+        // INFRA-2189 / INFRA-2164 wiring follow-up.
+        router = router.nest_service("/scrubber", ServeDir::new(dir));
+    }
+    router
 }
 
 // ── query params ──────────────────────────────────────────────────────────────

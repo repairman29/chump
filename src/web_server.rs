@@ -2356,6 +2356,38 @@ async fn handle_autopilot_stop(headers: HeaderMap) -> Result<Json<serde_json::Va
     })))
 }
 
+// EFFECTIVE-026: GET /api/autopilot/daemon-status
+//
+// Shells out to scripts/coord/fleet-autopilot.sh status json and returns the
+// parsed JSON response. Each daemon entry has:
+//   { "label": "com.chump.xxx", "plist": "yes"|"no", "loaded": "yes"|"no" }
+//
+// A plist_present_not_loaded state maps to the amber pill in the UI.
+// Returns 200 with the raw parsed structure, or a degraded stub on error.
+async fn handle_autopilot_daemon_status(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let status = invoke_daemon_set("status");
+    // invoke_daemon_set returns {"available": true, "status": <parsed json>}
+    // or {"available": false, ...}. We surface the inner "status" object if
+    // available; otherwise we pass through the whole error response so the UI
+    // can degrade gracefully.
+    if status
+        .get("available")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        if let Some(inner) = status.get("status") {
+            return Ok(Json(inner.clone()));
+        }
+    }
+    // Error path: return what we have so the UI can show "unavailable".
+    Ok(Json(status))
+}
+
 #[derive(serde::Deserialize)]
 struct WorkingRepoBody {
     #[serde(default)]
@@ -8411,6 +8443,10 @@ fn build_api_router() -> Router {
         .route("/api/autopilot/status", get(handle_autopilot_status))
         .route("/api/autopilot/start", post(handle_autopilot_start))
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
+        .route(
+            "/api/autopilot/daemon-status",
+            get(handle_autopilot_daemon_status),
+        )
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
         .route("/api/repo/init", post(handle_repo_init))

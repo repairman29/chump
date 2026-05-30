@@ -36,6 +36,15 @@
 
 use std::process::Command;
 
+use crate::gap_store;
+
+/// A gap stuck in bisect_quarantined — surfaced in "Needs operator review".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuarantinedGap {
+    pub gap_id: String,
+    pub title: String,
+}
+
 /// One PR row as it appears in any of the three sections.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrRow {
@@ -269,7 +278,13 @@ pub enum OpenSection {
 /// Render the full summary in text form. Pure function — fed by callers
 /// that bring their own row data (real gh output in `run`, synthetic data
 /// in unit tests).
-pub fn render_text(since: &str, window: &str, merged: &[PrRow], open: &[PrRow]) -> String {
+pub fn render_text(
+    since: &str,
+    window: &str,
+    merged: &[PrRow],
+    open: &[PrRow],
+    quarantined: &[QuarantinedGap],
+) -> String {
     let mut out = String::new();
     out.push_str(&format!("Session: {} (window {})\n", since, window));
 
@@ -308,6 +323,17 @@ pub fn render_text(since: &str, window: &str, merged: &[PrRow], open: &[PrRow]) 
             push_row(&mut out, r);
         }
     }
+
+    // INFRA-2137: bisect_quarantined gaps need operator attention.
+    out.push_str("Needs operator review (bisect_quarantined):\n");
+    if quarantined.is_empty() {
+        out.push_str("  (none)\n");
+    } else {
+        for q in quarantined {
+            out.push_str(&format!("  {} {}\n", q.gap_id, q.title));
+        }
+    }
+
     out
 }
 
@@ -324,7 +350,13 @@ fn push_row(out: &mut String, r: &PrRow) {
 }
 
 /// JSON output for machine consumption. Hand-rolled (no serde dep churn).
-pub fn render_json(since: &str, window: &str, merged: &[PrRow], open: &[PrRow]) -> String {
+pub fn render_json(
+    since: &str,
+    window: &str,
+    merged: &[PrRow],
+    open: &[PrRow],
+    quarantined: &[QuarantinedGap],
+) -> String {
     let armed: Vec<&PrRow> = open.iter().filter(|r| r.auto_merge).collect();
     let filed: Vec<&PrRow> = open.iter().filter(|r| !r.auto_merge).collect();
     let mut s = String::new();
@@ -337,9 +369,43 @@ pub fn render_json(since: &str, window: &str, merged: &[PrRow], open: &[PrRow]) 
     push_rows_json(&mut s, armed.into_iter());
     s.push_str(",\"filed\":");
     push_rows_json(&mut s, filed.into_iter());
+    // INFRA-2137: quarantined gaps section
+    s.push_str(",\"needs_operator_review\":[");
+    let mut first = true;
+    for q in quarantined {
+        if !first {
+            s.push(',');
+        }
+        first = false;
+        s.push_str(&format!(
+            "{{\"gap_id\":{},\"title\":{}}}",
+            json_str(&q.gap_id),
+            json_str(&q.title)
+        ));
+    }
+    s.push(']');
     s.push('}');
     s.push('\n');
     s
+}
+
+/// Load bisect_quarantined gaps from state.db for the session summary.
+/// Returns empty vec on any DB error (non-fatal — summary still renders).
+pub fn load_quarantined_gaps() -> Vec<QuarantinedGap> {
+    let repo_root = crate::repo_path::repo_root();
+    let store = match gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    store
+        .list(Some("bisect_quarantined"))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|g| QuarantinedGap {
+            gap_id: g.id,
+            title: g.title,
+        })
+        .collect()
 }
 
 fn push_rows_json<'a, I: Iterator<Item = &'a PrRow>>(out: &mut String, iter: I) {
@@ -678,9 +744,13 @@ pub fn run(argv: &[String]) -> i32 {
         }
     };
 
+    // INFRA-2137: surface bisect_quarantined gaps from state.db so the
+    // operator sees them in "Needs operator review" without a separate query.
+    let quarantined = load_quarantined_gaps();
+
     let rendered = match args.format {
-        OutputFormat::Text => render_text(&since, &args.window, &merged, &open),
-        OutputFormat::Json => render_json(&since, &args.window, &merged, &open),
+        OutputFormat::Text => render_text(&since, &args.window, &merged, &open, &quarantined),
+        OutputFormat::Json => render_json(&since, &args.window, &merged, &open, &quarantined),
     };
     print!("{}", rendered);
     0
@@ -813,7 +883,7 @@ mod tests {
             row(2327, "feat(INFRA-1656): main-health watchdog", true),
             row(2328, "feat(INFRA-1700): scoreboard sparklines", false),
         ];
-        let out = render_text("2026-05-21", "24h", &merged, &open);
+        let out = render_text("2026-05-21", "24h", &merged, &open, &[]); // chump-fmt: time-bomb-ok
         assert!(out.contains("Session: 2026-05-21 (window 24h)"));
         assert!(out.contains("Merged:\n  #2317 INFRA-1475"));
         assert!(out.contains("Armed (auto-merge pending CI):\n  #2327 INFRA-1656"));
@@ -822,10 +892,21 @@ mod tests {
 
     #[test]
     fn render_text_empty_sections() {
-        let out = render_text("2026-05-21", "24h", &[], &[]);
+        let out = render_text("2026-05-21", "24h", &[], &[], &[]); // chump-fmt: time-bomb-ok
         assert!(out.contains("Merged:\n  (none)"));
         assert!(out.contains("Armed (auto-merge pending CI):\n  (none)"));
         assert!(out.contains("Filed (PR opened, not yet merged):\n  (none)"));
+    }
+
+    #[test]
+    fn render_text_quarantined_section() {
+        let quarantined = vec![QuarantinedGap {
+            gap_id: "INFRA-9001".to_string(),
+            title: "test gap".to_string(),
+        }];
+        let out = render_text("2026-05-21", "24h", &[], &[], &quarantined); // chump-fmt: time-bomb-ok
+        assert!(out.contains("Needs operator review (bisect_quarantined):"));
+        assert!(out.contains("INFRA-9001 test gap"));
     }
 
     #[test]
@@ -835,17 +916,28 @@ mod tests {
             row(2327, "feat(INFRA-1656): y", true),
             row(2328, "feat(INFRA-1700): z", false),
         ];
-        let out = render_json("2026-05-21", "24h", &merged, &open);
+        let out = render_json("2026-05-21", "24h", &merged, &open, &[]); // chump-fmt: time-bomb-ok
         assert!(out.contains("\"since\":\"2026-05-21\""));
         assert!(out.contains("\"window\":\"24h\""));
         assert!(out.contains("\"merged\":[{\"number\":2317"));
         assert!(out.contains("\"armed\":[{\"number\":2327"));
         assert!(out.contains("\"filed\":[{\"number\":2328"));
+        assert!(out.contains("\"needs_operator_review\":[]"));
         // Filed PR must NOT show up in armed.
         let armed_idx = out.find("\"armed\":").unwrap();
         let filed_idx = out.find("\"filed\":").unwrap();
         let armed_slice = &out[armed_idx..filed_idx];
         assert!(!armed_slice.contains("2328"));
+    }
+
+    #[test]
+    fn render_json_quarantined_section() {
+        let quarantined = vec![QuarantinedGap {
+            gap_id: "INFRA-9002".to_string(),
+            title: "bad merge gap".to_string(),
+        }];
+        let out = render_json("2026-05-21", "24h", &[], &[], &quarantined); // chump-fmt: time-bomb-ok
+        assert!(out.contains("\"needs_operator_review\":[{\"gap_id\":\"INFRA-9002\""));
     }
 
     #[test]
