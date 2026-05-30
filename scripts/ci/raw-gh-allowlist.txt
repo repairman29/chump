@@ -51,3 +51,7 @@ scripts/coord/cluster-detector.sh  # INFRA-1987 THE FLOOR Phase 1; cluster detec
 # without filing the allowlist follow-up — every audit job has been failing
 # the raw-gh gate on it since. Migration: not urgent (script is run rarely).
 scripts/ops/backfill-shipped-gaps.sh      # INFRA-2218: one-off historical backfill; mergedAt JSON field; migration: INFRA-1249
+
+# Trunk-RED emergency tools — META-177 hotfix 2026-05-30
+scripts/ops/break-trunk-cascade.sh           # INFRA-2087: branch-protection + ruleset CRUD (GET/POST/PUT) and gh pr merge --admin bypass are GitHub Admin API operations not proxied by the cache layer; raw gh is the only path
+scripts/ops/chump-post-integration-prune.sh  # integration branch pruner: gh api -X DELETE (mutation) + gh pr view for merge-state verification; DELETE mutations are write-ops not covered by cache abstraction

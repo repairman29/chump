@@ -219,8 +219,11 @@ mod tests {
         let path = dir.path().to_path_buf();
 
         // Initialise a bare repo with an initial commit.
+        // Use --initial-branch=main so the test works regardless of the host
+        // git config for init.defaultBranch (CI defaults to "master" on many
+        // runners, which breaks `git checkout main` later in the test).
         for args in [
-            vec!["init"],
+            vec!["init", "--initial-branch=main"],
             vec!["config", "user.email", "test@test.com"],
             vec!["config", "user.name", "Test"],
         ] {
