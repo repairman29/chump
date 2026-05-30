@@ -949,6 +949,130 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── scratch ───────────────────────────────────────────────────────────
+        // INFRA-1826: file-backed scratchpad get/set/cas for A2A seed keys.
+        // Uses .chump-locks/scratch/<key>.json; no NATS required.
+        "scratch" => {
+            use chump_coord::scratchpad;
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("help");
+            match sub {
+                "get" => {
+                    let key = args.get(3).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch get <key>");
+                        std::process::exit(2);
+                    });
+                    match scratchpad::get(key).await {
+                        Ok(Some(v)) => println!("{}", v),
+                        Ok(None) => {
+                            // Absent or expired — exit 1 so scripts can test
+                            eprintln!("[scratch] key '{}' is unset or expired", key);
+                            std::process::exit(1);
+                        }
+                        Err(e) => {
+                            eprintln!("[scratch] get error: {}", e);
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                "set" => {
+                    let key = args.get(3).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch set <key> <value>");
+                        std::process::exit(2);
+                    });
+                    let raw = args.get(4).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch set <key> <value>");
+                        std::process::exit(2);
+                    });
+                    // Accept JSON or bare string
+                    let value: serde_json::Value = serde_json::from_str(raw)
+                        .unwrap_or_else(|_| serde_json::Value::String(raw.to_string()));
+                    match scratchpad::set(key, value).await {
+                        Ok(()) => println!("[scratch] set '{}' OK", key),
+                        Err(e) => {
+                            eprintln!("[scratch] set error: {}", e);
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                "cas" => {
+                    // Usage: chump-coord scratch cas <key> <expected> <new>
+                    // Pass 'null' (bare) for expected when key is unset.
+                    let key = args.get(3).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch cas <key> <expected> <new>");
+                        std::process::exit(2);
+                    });
+                    let raw_expected = args.get(4).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch cas <key> <expected> <new>");
+                        std::process::exit(2);
+                    });
+                    let raw_new = args.get(5).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord scratch cas <key> <expected> <new>");
+                        std::process::exit(2);
+                    });
+                    let expected: serde_json::Value = serde_json::from_str(raw_expected)
+                        .unwrap_or_else(|_| serde_json::Value::String(raw_expected.to_string()));
+                    let new: serde_json::Value = serde_json::from_str(raw_new)
+                        .unwrap_or_else(|_| serde_json::Value::String(raw_new.to_string()));
+                    match scratchpad::cas(key, expected, new).await {
+                        Ok(()) => println!("[scratch] cas '{}' OK", key),
+                        Err(chump_coord::scratchpad::ScratchError::CASConflict {
+                            key,
+                            expected,
+                            actual,
+                        }) => {
+                            eprintln!(
+                                "[scratch] CAS conflict on '{}': expected='{}' actual='{}'",
+                                key, expected, actual
+                            );
+                            std::process::exit(3); // distinct exit for CAS conflict
+                        }
+                        Err(e) => {
+                            eprintln!("[scratch] cas error: {}", e);
+                            std::process::exit(2);
+                        }
+                    }
+                }
+                "list" => {
+                    // List all known seed keys and their current values
+                    for sk in scratchpad::seed_keys() {
+                        match scratchpad::get(sk.key).await {
+                            Ok(Some(v)) => println!("{} = {}", sk.key, v),
+                            Ok(None) => println!("{} = <unset>", sk.key),
+                            Err(e) => println!("{} = <error: {}>", sk.key, e),
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!(
+                        r#"chump-coord scratch — file-backed A2A scratchpad (INFRA-1826)
+
+USAGE
+  chump-coord scratch get <key>
+  chump-coord scratch set <key> <value>       (LWW keys only; use cas for CAS-required)
+  chump-coord scratch cas <key> <expected> <new>
+  chump-coord scratch list
+
+KEYS
+  main.head.sha              CASRequired (cas only)
+  fleet.size                 LastWriterWins
+  pillar.focus               LastWriterWins
+  last_known_good.chump_binary  CASRequired (cas only)
+  red_letter.last_ts         LastWriterWins
+
+EXIT CODES
+  0   success
+  1   key absent or expired (get)
+  2   usage / key unknown / I/O error
+  3   CAS conflict (cas)
+
+ENVIRONMENT
+  CHUMP_SCRATCH_DIR  override storage dir (default: .chump-locks/scratch/)
+"#
+                    );
+                }
+            }
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(
@@ -961,6 +1085,7 @@ COMMANDS
   status                     Show all active NATS KV claims
   emit <TYPE> [key=value …]  Publish event (TYPE: INTENT DONE STUCK WARN ALERT)
   watch                      Stream live events from chump.events.>
+  scratch get|set|cas <key>  File-backed scratchpad for A2A seed keys (INFRA-1826)
   work-board <sub> [args …]  FLEET-008 shared subtask queue
                              post <parent-gap> <task-class> "<title>" [--decomposable] [--description "..."] [--est-secs N] [--model <fam>] [--min-vram-gb N]
                              list   [--status open|claimed|completed|failed|all]
