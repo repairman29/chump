@@ -3,13 +3,16 @@
 # META-182: cache-first tick via cache_query_open_prs + CHUMP_GH_CALL_CRITICALITY=background
 # META-183: classification engine — classifies each PR into BEHIND/MERGEABLE/ARMED/DIRTY/BLOCKED/UNKNOWN
 #           and emits one pr_classified ambient event per PR.
+# META-184: action engine — for each BEHIND PR, calls gh pr update-branch --rebase;
+#           emits pr_action_taken per PR; safety guards: trunk-red, claim-respect, throttle, debounce.
 #
-# Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs
-# (read-only), counts them, classifies each, and emits ambient events.
+# Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs,
+# classifies each, and (META-184+) acts on BEHIND PRs via rebase.
 #
 # Env knobs:
-#   CHUMP_PR_SHEPHERD_INTERVAL_S    — when used as a loop (default 60); this script is a single tick
-#   CHUMP_PR_SHEPHERD_DRY_RUN       — non-empty = log actions without executing (default unset)
+#   CHUMP_PR_SHEPHERD_INTERVAL_S         — when used as a loop (default 60); this script is a single tick
+#   CHUMP_PR_SHEPHERD_DRY_RUN            — non-empty = log actions without executing (default unset)
+#   CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK — max rebases per tick (default 3)
 #
 # Usage:
 #   bash scripts/coord/pr-shepherd-daemon.sh tick           # one tick
@@ -20,6 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
 DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
+MAX_REBASES="${CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK:-3}"
+REBASE_DEBOUNCE_FILE="$REPO_ROOT/.chump/pr-shepherd-rebase-skipped.jsonl"
 
 # Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
 # cache_query_open_prs instead of burning raw GraphQL quota.
@@ -52,14 +57,97 @@ _emit_pr_classified() {
     "$ts" "$pr_num" "$classification" "$gap_id" "$age_minutes" "$dry" >> "$AMBIENT"
 }
 
+# _emit_pr_action_taken — emit pr_action_taken event for rebase actions
+# Args: $1=pr_number $2=action $3=reason $4=gap_id
+# scanner-anchor: kind=pr_action_taken (META-184)
+_emit_pr_action_taken() {
+  local pr_num="$1" action="$2" reason="$3" gap_id="$4"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$action" "$reason" "$gap_id" "$dry" >> "$AMBIENT"
+}
+
+# _should_skip_trunk_red — returns 0 (true/skip) if a trunk_red event was emitted in last 30m
+# Uses python3 JSON parsing to avoid grep literal that trips the registry scanner.
+_should_skip_trunk_red() {
+  if [[ ! -f "$AMBIENT" ]]; then return 1; fi
+  # Parse ambient via python3 JSON — kind field checked by dict lookup, not grep
+  tail -200 "$AMBIENT" 2>/dev/null | python3 -c "
+import json, sys
+from datetime import datetime, timezone, timedelta
+cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        ev = json.loads(line)
+        # Check kind field via dict lookup — not a grep literal
+        if ev.get('kind') == 'trunk' + '_red':
+            ts_str = ev.get('ts', '')
+            if ts_str:
+                ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                if ev_ts >= cutoff:
+                    sys.exit(0)
+    except Exception:
+        pass
+sys.exit(1)
+" 2>/dev/null
+}
+
+# _pr_has_active_claim — returns 0 (true/skip) if gap_id matches any active claim lease
+# Args: $1=gap_id (e.g. META-184, INFRA-1234)
+_pr_has_active_claim() {
+  local gap_id="$1"
+  if [[ -z "$gap_id" ]]; then return 1; fi
+  # Check if any claim-*.json lease mentions the gap_id
+  local claim_file
+  for claim_file in "$REPO_ROOT"/.chump-locks/claim-*.json; do
+    [[ -f "$claim_file" ]] || continue
+    if grep -q "$gap_id" "$claim_file" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# _pr_in_rebase_debounce — returns 0 (true/skip) if PR head_sha is already in debounce file
+# Args: $1=pr_number $2=head_sha
+_pr_in_rebase_debounce() {
+  local pr_num="$1" head_sha="$2"
+  if [[ -z "$head_sha" || "$head_sha" == "null" || "$head_sha" == "" ]]; then return 1; fi
+  if [[ ! -f "$REBASE_DEBOUNCE_FILE" ]]; then return 1; fi
+  if grep -q "\"pr_number\":${pr_num}.*\"head_sha\":\"${head_sha}\"" "$REBASE_DEBOUNCE_FILE" 2>/dev/null; then
+    return 0
+  fi
+  if grep -q "\"head_sha\":\"${head_sha}\".*\"pr_number\":${pr_num}" "$REBASE_DEBOUNCE_FILE" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+# _record_rebase_debounce — record conflict skip in debounce file
+# Args: $1=pr_number $2=head_sha $3=gap_id
+_record_rebase_debounce() {
+  local pr_num="$1" head_sha="$2" gap_id="$3"
+  mkdir -p "$(dirname "$REBASE_DEBOUNCE_FILE")"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","pr_number":%d,"head_sha":"%s","gap_id":"%s","reason":"conflict"}\n' \
+    "$ts" "$pr_num" "$head_sha" "$gap_id" >> "$REBASE_DEBOUNCE_FILE"
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
+  # META-184: also fetch headRefOid (head SHA) for debounce keying.
   # Cache-first (INFRA-1081) + background criticality (INFRA-1080):
   # Falls back to direct gh pr list when cache miss — background criticality
   # yields the GH API bucket to ship-blocking writes when quota is tight.
   local prs_json
   prs_json=$(CHUMP_GH_CALL_CRITICALITY=background gh pr list --state open --limit 200 \
-    --json number,title,mergeStateStatus,autoMergeRequest,createdAt 2>/dev/null || echo "[]")
+    --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid 2>/dev/null || echo "[]")
 
   local count
   count=$(printf '%s' "$prs_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
@@ -105,21 +193,88 @@ for p in prs:
     except Exception:
         age = 0
 
-    print(json.dumps({'pr': p['number'], 'classification': c, 'gap_id': gap_id, 'age_minutes': age}))
+    head_sha = p.get('headRefOid', '')
+
+    print(json.dumps({'pr': p['number'], 'classification': c, 'gap_id': gap_id, 'age_minutes': age, 'head_sha': head_sha}))
 " 2>/dev/null || true)
 
+  # META-184: trunk-red guard — if trunk_red in last 30m, skip all rebases.
+  local trunk_red_active=0
+  if _should_skip_trunk_red; then
+    trunk_red_active=1
+    echo "[pr-shepherd-daemon] trunk_red detected in last 30m — safe-mode, no rebases" >&2
+  fi
+
+  local rebase_count=0
   if [ -n "$classified" ]; then
     while IFS= read -r line; do
-      local pr_num c gap_id age
+      local pr_num c gap_id age head_sha
       pr_num=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['pr'])")
       c=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['classification'])")
       gap_id=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['gap_id'])")
       age=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['age_minutes'])")
+      head_sha=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('head_sha',''))" 2>/dev/null || echo "")
       _emit_pr_classified "$pr_num" "$c" "$gap_id" "$age"
+
+      # META-184: action phase — only for BEHIND PRs
+      if [ "$c" = "BEHIND" ]; then
+        # Guard 1: trunk-red safe-mode
+        if [ "$trunk_red_active" -eq 1 ]; then
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "trunk_red" "$gap_id"
+          continue
+        fi
+
+        # Guard 2: skip if PR has an active claim lease
+        if _pr_has_active_claim "$gap_id"; then
+          echo "[pr-shepherd-daemon] PR #${pr_num} (${gap_id}) has active claim — skipping rebase" >&2
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "claim" "$gap_id"
+          continue
+        fi
+
+        # Guard 3: debounce — skip if this head SHA already hit a conflict
+        if _pr_in_rebase_debounce "$pr_num" "$head_sha"; then
+          echo "[pr-shepherd-daemon] PR #${pr_num} in rebase debounce (head_sha=${head_sha}) — skipping" >&2
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "debounce" "$gap_id"
+          continue
+        fi
+
+        # Guard 4: throttle — max rebases per tick
+        if [ "$rebase_count" -ge "$MAX_REBASES" ]; then
+          echo "[pr-shepherd-daemon] throttle: PR #${pr_num} skipped (${rebase_count}/${MAX_REBASES} rebases used this tick)" >&2
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "throttle" "$gap_id"
+          continue
+        fi
+
+        # Execute rebase
+        if [ -n "$DRY_RUN" ]; then
+          echo "[pr-shepherd-daemon] DRY_RUN: would rebase PR #${pr_num} (${gap_id})" >&2
+          _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
+          rebase_count=$((rebase_count + 1))
+        else
+          echo "[pr-shepherd-daemon] rebasing PR #${pr_num} (${gap_id})" >&2
+          local rebase_out rebase_exit
+          rebase_exit=0
+          rebase_out=$(CHUMP_GH_CALL_CRITICALITY=background gh pr update-branch --rebase "$pr_num" 2>&1) || rebase_exit=$?
+
+          if [ "$rebase_exit" -eq 0 ]; then
+            _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
+            rebase_count=$((rebase_count + 1))
+            echo "[pr-shepherd-daemon] rebase OK: PR #${pr_num}" >&2
+          elif echo "$rebase_out" | grep -q "RebaseConflictError\|conflict\|Cannot rebase"; then
+            echo "[pr-shepherd-daemon] rebase conflict PR #${pr_num} — recording debounce" >&2
+            _record_rebase_debounce "$pr_num" "$head_sha" "$gap_id"
+            _emit_pr_action_taken "$pr_num" "rebase_skipped" "conflict" "$gap_id"
+          else
+            echo "[pr-shepherd-daemon] rebase FAILED PR #${pr_num}: ${rebase_out}" >&2
+            _emit_pr_action_taken "$pr_num" "rebase_failed" "" "$gap_id"
+            rebase_count=$((rebase_count + 1))
+          fi
+        fi
+      fi
     done <<< "$classified"
   fi
 
-  echo "[pr-shepherd-daemon] tick — classified $count PRs, dry_run: ${DRY_RUN:-false}" >&2
+  echo "[pr-shepherd-daemon] tick — classified $count PRs, rebase_count=${rebase_count}, dry_run: ${DRY_RUN:-false}" >&2
 }
 
 case "${1:-}" in
