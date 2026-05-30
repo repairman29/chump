@@ -25,7 +25,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{exit, Command};
 
 const RECENT_WINDOW_SECS: i64 = 30 * 60; // 30 minutes
@@ -116,7 +116,7 @@ fn iso_now() -> String {
         .unwrap_or_default()
 }
 
-fn read_leases(lock_dir: &PathBuf) -> Vec<Lease> {
+fn read_leases(lock_dir: &Path) -> Vec<Lease> {
     let mut out = Vec::new();
     let entries = match fs::read_dir(lock_dir) {
         Ok(e) => e,
@@ -184,7 +184,7 @@ fn field(raw: &str, key: &str) -> String {
     String::new()
 }
 
-fn scan_ambient(ambient_path: &PathBuf, sessions: &[&str]) -> HashMap<String, SessionActivity> {
+fn scan_ambient(ambient_path: &Path, sessions: &[&str]) -> HashMap<String, SessionActivity> {
     let mut out: HashMap<String, SessionActivity> = sessions
         .iter()
         .map(|s| (s.to_string(), SessionActivity::default()))
@@ -222,20 +222,19 @@ fn scan_ambient(ambient_path: &PathBuf, sessions: &[&str]) -> HashMap<String, Se
         if act.last_file_edit_ts.is_some()
             && act.last_broadcast_ts.is_some()
             && act.last_heartbeat_ts.is_some()
-        {
-            if out.values().all(|a| {
+            && out.values().all(|a| {
                 a.last_file_edit_ts.is_some()
                     && a.last_broadcast_ts.is_some()
                     && a.last_heartbeat_ts.is_some()
-            }) {
-                break;
-            }
+            })
+        {
+            break;
         }
     }
     out
 }
 
-fn last_commit_for_paths(repo: &PathBuf, paths: &[String]) -> Option<String> {
+fn last_commit_for_paths(repo: &Path, paths: &[String]) -> Option<String> {
     if paths.is_empty() {
         return None;
     }
@@ -328,8 +327,8 @@ fn short_ts(opt: &Option<String>) -> String {
 
 fn render_table(rows: &[StatusRow]) {
     println!(
-        "{:<14} {:<48} {:>8} {:<10} {:<10} {:<10} {:<10} {}",
-        "GAP", "SESSION", "AGE", "COMMIT", "EDIT", "BROADCAST", "BEAT", "STATUS"
+        "{:<14} {:<48} {:>8} {:<10} {:<10} {:<10} {:<10} STATUS",
+        "GAP", "SESSION", "AGE", "COMMIT", "EDIT", "BROADCAST", "BEAT"
     );
     for r in rows {
         let status_marker = if r.is_expired {
@@ -376,7 +375,7 @@ fn opt_quote(o: &Option<String>) -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
-fn emit_poll_event(lock_dir: &PathBuf, rows: &[StatusRow]) {
+fn emit_poll_event(lock_dir: &Path, rows: &[StatusRow]) {
     let mut counts: HashMap<&str, u32> = HashMap::new();
     let mut expired = 0u32;
     for r in rows {
@@ -400,7 +399,7 @@ fn emit_poll_event(lock_dir: &PathBuf, rows: &[StatusRow]) {
     }
 }
 
-fn one_pass(repo: &PathBuf, lock_dir: &PathBuf, ambient_path: &PathBuf) -> Vec<StatusRow> {
+fn one_pass(repo: &Path, lock_dir: &Path, ambient_path: &Path) -> Vec<StatusRow> {
     let now = now_secs();
     let leases = read_leases(lock_dir);
     let sessions: Vec<&str> = leases.iter().map(|l| l.session_id.as_str()).collect();
