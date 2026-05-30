@@ -1,0 +1,11 @@
+- id: META-194
+  domain: META
+  title: "META: Implement comprehensive test suite for pr-shepherd-daemon (META-180 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`scripts/ci/test-pr-shepherd-daemon.sh` is implemented."
+    - The test suite uses a synthetic 6-PR fixture.
+    - The test suite covers and validates each classification path and corresponding action.
+

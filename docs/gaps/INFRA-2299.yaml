@@ -1,0 +1,12 @@
+- id: INFRA-2299
+  domain: INFRA
+  title: "ZERO-WASTE: workflow consolidation Phase 1 — fold voice-lint + repo-health + test-bot-autonomous + 5 other satellite workflows into ci.yml as conditional jobs (24 .yml files → ~6); cuts per-push runner-claim fan-out 3-4×"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

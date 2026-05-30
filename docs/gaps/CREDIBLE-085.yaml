@@ -1,0 +1,12 @@
+- id: CREDIBLE-085
+  domain: CREDIBLE
+  title: "ZERO-WASTE: CI sccache hit-rate verifier — fails the build if 0% cache hits on a .rs-touching PR + emits sccache_hit_rate_low; catches future cred-rot silently and surfaces R2 substrate health"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
