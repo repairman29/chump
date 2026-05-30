@@ -619,3 +619,5 @@ speculative_race_loss                     # reason: INFRA-2290 strict-mode sweep
 stale_post_merge_gap                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
 test_gate_bypassed                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
 velocity_tracker_tick                     # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+# ── META-181: PR-shepherd daemon skeleton (META-180 slice 1) ─────────────────
+pr_shepherd_tick    # reason: META-181 emitted by scripts/coord/pr-shepherd-daemon.sh on each tick; carries open_pr_count, dry_run. Scanner-anchor: scripts/coord/pr-shepherd-daemon.sh.
