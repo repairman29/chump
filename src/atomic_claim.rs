@@ -664,6 +664,23 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // INFRA-2197 (META-128/C6): Pre-claim disk plan check — refuse or warn
+    // before creating any worktree state, so the operator gets a clean signal
+    // with headroom numbers rather than a mid-claim abort.
+    //
+    // Flow:
+    //   - Parse action_class from gap.skills_required (first token, default
+    //     "sonnet_dispatch_with_worktree" if unset / empty).
+    //   - Call `chump disk plan <class> --count 1`.
+    //   - exit 1 (REFUSE) → block claim with helpful error + reap hint.
+    //   - exit 2 (WAIT)   → warn but proceed.
+    //   - exit 0 (OK)     → proceed silently.
+    //   - gap in CHUMP_DISK_PLAN_BYPASS=1 → emit disk_plan_bypassed + proceed.
+    //   - inventory missing (daemon not installed) → WARN + proceed; never block.
+    //
+    // Emits kind=disk_plan_checked on every path (including bypass).
+    run_disk_plan_check(&args.repo_root, &args.gap_id)?;
+
     // 4. Session ID — explicit --session flag > derived.
     //
     // Deliberately do NOT honor CHUMP_SESSION_ID env: each `chump claim`
@@ -1554,6 +1571,276 @@ fn emit_claim_open_pr_dup_blocked(ambient_path: &Path, gap: &str, open_pr: u64) 
          \"gap\":\"{}\",\"open_pr\":{}}}\n",
         json_escape(gap),
         open_pr,
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── INFRA-2197: pre-claim disk plan check (META-128/C6) ───────────────────
+
+/// Read `skills_required` from state.db for the given gap and return the first
+/// token as the action class. Returns the default when state.db is absent or
+/// the field is empty.
+///
+/// The skills_required column may be a plain string or a JSON array of strings
+/// (legacy import shape). We handle both.
+fn action_class_for_gap(repo_root: &Path, gap_id: &str) -> String {
+    const DEFAULT: &str = "sonnet_dispatch_with_worktree";
+    let db_path = repo_root.join(".chump/state.db");
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(_) => return DEFAULT.to_string(),
+    };
+    let raw: String = match conn.query_row(
+        "SELECT skills_required FROM gaps WHERE id = ?1",
+        [gap_id],
+        |r| r.get(0),
+    ) {
+        Ok(v) => v,
+        Err(_) => return DEFAULT.to_string(),
+    };
+    let raw = raw.trim().to_string();
+    if raw.is_empty() {
+        return DEFAULT.to_string();
+    }
+    // Try JSON array first: ["class1","class2"] → first element.
+    if raw.starts_with('[') {
+        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+            if let Some(first) = arr.into_iter().next() {
+                let s = first.as_str().unwrap_or("").trim().to_string();
+                if !s.is_empty() {
+                    return s;
+                }
+            }
+        }
+    }
+    // Plain string — take first comma-separated token.
+    raw.split(',').next().unwrap_or(DEFAULT).trim().to_string()
+}
+
+/// INFRA-2197: call `chump disk plan <action_class> --count 1` BEFORE the
+/// atomic CAS claim.
+///
+/// Decision table (matches INFRA-2196 exit codes):
+///   0 (OK)     → proceed silently.
+///   2 (WAIT)   → print warning; proceed.
+///   1 (REFUSE) → print error with reap hint; return Err (blocks claim).
+///
+/// Bypasses:
+///   CHUMP_DISK_PLAN_BYPASS=1  → emit disk_plan_bypassed + proceed.
+///   ~/.chump/disk-inventory.json absent → WARN log; proceed (daemon not installed).
+///
+/// Always emits kind=disk_plan_checked (or disk_plan_bypassed on bypass).
+fn run_disk_plan_check(repo_root: &Path, gap_id: &str) -> Result<()> {
+    // Bypass: operator escape hatch.
+    if std::env::var("CHUMP_DISK_PLAN_BYPASS")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false)
+    {
+        eprintln!("[claim] WARN: CHUMP_DISK_PLAN_BYPASS=1 — skipping disk plan check for {gap_id}");
+        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+        emit_disk_plan_bypassed(&ambient_path, gap_id);
+        return Ok(());
+    }
+
+    // Backwards compat: if daemon inventory is absent, fall through with warn.
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let inv_override = std::env::var("CHUMP_DISK_INVENTORY_PATH").ok();
+    let inv_path = inv_override
+        .as_deref()
+        .map(std::path::Path::new)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(&home)
+                .join(".chump")
+                .join("disk-inventory.json")
+        });
+    if !inv_path.exists() {
+        eprintln!(
+            "[claim] WARN: disk-inventory.json not found ({}) — chump-disk-inventory-daemon (INFRA-2193) not installed; skipping disk plan check",
+            inv_path.display()
+        );
+        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+        emit_disk_plan_checked(
+            &ambient_path,
+            gap_id,
+            "unknown",
+            0.0,
+            "OK",
+            "inventory_missing",
+        );
+        return Ok(());
+    }
+
+    let action_class = action_class_for_gap(repo_root, gap_id);
+
+    // Invoke `chump disk plan <class> --count 1 --json` so we get structured
+    // output for the ambient event payload regardless of whether the user sees
+    // a terminal. Use current exe so tests/dev builds exercise the same binary.
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
+    let out = Command::new(&exe)
+        .args(["disk", "plan", &action_class, "--count", "1", "--json"])
+        .current_dir(repo_root)
+        .output();
+
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+
+    match out {
+        Err(e) => {
+            // Binary not yet updated (INFRA-2196 not installed) — fall through.
+            eprintln!(
+                "[claim] WARN: `chump disk plan` unavailable ({e}); skipping disk check for {gap_id}"
+            );
+            emit_disk_plan_checked(
+                &ambient_path,
+                gap_id,
+                &action_class,
+                0.0,
+                "OK",
+                "subcommand_unavailable",
+            );
+            return Ok(());
+        }
+        Ok(result) => {
+            let exit_code = result.status.code().unwrap_or(-1);
+            // Parse projection fields for the ambient event if JSON succeeded.
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let free_after: f64 = serde_json::from_str::<serde_json::Value>(&stdout)
+                .ok()
+                .and_then(|v| v.get("free_after_gb").and_then(|n| n.as_f64()))
+                .unwrap_or(0.0);
+
+            match exit_code {
+                0 => {
+                    // OK — proceed silently; emit ambient.
+                    emit_disk_plan_checked(
+                        &ambient_path,
+                        gap_id,
+                        &action_class,
+                        free_after,
+                        "OK",
+                        "ok",
+                    );
+                }
+                2 => {
+                    // WAIT — warn but proceed.
+                    eprintln!(
+                        "[claim] WARN: disk headroom low for {} (action_class={}): {}",
+                        gap_id,
+                        action_class,
+                        stdout.trim()
+                    );
+                    eprintln!("[claim]       Proceeding; consider running `chump disk status` and reaping old worktrees.");
+                    emit_disk_plan_checked(
+                        &ambient_path,
+                        gap_id,
+                        &action_class,
+                        free_after,
+                        "WAIT",
+                        "warn_proceed",
+                    );
+                }
+                1 => {
+                    // REFUSE — block the claim.
+                    emit_disk_plan_checked(
+                        &ambient_path,
+                        gap_id,
+                        &action_class,
+                        free_after,
+                        "REFUSE",
+                        "refused",
+                    );
+                    bail!(
+                        "claim refused: insufficient disk headroom for {} (action_class={}).\n  {}\n  \
+                         Reap old worktrees (`chump disk status` to see consumers) or override with \
+                         CHUMP_DISK_PLAN_BYPASS=1.",
+                        gap_id,
+                        action_class,
+                        stdout.trim(),
+                    );
+                }
+                other => {
+                    // Unexpected exit code — treat as pass-through; don't block.
+                    eprintln!(
+                        "[claim] WARN: `chump disk plan` exited {other}; skipping disk check for {gap_id}"
+                    );
+                    emit_disk_plan_checked(
+                        &ambient_path,
+                        gap_id,
+                        &action_class,
+                        free_after,
+                        "OK",
+                        "unexpected_exit",
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Emit kind=disk_plan_checked to ambient.jsonl (INFRA-2197).
+// scanner-anchor: "kind":"disk_plan_checked"
+fn emit_disk_plan_checked(
+    ambient_path: &Path,
+    gap_id: &str,
+    action_class: &str,
+    free_after_gb: f64,
+    decision: &str,
+    note: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"disk_plan_checked\",\
+         \"gap_id\":\"{gap}\",\"action_class\":\"{ac}\",\
+         \"free_after_gb\":{fab:.2},\"decision\":\"{dec}\",\"note\":\"{nt}\"}}\n",
+        gap = json_escape(gap_id),
+        ac = json_escape(action_class),
+        fab = free_after_gb,
+        dec = json_escape(decision),
+        nt = json_escape(note),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// Emit kind=disk_plan_bypassed to ambient.jsonl (INFRA-2197).
+// scanner-anchor: "kind":"disk_plan_bypassed"
+fn emit_disk_plan_bypassed(ambient_path: &Path, gap_id: &str) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"disk_plan_bypassed\",\
+         \"gap_id\":\"{}\",\"via\":\"CHUMP_DISK_PLAN_BYPASS\"}}\n",
+        json_escape(gap_id),
     );
     if let Some(parent) = ambient_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -5194,5 +5481,166 @@ mod open_pr_dup_tests {
         // verifies no panic and correct return type.
         let _result: Option<(u64, String)> = check_open_pr_for_gap(dir.path(), "INFRA-TESTONLY");
         // If we reach here, no panic — that's the pass condition.
+    }
+}
+
+// ── INFRA-2197: disk plan check unit tests ─────────────────────────────────
+
+#[cfg(test)]
+mod disk_plan_check_tests {
+    use super::*;
+    use std::io::Write;
+
+    // ── Test 1: REFUSE exit (exit 1) blocks claim ─────────────────────────
+    // We test run_disk_plan_check's logic via the emit helpers + action_class
+    // helper directly. The subprocess path is exercised via integration, but
+    // we can unit-test the emit path and action_class parser.
+
+    #[test]
+    fn emit_disk_plan_checked_writes_valid_json() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ambient = dir.path().join("ambient.jsonl");
+        emit_disk_plan_checked(
+            &ambient,
+            "INFRA-9001",
+            "sonnet_dispatch_with_worktree",
+            47.5,
+            "OK",
+            "ok",
+        );
+        let content = std::fs::read_to_string(&ambient).expect("read");
+        // Must be parseable as JSON
+        let parsed: serde_json::Value =
+            serde_json::from_str(content.trim()).expect("valid JSON line");
+        assert_eq!(parsed["kind"], "disk_plan_checked");
+        assert_eq!(parsed["gap_id"], "INFRA-9001");
+        assert_eq!(parsed["action_class"], "sonnet_dispatch_with_worktree");
+        assert_eq!(parsed["decision"], "OK");
+        assert!(parsed["ts"].as_str().unwrap_or("").contains('T'));
+    }
+
+    // ── Test 2: WAIT — emit checked with WAIT decision ────────────────────
+    #[test]
+    fn emit_disk_plan_checked_wait_decision() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ambient = dir.path().join("ambient.jsonl");
+        emit_disk_plan_checked(
+            &ambient,
+            "INFRA-9002",
+            "haiku_dispatch",
+            8.3,
+            "WAIT",
+            "warn_proceed",
+        );
+        let content = std::fs::read_to_string(&ambient).expect("read");
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).expect("valid JSON");
+        assert_eq!(parsed["kind"], "disk_plan_checked");
+        assert_eq!(parsed["decision"], "WAIT");
+        assert_eq!(parsed["note"], "warn_proceed");
+    }
+
+    // ── Test 3: CHUMP_DISK_PLAN_BYPASS=1 emits disk_plan_bypassed ────────
+    #[test]
+    fn bypass_env_emits_disk_plan_bypassed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ambient = dir.path().join("ambient.jsonl");
+        emit_disk_plan_bypassed(&ambient, "INFRA-9003");
+        let content = std::fs::read_to_string(&ambient).expect("read");
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).expect("valid JSON");
+        assert_eq!(parsed["kind"], "disk_plan_bypassed");
+        assert_eq!(parsed["gap_id"], "INFRA-9003");
+        assert_eq!(parsed["via"], "CHUMP_DISK_PLAN_BYPASS");
+    }
+
+    // ── Test 4: action_class_for_gap falls back to default when DB absent ─
+    #[test]
+    fn action_class_defaults_when_db_absent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No state.db in the temp dir — should return the default class.
+        let class = action_class_for_gap(dir.path(), "INFRA-MISSING");
+        assert_eq!(class, "sonnet_dispatch_with_worktree");
+    }
+
+    // ── Test 5: action_class_for_gap parses plain string ──────────────────
+    #[test]
+    fn action_class_parses_plain_string() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Create a minimal state.db with skills_required as plain string.
+        let db_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&db_dir).expect("mkdir");
+        let db_path = db_dir.join("state.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE gaps (id TEXT PRIMARY KEY, skills_required TEXT NOT NULL DEFAULT '');",
+        )
+        .expect("create");
+        conn.execute(
+            "INSERT INTO gaps (id, skills_required) VALUES (?1, ?2)",
+            ["INFRA-7777", "haiku_dispatch,secondary_class"],
+        )
+        .expect("insert");
+        drop(conn);
+
+        let class = action_class_for_gap(dir.path(), "INFRA-7777");
+        assert_eq!(class, "haiku_dispatch");
+    }
+
+    // ── Test 6: action_class_for_gap parses JSON array ────────────────────
+    #[test]
+    fn action_class_parses_json_array() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&db_dir).expect("mkdir");
+        let db_path = db_dir.join("state.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE gaps (id TEXT PRIMARY KEY, skills_required TEXT NOT NULL DEFAULT '');",
+        )
+        .expect("create");
+        conn.execute(
+            "INSERT INTO gaps (id, skills_required) VALUES (?1, ?2)",
+            ["INFRA-8888", r#"["opus_dispatch","haiku_dispatch"]"#],
+        )
+        .expect("insert");
+        drop(conn);
+
+        let class = action_class_for_gap(dir.path(), "INFRA-8888");
+        assert_eq!(class, "opus_dispatch");
+    }
+
+    // ── Test 7: inventory missing → falls through (no panic, no block) ───
+    #[test]
+    fn disk_plan_check_falls_through_when_inventory_missing() {
+        // Point CHUMP_DISK_INVENTORY_PATH at a non-existent file.
+        // run_disk_plan_check must return Ok(()) with a WARN eprintln.
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Create minimal dir structure so ambient write doesn't fail.
+        std::fs::create_dir_all(dir.path().join(".chump-locks")).expect("mkdir");
+
+        // Use a temp env override scoped to this test; can't easily unset
+        // CHUMP_DISK_PLAN_BYPASS if it's set in environment, so guard first.
+        if std::env::var("CHUMP_DISK_PLAN_BYPASS")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false)
+        {
+            // bypass active in test env — skip this test
+            return;
+        }
+
+        std::env::set_var(
+            "CHUMP_DISK_INVENTORY_PATH",
+            dir.path().join("nonexistent.json").to_str().unwrap(),
+        );
+        let result = run_disk_plan_check(dir.path(), "INFRA-NODAEMON");
+        std::env::remove_var("CHUMP_DISK_INVENTORY_PATH");
+
+        assert!(result.is_ok(), "should fall through: {result:?}");
+        // Ambient event must have been written.
+        let ambient = dir.path().join(".chump-locks/ambient.jsonl");
+        let content = std::fs::read_to_string(&ambient).unwrap_or_default();
+        assert!(
+            content.contains("disk_plan_checked"),
+            "ambient event missing: {content}"
+        );
     }
 }

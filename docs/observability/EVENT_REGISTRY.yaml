@@ -6593,3 +6593,36 @@ events:
     fields_required: [ts, kind, reason, prior_pid, prior_gap_id]
     expected_volume: "low; one per skipped tick while incident is open"
     status: stable
+  - kind: disk_plan_checked
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs (INFRA-2197)
+    trigger: >
+      Emitted on every `chump claim` invocation immediately before the
+      atomic CAS claim step. Carries the action_class derived from
+      gap.skills_required, the projected free_after_gb, and the disk-plan
+      decision (OK / WAIT / REFUSE). Enables fleet-brief and ops-audit to
+      detect REFUSE/WAIT storms without parsing CLI output. Also emitted
+      with decision=OK and note=inventory_missing when the daemon is not
+      installed, or note=subcommand_unavailable when INFRA-2196 has not
+      yet landed.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, action_class, free_after_gb, decision, note]
+    related_kinds: [disk_plan_bypassed, gap_claimed]
+    expected_volume: "1 per chump claim invocation"
+    status: stable
+    # payload: {gap_id: string, action_class: string, free_after_gb: number, decision: "OK"|"WAIT"|"REFUSE", note: string, ts: string}
+
+  - kind: disk_plan_bypassed
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs (INFRA-2197)
+    trigger: >
+      Emitted when CHUMP_DISK_PLAN_BYPASS=1 is set and the disk plan
+      check is skipped entirely. Carries gap_id and via=CHUMP_DISK_PLAN_BYPASS.
+      Audit trail — fleet-brief and ops-audit can detect patterns of bypass
+      abuse without blocking individual operators who need the escape hatch.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, via]
+    related_kinds: [disk_plan_checked, gap_claimed]
+    expected_volume: "rare (operator escape hatch only)"
+    status: stable
+    # payload: {gap_id: string, via: "CHUMP_DISK_PLAN_BYPASS", ts: string}
