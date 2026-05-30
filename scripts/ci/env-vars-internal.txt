@@ -671,3 +671,10 @@ CHUMP_FLEET_SCRUBBER_DIR
 CHUMP_FLEET_SERVER_PORT
 # detected in: (standard input)
 CHUMP_PREFLIGHT_AUDIT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_RECV_SIDE_V0
+# detected in: (standard input)
+CHUMP_NO_FANOUT
