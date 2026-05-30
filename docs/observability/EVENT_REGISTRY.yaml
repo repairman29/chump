@@ -6097,3 +6097,36 @@ events:
     expected_volume: "1 per worker per 30s"
     status: stable
     # payload: {session_id: string, heartbeat_at: RFC3339, ttl_seconds: int}
+
+  - kind: cascade_unblocked
+    effect_metric: resilient
+    emitter: scripts/coord/cascade-unblock-detector.sh (INFRA-2070)
+    trigger: >
+      Emitted by cascade-unblock-detector.sh after a wedge_auto_fix PR merges and
+      the detector identifies open PRs whose pr_failed events share the same
+      failure signature. Records the source (auto-fix) PR, the signature hash,
+      all matched PR numbers, and rebase attempt counts (success vs conflict).
+      Emitted once per merged fix PR per run, even when some rebases fail.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, source_pr, signature_hash, matched_pr_numbers, rebase_attempt_count]
+    expected_volume: "0–5 per wizard-daemon cycle (one per merged wedge_auto_fix PR)"
+    status: stable
+    # payload: {source_pr: int, signature_hash: str, matched_pr_numbers: csv-str,
+    #           rebase_attempt_count: int, success_count: int, conflict_count: int,
+    #           skipped_count: int}
+
+  - kind: cascade_unblock_skipped
+    effect_metric: resilient
+    emitter: scripts/coord/cascade-unblock-detector.sh (INFRA-2070)
+    trigger: >
+      Emitted per-PR when a candidate PR is skipped during cascade-unblock.
+      Reason field encodes which safety guard fired:
+        operator_recent_comment — operator commented on the PR within OPERATOR_WINDOW_S (default 30min)
+        chump_hold_label        — PR carries the CHUMP_HOLD label
+        rebase_conflict         — gh pr update-branch returned non-zero (conflict or API error)
+        rate_limit_reached      — CHUMP_UNBLOCK_RATE_LIMIT exceeded for this run
+    consumers: [ops-audit]
+    fields_required: [ts, kind, source, source_pr, signature_hash, pr_number, reason]
+    expected_volume: "0–N per cascade run (N = blocked PRs that hit safety guards)"
+    status: stable
+    # payload: {source_pr: int, signature_hash: str, pr_number: int, reason: str}
