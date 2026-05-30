@@ -422,3 +422,4 @@ integration_cycle_shipped         # reason: INFRA-2132 / META-124; registered in
 cycle_sampling_decision           # reason: INFRA-2132 / META-124 Phase 2 marker; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
 bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registered in EVENT_REGISTRY.yaml; emitter scripts/dev/integration-bisect-step.sh.
 fleet_scale_changed               # reason: INFRA-2198 (META-128/C7); disk-plan gate + fleet auto-scale emitter; fields: from, to, reason.
+external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; registered in EVENT_REGISTRY.yaml; emitter scripts/coord/pr-rescue.sh (INFRA-2114 fork-aware path).

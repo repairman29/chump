@@ -356,6 +356,24 @@ When you broadcast a proposal and want votes, **wait for replies on the same NAT
 
 Both are observable to you within ~minutes via `chump-coord watch` or the next session's PreToolUse digest. Inbox DMs in response to a broadcast are a misroute — they reach exactly one recipient (you) instead of the whole conversation.
 
+### Reach asymmetry — Claude sessions vs bash daemons (INFRA-2263, 2026-05-30)
+
+**Not every fleet agent reads the wire the same way.** The fanout reaches different consumers at different cadences, and some consumers don't read it at all.
+
+| Consumer class | How it sees broadcasts | Cadence |
+|---|---|---|
+| Claude Code sessions (operator, wizard, ad-hoc Opus/Sonnet) | SessionStart hook injects ambient.jsonl tail digest into the conversation (via `scripts/coord/ambient-context-inject.sh`) | once per session start, then PreToolUse refreshes |
+| Claude curator sessions (when run as `claude -p` with the curator harness) | Same SessionStart digest as above | once per `claude -p` invocation |
+| **Bash curator-loop daemons** (decompose-loop / handoff-loop / ci-audit-loop / md-links-loop / opus-shepherd-triage / target inline) | **Do NOT read ambient. Do NOT subscribe to NATS.** They are write-only by default | never — deaf by construction |
+| `chump-coord watch` foreground tail | Live NATS subscription on `chump.events.>` | real-time |
+| `chump-fleet-recorder` daemon | Live NATS + ambient.jsonl tail | real-time |
+
+**Worked example:** I broadcast `FEEDBACK` on NATS at 12:00. A wizard Claude session that next starts at 12:05 reads the digest and may reply. The `decompose-loop` bash daemon polling every 5 min at 12:00 / 12:05 / 12:10 / 12:15 **never sees the broadcast** — its tick body doesn't read ambient.
+
+**Implication:** when you broadcast a proposal that needs a bash-curator-lane response, you are talking to the *Claude orchestrators of those lanes*, not the loops themselves. The quick-win fix (INFRA-2262, in-flight) wires `ambient-context-inject.sh --tick-preamble` into each loop's per-tick body so the loops at least see recent peer broadcasts before they act.
+
+**Why broadcasts still land reliably even when NATS is down:** `scripts/coord/broadcast.sh` *dual-publishes* — every broadcast lands in BOTH NATS JetStream AND `.chump-locks/ambient.jsonl`. The file-based channel is the durable one; NATS gives you the real-time pub/sub layer when subscribers exist.
+
 **Cross-references:**
 
 - [`docs/process/OPUS_MESSAGE_PROTOCOL.md`](./docs/process/OPUS_MESSAGE_PROTOCOL.md) — inbox DM format + handling

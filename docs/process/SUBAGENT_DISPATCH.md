@@ -208,6 +208,13 @@ Notes: <2-3 sentences on tricky calls or recovery paths used>
 
 ## What goes in the briefing BEFORE the epilogue
 
+**`--briefing` now injects umbrella context automatically (INFRA-2165).** When a
+gap depends on a META-NNN umbrella, `chump --briefing <GAP-ID>` prepends the
+parent META title, full AC (truncated to 80 lines), and the last 5
+integration-cycle ambient events before the rest of the briefing. Dispatch
+prompts for META-124 sub-gaps no longer need a "read META-124 first" instruction
+— the briefing injects it automatically.
+
 The shipping epilogue is the LAST section of the prompt. Structure in order:
 
 1. **No-clarifying-questions directive** (above) — verbatim, first thing.
