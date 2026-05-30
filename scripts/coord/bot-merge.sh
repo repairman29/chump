@@ -117,6 +117,109 @@ __STAGE_BUDGET_PID=""
 # META-156 AC#6: budget-warn watchdog PID.
 _BM_BUDGET_WARN_PID=""
 
+# ── INFRA-2272: per-step progress ledger + gtimeout wrapper ──────────────────
+# See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4
+#
+# Progress ledger: .chump-locks/bot-merge-progress/<gap-id>.json
+# Written on each phase boundary: {step_name, started_at, last_progress_ts}
+# Readable by fleet monitors without parsing the full health file.
+#
+# gtimeout: coreutils 'gtimeout' on macOS (brew install coreutils),
+# falls back to 'timeout' on Linux.  Used to hard-kill individual
+# gh/git invocations that stall beyond CHUMP_BOT_MERGE_STEP_TIMEOUT_S.
+#
+# scanner-anchor: "kind":"bot_merge_step_stalled"
+_BM_TIMEOUT_CMD=""
+_BM_PROGRESS_DIR=""
+_BM_PROGRESS_FILE=""
+# Default per-step timeout (env-overridable)
+_BM_STEP_TIMEOUT_S="${CHUMP_BOT_MERGE_STEP_TIMEOUT_S:-300}"
+
+# Resolve gtimeout (coreutils) or timeout (Linux/BSD fallback).
+_bm_resolve_timeout_cmd() {
+    if command -v gtimeout >/dev/null 2>&1; then
+        _BM_TIMEOUT_CMD="gtimeout"
+    elif command -v timeout >/dev/null 2>&1; then
+        _BM_TIMEOUT_CMD="timeout"
+    else
+        _BM_TIMEOUT_CMD=""
+        printf '\033[0;33m[bot-merge] WARN: neither gtimeout nor timeout found; INFRA-2272 per-step timeouts disabled.\033[0m\n' >&2
+    fi
+}
+_bm_resolve_timeout_cmd
+
+# Initialise the progress ledger directory (call once LOCK_DIR is known).
+_bm_progress_init() {
+    local lock_dir="$1"
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    _BM_PROGRESS_DIR="${lock_dir}/bot-merge-progress"
+    mkdir -p "$_BM_PROGRESS_DIR" 2>/dev/null || true
+    local gap_slug
+    gap_slug="${GAP_IDS[0]:-${GAP_ID:-pid-${_BM_PID}}}"
+    # Sanitise for filesystem: replace anything non-alphanumeric/dash with dash
+    gap_slug="$(printf '%s' "$gap_slug" | tr -cs '[:alnum:]-' '-' | tr '[:upper:]' '[:lower:]')"
+    _BM_PROGRESS_FILE="${_BM_PROGRESS_DIR}/${gap_slug}.json"
+}
+
+# Write/update the progress ledger for the current step.
+# Called at step boundary (start) and periodically via run_timed_hb heartbeat.
+_bm_progress_write() {
+    [[ -z "${_BM_PROGRESS_FILE:-}" ]] && return 0
+    local step="${1:-${__STAGE_LABEL:-unknown}}"
+    local started_at="${2:-${_BM_STARTED_AT}}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"step_name":"%s","started_at":"%s","last_progress_ts":"%s","gap_id":"%s","pid":%d}\n' \
+        "$step" "$started_at" "$ts" \
+        "${GAP_IDS[0]:-${GAP_ID:-unknown}}" "$_BM_PID" \
+        > "${_BM_PROGRESS_FILE}.tmp" 2>/dev/null \
+    && mv "${_BM_PROGRESS_FILE}.tmp" "$_BM_PROGRESS_FILE" 2>/dev/null || true
+}
+
+# Emit kind=bot_merge_step_stalled to ambient.jsonl and exit non-zero.
+# Called when gtimeout fires (exit 124) on a per-step invocation.
+# Parameters: <step_name> <elapsed_seconds> <last_progress_ts> <cmd_label>
+_bm_emit_step_stalled() {
+    local step="${1:-unknown}" elapsed_s="${2:-0}" last_progress_ts="${3:-}" cmd_label="${4:-}"
+    local ts gap_label ambient
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_step_stalled"
+    printf '{"ts":"%s","kind":"bot_merge_step_stalled","gap_id":"%s","step_name":"%s","elapsed_seconds":%d,"last_progress_ts":"%s","cmd_label":"%s","timeout_s":%d,"pid":%d,"note":"INFRA-2272: per-step gtimeout fired; see SHIP_ASSIST_PLAYBOOK.md §1 Class 4"}\n' \
+        "$ts" "$gap_label" "$step" "$elapsed_s" "$last_progress_ts" "$cmd_label" \
+        "$_BM_STEP_TIMEOUT_S" "$_BM_PID" \
+        >> "$ambient" 2>/dev/null || true
+    printf '\033[0;31m[bot-merge] STEP STALLED (INFRA-2272): step="%s" exceeded %ds timeout (elapsed %ds).\033[0m\n' \
+        "$step" "$_BM_STEP_TIMEOUT_S" "$elapsed_s" >&2
+    printf '\033[0;31m[bot-merge]   kind=bot_merge_step_stalled emitted to ambient.\033[0m\n' >&2
+    printf '\033[0;31m[bot-merge]   Override timeout: CHUMP_BOT_MERGE_STEP_TIMEOUT_S=<seconds>\033[0m\n' >&2
+    printf '\033[0;31m[bot-merge]   See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4\033[0m\n' >&2
+}
+
+# Run a command with per-step gtimeout + progress ledger update.
+# Usage: _bm_run_step <step_name> <cmd_label> <timeout_s> <cmd...>
+# On exit 124 (timeout): emits bot_merge_step_stalled + exits non-zero.
+# On any non-zero rc: propagates the exit code.
+_bm_run_step() {
+    local step_name="$1" cmd_label="$2" timeout_s="$3"; shift 3
+    local t0 elapsed rc last_ts
+    t0="$(date +%s)"
+    last_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _bm_progress_write "$step_name" "$last_ts"
+    rc=0
+    if [[ -n "${_BM_TIMEOUT_CMD:-}" && "${CHUMP_BOT_MERGE_STEP_TIMEOUT_DISABLE:-0}" != "1" ]]; then
+        "$_BM_TIMEOUT_CMD" "$timeout_s" "$@" || rc=$?
+    else
+        "$@" || rc=$?
+    fi
+    elapsed=$(( $(date +%s) - t0 ))
+    if [[ "$rc" -eq 124 ]]; then
+        _bm_emit_step_stalled "$step_name" "$elapsed" "$last_ts" "$cmd_label"
+        return 124
+    fi
+    return "$rc"
+}
+
 # INFRA-1035: append one JSONL entry to the steps file.
 # Usage: _bm_steps_append <transition> <step> [elapsed_s]
 _bm_steps_append() {
@@ -140,7 +243,7 @@ _bm_cleanup() {
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     # INFRA-1422: cancel any live stage-budget watchdog on exit.
     [[ -n "${__STAGE_BUDGET_PID:-}" ]] && kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
-    rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+    rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" "${_BM_PROGRESS_FILE:-}" 2>/dev/null || true
     # INFRA-1035: if the last transition was "start" (no matching "done"),
     # we crashed mid-step — record that so bot-merge-recover.sh can report it.
     if [[ -n "${_BM_STEPS_FILE:-}" && "${_BM_LAST_STEP_TRANSITION:-}" == "start" ]]; then
@@ -738,6 +841,8 @@ stage_start() {
     info "▶ $__STAGE_LABEL starting … (budget ${budget}s)"
     # INFRA-119: keep step file current so the health-file writer tracks progress
     [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
+    # INFRA-2272: update per-step progress ledger at each phase boundary.
+    _bm_progress_write "$__STAGE_LABEL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # INFRA-1035: record transition start in the steps log
     _bm_steps_append "start" "$__STAGE_LABEL" 0
     # INFRA-1422: launch per-stage budget watchdog. Fires after CHUMP_BOT_MERGE_STAGE_BUDGET_S
@@ -838,6 +943,9 @@ heartbeat_begin() {
             now=$(date +%s)
             elapsed=$((now - t0))
             info "… ${label} still running (${elapsed}s elapsed, heartbeat)"
+            # INFRA-2272: keep last_progress_ts current so stall monitors can
+            # distinguish "subprocess running" from "process wedged silently".
+            _bm_progress_write "$label" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
         done
     ) &
     __HEARTBEAT_PID=$!
@@ -1240,6 +1348,8 @@ REMOTE="${REMOTE:-origin}"
 
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
+# INFRA-2272: initialise per-step progress ledger (requires GAP_IDS + LOCK_DIR).
+_bm_progress_init "${LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 # ── INFRA-1034: always tee stdout+stderr to a per-PID log file ───────────────
 # Problem observed 2026-05-13: launching bot-merge in the background with
