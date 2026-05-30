@@ -635,11 +635,15 @@ for _ga in "${GIT_ARGS[@]}"; do
 done
 unset _next_is_inline_msg _ga _GIT_COMMON_DIR
 
+# INFRA-2205: assign _staged_paths unconditionally so INFRA-1833 / INFRA-1853
+# blocks below can reference it safely under set -u regardless of which
+# branch the INFRA-1673 preflight check takes.
+_staged_paths=$(git diff --cached --name-only 2>/dev/null)
+
 # INFRA-1673: warn if preflight was skipped without an audit trailer.
 # Only fires when the commit touches Rust or scripts (where local CI matters).
 # Bypass: CHUMP_PREFLIGHT_AUDIT=0.
 if [[ "${CHUMP_PREFLIGHT_AUDIT:-1}" == "1" && "${CHUMP_PREFLIGHT_SKIP:-0}" == "1" ]]; then
-    _staged_paths=$(git diff --cached --name-only 2>/dev/null)
     if echo "$_staged_paths" | grep -qE '^(src/|crates/|scripts/|chump-tool-macro/|build\.rs|Cargo\.(toml|lock))'; then
         _gcd="$(git rev-parse --git-common-dir 2>/dev/null)"
         _msg_file="$_gcd/COMMIT_EDITMSG"
