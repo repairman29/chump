@@ -330,6 +330,75 @@ if _inbox_file:
     except Exception:
         pass
 
+# INFRA-1797: surface opus-message inbox (INFRA-1796 CLI) — unread count + 3
+# latest previews so cross-Opus DMs aren't missed. Read-only here; explicit
+# mark-read remains the operator's responsibility (so a restart mid-read
+# doesn't accidentally consume an unprocessed message).
+# Bypass: CHUMP_OPUS_INBOX_HOOK=0 (operator-quiet sessions)
+if hook == "SessionStart" and os.environ.get("CHUMP_OPUS_INBOX_HOOK", "1") != "0":
+    _opus_repo = os.environ.get("REPO_ROOT", ".")
+    _opus_inbox_dir = os.environ.get(
+        "CHUMP_OPUS_INBOX_DIR",
+        os.path.join(_opus_repo, ".chump-locks", "opus-inbox"),
+    )
+    _opus_session = os.environ.get("CHUMP_SESSION_ID", "")
+    _opus_candidates = []
+    if _opus_session:
+        _safe = _opus_session.replace(":", "_").replace("/", "_")
+        _opus_candidates.append(os.path.join(_opus_inbox_dir, "session_" + _safe + ".jsonl"))
+    _opus_candidates.append(os.path.join(_opus_inbox_dir, "all-opus.jsonl"))
+    _opus_unread = []
+    for _path in _opus_candidates:
+        if not os.path.isfile(_path):
+            continue
+        try:
+            with open(_path) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        _m = json.loads(_line)
+                    except Exception:
+                        continue
+                    if not _m.get("read_at"):
+                        _opus_unread.append(_m)
+        except Exception:
+            pass
+    if _opus_unread:
+        # scanner-anchor: "kind":"opus_inbox_surfaced" (INFRA-1797)
+        # Emit so consumers know unread DMs were surfaced this session.
+        try:
+            _amb_path = os.environ.get("CHUMP_AMBIENT_LOG", os.path.join(_opus_repo, ".chump-locks", "ambient.jsonl"))
+            from datetime import datetime, timezone
+            _ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(_amb_path, "a") as _af:
+                _af.write('{"ts":"' + _ts_now + '","kind":"opus_inbox_surfaced","unread_count":' + str(len(_opus_unread)) + ',"session":"' + _opus_session + '"}\n')
+        except Exception:
+            pass
+        _opus_unread.sort(key=lambda m: m.get("ts", ""))
+        _opus_lines = [
+            "═══ Opus inbox (" + str(len(_opus_unread)) + " unread) ═══",
+            "  Read with: scripts/coord/opus-message.sh list --unread",
+            "  Mark read: scripts/coord/opus-message.sh mark-read <msg-id>",
+        ]
+        for _m in _opus_unread[-3:]:
+            _body = (_m.get("body", "") or "").splitlines()
+            _preview = (_body[0] if _body else "")[:100]
+            _opus_lines.append(
+                "  [{ts}] {mid}  from={src}  to={dst}  ref={ref}".format(
+                    ts=_m.get("ts", ""),
+                    mid=_m.get("id", "?"),
+                    src=_m.get("from", "?"),
+                    dst=_m.get("to", "?"),
+                    ref=_m.get("ref", "-"),
+                )
+            )
+            if _preview:
+                _opus_lines.append("    " + _preview)
+        lines_out.append("\n".join(_opus_lines))
+        lines_out.append("")
+
 # INFRA-721: SessionStart only — operator-facing fleet brief at the top.
 # Prefer `chump fleet brief` (INFRA-721 Rust subcommand); fall back to the
 # legacy fleet-brief.sh shell script if the binary isn't on PATH.
