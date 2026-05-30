@@ -533,3 +533,89 @@ bad                               # reason: false-positive — scanner matched `
 good                              # reason: false-positive — scanner matched `good_new_kind` literal in scripts/ci/test-event-registry-effect-metric-hook.sh:91 (test fixture YAML, not a real emit).
 skip                              # reason: false-positive — scanner matched bare `kind=skip` mention in queue-driver tests; not an ambient emit.
 test_event                        # reason: test fixture used by crates/chump-fleet-recorder/src/main.rs:869 unit test + scripts/ci/test-inbox-prune.sh:139. Not a production event kind.
+
+# ── INFRA-2290 strict-mode follow-up (2026-05-30): 76 register-without-emit orphans ─
+# INFRA-2290's ci.yml audit tightened CHUMP_REGISTRY_GATE_MODE=strict in the
+# audit job, which fails on registered-without-emit drift in addition to
+# emit-without-register. 76 pre-existing orphan registrations (kinds documented
+# in EVENT_REGISTRY.yaml whose emit calls were never wired or were removed)
+# were not swept before strict mode was enabled — folded into RESILIENT-041's
+# trunk-red rescue so the audit gate can pass while individual feature gaps
+# wire their emitters lazily. Each entry below cites INFRA-2290 strict-mode
+# sweep; replace with a feature-specific reason as emitters land.
+arch_fit_decision                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+arch_fit_query                            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+asks_clarification                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+autonomous_ship_rate_regression           # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+avoids_tool                               # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+bot_autonomous_check_failed               # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+bot_autonomous_check_passed               # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+bot_merge_aborted_no_worktree             # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+branch_protection_drift                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+cascade_report                            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+change_approved                           # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+change_rolled_back                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+ci_yml_merge_driver_abort                 # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+claim_aborted_disk_full                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+cognition_ab_comparison                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+cognition_ab_run_start                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+cost_quota_exceeded                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+cost_quota_warning                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+curator_auto_decompose                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+decomposition_hint                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+feature_silent_failure                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+flake_autorerun_initiated                 # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+flake_autorerun_persisted                 # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+flake_autorerun_recovered                 # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+flake_autorerun_skipped                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+fleet_paused_disk_critical                # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+ftue_init_smoke_passed                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gap_auto_flip_failed                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gap_auto_flipped                          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gap_check_false_positive                  # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gap_perf_sample                           # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gate_check_result                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gate_check_start                          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+gh_shim_worktree_install_blocked          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+guard_bypassed                            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+incident_commander_engaged                # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+intent                                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+intent_parse_ok                           # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+intent_parse_unknown                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+invariant_recovered                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+invariant_violation                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+lesson_not_applied                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+lessons_audit_run                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+lessons_pruned                            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+network_restored                          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+network_unavailable                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+opus_roadmap_published                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+orchestrate_intent                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+orchestrate_session_end                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+picker_used_priority                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pillar_balance_block                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pillar_balance_warn                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+planner_rank_ran                          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_bundle_blocked                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_dedup_blocked                          # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_dedup_bypass_rejected                  # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_dedup_bypassed                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_fmt_auto_fixed                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_fmt_shepherd_run                       # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+pr_scope_violation                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+preflight_baseline_diff                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+preflight_dupe_pr                         # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+preflight_dupe_worktree                   # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+premature_closure_auto_fixed              # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+review_handoff_escalated                  # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+review_handoff_timeout                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+roadmap_update_proposal_cost              # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+roadmap_update_proposal_failed            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+roadmap_update_proposal_opened            # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+roadmap_update_proposal_skipped           # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+rust_first_bypass_used                    # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+slo_recovered                             # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+speculative_race_loss                     # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+stale_post_merge_gap                      # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+test_gate_bypassed                        # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
+velocity_tracker_tick                     # reason: INFRA-2290 strict-mode sweep — pre-existing registered kind without active emitter; documented in EVENT_REGISTRY.yaml; emitter wiring deferred to per-feature gap.
