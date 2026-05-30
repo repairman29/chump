@@ -119,7 +119,8 @@ bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
 bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
 bypass_threshold_breach  # reason: INFRA-1837 — emitted by scripts/ops/audit-bypass-frequency.sh from inside a python3 heredoc dict (per breaching session); kind literal lives in python dict, not grep-scannable as kind=X
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
-capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
+capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/src/capability.rs publish_manifest(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
+capability_heartbeat  # reason: INFRA-1120 — crates/chump-coord/src/capability.rs heartbeat_loop(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`

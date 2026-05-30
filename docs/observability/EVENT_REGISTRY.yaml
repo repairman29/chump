@@ -6044,3 +6044,34 @@ events:
     expected_volume: "N per integration cycle (one per gap in cycle)"
     status: stable
     # payload: {branch: string, gap_id: string, cycle_id: string, dry_run: bool, ts: string}
+
+  # ── INFRA-1120: A2A Layer 2c — capability manifest + session discovery ───────
+  - kind: capability_published
+    effect_metric: effective
+    emitter: crates/chump-coord/src/capability.rs (INFRA-1120) publish_manifest()
+    trigger: >
+      Emitted when a worker session publishes or heartbeats its CapabilityManifest
+      to the chump_capabilities NATS KV bucket. Fires at worker startup and every
+      30 seconds thereafter (HEARTBEAT_INTERVAL_SECS). Also appends a snapshot to
+      .chump-locks/capabilities/<session-id>.jsonl for forensic audit when NATS is
+      unavailable. scanner-anchor present in capability.rs.
+    consumers: [picker, ops-audit, fleet-doctor, kpi-report]
+    fields_required: [ts, kind, session_id, schema_version, harness, model_tier, skills]
+    expected_volume: "1 per worker per 30s (one per heartbeat interval)"
+    status: stable
+    # payload: {session_id: string, schema_version: "chump-capability-v1",
+    #           harness: string, model_tier: string, skills: [string],
+    #           machine: string|null, ttl_seconds: int, heartbeat_at: RFC3339}
+  - kind: capability_heartbeat
+    effect_metric: effective
+    emitter: crates/chump-coord/src/capability.rs (INFRA-1120) heartbeat_loop()
+    trigger: >
+      Emitted by the heartbeat_loop() task every HEARTBEAT_INTERVAL_SECS (30s) to
+      refresh a session's CapabilityManifest TTL in the chump_capabilities KV
+      bucket. Stale manifests (heartbeat_at > ttl_seconds old) are excluded from
+      picker routing decisions. scanner-anchor present in capability.rs.
+    consumers: [picker, fleet-doctor, ops-audit]
+    fields_required: [ts, kind, session_id, heartbeat_at]
+    expected_volume: "1 per worker per 30s"
+    status: stable
+    # payload: {session_id: string, heartbeat_at: RFC3339, ttl_seconds: int}
