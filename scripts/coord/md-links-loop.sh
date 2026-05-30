@@ -249,7 +249,11 @@ SUBCMD="${1:-help}"
 shift || true
 
 case "$SUBCMD" in
-    tick)        cmd_tick "$@" ;;
+    tick)
+        # INFRA-2262: read fleet wire before doing tick work.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble md-links 2>/dev/null || true
+        cmd_tick "$@"
+        ;;
     scan)        cmd_scan "$@" ;;
     heartbeat)   cmd_heartbeat "$@" ;;
     help|--help) cmd_help "$@" ;;

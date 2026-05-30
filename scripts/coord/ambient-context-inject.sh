@@ -28,6 +28,68 @@ HOOK_EVENT="${1:-SessionStart}"
 
 # ── Resolve repo + lock dir (same logic as ambient-emit.sh) ────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+_GIT_COMMON_PROBE="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON_PROBE" == ".git" ]]; then
+    _MAIN_REPO_PROBE="$REPO_ROOT"
+else
+    _MAIN_REPO_PROBE="$(cd "$_GIT_COMMON_PROBE/.." && pwd)"
+fi
+_LOCK_DIR_PROBE="$_MAIN_REPO_PROBE/.chump-locks"
+_AMBIENT_PROBE="${CHUMP_AMBIENT_LOG:-$_LOCK_DIR_PROBE/ambient.jsonl}"
+
+# ── INFRA-2262: --tick-preamble mode for bash curator-loops ───────────────────
+# Bash curator-loops (decompose / handoff / ci-audit / md-links / shepherd) are
+# deaf to the fleet wire without an explicit reader. This mode reads ambient
+# events since the role's last-seen cursor, filters by role lane + addressed,
+# prints a compact [FW] digest to stdout, then advances the cursor.
+#
+# Usage:  scripts/coord/ambient-context-inject.sh --tick-preamble <role>
+# Output: 0..5 lines, one per relevant event. Empty if nothing relevant.
+# Exit:   always 0 (failures degrade silently so the calling loop doesn't crash).
+if [[ "${1:-}" == "--tick-preamble" ]]; then
+    ROLE="${2:-}"
+    if [[ -z "$ROLE" ]]; then
+        echo "Usage: $0 --tick-preamble <role>" >&2
+        exit 0
+    fi
+    CURSOR_FILE="$_LOCK_DIR_PROBE/${ROLE}-ambient-cursor"
+    TOTAL=$(wc -l < "$_AMBIENT_PROBE" 2>/dev/null | tr -d ' ' || echo 0)
+    LAST=$(cat "$CURSOR_FILE" 2>/dev/null || echo $((TOTAL > 50 ? TOTAL - 50 : 0)))
+    if [[ "$TOTAL" -gt "$LAST" ]]; then
+        START=$((LAST + 1))
+        sed -n "${START},\$p" "$_AMBIENT_PROBE" 2>/dev/null | \
+            ROLE="$ROLE" python3 -c "
+import json, os, sys
+role = os.environ.get('ROLE', '')
+out = []
+for line in sys.stdin:
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    ev = d.get('event') or ''
+    if ev not in ('FEEDBACK', 'WARN', 'STUCK', 'DONE', 'INTENT', 'ALERT', 'HANDOFF'):
+        continue
+    to = d.get('to', '') or ''
+    # Fanout (no 'to' or 'to: fleet-wide') OR addressed to this role-curator
+    if to and to not in ('fleet-wide', 'operator-76c22455'):
+        if f'curator-opus-{role}' not in to:
+            continue
+    sender = (d.get('session') or d.get('from') or '?')[:30]
+    body = (d.get('reason') or d.get('gap') or d.get('corr_id') or '')[:120].replace(chr(10), ' ')
+    ts = (d.get('ts') or '?')[11:19]
+    out.append(f'[FW {ts}] {ev:8s} {sender:30s} {body}')
+for e in out[-5:]:
+    print(e)
+" 2>/dev/null || true
+    fi
+    # Advance cursor regardless (best-effort)
+    mkdir -p "$_LOCK_DIR_PROBE" 2>/dev/null || true
+    printf '%s\n' "$TOTAL" > "$CURSOR_FILE" 2>/dev/null || true
+    exit 0
+fi
+
+
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then
     MAIN_REPO="$REPO_ROOT"

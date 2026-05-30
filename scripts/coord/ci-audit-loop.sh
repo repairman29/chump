@@ -277,7 +277,11 @@ cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 
 case "$cmd" in
-    tick)       _cmd_tick "$@" ;;
+    tick)
+        # INFRA-2262: read fleet wire before doing tick work.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble ci-audit 2>/dev/null || true
+        _cmd_tick "$@"
+        ;;
     audit)      _cmd_audit "$@" ;;
     heartbeat)  _cmd_heartbeat "$@" ;;
     help|-h|--help) _cmd_help; exit 0 ;;
