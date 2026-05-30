@@ -1282,6 +1282,14 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_tally::run(&sub_args));
     }
 
+    // `chump sibling-status [--json] [--watch]` (META-154) — per-active-lease
+    // progress matrix. Beats "lease exists" by classifying each holder as
+    // progressing / in-flight / heartbeat-only / stalled / silent / expired.
+    if args.get(1).map(String::as_str) == Some("sibling-status") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::sibling_status::run(&sub_args));
+    }
+
     // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.
     // Opens a 3-pane tmux session (or text snapshot if --no-tmux) for the
     // active lease of the given gap: worktree shell, live ambient tail, and
