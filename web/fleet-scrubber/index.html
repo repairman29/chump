@@ -26,6 +26,7 @@
       --lane-h:    30px;
       --panel-w:   400px;
       --label-w:   160px;
+      --accent:    #38bdf8;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,6 +97,22 @@
       white-space: nowrap;
     }
     #replay-btn:hover { color: var(--text); }
+
+    #stale-toggle {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #stale-toggle.stale-on {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
 
     #speed-select {
       padding: 3px 6px;
@@ -202,6 +219,10 @@
     }
     .lane-label.live-session {
       color: #10b981;
+      font-weight: 700;
+    }
+    .lane-label.self-session {
+      border-left: 3px solid var(--accent);
       font-weight: 700;
     }
 
@@ -348,6 +369,8 @@
   <div class="hbar-sep"></div>
   <button class="zoom-btn" id="zoom-in">+</button>
   <button class="zoom-btn" id="zoom-out">&#8722;</button>
+  <div class="hbar-sep"></div>
+  <button id="stale-toggle">SHOW STALE</button>
   <div id="window-label">Loading…</div>
   <div id="legend">
     <div class="legend-item"><div class="legend-swatch" style="background:var(--color-claim)"></div>claim</div>
@@ -401,8 +424,17 @@ const API = {
     USE_FIXTURES
       ? null
       : `${BASE_URL}/api/sessions/active`,
+  selfSession: () =>
+    USE_FIXTURES
+      ? null
+      : `${BASE_URL}/api/sessions/self`,
   wsLive: () => `${BASE_URL.replace(/^http/, 'ws')}/api/live`,
 };
+
+// Self-session detection constants
+const SELF_SESSION_LS_KEY = 'chump-self-session-id';
+const STALE_SESSION_LS_KEY = 'chump-show-stale';
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 min
 
 const ACTIVITY_COLOR = {
   claim:   'var(--color-claim)',
@@ -431,6 +463,12 @@ let isLive = false;
 let wsConn = null;
 let replayCancelFn = null;
 
+// Self-session highlight (null = unknown/not set)
+let selfSessionId = null;
+
+// Show-stale toggle: default off (hidden stale), persisted in localStorage
+let showStale = localStorage.getItem(STALE_SESSION_LS_KEY) === 'true';
+
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const lanesInner   = document.getElementById('lanes-inner');
 const timelineSvg  = d3.select('#timeline');
@@ -438,6 +476,7 @@ const windowLabel  = document.getElementById('window-label');
 const liveToggle   = document.getElementById('live-toggle');
 const replayBtn    = document.getElementById('replay-btn');
 const speedSelect  = document.getElementById('speed-select');
+const staleToggle  = document.getElementById('stale-toggle');
 const sidePanel    = document.getElementById('side-panel');
 const panelMeta    = document.getElementById('panel-meta');
 const panelEvents  = document.getElementById('panel-events');
@@ -457,6 +496,50 @@ const fmtDur = (s) => {
   if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
   return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
 };
+
+// ── Self-session resolution ───────────────────────────────────────────────────
+// Priority: 1) GET /api/sessions/self  2) localStorage key  3) no highlight
+async function resolveSelfSession() {
+  // Try server endpoint first (non-fixture mode only)
+  if (!USE_FIXTURES && API.selfSession()) {
+    try {
+      const res = await fetch(API.selfSession());
+      if (res.ok) {
+        const data = await res.json();
+        const sid = data.session_id || data;
+        if (sid && typeof sid === 'string') {
+          selfSessionId = sid;
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+  // Fall back to localStorage key (operator-settable)
+  const lsVal = localStorage.getItem(SELF_SESSION_LS_KEY);
+  if (lsVal) {
+    selfSessionId = lsVal;
+  }
+  // If neither resolves: selfSessionId stays null → no highlight (graceful degrade)
+}
+
+// ── Stale-toggle init ─────────────────────────────────────────────────────────
+function updateStaleToggleUI() {
+  if (showStale) {
+    staleToggle.classList.add('stale-on');
+    staleToggle.textContent = 'HIDE STALE';
+  } else {
+    staleToggle.classList.remove('stale-on');
+    staleToggle.textContent = 'SHOW STALE';
+  }
+}
+
+updateStaleToggleUI();
+staleToggle.addEventListener('click', () => {
+  showStale = !showStale;
+  localStorage.setItem(STALE_SESSION_LS_KEY, String(showStale));
+  updateStaleToggleUI();
+  render();
+});
 
 // ── Fetch & init ─────────────────────────────────────────────────────────────
 async function fetchData() {
@@ -479,6 +562,8 @@ async function fetchData() {
       activeSessions = new Set(sess.map(s => s.session_id || s));
     } catch (_) {}
   }
+
+  await resolveSelfSession();
 
   // Determine total time range from data
   const allStarts = allSegments.map(s => new Date(s.start).getTime());
@@ -512,15 +597,36 @@ function segmentsInView() {
 
 function sessionsInView() {
   const segs = segmentsInView();
-  const order = [];
-  const seen = new Set();
-  for (const s of segs) {
-    if (!seen.has(s.session_id)) {
-      seen.add(s.session_id);
-      order.push(s.session_id);
-    }
+  const now = Date.now();
+
+  // Compute lastTsMs per session across ALL segments (not just in-view) for recency sort
+  const lastTsAll = new Map();
+  for (const s of allSegments) {
+    const endMs = s.end_ts_ms != null ? s.end_ts_ms : new Date(s.end).getTime();
+    const cur = lastTsAll.get(s.session_id) || 0;
+    if (endMs > cur) lastTsAll.set(s.session_id, endMs);
   }
-  return order;
+
+  // Collect unique session_ids that have segments in the current view window
+  const inViewSids = new Set(segs.map(s => s.session_id));
+
+  // Apply stale filter: if showStale is false, hide sessions whose lastTs is
+  // older than STALE_THRESHOLD_MS from now
+  const filtered = [...inViewSids].filter(sid => {
+    if (showStale) return true;
+    const last = lastTsAll.get(sid) || 0;
+    return (now - last) <= STALE_THRESHOLD_MS;
+  });
+
+  // Sort by lastTsMs DESC (most recently active first)
+  // Sessions with no recorded lastTs sort to the bottom
+  filtered.sort((a, b) => {
+    const ta = lastTsAll.get(a) || 0;
+    const tb = lastTsAll.get(b) || 0;
+    return tb - ta;
+  });
+
+  return filtered;
 }
 
 function renderLanes() {
@@ -540,8 +646,12 @@ function renderLanes() {
     row.className = 'lane-row';
 
     const label = document.createElement('div');
-    label.className = 'lane-label' + (activeSessions.has(sid) ? ' live-session' : '');
-    label.title = sid;
+    const isSelf = selfSessionId && sid === selfSessionId;
+    const isActive = activeSessions.has(sid);
+    label.className = 'lane-label'
+      + (isActive ? ' live-session' : '')
+      + (isSelf   ? ' self-session' : '');
+    label.title = sid + (isSelf ? ' (you)' : '');
     label.textContent = sid.length > 20 ? sid.slice(0, 20) + '…' : sid;
     row.appendChild(label);
 
