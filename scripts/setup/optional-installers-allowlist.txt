@@ -25,6 +25,7 @@ install-decomposition-tracker-launchd.sh
 install-disk-health-monitor-launchd.sh
 install-disk-pressure-reaper-launchd.sh
 install-flake-catalog-launchd.sh
+install-flake-detector.sh
 install-fleet-auto-restart-launchd.sh
 install-fleet-health-launchd.sh
 install-gap-curate-launchd.sh
