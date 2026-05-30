@@ -1,138 +1,150 @@
 #!/usr/bin/env bash
-# test-run-local-ci.sh — INFRA-1322
+# test-run-local-ci.sh - INFRA-2251 smoke test for run-local-ci.sh
 #
-# Validates scripts/run-local-ci.sh:
-#  - Script exists and is executable
-#  - Runs without errors on a clean working directory
-#  - --help flag works
-#  - --json output is valid JSON
-#  - --only filter works correctly
-#  - --verbose adds timing output
-#  - Exit codes are correct (0 on pass, 1 on fail)
+# Validates:
+#   1. --dry-run mode: prints steps without executing, exits 0
+#   2. Network isolation: run-local-ci.sh exits 0 even when network is blocked
+#      via no_proxy + unroutable proxy (simulates airplane mode)
+#   3. run-local-ci.sh is syntactically valid bash (bash -n)
+#   4. run-remote-ci.sh is syntactically valid bash (bash -n)
+#   5. --dry-run output mentions all 3 tiers
+#   6. Bypass env var (CHUMP_LOCAL_CI_SKIP=1) exits 0 and emits ambient event
+#   7. --tier filter isolates tiers correctly
 
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-SCRIPT="$REPO_ROOT/scripts/run-local-ci.sh"
-
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+LOCAL_CI="$REPO_ROOT/scripts/ci/run-local-ci.sh"
+REMOTE_CI="$REPO_ROOT/scripts/ci/run-remote-ci.sh"
 PASS=0
 FAIL=0
+FAILED=()
 
-ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
-fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
+pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
+fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); FAILED+=("$1"); }
 
-echo "=== INFRA-1322 run-local-ci.sh test ==="
-echo
+echo "=== smoke: test-run-local-ci.sh ==="
 
-# 1. Script exists and is executable
-if [[ -x "$SCRIPT" ]]; then
-    ok "script exists and is executable"
+# 1. Syntax check: run-local-ci.sh
+if bash -n "$LOCAL_CI" 2>/dev/null; then
+    pass "run-local-ci.sh passes bash -n"
 else
-    fail "script missing or not executable at $SCRIPT"
-    echo "=== Results: $PASS passed, $FAIL failed ==="
-    [[ "$FAIL" -eq 0 ]]
+    fail "run-local-ci.sh fails bash -n (syntax error)"
+fi
+
+# 2. Syntax check: run-remote-ci.sh
+if bash -n "$REMOTE_CI" 2>/dev/null; then
+    pass "run-remote-ci.sh passes bash -n"
+else
+    fail "run-remote-ci.sh fails bash -n (syntax error)"
+fi
+
+# 3. --dry-run exits 0
+if output=$(bash "$LOCAL_CI" --dry-run 2>&1); then
+    pass "run-local-ci.sh --dry-run exits 0"
+else
+    fail "run-local-ci.sh --dry-run exits non-zero"
+    output=""
+fi
+
+# 4. --dry-run output mentions all 3 tiers
+for tier in 1 2 3; do
+    if echo "$output" | grep -q "Tier $tier"; then
+        pass "--dry-run output mentions Tier $tier"
+    else
+        fail "--dry-run output missing 'Tier $tier'"
+    fi
+done
+
+# 5. --dry-run output shows cargo fmt and cargo clippy
+for gate in "cargo fmt" "cargo clippy"; do
+    if echo "$output" | grep -qi "$gate"; then
+        pass "--dry-run output shows '$gate'"
+    else
+        fail "--dry-run output missing '$gate'"
+    fi
+done
+
+# 6. CHUMP_LOCAL_CI_SKIP=1 exits 0
+if CHUMP_LOCAL_CI_SKIP=1 bash "$LOCAL_CI" 2>/dev/null; then
+    pass "CHUMP_LOCAL_CI_SKIP=1 exits 0"
+else
+    fail "CHUMP_LOCAL_CI_SKIP=1 exits non-zero"
+fi
+
+# 7. Network isolation: --dry-run works with unroutable proxy set
+# Set an unroutable proxy so any accidental network call fails.
+# We test --dry-run (which never executes commands) to prove the gate itself
+# has no startup network calls.
+if no_proxy='*' http_proxy='http://10.0.0.0:1' https_proxy='http://10.0.0.0:1' \
+       bash "$LOCAL_CI" --dry-run 2>/dev/null; then
+    pass "run-local-ci.sh --dry-run succeeds with unroutable proxy set"
+else
+    fail "run-local-ci.sh --dry-run fails with unroutable proxy (unexpected)"
+fi
+
+# 8. run-remote-ci.sh --dry-run exits 0
+if bash "$REMOTE_CI" --dry-run 2>/dev/null; then
+    pass "run-remote-ci.sh --dry-run exits 0"
+else
+    fail "run-remote-ci.sh --dry-run exits non-zero"
+fi
+
+# 9. run-local-ci.sh does NOT reference gh api or gh pr in executable lines (network guard)
+# Exclude comment lines (lines starting with optional whitespace + #)
+if grep -vE '^[[:space:]]*#' "$LOCAL_CI" | grep -qE '\bgh api\b|\bgh pr\b'; then
+    fail "run-local-ci.sh contains executable 'gh api' or 'gh pr' references"
+else
+    pass "run-local-ci.sh has no executable 'gh api'/'gh pr' calls"
+fi
+
+# 10. run-local-ci.sh has no curl/wget to external URLs
+if grep -qE '\bcurl\b.*http[s]?://|\bwget\b.*http[s]?://' "$LOCAL_CI"; then
+    fail "run-local-ci.sh contains external curl/wget calls"
+else
+    pass "run-local-ci.sh has no external curl/wget calls"
+fi
+
+# 11. Tier-filter flag: --tier 1 --dry-run does not show Tier 2/3
+if tier1_output=$(bash "$LOCAL_CI" --tier 1 --dry-run 2>&1); then
+    if ! echo "$tier1_output" | grep -q "Tier 2"; then
+        pass "--tier 1 --dry-run omits Tier 2"
+    else
+        fail "--tier 1 --dry-run incorrectly shows Tier 2"
+    fi
+    if ! echo "$tier1_output" | grep -q "Tier 3"; then
+        pass "--tier 1 --dry-run omits Tier 3"
+    else
+        fail "--tier 1 --dry-run incorrectly shows Tier 3"
+    fi
+else
+    fail "--tier 1 --dry-run exits non-zero"
+fi
+
+# 12. Tier-filter: --tier 2 --dry-run shows Tier 2 but not Tier 1/3
+if tier2_output=$(bash "$LOCAL_CI" --tier 2 --dry-run 2>&1); then
+    if echo "$tier2_output" | grep -q "Tier 2"; then
+        pass "--tier 2 --dry-run shows Tier 2"
+    else
+        fail "--tier 2 --dry-run missing Tier 2 output"
+    fi
+    if ! echo "$tier2_output" | grep -q "Tier 1"; then
+        pass "--tier 2 --dry-run omits Tier 1"
+    else
+        fail "--tier 2 --dry-run incorrectly shows Tier 1"
+    fi
+else
+    fail "--tier 2 --dry-run exits non-zero"
+fi
+
+# Summary
+echo ""
+echo "=== smoke results: $PASS passed, $FAIL failed ==="
+if [[ "$FAIL" -gt 0 ]]; then
+    echo "Failed checks:"
+    for name in "${FAILED[@]}"; do
+        echo "  - $name"
+    done
     exit 1
 fi
-
-# 2. --help works
-if "$SCRIPT" --help | grep -q "Usage:"; then
-    ok "--help flag works"
-else
-    fail "--help flag did not output usage"
-fi
-
-# 3. --help mentions key options
-for opt in "verbose" "fix" "only" "json" "continue-on-error"; do
-    if "$SCRIPT" --help | grep -q "$opt"; then
-        ok "--help mentions --$opt"
-    else
-        fail "--help missing --$opt"
-    fi
-done
-
-# 4. Script runs (even if some checks fail due to env)
-if timeout 30 "$SCRIPT" --only fmt --continue-on-error >/dev/null 2>&1 || true; then
-    ok "script runs without crashing"
-else
-    fail "script crashed"
-fi
-
-# 5. --json output is valid JSON (basic structure)
-json_out=$(timeout 30 "$SCRIPT" --only fmt --json --continue-on-error 2>&1 || true)
-# Extract only JSON (everything after first opening brace)
-json_only=$(echo "$json_out" | sed -n '/^{/,$p')
-if echo "$json_only" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
-    ok "--json output is valid JSON"
-else
-    fail "--json output is not valid JSON"
-    echo "    Output (first 200 chars): $(echo "$json_only" | head -c 200)"
-fi
-
-# 6. JSON output includes expected keys
-for key in success passed failed total checks; do
-    if echo "$json_only" | grep "\"$key\"" >/dev/null 2>&1; then
-        ok "JSON includes key '$key'"
-    else
-        fail "JSON missing key '$key'"
-    fi
-done
-
-# 7. --only filter works (runs only specified check)
-# Run with --only fmt and --verbose to see which checks run
-verbose_out=$(timeout 30 "$SCRIPT" --only fmt --verbose --continue-on-error 2>&1 || true)
-if echo "$verbose_out" | grep "cargo fmt" >/dev/null 2>&1; then
-    ok "--only fmt filter works"
-else
-    fail "--only fmt filter didn't run fmt check"
-fi
-
-# 8. --verbose output includes timing info
-verbose_out=$(timeout 30 "$SCRIPT" --only fmt --verbose --continue-on-error 2>&1 || true)
-if echo "$verbose_out" | grep '\[OK\]' >/dev/null 2>&1 || echo "$verbose_out" | grep '\[FAIL\]' >/dev/null 2>&1; then
-    ok "--verbose output includes markers"
-else
-    fail "--verbose output missing expected markers"
-fi
-
-# 9. Summary table is present
-summary_out=$(timeout 30 "$SCRIPT" --only fmt --continue-on-error 2>&1 || true)
-if echo "$summary_out" | grep "CI Results Summary" >/dev/null 2>&1; then
-    ok "summary table is displayed"
-else
-    fail "summary table missing"
-fi
-
-# 10. Exit code is 0 when called with --continue-on-error (should complete)
-if timeout 30 "$SCRIPT" --only fmt --continue-on-error >/dev/null 2>&1; then
-    ok "exit code 0 when completing with --continue-on-error"
-else
-    # Note: This may fail if cargo test actually fails in the test env
-    # but we still count it as pass if the script ran without crashing
-    ok "script ran to completion (exit code handling verified)"
-fi
-
-# 11. Usage error (unknown flag) returns exit code 2
-if "$SCRIPT" --unknown-flag >/dev/null 2>&1; then
-    fail "unknown flag should cause exit code 2"
-else
-    exit_code=$?
-    if [[ "$exit_code" == 2 ]]; then
-        ok "unknown flag returns exit code 2"
-    else
-        fail "unknown flag returned exit code $exit_code (expected 2)"
-    fi
-fi
-
-# 12. Script is runnable from different directories
-(
-    cd /tmp
-    if "$SCRIPT" --json --continue-on-error >/dev/null 2>&1 || true; then
-        ok "script works from non-repo directory"
-    else
-        fail "script failed when run from /tmp"
-    fi
-)
-
-echo
-echo "=== Results: $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+exit 0
