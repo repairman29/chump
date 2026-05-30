@@ -45,6 +45,8 @@ JSON_OUT=0
 # no-op'ing every 5 minutes. `tick` runs the triage cycle as a no-flag
 # invocation; `heartbeat` emits an ambient event and exits.
 if [[ "${1:-}" == "tick" ]]; then
+    # INFRA-2262: read fleet wire before doing triage work.
+    "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble shepherd 2>/dev/null || true
     shift
 elif [[ "${1:-}" == "heartbeat" ]]; then
     python3 -c "

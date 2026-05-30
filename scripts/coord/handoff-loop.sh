@@ -301,7 +301,11 @@ case "$cmd" in
     review-pr)      _cmd_review_pr "$@" ;;
     dispatch-sub)   _cmd_dispatch_sub "$@" ;;
     heartbeat)      _cmd_heartbeat "$@" ;;
-    tick)           _cmd_scan_handoffs "$@" ;;  # INFRA-2238: fleet-autopilot.sh canonical entry point
+    tick)
+        # INFRA-2262: read fleet wire before doing tick work.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble handoff 2>/dev/null || true
+        _cmd_scan_handoffs "$@"  # INFRA-2238: fleet-autopilot.sh canonical entry point
+        ;;
     help|-h|--help) _cmd_help; exit 0 ;;
     *)
         echo "[handoff] unknown subcommand: $cmd" >&2

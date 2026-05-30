@@ -418,7 +418,11 @@ case "$cmd" in
     slice)          cmd_slice "$@" ;;
     audit-pending)  cmd_audit_pending "$@" ;;
     heartbeat)      cmd_heartbeat "$@" ;;
-    tick)           cmd_tick "$@" ;;
+    tick)
+        # INFRA-2262: read fleet wire before doing tick work.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble decompose 2>/dev/null || true
+        cmd_tick "$@"
+        ;;
     help|-h|--help) grep '^#' "$0" | sed -n '3,55p' | sed 's/^# \{0,1\}//' ;;
     *)
         echo "decompose-loop: unknown subcommand $cmd (try: decompose-loop.sh help)" >&2
