@@ -4653,6 +4653,18 @@ events:
       shipped without local validation of the Net-new-docs trailer.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
+  - kind: preflight_baseline_diff
+    effect_metric: self
+    emitter: src/preflight.rs (META-153 --vs diff-scoped failure attribution)
+    trigger: >
+      Operator ran `chump preflight --vs <ref>` and the baseline diff
+      completed. Emitted once per --vs run (cache hit or miss) with counts
+      of new vs pre-existing failures. new_fail_count > 0 means the current
+      diff introduced regressions that should be fixed before push.
+      preexisting_fail_count > 0 means the ref already had failures — those
+      are listed as warnings but do NOT block the operator.
+    consumers: [fleet-brief, ops-audit, ci-audit]
+    fields_required: [ts, kind, new_fail_count, preexisting_fail_count, baseline_sha]
   - kind: liaison_elected
     effect_metric: github_api_calls_24h
     emitter: scripts/ops/github-liaison.sh (INFRA-1317)
