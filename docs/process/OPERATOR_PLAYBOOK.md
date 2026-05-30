@@ -172,6 +172,113 @@ The default ship path is **batched integration cycles** — not per-gap PRs. Ful
 - **Mode C (Hot-fix):** `chump gap hot-fix INFRA-NNNN` — elevated priority, bypasses queue
 - **Mode D (External-repo):** META-123 lane — ships to customer repo, not chump main
 
+---
+
+## 7.5 Local Infrastructure — webhook + smee + cache + docker
+
+> **READ ME OR YOU WILL BE LAZY.** This section codifies the local primitives that prevent ~20-min/session waste on `gh api` rate limits. The webhook receiver + cache + smee tunnel exist precisely so curators and operators NEVER poll GitHub for PR/check state. Lazy = polling. Disciplined = cache.
+
+### The stack — what it is
+
+```
+GitHub  ──webhook──>  smee.io tunnel  ──HTTP──>  localhost:9097/webhook
+                                                       │
+                                                       ▼
+                                      scripts/ops/github-webhook-receiver.py
+                                                       │
+                                       writes ──────────┴──────────> .chump/github_cache.db (SQLite)
+                                                                          │
+                                                          read via ──────┴────> scripts/coord/lib/github_cache.sh helpers
+                                                                          │
+                                                                          └────> direct sqlite3 queries
+```
+
+- **smee.io tunnel** — public webhook proxy. Routes GitHub events to local HTTP.
+- **Webhook receiver** (`scripts/ops/github-webhook-receiver.py`) — Python HTTP server. Validates HMAC, parses GitHub event JSON, writes to SQLite.
+- **`.chump/github_cache.db`** — SQLite tables `pr_state` + `check_runs`. Fed by webhooks; never polled.
+- **`scripts/coord/lib/github_cache.sh`** — bash helpers (`cache_lookup_pr`, `cache_query_open_prs`, `cache_lookup_checks`, `cache_lookup_pr_files`) with REST-fallback on cache miss.
+
+### One-shot setup (first time on a new machine)
+
+```bash
+# 1. Add required secrets to ~/.chump/secrets.env (create if missing)
+#    CHUMP_SMEE_URL=https://smee.io/<your-channel-id>
+#    CHUMP_GITHUB_WEBHOOK_SECRET=<random HMAC key>
+
+# 2. Install the smee tunnel as a KeepAlive LaunchAgent (macOS)
+bash scripts/setup/install-smee-tunnel-launchd.sh
+
+# 3. Start the webhook receiver (similar launchd plist — see install-webhook-receiver if it exists, or run manually for now)
+CHUMP_WEBHOOK_PORT=9097 \
+CHUMP_GITHUB_WEBHOOK_SECRET=$(grep CHUMP_GITHUB_WEBHOOK_SECRET ~/.chump/secrets.env | cut -d= -f2-) \
+  nohup python3 scripts/ops/github-webhook-receiver.py >/tmp/chump-webhook.log 2>&1 &
+
+# 4. Configure the GitHub repo to deliver webhooks to your smee URL
+#    GitHub → repo Settings → Webhooks → Add webhook
+#    URL: $CHUMP_SMEE_URL  Content-Type: application/json  Secret: $CHUMP_GITHUB_WEBHOOK_SECRET
+#    Events: PRs, check runs, check suites, workflow runs, pushes
+```
+
+### Healthcheck — run before any "polling gh"
+
+```bash
+# 1. Tunnel + receiver alive?
+pgrep -fa 'smee-client'       # expect: smee URL pointing at /webhook
+pgrep -fa 'github-webhook'    # expect: python3 process
+
+# 2. Cache is fresh?
+sqlite3 .chump/github_cache.db \
+  "SELECT MAX(fetched_at_local), COUNT(*) FROM pr_state WHERE merged_at IS NULL;"
+# expect: latest within last 5 min on an active repo
+
+# 3. My PRs visible?
+sqlite3 -column .chump/github_cache.db \
+  "SELECT number, mergeable_state, merge_state_status, auto_merge_enabled AS arm, merged_at IS NOT NULL AS merged FROM pr_state WHERE number IN (<your PRs>);"
+```
+
+### Discipline — the rule
+
+**DEFAULT to `cache_lookup_pr` / `sqlite3 .chump/github_cache.db`. `gh pr view` / `gh api` ONLY on cache miss.** Every `gh api` call when the cache has the answer is operator-laziness — it burns rate limit, blinds the rest of the fleet (graphql_exhausted cascades), and wastes 5-30 sec per poll vs <100 ms per cache read.
+
+Concrete substitutions:
+
+| ❌ Lazy (polling)                          | ✅ Disciplined (cache)                                                                       |
+|---|---|
+| `gh pr view 2855 --json mergeStateStatus` | `sqlite3 .chump/github_cache.db "SELECT merge_state_status FROM pr_state WHERE number=2855;"` |
+| `gh pr list --state open`                  | `sqlite3 .chump/github_cache.db "SELECT number, title FROM pr_state WHERE merged_at IS NULL;"` |
+| `gh api repos/X/commits/SHA/check-runs`    | `sqlite3 .chump/github_cache.db "SELECT name, conclusion FROM check_runs WHERE head_sha='SHA';"` |
+| `gh pr view N --json statusCheckRollup`    | `sqlite3 ... join pr_state + check_runs by head_sha`                                          |
+
+For shell scripts: `source scripts/coord/lib/github_cache.sh` then `cache_lookup_pr "<N>"` — handles cache miss → REST fallback transparently.
+
+### Recovery — when the cache goes stale
+
+If `MAX(fetched_at_local)` is > 1h old AND the repo is active:
+
+1. **Check smee tunnel.** `pgrep -fa smee-client` — if gone, `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.chump.smee-tunnel.plist`.
+2. **Check the receiver process.** `pgrep -fa github-webhook-receiver` — restart manually if dead.
+3. **Check secrets.** `cat ~/.chump/secrets.env | grep -E 'CHUMP_SMEE_URL|CHUMP_GITHUB_WEBHOOK_SECRET'` — both must be set.
+4. **Force a one-shot refresh.** Run `cache_refresh_open_prs` (from `scripts/coord/lib/github_cache.sh`) — bulk-pulls open PRs in one REST call.
+5. **Tail the receiver log.** `tail -50 /tmp/chump-webhook.log` — look for HMAC validation errors (secret mismatch) or 4xx responses (GitHub rejected our webhook config).
+
+### Docker — when to use it
+
+`docker/docker-compose.yml` ships a 3-service stack: `ollama` (local LLM), `ollama-pull` (model warm-up), `chump-web` (PWA via Cargo build of the chump binary). Used for:
+
+- **Marcus evaluator path** — one-command bootstrap so a new evaluator can `cd docker && docker compose up` and have a working PWA on `localhost:3000` with local inference, no paid API key. This is the canonical "five-minute first impression" surface.
+- **Reproducible CI smoke** — verify changes against the locked Ollama + chump combination without polluting host state.
+- **NOT for daily dev** — host `cargo run` + host PWA is faster. Docker is for first-impressions + CI parity, not steady-state work.
+
+Healthcheck:
+
+```bash
+docker compose -f docker/docker-compose.yml ps             # all services running?
+curl -sf http://localhost:11434/api/tags  | jq '.models'   # ollama responsive?
+curl -sf http://localhost:3000/healthz                     # chump-web up?
+```
+
+---
+
 ## 8. Wizard Retirement Criteria
 
 The wizard can drop from /loop 2m to weekly cadence when ALL FIVE hold:
@@ -285,6 +392,19 @@ bash scripts/coord/broadcast.sh --to orchestrator-opus-$(date +%Y-%m-%d) DONE \
    going forward. Symptom: N PRs all failing the same audit step that
    was added by yesterday's merge. (Same class: INFRA-1832 events.rs
    Debug panic earlier in the week.)
+9. **Polling `gh` when the webhook cache has the answer.** Solution:
+   `sqlite3 .chump/github_cache.db` for PR state + check-runs (see §7.5
+   Local Infrastructure). `gh pr view` / `gh api` ONLY on cache miss.
+   The fleet runs a smee.io tunnel + a Python webhook receiver
+   (`scripts/ops/github-webhook-receiver.py`) that populates SQLite
+   in real time; reading from it is < 100 ms, polling gh is 5-30 s
+   AND burns rate limit AND blinds the rest of the fleet
+   (`graphql_exhausted` cascades). Symptom: this Opus session burned
+   ~20 min on `gh pr view` polls during a CI investigation while the
+   cache had every answer with fresher data. The discipline is in
+   CLAUDE.md and AGENTS.md; if a session is still polling, the docs
+   weren't loud enough — escalate to docs-update gap, not a one-off
+   reminder. (Caught by operator 2026-05-30T09:27Z.)
 
 ---
 
