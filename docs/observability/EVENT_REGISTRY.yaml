@@ -5925,3 +5925,17 @@ events:
       without re-scanning the inbox files.
     consumers: [ops-audit, fleet-doctor, pwa-dashboard]
     fields_required: [ts, kind, unread_count, session]
+  - kind: gap_shipped_in_set
+    effect_metric: credible
+    emitter: crates/chump-gap-store/src/lib.rs (INFRA-2134)
+    trigger: >
+      Emitted by GapStore::set_shipped_in() whenever a shipped_in JSON blob
+      is written for a gap. Enables audit trails for both integration-cycle
+      and per-PR shipping paths. Contains the gap_id and the shape of the
+      shipped_in record (integration vs per_pr).
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, shape]
+    related_kinds: [cycle_shipped, pr_merged]
+    expected_volume: "1 per gap shipped via any path"
+    status: stable
+    # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
