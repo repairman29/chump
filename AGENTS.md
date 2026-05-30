@@ -420,6 +420,42 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 | [`docs/process/EXTERNAL_REPO_USAGE.md`](./docs/process/EXTERNAL_REPO_USAGE.md) | Onboarding guide for non-Chump repos using Chump as a coordination platform (DOC-022) |
 
+## No-operator-escalation discipline (operator-decision-of-record 2026-05-30)
+
+> **Operator directive 2026-05-30T17:30Z (verbatim):** *"Make sure the don't escalate to the human protocol is locked in for agents. I'm not here to babysit. I'm here for results."*
+
+**Default mode is team consensus, not operator escalation.** When an agent (orchestrator OR sub-agent) faces a decision that isn't trivially their own, the default action is to broadcast a `FEEDBACK kind=proposal` to peer curators (see [`docs/process/OPUS_MESSAGE_PROTOCOL.md`](./docs/process/OPUS_MESSAGE_PROTOCOL.md)), let the deliberator-loop tally votes, and act on `kind=consensus_resolved`. NOT to ping the operator.
+
+### The 4 legitimate escalation triggers (the ONLY ones)
+
+| Code | Trigger | Example |
+|------|---------|---------|
+| **T1** | Irreversible third-party action with no consensus mandate | Production deploy beyond chump itself; financial spend; external comms to partners/customers/lawyers |
+| **T2** | Credential rotation requiring operator hands-on-keyboard | R2 token rotation (secret values write-only via gh); OAuth setup; SSH key provisioning on new hardware |
+| **T3** | Operator-explicit-domain decisions | Legal / license model (MIT vs dual); partnership pitches; pricing / business model; public branding / messaging |
+| **T4** | Halt-class fleet condition where consensus itself is unsafe | trunk-RED **AND** auth-storm **AND** queue-starve simultaneously; deliberator-loop down; broadcast.sh broken |
+
+**Everything else → team consensus.** If you're tempted to call `AskUserQuestion` or `scripts/dispatch/operator-recall.sh`, run through the 4 triggers first. If none match, broadcast `FEEDBACK kind=proposal` instead.
+
+### Legitimate vs illegitimate examples
+
+| Situation | Legitimate channel |
+|-----------|--------------------|
+| "Should I close this stale PR?" | **Team consensus** (broadcast FEEDBACK proposal); illegitimate to ask operator |
+| "Which of these 4 design options should we use?" | **Team consensus** (broadcast FEEDBACK proposal with quorum target); illegitimate to AskUserQuestion |
+| "Should I admin-merge this PR?" | **Team consensus via PR #2841 ConsensusCoordinator gate**; illegitimate to ask operator unless T4 |
+| "Should I push the R2 cred rotation?" | **T2 — operator escalation legitimate** (operator has the secret values) |
+| "Trunk is red on 4 simultaneous failure surfaces and deliberator is down" | **T4 — operator escalation legitimate** (consensus mechanism unsafe) |
+| "Should we partner with Anthropic?" | **T3 — operator escalation legitimate** (operator-explicit-domain) |
+| "We need to choose between X and Y for the cockpit design" | **Team consensus** (broadcast FEEDBACK proposal); illegitimate to ask operator |
+
+### Enforcement
+
+- Detector emits `kind=operator_escalation_unjustified` (registered in `docs/observability/EVENT_REGISTRY.yaml`) when an agent invokes operator-escalation outside the 4 triggers
+- Audit leaderboard: `scripts/dev/operator-escalation-leaderboard.sh` shows agents-per-day with unjustified escalations
+- SLO target: < 1 unjustified escalation per fleet-day
+- This rule extends to sub-agents via [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
+
 ## Mission Driver — loop discipline (INFRA-2208, 2026-05-29)
 
 Every /loop / scheduled-job / babysit-prs tick must end in **one** of:

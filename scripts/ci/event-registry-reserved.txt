@@ -469,3 +469,6 @@ integration_cycle_completed   # reason: INFRA-2130 SCALE-A; emitted by chump-int
 integration_cycle_failed      # reason: INFRA-2130 SCALE-A; emitted by chump-integrator daemon when a LIVE cycle's git push or gh pr create/merge fails. Carries cycle_id, gap_ids, error, circuit_breaker=armed. Triggers dry-run for the next cycle.
 integration_dry_run_skip      # reason: INFRA-2130 SCALE-A; emitted by chump-integrator daemon when a cycle is forced to dry-run by the circuit breaker (reason=circuit_breaker). Distinguishes planned dry-runs from circuit-breaker-forced ones.
 integration_trunk_red_hold    # reason: INFRA-2130 SCALE-A; emitted by chump-integrator daemon when a LIVE cycle is held because trunk-red-detector-state.json shows is_red=true. Carries cycle_id. Cycle is skipped entirely (no selection, no merge).
+
+# ── META-207: no-operator-escalation doctrine ─────────────────────────────────
+operator_escalation_unjustified  # reason: META-207 codifies no-escalation doctrine; detector is future work, emission point is currently AGENTS.md self-audit only. Scanner-anchor: docs/process/SUBAGENT_DISPATCH.md.
