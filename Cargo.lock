@@ -1471,6 +1471,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-curator-supervisor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hex",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chump-demo"
 version = "0.1.0"
 dependencies = [

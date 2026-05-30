@@ -438,3 +438,8 @@ external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; regist
 fleet_a2a_degraded    # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
 fleet_a2a_recovered   # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
 fleet_a2a_backpressure # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+
+# ── INFRA-2239: chump-curator-supervisor L3 daemon ───────────────────────────
+curator_failure_paged             # reason: INFRA-2239 emitted by chump-curator-supervisor (crates/chump-curator-supervisor/src/main.rs) when a novel curator failure fingerprint is detected AND a gap has been filed via `chump gap reserve`. Carries role, gap_id, priority, fingerprint, summary. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+curator_respawned                 # reason: INFRA-2239 emitted by chump-curator-supervisor after tmux respawn-pane succeeds AND a fresh curator_heartbeat is detected within 60s. Carries role. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+curator_respawn_failed            # reason: INFRA-2239 emitted by chump-curator-supervisor when tmux respawn-pane was attempted but no curator_heartbeat appeared within 60s. Carries role, reason. Triggers operator broadcast via scripts/coord/broadcast.sh. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
