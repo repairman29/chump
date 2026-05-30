@@ -458,6 +458,12 @@ a2a_inbox_alias_resolved        # reason: INFRA-2006; emitted by scripts/coord/c
 a2a_inbox_message_orphan        # reason: INFRA-2006; advisory event emitted by scripts/coord/chump-inbox.sh when a message is found in an inbox file no live session owns. Not fatal; archive-on-dead-session cleans up. Carries inbox_file, message_count. Registered in EVENT_REGISTRY.yaml.
 queue_driver_iter_attempted
 
+# ── INFRA-2295: stale-pr-rebase-bot (SCALE-C safety net) ─────────────────────
+stale_pr_auto_rebased                      # reason: INFRA-2295 emitted by scripts/coord/stale-pr-rebase-bot.sh when a stale armed PR is successfully rebased via gh pr update-branch (method=gh_update_branch) or local worktree fallback (method=local_rebase_fallback). Carries pr, branch, method, prior_strikes. Complements pr_auto_rebased from pr-auto-rebase.sh — bot adds 3-strike doctrine and trunk-RED guard on top.
+stale_pr_rebase_failed                     # reason: INFRA-2295 emitted by scripts/coord/stale-pr-rebase-bot.sh when both gh pr update-branch and local worktree rebase fail for a given PR on this cycle. Carries pr, branch, strikes (current count after increment), strike_limit. Not fatal — operator acts only after stale_pr_unrebaseable (3-strike threshold).
+stale_pr_unrebaseable                      # reason: INFRA-2295 emitted by scripts/coord/stale-pr-rebase-bot.sh when a PR's strike counter reaches CHUMP_REBASE_BOT_STRIKE_LIMIT (default 3). Carries pr, branch, strikes, note=operator_action_required. A WARN broadcast is also sent. PR is never auto-closed — operator decides. Strike state at .chump-locks/rebase-bot-strikes/<PR>.json.
+stale_pr_rebase_bot_holding_for_trunk_red  # reason: INFRA-2295 emitted by scripts/coord/stale-pr-rebase-bot.sh at the top of each cycle when trunk-red-detector-state.json exists with a non-empty last_failed_sha. Signals the whole cycle was skipped to avoid wasting rebase capacity while CI is broken on main.
+
 # ── INFRA-2130 SCALE-A: integrator-daemon LIVE-mode toggle safety rails ──────
 integration_cycle_completed   # reason: INFRA-2130 SCALE-A; emitted by chump-integrator daemon when a LIVE cycle successfully pushes the integration branch and arms auto-merge. Carries cycle_id, gap_count, total_loc, gap_ids, pr_url. Replaces the stubbed integration_cycle_shipped path.
 integration_cycle_failed      # reason: INFRA-2130 SCALE-A; emitted by chump-integrator daemon when a LIVE cycle's git push or gh pr create/merge fails. Carries cycle_id, gap_ids, error, circuit_breaker=armed. Triggers dry-run for the next cycle.
