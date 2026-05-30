@@ -252,6 +252,8 @@ mod web_push_send;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
+// META-159: fleet recv-side v0 voting CLIs (chump vote + chump consensus-tally).
+mod commands;
 
 #[cfg(test)]
 mod consciousness_exercise;
@@ -1260,6 +1262,23 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("onboard") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(onboard::run(&sub_args));
+    }
+
+    // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
+    // emit a FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
+    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1; prints "feature flag off,
+    // vote not emitted" and exits 0 when flag is unset.
+    if args.get(1).map(String::as_str) == Some("vote") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::vote::run(&sub_args));
+    }
+
+    // `chump consensus-tally [--corr-id X | --all] [--since <dur>]` (META-159) —
+    // aggregate FEEDBACK kind=vote events from ambient.jsonl per corr_id
+    // and compute a verdict. Always runs regardless of feature flag (read-only).
+    if args.get(1).map(String::as_str) == Some("consensus-tally") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::consensus_tally::run(&sub_args));
     }
 
     // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.
