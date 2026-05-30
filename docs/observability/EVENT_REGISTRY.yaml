@@ -1697,6 +1697,21 @@ events:
     trigger: Layer-2 Sonnet escalates to Layer-3 Opus
     consumers: [audit-log, operator-recall]
 
+  - kind: operator_escalation_unjustified
+    effect_metric: self
+    emitter: future detector (not yet wired); manually emitted by orchestrator on self-audit until detector lands
+    trigger: >
+      Emitted when an agent invokes operator-escalation (AskUserQuestion / operator-recall.sh)
+      outside the 4 legitimate triggers (T1 irreversible third-party / T2 credential-rotation /
+      T3 operator-explicit-domain / T4 halt-class fleet condition). Reviewed via
+      scripts/dev/operator-escalation-leaderboard.sh. See AGENTS.md → No-operator-escalation discipline.
+    consumers: [scripts/dev/operator-escalation-leaderboard.sh]
+    fields_required:
+      - role        # the agent role that escalated
+      - escalation_kind  # ask_user_question | operator_recall | direct_message
+      - trigger_matched  # T1 | T2 | T3 | T4 | none
+    registered_by: META-207
+
   - kind: manual_rescue
     effect_metric: self
     emitter: scripts/dispatch/manual-rescue-emit.sh

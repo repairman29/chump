@@ -453,3 +453,16 @@ Run `bash scripts/coord/dispatch-health-check.sh` to scan ps aux for hung commit
 
 - [META-116](../gaps/META-116.yaml) — this addendum's source gap
 - [`scripts/coord/dispatch-health-check.sh`](../../scripts/coord/dispatch-health-check.sh) — the operational tool
+
+## No-operator-escalation (extends no-clarifying-questions)
+
+The no-clarifying-questions discipline (sub-agents do NOT ask the dispatcher to clarify) now extends to no-operator-escalation (sub-agents do NOT escalate to the operator from within their PR). 
+
+**Canonical rule:** [`AGENTS.md` → No-operator-escalation discipline](../../AGENTS.md#no-operator-escalation-discipline-operator-decision-of-record-2026-05-30).
+
+When a sub-agent encounters a decision that isn't trivially its own:
+- Conservative default + ship — note the judgment call in the commit body
+- If the conservative default isn't obvious, broadcast `FEEDBACK kind=proposal` via `scripts/coord/broadcast.sh` from within the PR, then wait for consensus_resolved
+- If neither works AND it's not a T1-T4 trigger, broadcast `STUCK` with the exact ambiguity and HALT the PR — do NOT ping the operator
+
+The 4 legitimate operator-escalation triggers (T1 irreversible / T2 cred-rotation / T3 operator-domain / T4 halt-class) apply to sub-agents too.

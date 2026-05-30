@@ -13,6 +13,19 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 Full pillar definitions and coordination docs: [`AGENTS.md`](./AGENTS.md) + [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md).
 Eval/research work also reads [`docs/process/RESEARCH_INTEGRITY.md`](./docs/process/RESEARCH_INTEGRITY.md).
 
+## No-escalation overlay (Claude-Code-specific)
+
+> **Canonical rule lives in [`AGENTS.md` → No-operator-escalation discipline](./AGENTS.md#no-operator-escalation-discipline-operator-decision-of-record-2026-05-30).** This is the Claude-Code-only overlay.
+
+The 4 legitimate escalation triggers (T1 irreversible-third-party / T2 credential-rotation / T3 operator-explicit-domain / T4 halt-class-fleet-unsafe) apply equally to Claude-Code sessions.
+
+**Claude-Code-specific tooling discipline:**
+- **`AskUserQuestion` tool** — invoke ONLY when one of T1-T4 matches. If you're tempted to use it for a "which approach should we use" decision, that's almost certainly team-consensus territory: broadcast `FEEDBACK kind=proposal` via `scripts/coord/broadcast.sh` instead.
+- **Operator-recall surface** — `scripts/dispatch/operator-recall.sh` is for T4 only (halt-class detector). Don't invoke it for routine decisions.
+- **Sub-agent dispatches** inherit this rule via `docs/process/SUBAGENT_DISPATCH.md` — when you write a Sonnet brief, the no-clarifying-questions discipline already says don't ask the operator; this overlay extends it to "and don't ask the operator from within the sub-agent's PR either".
+
+**Self-check before any `AskUserQuestion` call**: which of T1-T4 does this match? If none, broadcast `FEEDBACK kind=proposal` instead.
+
 ## Mission Driver — every session, not just when asked
 
 You are responsible for **driving the 4 pillars**, not just servicing gaps as they appear. The fleet defaults to filing gaps about itself (because that's what's easy to notice) — Resilient and Zero-Waste pile up while Effective and Credible starve. Counteract that on purpose.
