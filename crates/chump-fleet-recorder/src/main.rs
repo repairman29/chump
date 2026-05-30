@@ -18,12 +18,12 @@
 //!   id INTEGER PRIMARY KEY AUTOINCREMENT,
 //!   ts TEXT NOT NULL,
 //!   ts_ms INTEGER NOT NULL,
-//!   source TEXT NOT NULL,
-//!   subject TEXT,
-//!   event_kind TEXT NOT NULL,
-//!   session_id TEXT,
-//!   gap_id TEXT,
-//!   payload TEXT NOT NULL,
+//!   source TEXT NOT NULL DEFAULT '',
+//!   subject TEXT NOT NULL DEFAULT '',
+//!   event_kind TEXT NOT NULL DEFAULT '',
+//!   session_id TEXT NOT NULL DEFAULT '',
+//!   gap_id TEXT NOT NULL DEFAULT '',
+//!   payload TEXT NOT NULL DEFAULT '',
 //!   UNIQUE(ts_ms, session_id, event_kind, gap_id)
 //! );
 //! ```
@@ -117,12 +117,12 @@ fn open_db(path: &Path) -> Result<Connection> {
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             ts         TEXT    NOT NULL,
             ts_ms      INTEGER NOT NULL,
-            source     TEXT    NOT NULL,
-            subject    TEXT,
-            event_kind TEXT    NOT NULL,
-            session_id TEXT,
-            gap_id     TEXT,
-            payload    TEXT    NOT NULL,
+            source     TEXT    NOT NULL DEFAULT '',
+            subject    TEXT    NOT NULL DEFAULT '',
+            event_kind TEXT    NOT NULL DEFAULT '',
+            session_id TEXT    NOT NULL DEFAULT '',
+            gap_id     TEXT    NOT NULL DEFAULT '',
+            payload    TEXT    NOT NULL DEFAULT '',
             UNIQUE(ts_ms, session_id, event_kind, gap_id)
         );
         CREATE INDEX IF NOT EXISTS idx_events_ts_ms   ON events(ts_ms);
@@ -140,11 +140,95 @@ fn open_db(path: &Path) -> Result<Connection> {
     )
     .context("schema migration")?;
 
+    // INFRA-2203: one-shot migration — coerce legacy NULL rows to ''.
+    // SQLite's CREATE TABLE IF NOT EXISTS does not ALTER existing columns, so
+    // rows written before this fix may still carry NULL in subject/session_id/gap_id.
+    //
+    // Guard: only run per-column when NULLs actually exist, so we don't
+    // disturb the UNIQUE(ts_ms, session_id, event_kind, gap_id) index on
+    // clean DBs.  For the collision case (a NULL row and a '' row share the
+    // same (ts_ms, event_kind) tuple) the NULL row is a true duplicate — we
+    // DELETE it first, then UPDATE the survivors.
+    for col in &["gap_id", "session_id", "subject"] {
+        // Check whether any NULLs exist for this column.
+        let null_count: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM events WHERE {col} IS NULL"),
+            [],
+            |r| r.get(0),
+        )?;
+        if null_count == 0 {
+            continue;
+        }
+        info!("[recorder] INFRA-2203 migration: found {null_count} NULL {col} rows — backfilling");
+
+        // Delete collision duplicates: rows with NULL that already have a
+        // matching '' sibling on (ts_ms, event_kind, <other two cols as ''>).
+        // We operate column-by-column so the WHERE clause is concrete.
+        let delete_sql = match *col {
+            "gap_id" => {
+                "DELETE FROM events WHERE rowid IN ( \
+                   SELECT e.rowid FROM events e \
+                   WHERE e.gap_id IS NULL \
+                     AND EXISTS ( \
+                       SELECT 1 FROM events e2 \
+                       WHERE e2.ts_ms = e.ts_ms \
+                         AND e2.event_kind = e.event_kind \
+                         AND COALESCE(e2.session_id,'') = COALESCE(e.session_id,'') \
+                         AND e2.gap_id = '' \
+                     ) \
+                 )"
+            }
+            "session_id" => {
+                "DELETE FROM events WHERE rowid IN ( \
+                   SELECT e.rowid FROM events e \
+                   WHERE e.session_id IS NULL \
+                     AND EXISTS ( \
+                       SELECT 1 FROM events e2 \
+                       WHERE e2.ts_ms = e.ts_ms \
+                         AND e2.event_kind = e.event_kind \
+                         AND e2.session_id = '' \
+                         AND COALESCE(e2.gap_id,'') = COALESCE(e.gap_id,'') \
+                     ) \
+                 )"
+            }
+            _ /* subject */ => {
+                "DELETE FROM events WHERE rowid IN ( \
+                   SELECT e.rowid FROM events e \
+                   WHERE e.subject IS NULL \
+                     AND EXISTS ( \
+                       SELECT 1 FROM events e2 \
+                       WHERE e2.ts_ms = e.ts_ms \
+                         AND e2.event_kind = e.event_kind \
+                         AND COALESCE(e2.session_id,'') = COALESCE(e.session_id,'') \
+                         AND COALESCE(e2.gap_id,'') = COALESCE(e.gap_id,'') \
+                         AND e2.subject = '' \
+                     ) \
+                 )"
+            }
+        };
+        let deleted = conn.execute(delete_sql, [])?;
+        if deleted > 0 {
+            info!("[recorder] INFRA-2203 migration: deleted {deleted} duplicate-collision rows for {col}");
+        }
+
+        // Now safely update remaining NULLs to ''.
+        let updated = conn.execute(
+            &format!("UPDATE events SET {col} = '' WHERE {col} IS NULL"),
+            [],
+        )?;
+        info!("[recorder] INFRA-2203 migration: backfilled {updated} rows for {col}");
+    }
+
     Ok(conn)
 }
 
 /// Insert one event row; silently ignores duplicates via INSERT OR IGNORE.
 /// 9 args mirrors the 9-column schema — a struct would be indirection without gain here.
+///
+/// `subject`, `session_id`, and `gap_id` are coerced from `Option<&str>` to `&str`
+/// (defaulting to `""`) before binding so the DB always stores an empty string rather
+/// than NULL.  The schema declares all three `TEXT NOT NULL DEFAULT ''`; binding NULL
+/// bypasses the column default and writes an actual NULL (INFRA-2203).
 #[allow(clippy::too_many_arguments)]
 fn insert_event(
     conn: &Connection,
@@ -157,6 +241,9 @@ fn insert_event(
     gap_id: Option<&str>,
     payload: &str,
 ) -> Result<()> {
+    let subject = subject.unwrap_or("");
+    let session_id = session_id.unwrap_or("");
+    let gap_id = gap_id.unwrap_or("");
     conn.execute(
         r#"INSERT OR IGNORE INTO events
            (ts, ts_ms, source, subject, event_kind, session_id, gap_id, payload)
@@ -627,9 +714,10 @@ mod tests {
             r#"
             CREATE TABLE events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL, ts_ms INTEGER NOT NULL, source TEXT NOT NULL,
-                subject TEXT, event_kind TEXT NOT NULL, session_id TEXT,
-                gap_id TEXT, payload TEXT NOT NULL,
+                ts TEXT NOT NULL, ts_ms INTEGER NOT NULL, source TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL DEFAULT '', event_kind TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL DEFAULT '',
+                gap_id TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL DEFAULT '',
                 UNIQUE(ts_ms, session_id, event_kind, gap_id)
             );
             CREATE TABLE cursor (
@@ -714,6 +802,55 @@ mod tests {
         assert_eq!(kind, "unknown");
         assert!(session.is_none());
         assert!(gap.is_none());
+    }
+
+    /// INFRA-2203: insert_event must store '' not NULL for None gap_id/session_id/subject.
+    #[test]
+    fn insert_event_coerces_none_to_empty_string() {
+        let conn = in_memory_conn();
+        let ts = "2026-05-29T12:00:00Z";
+        let ts_ms: i64 = 1748520000001;
+
+        insert_event(
+            &conn,
+            ts,
+            ts_ms,
+            "ambient",
+            None, // subject  → must land as ''
+            "no_gap_event",
+            None, // session_id → must land as ''
+            None, // gap_id   → must land as ''
+            "{}",
+        )
+        .unwrap();
+
+        // Verify no NULL columns.
+        let (sub, sid, gid): (String, String, String) = conn
+            .query_row(
+                "SELECT subject, session_id, gap_id FROM events WHERE event_kind='no_gap_event'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .expect("row should exist");
+
+        assert_eq!(sub, "", "subject must be '' not NULL (INFRA-2203)");
+        assert_eq!(sid, "", "session_id must be '' not NULL (INFRA-2203)");
+        assert_eq!(gid, "", "gap_id must be '' not NULL (INFRA-2203)");
+
+        // Double-check via IS NULL — must return zero rows.
+        let null_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events \
+                  WHERE event_kind='no_gap_event' \
+                    AND (gap_id IS NULL OR session_id IS NULL OR subject IS NULL)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            null_count, 0,
+            "no NULL columns must remain after insert (INFRA-2203)"
+        );
     }
 
     #[test]
