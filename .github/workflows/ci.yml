@@ -1153,7 +1153,11 @@ jobs:
     # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
     # Self-hosted Mac caused ~50% of CI-rot tax (DOC-063 post-mortem).
     # Feature-flag fallback: CHUMP_SELF_HOSTED_CARGO_TEST=true reverts this lane.
-    runs-on: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # INFRA-2298 (CI-speed Tier 1+2, 2026-05-30): upgraded from ubuntu-latest to
+    # ubuntu-24.04-arm (16-core GH-hosted ARM). Self-hosted Mac runners were
+    # saturated (4 Macs, 45-PR queue). Expected: cargo-test 15 min → ~4 min once
+    # sccache R2 warms (~$0.50/run vs queue-stall cost). Repo var override intact.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-24.04-arm' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     # INFRA-1959: per-checkout state.db (see fast-checks comment above).
     env:
@@ -1367,7 +1371,9 @@ jobs:
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
     # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
-    runs-on: ${{ vars.RUNNER_E2E_PWA != '' && fromJSON(vars.RUNNER_E2E_PWA) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
+    # INFRA-2298 (CI-speed Tier 1+2, 2026-05-30): upgraded from ubuntu-latest to
+    # ubuntu-24.04-arm (16-core GH-hosted ARM). Repo var RUNNER_E2E_PWA override intact.
+    runs-on: ${{ vars.RUNNER_E2E_PWA != '' && fromJSON(vars.RUNNER_E2E_PWA) || 'ubuntu-24.04-arm' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-24.04-arm)
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
     steps:
       - uses: actions/checkout@v6
