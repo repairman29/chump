@@ -80,6 +80,7 @@ Documented for completeness; do **not** file follow-ups.
 | `queue-driver.yml` | Manipulates merge queue state |
 | `ftue-clean-machine-2026.yml` | Requires a fresh VM |
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |
+| `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
 
 ## Promotion criteria for Tier C → Tier A
 

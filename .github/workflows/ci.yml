@@ -1250,6 +1250,19 @@ jobs:
         if: steps.r2detect.outputs.configured == 'true'
         uses: mozilla-actions/sccache-action@v0.0.5
 
+      - name: sccache health probe
+        # INFRA-2288: probe sccache server startup after install; degrade to no-cache
+        # if R2 is unreachable (mirrors INFRA-2184 local pre-push pattern). Probe MUST
+        # NOT fail the job — warn + clear RUSTC_WRAPPER so cargo-test runs without sccache
+        # (slow but shipping). Today's sccache R2 incident wedged the queue for 90+ min;
+        # this would have degraded gracefully instead.
+        if: steps.r2detect.outputs.configured == 'true'
+        run: |
+          if ! sccache --start-server 2>/dev/null; then
+            echo "::warning::sccache --start-server failed; falling back to no-cache for this job (INFRA-2288)"
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          fi
+
       - name: cargo test (nextest via INFRA-764 flake auto-rerun wrapper)
         # INFRA-2094: cargo nextest run replaces cargo test for 60% faster parallel test runs.
         # The wrapper's flake-autorerun still works on the wrapped command's exit code; nextest's
