@@ -114,6 +114,12 @@ _peek_inbox() {
 
 _cmd_tick() {
     local actionable=0
+    # INFRA-2262: inject ambient digest before tick so bash daemon is not deaf to fleet wire
+    local _inject_script
+    _inject_script="$(dirname "$0")/ambient-context-inject.sh"
+    if [[ -x "$_inject_script" ]]; then
+        "$_inject_script" --tick-preamble --role ci-audit 2>/dev/null || true
+    fi
     echo "=== curator-opus-ci-audit tick @ $(_now_iso) ==="
     echo
 

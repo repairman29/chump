@@ -219,6 +219,12 @@ _do_scan() {
 # ── Subcommands ───────────────────────────────────────────────────────────────
 
 cmd_tick() {
+    # INFRA-2262: inject ambient digest before tick so bash daemon is not deaf to fleet wire
+    local _inject_script
+    _inject_script="$(dirname "$0")/ambient-context-inject.sh"
+    if [[ -x "$_inject_script" ]]; then
+        "$_inject_script" --tick-preamble --role md-links 2>/dev/null || true
+    fi
     # Fast scan: docs/process/*.md only
     local fast_path="$DOCS_ROOT/process"
     if [[ ! -d "$fast_path" ]]; then

@@ -70,6 +70,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# INFRA-2262: inject ambient digest before triage so bash daemon is not deaf to fleet wire
+_inject_script="$(dirname "$0")/ambient-context-inject.sh"
+if [[ -x "$_inject_script" ]]; then
+    "$_inject_script" --tick-preamble --role shepherd 2>/dev/null || true
+fi
+
 export CHUMP_TRIAGE_REPO_ROOT="$REPO_ROOT"
 export CHUMP_TRIAGE_AMBIENT="$AMBIENT"
 export CHUMP_TRIAGE_OPERATOR="$OPERATOR_ID"

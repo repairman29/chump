@@ -17,6 +17,22 @@
 #   CHUMP_AMBIENT_INJECT=0  disable (emits empty additionalContext)
 #   CHUMP_AMBIENT_LOG       override ambient.jsonl path
 #   CHUMP_AMBIENT_DEBUG=1   echo the rendered context to stderr
+#
+# --tick-preamble mode (INFRA-2262):
+#   ambient-context-inject.sh --tick-preamble --role <ROLE>
+#
+#   Called by bash curator-loop daemons at the top of each tick so they can
+#   read recent fleet-wire events they would otherwise miss entirely (loops
+#   never subscribe to NATS and never run SessionStart hooks). Reads the last
+#   50 ambient events since the role's last-seen cursor and prints a compact
+#   5-line digest of relevant kinds (FEEDBACK / WARN / STUCK / DONE / INTENT
+#   addressed to role OR fanout). Updates cursor so events don't replay.
+#   Logs digest to .chump-locks/autopilot-logs/curator-<role>.log for
+#   observability.
+#
+#   Env:
+#     CHUMP_TICK_PREAMBLE_N   events to scan (default: 50)
+#     CHUMP_TICK_PREAMBLE=0   disable tick-preamble mode (noop)
 
 set -euo pipefail
 
@@ -25,6 +41,184 @@ set -euo pipefail
 export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
 
 HOOK_EVENT="${1:-SessionStart}"
+
+# ── --tick-preamble mode (INFRA-2262) ────────────────────────────────────────
+# Bash curator-loop daemons are deaf by construction — no SessionStart hook,
+# no NATS subscription. This mode injects an ambient digest at the top of
+# each tick so loops can see recent peer broadcasts and react.
+#
+# Usage: ambient-context-inject.sh --tick-preamble --role <rolename>
+# The calling loop passes its own role name (e.g. "decompose", "ci-audit").
+# scanner-anchor: "kind":"tick_preamble_injected"
+if [[ "${HOOK_EVENT}" == "--tick-preamble" ]]; then
+    # Parse --role flag
+    TICK_ROLE=""
+    shift || true  # consume --tick-preamble (already shifted via HOOK_EVENT=$1)
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --role) shift; TICK_ROLE="${1:-}"; shift ;;
+            *)      shift ;;
+        esac
+    done
+
+    if [[ "${CHUMP_TICK_PREAMBLE:-1}" == "0" ]]; then
+        exit 0
+    fi
+
+    # Resolve repo root + lock dir.
+    # When CHUMP_AMBIENT_LOG is explicitly set (e.g. in tests), derive LOCK_DIR
+    # from its parent directory so cursor + log files land in the test's temp
+    # dir rather than the main repo's .chump-locks. When not set, fall back to
+    # the git-derived main-repo path (production behavior).
+    if [[ -n "${CHUMP_AMBIENT_LOG:-}" ]]; then
+        AMBIENT_LOG="$CHUMP_AMBIENT_LOG"
+        LOCK_DIR="$(dirname "$AMBIENT_LOG")"
+    else
+        REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+        if [[ "$_GIT_COMMON" == ".git" ]]; then
+            MAIN_REPO="$REPO_ROOT"
+        else
+            MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
+        fi
+        LOCK_DIR="$MAIN_REPO/.chump-locks"
+        AMBIENT_LOG="$LOCK_DIR/ambient.jsonl"
+    fi
+
+    if [[ ! -f "$AMBIENT_LOG" ]]; then
+        exit 0
+    fi
+
+    CURSOR_FILE="$LOCK_DIR/${TICK_ROLE:-unknown}-ambient-cursor"
+    LOG_DIR="$LOCK_DIR/autopilot-logs"
+    CURATOR_LOG="$LOG_DIR/curator-${TICK_ROLE:-unknown}.log"
+    SCAN_N="${CHUMP_TICK_PREAMBLE_N:-50}"
+
+    mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+    # Run the digest via Python (proper JSON parsing + cursor update)
+    _TICK_PY="$(mktemp /tmp/chump-tick-preamble-XXXXXX.py)"
+    cat > "$_TICK_PY" << 'TICKPY'
+import json, os, sys, time
+from pathlib import Path
+from datetime import datetime, timezone
+
+ambient_path = Path(os.environ["AMBIENT_LOG"])
+cursor_file  = Path(os.environ["CURSOR_FILE"])
+curator_log  = Path(os.environ["CURATOR_LOG"])
+role         = os.environ.get("TICK_ROLE", "unknown")
+scan_n       = int(os.environ.get("SCAN_N", "50"))
+
+# Read last-seen line number from cursor (0 = read all)
+cursor_line = 0
+try:
+    cursor_line = int(cursor_file.read_text().strip())
+except Exception:
+    pass
+
+# Read ambient log lines
+all_lines: list[str] = []
+try:
+    all_lines = ambient_path.read_text(errors="replace").splitlines()
+except Exception:
+    pass
+
+total_lines = len(all_lines)
+new_lines = all_lines[cursor_line:]
+# Limit to last scan_n events
+if len(new_lines) > scan_n:
+    new_lines = new_lines[-scan_n:]
+
+# Parse events
+events = []
+for line in new_lines:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        events.append(json.loads(line))
+    except Exception:
+        continue
+
+# Filter to relevant kinds: FEEDBACK / WARN / STUCK / DONE / INTENT
+# + fanout events where recipient_count > 0
+# + events addressed to this role (recipient == role or fanout)
+RELEVANT_KINDS = {"FEEDBACK", "WARN", "STUCK", "DONE", "INTENT",
+                  "feedback_fanout_delivered"}
+
+def is_relevant(e: dict) -> bool:
+    kind = e.get("kind") or e.get("event") or ""
+    # Always include feedback_fanout_delivered with recipients
+    if kind == "feedback_fanout_delivered":
+        return int(e.get("recipient_count", 0)) > 0
+    if kind not in RELEVANT_KINDS:
+        return False
+    # Include if addressed to this role or broadcast (no to/recipient field)
+    to = e.get("to") or e.get("recipient") or ""
+    if not to or role in to:
+        return True
+    return False
+
+relevant = [e for e in events if is_relevant(e)]
+
+# Build 5-line digest (cap output)
+digest_lines = []
+if relevant:
+    digest_lines.append(f"=== tick-preamble ambient digest (role={role}, {len(relevant)} relevant events) ===")
+    for e in relevant[-5:]:
+        kind = e.get("kind") or e.get("event") or "?"
+        ts   = e.get("ts", "?")
+        note = e.get("note") or e.get("msg") or e.get("message") or ""
+        src  = e.get("session") or e.get("from") or "?"
+        if len(note) > 80:
+            note = note[:77] + "..."
+        digest_lines.append(f"  [{ts}] {kind} from={src} {note}"[:120])
+else:
+    digest_lines.append(f"=== tick-preamble: no new relevant events for role={role} ===")
+
+output = "\n".join(digest_lines)
+print(output)
+
+# Update cursor to current total line count
+try:
+    cursor_file.write_text(str(total_lines))
+except Exception:
+    pass
+
+# Log to autopilot log
+try:
+    ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with curator_log.open("a") as f:
+        f.write(f"\n--- tick-preamble @ {ts_now} ---\n")
+        f.write(output + "\n")
+except Exception:
+    pass
+
+# Emit ambient event (best-effort)
+try:
+    ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ev = json.dumps({
+        "ts": ts_now,
+        "kind": "tick_preamble_injected",
+        "role": role,
+        "relevant_count": len(relevant),
+        "new_events_scanned": len(events),
+    }, separators=(",", ":"))
+    with ambient_path.open("a") as f:
+        f.write(ev + "\n")
+except Exception:
+    pass
+TICKPY
+
+    AMBIENT_LOG="$AMBIENT_LOG" \
+    CURSOR_FILE="$CURSOR_FILE" \
+    CURATOR_LOG="$CURATOR_LOG" \
+    TICK_ROLE="${TICK_ROLE}" \
+    SCAN_N="$SCAN_N" \
+        python3 "$_TICK_PY" || true
+    rm -f "$_TICK_PY"
+    exit 0
+fi
 
 # ── Resolve repo + lock dir (same logic as ambient-emit.sh) ────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

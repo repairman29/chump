@@ -177,6 +177,12 @@ cmd_slice() {
 # scanner-anchor: "kind":"decompose_audit"
 
 cmd_audit_pending() {
+    # INFRA-2262: inject ambient digest before tick so bash daemon is not deaf to fleet wire
+    local _inject_script
+    _inject_script="$(dirname "$0")/ambient-context-inject.sh"
+    if [[ -x "$_inject_script" ]]; then
+        "$_inject_script" --tick-preamble --role decompose 2>/dev/null || true
+    fi
     require_chump
 
     local json_out=0

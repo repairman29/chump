@@ -1,0 +1,16 @@
+- id: INFRA-2262
+  domain: INFRA
+  title: "EFFECTIVE P1: bash curator-loops are deaf — inject ambient digest before each tick (quick-win for fleet wire reader-side)"
+  status: open
+  priority: P1
+  effort: xs
+  depends_on: [["META-155"]]
+  description: |
+    Sharper diagnosis 2026-05-30T05:25Z: NATS+broadcast.sh both work. The reason peer curators don't react to fleet-wire proposals is that curator-loop bash daemons (decompose-loop.sh / handoff-loop.sh / ci-audit-loop.sh / md-links-loop.sh / opus-shepherd-triage.sh / target inline) NEVER read ambient.jsonl OR subscribe to NATS. They just emit + sleep 300. Only Claude Code sessions get the SessionStart digest from ambient-context-inject.sh — that's why historical fanout 'worked' (Claude sessions read, replied). Quick win: prepend a tiny ambient-tail read to each loop script's per-tick body so the loops see recent peer broadcasts and CAN react (under the operator's chosen reaction-table from META-155). Doesn't need full NATS subscribe; the file-tail covers 99% of cases with zero infra change.
+  acceptance_criteria:
+    1. Each productized curator-loop script (decompose / handoff / ci-audit / md-links / opus-shepherd-triage) calls scripts/coord/ambient-context-inject.sh --tick-preamble at the top of its tick subcommand
+    2. ambient-context-inject.sh grows a --tick-preamble mode that reads the last 50 ambient events since the role's last-seen cursor (.chump-locks/<role>-ambient-cursor); prints a 5-line digest to stdout per relevant kind (FEEDBACK / WARN / STUCK / DONE / INTENT) addressed-to-role OR fanout
+    3. Updates the role's last-seen cursor on read so we don't replay events
+    4. Curator loop scripts log the digest to their .chump-locks/autopilot-logs/curator-<role>.log so observability can see what each role saw
+    5. Smoke test extends per-loop script tests with: synth ambient.jsonl with a relevant event, run --tick-preamble, assert digest line present + cursor updated
+    6. chump preflight green before push
