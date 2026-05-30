@@ -6232,3 +6232,59 @@ events:
     expected_volume: "matches hitl_approval_required volume on resolution"
     status: stable
     # payload: {pr: number, signal: string (env:X | file:Y | label:Z), session: string, ts: string}
+    # payload: {cycle_id: string, gap_id: string, decision: "include"|"exclude", reason: string, ts: string}
+
+  # ── INFRA-2295: stale-pr-rebase-bot (SCALE-C safety net) ──────────────────
+
+  - kind: stale_pr_auto_rebased
+    effect_metric: resilient
+    emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)
+    trigger: >
+      Emitted when a stale, auto-merge-armed PR is successfully rebased —
+      either via gh pr update-branch (method=gh_update_branch) or via a
+      local worktree rebase with force-with-lease push (method=local_rebase_fallback,
+      the INFRA-1958 false-positive path). Complements pr_auto_rebased from
+      pr-auto-rebase.sh; adds 3-strike doctrine and trunk-RED guard.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, pr, branch, method, prior_strikes]
+    expected_volume: "0-N per 15-min cadence (one per rebased PR)"
+    status: stable
+
+  - kind: stale_pr_rebase_failed
+    effect_metric: resilient
+    emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)
+    trigger: >
+      Emitted when both gh pr update-branch and the local worktree rebase
+      fallback fail for a given PR on this cycle. Strike counter is
+      incremented in .chump-locks/rebase-bot-strikes/<PR>.json. Not yet
+      actionable — operator acts only after stale_pr_unrebaseable (3-strike).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch, strikes, strike_limit]
+    expected_volume: "0-N per 15-min cadence; bursts during merge conflicts"
+    status: stable
+
+  - kind: stale_pr_unrebaseable
+    effect_metric: resilient
+    emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)
+    trigger: >
+      Emitted when a PR's strike counter reaches CHUMP_REBASE_BOT_STRIKE_LIMIT
+      (default 3). A WARN broadcast is also sent via broadcast.sh. The PR is
+      NEVER auto-closed — operator must decide (resolve conflict, close, or
+      exempt). Strike state at .chump-locks/rebase-bot-strikes/<PR>.json.
+    consumers: [fleet-brief, ops-audit, operator-digest]
+    fields_required: [ts, kind, pr, branch, strikes, note]
+    expected_volume: "rare; signals genuine merge conflict needing operator attention"
+    status: stable
+
+  - kind: stale_pr_rebase_bot_holding_for_trunk_red
+    effect_metric: resilient
+    emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)
+    trigger: >
+      Emitted at the top of each bot cycle when trunk-red-detector-state.json
+      exists with a non-empty last_failed_sha. The entire rebase cycle is
+      skipped — rebasing branches onto a broken main wastes CI capacity and
+      queues work behind failing trunk commits.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind]
+    expected_volume: "once per 15-min cycle while trunk is RED"
+    status: stable
