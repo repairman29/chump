@@ -141,8 +141,50 @@ emit_to_nats() {
 # INFRA-1115: write the JSON event into the recipient session's inbox.
 # Concurrent-append safety via flock; max wait 5s before fallback to
 # ambient-only with WARN.
+#
+# META-158 / CHUMP_FLEET_RECV_SIDE_V0: fan-out mode.
+# When called with empty recipient AND fanout_event=1 AND CHUMP_FLEET_RECV_SIDE_V0=1:
+#   - expand recipient list by globbing .chump-locks/.curator-opus-*.lock files
+#   - strip leading dot + .lock suffix to get session_ids
+#   - write the JSON event to each curator's inbox
+#   - if zero .curator-opus-*.lock files match, print WARN and return 0 (best-effort)
+# The --no-fanout flag or CHUMP_NO_FANOUT=1 suppresses this and falls through
+# to the current single-recipient behaviour (silent no-op for empty recipient).
 emit_to_inbox() {
-    local recipient="$1" json="$2"
+    local recipient="$1" json="$2" fanout_event="${3:-0}"
+    # META-158: FEEDBACK fan-out path (feature-flagged, best-effort)
+    if [[ -z "$recipient" && "$fanout_event" == "1" \
+          && "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" \
+          && "${NO_FANOUT:-0}" != "1" ]]; then
+        # Expand recipients from live .curator-opus-*.lock sentinel files.
+        # Each such file is created by curator-loop harnesses to signal liveness.
+        # Session ID = basename with leading dot and .lock suffix stripped.
+        local curator_recipients=()
+        shopt -s nullglob
+        for lf in "$LOCK_DIR"/.curator-opus-*.lock; do
+            local session_base
+            session_base="$(basename "$lf")"        # e.g. .curator-opus-foo.lock
+            session_base="${session_base#.}"         # strip leading dot → curator-opus-foo.lock
+            session_base="${session_base%.lock}"     # strip .lock → curator-opus-foo
+            curator_recipients+=("$session_base")
+        done
+        shopt -u nullglob
+        if [[ ${#curator_recipients[@]} -eq 0 ]]; then
+            printf '[broadcast] WARN: FEEDBACK fan-out found 0 .curator-opus-*.lock files — inbox write skipped (ambient retained)\n' >&2
+            # Emit observable event so watchdogs can detect zero-curator condition.
+            printf '{"ts":"%s","kind":"feedback_fanout_skipped","reason":"no_curator_locks","session":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+            return 0
+        fi
+        local cr
+        for cr in "${curator_recipients[@]}"; do
+            emit_to_inbox "$cr" "$json" "0"
+        done
+        # Emit observable event: fan-out delivered to N curators.
+        printf '{"ts":"%s","kind":"feedback_fanout_delivered","recipient_count":%d,"session":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${#curator_recipients[@]}" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+        return 0
+    fi
     [[ -n "$recipient" ]] || return 0
     local inbox_dir="$LOCK_DIR/inbox"
     mkdir -p "$inbox_dir" 2>/dev/null || true
@@ -287,10 +329,14 @@ fi
 # Backwards compat: default urgency is INFO — callers that omit --urgency are unchanged.
 # INFRA-1299 note: prior values now|hours|digest are accepted as aliases for INFO
 # so legacy callers continue working without modification.
+# META-158: optional --no-fanout suppresses FEEDBACK fan-out-to-inbox expansion;
+#   when set, emit_to_inbox falls back to single-recipient (silent no-op for empty --to).
+#   CHUMP_NO_FANOUT=1 env var has the same effect.
 # All flags can appear in any order before the event-type positional.
 TO=""
 CORR_FLAG=""
 URGENCY="INFO"
+NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 while :; do
     case "${1:-}" in
         --to)
@@ -312,6 +358,10 @@ while :; do
                 *) echo "Usage: $0 --urgency INFO|WARN|CRIT|EMERGENCY" >&2; exit 1 ;;
             esac
             shift 2
+            ;;
+        --no-fanout)
+            NO_FANOUT="1"
+            shift
             ;;
         *) break ;;
     esac
@@ -468,6 +518,16 @@ case "$EVENT" in
         emit_to_file "$JSON"
         mkdir -p "$LOCK_DIR" 2>/dev/null || true
         printf '%s\n' "$JSON" >> "$LOCK_DIR/feedback.jsonl"
+        # META-158: fan-out FEEDBACK kinds to all live curator inboxes.
+        # When --to is set, behave as before (single-recipient inbox write).
+        # When --to is unset and CHUMP_FLEET_RECV_SIDE_V0=1 and --no-fanout is not set,
+        # expand recipient list via .curator-opus-*.lock glob (best-effort, never fatal).
+        # When --to is unset and flag/env opts out, falls back to silent no-op (legacy).
+        if [[ -n "$TO" ]]; then
+            emit_to_inbox "$TO" "$JSON" "0"
+        else
+            emit_to_inbox "" "$JSON" "1"
+        fi
         # NATS topic: chump.events.FEEDBACK (Phase 1 keeps the type uppercase like the rest).
         emit_to_nats FEEDBACK "kind=$FB_KIND" "subject=$FB_SUBJECT" "rationale=$FB_RATIONALE" "vote=${FB_VOTE:-0}"
         route_by_urgency "$URGENCY" "$JSON" "FEEDBACK kind=$FB_KIND subject=$FB_SUBJECT"
