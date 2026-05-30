@@ -1542,6 +1542,40 @@ events:
     consumers: [waste-tally, audit-log]
     fields_required: [ts, kind, failed_mode, fallback_mode]
 
+  # ── INFRA-1118: A2A Layer 1a NATS-primary delivery ────────────────────────
+  - kind: fleet_a2a_degraded
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      NATS broker unreachable at session start or dropped mid-session while
+      CHUMP_A2A_LAYER=1 is active. Worker falls back to ambient.jsonl polling
+      within 5s. Pairs with fleet_a2a_recovered when NATS comes back.
+    consumers: [fleet-brief, ops-audit, watchdog]
+    fields_required: [ts, kind, session_id, reason]
+    docs: "Layer 1a fallback path — INFRA-1118 A2A ROADMAP §Layer 1a"
+
+  - kind: fleet_a2a_recovered
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      NATS broker reconnected after a fleet_a2a_degraded event. JetStream
+      durable consumer resumed from the last-acked offset so no events are
+      missed during the gap. Pairs with fleet_a2a_degraded.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session_id, durable_name, resume_sequence]
+    docs: "Layer 1a recovery path — INFRA-1118 A2A ROADMAP §Layer 1a"
+
+  - kind: fleet_a2a_backpressure
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      JetStream push consumer breached max_ack_pending; slow consumer detected.
+      Pending count logged; consumer is paused until ack drain completes. Visible
+      in `chump fleet-status` A2A section.
+    consumers: [fleet-brief, ops-audit, watchdog]
+    fields_required: [ts, kind, session_id, pending_count, max_ack_pending]
+    docs: "Layer 1a backpressure — INFRA-1118 A2A ROADMAP §Layer 1a"
+
   - kind: slo_breach
     effect_metric: self
     emitter: scripts/coord/opus-curator.sh (INFRA-848)

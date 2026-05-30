@@ -682,3 +682,5 @@ CHUMP_FLEET_RECV_SIDE_V0
 CHUMP_NO_QUORUM_GRACE_HOURS
 # detected in: (standard input)
 CHUMP_PROPOSAL_WINDOW_HOURS
+# INFRA-1118: A2A Layer 1a feature gate. 0=file-only (default), 1=NATS-primary subscribe.
+CHUMP_A2A_LAYER
