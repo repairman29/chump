@@ -6354,7 +6354,8 @@ async fn main() -> Result<()> {
 
                         if json_out {
                             // Extend JSON output with schema_version (INFRA-1548),
-                            // ac_count + ac_has_todos (CREDIBLE-033).
+                            // ac_count + ac_has_todos (CREDIBLE-033),
+                            // shipped_in as nested object when present (INFRA-2134).
                             let mut val = serde_json::to_value(&g).unwrap_or_default();
                             if let Some(obj) = val.as_object_mut() {
                                 obj.insert(
@@ -6369,6 +6370,16 @@ async fn main() -> Result<()> {
                                     "ac_has_todos".to_string(),
                                     serde_json::Value::Bool(ac_has_todos),
                                 );
+                                // INFRA-2134: replace the shipped_in string with a
+                                // parsed JSON object so consumers get a native object,
+                                // not a double-encoded string.
+                                if let Some(raw) = &g.shipped_in {
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(raw)
+                                    {
+                                        obj.insert("shipped_in".to_string(), parsed);
+                                    }
+                                }
                             }
                             println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
                         } else if brief_mode {
@@ -6494,6 +6505,49 @@ async fn main() -> Result<()> {
                                 println!("  notes: |");
                                 for line in g.notes.lines() {
                                     println!("    {}", line);
+                                }
+                            }
+                            // INFRA-2134: render shipped_in when present.
+                            // Only emit for shipped/done gaps; open gaps have NULL.
+                            if let Some(raw) = &g.shipped_in {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(raw) {
+                                    println!("  shipped_in:");
+                                    // Integration-cycle shape: 5-key form.
+                                    if let Some(iid) =
+                                        parsed.get("integration_id").and_then(|v| v.as_str())
+                                    {
+                                        println!("    integration: {}", iid);
+                                    }
+                                    if let Some(ipr) =
+                                        parsed.get("integration_pr").and_then(|v| v.as_str())
+                                    {
+                                        println!("    pr: {}", ipr);
+                                    }
+                                    if let Some(cc) =
+                                        parsed.get("child_commit").and_then(|v| v.as_str())
+                                    {
+                                        // Abbreviate to 7 chars to match AC spec.
+                                        println!("    commit: {}", &cc[..cc.len().min(7)]);
+                                    }
+                                    if let Some(ms) =
+                                        parsed.get("merge_sha").and_then(|v| v.as_str())
+                                    {
+                                        println!("    merge_sha: {}", &ms[..ms.len().min(7)]);
+                                    }
+                                    // Per-PR backwards-compat shape: pr_url + merge_sha.
+                                    if let Some(pu) = parsed.get("pr_url").and_then(|v| v.as_str())
+                                    {
+                                        println!("    pr: {}", pu);
+                                    }
+                                    // merge_sha already handled above (same key in both shapes).
+                                    // For per-PR shape where integration keys are absent:
+                                    if parsed.get("integration_id").is_none() {
+                                        if let Some(ms) =
+                                            parsed.get("merge_sha").and_then(|v| v.as_str())
+                                        {
+                                            println!("    merge_sha: {}", &ms[..ms.len().min(7)]);
+                                        }
+                                    }
                                 }
                             }
                             // INFRA-1220: show cooldown status if active.
