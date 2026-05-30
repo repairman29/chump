@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.flake-detector — META-141 LaunchAgent.
+
+  Runs scripts/coord/flake-detector.sh every 30 minutes. Scans CI run
+  history stored in .chump/flake_tracker.db, detects tests failing with
+  the same error fingerprint across 3+ distinct PRs within 24h, and writes
+  quarantine entries to .chump-locks/quarantined-flakes.json. Emits
+  kind=flake_detected ambient events for each new quarantine.
+
+  INSTALLATION (use scripts/setup/install-flake-detector.sh — idempotent):
+    scripts/setup/install-flake-detector.sh
+
+  MANUAL INSTALLATION:
+    1. Edit this file: replace /path/to/Chump with your absolute repo path.
+    2. cp .chump/launchd/com.chump.flake-detector.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.flake-detector.plist
+    4. Verify: launchctl list | grep chump.flake-detector
+    5. Manual run: launchctl start com.chump.flake-detector
+       Logs: tail /tmp/chump-flake-detector.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.flake-detector.plist
+    rm ~/Library/LaunchAgents/com.chump.flake-detector.plist
+
+  Tunables (set as EnvironmentVariables below or override at runtime):
+    CHUMP_FLAKE_DETECTOR=0          disable entirely
+    CHUMP_FLAKE_WINDOW_SECS=86400   lookback window (default: 24h)
+    CHUMP_FLAKE_THRESHOLD=3         min distinct PRs to quarantine (default: 3)
+    CHUMP_FLAKE_MAX_SCANS=50        max CI runs to scan
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.flake-detector</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/flake-detector.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 30 min: 1800 seconds -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-flake-detector.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-flake-detector.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- sqlite3 and python3 must be on PATH -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
