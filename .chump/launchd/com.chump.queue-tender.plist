@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.queue-tender — META-243 LaunchAgent.
+
+  Runs scripts/coord/queue-tender-loop.sh tick every 300 seconds (5 min).
+  Snapshots open PR count, fires gh pr update-branch on every DIRTY PR
+  (capped at CHUMP_QUEUE_TENDER_PARALLEL_REBASE parallel jobs), verifies
+  fleet daemon liveness, checks trunk CI conclusion, and emits
+  kind=queue_tend_tick to ambient.jsonl.
+
+  Origin: 2026-05-30 — an Opus orchestrator held the queue at 34 PRs with
+  11 ships/hr sustained via a session-only cron. This plist makes the same
+  behavior a permanent fleet capability.
+
+  See: docs/process/QUEUE_TENDER_DOCTRINE.md
+       docs/gaps/META-243.yaml
+       scripts/coord/queue-tender-loop.sh
+
+  INSTALLATION (use scripts/setup/install-queue-tender.sh; or manual):
+    1. Run: bash scripts/setup/install-queue-tender.sh install
+       The installer substitutes the real repo path into ProgramArguments and
+       WorkingDirectory — do not edit those fields here manually.
+    2. Verify: launchctl list | grep chump.queue-tender
+    3. Manual run: launchctl start com.chump.queue-tender
+       Logs: tail $HOME/.chump/logs/queue-tender.out.log
+
+  UNINSTALL:
+    bash scripts/setup/install-queue-tender.sh uninstall
+
+  KILL-SWITCH:
+    Set CHUMP_SKIP_QUEUE_TENDER=1 in EnvironmentVariables below, then reload.
+    The tick subcommand exits 0 immediately without taking any action.
+
+  Tunables (set as EnvironmentVariables or override at runtime):
+    CHUMP_QUEUE_TENDER_PARALLEL_REBASE      — max parallel rebase jobs (default 20)
+    CHUMP_QUEUE_TENDER_REBASE_HYSTERESIS_SEC — min seconds between rebases on
+                                              same PR (default 300)
+    CHUMP_SKIP_QUEUE_TENDER=1               — kill-switch; tick is a no-op
+
+  Note on the StartInterval value: 300 matches the CHUMP_QUEUE_TENDER_CADENCE_SEC
+  default. Adjust both in sync if you want a different cadence.
+
+  Note on gh auth: the gh CLI reads credentials from the macOS keychain when
+  HOME is set. The EnvironmentVariables block sets HOME so launchd does not
+  inherit a stripped environment.
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.queue-tender</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/queue-tender-loop.sh</string>
+    <string>tick</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 5 min — matches operator-observed equilibrium cadence (META-243). -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <!-- RunAtLoad=true so the daemon fires immediately on install/reload.
+       INFRA-351 lesson: RunAtLoad catches "did install work?" before the
+       first StartInterval tick fires. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/.chump/logs/queue-tender.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/.chump/logs/queue-tender.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- gh CLI needs HOME for auth token; PATH for git/gh/bash (INFRA-802). -->
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- Uncomment to tune parallel rebase cap: -->
+    <!-- <key>CHUMP_QUEUE_TENDER_PARALLEL_REBASE</key> -->
+    <!-- <string>20</string> -->
+    <!-- Uncomment to tune hysteresis window: -->
+    <!-- <key>CHUMP_QUEUE_TENDER_REBASE_HYSTERESIS_SEC</key> -->
+    <!-- <string>300</string> -->
+    <!-- Uncomment to activate kill-switch: -->
+    <!-- <key>CHUMP_SKIP_QUEUE_TENDER</key> -->
+    <!-- <string>1</string> -->
+  </dict>
+
+  <!-- ThrottleInterval prevents launchd from restarting faster than 60s
+       if the script exits quickly (e.g. queue drained). -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
