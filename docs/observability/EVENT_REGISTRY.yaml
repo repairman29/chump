@@ -5878,3 +5878,17 @@ events:
     related_kinds: [arch_fit_query]
     expected_volume: "0-N per session (paired with arch_fit_query events)"
     # payload: {gap_id: string, rating: "fit"|"stretch"|"fork"|"retracted", rationale: string, confidence: "high"|"med"|"low", original_rating: string|null, correction: boolean, ts: string}
+  - kind: bisect_step_evaluated
+    effect_metric: resilient
+    emitter: scripts/dev/integration-bisect-step.sh (INFRA-2168)
+    trigger: >
+      Emitted after each git bisect step completes in the integration-cycle
+      bisect oracle. Records whether the commit was classified as good (0),
+      bad (1), or skip/flake (125), along with which flake class matched (if
+      any) and the wall-clock duration. Enables post-hoc analysis of bisect
+      efficiency and flake-class hit rates without log parsing.
+    consumers: [ci-audit, ops-audit, kpi-report]
+    fields_required: [ts, kind, commit, outcome, duration_s, matched_class]
+    expected_volume: "N per bisect run (one per commit evaluated)"
+    status: stable
+    # payload: {commit: string (short sha), outcome: "good"|"bad"|"skip", duration_s: float, matched_class: string (id or "none"), ts: string}
