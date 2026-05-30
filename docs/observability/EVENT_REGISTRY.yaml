@@ -2277,6 +2277,50 @@ events:
       PR remains unarmed. Investigate gh auth / branch protection settings.
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pr, reason, dry_run]
+  # ── ARM-drop watcher (INFRA-2289) ─────────────────────────────────────────
+  # Detects PRs whose auto-merge ARM was silently cleared after a conflict-rebase
+  # race (e.g. two PRs both touching src/main.rs rebased in quick succession).
+  # scanner-anchor: scripts/coord/auto-merge-arm-watcher.sh
+
+  - kind: auto_merge_arm_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/auto-merge-arm-watcher.sh (INFRA-2289)
+    trigger: >
+      Emitted when the watcher detects an OPEN PR with autoMergeRequest=null
+      whose head_sha matches a successful auto-rebase event in the last 30 min.
+      Precedes an immediate re-arm attempt. Carries pr, sha (12-char prefix).
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, pr, sha]
+    expected_volume: "0-N; non-zero indicates rebase/ARM race; should be rare (<5/day)"
+    status: stable
+    # payload: {pr: number, sha: string (12-char prefix), ts: string}
+
+  - kind: auto_merge_arm_restored
+    effect_metric: resilient
+    emitter: scripts/coord/auto-merge-arm-watcher.sh (INFRA-2289)
+    trigger: >
+      Emitted after a successful gh pr merge --auto --squash following an
+      auto_merge_arm_dropped detection. Confirms the PR is re-armed.
+      Carries pr, sha (12-char prefix). Pairs with auto_merge_arm_dropped.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, pr, sha]
+    expected_volume: "matches auto_merge_arm_dropped volume on successful re-arm"
+    status: stable
+    # payload: {pr: number, sha: string (12-char prefix), ts: string}
+
+  - kind: auto_merge_arm_skipped
+    effect_metric: resilient
+    emitter: scripts/coord/auto-merge-arm-watcher.sh (INFRA-2289)
+    trigger: >
+      Emitted when a safety guard prevents re-arming. Reason field indicates
+      which guard fired: chump_hold_label (CHUMP_HOLD label present),
+      operator_recent_commit (human pushed to the branch in last 30 min),
+      rate_limit_reached (CHUMP_AM_WATCHER_RATE_PER_HOUR cap exceeded).
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, pr, reason]
+    expected_volume: "0-N; rate_limit_reached expected only on high-volume rebase days"
+    status: stable
+    # payload: {pr: number (optional), reason: string, ts: string}
 
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
