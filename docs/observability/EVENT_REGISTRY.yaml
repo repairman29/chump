@@ -5911,3 +5911,14 @@ events:
     expected_volume: "N per bisect run (one per commit evaluated)"
     status: stable
     # payload: {commit: string (short sha), outcome: "good"|"bad"|"skip", duration_s: float, matched_class: string (id or "none"), ts: string}
+  - kind: opus_inbox_surfaced
+    effect_metric: effective
+    emitter: scripts/coord/ambient-context-inject.sh INFRA-1797 SessionStart block
+    trigger: >
+      Emitted at SessionStart when the opus-inbox surfacer renders one or
+      more unread messages from .chump-locks/opus-inbox/. Carries
+      unread_count and the curator session_id so consumers (operator
+      dashboards, ambient-tail tools) can track inbox-surfacing patterns
+      without re-scanning the inbox files.
+    consumers: [ops-audit, fleet-doctor, pwa-dashboard]
+    fields_required: [ts, kind, unread_count, session]
