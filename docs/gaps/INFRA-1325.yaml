@@ -5,11 +5,13 @@
   priority: P2
   effort: m
   acceptance_criteria:
-    - "At `chump` startup (and on each worker cycle), a connectivity probe checks GitHub reachability (e.g., `gh api /rate_limit` with 5s timeout); if probe fails, `CHUMP_GITHUB_MODE` is auto-set to `offline` without operator intervention"
-    - "In offline mode: all GitHub mutation operations (pr create, pr merge, pr comment) are queued to `.chump-locks/github-queue.jsonl` with a `queued_at` timestamp; gap-work continues using local state.db and ambient.jsonl only"
-    - "Auto-recovery: background probe re-runs every 60s; when GitHub becomes reachable again, queued mutations are drained in order (FIFO) with dedup by `request_id`, and `kind=github_offline_recovery` is emitted"
-    - "Events: `kind=github_offline_detected` emitted when probe first fails (includes `fail_reason`, `queue_depth`); `kind=github_offline_recovery` emitted when drain completes (includes `mutations_replayed`, `mutations_skipped_stale`)"
-    - "Stale-queue guard: mutations older than 4h at recovery time are dropped with `kind=github_queue_item_stale` event (not replayed — stale PR operations are dangerous)"
-    - "Smoke test `scripts/ci/test-github-offline-autodetect.sh`: mock gh to return ECONNREFUSED, assert (a) offline mode detected within 10s, (b) a pr.create is queued not sent, (c) restore mock, assert recovery and queued item replayed, (d) 5h-old item is dropped with stale event"
-    - "`chump health` output includes GitHub mode line: `github: online | offline (queue: N items)` so operator can see current state at a glance"
+    - At chump startup (and on each worker cycle), a connectivity probe checks GitHub reachability; if probe fails, CHUMP_GITHUB_MODE is auto-set to offline without operator intervention
+    - "In offline mode: all GitHub mutation operations (pr create, pr merge, pr comment) are queued to .chump-locks/github-queue.jsonl with a queued_at timestamp; gap-work continues using local state.db and ambient.jsonl only"
+    - "Auto-recovery: background probe re-runs every 60s; when GitHub becomes reachable again, queued mutations are drained in order (FIFO) with dedup by request_id, and kind=github_offline_recovery is emitted"
+    - "Events: kind=github_offline_detected emitted when probe first fails (includes fail_reason, queue_depth); kind=github_offline_recovery emitted when drain completes (includes mutations_replayed, mutations_skipped_stale)"
+    - "Stale-queue guard: mutations older than 4h at recovery time are dropped with kind=github_queue_item_stale event (not replayed)"
+    - "Smoke test scripts/ci/test-github-offline-autodetect.sh: mock gh to return ECONNREFUSED, assert offline mode detected within 10s, queued item replayed on recovery, 5h-old item dropped with stale event"
+    - "chump health output includes GitHub mode line: github: online | offline (queue: N items) so operator can see current state at a glance"
+  notes: |
+    [2026-05-30T04:21:09Z] [2026-05-29 offline-first classification] Public-side, Phase 5 of INFRA-2246 offline-first roadmap. Operator-controllable + auto-detect via reachability probe; chump fleet doctor reports current mode.
 

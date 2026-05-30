@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.deliberator — META-162 LaunchAgent.
+
+  Runs scripts/coord/deliberator-loop.sh tick every 30 min. Tallies
+  accumulated FEEDBACK kind=vote events per corr_id, emits kind=consensus_result
+  when PASSED/FAILED verdict is reached, and escalates NO_QUORUM proposals to
+  the operator via operator-recall after deadline+24h.
+
+  Sub-slice E of META-157 (fleet recv-side v0).
+  See: docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3 Slice 5
+       docs/gaps/META-162.yaml
+
+  Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1 must be set or tick is a no-op
+  heartbeat. Set it in the EnvironmentVariables block below when enabling
+  in production.
+
+  INSTALLATION (use scripts/setup/chump-fleet-bootstrap.sh; or manual):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp .chump/launchd/com.chump.deliberator.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.deliberator.plist
+    4. Verify: launchctl list | grep chump.deliberator
+    5. Manual run: launchctl start com.chump.deliberator
+       Logs: tail /tmp/chump-deliberator.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.deliberator.plist
+    rm ~/Library/LaunchAgents/com.chump.deliberator.plist
+
+  Tunables (set as EnvironmentVariables below or override at runtime):
+    CHUMP_FLEET_RECV_SIDE_V0=1          — enable real tally work (default: off)
+    CHUMP_PROPOSAL_WINDOW_HOURS=24      — look-back window for proposals
+    CHUMP_NO_QUORUM_GRACE_HOURS=24      — grace hours past deadline before escalation
+    CHUMP_AMBIENT_LOG=<path>            — override ambient.jsonl path
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.deliberator</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/deliberator-loop.sh</string>
+    <string>tick</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 30 min: same cadence as bounced-pr-detector. -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-deliberator.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-deliberator.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- gh + git + jq must be on PATH. -->
+    <!-- Uncomment to enable real tally work: -->
+    <!-- <key>CHUMP_FLEET_RECV_SIDE_V0</key> -->
+    <!-- <string>1</string> -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

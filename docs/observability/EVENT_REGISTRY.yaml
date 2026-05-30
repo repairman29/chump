@@ -1542,6 +1542,40 @@ events:
     consumers: [waste-tally, audit-log]
     fields_required: [ts, kind, failed_mode, fallback_mode]
 
+  # ── INFRA-1118: A2A Layer 1a NATS-primary delivery ────────────────────────
+  - kind: fleet_a2a_degraded
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      NATS broker unreachable at session start or dropped mid-session while
+      CHUMP_A2A_LAYER=1 is active. Worker falls back to ambient.jsonl polling
+      within 5s. Pairs with fleet_a2a_recovered when NATS comes back.
+    consumers: [fleet-brief, ops-audit, watchdog]
+    fields_required: [ts, kind, session_id, reason]
+    docs: "Layer 1a fallback path — INFRA-1118 A2A ROADMAP §Layer 1a"
+
+  - kind: fleet_a2a_recovered
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      NATS broker reconnected after a fleet_a2a_degraded event. JetStream
+      durable consumer resumed from the last-acked offset so no events are
+      missed during the gap. Pairs with fleet_a2a_degraded.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session_id, durable_name, resume_sequence]
+    docs: "Layer 1a recovery path — INFRA-1118 A2A ROADMAP §Layer 1a"
+
+  - kind: fleet_a2a_backpressure
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs (INFRA-1118)
+    trigger: >
+      JetStream push consumer breached max_ack_pending; slow consumer detected.
+      Pending count logged; consumer is paused until ack drain completes. Visible
+      in `chump fleet-status` A2A section.
+    consumers: [fleet-brief, ops-audit, watchdog]
+    fields_required: [ts, kind, session_id, pending_count, max_ack_pending]
+    docs: "Layer 1a backpressure — INFRA-1118 A2A ROADMAP §Layer 1a"
+
   - kind: slo_breach
     effect_metric: self
     emitter: scripts/coord/opus-curator.sh (INFRA-848)
@@ -2003,6 +2037,21 @@ events:
     trigger: wall-clock timeout (CHUMP_PR_RESCUE_TIMEOUT_S, default 300s) exceeded before all PRs processed; script exits early to avoid secondary rate-limit abuse
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
+
+  # ── INFRA-2169: Mode D external-ship audit receipt ────────────────────────
+  - kind: external_repo_ship
+    effect_metric: effective
+    emitter: scripts/coord/pr-rescue.sh (INFRA-2169)
+    trigger: >
+      A cross-repository (fork) PR was successfully rebased and merged
+      by the fork-aware shepherd (INFRA-2114). Emitted once per merged
+      fork PR so operators can audit Mode D (external-repo) throughput.
+      Also fires broadcast.sh DONE <gap_id> <head_sha> for A2A routing.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, external_repo, pr_url, head_sha, files_touched_count, shipper_session]
+    related_kinds: [pr_rescue_completed]
+    status: stable
+    # payload: {ts: string, gap_id: string, external_repo: "owner/repo", pr_url: string, head_sha: string, files_touched_count: number, shipper_session: string}
 
   # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
   - kind: paramedic_action
@@ -5229,6 +5278,48 @@ events:
     consumers: [ops-audit, fleet-brief, operator-recall]
     fields_required: [ts, kind, pr, ruleset_id, restore_json, severity]
 
+  # INFRA-2071: admin-merge burst circuit-breaker
+  - kind: admin_merge_cycle_run
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Emitted once per successful admin-merge cycle immediately before
+      admin_merge_cycle_ok. This is the counter event the burst circuit-breaker
+      counts: when CHUMP_ADMIN_MERGE_BURST_THRESHOLD or more of these appear
+      within CHUMP_ADMIN_MERGE_BURST_WINDOW_S seconds, the next invocation
+      trips the circuit-breaker and emits admin_merge_burst instead of
+      proceeding. Fields capture the PR, the justification (noise-class id or
+      force-admin reason), and the operator session id for retrospectives.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, reason, operator_session_id]
+
+  - kind: admin_merge_burst
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Circuit-breaker tripped: admin_merge_cycle_run count in the past
+      CHUMP_ADMIN_MERGE_BURST_WINDOW_S seconds reached or exceeded
+      CHUMP_ADMIN_MERGE_BURST_THRESHOLD. The script exits non-zero (exit 3)
+      and refuses to proceed. Operator must triage the root cause of the
+      repeated admin-merge need OR re-run with --force-admin / CHUMP_ADMIN_MERGE_FORCE=1
+      to override (which emits admin_merge_burst_overridden instead).
+      operator_action_needed=true signals operator-recall consumers.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, count, window_s, threshold, operator_action_needed]
+
+  - kind: admin_merge_burst_overridden
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Operator explicitly overrode the burst circuit-breaker via --force-admin
+      or CHUMP_ADMIN_MERGE_FORCE=1 after it tripped (admin_merge_burst was
+      emitted first). The merge proceeds but this separate kind is logged so
+      the override pattern is visible in retrospectives and can be audited
+      independently from the burst itself. override_method distinguishes the
+      two override paths.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, count, window_s, threshold, override_method]
+
   # INFRA-1979: inbox jsonl rotation — emitted after each prune run
   - kind: inbox_pruned
     effect_metric: self
@@ -5841,17 +5932,20 @@ events:
 
   - kind: cycle_sampling_decision
     effect_metric: credible
-    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    emitter: crates/chump-integrator/src/daemon.rs (INFRA-2139)
     trigger: >
-      Phase 2 marker. Emitted when the cycle's sampling logic decides
-      whether to include or exclude a candidate gap based on probabilistic
-      or priority-weighted selection. Enables post-hoc analysis of
-      sampling fairness across gap classes.
+      Phase 2 gate. Emitted once per cycle immediately after CLAIM, before
+      SELECT. A deterministic FNV-1a hash of cycle_id mod 100 + 1 gives a
+      roll in [1, 100]; if roll <= threshold the cycle runs LIVE, otherwise
+      it stays DRY-RUN. Enables post-hoc analysis of sampling rate and
+      live-cycle frequency. dry_run_override=true means the global
+      CHUMP_INTEGRATOR_DRY_RUN flag forced DRY-RUN regardless of roll.
     consumers: [kpi-report, ops-audit]
-    fields_required: [ts, kind, cycle_id, gap_id, decision, reason]
-    expected_volume: "N per cycle (one per candidate evaluated)"
+    fields_required: [ts, kind, cycle_id, roll, threshold, decision, dry_run_override, cycle_is_live]
+    expected_volume: "1 per cycle attempt"
     status: stable
-    # payload: {cycle_id: string, gap_id: string, decision: "include"|"exclude", reason: string, ts: string}
+    # payload: {cycle_id: string, roll: number, threshold: number, decision: "live"|"dry_run",
+    #           dry_run_override: bool, cycle_is_live: bool, ts: string}
 
   # META-127 C3c — curator-opus-velocity-tracker (INFRA-2221)
   - kind: velocity_tracker_tick
@@ -5944,3 +6038,31 @@ events:
       without re-scanning the inbox files.
     consumers: [ops-audit, fleet-doctor, pwa-dashboard]
     fields_required: [ts, kind, unread_count, session]
+  - kind: gap_shipped_in_set
+    effect_metric: credible
+    emitter: crates/chump-gap-store/src/lib.rs (INFRA-2134)
+    trigger: >
+      Emitted by GapStore::set_shipped_in() whenever a shipped_in JSON blob
+      is written for a gap. Enables audit trails for both integration-cycle
+      and per-PR shipping paths. Contains the gap_id and the shape of the
+      shipped_in record (integration vs per_pr).
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, shape]
+    related_kinds: [cycle_shipped, pr_merged]
+    expected_volume: "1 per gap shipped via any path"
+    status: stable
+    # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
+  - kind: per_gap_branch_pruned
+    effect_metric: zero-waste
+    emitter: scripts/ops/chump-post-integration-prune.sh (INFRA-2138)
+    trigger: >
+      Emitted when chump-post-integration-prune.sh deletes a per-gap
+      branch from origin after the 24h grace window following an
+      integration_cycle_shipped event. One event per branch pruned.
+      Also emitted in dry-run mode (dry_run=true) for auditability.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, branch, gap_id, cycle_id, dry_run]
+    related_kinds: [integration_cycle_shipped]
+    expected_volume: "N per integration cycle (one per gap in cycle)"
+    status: stable
+    # payload: {branch: string, gap_id: string, cycle_id: string, dry_run: bool, ts: string}

@@ -558,21 +558,37 @@ const computeDurS = (seg) => {
 async function fetchData() {
   const now = new Date();
   const twoHoursAgo = new Date(now - 2 * 3600 * 1000);
-  const fromIso = twoHoursAgo.toISOString();
-  const toIso = now.toISOString();
+  // INFRA-2189: server (INFRA-2175) expects ts_ms epoch query params;
+  // fixtures use ISO strings but ignore the params (they GET the static file).
+  // Pass epochs in both modes so the live server is happy.
+  const fromArg = USE_FIXTURES ? twoHoursAgo.toISOString() : twoHoursAgo.getTime();
+  const toArg   = USE_FIXTURES ? now.toISOString() : now.getTime();
 
   const [segRes, evtRes] = await Promise.all([
-    fetch(API.segments(fromIso, toIso)).then(r => r.json()),
-    fetch(API.events(fromIso, toIso)).then(r => r.json()),
+    fetch(API.segments(fromArg, toArg)).then(r => r.json()),
+    fetch(API.events(fromArg, toArg)).then(r => r.json()),
   ]);
 
-  allSegments = segRes;
-  allEvents   = evtRes;
+  // INFRA-2189: normalize server schema (start_ts_ms / end_ts_ms / ts_ms)
+  // to fixture schema (start / end / ts ISO strings) so downstream rendering
+  // code keeps working in both modes.
+  allSegments = (segRes || []).map(s => ({
+    ...s,
+    start: s.start || (s.start_ts_ms ? new Date(s.start_ts_ms).toISOString() : null),
+    end:   s.end   || (s.end_ts_ms   ? new Date(s.end_ts_ms).toISOString()   : null),
+  })).filter(s => s.start && s.end);
+  allEvents = (evtRes || []).map(e => ({
+    ...e,
+    ts: e.ts || (e.ts_ms ? new Date(e.ts_ms).toISOString() : null),
+    kind: e.kind || e.event_kind,
+  }));
 
   if (!USE_FIXTURES && API.sessions()) {
     try {
       const sess = await fetch(API.sessions()).then(r => r.json());
-      activeSessions = new Set(sess.map(s => s.session_id || s));
+      // Server returns {session_ids:[…], count}; fixtures may return array of objects
+      const arr = Array.isArray(sess) ? sess : (sess.session_ids || []);
+      activeSessions = new Set(arr.map(s => (typeof s === 'string') ? s : s.session_id));
     } catch (_) {}
   }
 

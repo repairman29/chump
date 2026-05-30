@@ -249,6 +249,9 @@ loud_detector     # reason: META-103 test-fixture synthetic kind used in scripts
 noisy_kind        # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 2; not a production emit
 normal_kind       # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 4; not a production emit
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
+test_file_fallback  # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs file-fallback receipt test; not a production emit
+test_roundtrip      # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs NATS roundtrip latency test; not a production emit
+test_backpressure   # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs backpressure detection test; not a production emit
 oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on THE_PATH.md hash change; printf-direct JSON not grep-scannable as kind=X literal
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
 oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable
@@ -278,6 +281,11 @@ hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-p
 
 # ── RESILIENT-031: admin-merge discipline audit trail ─────────────────────────
 admin_merge_forced  # reason: RESILIENT-031 emitted by scripts/ops/admin-merge-cycle.sh _emit() via printf — emit site uses a # scanner-anchor comment (INFRA-1237 pattern 8b) but formal EVENT_REGISTRY.yaml entry added in same commit; reserved here to satisfy strict-mode register-without-emit until the scanner can resolve scanner-anchor patterns
+
+# ── INFRA-2071: admin-merge burst circuit-breaker ─────────────────────────────
+admin_merge_cycle_run          # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh after successful merge — the counter event the burst threshold counts; scanner-anchor in _emit_cycle_run helper
+admin_merge_burst              # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh _check_burst when count >= threshold; scanner-anchor in _check_burst helper; operator_action_needed=true
+admin_merge_burst_overridden   # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh burst override block when --force-admin or CHUMP_ADMIN_MERGE_FORCE=1 bypasses a tripped circuit-breaker; scanner-anchor in burst override block
 
 # ── INFRA-1993 / META-106 (THE FLOOR Phase 3): operator-recovery queue ───────
 operator_recovery_requested  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-emit.sh (worker-facing CLI) when a worker requests an admin-merge cycle for a PR cluster; the queue service consumes these events
@@ -422,3 +430,11 @@ integration_cycle_shipped         # reason: INFRA-2132 / META-124; registered in
 cycle_sampling_decision           # reason: INFRA-2132 / META-124 Phase 2 marker; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
 bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registered in EVENT_REGISTRY.yaml; emitter scripts/dev/integration-bisect-step.sh.
 fleet_scale_changed               # reason: INFRA-2198 (META-128/C7); disk-plan gate + fleet auto-scale emitter; fields: from, to, reason.
+external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; registered in EVENT_REGISTRY.yaml; emitter scripts/coord/pr-rescue.sh (INFRA-2114 fork-aware path).
+
+# ── INFRA-1118: A2A Layer 1a — file-fallback + degraded/recovered event kinds ──
+# Emit sites in crates/chump-coord/src/events.rs use Rust format! macro patterns
+# not grep-scannable as bare "kind":"<value>" literals in PROD_PATHS scanner.
+fleet_a2a_degraded    # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+fleet_a2a_recovered   # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+fleet_a2a_backpressure # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal

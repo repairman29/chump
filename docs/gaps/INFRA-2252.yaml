@@ -1,0 +1,16 @@
+- id: INFRA-2252
+  domain: INFRA
+  title: "RESILIENT: local merge queue — scripts/coord/local-merge-queue.sh replaces gh pr merge --auto when CHUMP_GITHUB_MODE=offline (referenced in OFFLINE_FIRST.md as INFRA-1321 but never filed; Phase 3 of INFRA-2246 offline-first roadmap)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/coord/local-merge-queue.sh — when CHUMP_GITHUB_MODE=offline, gap shipping merges to local main via this script instead of gh pr merge --auto
+    - Uses NATS KV CAS for serialization across multiple worker machines on the local mesh (Pi mesh scenario) — falls back to file lock under .chump-locks/local-merge-queue.lock when NATS unavailable (airplane scenario)
+    - Persists pending merges as PersistentMission<MergeRequest> via the INFRA-2247 file-backed mission store — survives node restarts
+    - bot-merge.sh detects CHUMP_GITHUB_MODE=offline and routes to local-merge-queue.sh; existing online path unchanged
+    - "Smoke test scripts/ci/test-local-merge-queue.sh: synth 3 pending merges, run local-merge-queue, assert all 3 merge into local main in order, no GitHub calls made"
+    - Emit kind=local_merge_queued / kind=local_merge_landed / kind=local_merge_blocked ambient events
+  notes: |
+    [2026-05-30T04:21:56Z] Filed by curator-opus-shepherd-2026-05-29 — operator question surfaced that OFFLINE_FIRST.md references INFRA-1321 as the gap ID for this work but the gap was never filed. This is the previously-mythical INFRA-1321. Phase 3 of INFRA-2246 offline-first roadmap. Depends on INFRA-2247 (mission types) shipping first.
+
