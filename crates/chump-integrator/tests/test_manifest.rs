@@ -29,9 +29,18 @@ fn test_dry_run_summary_format() {
         summary.starts_with("WOULD HAVE SHIPPED 3 gaps:"),
         "unexpected summary: {summary}"
     );
-    assert!(summary.contains("INFRA-001"), "missing INFRA-001: {summary}");
-    assert!(summary.contains("INFRA-002"), "missing INFRA-002: {summary}");
-    assert!(summary.contains("INFRA-003"), "missing INFRA-003: {summary}");
+    assert!(
+        summary.contains("INFRA-001"),
+        "missing INFRA-001: {summary}"
+    );
+    assert!(
+        summary.contains("INFRA-002"),
+        "missing INFRA-002: {summary}"
+    );
+    assert!(
+        summary.contains("INFRA-003"),
+        "missing INFRA-003: {summary}"
+    );
 }
 
 #[test]

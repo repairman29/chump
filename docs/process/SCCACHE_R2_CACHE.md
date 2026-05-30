@@ -33,7 +33,52 @@ absent, `RUSTC_WRAPPER` stays empty and sccache isn't invoked. CI
 behaviour is unchanged. Setting the secrets flips on R2 sharing without
 further code changes.
 
-## Operator: remaining R2 steps (~10 min)
+## Rotation (when sccache CI starts failing with `S3Error: Unauthorized`)
+
+**Symptom.** CI runs on Rust PRs fail with:
+```
+sccache: error: Server startup failed: ... S3Error { code: "Unauthorized" }
+error: command `cargo metadata ...` failed with exit status: 101
+```
+
+This means the R2 access-key + secret-access-key pair in GH secrets no longer
+authenticates against the R2 bucket. The most common cause is a **half-rotation**:
+one secret value was updated in GH but the matching half was not, breaking
+the pair (see 2026-05-29 incident — INFRA-2127 / INFRA-2237).
+
+**Fix in one command (INFRA-2237):**
+
+```bash
+# One-time setup: create a Cloudflare API token with
+#   Account → Workers R2 Storage → Edit
+# at https://dash.cloudflare.com/profile/api-tokens
+# (this is DIFFERENT from the R2 S3-compat token being rotated; it's the
+# parent token that grants permission to rotate other tokens.)
+export CHUMP_CF_API_TOKEN='cf-api-token-with-r2-edit-scope'
+export CHUMP_R2_ACCOUNT_ID='32-char-cf-account-hex'
+
+# Dry-run shows what would change:
+bash scripts/ops/rotate-sccache-r2-token.sh
+
+# Actually rotate (atomic — new CF token + both GH secrets in one operation):
+bash scripts/ops/rotate-sccache-r2-token.sh --execute
+```
+
+The script: validates the CF API token; finds the existing token by name
+(default `chump-sccache-ci`); creates a NEW R2 token with the same name +
+permissions; updates BOTH `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` GH
+secrets atomically; deletes the OLD R2 token; emits
+`kind=sccache_r2_token_rotated` with first-4/last-4 audit fingerprints.
+
+If anything fails mid-flow, the script attempts to delete the orphan new CF
+token before exiting non-zero. If step 4 partially succeeds (one secret
+updated, other failed), GH is half-rotated and the operator must re-run the
+script or manually re-paste from the still-valid old token.
+
+After rotation, the next CI run on any branch should switch from `S3Error
+Unauthorized` to cache hit/miss stats.
+
+## Operator: remaining R2 steps (~10 min — first-time setup only)
 
 ### Step 1 — Generate R2 API token (3 min)
 
