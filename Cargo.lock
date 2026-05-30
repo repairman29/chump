@@ -1320,6 +1320,7 @@ version = "0.1.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
+ "async-nats",
  "async-trait",
  "axonerai",
  "axum",
@@ -1329,6 +1330,7 @@ dependencies = [
  "chump-ambient-cli",
  "chump-ast-crawler",
  "chump-cancel-registry",
+ "chump-coord",
  "chump-cost-tracker",
  "chump-gap-store",
  "chump-handoff",
@@ -1459,6 +1461,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "tracing",
  "uuid 1.23.1",
 ]
 

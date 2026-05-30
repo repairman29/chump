@@ -4474,6 +4474,159 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
     }))
 }
 
+// ── META-175: /api/fleet-wire/health ─────────────────────────────────────────
+
+/// GET /api/fleet-wire/health — JetStream consumer lag + delivery latency per role.
+///
+/// Returns per-role consumer lag (num_pending from consumer info) and delivery
+/// latency p50/p99 derived from `kind=feedback_fanout_delivered` events in
+/// `ambient.jsonl`.
+///
+/// When `CHUMP_FLEET_WIRE_V1=1` and `CHUMP_NATS_URL` are both set, queries
+/// the live NATS broker. Otherwise returns `nats_enabled: false` so the PWA
+/// panel can show the file-inbox fallback notice.
+///
+/// Response: `{ roles: [{ role, lag, p50_ms, p99_ms }], updated_at, nats_enabled }`
+async fn handle_fleet_wire_health(headers: HeaderMap) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers); // unauthenticated read-only for dashboard
+
+    let nats_enabled = chump_coord::jetstream_consumer::fleet_wire_enabled();
+    let updated_at = chrono::Utc::now().to_rfc3339();
+
+    if !nats_enabled {
+        return Json(serde_json::json!({
+            "roles": [],
+            "updated_at": updated_at,
+            "nats_enabled": false,
+        }));
+    }
+
+    // ── Read delivery latency from ambient.jsonl ──────────────────────────────
+    // Scan the last 500 lines for kind=feedback_fanout_delivered events,
+    // extract `delivered_at` and `published_at` timestamps to compute latency.
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let mut latencies_ms: std::collections::HashMap<String, Vec<i64>> =
+        std::collections::HashMap::new();
+
+    if let Ok(contents) = std::fs::read_to_string(&ambient_path) {
+        let lines: Vec<&str> = contents.lines().collect();
+        let start = lines.len().saturating_sub(500);
+        for line in &lines[start..] {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if v.get("kind").and_then(|k| k.as_str()) != Some("feedback_fanout_delivered") {
+                continue;
+            }
+            let role = v
+                .get("role")
+                .and_then(|r| r.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            // published_at and delivered_at are RFC3339 strings.
+            let pub_ts = v
+                .get("published_at")
+                .and_then(|t| t.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
+            let del_ts = v
+                .get("delivered_at")
+                .and_then(|t| t.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok());
+            if let (Some(pub_t), Some(del_t)) = (pub_ts, del_ts) {
+                let latency_ms = (del_t - pub_t).num_milliseconds();
+                if latency_ms >= 0 {
+                    latencies_ms.entry(role).or_default().push(latency_ms);
+                }
+            }
+        }
+    }
+
+    // ── Query NATS consumer info for each known role ───────────────────────────
+    // We discover roles from the ambient events we just scanned, plus any
+    // consumer names visible on the CHUMP_EVENTS stream (if reachable).
+    let mut role_set: std::collections::HashSet<String> = latencies_ms.keys().cloned().collect();
+
+    // Attempt to enumerate consumers from NATS (best-effort, timeout 1s).
+    let nats_url = std::env::var("CHUMP_NATS_URL")
+        .unwrap_or_else(|_| chump_coord::DEFAULT_NATS_URL.to_string());
+    let nats_result = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        async_nats::connect(&nats_url),
+    )
+    .await;
+
+    let mut role_lags: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+
+    if let Ok(Ok(nats)) = nats_result {
+        let js = async_nats::jetstream::new(nats);
+        if let Ok(stream) = js.get_stream(chump_coord::EVENTS_STREAM).await {
+            // List consumer names that start with "chump-fleet-".
+            let mut names = stream.consumer_names();
+            while let Ok(Some(Ok(name))) = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                futures_util::StreamExt::next(&mut names),
+            )
+            .await
+            {
+                if let Some(role) = name.strip_prefix("chump-fleet-") {
+                    role_set.insert(role.to_string());
+                    // Fetch consumer info for lag.
+                    if let Ok(info) = stream.consumer_info(&name).await {
+                        role_lags.insert(role.to_string(), info.num_pending);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Build per-role response rows ─────────────────────────────────────────
+    let mut roles: Vec<serde_json::Value> = role_set
+        .into_iter()
+        .map(|role| {
+            let lag = *role_lags.get(&role).unwrap_or(&0);
+            let lats = latencies_ms.get(&role).cloned().unwrap_or_default();
+            let (p50, p99) = percentiles(&lats);
+            serde_json::json!({
+                "role": role,
+                "lag": lag,
+                "p50_ms": p50,
+                "p99_ms": p99,
+            })
+        })
+        .collect();
+    roles.sort_by(|a, b| {
+        a.get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("role").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+
+    Json(serde_json::json!({
+        "roles": roles,
+        "updated_at": updated_at,
+        "nats_enabled": true,
+    }))
+}
+
+/// Compute (p50_ms, p99_ms) from a sorted list of latency samples.
+/// Returns (None, None) when the slice is empty.
+fn percentiles(samples: &[i64]) -> (Option<i64>, Option<i64>) {
+    if samples.is_empty() {
+        return (None, None);
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let p50_idx = (sorted.len() as f64 * 0.50) as usize;
+    let p99_idx = (sorted.len() as f64 * 0.99) as usize;
+    let p50 = sorted[p50_idx.min(sorted.len() - 1)];
+    let p99 = sorted[p99_idx.min(sorted.len() - 1)];
+    (Some(p50), Some(p99))
+}
+
 /// GET /api/health/doctor — config-health probe for the first-run banner (INFRA-990).
 ///
 /// Calls `doctor::run_all_checks()` in-process and reshapes the report into the
@@ -8530,6 +8683,8 @@ fn build_api_router() -> Router {
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
+        // META-175: JetStream consumer lag + delivery latency per role.
+        .route("/api/fleet-wire/health", get(handle_fleet_wire_health))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/prs", get(handle_pr_list))
         // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.
