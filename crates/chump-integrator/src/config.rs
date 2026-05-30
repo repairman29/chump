@@ -1,6 +1,22 @@
 //! Configuration loaded from environment variables.
 //!
 //! All knobs have sensible defaults; none are required.
+//!
+//! ## LIVE-mode toggle (SCALE-A, INFRA-2130)
+//!
+//! The canonical dry-run flag is `CHUMP_INTEGRATOR_DRY_RUN` (default `1`).
+//! `CHUMP_INTEGRATOR_LIVE` is an ergonomic alias: setting it to `1` sets
+//! `dry_run = false`. If both are set, `CHUMP_INTEGRATOR_DRY_RUN` wins
+//! (explicit beats alias). Operator must opt-in — default is always safe.
+//!
+//! Safety rails applied when `dry_run = false`:
+//! - Trunk-RED gate: read `.chump-locks/trunk-red-detector-state.json`; hold
+//!   if `is_red = true`.
+//! - Batch cap: `CHUMP_INTEGRATOR_BATCH_MAX` (default 5 in v1). Cap sits
+//!   below `max_batch` to start conservatively.
+//! - `do-not-batch` label: candidates with this GitHub label are excluded.
+//! - Circuit breaker: on merge failure, emit `integration_cycle_failed` and
+//!   force dry-run for the next cycle.
 
 use std::time::Duration;
 
@@ -20,6 +36,10 @@ pub struct IntegratorConfig {
     /// Preflight command timeout. Default: 480s.
     pub preflight_timeout: Duration,
     /// Dry-run mode (Phase 1 default: true). When true, stops after PREFLIGHT.
+    ///
+    /// Set `CHUMP_INTEGRATOR_DRY_RUN=0` OR `CHUMP_INTEGRATOR_LIVE=1` to
+    /// enable LIVE mode. `CHUMP_INTEGRATOR_DRY_RUN` takes precedence when
+    /// both are set.
     pub dry_run: bool,
     /// Sampling percentage for live cycles (Phase 2 knob). Integer 0-100.
     ///
@@ -33,6 +53,17 @@ pub struct IntegratorConfig {
     ///
     /// CLI override: `--sampling-pct N` (env takes precedence over CLI).
     pub sampling_pct: u8,
+    /// v1 LIVE-mode batch cap. Default 5 — conservative starting point.
+    ///
+    /// Separate from `max_batch` so the LIVE-mode guard is explicit and
+    /// the operator must consciously raise it.
+    ///
+    /// Env: `CHUMP_INTEGRATOR_BATCH_MAX` (default 5).
+    pub batch_max_live: usize,
+    /// GitHub label name that opts a PR out of batching. Default: "do-not-batch".
+    ///
+    /// Env: `CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL`.
+    pub do_not_batch_label: String,
 }
 
 impl Default for IntegratorConfig {
@@ -46,12 +77,18 @@ impl Default for IntegratorConfig {
             preflight_timeout: Duration::from_secs(480),
             dry_run: true,
             sampling_pct: 100,
+            batch_max_live: 5,
+            do_not_batch_label: "do-not-batch".to_string(),
         }
     }
 }
 
 impl IntegratorConfig {
     /// Load from environment variables, falling back to defaults.
+    ///
+    /// `CHUMP_INTEGRATOR_DRY_RUN` is the authoritative dry-run flag.
+    /// `CHUMP_INTEGRATOR_LIVE=1` is an alias that sets dry_run=false when
+    /// `CHUMP_INTEGRATOR_DRY_RUN` is not explicitly set.
     pub fn from_env() -> Self {
         let poll_s = env_u64("CHUMP_INTEGRATOR_POLL_S", 15);
         let cadence_min = env_u64("CHUMP_INTEGRATOR_CADENCE_MIN", 30);
@@ -59,8 +96,19 @@ impl IntegratorConfig {
         let loc_budget = env_usize("CHUMP_INTEGRATOR_LOC_BUDGET", 1500);
         let max_batch = env_usize("CHUMP_INTEGRATOR_MAX_BATCH", 10);
         let preflight_timeout_s = env_u64("CHUMP_INTEGRATOR_PREFLIGHT_TIMEOUT_S", 480);
-        let dry_run = env_bool("CHUMP_INTEGRATOR_DRY_RUN", true);
         let sampling_pct = env_sampling_pct("CHUMP_INTEGRATOR_SAMPLING_PCT", 100);
+        let batch_max_live = env_usize("CHUMP_INTEGRATOR_BATCH_MAX", 5);
+        let do_not_batch_label = std::env::var("CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL")
+            .unwrap_or_else(|_| "do-not-batch".to_string());
+
+        // CHUMP_INTEGRATOR_DRY_RUN is authoritative. When absent, check the
+        // CHUMP_INTEGRATOR_LIVE alias. Default is always dry_run=true.
+        let dry_run = if std::env::var("CHUMP_INTEGRATOR_DRY_RUN").is_ok() {
+            env_bool("CHUMP_INTEGRATOR_DRY_RUN", true)
+        } else {
+            // LIVE=1 means dry_run=false; anything else keeps dry_run=true.
+            !env_bool("CHUMP_INTEGRATOR_LIVE", false)
+        };
 
         Self {
             poll_interval: Duration::from_secs(poll_s),
@@ -71,6 +119,8 @@ impl IntegratorConfig {
             preflight_timeout: Duration::from_secs(preflight_timeout_s),
             dry_run,
             sampling_pct,
+            batch_max_live,
+            do_not_batch_label,
         }
     }
 }
@@ -127,6 +177,63 @@ mod tests {
             cfg.sampling_pct, 100,
             "sampling_pct must default to 100 (fully live when enabled)"
         );
+        assert_eq!(cfg.batch_max_live, 5, "v1 LIVE batch cap must default to 5");
+        assert_eq!(
+            cfg.do_not_batch_label, "do-not-batch",
+            "default exclusion label"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_live_alias_enables_live_mode() {
+        // CHUMP_INTEGRATOR_LIVE=1 sets dry_run=false when DRY_RUN is absent.
+        std::env::remove_var("CHUMP_INTEGRATOR_DRY_RUN");
+        std::env::set_var("CHUMP_INTEGRATOR_LIVE", "1");
+        let cfg = IntegratorConfig::from_env();
+        assert!(!cfg.dry_run, "LIVE=1 must enable live mode");
+        std::env::remove_var("CHUMP_INTEGRATOR_LIVE");
+    }
+
+    #[test]
+    #[serial]
+    fn test_dry_run_overrides_live_alias() {
+        // DRY_RUN=1 wins even when LIVE=1.
+        std::env::set_var("CHUMP_INTEGRATOR_DRY_RUN", "1");
+        std::env::set_var("CHUMP_INTEGRATOR_LIVE", "1");
+        let cfg = IntegratorConfig::from_env();
+        assert!(cfg.dry_run, "DRY_RUN=1 must override LIVE=1");
+        std::env::remove_var("CHUMP_INTEGRATOR_DRY_RUN");
+        std::env::remove_var("CHUMP_INTEGRATOR_LIVE");
+    }
+
+    #[test]
+    #[serial]
+    fn test_live_alias_zero_keeps_dry_run() {
+        // CHUMP_INTEGRATOR_LIVE=0 keeps dry_run=true (default).
+        std::env::remove_var("CHUMP_INTEGRATOR_DRY_RUN");
+        std::env::set_var("CHUMP_INTEGRATOR_LIVE", "0");
+        let cfg = IntegratorConfig::from_env();
+        assert!(cfg.dry_run, "LIVE=0 must keep dry_run=true");
+        std::env::remove_var("CHUMP_INTEGRATOR_LIVE");
+    }
+
+    #[test]
+    #[serial]
+    fn test_batch_max_live_env() {
+        std::env::set_var("CHUMP_INTEGRATOR_BATCH_MAX", "3");
+        let cfg = IntegratorConfig::from_env();
+        assert_eq!(cfg.batch_max_live, 3);
+        std::env::remove_var("CHUMP_INTEGRATOR_BATCH_MAX");
+    }
+
+    #[test]
+    #[serial]
+    fn test_do_not_batch_label_env() {
+        std::env::set_var("CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL", "skip-batch");
+        let cfg = IntegratorConfig::from_env();
+        assert_eq!(cfg.do_not_batch_label, "skip-batch");
+        std::env::remove_var("CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL");
     }
 
     #[test]
