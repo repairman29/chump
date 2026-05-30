@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.trunk-red-detector — META-177 Lane C LaunchAgent.
+
+  Polls the latest CI run on main every 5 minutes. When it detects a failure
+  it emits kind=trunk_red_detected to ambient.jsonl and broadcasts a WARN so
+  the operator is surfaced within 5 min instead of waiting hours until the
+  next manual check.
+
+  Background: on 2026-05-30 trunk was RED for 3+ hours before the operator
+  discovered it via a random CI check. This daemon would have surfaced the
+  failure at ~07:30Z instead of ~10:00Z.
+
+  See: docs/gaps/META-179.yaml (sub-gap of META-177 Lane C)
+       scripts/coord/trunk-red-detector.sh
+
+  INSTALLATION (use scripts/setup/install-trunk-red-detector.sh; or manual):
+    1. Edit this file: replace /Users/jeffadkins/Projects/Chump with your repo path.
+    2. cp .chump/launchd/com.chump.trunk-red-detector.plist ~/Library/LaunchAgents/
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.chump.trunk-red-detector.plist
+    4. Verify: launchctl list | grep trunk-red
+    5. Manual run: launchctl kickstart -k gui/$(id -u)/com.chump.trunk-red-detector
+       Logs: tail $HOME/.chump/logs/trunk-red-detector.out
+
+  UNINSTALL:
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.chump.trunk-red-detector.plist
+    rm ~/Library/LaunchAgents/com.chump.trunk-red-detector.plist
+
+  Tunables (set as EnvironmentVariables below or override at runtime):
+    CHUMP_TRUNK_RED_EMIT_INTERVAL_S   — hysteresis window in seconds (default 3600)
+    CHUMP_TRUNK_RED_WORKFLOW          — workflow file name (default ci.yml)
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.trunk-red-detector</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-l</string>
+    <string>-c</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; scripts/coord/trunk-red-detector.sh</string>
+  </array>
+
+  <!-- Every 5 min. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jeffadkins/.chump/logs/trunk-red-detector.out</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/jeffadkins/.chump/logs/trunk-red-detector.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/jeffadkins/.cargo/bin</string>
+    <!-- gh + git + python3 must be on PATH. -->
+    <!-- Tunable hysteresis window (seconds). Default: 3600 = 60 min. -->
+    <!-- <key>CHUMP_TRUNK_RED_EMIT_INTERVAL_S</key> -->
+    <!-- <string>3600</string> -->
+  </dict>
+
+  <!-- Avoid stampeding if the script hangs. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

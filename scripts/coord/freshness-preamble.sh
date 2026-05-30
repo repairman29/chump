@@ -168,6 +168,29 @@ else
         "$state" "$commits_behind" "$binary_age_s" "$cron_health" "$bootstrap_check"
 fi
 
+# ── trunk-red surface (META-177 Lane C / META-179) ────────────────────────────
+# If the trunk-red-detector state file exists, trunk is currently RED.
+# Surface a warning line in the session digest so the operator sees it
+# immediately at session-start rather than discovering it hours later.
+_TRUNK_RED_STATE="${CHUMP_TRUNK_RED_STATE_FILE:-$REPO_ROOT/.chump-locks/trunk-red-detector-state.json}"
+if [[ -f "$_TRUNK_RED_STATE" ]]; then
+    _red_since="$(python3 -c \
+        "import json,sys; d=json.load(open('$_TRUNK_RED_STATE')); print(d.get('red_since_ts','unknown'))" \
+        2>/dev/null || echo "unknown")"
+    # Compute elapsed hours for operator situational awareness.
+    _red_hours="?"
+    if [[ "$_red_since" != "unknown" ]]; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            _red_epoch="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$_red_since" '+%s' 2>/dev/null || echo "")"
+        else
+            _red_epoch="$(date -u -d "$_red_since" '+%s' 2>/dev/null || echo "")"
+        fi
+        [[ -n "${_red_epoch:-}" ]] && _red_hours="$(( ( $(date -u +%s) - _red_epoch ) / 3600 ))"
+    fi
+    printf 'WARNING: TRUNK-RED for ~%sh (since %s). Check https://github.com/repairman29/chump/actions\n' \
+        "$_red_hours" "$_red_since"
+fi
+
 case "$state" in
     FRESH)          exit 0 ;;
     STALE)          exit 1 ;;
