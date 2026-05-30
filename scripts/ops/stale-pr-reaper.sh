@@ -377,6 +377,109 @@ if [[ "${CHUMP_PR_AUTO_RESPAWN:-1}" != "0" ]]; then
     RECLOSE_MINS="${CHUMP_PR_STUCK_RECLOSE_MINS:-30}"
     REBASE_SCRIPT="${REBASE_SCRIPT_OVERRIDE:-${REAPER_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/scripts/coord/chump-rebase-and-push.sh}"
 
+    # Fetch open PR list early — needed both for trunk-RED count and the
+    # respawn loop below. Fetched once here to avoid a second gh API call.
+    # Walk open PRs again — this time looking for BLOCKED-too-long candidates.
+    RESPAWN_PRS_JSON=$(gh pr list --json number,headRefName,title,mergeStateStatus,updatedAt,labels 2>/dev/null || echo "[]")
+
+    # ── RESILIENT-050: trunk-RED hold ────────────────────────────────────────
+    # Before bouncing any PR, check whether trunk is currently RED. When trunk
+    # is RED, ALL BLOCKED PRs are downstream of the upstream failure — bouncing
+    # them destroys legitimate in-flight work (INCIDENT 2026-05-30T15:46Z, 28
+    # PRs auto-closed in 60 seconds). Hold until trunk recovers.
+    #
+    # State file: .chump-locks/trunk-red-detector-state.json
+    #   { "last_failed_sha": "abc123" | null, "last_emit_ts": "ISO8601", ... }
+    # If file is absent, fall back to gh run list for a live check.
+    # On network failure: fail-open (assume GREEN) to avoid false holds.
+    #
+    # Bypass: CHUMP_REAPER_HOLD_TRUNK_RED=0
+    # ────────────────────────────────────────────────────────────────────────
+
+    _trunk_red=0
+    if [[ "${CHUMP_REAPER_HOLD_TRUNK_RED:-1}" != "0" ]]; then
+        _trunk_state_file="$LOCK_DIR/trunk-red-detector-state.json"
+        _trunk_red_window_s="${CHUMP_REAPER_TRUNK_RED_WINDOW_S:-3600}"  # 60 min
+
+        if [[ -s "$_trunk_state_file" ]]; then
+            # Read last_failed_sha and last_emit_ts from the detector state file.
+            _last_failed_sha=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$_trunk_state_file'))
+    print(d.get('last_failed_sha') or '')
+except Exception:
+    print('')
+" 2>/dev/null || true)
+            _last_emit_ts=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$_trunk_state_file'))
+    print(d.get('last_emit_ts') or '')
+except Exception:
+    print('')
+" 2>/dev/null || true)
+
+            if [[ -n "$_last_failed_sha" && "$_last_failed_sha" != "null" && -n "$_last_emit_ts" ]]; then
+                _emit_age_s=$(python3 -c "
+from datetime import datetime, timezone
+try:
+    t = datetime.fromisoformat('$_last_emit_ts'.replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - t).total_seconds()))
+except Exception:
+    print(9999)
+" 2>/dev/null || echo 9999)
+                if [[ "$_emit_age_s" -le "$_trunk_red_window_s" ]]; then
+                    _trunk_red=1
+                    info "Trunk-RED detected via state file (sha=${_last_failed_sha:0:8}, age=${_emit_age_s}s)"
+                else
+                    info "Trunk-RED state file present but stale (${_emit_age_s}s > ${_trunk_red_window_s}s window) — treating as GREEN"
+                fi
+            else
+                info "Trunk-RED state file present: last_failed_sha=null → trunk GREEN"
+            fi
+        else
+            # No state file — fall back to a live gh run check.
+            info "No trunk-red-detector-state.json — checking latest main CI run via gh"
+            _latest_conclusion=$(gh run list \
+                --branch main \
+                --workflow ci.yml \
+                --limit 1 \
+                --json conclusion \
+                --jq '.[0].conclusion // "unknown"' 2>/dev/null || echo "unknown")
+            if [[ "$_latest_conclusion" == "failure" ]]; then
+                _trunk_red=1
+                info "Trunk-RED detected via live gh run check (conclusion=$_latest_conclusion)"
+            else
+                info "Trunk GREEN via live gh run check (conclusion=$_latest_conclusion)"
+            fi
+        fi
+
+        if [[ "$_trunk_red" -eq 1 ]]; then
+            # Count how many BLOCKED PRs would have been bounced this cycle.
+            _would_bounce_count=$(python3 -c "
+import json, sys
+try:
+    rows = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+count = sum(1 for r in rows if r.get('mergeStateStatus') == 'BLOCKED')
+print(count)
+" "${RESPAWN_PRS_JSON:-[]}" 2>/dev/null || echo "0")
+
+            _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            printf '{"ts":"%s","kind":"reaper_holding_for_trunk_red","would_bounce_count":%s,"reason":"trunk_red_state_within_window","window_s":%d}\n' \
+                "$_ts" "${_would_bounce_count:-0}" "$_trunk_red_window_s" \
+                >> "$AMBIENT" 2>/dev/null || true
+            warn "TRUNK RED: holding all PR bounces this cycle (${_would_bounce_count:-0} PR(s) spared). Will retry when trunk recovers."
+            warn "Re-enable: fix trunk + wait for trunk-red-detector to clear last_failed_sha."
+            # Skip the entire auto-respawn loop — set variables used in summary.
+            RESPAWN_REBASED=0; RESPAWN_CLOSED=0; RESPAWN_EXEMPT=0
+            green "  respawn summary (HELD): rebased=0  closed=0  exempt=0  [trunk-RED hold active]"
+        fi
+    fi
+    # ── end RESILIENT-050 trunk-RED hold ────────────────────────────────────
+
     # Ensure state file exists and is valid JSON.
     if [[ ! -s "$STATE_FILE" ]]; then
         echo '{}' > "$STATE_FILE" 2>/dev/null || true
@@ -462,9 +565,8 @@ except Exception:
 " 2>/dev/null || echo 0
     }
 
-    # Walk open PRs again — this time looking for BLOCKED-too-long candidates.
-    RESPAWN_PRS_JSON=$(gh pr list --json number,headRefName,title,mergeStateStatus,updatedAt,labels 2>/dev/null || echo "[]")
-
+    # RESPAWN_PRS_JSON was fetched earlier (before the trunk-RED check) to
+    # allow the hold count to be accurate. Reuse it here.
     RESPAWN_TSV=$(python3 -c "
 import json, sys
 try:
@@ -487,7 +589,12 @@ for r in rows:
         info "(no open PRs to evaluate for auto-respawn)"
     fi
 
-    while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE MSS UPDATED_AT LABELS; do
+    # RESILIENT-050: skip the entire bounce loop when trunk is RED.
+    if [[ "$_trunk_red" -eq 1 ]]; then
+        info "(trunk-RED hold active — skipping all PR bounce/rebase actions this cycle)"
+    fi
+
+    while [[ "$_trunk_red" -eq 0 ]] && IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE MSS UPDATED_AT LABELS; do
         [[ -z "$PR_NUM" ]] && continue
 
         # Operator exemption — clear any pending state and emit once per scan.
@@ -604,7 +711,9 @@ next picker. To exempt a PR from this loop permanently, run:
         RESPAWN_CLOSED=$((RESPAWN_CLOSED + 1))
     done <<< "$RESPAWN_TSV"
 
-    green "  respawn summary: rebased=$RESPAWN_REBASED  closed=$RESPAWN_CLOSED  exempt=$RESPAWN_EXEMPT"
+    if [[ "$_trunk_red" -eq 0 ]]; then
+        green "  respawn summary: rebased=$RESPAWN_REBASED  closed=$RESPAWN_CLOSED  exempt=$RESPAWN_EXEMPT"
+    fi
 fi
 
 echo ""

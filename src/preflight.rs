@@ -567,6 +567,8 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-merged-check-guard.sh",
         // INFRA-2295: stale-pr-rebase-bot 3-strike circuit-break
         "scripts/ci/test-stale-pr-rebase-bot.sh",
+        // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
+        "scripts/ci/test-reaper-trunk-red-hold.sh",
     ];
     candidates
         .iter()
