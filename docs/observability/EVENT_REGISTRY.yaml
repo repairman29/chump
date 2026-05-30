@@ -5811,3 +5811,70 @@ events:
     expected_volume: "N per cycle (one per candidate evaluated)"
     status: stable
     # payload: {cycle_id: string, gap_id: string, decision: "include"|"exclude", reason: string, ts: string}
+
+  # META-127 C3c — curator-opus-velocity-tracker (INFRA-2221)
+  - kind: velocity_tracker_tick
+    effect_metric: credible
+    emitter: .claude/agents/curator-opus-velocity-tracker.md (INFRA-2221)
+    trigger: >
+      Emitted once per 7-day window by curator-opus-velocity-tracker after
+      computing P50 ship-time, throughput (ships/day), and flake rate
+      (test_flake events per merge) from ambient.jsonl + state.db.
+      Carries week-over-week deltas and regressed=true flags for any metric
+      that crossed its regression threshold (>20% for ship-time/throughput,
+      >50% for flake rate). Emitted with force=true if operator dispatched
+      an out-of-window tick.
+    consumers: [orchestrator, kpi-report, curator-opus-incident-commander]
+    fields_required: [ts, kind, session, p50_ship_time_s, p50_delta_pct, throughput_ships_per_day, throughput_delta_pct, flake_rate_per_ship, flake_delta_pct, window_days]
+    expected_volume: "1 per 7-day window; operator may force additional ticks"
+    # payload: {p50_ship_time_s: number, p50_delta_pct: number, throughput_ships_per_day: number, throughput_delta_pct: number, flake_rate_per_ship: number, flake_delta_pct: number, regressions: string[], window_days: number, low_sample: boolean, force: boolean, ts: string}
+
+  # META-127 C3d — curator-opus-incident-commander (INFRA-2222)
+  - kind: incident_commander_engaged
+    effect_metric: resilient
+    emitter: .claude/agents/curator-opus-incident-commander.md (INFRA-2222)
+    trigger: >
+      Emitted when curator-opus-incident-commander activates in response to
+      a trunk-red condition (fleet_wedge, pr_stuck cluster ≥3 in 2h,
+      operator_recall with condition=CI_BROKEN, or trunk_red event).
+      Re-emitted at each rescue playbook step milestone (step=1..5) and
+      again when the incident is resolved (status=resolved), escalated
+      (status=escalated), or determined to be a false positive
+      (status=false_positive). Enables post-incident timeline reconstruction
+      without log parsing.
+    consumers: [orchestrator, ops-audit, fleet-brief, kpi-report]
+    fields_required: [ts, kind, session, status, trigger]
+    expected_volume: "0-1 per incident declaration; N step-milestone events per active incident"
+    # payload: {status: "active"|"resolved"|"escalated"|"false_positive", trigger: string, step: number|null, action: string|null, ts: string}
+
+  # META-127 C3e — curator-opus-architecture-coach (INFRA-2223)
+  - kind: arch_fit_query
+    effect_metric: credible
+    emitter: .claude/agents/curator-opus-architecture-coach.md (INFRA-2223)
+    trigger: >
+      Emitted by curator-opus-architecture-coach when it begins evaluating
+      a gap for architectural fit. Marks the start of the review so
+      consumers can detect gaps that received a query but no subsequent
+      arch_fit_decision (stalled reviews). Carries the gap_id and effort
+      so kpi-report can compute coach coverage by effort tier.
+    consumers: [orchestrator, kpi-report]
+    fields_required: [ts, kind, session, gap_id, effort]
+    expected_volume: "0-N per session (one per gap reviewed, effort >= m by default)"
+    # payload: {gap_id: string, effort: string, needs_prior_art: boolean, ts: string}
+
+  - kind: arch_fit_decision
+    effect_metric: credible
+    emitter: .claude/agents/curator-opus-architecture-coach.md (INFRA-2223)
+    trigger: >
+      Emitted by curator-opus-architecture-coach after completing an
+      architectural fit review for a gap. Carries the rating
+      (fit | stretch | fork), rationale citing a specific architectural
+      principle, and confidence level. A retracted decision is re-emitted
+      with rating=retracted and the original_rating field set.
+      Downstream: orchestrator decides whether to hold work on fork ratings;
+      decompose uses the rating as one input to sub-gap slicing.
+    consumers: [orchestrator, decompose, kpi-report, ops-audit]
+    fields_required: [ts, kind, session, gap_id, rating, rationale, confidence]
+    related_kinds: [arch_fit_query]
+    expected_volume: "0-N per session (paired with arch_fit_query events)"
+    # payload: {gap_id: string, rating: "fit"|"stretch"|"fork"|"retracted", rationale: string, confidence: "high"|"med"|"low", original_rating: string|null, correction: boolean, ts: string}
