@@ -6801,3 +6801,19 @@ events:
     fields_required: [ts, kind, finding_id, finding_class, severity, tier, detail]
     # payload: {finding_id: int, finding_class: str, severity: str, tier: int (0|1|2),
     #           detail: str, artifact_path?: str, pr_number?: int, gap_id?: str}
+
+  # ── INFRA-2278: ship-assist context hook ─────────────────────────────────────
+  - kind: ship_assist_context_surfaced
+    effect_metric: effective
+    emitter: scripts/coord/ambient-context-inject.sh (INFRA-2278 SessionStart block)
+    # scanner-anchor: "kind":"ship_assist_context_surfaced"
+    trigger: >
+      Emitted at SessionStart when the ship-assist context block renders the
+      top-3 wedge classes from the last 7d VOA reports. Carries aggregate
+      counts only (no per-VOA identifiers) to preserve privacy. Bypass:
+      CHUMP_SHIP_ASSIST_HOOK=0.
+    consumers: [ops-audit, kpi-report]
+    fields_required: [ts, kind, voa_count_last_7d, top_class_count]
+    expected_volume: "1 per SessionStart (when CHUMP_SHIP_ASSIST_HOOK != 0)"
+    status: stable
+    # payload: {voa_count_last_7d: int, top_class_count: int, ts: string}
