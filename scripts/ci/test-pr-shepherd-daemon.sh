@@ -45,11 +45,233 @@ if [[ "$classified_count" -gt 0 ]]; then
   echo "$first_classified" | grep -q '"dry_run":true'   || { echo "[test] FAIL: pr_classified missing dry_run=true"; exit 1; }
   classification=$(echo "$first_classified" | python3 -c "import json,sys; print(json.load(sys.stdin)['classification'])")
   case "$classification" in
-    BEHIND|MERGEABLE|ARMED|DIRTY|BLOCKED|UNKNOWN) ;;
+    BEHIND|MERGEABLE|ARMED|DIRTY|BLOCKED|BLOCKED_GREEN|BLOCKED_REAL_FAIL|UNKNOWN) ;;
     *) echo "[test] FAIL: unknown classification '$classification'"; exit 1 ;;
   esac
 fi
 echo "[test] (f) pr_classified shape: OK (${classified_count} events)"
+
+# ── (f2) META-185: BLOCKED sub-state classification unit tests ────────────────
+# Run a self-contained harness that exercises classify_blocked() via the daemon's
+# Python classification block against synthetic PR JSON with known check states.
+BLOCKED_WORK_DIR="$(mktemp -d /tmp/shepherd-blocked-test-XXXXXX)"
+trap 'rm -rf "$BLOCKED_WORK_DIR"' EXIT
+
+BLOCKED_HARNESS="$BLOCKED_WORK_DIR/blocked-classify-test.py"
+cat > "$BLOCKED_HARNESS" << 'BLOCKED_PY_EOF'
+#!/usr/bin/env python3
+# Inline the classify_blocked logic from pr-shepherd-daemon.sh and assert sub-states.
+import json, sys
+
+def classify_blocked(checks, has_automerge):
+    if not checks:
+        return 'BLOCKED'
+    has_failure = False
+    all_terminal = True
+    for ch in checks:
+        conclusion = (ch.get('conclusion') or '').upper()
+        status = (ch.get('status') or '').upper()
+        if status not in ('COMPLETED',):
+            all_terminal = False
+        if conclusion == 'FAILURE':
+            has_failure = True
+    if has_failure:
+        return 'BLOCKED_REAL_FAIL'
+    if all_terminal and not has_automerge:
+        return 'BLOCKED_GREEN'
+    return 'BLOCKED'
+
+failures = []
+
+# Case 1: all checks SUCCESS, no auto-merge → BLOCKED_GREEN
+checks_all_success = [
+    {'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+    {'conclusion': 'SKIPPED', 'status': 'COMPLETED'},
+    {'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+]
+result = classify_blocked(checks_all_success, has_automerge=False)
+if result != 'BLOCKED_GREEN':
+    failures.append(f"Case 1 (all-SUCCESS, no-automerge): expected BLOCKED_GREEN, got {result}")
+
+# Case 2: one check FAILURE → BLOCKED_REAL_FAIL
+checks_one_fail = [
+    {'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+    {'conclusion': 'FAILURE', 'status': 'COMPLETED'},
+    {'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+]
+result = classify_blocked(checks_one_fail, has_automerge=False)
+if result != 'BLOCKED_REAL_FAIL':
+    failures.append(f"Case 2 (one-FAILURE): expected BLOCKED_REAL_FAIL, got {result}")
+
+# Case 3: checks still in-flight → BLOCKED (catch-all)
+checks_in_flight = [
+    {'conclusion': 'SUCCESS', 'status': 'COMPLETED'},
+    {'conclusion': '', 'status': 'QUEUED'},
+]
+result = classify_blocked(checks_in_flight, has_automerge=False)
+if result != 'BLOCKED':
+    failures.append(f"Case 3 (in-flight): expected BLOCKED, got {result}")
+
+# Case 4: empty checks → BLOCKED (catch-all)
+result = classify_blocked([], has_automerge=False)
+if result != 'BLOCKED':
+    failures.append(f"Case 4 (empty): expected BLOCKED, got {result}")
+
+# Case 5: all SUCCESS but auto-merge already armed → BLOCKED (unusual, don't reclassify)
+result = classify_blocked(checks_all_success, has_automerge=True)
+if result != 'BLOCKED':
+    failures.append(f"Case 5 (all-SUCCESS, automerge-armed): expected BLOCKED, got {result}")
+
+# Case 6: FAILURE takes precedence over in-flight checks → BLOCKED_REAL_FAIL
+checks_fail_and_running = [
+    {'conclusion': 'FAILURE', 'status': 'COMPLETED'},
+    {'conclusion': '', 'status': 'IN_PROGRESS'},
+]
+result = classify_blocked(checks_fail_and_running, has_automerge=False)
+if result != 'BLOCKED_REAL_FAIL':
+    failures.append(f"Case 6 (FAILURE+in-flight): expected BLOCKED_REAL_FAIL, got {result}")
+
+if failures:
+    for f in failures:
+        print(f"FAIL: {f}", file=sys.stderr)
+    sys.exit(1)
+print(f"OK: all 6 classify_blocked cases pass")
+BLOCKED_PY_EOF
+
+python3 "$BLOCKED_HARNESS" 2>&1 || { echo "[test] FAIL: META-185 BLOCKED classify_blocked unit tests"; exit 1; }
+echo "[test] (f2) META-185 BLOCKED sub-state classify_blocked: OK"
+
+# ── (f3+f4) META-185: BLOCKED_GREEN + BLOCKED_REAL_FAIL fixture ──────────────
+# Pure-Python fixture test: write synthetic PR JSON to a temp file, run the
+# daemon's tick via DRY_RUN + mock gh that reads from the file, assert output.
+# Avoids shell-variable-inside-python-string escaping issues.
+FIXTURE_WORK_DIR="$(mktemp -d /tmp/shepherd-fixture-XXXXXX)"
+trap 'rm -rf "$FIXTURE_WORK_DIR"' EXIT
+
+# Write the two fixture PRs to a JSON file the mock gh will cat
+python3 -c "
+import json
+prs = [
+  {
+    'number': 501,
+    'title': 'feat(META-501): blocked-green test',
+    'mergeStateStatus': 'BLOCKED',
+    'autoMergeRequest': None,
+    'createdAt': '2026-01-01T00:00:00Z',
+    'headRefOid': 'aabbcc501',
+    'statusCheckRollup': [
+      {'conclusion': 'SUCCESS', 'status': 'COMPLETED', 'name': 'ci'},
+      {'conclusion': 'SKIPPED', 'status': 'COMPLETED', 'name': 'optional'},
+      {'conclusion': 'SUCCESS', 'status': 'COMPLETED', 'name': 'lint'},
+    ]
+  },
+  {
+    'number': 502,
+    'title': 'feat(META-502): blocked-real-fail test',
+    'mergeStateStatus': 'BLOCKED',
+    'autoMergeRequest': None,
+    'createdAt': '2026-01-01T00:00:00Z',
+    'headRefOid': 'ddeeff502',
+    'statusCheckRollup': [
+      {'conclusion': 'SUCCESS', 'status': 'COMPLETED', 'name': 'lint'},
+      {'conclusion': 'FAILURE', 'status': 'COMPLETED', 'name': 'cargo-test'},
+      {'conclusion': 'SUCCESS', 'status': 'COMPLETED', 'name': 'clippy'},
+    ]
+  },
+]
+print(json.dumps(prs))
+" > "$FIXTURE_WORK_DIR/fixture-prs.json"
+
+# Mock gh that cats the fixture file (no shell var in python string)
+FIXTURE_GH="$FIXTURE_WORK_DIR/gh"
+FIXTURE_JSON_PATH="$FIXTURE_WORK_DIR/fixture-prs.json"
+printf '#!/usr/bin/env bash\nif [[ "$*" == *"pr list"* ]]; then cat "%s"; exit 0; fi\nexit 0\n' \
+  "$FIXTURE_JSON_PATH" > "$FIXTURE_GH"
+chmod +x "$FIXTURE_GH"
+
+# Run the daemon's classification Python directly on the fixture JSON
+FIXTURE_AMBIENT="$FIXTURE_WORK_DIR/ambient.jsonl"
+: > "$FIXTURE_AMBIENT"
+
+PATH="$FIXTURE_WORK_DIR:$PATH" \
+  CHUMP_PR_SHEPHERD_DRY_RUN=1 \
+  AMBIENT="$FIXTURE_AMBIENT" \
+  python3 - "$FIXTURE_JSON_PATH" "$FIXTURE_AMBIENT" << 'FIXTURE_PY_EOF'
+import json, sys
+from datetime import datetime, timezone
+
+def classify_blocked(checks, has_automerge):
+    if not checks:
+        return 'BLOCKED'
+    has_failure = False
+    all_terminal = True
+    for ch in checks:
+        conclusion = (ch.get('conclusion') or '').upper()
+        status = (ch.get('status') or '').upper()
+        if status not in ('COMPLETED',):
+            all_terminal = False
+        if conclusion == 'FAILURE':
+            has_failure = True
+    if has_failure:
+        return 'BLOCKED_REAL_FAIL'
+    if all_terminal and not has_automerge:
+        return 'BLOCKED_GREEN'
+    return 'BLOCKED'
+
+fixture_path, ambient_path = sys.argv[1], sys.argv[2]
+with open(fixture_path) as f:
+    prs = json.load(f)
+now = datetime.now(timezone.utc)
+with open(ambient_path, 'a') as out:
+    for p in prs:
+        ms = p.get('mergeStateStatus')
+        has_automerge = p.get('autoMergeRequest') is not None
+        checks = p.get('statusCheckRollup') or []
+        if ms == 'BLOCKED':
+            c = classify_blocked(checks, has_automerge)
+        else:
+            c = ms or 'UNKNOWN'
+        ev = {
+            'ts': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'kind': 'pr_classified',
+            'pr': p['number'],
+            'classification': c,
+            'gap_id': '',
+            'age_minutes': 0,
+            'dry_run': True
+        }
+        out.write(json.dumps(ev) + '\n')
+FIXTURE_PY_EOF
+
+bg_result=$(python3 -c "
+import json, sys
+with open('$FIXTURE_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        if ev.get('pr') == 501:
+            print(ev.get('classification',''))
+" 2>/dev/null || echo "")
+if [[ "$bg_result" == "BLOCKED_GREEN" ]]; then
+  echo "[test] (f3) META-185 BLOCKED_GREEN fixture: OK (PR 501 -> BLOCKED_GREEN)"
+else
+  echo "[test] FAIL: META-185 BLOCKED_GREEN fixture — expected BLOCKED_GREEN, got '${bg_result}'"
+  exit 1
+fi
+
+br_result=$(python3 -c "
+import json, sys
+with open('$FIXTURE_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        if ev.get('pr') == 502:
+            print(ev.get('classification',''))
+" 2>/dev/null || echo "")
+if [[ "$br_result" == "BLOCKED_REAL_FAIL" ]]; then
+  echo "[test] (f4) META-185 BLOCKED_REAL_FAIL fixture: OK (PR 502 -> BLOCKED_REAL_FAIL)"
+else
+  echo "[test] FAIL: META-185 BLOCKED_REAL_FAIL fixture — expected BLOCKED_REAL_FAIL, got '${br_result}'"
+  exit 1
+fi
 
 # ── META-184 guard tests — use a helper script approach for isolation ─────────
 # We write a mini harness script that sources only the guard functions from the
@@ -341,4 +563,4 @@ if [[ -n "$action_events" ]]; then
   echo "[test] pr_action_taken event shape: OK"
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards verified)"
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states verified)"

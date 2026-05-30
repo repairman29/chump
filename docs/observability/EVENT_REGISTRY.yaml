@@ -974,9 +974,17 @@ events:
 
   - kind: pr_classified
     effect_metric: self
-    emitter: scripts/coord/pr-shepherd-daemon.sh (META-183)
-    trigger: emitted once per open PR per tick of the PR-shepherd daemon; classifies each PR into BEHIND/MERGEABLE/ARMED/DIRTY/BLOCKED/UNKNOWN based on mergeStateStatus and autoMergeRequest
-    consumers: [fleet-brief, pr-shepherd-daemon]
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-183, META-185)
+    trigger: >
+      emitted once per open PR per tick of the PR-shepherd daemon; classifies each PR based on
+      mergeStateStatus, autoMergeRequest, and (META-185) statusCheckRollup.
+      classification enum: BEHIND (needs rebase), MERGEABLE (CLEAN, no auto-merge),
+      ARMED (CLEAN, auto-merge set), DIRTY (merge conflict),
+      BLOCKED_GREEN (BLOCKED + all checks pass + no auto-merge armed — auto-rearm target),
+      BLOCKED_REAL_FAIL (BLOCKED + at least one check FAILURE — file-gap target),
+      BLOCKED (BLOCKED + checks still running or inconclusive — catch-all),
+      UNKNOWN (GitHub still computing mergeability).
+    consumers: [fleet-brief, pr-shepherd-daemon, pr-auto-rearm-daemon]
     fields_required: [ts, kind, pr, classification, gap_id, age_minutes, dry_run]
 
   - kind: pr_shepherd_tick
