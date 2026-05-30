@@ -67,6 +67,9 @@ impl EventFilter {
 
 /// Wire-format event delivered via the pub/sub stream.
 /// Compatible with `.chump-locks/ambient.jsonl` line shape.
+///
+/// Note: `payload` defaults to `null` when absent (ambient.jsonl events and
+/// `lib.rs` CoordEvent do not always emit a `payload` field).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoordEvent {
     /// ISO-8601 timestamp.
@@ -76,7 +79,8 @@ pub struct CoordEvent {
     /// Source session ID, if known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
-    /// Payload as free-form JSON.
+    /// Payload as free-form JSON. Defaults to null when absent.
+    #[serde(default)]
     pub payload: serde_json::Value,
 }
 
@@ -180,7 +184,13 @@ pub async fn subscribe_events_with_session(
         .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let (tx, rx) = mpsc::channel::<CoordEvent>(DEFAULT_MAX_ACK_PENDING as usize);
+    // Channel capacity matches max_ack_pending so backpressure detection (which
+    // checks tx.capacity()) fires correctly when the application is slow to drain.
+    let channel_cap: usize = std::env::var("CHUMP_A2A_MAX_ACK_PENDING")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_ACK_PENDING as usize);
+    let (tx, rx) = mpsc::channel::<CoordEvent>(channel_cap);
 
     if a2a_layer >= 1 {
         // NATS-primary path: spawn the subscriber task with file fallback
@@ -379,12 +389,19 @@ async fn run_nats_consumer(
 
     let filter_subject = filter.to_nats_subject();
 
+    // NATS push consumers require a deliver_subject — the inbox subject
+    // where the server pushes messages. We use the durable name as the
+    // subject prefix so it's stable across reconnects (same consumer name =
+    // same deliver subject = no duplicate delivery on reconnect).
+    let deliver_subject = format!("_CHUMP_PUSH.{}", durable_name);
+
     // Attach to (or create) the durable push consumer
     let consumer_result = stream
         .get_or_create_consumer(
             durable_name,
             consumer::push::Config {
                 durable_name: Some(durable_name.to_string()),
+                deliver_subject: deliver_subject.clone(),
                 filter_subject,
                 deliver_policy: consumer::DeliverPolicy::New,
                 ack_policy: consumer::AckPolicy::Explicit,
@@ -404,18 +421,30 @@ async fn run_nats_consumer(
         Err(e) => return NatsConsumerExit::NatsError(format!("consumer messages: {e}")),
     };
 
-    let mut pending_count: i64 = 0;
+    // Backpressure detection: measure channel fill = capacity_used / max_capacity.
+    // The mpsc channel has max_ack_pending slots; when the application reader is
+    // slow the channel fills up. We emit fleet_a2a_backpressure when filled slots
+    // reach max_ack_pending (i.e. remaining capacity == 0 or channel would block).
+    // Hysteresis: reset once filled slots drop below max_ack_pending / 2.
     let mut backpressure_emitted = false;
 
     loop {
         match messages.next().await {
             Some(Ok(msg)) => {
-                pending_count += 1;
+                // filled = slots used = max_capacity - remaining_capacity.
+                // Emit backpressure when the channel is at least half full
+                // (remaining <= max_ack_pending / 2). This fires before tx.send()
+                // blocks (which happens at remaining == 0).
+                let remaining = tx.capacity() as i64;
+                let filled = max_ack_pending - remaining;
+                let half = max_ack_pending / 2;
 
-                // Backpressure detection
-                if pending_count >= max_ack_pending && !backpressure_emitted {
-                    emit_a2a_backpressure(session_id, pending_count, max_ack_pending);
+                if filled >= half && !backpressure_emitted {
+                    emit_a2a_backpressure(session_id, filled, max_ack_pending);
                     backpressure_emitted = true;
+                }
+                if backpressure_emitted && filled < half / 2 {
+                    backpressure_emitted = false;
                 }
 
                 // Decode the event
@@ -423,7 +452,6 @@ async fn run_nats_consumer(
                     Ok(e) => e,
                     Err(_) => {
                         let _ = msg.ack().await;
-                        pending_count -= 1;
                         continue;
                     }
                 };
@@ -432,19 +460,25 @@ async fn run_nats_consumer(
                 // Session/Kinds/All need post-filter here)
                 if !filter.matches(&event) {
                     let _ = msg.ack().await;
-                    pending_count -= 1;
                     continue;
                 }
 
+                // Forward to application channel. When the receiver is slow /
+                // dropped, this will block until capacity is available or return
+                // an error when closed.
                 if tx.send(event).await.is_err() {
                     let _ = msg.ack().await;
                     return NatsConsumerExit::ChannelClosed;
                 }
 
                 let _ = msg.ack().await;
-                pending_count -= 1;
-                if pending_count < max_ack_pending / 2 {
-                    backpressure_emitted = false; // reset hysteresis
+
+                // Re-check channel fill after send for hysteresis reset.
+                let remaining_after = tx.capacity() as i64;
+                let filled_after = max_ack_pending - remaining_after;
+                let half = max_ack_pending / 2;
+                if backpressure_emitted && filled_after < half / 2 {
+                    backpressure_emitted = false;
                 }
             }
             Some(Err(e)) => {
