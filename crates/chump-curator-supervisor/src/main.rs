@@ -76,6 +76,13 @@ const DEFAULT_SENTINEL_TTL_H: u64 = 24;
 const DEFAULT_PRODUCTIVITY_H: u64 = 1;
 const CRASH_LOOP_ERROR_RATIO: f64 = 0.80;
 const ERROR_PATTERN_MIN_MATCHES: usize = 2;
+// RESILIENT-035 circuit breaker: cap how often a single role can fork into
+// remediation. Without these, a flapping role produces N distinct error
+// fingerprints over time and bypasses the sentinel dedup — the supervisor
+// would spawn N Sonnets and respawn N times in a single hour.
+const DEFAULT_MAX_SPAWNS_PER_HOUR: u64 = 3;
+const DEFAULT_FLAPPING_DETECT_WINDOW_M: u64 = 30;
+const DEFAULT_FLAPPING_DETECT_THRESHOLD: u64 = 3;
 
 // ── config ─────────────────────────────────────────────────────────────────
 
@@ -92,6 +99,10 @@ struct Config {
     autorestart: bool,
     dry_run: bool,
     interval: Duration,
+    // RESILIENT-035 circuit breaker
+    max_spawns_per_hour: u64,
+    flapping_window: Duration,
+    flapping_threshold: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +153,20 @@ impl Config {
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
 
+        // RESILIENT-035 circuit breaker config.
+        let max_spawns_per_hour: u64 = env_u64(
+            "CHUMP_CURATOR_SUPERVISOR_MAX_SPAWNS_PER_HOUR",
+            DEFAULT_MAX_SPAWNS_PER_HOUR,
+        );
+        let flapping_window_m: u64 = env_u64(
+            "CHUMP_CURATOR_SUPERVISOR_FLAPPING_WINDOW_M",
+            DEFAULT_FLAPPING_DETECT_WINDOW_M,
+        );
+        let flapping_threshold: u64 = env_u64(
+            "CHUMP_CURATOR_SUPERVISOR_FLAPPING_THRESHOLD",
+            DEFAULT_FLAPPING_DETECT_THRESHOLD,
+        );
+
         Ok(Config {
             repo_root,
             log_dir,
@@ -154,6 +179,9 @@ impl Config {
             autorestart,
             dry_run,
             interval: Duration::from_secs(interval_s),
+            max_spawns_per_hour,
+            flapping_window: Duration::from_secs(flapping_window_m * 60),
+            flapping_threshold,
         })
     }
 }
@@ -527,17 +555,114 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
         gap_id
     };
 
+    // RESILIENT-035 circuit breaker: cap per-role remediation rate so a
+    // flapping role doesn't fork-bomb. Counts recent activation sentinels.
+    if circuit_breaker_tripped(cfg, det)? {
+        let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        emit_ambient(
+            &cfg.ambient_path,
+            &serde_json::json!({
+                "ts": ts,
+                "kind": "curator_supervisor_circuit_broken",
+                "role": det.role,
+                "max_spawns_per_hour": cfg.max_spawns_per_hour,
+                "flapping_window_m": cfg.flapping_window.as_secs() / 60,
+                "flapping_threshold": cfg.flapping_threshold,
+                "gap_id": gap_id_for_sonnet,
+            }),
+        );
+        warn!(
+            role = %det.role,
+            max = cfg.max_spawns_per_hour,
+            "RESILIENT-035 circuit broken — halting auto-remediation for this role; operator review required"
+        );
+        // Broadcast a WARN to operator so we don't silently halt.
+        let broadcast_path = cfg.repo_root.join("scripts/coord/broadcast.sh");
+        if broadcast_path.exists() && !cfg.dry_run {
+            let msg = format!(
+                "RESILIENT-035 circuit broken: curator-supervisor halted auto-remediation for role={} after {} spawns in 1h OR {} detections in {}m. Operator review required (gap={}).",
+                det.role,
+                cfg.max_spawns_per_hour,
+                cfg.flapping_threshold,
+                cfg.flapping_window.as_secs() / 60,
+                gap_id_for_sonnet,
+            );
+            let _ = tokio::process::Command::new(&broadcast_path)
+                .args(["WARN", &msg])
+                .output()
+                .await;
+        }
+        return Ok(());
+    }
+
     // Aggressive mode: spawn Sonnet sub-agent (spawn_sonnet handles dry_run internally).
     if cfg.mode == SupervisorMode::Aggressive {
         spawn_sonnet(cfg, det, &gap_id_for_sonnet, &log_tail).await?;
+        record_spawn_activation(cfg, det)?;
     }
 
     // Auto-restart: respawn tmux pane.
     if cfg.autorestart {
         autorestart_curator(cfg, det).await?;
+        record_spawn_activation(cfg, det)?;
     }
 
     Ok(())
+}
+
+// ── RESILIENT-035 circuit breaker ─────────────────────────────────────────────
+
+/// Per-role activation sentinel path. Tracks supervisor remediation actions
+/// (Sonnet spawns + tmux respawns) so we can rate-cap them.
+fn activation_sentinel_dir(cfg: &Config, role: &str) -> PathBuf {
+    cfg.sentinel_dir
+        .parent()
+        .unwrap_or(&cfg.sentinel_dir)
+        .join("activations")
+        .join(role)
+}
+
+/// Append one activation marker for this role with current mtime. Each marker
+/// is a separate file so we can count by listing the directory (no concurrent
+/// write contention — supervisor is single-process).
+fn record_spawn_activation(cfg: &Config, det: &DetectionResult) -> Result<()> {
+    let dir = activation_sentinel_dir(cfg, &det.role);
+    fs::create_dir_all(&dir).context("create activation sentinel dir")?;
+    let ts_ms = Utc::now().timestamp_millis();
+    let path = dir.join(format!("{ts_ms}.act"));
+    fs::write(&path, det.error_fingerprint()).context("write activation sentinel")?;
+    Ok(())
+}
+
+/// True if the circuit breaker should halt further remediation for this role.
+/// Two independent triggers (whichever fires first):
+///   1. >= max_spawns_per_hour activations in the last 60 minutes
+///   2. >= flapping_threshold detections (regardless of fingerprint) in the
+///      last flapping_window minutes
+fn circuit_breaker_tripped(cfg: &Config, det: &DetectionResult) -> Result<bool> {
+    let dir = activation_sentinel_dir(cfg, &det.role);
+    if !dir.exists() {
+        return Ok(false);
+    }
+    let now = SystemTime::now();
+    let one_hour = Duration::from_secs(3600);
+    let mut count_1h: u64 = 0;
+    let mut count_window: u64 = 0;
+    for entry in fs::read_dir(&dir).context("read activation sentinel dir")? {
+        let Ok(entry) = entry else { continue };
+        let Ok(meta) = entry.metadata() else { continue };
+        let Ok(mtime) = meta.modified() else { continue };
+        let Ok(age) = now.duration_since(mtime) else {
+            continue;
+        };
+        if age <= one_hour {
+            count_1h += 1;
+        }
+        if age <= cfg.flapping_window {
+            count_window += 1;
+        }
+    }
+    Ok(count_1h >= cfg.max_spawns_per_hour || count_window >= cfg.flapping_threshold)
 }
 
 fn file_curator_gap(
