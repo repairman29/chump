@@ -6130,3 +6130,35 @@ events:
     expected_volume: "0–N per cascade run (N = blocked PRs that hit safety guards)"
     status: stable
     # payload: {source_pr: int, signature_hash: str, pr_number: int, reason: str}
+  # INFRA-2006: A2A inbox-routing fix — alias resolution events
+  - kind: a2a_inbox_alias_resolved
+    effect_metric: resilient
+    emitter: scripts/coord/chump-inbox.sh (INFRA-2006 reader-side union fix) + scripts/coord/lib/inbox-routing.sh resolve_inbox_target
+    trigger: >
+      Emitted by chump-inbox.sh read when it finds new messages in a
+      lease-id alias inbox (i.e., an inbox file named after the session's
+      claim lease-id rather than its primary env-session-id). This is the
+      normal path after broadcast.sh --to <lease-session-id> delivers to
+      the lease-id file while the reader's CHUMP_SESSION_ID differs.
+      Also emitted by resolve_inbox_target when a sender-side lookup maps
+      a lease-id or gap-id to a canonical inbox path.
+      Carries primary_session, alias_session, message_count.
+    consumers: [ops-audit, kpi-report, fleet-doctor]
+    fields_required: [ts, kind, session, alias_session, message_count]
+    expected_volume: "0-N per session read cycle; frequency drops to 0 once sender-side is fixed to use primary session ids (INFRA-2034)"
+    # payload: {primary_session: string, alias_session: string, message_count: int, ts: string}
+
+  - kind: a2a_inbox_message_orphan
+    effect_metric: resilient
+    emitter: scripts/coord/chump-inbox.sh (INFRA-2006 reader-side union fix)
+    trigger: >
+      Advisory event emitted when a message is found in an inbox file
+      (.chump-locks/inbox/<id>.jsonl) that no live session lease owns.
+      The message is NOT delivered (no live reader) but is flagged so
+      operators can detect persistent orphan accumulation. Not fatal —
+      archive-on-dead-session logic cleans these up eventually.
+      Carries inbox_file, message_count.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, inbox_file, message_count]
+    expected_volume: "0-N; non-zero is advisory, not actionable unless persistent"
+    # payload: {inbox_file: string, message_count: int, ts: string}
