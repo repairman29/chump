@@ -1,13 +1,26 @@
-// crates/chump-coord/src/mesh.rs — INFRA-1802
+// crates/chump-coord/src/mesh.rs — INFRA-1802 / INFRA-1815
 //
 // Mesh pub/sub transport abstraction for cross-Opus / cross-machine
-// coordination. The trait shape originates from chump-proprietary's
+// coordination. The trait shape originates from the internal sibling repo's
 // crates/coord/src/mesh/abstract_impl.rs (MIT-licensed); ported and
 // adapted from the multi-robot swarm domain to LLM-agent fleet:
 //   - "robot" → "agent" / "session" in operator-facing strings
 //   - channel namespace adapted: gap_claimed, session_heartbeat,
 //     opus_dm, fleet_consensus
 //   - signature field reserved for META-061 Layer 5/6 signed provenance
+//
+// INFRA-1815 mesh-bridge migration path:
+// Once the internal sibling repo's `coord-mesh` crate ships (Side A,
+// tracked in INFRA-1815-sideA), activating the `mesh-bridge` feature flag
+// in chump-coord causes the types here to be replaced by re-exports from
+// `coord-mesh`. The current hand-rolled types and the eventual coord-mesh
+// types are wire-compatible (same serde shapes, additive-only evolution
+// rule documented in CP-008).
+//
+// Without `mesh-bridge`: this file's types are the canonical source.
+// With `mesh-bridge`:    coord-mesh types take precedence via re-export
+//                        in lib.rs; this file is still compiled but
+//                        consumers should prefer `chump_coord::mesh_bridge::*`.
 //
 // This file ships the trait + Message/Channel/AckMessage types + a stub
 // impl that returns NotImplemented. Real NATS-backed implementation lands
