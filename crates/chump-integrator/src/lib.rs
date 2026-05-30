@@ -51,6 +51,7 @@ pub mod config;
 pub mod cycle;
 pub mod daemon;
 pub mod policy;
+pub mod pr_body;
 pub mod sampling;
 
 pub use config::IntegratorConfig;
