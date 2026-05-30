@@ -68,10 +68,17 @@ git clone -q "$TMP/origin.git" "$TMP/clone"
 cd "$TMP/clone"
 git config user.email t@t && git config user.name t
 
+# Seed a minimal .cargo/config.toml so the hook's awk probe (INFRA-2184) does
+# not fail with exit 2 on a missing file.  The real Chump repo has this file;
+# the bare clone does not.  No rustc-wrapper line → _PREPUSH_WRAPPER_BIN=""
+# → wrapper probe is skipped entirely.  (INFRA-2297)
+mkdir -p .cargo
+printf '[build]\n' > .cargo/config.toml
+
 # Seed a baseline commit so origin/main exists.
 mkdir -p src
 echo "fn baseline() {}" > src/lib.rs
-git add src/lib.rs
+git add .cargo/config.toml src/lib.rs
 git commit -qm "seed"
 git push -q origin HEAD:main 2>/dev/null
 git branch -m main 2>/dev/null || true
@@ -105,7 +112,9 @@ fi
 
 # ── Test 2: .rs change + tests pass ─────────────────────────────────────────
 echo "--- Test 2: .rs change + tests pass → guard passes + writes marker ---"
-echo "fn new_fn() { tracing::info!(\"obs\"); }" >> src/lib.rs
+# Append a benign comment — compiles cleanly regardless of imports, still a
+# real .rs diff that triggers the test gate's .rs-change branch (INFRA-2297).
+echo "// test-pre-push-test-gate.sh synthetic change $(date +%s)" >> src/lib.rs
 git add src/lib.rs
 git commit -qm "rs change passing"
 OUT=$(run_hook)
@@ -136,7 +145,8 @@ fi
 
 # ── Test 4: .rs change + tests fail → block ─────────────────────────────────
 echo "--- Test 4: .rs change + tests fail → guard blocks with diagnostic ---"
-echo "fn another() { tracing::warn!(\"obs2\"); }" >> src/lib.rs
+# Benign comment append — same rationale as Test 2 (INFRA-2297).
+echo "// test-pre-push-test-gate.sh synthetic failing-case change $(date +%s)" >> src/lib.rs
 git add src/lib.rs
 git commit -qm "rs change failing"
 OUT=$(CHUMP_TEST_GATE_FAKE_RC=101 run_hook)
