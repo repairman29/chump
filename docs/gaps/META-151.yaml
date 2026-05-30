@@ -1,0 +1,10 @@
+- id: META-151
+  domain: META
+  title: "META: Set Up Admin-Merge Ratio Monitoring (META-131 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A dashboard or report exists to track the admin-merge ratio for the `main` branch.
+    - Alerts are configured to trigger if the admin-merge ratio exceeds 10% for a sustained period post-rollout.
+

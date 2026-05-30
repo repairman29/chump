@@ -1,14 +1,20 @@
 - id: META-032
   domain: META
   title: Acceptance-criteria-as-test consistently lags implementation by N PRs — runtime ships, regression test never lands
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "Define 'acceptance-criteria-coverage' metric: for each gap closed in the last 30 days, parse acceptance_criteria array, classify each criterion as test-checkable (mentions 'test', 'verify', 'regression', 'asserts') and check whether matching test exists in scripts/ci/ or src/ with the gap ID in the file path/header"
-    - "Report current baseline: today's audit shows 3+ instances (INFRA-370, INFRA-376, INFRA-332) where runtime shipped but the test-checkable acceptance criterion was satisfied only in a follow-up PR hours later"
-    - "Mitigation A (lightweight): add pre-commit guard that rejects 'chump gap ship' / 'chump gap set --status done' when an acceptance_criterion contains the literal 'test' / 'asserts' / 'verifies' AND no matching scripts/ci/test-* file references the gap ID. Bypass via CHUMP_TEST_LAG_CHECK=0 with justification"
-    - "Mitigation B (heavier): add nightly cron 'test-lag-auditor' that scans last-30-days closed gaps and files cleanup gaps for the lag PRs, like INFRA-307 stuck-pr-filer pattern but for test-lag"
+  - 'Define ''acceptance-criteria-coverage'' metric: for each gap closed in the last 30 days, parse acceptance_criteria array,
+    classify each criterion as test-checkable (mentions ''test'', ''verify'', ''regression'', ''asserts'') and check whether
+    matching test exists in scripts/ci/ or src/ with the gap ID in the file path/header'
+  - 'Report current baseline: today''s audit shows 3+ instances (INFRA-370, INFRA-376, INFRA-332) where runtime shipped but
+    the test-checkable acceptance criterion was satisfied only in a follow-up PR hours later'
+  - 'Mitigation A (lightweight): add pre-commit guard that rejects ''chump gap ship'' / ''chump gap set --status done'' when
+    an acceptance_criterion contains the literal ''test'' / ''asserts'' / ''verifies'' AND no matching scripts/ci/test-* file
+    references the gap ID. Bypass via CHUMP_TEST_LAG_CHECK=0 with justification'
+  - 'Mitigation B (heavier): add nightly cron ''test-lag-auditor'' that scans last-30-days closed gaps and files cleanup gaps
+    for the lag PRs, like INFRA-307 stuck-pr-filer pattern but for test-lag'
   notes: demoted P1->P2 by 2026-05-11 pillar audit
   opened_date: '2026-05-03'
-
+  closed_date: '2026-05-11'

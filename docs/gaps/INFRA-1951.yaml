@@ -1,12 +1,15 @@
 - id: INFRA-1951
   domain: INFRA
-  title: "RESILIENT P1: 87 open-status DB rows missing per-file docs/gaps/<id>.yaml mirrors — gap-doctor.py safe-sweep ALERTs gap_drift_orphan; sync-from-db --apply is the canonical fix but binary-staleness gate (INFRA-825) blocks it on a stale binary; needs operator rebuild + supervised apply OR Sonnet dispatch with current binary"
-  status: open
+  title: 'RESILIENT P1: 87 open-status DB rows missing per-file docs/gaps/<id>.yaml mirrors — gap-doctor.py safe-sweep ALERTs
+    gap_drift_orphan; sync-from-db --apply is the canonical fix but binary-staleness gate (INFRA-825) blocks it on a stale
+    binary; needs operator rebuild + supervised apply OR Sonnet dispatch with current binary'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-25'
+  closed_pr: 2538

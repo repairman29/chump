@@ -1,0 +1,16 @@
+- id: INFRA-2254
+  domain: INFRA
+  title: "RESILIENT: shepherd-triage WARN dedup — same operator broadcast every 30min (no fingerprint cooldown)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Surveyed 24h of NATS / ambient.jsonl traffic 2026-05-30T04:35Z. The ONLY addressed (non-broadcast) traffic was 6 identical WARN messages from curator-opus-shepherd-2026-05- to operator-76c22455, each with the EXACT same body 'SHEPHERD-TRIAGE: ghosts=1. PLAN: Reconcile 1 ghost-gaps...'. Same content, 30-min cadence, no acknowledge mechanism. This is operator-noise; the shepherd should fingerprint the body (or the plan-summary) and suppress if it matches the last sent within a cooldown window. Source: scripts/coord/opus-shepherd-triage.sh around the broadcast.sh --to OPERATOR_ID WARN line.
+  acceptance_criteria:
+    - scripts/coord/opus-shepherd-triage.sh computes a sha256 fingerprint of (ghost_count + plan-string) before sending the operator WARN
+    - Stores the last-sent fingerprint at .chump-locks/shepherd-triage-last-warn.sentinel with mtime
+    - Skips the WARN send if same fingerprint within cooldown (default CHUMP_SHEPHERD_WARN_COOLDOWN_M=120 minutes — twice the triage interval)
+    - Emits ambient kind=shepherd_warn_suppressed when cooldown triggers (so the supervisor and observability can see we're correctly deduping not silently stalling)
+    - "Smoke test scripts/ci/test-opus-shepherd-triage.sh extends with: run twice in a row with identical inputs, assert second run does NOT call broadcast.sh"
+    - chump preflight green before push
+

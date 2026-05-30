@@ -1,15 +1,23 @@
 - id: INFRA-1444
   domain: INFRA
-  title: "ZERO-WASTE: chump claim auto-release on sibling-PR-merge — webhook+lease cross-ref releases my worktree when a sibling PR completes the same gap (today's INFRA-1341 lease held after #2105 logically completed it)"
-  status: open
+  title: 'ZERO-WASTE: chump claim auto-release on sibling-PR-merge — webhook+lease cross-ref releases my worktree when a sibling
+    PR completes the same gap (today''s INFRA-1341 lease held after #2105 logically completed it)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Today's INFRA-1341 was claimed by me + worktree created; sibling shipped the same work via #2105/INFRA-1368 path. My lease + worktree sat orphaned until manual cleanup. Auto-release closes the loop.
-  acceptance_criteria:
-    - "github-webhook-receiver.py on pull_request.action=closed + merged=true: parses PR title for <GAP-ID> pattern + commit bodies for matching gap-id trailers"
-    - "For each gap ID found: lookup .chump-locks/claim-<gap>-*.json; if a sibling-claim lease exists (different session than the PR author), emit kind=lease_orphaned_by_sibling_merge to ambient + auto-release the lease (delete the file)"
-    - "Worktree cleanup: post-orphan-release event, scripts/coord/stale-worktree-reaper.sh triggers an early sweep on the orphaned worktree"
-    - "Operator escape: CHUMP_LEASE_NO_AUTO_RELEASE=1 disables; --reason flag on chump --release manual override unchanged"
-    - CI test scripts/ci/test-lease-auto-release-on-sibling-merge.sh stubs a PR-merge webhook with a sibling lease present + asserts the lease file is deleted within 60s
+  description: 'Today''s INFRA-1341 was claimed by me + worktree created; sibling shipped the same work via #2105/INFRA-1368
+    path. My lease + worktree sat orphaned until manual cleanup. Auto-release closes the loop.
 
+    '
+  acceptance_criteria:
+  - 'github-webhook-receiver.py on pull_request.action=closed + merged=true: parses PR title for <GAP-ID> pattern + commit
+    bodies for matching gap-id trailers'
+  - 'For each gap ID found: lookup .chump-locks/claim-<gap>-*.json; if a sibling-claim lease exists (different session than
+    the PR author), emit kind=lease_orphaned_by_sibling_merge to ambient + auto-release the lease (delete the file)'
+  - 'Worktree cleanup: post-orphan-release event, scripts/coord/stale-worktree-reaper.sh triggers an early sweep on the orphaned
+    worktree'
+  - 'Operator escape: CHUMP_LEASE_NO_AUTO_RELEASE=1 disables; --reason flag on chump --release manual override unchanged'
+  - CI test scripts/ci/test-lease-auto-release-on-sibling-merge.sh stubs a PR-merge webhook with a sibling lease present +
+    asserts the lease file is deleted within 60s
+  closed_date: '2026-05-16'
+  closed_pr: 2204

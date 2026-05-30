@@ -1,10 +1,14 @@
 - id: INFRA-1214
   domain: INFRA
-  title: "CREDIBLE: scripts/ci/lib/source-grep.sh helpers — stop hardcoding src/gap_store.rs path in 8 CI tests"
-  status: open
+  title: 'CREDIBLE: scripts/ci/lib/source-grep.sh helpers — stop hardcoding src/gap_store.rs path in 8 CI tests'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "New scripts/ci/lib/source-grep.sh exposes: find_gap_store_path (crate-aware), find_rust_module <name>, find_kind_emission <kind>"
-    - "All 8 scripts migrated: test-gap-id-cross-session, test-error-path-coverage, test-gap-decompose-description, test-binary-refresh, test-required-model, test-gap-closed-pr-cli, test-infra-110-ttl, test-uuid-gap-id-compat"
-    - "No script contains the raw if-f crates/chump-gap-store/src/lib.rs pattern anymore"
+  - 'New scripts/ci/lib/source-grep.sh exposes: find_gap_store_path (crate-aware), find_rust_module <name>, find_kind_emission
+    <kind>'
+  - 'All 8 scripts migrated: test-gap-id-cross-session, test-error-path-coverage, test-gap-decompose-description, test-binary-refresh,
+    test-required-model, test-gap-closed-pr-cli, test-infra-110-ttl, test-uuid-gap-id-compat'
+  - No script contains the raw if-f crates/chump-gap-store/src/lib.rs pattern anymore
+  closed_date: '2026-05-15'
+  closed_pr: 2037

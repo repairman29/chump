@@ -1,0 +1,15 @@
+- id: INFRA-2261
+  domain: INFRA
+  title: "EFFECTIVE: restart live chump-fleet-server at :7070 — running OLD binary, missing INFRA-2189/2205 features"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    The chump-fleet-server process listening on :7070 was launched mid-session (PID 12838 at 16:21 PDT) with an older binary. Both INFRA-2189 (static /scrubber route + CORS-tolerant reader) and INFRA-2205 (--help / --version / --port CLI) have since merged to main, but the live process still has the older code paths. cargo target/release/chump-fleet-server has been rebuilt since, but the operator hasn't restarted the daemon. Once #2742 + #2763 actually merge: pkill -f chump-fleet-server && rebuild && relaunch with CHUMP_FLEET_SCRUBBER_DIR pointing at main's web/fleet-scrubber/. After that, http://localhost:7070/scrubber/ uses the new schema-normalized fetchData() + the server emits --help cleanly. Will eventually get picked up by the launchd plist install (scripts/setup/install-fleet-server.sh) if operator runs that fresh.
+  acceptance_criteria:
+    - "Operator (or fleet-autopilot daemon) runs: pkill -f chump-fleet-server; cd /Users/jeffadkins/Projects/Chump; PATH=$HOME/.cargo/bin:$PATH cargo build --release -p chump-fleet-server; CHUMP_FLEET_SCRUBBER_DIR=/Users/jeffadkins/Projects/Chump/web/fleet-scrubber target/release/chump-fleet-server > /tmp/fleet-server.log 2>&1 &"
+    - "Verify: curl -sI http://localhost:7070/scrubber/ returns 200"
+    - "Verify: target/release/chump-fleet-server --help exits 0 with usage text (does NOT bind port)"
+    - "Verify: live scrubber renders with correct duration + events list (INFRA-2204 fixes active)"
+  depends_on: [INFRA-2189, INFRA-2205]
+

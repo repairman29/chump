@@ -1,31 +1,29 @@
 - id: INFRA-818
   domain: INFRA
   title: performance tuning at FLEET_SIZE=10 with cascade hot — Week 4 demo gate
-  status: open
+  status: done
   priority: P2
   effort: s
-  description: |
-    Per ROADMAP.md Week 4 section: performance tuning at FLEET_SIZE=10 with 
-    cascade hot needs to be verified before the demo. Current fleet defaults 
-    to FLEET_SIZE=2 with xs/s/m effort. At FLEET_SIZE=10 with full cascade 
-    (all local models active), we need to verify:
-    
-    - No provider starvation (cascade slots exhausted)
-    - No file-system contention (all workers writing to .chump-locks/)
-    - Acceptable latency for `chump orchestrate` responsiveness
-    - No OOM/crash on a 24GB Mac
-    
-    This should produce a tuning guide or config recommendations rather than 
-    code changes (unless blockers are found).
+  description: "Per ROADMAP.md Week 4 section: performance tuning at FLEET_SIZE=10 with \ncascade hot needs to be verified\
+    \ before the demo. Current fleet defaults \nto FLEET_SIZE=2 with xs/s/m effort. At FLEET_SIZE=10 with full cascade \n\
+    (all local models active), we need to verify:\n\n- No provider starvation (cascade slots exhausted)\n- No file-system\
+    \ contention (all workers writing to .chump-locks/)\n- Acceptable latency for `chump orchestrate` responsiveness\n- No\
+    \ OOM/crash on a 24GB Mac\n\nThis should produce a tuning guide or config recommendations rather than \ncode changes (unless\
+    \ blockers are found).\n"
   acceptance_criteria:
-    - ""
-    - " Fleet runs stably at FLEET_SIZE=10 with cascade hot for 30+ minutes "
-    - " yes "
-    - "\n"
-    - " Provider cascade doesn't starve at FLEET_SIZE=10 "
-    - " yes "
-    - "\n"
-    - " Recommendations documented in a tuning guide or config template "
-    - " yes "
-    - ""
+  - ''
+  - ' Fleet runs stably at FLEET_SIZE=10 with cascade hot for 30+ minutes '
+  - ' yes '
+  - '
 
+    '
+  - ' Provider cascade doesn''t starve at FLEET_SIZE=10 '
+  - ' yes '
+  - '
+
+    '
+  - ' Recommendations documented in a tuning guide or config template '
+  - ' yes '
+  - ''
+  closed_date: '2026-05-11'
+  closed_pr: 1438

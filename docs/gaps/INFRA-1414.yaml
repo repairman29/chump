@@ -5,8 +5,11 @@
   priority: P2
   effort: xs
   acceptance_criteria:
-    - "scripts/ci/no-anthropic-smoke.sh (currently emits ALERT: domain INFRA has 139 gaps (61%) and exit-1s): downgrade the domain-skew alert from FAIL to WARN"
-    - Threshold ALERT_DOMAIN_SKEW_FATAL_PCT (default unset = warn-only) controls when it escalates to exit 1; today 80% should be the fatal threshold not 50%
-    - Add a fleet-state metric kind=domain_skew_observed emitted at ambient with {ts, kind, domain, pct, total} so the operator dashboard can render the skew without it blocking CI
-    - CI test scripts/ci/test-no-anthropic-smoke-skew.sh fabricates 100 gaps with 60% INFRA + asserts the script exits 0 but emits the warn-tier event
+    - "Reproduce the CI failure: run scripts/ci/test-no-anthropic-smoke.sh in a clean ubuntu-noble container matching CI env (no ANTHROPIC_API_KEY, no CHUMP_STATE_DB pre-populated, no .chump-locks)"
+    - Identify the exact line that triggers exit 1 (current ALERT-line hypothesis ruled out 2026-05-15)
+    - "Suspected leads: (a) recent_anthropic count detector picks up legitimate non-API anthropic mentions in test output, (b) gap reserve writes to a shared state.db when CHUMP_STATE_DB is unset, (c) one of the 5 sub-tests has a fixture leak"
+    - "Once root cause identified: fix the fragile assertion + add a regression CI gate"
+    - Documents the failure mode in docs/process/CHUMP_FIRST_DEBUG.md so future operator hits dont waste an investigation cycle
+  notes: |
+    Investigation depth (2026-05-30 Opus survey): title says xs but AC requires reproducing CI failure in clean ubuntu-noble container + tracing through chump binary's gap-list domain-skew assertion. That's m or l-class, not xs. Reclassify effort before next claim.
 

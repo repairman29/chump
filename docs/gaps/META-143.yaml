@@ -1,0 +1,10 @@
+- id: META-143
+  domain: META
+  title: "META: Implement Auto-Filing of Flake Gaps (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a new test is automatically quarantined, a new follow-up gap (e.g., JIRA ticket) is automatically filed.
+    - The filed gap includes relevant details such as test name, error fingerprint, and links to failing runs.
+

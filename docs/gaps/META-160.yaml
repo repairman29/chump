@@ -1,0 +1,17 @@
+- id: META-160
+  domain: META
+  title: "META-157-c: decompose-loop.sh Phase 0 _drain_inbox + _peek_pending_feedback matching ci-audit pattern"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Sub-slice C of META-157. decompose-loop.sh Phase 0 inbox-drain matching ci-audit pattern. See docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3 Slice 3.
+  acceptance_criteria:
+    - "scripts/coord/decompose-loop.sh gains _drain_inbox helper (mirrors ci-audit-loop.sh _peek_inbox at line 106-111): reads $LOCK_DIR/inbox/$SESSION_ID.jsonl and advances cursor, returns inbox count via stdout"
+    - "scripts/coord/decompose-loop.sh gains _peek_pending_feedback helper: greps last 200 lines of $AMBIENT for kind=FEEDBACK kind=proposal events with corr_id not matching any kind=consensus_result in same window"
+    - "decompose tick subcommand adds Phase 0: call _drain_inbox + _peek_pending_feedback BEFORE existing decompose-queue scan; if either returns non-empty, set actionable=1 and print \"## Pending FEEDBACK requiring vote\" with corr_ids surfaced"
+    - "scripts/ci/test-decompose-loop.sh adds Test N+1: stub up an inbox file with 1 message + an ambient with 1 FEEDBACK proposal, run decompose tick, assert exit 0 (actionable) and \"Pending FEEDBACK\" header in stdout"
+    - "Feature flag: gated behind CHUMP_FLEET_RECV_SIDE_V0=1; when unset, Phase 0 is skipped (existing behavior preserved)"
+    - No edits outside scripts/coord/decompose-loop.sh + scripts/ci/test-decompose-loop.sh + docs/gaps/META-160.yaml
+  closed_date: '2026-05-30'
+

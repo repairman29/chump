@@ -1,0 +1,20 @@
+- id: META-155
+  domain: META
+  title: "META: fleet wire reader-side — peer curators subscribe to chump.events.> + react (NOT just emit)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator observation 2026-05-30T04:35Z: surveyed 24h of NATS chump.events.> traffic + ambient.jsonl mirror. Result: peer curators emit heartbeats and per-tick state, but ZERO addressed curator-to-curator messages, ZERO FEEDBACK responses to broadcasted proposals (META-129, INFRA-2206, INFRA-2208, INFRA-2239). The 6 productized curator-loop scripts (shepherd / target / handoff / ci-audit / decompose / md-links) do their narrow domain work + emit heartbeat — they have NO code path that subscribes to peers' broadcasts and reacts. The fleet wire is broadcast-only in practice; the new comms policy (INFRA-2202 #2745) describes the channel but no consumer side exists. Naming locked 2026-05-30: this layer is 'fleet wire' (operator pick). HOLD this gap until design lands — three sub-questions to settle on NATS FEEDBACK before claim: (a) which subjects each role subscribes to (narrow domain filters vs everything), (b) what counts as 'react' (file gap / dispatch sub-agent / dedupe-then-emit / no-op), (c) dedupe + cooldown rules so curators don't reaction-loop on each other's emissions.
+  acceptance_criteria:
+    - Design doc docs/design/FLEET_WIRE_READER.md covers the three sub-questions with concrete defaults per role (which subjects shepherd / target / handoff / ci-audit / decompose / md-links subscribes to)
+    - "For each productized curator role: a reaction table — incoming kind → reaction class (file gap / dispatch sub-agent / dedupe-emit / no-op) with rationale"
+    - "Dedupe + cooldown spec: fingerprint scheme to avoid reaction loops; sentinel TTL per reaction class (e.g. 'don't dispatch another Sonnet on the same kind+subject within 1h')"
+    - "Mechanism: each loop script gets a chump-coord subscribe wrapper OR a shared scripts/coord/wire-subscriber.sh that the loops invoke per tick to drain new events since last cursor"
+    - At least 5 NATS FEEDBACK responses from peer curators (or operator decisions) recorded in the design doc before AC are locked
+    - Cross-references INFRA-2202 (comms policy), INFRA-2239 (curator-supervisor — both consume + emit on the wire), META-129 (scrubber panel info architecture)
+    - "Marcus loop: external-collab curator validates that the reader side surfaces something Marcus would care about (not just internal fleet meta)"
+  depends_on: [INFRA-2202, INFRA-2239]
+  notes: |
+    2026-05-30T05:25Z sharper diagnosis: NATS+broadcast.sh both work (dual-publish to ambient.jsonl + NATS JetStream). Real bug: bash curator-loop daemons never read ambient OR subscribe to NATS. Claude Code sessions read via SessionStart ambient-context-inject; bash daemons have no equivalent. Quick win filed as INFRA-2262 (per-tick ambient inject); AGENTS.md doc update filed as INFRA-2263. META-155 remains the umbrella reaction-table design — even with the deafness fix, we still need to settle which subjects each role subscribes to / what counts as 'react' / dedupe rules.
+

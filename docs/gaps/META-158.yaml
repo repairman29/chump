@@ -1,0 +1,20 @@
+- id: META-158
+  domain: META
+  title: "META-157-a: broadcast.sh fan-out-to-inbox — when --to unset AND event=FEEDBACK AND kind in (proposal/preference/defect/retro), expand recipient via .curator-opus-*.lock glob"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Sub-slice A of META-157. Fixes emit_to_inbox silent no-op for fan-out FEEDBACK. See docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3 Slice 1. Read META-157 description for compound-failure context.
+  acceptance_criteria:
+    - "scripts/coord/broadcast.sh emit_to_inbox: when recipient unset AND event=FEEDBACK AND kind in (proposal,preference,defect,retro), expand recipient list by globbing .chump-locks/.curator-opus-*.lock and stripping the leading dot + .lock suffix to get session_ids"
+    - "New --no-fanout flag opts out: when set, fan-out is suppressed and emit_to_inbox falls back to current single-recipient behavior"
+    - "scripts/ci/test-broadcast-feedback-fanout.sh: stub up 3 fake .curator-opus-foo.lock + .curator-opus-bar.lock + .curator-opus-baz.lock files in a tmp .chump-locks/, run broadcast.sh FEEDBACK proposal \"subj\" \"rationale\" 0, assert 3 inbox files written with the same JSON"
+    - "Edge cases: when zero .curator-opus-*.lock files match, emit_to_inbox prints a WARN line and exits 0 (broadcast still hits ambient + NATS — fan-out is best-effort)"
+    - "Edge cases: when --no-fanout is set AND --to is also unset, behave as current (silent no-op for inbox path)"
+    - "No regression: existing --to <session-id> path unchanged; existing test-broadcast.sh fixtures pass"
+    - "Feature flag: gated behind CHUMP_FLEET_RECV_SIDE_V0=1 env var; off by default until E2E green"
+    - No changes outside scripts/coord/broadcast.sh + scripts/ci/test-broadcast-feedback-fanout.sh + docs/gaps/META-158.yaml
+  closed_date: '2026-05-30'
+  closed_pr: 2810
+

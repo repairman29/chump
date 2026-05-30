@@ -1,0 +1,11 @@
+- id: META-145
+  domain: META
+  title: "META: Implement Cascade Rebase Auto-Trigger (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A system is in place to monitor for changes to a specified 'keystone file' on the `main` branch.
+    - When the keystone file lands on `main`, all currently open PRs are automatically rebased.
+    - The auto-rebase mechanism logs its actions and any failures.
+

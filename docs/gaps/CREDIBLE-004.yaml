@@ -1,12 +1,30 @@
 - id: CREDIBLE-004
   domain: CREDIBLE
-  title: "CREDIBLE: add tests for 4 critical untested files — main.rs web_server.rs repo_tools.rs discord.rs total 10430 LOC with zero tests"
-  status: open
+  title: 'CREDIBLE: add tests for 4 critical untested files — main.rs web_server.rs repo_tools.rs discord.rs total 10430 LOC
+    with zero tests'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "\n(a) Add unit tests to src/main.rs covering: gap reserve, gap claim, gap show, gap ship subcommands\n(b) Add unit tests to src/web_server.rs covering: handle_gap_list, handle_gap_work, spawn_gap_workflow phases\n(c) Add unit tests to src/repo_tools.rs covering: all public functions with mock filesystem\n(d) Add tests to src/discord.rs covering: message parsing, webhook validation\n(e) Minimum 70% line coverage on all 4 files (verify via cargo tarpaulin)\n(f) CI gate: cargo test --lib main web_server repo_tools discord must pass\n"
-  notes: |
-    demoted P1→P2 by 2026-05-11 decomp: work moved to children CREDIBLE-030 (main.rs), CREDIBLE-031 (web_server.rs), CREDIBLE-032 (repo_tools.rs), CREDIBLE-033 (discord.rs). Parent stays open as umbrella; closes when all 4 ship.
-  opened_date: '2026-05-08'
+  - '
 
+    (a) Add unit tests to src/main.rs covering: gap reserve, gap claim, gap show, gap ship subcommands
+
+    (b) Add unit tests to src/web_server.rs covering: handle_gap_list, handle_gap_work, spawn_gap_workflow phases
+
+    (c) Add unit tests to src/repo_tools.rs covering: all public functions with mock filesystem
+
+    (d) Add tests to src/discord.rs covering: message parsing, webhook validation
+
+    (e) Minimum 70% line coverage on all 4 files (verify via cargo tarpaulin)
+
+    (f) CI gate: cargo test --lib main web_server repo_tools discord must pass
+
+    '
+  notes: 'demoted P1→P2 by 2026-05-11 decomp: work moved to children CREDIBLE-030 (main.rs), CREDIBLE-031 (web_server.rs),
+    CREDIBLE-032 (repo_tools.rs), CREDIBLE-033 (discord.rs). Parent stays open as umbrella; closes when all 4 ship.
+
+    '
+  opened_date: '2026-05-08'
+  closed_date: '2026-05-11'
+  closed_pr: 1464

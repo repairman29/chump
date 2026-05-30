@@ -1,0 +1,16 @@
+- id: INFRA-2249
+  domain: INFRA
+  title: "EFFECTIVE P1 (META-128 SCALE): BuildBuddy RBE integration — drop-in sccache R2 replacement with bonus remote-execution preview + test-result cache (free tier validates AI-fleet-scale economics)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. Sign up for BuildBuddy free tier (https://app.buildbuddy.io); operator stores BUILDBUDDY_API_KEY in GH secrets"
+    - 2. .cargo/config.toml gains [build] rustc-wrapper = 'sccache' AND env SCCACHE_BUILDBUDDY_URL pointing to grpc.buildbuddy.io with API key. Falls back to existing R2 backend if BuildBuddy unreachable.
+    - "3. Modify .github/workflows/ci.yml cargo-test/clippy/audit jobs: gain BUILDBUDDY_API_KEY env (from secrets) so sccache uses BuildBuddy remote cache instead of R2 (R2 stays as warm-fallback)"
+    - "4. NEW: cargo-test job gains 'cargo nextest run --target-dir-strategy buildbuddy' or equivalent for test-result caching — skips re-running tests whose source + deps hash unchanged"
+    - "5. Measurement: tag 10 PRs post-rollout, compare median cargo-test wall-clock vs current R2-only baseline. Target: -40% on cache-hit (RBE bonus over just compile cache)."
+    - "6. RBE preview: enable BuildBuddy RBE for ONE crate (chump-tool-macro, smallest) to validate remote-execution latency vs local. Document in doc."
+    - "7. Doc: docs/process/BUILDBUDDY.md — operator setup (5min), fallback behavior, cost monitoring (free tier limits ~5000 builds/mo)"
+    - "8. Test: scripts/ci/test-buildbuddy-fallback.sh — assert sccache config has both BuildBuddy URL AND R2 fallback URL"
+

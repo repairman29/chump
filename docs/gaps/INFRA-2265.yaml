@@ -1,0 +1,55 @@
+- id: INFRA-2265
+  domain: INFRA
+  title: "EFFECTIVE: chump bootstrap <intent> — net-new product bootstrap entrypoint (META-067 third demo-able outcome, complements INFRA-1746 ingest)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-067 names three demo-able 2026 outcomes: net-new bootstrap, repo takeover, autonomous throughput.
+    Two of three have shipped entrypoints — INFRA-1746 (`chump ingest <repo-path>` for repo takeover) and
+    chump-demo binary / META-072 (autonomous throughput). Bootstrap is the missing surface: nothing today
+    takes an operator from "I have an idea" to "first commit + first umbrella gap filed" without manual
+    git init + manual gap reserve + manual seeding.
+
+    Strategic note: BEAST-MODE (sibling product) owns the "founder-facing" greenfield narrative ("plug in
+    your vision, get a roadmap, go"). Chump's bootstrap is NOT a competing founder pitch — it's the
+    SUBSTRATE-LAYER entrypoint that BEAST-MODE (or any future operator-facing wrapper) could consume.
+    Keep the operator-of-fleet voice; do not drift toward founder-facing copy.
+
+    Rough shape:
+      (a) New `chump bootstrap <intent>` subcommand in src/main.rs (`init` mod already reserved per audit).
+      (b) Typed handoff contract `ArchitectureDecisionContract` in crates/chump-handoff/src/contracts.rs:
+          Input { intent: String, target_dir: PathBuf, constraints: Vec<String> }
+          Output { language: String, framework: Option<String>, test_harness: String, deps: Vec<String>,
+                   rationale: String }
+      (c) Bootstrap flow:
+            1. Validate target dir empty (or only .git/.gitignore)
+            2. git init if needed; write README with operator intent verbatim; commit
+            3. Dispatch ArchitectureDecisionContract to Sonnet sub-agent
+            4. Write scaffolding files (Cargo.toml / package.json / pyproject.toml) per decision
+            5. Initial commit with scaffolding
+            6. File first umbrella gap via `gap reserve --domain <derived>` with intent as title +
+               architecture decision as description "Rough shape:" line
+            7. Emit kind=bootstrap_initiated + kind=bootstrap_completed to ambient.jsonl
+      (d) Smoke test: scripts/ci/test-bootstrap-smoke.sh creates /tmp/bootstrap-XYZ dir, runs
+          `chump bootstrap "build a CLI todo app in Rust"`, asserts .git/, README contains intent,
+          Cargo.toml exists, state.db has new gap, ambient.jsonl has both bootstrap_* events.
+      (e) Register bootstrap_initiated + bootstrap_completed in docs/observability/EVENT_REGISTRY.yaml.
+      (f) Two-line README mention + entry in CLAUDE.md "Two-phase decomposition" section.
+  acceptance_criteria:
+    - "chump bootstrap <intent> CLI subcommand exists; accepts intent string as positional arg, optional --dir <path> (default $PWD), --skip-arch-decision for tests"
+    - "Bails non-zero with operator-readable error if target dir non-empty (excluding .git/, .gitignore, .DS_Store); does not mutate filesystem on bail"
+    - "On success: target dir contains initialized git repo, README.md whose first body line contains the verbatim intent string, scaffolding appropriate to architecture decision, and 1+ commit (scaffold)"
+    - "First umbrella gap filed via existing chump gap reserve machinery (atomic per-domain counter respected); description carries architecture-decision output as 'Rough shape:' multiline block"
+    - "ArchitectureDecisionContract typed handoff defined in crates/chump-handoff/src/contracts.rs with Input/Output structs, serde derives, Validate impl that rejects empty language field, prompt() template baked"
+    - "Emits kind=bootstrap_initiated at start (fields: intent, target_dir, session_id) and kind=bootstrap_completed at end (fields: intent, target_dir, gap_id, duration_ms, files_created); both kinds registered in docs/observability/EVENT_REGISTRY.yaml with effect_metric set"
+    - "On any failure mid-flight: emits kind=bootstrap_failed with failure_class enum (arch_decision_timeout|scaffolding_write_failed|gap_reserve_failed|git_init_failed); target dir is not left in half-written state (best-effort rollback or explicit 'partial state at X — operator cleanup required' message)"
+    - "Smoke test scripts/ci/test-bootstrap-smoke.sh exists, runs in <90s, asserts all of the above without network if --skip-arch-decision flag is honored"
+    - "chump preflight runs the smoke test under scope auto when src/main.rs or crates/chump-handoff/src/contracts.rs is touched"
+    - "README.md and CLAUDE.md updated with 3-line example invocation; mention that this is the SUBSTRATE-layer entrypoint, not a founder-facing surface"
+  source_doc: docs/gaps/META-067.yaml
+  notes: |
+    Filed 2026-05-29 during PMM positioning synthesis after operator asked "couldn't chump build a product
+    from scratch?". Harvester scan of sibling BEAST-MODE repo confirmed: founder-facing greenfield narrative
+    is BEAST-MODE's lane; this gap is intentionally substrate-layer so the two products don't collide on
+    positioning. INFRA-1746 (chump ingest) is the natural sibling — same shape, different starting state.

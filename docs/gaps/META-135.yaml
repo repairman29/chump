@@ -1,0 +1,11 @@
+- id: META-135
+  domain: META
+  title: "META: Implement Basic 'Verified' Aggregator Service (Non-Gating) (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new service endpoint is deployed and accessible.
+    - The service can receive and store status updates for individual CI lanes.
+    - The service does not yet perform aggregation logic or enforce gating.
+

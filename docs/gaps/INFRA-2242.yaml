@@ -1,0 +1,15 @@
+- id: INFRA-2242
+  domain: INFRA
+  title: "EFFECTIVE P1: mold linker + cranelift backend + rust-toolchain.toml — bundle 3 modernizations (~30 LOC) → ~25% faster cold compile"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - 1. .cargo/config.toml gains rustflags='-C link-arg=-fuse-ld=mold' on linux targets (auto-skipped on macOS where mold isn't default-built)
+    - 2. ci.yml jobs install mold via 'apt install -y mold' OR cargo-binstall mold; benchmark before/after on 1 PR's cargo-test link phase
+    - "3. rust-toolchain.toml created at repo root pinning 'channel = \"stable\"' + minimum 1.82 with components=['rustfmt','clippy','llvm-tools-preview']. Cargo auto-installs the channel on first use."
+    - 4. .cargo/config.toml [unstable] codegen-backend = 'cranelift' for [profile.dev] only (debug builds). Release builds stay llvm.
+    - 5. CI install cranelift via 'rustup component add rustc-codegen-cranelift'
+    - "6. Test: scripts/ci/test-modern-rust-toolchain.sh — assert rust-toolchain.toml exists with correct content, .cargo/config.toml has both linker and cranelift settings"
+    - "7. Measurement: tag 3 PRs; compare cargo-test cold-cache wall-clock before/after; target -20% (mold 10-15% + cranelift 5-10%)"
+

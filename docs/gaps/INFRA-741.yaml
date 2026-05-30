@@ -1,13 +1,14 @@
 - id: INFRA-741
   domain: INFRA
-  title: "EFFECTIVE: model capability probe at startup — auto-detect tool-use and context"
-  status: open
+  title: 'EFFECTIVE: model capability probe at startup — auto-detect tool-use and context'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "On first use of a new OPENAI_MODEL + OPENAI_API_BASE combo, chump sends a lightweight probe prompt to detect: valid function_call responses, think tags, approximate context window"
-    - Results cached to ~/.chump/model_probes.json keyed by model+base URL
-    - Cached capabilities feed into model_overlay.rs family detection (supplements substring matching)
-    - Probe failure is non-fatal — falls back to detect_model_family() heuristic
-    - chump doctor reports detected capabilities for the currently configured model
-
+  - 'On first use of a new OPENAI_MODEL + OPENAI_API_BASE combo, chump sends a lightweight probe prompt to detect: valid function_call
+    responses, think tags, approximate context window'
+  - Results cached to ~/.chump/model_probes.json keyed by model+base URL
+  - Cached capabilities feed into model_overlay.rs family detection (supplements substring matching)
+  - Probe failure is non-fatal — falls back to detect_model_family() heuristic
+  - chump doctor reports detected capabilities for the currently configured model
+  closed_date: '2026-05-15'

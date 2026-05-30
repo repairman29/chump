@@ -1,35 +1,58 @@
 - id: INFRA-1954
   domain: INFRA
-  title: "CREDIBLE: gap-reserve re-uses shipped gap IDs removed from docs/gaps/ — INFRA-018 guard only checks live registry, not git history"
-  status: open
+  title: 'CREDIBLE: gap-reserve re-uses shipped gap IDs removed from docs/gaps/ — INFRA-018 guard only checks live registry,
+    not git history'
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-05-25'
   raised_by: cold-water
   raised_in: RED_LETTER#13
-  description: |
-    During the 2026-05-25 Cold Water cycle, chump gap reserve assigned IDs
+  description: 'During the 2026-05-25 Cold Water cycle, chump gap reserve assigned IDs
+
     META-103, INFRA-1953, INFRA-1955, and INFRA-1957 — all of which had already
+
     been shipped and removed from docs/gaps/ (their YAML files were deleted after
+
     gap-ship, not moved to docs/gaps/closed/). The INFRA-018 duplicate-ID guard
+
     checks docs/gaps/*.yaml and state.db — it does not check git history.
 
+
     Evidence (observed during Issue #13 audit):
+
     - chump gap reserve → INFRA-1953 assigned; git log --grep=INFRA-1953 → PR #2551 already shipped
+
     - chump gap reserve → META-103 assigned; git log --grep=META-103 → PR #2544 already shipped
+
     - chump gap reserve → INFRA-1955 assigned; git log --grep=INFRA-1955 → PR #2548 already shipped
+
     - chump gap reserve → INFRA-1957 assigned; git log --grep=INFRA-1957 → PR #2561 already shipped
+
     Four re-used IDs in a single Cold Water session.
 
+
     The guard works for gaps still in the live registry. It is blind to gaps that
+
     shipped and whose YAML files were deleted (not closed/). Any agent reading a
+
     commit message with a re-used ID will be confused about which gap the work
+
     refers to.
 
+
     Falsifying condition: chump gap reserve has a pre-check that runs
+
     `git log --all --grep=<proposed-id>` and fails if the ID appears.
+
+    '
   acceptance_criteria:
-    - "chump gap reserve checks git log (--all, --grep=<proposed-id>) before assigning — fails with DUPLICATE if any commit references the proposed ID"
-    - "OR: gap-ship moves YAML to docs/gaps/closed/ instead of deleting — INFRA-018 guard already checks closed/"
-    - "Regression test: scripts/ci/test-gap-reserve-no-reuse.sh creates a dummy gap, ships it (moving YAML to closed/), then attempts reserve with same ID and asserts failure"
-    - "Fix verified by running the Cold Water evidence sequence: four IDs (META-103, INFRA-1953, INFRA-1955, INFRA-1957) attempted reserve with chump gap reserve → all four rejected"
+  - chump gap reserve checks git log (--all, --grep=<proposed-id>) before assigning — fails with DUPLICATE if any commit references
+    the proposed ID
+  - 'OR: gap-ship moves YAML to docs/gaps/closed/ instead of deleting — INFRA-018 guard already checks closed/'
+  - 'Regression test: scripts/ci/test-gap-reserve-no-reuse.sh creates a dummy gap, ships it (moving YAML to closed/), then
+    attempts reserve with same ID and asserts failure'
+  - 'Fix verified by running the Cold Water evidence sequence: four IDs (META-103, INFRA-1953, INFRA-1955, INFRA-1957) attempted
+    reserve with chump gap reserve → all four rejected'
+  closed_date: '2026-05-25'
+  closed_pr: 2509

@@ -1,15 +1,32 @@
 - id: META-068
   domain: META
-  title: 2026-05-22 productization plan — 3-initiative tactical sprint (quality firewall + predictive coordination + UX-review gate)
-  status: open
+  title: 2026-05-22 productization plan — 3-initiative tactical sprint (quality firewall + predictive coordination + UX-review
+    gate)
+  status: done
   priority: P1
   effort: m
-  description: |
-    Operator real-talk 2026-05-22: weeks of trying to give chump agents autonomy but the dream is bottlenecked by three concrete problems: (1) CI failure rate burns autonomy cycles (every CI gate without a chump preflight mirror is a tax on the autonomy loop), (2) coordination today is purely defensive (don't crash) with no positive harmony (predictive collision, skill routing, lesson propagation), (3) consumer-quality output gates don't exist (CI green is not the same as user-acceptable). Plus an honest disambiguation: the AGI-dream of agent personality is gated on model state, not chump plumbing; reflection_db + MEMORY.md slice get us most of the way. This META is the umbrella that captures the analysis, links the sub-gaps, and ships the canonical strategy doc at docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md so we can come back to it.
-  acceptance_criteria:
-    - "New canonical doc docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md captures: (a) the 3-problem diagnosis verbatim from the 2026-05-22 real-talk exchange, (b) the prioritized initiative breakdown, (c) the gap-map linking each initiative to its implementation gaps, (d) the AGI-dream disambiguation (what is and is not blocked by chump-side work), (e) operator-return-to notes"
-    - "Sub-gaps filed and cross-linked: INFRA-1762 (Initiative 1 umbrella) + INFRA-1763 INFRA-1764 INFRA-1765 (Initiative 2) + INFRA-1766 (Initiative 3); doc body references each by ID with one-line summary"
-    - "Doc cross-links existing in-flight or recently-shipped gaps that fit the initiatives: INFRA-1731 (registry preflight gate, in flight) + INFRA-1730 (orphan branch detection) + INFRA-1732 (bot-merge heartbeats) all under Initiative 1 quality firewall"
-    - memory/MEMORY.md gets a new entry pointing at the strategy doc so future sessions surface it via the standard memory-injection path
-    - "Doc is intent-atomic: shipping it does not block on any of the sub-gaps; sub-gaps are independently pickable"
+  description: 'Operator real-talk 2026-05-22: weeks of trying to give chump agents autonomy but the dream is bottlenecked
+    by three concrete problems: (1) CI failure rate burns autonomy cycles (every CI gate without a chump preflight mirror
+    is a tax on the autonomy loop), (2) coordination today is purely defensive (don''t crash) with no positive harmony (predictive
+    collision, skill routing, lesson propagation), (3) consumer-quality output gates don''t exist (CI green is not the same
+    as user-acceptable). Plus an honest disambiguation: the AGI-dream of agent personality is gated on model state, not chump
+    plumbing; reflection_db + MEMORY.md slice get us most of the way. This META is the umbrella that captures the analysis,
+    links the sub-gaps, and ships the canonical strategy doc at docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md so we can
+    come back to it.
 
+    '
+  acceptance_criteria:
+  - 'New canonical doc docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md captures: (a) the 3-problem diagnosis verbatim from
+    the 2026-05-22 real-talk exchange, (b) the prioritized initiative breakdown, (c) the gap-map linking each initiative to
+    its implementation gaps, (d) the AGI-dream disambiguation (what is and is not blocked by chump-side work), (e) operator-return-to
+    notes'
+  - 'Sub-gaps filed and cross-linked: INFRA-1762 (Initiative 1 umbrella) + INFRA-1763 INFRA-1764 INFRA-1765 (Initiative 2)
+    + INFRA-1766 (Initiative 3); doc body references each by ID with one-line summary'
+  - 'Doc cross-links existing in-flight or recently-shipped gaps that fit the initiatives: INFRA-1731 (registry preflight
+    gate, in flight) + INFRA-1730 (orphan branch detection) + INFRA-1732 (bot-merge heartbeats) all under Initiative 1 quality
+    firewall'
+  - memory/MEMORY.md gets a new entry pointing at the strategy doc so future sessions surface it via the standard memory-injection
+    path
+  - 'Doc is intent-atomic: shipping it does not block on any of the sub-gaps; sub-gaps are independently pickable'
+  closed_date: '2026-05-23'
+  closed_pr: 2378

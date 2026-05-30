@@ -1,0 +1,10 @@
+- id: META-142
+  domain: META
+  title: "META: Implement Flake Quarantine in Aggregator Status Calculation (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a test is tagged as 'flake' in the system, the 'Verified' aggregator treats its status as 'success' for the purpose of the overall 'verified' check.
+    - The aggregator's logs clearly indicate when a test's status was overridden due to quarantine.
+

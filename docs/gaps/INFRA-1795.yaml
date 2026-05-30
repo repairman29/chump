@@ -1,33 +1,54 @@
 - id: INFRA-1795
   domain: INFRA
-  title: "STRATEGY: Column A demo target repo selection (Week 4 gating doc; META-069 curator synthesis)"
-  status: open
+  title: 'STRATEGY: Column A demo target repo selection (Week 4 gating doc; META-069 curator synthesis)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Pick the ONE repo that Chump's first end-to-end "ingest an unfamiliar
+  description: 'Pick the ONE repo that Chump''s first end-to-end "ingest an unfamiliar
+
     repo and add value" demo (Week 4 deliverable) runs against. This
+
     decision gates every Week 2 design choice — per-language detector
+
     quality bar, artifact shape, tooling surfaces, failure-mode coverage.
 
+
     Operator constraint: "many repos." Selection rubric (6 criteria):
+
     language mix (3+ of supported), size (2-15k LOC), age (3-12 months
+
     active), push access, demo-watchability (30s pitch), familiarity
+
     inverted (operator should NOT have touched in last 7 days, ideally
+
     30+).
 
+
     Method: META-069 — Sonnet does the per-repo data gather + scoring,
+
     Opus does synthesis + the final pick.
+
+    '
   acceptance_criteria:
-    - "docs/strategy/COLUMN_A_DEMO_TARGET_2026-05-23.md exists, names exactly ONE primary repo, scores it 0-3 against each of the 6 criteria"
-    - "Doc includes a top-5 scoring matrix from the data-gather pass (Sonnet's output)"
-    - "Doc includes an explicit fallback ladder (at least 3 alternatives in priority order) with the criterion-by-criterion reason each is below the primary"
-    - "Doc names the 'what this gates' implications for Week 2 design (per-language detector priority, artifact shape, tooling surfaces, failure-mode coverage)"
-    - "Doc names a pre-flight gate (INFRA-1778 chump ingest pre-flight) that must pass before the demo is committed; if pre-flight blocks, walk the fallback ladder and re-record"
-    - "Process-notes section attributes the data-gather vs synthesis split per META-069 discipline"
-    - "Doc is committed in a single docs-only PR; CI is docs-path-filtered, no fast-checks/cargo-test required"
-  notes: |
-    Outcome 2026-05-23: primary = echeo (15/15). Fallback ladder
+  - docs/strategy/COLUMN_A_DEMO_TARGET_2026-05-23.md exists, names exactly ONE primary repo, scores it 0-3 against each of
+    the 6 criteria
+  - Doc includes a top-5 scoring matrix from the data-gather pass (Sonnet's output)
+  - Doc includes an explicit fallback ladder (at least 3 alternatives in priority order) with the criterion-by-criterion reason
+    each is below the primary
+  - Doc names the 'what this gates' implications for Week 2 design (per-language detector priority, artifact shape, tooling
+    surfaces, failure-mode coverage)
+  - Doc names a pre-flight gate (INFRA-1778 chump ingest pre-flight) that must pass before the demo is committed; if pre-flight
+    blocks, walk the fallback ladder and re-record
+  - Process-notes section attributes the data-gather vs synthesis split per META-069 discipline
+  - Doc is committed in a single docs-only PR; CI is docs-path-filtered, no fast-checks/cargo-test required
+  notes: 'Outcome 2026-05-23: primary = echeo (15/15). Fallback ladder
+
     (in priority): daisy-chain (coldest), echeo-internal (sibling),
+
     olive (best storytelling but loses one criterion). upshift demoted
+
     to "Phase 2" — too big for first demo at 25k LOC.
+
+    '
+  closed_date: '2026-05-23'
+  closed_pr: 2395

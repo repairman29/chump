@@ -1,0 +1,9 @@
+- id: INFRA-2229
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C7 suite-level metrics — chump-pe-suite status dashboard counts active curators + FEEDBACK rate + consensus convergence rate + time-to-decision per role"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New chump-pe-suite status subcommand (part of chump main bin OR standalone bin per META-127/C5 design INFRA-2228). Reads:\n  (a) curator-opus-*.lock files in .chump-locks/ → which curators have run loops recently (last 24h)\n  (b) ambient.jsonl last 7d → kind=*_tick heartbeats per curator → liveness; kind=FEEDBACK count per curator → engagement rate\n  (c) ambient.jsonl kind=consensus_resolved last 7d → consensus convergence rate (resolved / asked)\n  (d) ambient.jsonl kind=consensus_decision_emitted → time-to-decision percentiles per curator pair\n- Output (human-readable):\n  ═══ Chump P&E Suite Status ═══\n  Active curators (last 24h):  N of 14\n    [✓] roadmap-keeper      last tick:  3min ago   42 FEEDBACK / 7d\n    [✓] historian           last tick: 12min ago    8 FEEDBACK / 7d\n    [✗] velocity-tracker    no tick in 26h         stale — investigate\n    ...\n  Consensus health:\n    asked × resolved (7d):  47 / 38  (81% convergence)\n    P50 decision time:       4m 12s\n    operator escalations:    2\n- --json flag for machine output\n- 4+ unit tests with fixture .chump-locks/ + ambient.jsonl\n- Voice-lint clean\n- Cross-references META-127 (umbrella), INFRA-2228 (parent design doc), INFRA-2209 (consensus discipline this measures), INFRA-2214 (role template that defines tick events)"
+

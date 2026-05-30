@@ -1,42 +1,74 @@
 - id: INFRA-1996
   domain: INFRA
-  title: "RESILIENT: silent-failure tax — CI audit counts 2>/dev/null||true + .unwrap_or_default + hook-can-exit-0-without-loop surfaces; budget+require # Silent-OK-Reason annotation on new ones"
-  status: open
+  title: 'RESILIENT: silent-failure tax — CI audit counts 2>/dev/null||true + .unwrap_or_default + hook-can-exit-0-without-loop
+    surfaces; budget+require # Silent-OK-Reason annotation on new ones'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "New CI gate scripts/ci/test-silent-failure-tax.sh: greps for silent-failure patterns in src/**/*.rs + scripts/**/*.sh; reports total count + delta-since-main"
-    - "Patterns counted: '2>/dev/null \\|\\| true', 'unwrap_or_default()', 'unwrap_or(0)', 'unwrap_or(false)', '.ok()', '|| return 0', '|| exit 0' in shell context, hooks with `read` loop that can exit normally without entering the loop"
-    - "Budget: today's count is the budget; new PRs that increase count without `# Silent-OK-Reason: <one sentence>` annotation FAIL CI"
-    - "Annotation format: `// Silent-OK-Reason: ...` for Rust, `# Silent-OK-Reason: ...` for shell, on the line ABOVE the silent-failure pattern"
-    - "Annotated surfaces still counted but exempt from the budget gate; ambient emit kind=silent_failure_surface_added with reason field on each new annotated surface (so we can audit reasons over time)"
-    - "Bootstrap: one-time mass annotation pass through existing surfaces (this is the bulk of the m-effort) — every existing surface gets either an annotation or a removal"
-    - "Bypass: CHUMP_SILENT_FAILURE_TAX_BYPASS=1 + commit body trailer `Silent-Failure-Tax-Bypass: <reason>` — same pattern as preflight bypass"
-    - "Doc update: docs/process/CLAUDE_GOTCHAS.md gets 'Silent failure tax' section listing the patterns and annotation rules"
-  depends_on: [INFRA-1988, INFRA-1990]
-  description: |
-    See docs/strategy/THE_FLOOR.md §3. The pre-push hook regression
+  - 'New CI gate scripts/ci/test-silent-failure-tax.sh: greps for silent-failure patterns in src/**/*.rs + scripts/**/*.sh;
+    reports total count + delta-since-main'
+  - 'Patterns counted: ''2>/dev/null \|\| true'', ''unwrap_or_default()'', ''unwrap_or(0)'', ''unwrap_or(false)'', ''.ok()'',
+    ''|| return 0'', ''|| exit 0'' in shell context, hooks with `read` loop that can exit normally without entering the loop'
+  - 'Budget: today''s count is the budget; new PRs that increase count without `# Silent-OK-Reason: <one sentence>` annotation
+    FAIL CI'
+  - 'Annotation format: `// Silent-OK-Reason: ...` for Rust, `# Silent-OK-Reason: ...` for shell, on the line ABOVE the silent-failure
+    pattern'
+  - Annotated surfaces still counted but exempt from the budget gate; ambient emit kind=silent_failure_surface_added with
+    reason field on each new annotated surface (so we can audit reasons over time)
+  - 'Bootstrap: one-time mass annotation pass through existing surfaces (this is the bulk of the m-effort) — every existing
+    surface gets either an annotation or a removal'
+  - 'Bypass: CHUMP_SILENT_FAILURE_TAX_BYPASS=1 + commit body trailer `Silent-Failure-Tax-Bypass: <reason>` — same pattern
+    as preflight bypass'
+  - 'Doc update: docs/process/CLAUDE_GOTCHAS.md gets ''Silent failure tax'' section listing the patterns and annotation rules'
+  depends_on:
+  - INFRA-1988
+  - INFRA-1990
+  description: 'See docs/strategy/THE_FLOOR.md §3. The pre-push hook regression
+
     (INFRA-1986) existed because `exit 0` is too easy. Anywhere code
+
     silently does nothing when it should do something, we have a
+
     silent-failure surface. They exist, they will always exist, but
+
     they should be AUDITABLE — not invisible.
 
+
     Rough shape: (a) audit script that greps for the patterns above
+
     + AST-walks shell hooks for early-return-without-loop; (b)
+
     bootstrap pass: every existing surface gets an annotation comment
+
     or a removal commit; (c) CI gate fails on un-annotated growth; (d)
+
     bypass env + trailer; (e) ambient telemetry on annotations.
 
+
     KEY DESIGN: this is a BUDGET, not a BAN. Silent failures are
+
     necessary (graceful degradation, fail-open on read-only ops). The
+
     tax converts "silently shipping silent failures" into "explicitly
+
     shipping silent failures with stated reasons" — same code paths,
+
     different visibility.
 
+
     Pairs with INFRA-1988 (silent-no-op alarm runs at runtime; this is
+
     the static-analysis sibling) and INFRA-1990 (hook stdin gate is
+
     one specific pattern; this is the general pattern).
 
+
     Depends on those two because they establish the
+
     `# Silent-OK-Reason:` annotation convention; this gap generalizes
+
     it across the codebase.
+
+    '
+  closed_date: '2026-05-25'

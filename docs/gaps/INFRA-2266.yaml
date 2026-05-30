@@ -1,0 +1,10 @@
+- id: INFRA-2266
+  domain: INFRA
+  title: "EFFECTIVE: A2A Layer 1a slice 3/4 — NATS-primary JetStream durable consumer + chaos test (depends on INFRA-1815)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. subscribe_events(filter) with CHUMP_A2A_LAYER=1 backed by JetStream durable push consumer (per-session durable name: chump_<session_id>)\n2. On broker drop: file-fallback within 5s, fleet_a2a_degraded emitted; on reconnect: durable offset resume, fleet_a2a_recovered emitted\n3. Integration test: subscribe→publish→receive round-trip with p99 < 50ms (N=20 events, NATS available)\n4. Chaos test scripts/ci/test-a2a-layer1a-chaos.sh: kill/restart NATS mid-cycle, assert no event loss and fleet_a2a_degraded + fleet_a2a_recovered both emitted; skip cleanly when nats-server not on PATH\n5. Backpressure: pending > max_ack_pending emits fleet_a2a_backpressure, hysteresis resets at 50% drain\n6. CHUMP_A2A_LAYER=0 still works (file-only path unaffected by this change)"
+  depends_on: [INFRA-1815]
+

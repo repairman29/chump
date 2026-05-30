@@ -1,21 +1,22 @@
 - id: INFRA-637
   domain: INFRA
-  title: "EFFECTIVE: nightly gap-store self-curate cron"
-  status: open
+  title: 'EFFECTIVE: nightly gap-store self-curate cron'
+  status: done
   priority: P2
   effort: s
-  description: >
-    Runs 'chump gap rebalance --apply' + 'chump gap consolidate --apply' (graceful skip if not
-    implemented) + 'chump gap retention-sweep --apply' (graceful skip if not implemented) daily at
-    04:00 local time via launchd. Operator never has to think about gap-store hygiene; it
-    self-curates. Emits kind=gap_store_curated ambient with summary (rebalanced, consolidated,
-    retained, errors counts).
+  description: 'Runs ''chump gap rebalance --apply'' + ''chump gap consolidate --apply'' (graceful skip if not implemented)
+    + ''chump gap retention-sweep --apply'' (graceful skip if not implemented) daily at 04:00 local time via launchd. Operator
+    never has to think about gap-store hygiene; it self-curates. Emits kind=gap_store_curated ambient with summary (rebalanced,
+    consolidated, retained, errors counts).
+
+    '
   acceptance_criteria:
-    - scripts/ops/gap-curate.sh runs 3 commands sequentially with graceful skip for unimplemented subcommands
-    - CHUMP_GAP_CURATE_DISABLE=1 opts out and exits 0
-    - --dry-run does not write to ambient.jsonl
-    - gap_store_curated event has all required fields (ts, kind, session, rebalanced, consolidated, retained, errors)
-    - launchd/com.chump.gap-curate.plist uses StartCalendarInterval at Hour=4
-    - scripts/setup/install-gap-curate-launchd.sh installs the launchd job
-    - scripts/ci/test-nightly-gap-curate.sh passes (8 tests)
-    - gap_store_curated registered in EVENT_REGISTRY.yaml
+  - scripts/ops/gap-curate.sh runs 3 commands sequentially with graceful skip for unimplemented subcommands
+  - CHUMP_GAP_CURATE_DISABLE=1 opts out and exits 0
+  - --dry-run does not write to ambient.jsonl
+  - gap_store_curated event has all required fields (ts, kind, session, rebalanced, consolidated, retained, errors)
+  - launchd/com.chump.gap-curate.plist uses StartCalendarInterval at Hour=4
+  - scripts/setup/install-gap-curate-launchd.sh installs the launchd job
+  - scripts/ci/test-nightly-gap-curate.sh passes (8 tests)
+  - gap_store_curated registered in EVENT_REGISTRY.yaml
+  closed_date: '2026-05-12'

@@ -1,19 +1,27 @@
 - id: INFRA-1363
   domain: INFRA
-  title: "CREDIBLE: chump orchestrate session-summary ambient emit — kind=orchestrate_session_summary with {intents_routed, intents_failed, tool_calls, cost_usd, wall_time_s, session_id} at session end (Phase 3 demo metric)"
-  status: open
+  title: 'CREDIBLE: chump orchestrate session-summary ambient emit — kind=orchestrate_session_summary with {intents_routed,
+    intents_failed, tool_calls, cost_usd, wall_time_s, session_id} at session end (Phase 3 demo metric)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Phase 3 (Orchestrator MVP) is the current roadmap milestone but we currently cannot measure orchestrator quality — INFRA-796 telemetry adds per-iteration ambient events, but operators need a single rolled-up session summary to answer 'did this session work?'. The Phase 3 demo flow ('Type "spawn the fleet on infra p0/p1"') needs a citable outcome metric.
-  acceptance_criteria:
-    - "At end of every chump orchestrate session emit exactly one kind=orchestrate_session_summary event to .chump-locks/ambient.jsonl with body {ts, kind, session_id, intents_routed (int), intents_failed (int), tool_calls (int), cost_usd (float, 4 decimal), wall_time_s (int), exit_reason (\"clean\""
-    - "\"crash\""
-    - "\"user_quit\""
-    - "\"timeout\")}"
-    - Session_id matches CHUMP_ORCHESTRATE_SESSION_ID env var (generated at start, propagated to subagents)
-    - Register kind=orchestrate_session_summary in docs/observability/EVENT_REGISTRY.yaml so INFRA-1237 strict-emit gate passes
-    - CI test scripts/ci/test-orchestrate-session-summary.sh drives a synthetic 3-intent session against a fake LLM client, asserts exactly one emit with correct field shape
-    - "Phase 3 roadmap demo can cite \"N intents handled, X% routed, $Y cost, Zsec wall time\" from this event"
-    - "docs/process/CHUMP_ORCHESTRATE.md or new doc gains a \"session metrics\" section documenting the schema"
+  description: 'Phase 3 (Orchestrator MVP) is the current roadmap milestone but we currently cannot measure orchestrator quality
+    — INFRA-796 telemetry adds per-iteration ambient events, but operators need a single rolled-up session summary to answer
+    ''did this session work?''. The Phase 3 demo flow (''Type "spawn the fleet on infra p0/p1"'') needs a citable outcome
+    metric.
 
+    '
+  acceptance_criteria:
+  - At end of every chump orchestrate session emit exactly one kind=orchestrate_session_summary event to .chump-locks/ambient.jsonl
+    with body {ts, kind, session_id, intents_routed (int), intents_failed (int), tool_calls (int), cost_usd (float, 4 decimal),
+    wall_time_s (int), exit_reason ("clean"
+  - '"crash"'
+  - '"user_quit"'
+  - '"timeout")}'
+  - Session_id matches CHUMP_ORCHESTRATE_SESSION_ID env var (generated at start, propagated to subagents)
+  - Register kind=orchestrate_session_summary in docs/observability/EVENT_REGISTRY.yaml so INFRA-1237 strict-emit gate passes
+  - CI test scripts/ci/test-orchestrate-session-summary.sh drives a synthetic 3-intent session against a fake LLM client,
+    asserts exactly one emit with correct field shape
+  - Phase 3 roadmap demo can cite "N intents handled, X% routed, $Y cost, Zsec wall time" from this event
+  - docs/process/CHUMP_ORCHESTRATE.md or new doc gains a "session metrics" section documenting the schema
+  closed_date: '2026-05-15'

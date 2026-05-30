@@ -1,13 +1,15 @@
 - id: DOC-049
   domain: DOC
-  title: "CREDIBLE: README link to docs/strategy/ROADMAP.md is broken (file lives at docs/ROADMAP.md)"
-  status: open
+  title: 'CREDIBLE: README link to docs/strategy/ROADMAP.md is broken (file lives at docs/ROADMAP.md)'
+  status: done
   priority: P2
   effort: xs
-  description: |
-    README.md line 194 references [docs/strategy/ROADMAP.md] which doesn't exist on disk. The actual roadmap is at docs/ROADMAP.md. This breaks new-user navigation from the README's documentation index.
-  acceptance_criteria:
-    - README link points to docs/ROADMAP.md
-    - Smoke test scripts/ci/test-readme-links.sh validates every link target exists on disk
-    - Run on every README commit via path filter
+  description: 'README.md line 194 references [docs/strategy/ROADMAP.md] which doesn''t exist on disk. The actual roadmap
+    is at docs/ROADMAP.md. This breaks new-user navigation from the README''s documentation index.
 
+    '
+  acceptance_criteria:
+  - README link points to docs/ROADMAP.md
+  - Smoke test scripts/ci/test-readme-links.sh validates every link target exists on disk
+  - Run on every README commit via path filter
+  closed_pr: 2190

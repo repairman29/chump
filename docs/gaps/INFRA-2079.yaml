@@ -1,15 +1,31 @@
 - id: INFRA-2079
   domain: INFRA
-  title: "RESILIENT P1: pr-watch daemon never heartbeated — heartbeat file missing at /tmp/chump-pr-watch.heartbeat; alert daemon_silent firing every 30min since 20:55Z 2026-05-27 (3 alerts in 1hr); diagnose + start-if-stopped + add to chump fleet-bootstrap --check"
-  status: open
+  title: 'RESILIENT P1: pr-watch daemon never heartbeated — heartbeat file missing at /tmp/chump-pr-watch.heartbeat; alert
+    daemon_silent firing every 30min since 20:55Z 2026-05-27 (3 alerts in 1hr); diagnose + start-if-stopped + add to chump
+    fleet-bootstrap --check'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "Diagnose phase: run `launchctl list | grep -i pr-watch` to check if launchd plist is loaded; run `ls -la /tmp/chump-pr-watch.heartbeat` to confirm heartbeat file missing; run `ls scripts/launchd/com.chump.pr-watch*.plist scripts/coord/pr-watch*.sh` to find expected install path; document findings in PR body"
-    - "Fix phase: depending on diagnose, EITHER (a) re-install missing plist via scripts/setup/chump-fleet-bootstrap.sh (if plist exists but unloaded), OR (b) file backing script bug if heartbeat-write logic is broken (e.g. script runs but never writes /tmp/chump-pr-watch.heartbeat), OR (c) file no-op gap if pr-watch is intentionally retired and the alert detector should be updated to skip it"
-    - Add pr-watch to scripts/setup/chump-fleet-bootstrap.sh --check verification list — bootstrap exits non-zero when pr-watch heartbeat is stale > 15min; catches this class earlier (session-start, not 30min-cron-alert-after)
-    - "Smoke test scripts/ci/test-pr-watch-heartbeat.sh: launch pr-watch via current launchctl path; wait 60s; assert /tmp/chump-pr-watch.heartbeat exists + mtime within last 60s"
-    - "After fix: ambient alerts kind=daemon_silent reaper=pr-watch stop firing within next 60min (verify by tail of ambient.jsonl post-merge)"
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd after ambient daemon_silent reaper=pr-watch alert fired 3x in 1hr (20:55Z, 21:25Z, 21:55Z). Pairs with INFRA-2009 (generalize hook silent-noop alarm to all critical daemons — pr-watch is one of them). Lane: infra-watcher curator. Operator preferred filing a gap over me starting the daemon directly because we don't know yet if it's a config issue, a backing-script bug, or intentional retirement; structured diagnosis path documented in AC.
+  - 'Diagnose phase: run `launchctl list | grep -i pr-watch` to check if launchd plist is loaded; run `ls -la /tmp/chump-pr-watch.heartbeat`
+    to confirm heartbeat file missing; run `ls scripts/launchd/com.chump.pr-watch*.plist scripts/coord/pr-watch*.sh` to find
+    expected install path; document findings in PR body'
+  - 'Fix phase: depending on diagnose, EITHER (a) re-install missing plist via scripts/setup/chump-fleet-bootstrap.sh (if
+    plist exists but unloaded), OR (b) file backing script bug if heartbeat-write logic is broken (e.g. script runs but never
+    writes /tmp/chump-pr-watch.heartbeat), OR (c) file no-op gap if pr-watch is intentionally retired and the alert detector
+    should be updated to skip it'
+  - Add pr-watch to scripts/setup/chump-fleet-bootstrap.sh --check verification list — bootstrap exits non-zero when pr-watch
+    heartbeat is stale > 15min; catches this class earlier (session-start, not 30min-cron-alert-after)
+  - 'Smoke test scripts/ci/test-pr-watch-heartbeat.sh: launch pr-watch via current launchctl path; wait 60s; assert /tmp/chump-pr-watch.heartbeat
+    exists + mtime within last 60s'
+  - 'After fix: ambient alerts kind=daemon_silent reaper=pr-watch stop firing within next 60min (verify by tail of ambient.jsonl
+    post-merge)'
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd after ambient daemon_silent reaper=pr-watch alert fired 3x in 1hr (20:55Z,
+    21:25Z, 21:55Z). Pairs with INFRA-2009 (generalize hook silent-noop alarm to all critical daemons — pr-watch is one of
+    them). Lane: infra-watcher curator. Operator preferred filing a gap over me starting the daemon directly because we don''t
+    know yet if it''s a config issue, a backing-script bug, or intentional retirement; structured diagnosis path documented
+    in AC.
 
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2675

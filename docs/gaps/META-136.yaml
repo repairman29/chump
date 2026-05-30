@@ -1,0 +1,10 @@
+- id: META-136
+  domain: META
+  title: "META: Configure 'fast-checks' to Report to Aggregator (Side-by-Side) (META-131 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The `fast-checks` CI job successfully reports its status to the new 'Verified' aggregator service.
+    - The `fast-checks` CI job continues to report its status as before (existing required status is unaffected).
+

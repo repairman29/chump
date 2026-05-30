@@ -1,0 +1,12 @@
+- id: INFRA-2233
+  domain: INFRA
+  title: "RESILIENT P2: EVENT_REGISTRY.yaml is conflict-hotspot — every code-touching gap appends + parallel PRs collide; refactor to per-section files OR auto-merge script"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

@@ -1,13 +1,16 @@
 - id: INFRA-819
   domain: INFRA
-  title: "RESILIENT: reapers self-resurrect after ENOSPC — launchd KeepAlive + transient-failure backoff so disk recovery doesn't require manual kickstart"
-  status: open
+  title: 'RESILIENT: reapers self-resurrect after ENOSPC — launchd KeepAlive + transient-failure backoff so disk recovery
+    doesn''t require manual kickstart'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "heartbeat-watcher.plist: KeepAlive changed from simple true to {SuccessfulExit=false, Crashed=true} dict; ThrottleInterval 10s→60s"
-    - "heartbeat-watcher.sh: disk-space preflight on start exits 1 cleanly when <CHUMP_HEARTBEAT_MIN_FREE_MB (default 50) MB free; emits reaper_self_paused event"
-    - "synthesis-pass.plist: ThrottleInterval=60 added"
-    - "combined: disk recovery requires no manual kickstart; launchd retries every 60s; succeeds automatically when disk freed"
-    - "scripts/ci/test-reaper-resurrect.sh: 8/8 tests (preflight exit 1, event emission, env var, plist structure validation)"
-
+  - 'heartbeat-watcher.plist: KeepAlive changed from simple true to {SuccessfulExit=false, Crashed=true} dict; ThrottleInterval
+    10s→60s'
+  - 'heartbeat-watcher.sh: disk-space preflight on start exits 1 cleanly when <CHUMP_HEARTBEAT_MIN_FREE_MB (default 50) MB
+    free; emits reaper_self_paused event'
+  - 'synthesis-pass.plist: ThrottleInterval=60 added'
+  - 'combined: disk recovery requires no manual kickstart; launchd retries every 60s; succeeds automatically when disk freed'
+  - 'scripts/ci/test-reaper-resurrect.sh: 8/8 tests (preflight exit 1, event emission, env var, plist structure validation)'
+  closed_date: '2026-05-11'

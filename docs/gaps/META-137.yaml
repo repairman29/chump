@@ -1,0 +1,10 @@
+- id: META-137
+  domain: META
+  title: "META: Configure All Lane Checks to Report to Aggregator (Side-by-Side) (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All specified lane checks (audit, test, ACP, clippy, cargo-test, e2e-pwa) successfully report their statuses to the new 'Verified' aggregator service.
+    - All lane checks continue to report their statuses as before (existing required statuses are unaffected).
+

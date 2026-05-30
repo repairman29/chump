@@ -1,0 +1,9 @@
+- id: INFRA-2234
+  domain: INFRA
+  title: "EFFECTIVE P2: META-127/C8 Marcus demo script — chump-pe-suite demo runbook with synthetic example repo (5-min end-to-end pitch surface)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "- New docs/strategy/CHUMP_PE_SUITE_DEMO_5MIN.md (~1500 words) + scripts/demo/chump-pe-suite-demo.sh runbook.\n- Demo scenario: pretend to install the suite on a sample external repo (ehippy/derelict OR a synthetic small-repo fixture), trigger a question, watch 5+ curators weigh in via FEEDBACK in <5 min, show consensus_decision_emitted aggregation, show roadmap-keeper auto-rank.\n- 5 demo beats: (1) install one-command (chump-pe-suite install <repo>); (2) curator-pe-suite status shows 14 active curators; (3) operator asks 'should we ship X or Y' via chump consensus ask; (4) curators reply in <5 min with rationale; (5) consensus resolves + auto-pivots roadmap.\n- Cross-link from PITCH.md + DEMO_5MIN.md (existing operator-facing doc) + ROADMAP_MARCUS.md M-D milestone.\n- Marcus M-D 'team-tier substrate' is the demo target (per ROADMAP_MARCUS + external-collab curator finding earlier this session).\n- Demo script in scripts/demo/ shells out the 5 beats with synthetic fixtures (no real customer repo).\n- Voice-lint clean (PITCH/DEMO are heavy on banned terms historically).\n- Cross-references META-127 umbrella, INFRA-2228 design doc, INFRA-2229 status CLI, INFRA-2209 consensus discipline."
+

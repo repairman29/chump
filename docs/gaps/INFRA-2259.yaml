@@ -1,0 +1,12 @@
+- id: INFRA-2259
+  domain: INFRA
+  title: "ZERO-WASTE: register feedback_fanout_delivered + feedback_fanout_skipped event kinds in EVENT_REGISTRY.yaml (META-158 follow-up)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

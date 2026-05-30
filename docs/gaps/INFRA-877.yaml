@@ -1,9 +1,12 @@
 - id: INFRA-877
   domain: INFRA
-  title: "ZERO-WASTE: Cost enforcement and quota management"
-  status: open
+  title: 'ZERO-WASTE: Cost enforcement and quota management'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "1. src/cost_ledger.rs evaluates daily spend vs CHUMP_DAILY_BUDGET_USD; hard-caps new claude -p spawns when budget exhausted, emitting kind=cost_quota_exceeded to ambient.jsonl (fields: gap_id, model, cost_so_far_usd, limit_usd). 2. Soft warning at 80%: kind=cost_quota_warning same fields. 3. chump fleet doctor reports budget_used_pct, exits non-zero if >100%. 4. scripts/ci/test-cost-enforcement.sh: simulate spend at 50/80/100/110% and assert correct event emitted."
-
+  - '1. src/cost_ledger.rs evaluates daily spend vs CHUMP_DAILY_BUDGET_USD; hard-caps new claude -p spawns when budget exhausted,
+    emitting kind=cost_quota_exceeded to ambient.jsonl (fields: gap_id, model, cost_so_far_usd, limit_usd). 2. Soft warning
+    at 80%: kind=cost_quota_warning same fields. 3. chump fleet doctor reports budget_used_pct, exits non-zero if >100%. 4.
+    scripts/ci/test-cost-enforcement.sh: simulate spend at 50/80/100/110% and assert correct event emitted.'
+  closed_date: '2026-05-12'

@@ -1,9 +1,13 @@
 - id: INFRA-1314
   domain: INFRA
-  title: "CREDIBLE: fix audit-branch-protection --check-staged to include unchanged workflow files"
-  status: open
+  title: 'CREDIBLE: fix audit-branch-protection --check-staged to include unchanged workflow files'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - 1. get_all_workflow_job_names(staged=True) reads staged content for staged workflow files AND on-disk content for unstaged workflow files — merged view matches what GitHub sees post-push; 2. Running bash scripts/ci/audit-branch-protection.sh --baseline --check-staged with only ci.yml staged exits 0 (no false drift on editor-integration.yml jobs); 3. A comment in the function explains the merge semantics
-
+  - 1. get_all_workflow_job_names(staged=True) reads staged content for staged workflow files AND on-disk content for unstaged
+    workflow files — merged view matches what GitHub sees post-push; 2. Running bash scripts/ci/audit-branch-protection.sh
+    --baseline --check-staged with only ci.yml staged exits 0 (no false drift on editor-integration.yml jobs); 3. A comment
+    in the function explains the merge semantics
+  closed_date: '2026-05-15'
+  closed_pr: 2010

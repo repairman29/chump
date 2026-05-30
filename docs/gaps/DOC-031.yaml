@@ -1,12 +1,13 @@
 - id: DOC-031
   domain: DOC
-  title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
-  status: open
+  title: 'CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - AGENTS.md is the single canonical source for agent coordination doctrine (lease protocol, commit, ship, worktree rules)
-    - CLAUDE.md references AGENTS.md for coordination rules instead of duplicating; retains only Claude-Code-specific overlay
-    - docs/process/CHUMP_DISPATCH_RULES.md is generated from / references AGENTS.md so chump-local agents get same doctrine
-    - No coordination rule exists in only one of the three files — verified by CI lint
-
+  - AGENTS.md is the single canonical source for agent coordination doctrine (lease protocol, commit, ship, worktree rules)
+  - CLAUDE.md references AGENTS.md for coordination rules instead of duplicating; retains only Claude-Code-specific overlay
+  - docs/process/CHUMP_DISPATCH_RULES.md is generated from / references AGENTS.md so chump-local agents get same doctrine
+  - No coordination rule exists in only one of the three files — verified by CI lint
+  closed_date: '2026-05-15'
+  closed_pr: 1987

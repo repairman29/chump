@@ -1,21 +1,30 @@
 - id: PRODUCT-117
   domain: PRODUCT
-  title: "\"EFFECTIVE: PWA operator-attention queue — list pending approvals + flagged items (orphan PRs, roadmap-update PRs, audit alerts) with one-click action\""
-  status: open
+  title: '"EFFECTIVE: PWA operator-attention queue — list pending approvals + flagged items (orphan PRs, roadmap-update PRs,
+    audit alerts) with one-click action"'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Operator-attention queue: a list in the NOW cadence showing items that need human decision. Backed by /api/approve + ambient.jsonl scan for kinds: orphan_pr_candidate, roadmap_update_proposal_opened (INFRA-1147 weekly PRs), pillar_balance_block (INFRA-1152), pr_dedup_bypass_rejected (INFRA-1219), pr_bounced_unfinished (INFRA-781), gap_drift_orphan. Each row has 1-click action: Approve / Reject / Defer / Open detail. Goal: operator processes the day's decisions in < 5 min from PWA.
-  acceptance_criteria:
-    - web/v2/operator-attention.js defines <chump-operator-attention> Web Component
-    - "Tracks 8 ambient kinds: orphan_pr_candidate, roadmap_update_proposal_opened, pillar_balance_block, pr_dedup_bypass_rejected, pr_bounced_unfinished, gap_drift_orphan, gh_shim_worktree_install_blocked, worktree_gitdir_repair_fired"
-    - Fetches /api/ambient/recent per kind every 30s; auth-checked via X-Chump-Auth header (INFRA-1014)
-    - "Per row: detail link (PR URL / gap path / URL) + Defer (hide 4h) + Dismiss (hide permanently)"
-    - Defer/Dismiss persisted in localStorage via chumpPrefs (INFRA-1280 namespace) with stable fingerprint (kind + pr/gap/branch/id)
-    - "Empty state: 'Nothing to approve — go drink coffee' coffee-icon"
-    - HTML-escapes event note/message field; safe for arbitrary ambient payloads
-    - Wired in app.js VIEWS factory as 'attention'; loads via operator-attention.js script tag
-    - Test scripts/ci/test-pwa-operator-attention.sh 13 assertions all pass
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  description: 'Operator-attention queue: a list in the NOW cadence showing items that need human decision. Backed by /api/approve
+    + ambient.jsonl scan for kinds: orphan_pr_candidate, roadmap_update_proposal_opened (INFRA-1147 weekly PRs), pillar_balance_block
+    (INFRA-1152), pr_dedup_bypass_rejected (INFRA-1219), pr_bounced_unfinished (INFRA-781), gap_drift_orphan. Each row has
+    1-click action: Approve / Reject / Defer / Open detail. Goal: operator processes the day''s decisions in < 5 min from
+    PWA.
 
+    '
+  acceptance_criteria:
+  - web/v2/operator-attention.js defines <chump-operator-attention> Web Component
+  - 'Tracks 8 ambient kinds: orphan_pr_candidate, roadmap_update_proposal_opened, pillar_balance_block, pr_dedup_bypass_rejected,
+    pr_bounced_unfinished, gap_drift_orphan, gh_shim_worktree_install_blocked, worktree_gitdir_repair_fired'
+  - Fetches /api/ambient/recent per kind every 30s; auth-checked via X-Chump-Auth header (INFRA-1014)
+  - 'Per row: detail link (PR URL / gap path / URL) + Defer (hide 4h) + Dismiss (hide permanently)'
+  - Defer/Dismiss persisted in localStorage via chumpPrefs (INFRA-1280 namespace) with stable fingerprint (kind + pr/gap/branch/id)
+  - 'Empty state: ''Nothing to approve — go drink coffee'' coffee-icon'
+  - HTML-escapes event note/message field; safe for arbitrary ambient payloads
+  - Wired in app.js VIEWS factory as 'attention'; loads via operator-attention.js script tag
+  - Test scripts/ci/test-pwa-operator-attention.sh 13 assertions all pass
+  notes: '[2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+
+    '
+  closed_date: '2026-05-15'
+  closed_pr: 1982

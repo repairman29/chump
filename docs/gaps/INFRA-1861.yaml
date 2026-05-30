@@ -1,48 +1,49 @@
 - id: INFRA-1861
   domain: INFRA
-  title: "CI/QA: every required check accurate, no flakes, zero false-positive failures, 100% catch rate on local-vs-CI parity (META-074 child A)"
-  status: open
+  title: 'CI/QA: every required check accurate, no flakes, zero false-positive failures, 100% catch rate on local-vs-CI parity
+    (META-074 child A)'
+  status: done
   priority: P1
   effort: l
-  description: |
-    Child A of META-074. Operator priority #1: "CI/QA to be 100%."
-
-    Today's pain (concrete, 2026-05-23 session):
-      - 3 PRs (#2398/#2399/#2416) all failed cargo-test + ACP smoke +
-        chump-first-contract on one root-cause syntax error in
-        src/preflight.rs from a bad rebase. The 8-12 min CI cycle ran
-        all 3 in parallel; each consumed full runner time before
-        surfacing the same error. Local preflight would have caught
-        it in <60s.
-      - PR #2418's pr-hygiene check failed on a regex that didn't
-        recognize PR-body mentions of deleted files (only "Revert"
-        commits). False positive.
-      - Multiple "audit-required" cascade failures because the
-        EVENT_REGISTRY orphan-allowlist drifts faster than PRs can
-        rebase against it.
-      - Pre-push hook hangs forced --no-verify usage across the night.
-
-    What "100%" means concretely:
-      a) Every CI failure represents a real defect (no flakes, no
-         heuristics-false-positives)
-      b) Every defect surfaces locally before push (chump preflight
-         catches what CI would catch, in <60s warm)
-      c) When CI fails, the cause is immediately legible to the
-         operator (no spelunking through cascade-cancellations)
-      d) Audit-allowlist drift is auto-detected + auto-fixed (no
-         manual orphan-batch PRs)
+  description: "Child A of META-074. Operator priority #1: \"CI/QA to be 100%.\"\n\nToday's pain (concrete, 2026-05-23 session):\n\
+    \  - 3 PRs (#2398/#2399/#2416) all failed cargo-test + ACP smoke +\n    chump-first-contract on one root-cause syntax\
+    \ error in\n    src/preflight.rs from a bad rebase. The 8-12 min CI cycle ran\n    all 3 in parallel; each consumed full\
+    \ runner time before\n    surfacing the same error. Local preflight would have caught\n    it in <60s.\n  - PR #2418's\
+    \ pr-hygiene check failed on a regex that didn't\n    recognize PR-body mentions of deleted files (only \"Revert\"\n \
+    \   commits). False positive.\n  - Multiple \"audit-required\" cascade failures because the\n    EVENT_REGISTRY orphan-allowlist\
+    \ drifts faster than PRs can\n    rebase against it.\n  - Pre-push hook hangs forced --no-verify usage across the night.\n\
+    \nWhat \"100%\" means concretely:\n  a) Every CI failure represents a real defect (no flakes, no\n     heuristics-false-positives)\n\
+    \  b) Every defect surfaces locally before push (chump preflight\n     catches what CI would catch, in <60s warm)\n  c)\
+    \ When CI fails, the cause is immediately legible to the\n     operator (no spelunking through cascade-cancellations)\n\
+    \  d) Audit-allowlist drift is auto-detected + auto-fixed (no\n     manual orphan-batch PRs)\n"
   acceptance_criteria:
-    - "Flake-rerun catalog (docs/process/KNOWN_FLAKES.yaml) audit: 100% of catalogued flakes have a root-cause-fix gap filed; un-catalogued flakes block merge until catalogued OR root-caused"
-    - "chump preflight --scope all gains coverage parity with CI: any check that CI runs MUST have a preflight equivalent OR be explicitly exempted in docs/process/CI_GATES_INVENTORY.md with a reason"
-    - "Audit-allowlist auto-pruner: kind=audit_orphan_landed event fires when a new orphan appears on main; auto-rescue daemon (extends INFRA-1714) opens a batch-allowlist PR within 5 minutes"
-    - "False-positive heuristic-check audit: every check that produces FAIL must have a 'how to bypass cleanly' line in its output. pr-hygiene's PR-body-mention check must recognize markdown link to filename, plain mention, AND Revert commit"
-    - "Cascade-cancellation visibility: when a required check cancels other jobs, the cancelled-jobs list is surfaced in PR status not buried in workflow run logs"
-    - "Pre-push hook hard timeout: cap each phase at 30s; total 90s; abort + emit kind=prepush_timeout if exceeded. Today's hang-induced --no-verify usage = audit signal of CI/QA debt"
-    - "Local-vs-CI parity smoke: scripts/ci/test-preflight-parity.sh runs chump preflight + parses the CI workflow YAML + asserts every required-check has a preflight match (or explicit exempt)"
-    - "Telemetry: emit kind=ci_qa_score {window_h:24, accurate_failures:N, false_positives:N, missed_locally:N, flake_count:N} hourly; score = (accurate / (accurate + false_positive + missed_locally + flake)) × 100. Target ≥95% by Week 4, 100% by Week 8"
-  notes: |
-    P1 RESILIENT/CREDIBLE crossover. Child A of META-074. Ship before
+  - 'Flake-rerun catalog (docs/process/KNOWN_FLAKES.yaml) audit: 100% of catalogued flakes have a root-cause-fix gap filed;
+    un-catalogued flakes block merge until catalogued OR root-caused'
+  - 'chump preflight --scope all gains coverage parity with CI: any check that CI runs MUST have a preflight equivalent OR
+    be explicitly exempted in docs/process/CI_GATES_INVENTORY.md with a reason'
+  - 'Audit-allowlist auto-pruner: kind=audit_orphan_landed event fires when a new orphan appears on main; auto-rescue daemon
+    (extends INFRA-1714) opens a batch-allowlist PR within 5 minutes'
+  - 'False-positive heuristic-check audit: every check that produces FAIL must have a ''how to bypass cleanly'' line in its
+    output. pr-hygiene''s PR-body-mention check must recognize markdown link to filename, plain mention, AND Revert commit'
+  - 'Cascade-cancellation visibility: when a required check cancels other jobs, the cancelled-jobs list is surfaced in PR
+    status not buried in workflow run logs'
+  - 'Pre-push hook hard timeout: cap each phase at 30s; total 90s; abort + emit kind=prepush_timeout if exceeded. Today''s
+    hang-induced --no-verify usage = audit signal of CI/QA debt'
+  - 'Local-vs-CI parity smoke: scripts/ci/test-preflight-parity.sh runs chump preflight + parses the CI workflow YAML + asserts
+    every required-check has a preflight match (or explicit exempt)'
+  - 'Telemetry: emit kind=ci_qa_score {window_h:24, accurate_failures:N, false_positives:N, missed_locally:N, flake_count:N}
+    hourly; score = (accurate / (accurate + false_positive + missed_locally + flake)) × 100. Target ≥95% by Week 4, 100% by
+    Week 8'
+  notes: 'P1 RESILIENT/CREDIBLE crossover. Child A of META-074. Ship before
+
     child B (A2A) because: A2A coordination needs trustworthy CI signal
+
     to know whether peer agents succeeded. False CI = false coordination.
+
     Suggested owner role: curator-opus-ci-audit (already exists per
-    today's session).
+
+    today''s session).
+
+    '
+  closed_date: '2026-05-24'
+  closed_pr: 2473

@@ -1,0 +1,17 @@
+- id: INFRA-2256
+  domain: INFRA
+  title: "EFFECTIVE: SHIP_ASSIST_PLAYBOOK.md — wedge taxonomy + tooling inventory + decision flow for shepherds + missing-gap priority list (today's loop session evidence)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "docs/process/SHIP_ASSIST_PLAYBOOK.md exists with sections: (1) wedge taxonomy from 2026-05-29 incident chain, (2) ship-assist tooling inventory, (3) decision-flow for picking the right tool, (4) top-3 highest-leverage missing gaps, (5) reliability lessons from today's session"
+    - "Wedge taxonomy section names each class: fmt-drift, raw-gh-allowlist-miss, sccache-R2-pair-mismatch, bot-merge-stall, sonnet-mid-task-stall, claim-force-recover-wipes-wip, gap-status-guard-silent-noop"
+    - "Tooling inventory section names each ship-assist surface: chump preflight, bot-merge.sh, auto-merge-armer.sh, break-trunk-cascade.sh, rotate-sccache-r2-gh-only.sh (INFRA-2240), rotate-sccache-r2-token.sh (INFRA-2237), chump-gh wrapper, slash-commands /ci-audit /shepherd /handoff /fleet-doctor /fleet-brief /operator-recall"
+    - "Decision-flow section: given a wedge class, which tool reaches for first, second, third; explicit fallback chain (bot-merge → manual gh pr merge → admin-merge with noise-class)"
+    - "Top-3 highest-leverage missing gaps named with evidence linking to today's incidents: INFRA-2251 (local CI gate), META-118 chain (INFRA-2068/2069/2070/2071/2075 auto-wedge-classify-and-dispatch), INFRA-1713 (chump paramedic CI_FAILURE)"
+    - "Reliability lessons section: bot-merge wedge mode (4+min no output, INFRA-1399), force-recover destroys uncommitted state (INFRA-2235), Sonnet sub-agent stall recovery pattern (commit-WIP-before-fail, INFRA-2071 cycle-13 evidence), gap-status auto-flip silently no-ops (INFRA-2230), OFFLINE_FIRST.md ghost gap-IDs (INFRA-1320 + INFRA-1321 never filed → INFRA-2251 + INFRA-2252)"
+    - "Cross-reference: CLAUDE.md gets a one-line pointer to the playbook in 'On-demand docs' section"
+  notes: |
+    [2026-05-30T04:55:28Z] Filed 2026-05-29 by curator-opus-shepherd-2026-05-29 after operator asked 'how do we help ship/merge PRs' at end of long loop session. The session produced 7 shipped PRs (INFRA-2188/2216/2218/1758/2237/2240/1797 etc) + the offline-first roadmap consolidation (INFRA-2246, PR #2796) + filed 8 new gaps (INFRA-2230/2235/2237/2240/2246/2247/2248/2251/2252/2253/2256). The wedge taxonomy + decision flow distill all that evidence so future shepherds don't re-discover each class from scratch.
+

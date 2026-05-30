@@ -1,9 +1,13 @@
 - id: INFRA-785
   domain: INFRA
-  title: "EFFECTIVE: patch_file fallback for models that generate bad unified diffs (Llama 3.3)"
-  status: open
+  title: 'EFFECTIVE: patch_file fallback for models that generate bad unified diffs (Llama 3.3)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. patch_apply::parse_single_file_patch gains a header-lenient mode that accepts diffs with missing ---/+++ filename lines (just @@ hunks); used as a third fallback tier after strict and fuzzy; 2. repo_tools.rs patch_file handler tries: (a) strict, (b) fuzzy, (c) headerless-parse+apply; returns current file excerpt with hint only after all 3 fail; 3. CI test scripts/ci/test-patch-file-fallback.sh: fixture Llama-style headerless diff applies correctly via tier-c; context-mismatch still returns helpful error; 4. log_patch_file emits mode='applied-headerless' for tier-c successes"
-
+  - '1. patch_apply::parse_single_file_patch gains a header-lenient mode that accepts diffs with missing ---/+++ filename
+    lines (just @@ hunks); used as a third fallback tier after strict and fuzzy; 2. repo_tools.rs patch_file handler tries:
+    (a) strict, (b) fuzzy, (c) headerless-parse+apply; returns current file excerpt with hint only after all 3 fail; 3. CI
+    test scripts/ci/test-patch-file-fallback.sh: fixture Llama-style headerless diff applies correctly via tier-c; context-mismatch
+    still returns helpful error; 4. log_patch_file emits mode=''applied-headerless'' for tier-c successes'
+  closed_date: '2026-05-15'

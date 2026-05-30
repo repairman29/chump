@@ -1,12 +1,13 @@
 - id: INFRA-1318
   domain: INFRA
-  title: "ZERO-WASTE: GitHub Liaison Phase 2 — webhook-first cache (liaison processes GitHub events, poll interval → 5min)"
-  status: open
+  title: 'ZERO-WASTE: GitHub Liaison Phase 2 — webhook-first cache (liaison processes GitHub events, poll interval → 5min)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-24'
+  closed_pr: 2487

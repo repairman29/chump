@@ -1,15 +1,26 @@
 - id: INFRA-1801
   domain: INFRA
-  title: "RESILIENT: check-dead-env-vars.sh printf broken-pipe race when undoc array exceeds 10 entries (recurring fast-checks flake)"
-  status: open
+  title: 'RESILIENT: check-dead-env-vars.sh printf broken-pipe race when undoc array exceeds 10 entries (recurring fast-checks
+    flake)'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    scripts/audit/auditor-checks/check-dead-env-vars.sh line 39-42 has a broken-pipe race in this pipeline — printf %s newline argpack of array elements piped into head -10 piped into python3 -c json.dumps. When the undoc array contains MORE than 10 entries (most days, the count is 50+), head closes the pipe after reading 10 lines, but printf is still writing; printf gets SIGPIPE and prints a write-error-broken-pipe message to stderr. With set -e and pipefail, this fails the entire fast-checks job — observed on 2026-05-23 against PR #2385 (mine, INFRA-1719) AND PR #2402 (mine, cascade fix). Each occurrence costs a 5-10 min CI roundtrip + manual retrigger. Fix is to slice the array to 10 elements BEFORE printf so head does not need to close the pipe early. Pillar RESILIENT because recurring CI flake undermines fleet velocity.
-  acceptance_criteria:
-    - scripts/audit/auditor-checks/check-dead-env-vars.sh replaces the printf %s newline argpack of undoc array piped to head with the array-slice form (printf %s newline argpack of the first 10 elements via array slicing). Eliminates the broken-pipe condition because head no longer needs to close the pipe early
-    - Smoke test scripts/ci/test-check-dead-env-vars-broken-pipe.sh stubs an undoc array of 50 entries, runs the script with set -e + pipefail, asserts exit 0 + no broken-pipe error in stderr
-    - Verify by re-running fast-checks gate locally with a synthetic undoc array of 50+ entries; expect clean exit
-    - No behavior change to the samples_json output — first 10 entries still serialized identically
-    - Backwards compatible with the existing emit_finding consumer downstream
+  description: 'scripts/audit/auditor-checks/check-dead-env-vars.sh line 39-42 has a broken-pipe race in this pipeline — printf
+    %s newline argpack of array elements piped into head -10 piped into python3 -c json.dumps. When the undoc array contains
+    MORE than 10 entries (most days, the count is 50+), head closes the pipe after reading 10 lines, but printf is still writing;
+    printf gets SIGPIPE and prints a write-error-broken-pipe message to stderr. With set -e and pipefail, this fails the entire
+    fast-checks job — observed on 2026-05-23 against PR #2385 (mine, INFRA-1719) AND PR #2402 (mine, cascade fix). Each occurrence
+    costs a 5-10 min CI roundtrip + manual retrigger. Fix is to slice the array to 10 elements BEFORE printf so head does
+    not need to close the pipe early. Pillar RESILIENT because recurring CI flake undermines fleet velocity.
 
+    '
+  acceptance_criteria:
+  - scripts/audit/auditor-checks/check-dead-env-vars.sh replaces the printf %s newline argpack of undoc array piped to head
+    with the array-slice form (printf %s newline argpack of the first 10 elements via array slicing). Eliminates the broken-pipe
+    condition because head no longer needs to close the pipe early
+  - Smoke test scripts/ci/test-check-dead-env-vars-broken-pipe.sh stubs an undoc array of 50 entries, runs the script with
+    set -e + pipefail, asserts exit 0 + no broken-pipe error in stderr
+  - Verify by re-running fast-checks gate locally with a synthetic undoc array of 50+ entries; expect clean exit
+  - No behavior change to the samples_json output — first 10 entries still serialized identically
+  - Backwards compatible with the existing emit_finding consumer downstream
+  closed_date: '2026-05-24'

@@ -1,0 +1,13 @@
+- id: INFRA-2244
+  domain: INFRA
+  title: "ZERO-WASTE P2: cargo-binstall + cargo-shear in CI — binstall replaces compile-from-source for dev tools (saves 1-2min/tool); cargo-shear is more aggressive than machete for dead-deps"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - 1. .github/workflows/ci.yml replaces 'cargo install <tool>' steps with cargo-binstall (e.g. 'cargo binstall -y cargo-nextest cargo-llvm-cov cargo-deny')
+    - 2. cargo-binstall itself installed via curl from astral-sh release (no compile)
+    - 3. cargo-shear added to weekly audit-weekly.yml (alongside cargo-machete) — surfaces 'unused but listed in Cargo.toml' deps that machete misses
+    - "4. Failure handling: cargo-binstall falls back to 'cargo install' if pre-built binary doesn't exist for the tool"
+    - "5. Measurement: install time for cargo-nextest before (~90s compile) vs after (~5s download); document in commit body"
+

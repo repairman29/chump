@@ -1,16 +1,27 @@
 - id: INFRA-1945
   domain: INFRA
-  title: "INFRA-1862 slice B: role-typed routing — broadcast.sh --to role:shepherd routes to alive shepherd-* sessions (uses fleet-registry.jsonl from operator's 17:31Z directive)"
-  status: open
+  title: 'INFRA-1862 slice B: role-typed routing — broadcast.sh --to role:shepherd routes to alive shepherd-* sessions (uses
+    fleet-registry.jsonl from operator''s 17:31Z directive)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Background — today wizard sent dispatch to 14 plausible session-IDs (target-2026-05-23, target-2026-05-24, shepherd-2026-05-23, etc) because there's no way to address a ROLE without knowing the exact session-id-of-the-day. Operator-directed 17:31Z fleet-registry.jsonl gives us alive-by-role lookup"
-    - "Edit broadcast.sh — when --to value starts with 'role:' prefix (e.g. role:shepherd), look up .chump-locks/fleet-registry.jsonl for the most-recent entry with role==<name> and a fresh ts (within last 30min). Write the msg to THAT session-id's inbox. Emit ambient kind=a2a_role_resolved {role, resolved_session, ts}"
-    - "If no alive role match — fall back to dead-letter (slice C) OR error with --strict flag (caller wants explicit fail)"
-    - "Edit chump-inbox.sh — read still uses session-id (no change); only sender side learns role-aliasing"
-    - "Update OPERATOR_PLAYBOOK.md §curator-dispatch — replace 'broadcast.sh --to curator-opus-<role>-<date>' examples with 'broadcast.sh --to role:<role>'"
-    - "Smoke test scripts/ci/test-a2a-role-routing.sh — populate registry with 2 sessions of different roles, send --to role:X, assert the X session's inbox grew + ambient emitted a2a_role_resolved"
-    - "Pairs with INFRA-1944 (delivery receipts); operator-directed fleet-registry.jsonl + INFRA-1862 (this is slice B of E)"
-    - "Done definition — wizard sends 'broadcast.sh --to role:shepherd' and it lands in the alive shepherd's inbox without needing the wizard to know which date-variant or session-id to address"
-  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  - Background — today wizard sent dispatch to 14 plausible session-IDs (target-2026-05-23, target-2026-05-24, shepherd-2026-05-23,
+    etc) because there's no way to address a ROLE without knowing the exact session-id-of-the-day. Operator-directed 17:31Z
+    fleet-registry.jsonl gives us alive-by-role lookup
+  - Edit broadcast.sh — when --to value starts with 'role:' prefix (e.g. role:shepherd), look up .chump-locks/fleet-registry.jsonl
+    for the most-recent entry with role==<name> and a fresh ts (within last 30min). Write the msg to THAT session-id's inbox.
+    Emit ambient kind=a2a_role_resolved {role, resolved_session, ts}
+  - If no alive role match — fall back to dead-letter (slice C) OR error with --strict flag (caller wants explicit fail)
+  - Edit chump-inbox.sh — read still uses session-id (no change); only sender side learns role-aliasing
+  - Update OPERATOR_PLAYBOOK.md §curator-dispatch — replace 'broadcast.sh --to curator-opus-<role>-<date>' examples with 'broadcast.sh
+    --to role:<role>'
+  - Smoke test scripts/ci/test-a2a-role-routing.sh — populate registry with 2 sessions of different roles, send --to role:X,
+    assert the X session's inbox grew + ambient emitted a2a_role_resolved
+  - Pairs with INFRA-1944 (delivery receipts); operator-directed fleet-registry.jsonl + INFRA-1862 (this is slice B of E)
+  - Done definition — wizard sends 'broadcast.sh --to role:shepherd' and it lands in the alive shepherd's inbox without needing
+    the wizard to know which date-variant or session-id to address
+  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice
+    of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  closed_date: '2026-05-25'
+  closed_pr: 2535

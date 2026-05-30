@@ -1,0 +1,18 @@
+- id: META-159
+  domain: META
+  title: "META-157-b: chump vote + chump consensus-tally CLI — vote emits FEEDBACK kind=vote with corr_id, tally aggregates votes per corr_id with verdict"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-slice B of META-157. New chump vote + chump consensus-tally CLIs. See docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3 Slice 2.
+  acceptance_criteria:
+    - src/commands/vote.rs implements chump vote <corr_id> <+1|-1|0> --reason <text> [--deadline <ts>]; emits a FEEDBACK kind=vote event via existing scripts/coord/broadcast.sh FEEDBACK pathway with vote field set and corr_id matching
+    - src/commands/consensus_tally.rs implements chump consensus-tally [--corr-id X | --all] [--since <duration>]; reads FEEDBACK events from ambient.jsonl in window, groups by corr_id, sums +1/-1/0 votes, prints rolling result {yes, no, abstain, total, verdict}
+    - "Verdict logic: PASSED if yes >= 3 AND yes > no, FAILED if no > yes AND no >= 2, NO_QUORUM if total < 3, EXTENDED if PASSED-or-FAILED-or-NO_QUORUM but deadline > now"
+    - src/main.rs registers the two new commands in the dispatch match
+    - "scripts/ci/test-chump-vote.sh: run chump vote META-999 +1 --reason \"ship it\", assert ambient.jsonl line contains \"event\":\"FEEDBACK\", \"kind\":\"vote\", \"vote\":1, \"corr_id\":\"META-999\", \"rationale\":\"ship it\""
+    - "scripts/ci/test-chump-consensus-tally.sh: seed 3 +1 and 1 -1 and 1 0 vote events with same corr_id in a tmp ambient.jsonl, run chump consensus-tally --corr-id <id> --all, assert output shows yes=3, no=1, abstain=1, verdict=PASSED"
+    - "Feature flag: gated behind CHUMP_FLEET_RECV_SIDE_V0=1; chump vote prints \"feature flag off, vote not emitted\" when unset"
+    - No edits to existing files outside src/commands/, src/main.rs, scripts/ci/test-chump-vote.sh, scripts/ci/test-chump-consensus-tally.sh, docs/gaps/META-159.yaml
+

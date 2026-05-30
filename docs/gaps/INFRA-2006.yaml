@@ -1,24 +1,18 @@
 - id: INFRA-2006
   domain: INFRA
-  title: "RESILIENT: A2A inbox-routing bug — --to <lease-session-id> writes to wrong inbox file; receivers read from worktree-derived session not lease-id"
-  status: open
-  priority: P1
+  title: "RESILIENT: A2A inbox-routing bug — --to <lease-session-id> writes to wrong inbox file; receivers read from worktree-derived session not lease-id. Messages 'delivered' but never 'seen'. Need alias map: lease.gap_id → reader-session-name OR change reader to also check all leases owned by current session."
+  status: done
+  priority: P0
   effort: s
   acceptance_criteria:
-    - "When broadcast.sh --to <recipient-id> matches an active lease.session_id, ALSO write to the inbox file the recipient actually reads from (the worktree-derived or env-set CHUMP_SESSION_ID of the agent that holds the lease)"
-    - "Resolution: scan .chump-locks/inbox/ for the most-recently-updated inbox file owned by the same gap (heuristic 1) OR maintain .chump-locks/session-alias-map.json that ties lease.session_id → reader.session_id when the worker first writes its inbox cursor (heuristic 2)"
-    - "Preserve back-compat: still write to .chump-locks/inbox/<lease-id>.jsonl AND to the resolved reader inbox (dual-write so old readers don't break)"
-    - "Smoke test scripts/ci/test-broadcast-to-lease-id.sh: stub lease at $TMP/.chump-locks/claim-X.json + reader inbox cursor; broadcast --to lease.session_id; assert message landed in BOTH inboxes"
-    - "Doc update: docs/process/OPUS_MESSAGE_PROTOCOL.md — note the dual-write behavior so senders understand --to <lease-id> is an alias for the reader-session"
-  description: |
-    Catalyst: 2026-05-25 wizard session sent 8 A2A messages to lease-IDs.
-    All landed in inbox/<lease-id>.jsonl but receivers read from
-    inbox/chump-Chump-NNN.jsonl. Messages 'delivered' but never 'seen'.
-    
-    Root cause: lease.session_id (an arbitrary daemon-spawned token) is
-    NOT the session_id the worker uses when calling chump-inbox.sh read.
-    Workers without explicit CHUMP_SESSION_ID derive a worktree-based ID.
-    
-    Two readers can also collide on the same generic inbox file (e.g.
-    multiple agents in main checkout all read .chump-locks/inbox/chump-Chump-NNN.jsonl).
-    Mail-bag collision is the next bug class once this lands.
+    - "Diagnose the bug surface: enumerate the 3 ways a session 'identifies itself' (CHUMP_SESSION_ID, lease.session_id, gap-derived) and the writer/reader filename conventions for chump-inbox.sh. Document in a 1-page brief at docs/process/A2A_INBOX_ROUTING.md before any code change."
+    - "Implement reader-side fix (safer): scripts/coord/chump-inbox.sh read also checks ALL inbox files for leases owned by current session (.chump-locks/inbox/<lease-session-id>.jsonl and .chump-locks/opus-inbox/session_<lease-session-id>.jsonl), unions the message list, deduplicates by message-id"
+    - "Optionally implement writer-side helper: scripts/coord/lib/inbox-routing.sh resolve_inbox_target <session-or-gap-id> — returns the canonical inbox path. broadcast.sh --to uses this helper. Falls back to literal name if no alias found."
+    - "Smoke test scripts/ci/test-a2a-inbox-routing.sh: synth 2 sessions (one as 'reader' with CHUMP_SESSION_ID=A and a claim file owned by lease-session-id=B); sender does broadcast.sh --to B '<msg>'; reader runs chump-inbox.sh read; assert reader sees the message (currently it does not — that's the bug)"
+    - Emit kind=a2a_inbox_alias_resolved when the helper resolves a lease-id to a reader-session; emit kind=a2a_inbox_message_orphan when a message lands in an inbox no live session owns (advisory; not fatal)
+    - Register both new ambient kinds in docs/observability/EVENT_REGISTRY.yaml + scripts/ci/event-registry-reserved.txt
+    - "Update SHIP_ASSIST_PLAYBOOK.md §1 with new Class 8: a2a-inbox-routing-message-loss (will be added in follow-up PR if SHIP_ASSIST_PLAYBOOK.md is touched here)"
+  notes: |
+    [2026-05-30T05:28:42Z] [2026-05-29 promotion to P0] Today's evidence: curator-opus-shepherd-2026-05-29 saw 17 cycles of empty inbox reads while 11+ sibling sessions were active in the fleet. Pattern-14 verified the routing path went to wrong filename → message lost. This is silent message loss in the A2A substrate — operational reliability bug class-1. Promoted from P1/s to P0/s. Pairs with INFRA-2034 (broadcast.sh positional-arg footgun) + INFRA-2039 (gap field overload) — those are sender-side; this is the routing bug between sender and reader.
+  closed_date: '2026-05-30'
+

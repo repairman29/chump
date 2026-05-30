@@ -1,22 +1,35 @@
 - id: INFRA-2013
   domain: INFRA
-  title: "CREDIBLE: chump health leading-indicator — alert when merges-in-last-1h=0 + open BLOCKED PRs >=2"
-  status: open
+  title: 'CREDIBLE: chump health leading-indicator — alert when merges-in-last-1h=0 + open BLOCKED PRs >=2'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "scripts/dispatch/fleet-brief.sh and chump health add 1h merge count alongside the existing 24h average ('Ships: 24 last 24h | 0 last 1h ⚠️ STALLED')"
-    - "When last-1h merges == 0 AND open BLOCKED PRs >= 2, emit kind=fleet_stalled ambient event with details"
-    - "fleet-brief surfaces 'STALLED' state in red prominently rather than the misleading 'fleet looks healthy' it printed during today's stall"
-    - "Smoke test scripts/ci/test-fleet-stalled-alert.sh: fixture with 0 merges/24h on 24 PRs + 2 BLOCKED PRs → assert fleet_stalled fires"
-  description: |
-    Today's session-start brief said 'No urgent actions — fleet looks
-    healthy' while 6 PRs were dead and 0 merges had happened for an hour.
+  - 'scripts/dispatch/fleet-brief.sh and chump health add 1h merge count alongside the existing 24h average (''Ships: 24 last
+    24h | 0 last 1h ⚠️ STALLED'')'
+  - When last-1h merges == 0 AND open BLOCKED PRs >= 2, emit kind=fleet_stalled ambient event with details
+  - fleet-brief surfaces 'STALLED' state in red prominently rather than the misleading 'fleet looks healthy' it printed during
+    today's stall
+  - 'Smoke test scripts/ci/test-fleet-stalled-alert.sh: fixture with 0 merges/24h on 24 PRs + 2 BLOCKED PRs → assert fleet_stalled
+    fires'
+  description: 'Today''s session-start brief said ''No urgent actions — fleet looks
+
+    healthy'' while 6 PRs were dead and 0 merges had happened for an hour.
+
 
     Operator was the one who detected stuck-AF, not any automated
-    surface. That's a metric inversion — automation should be the
+
+    surface. That''s a metric inversion — automation should be the
+
     leading indicator, not the trailing operator-pages.
 
+
     Pairs with INFRA-2012 (cluster-detector v2) — these two together
-    would have surfaced 'STALLED + cluster on INFRA-2003 trunk-RED'
+
+    would have surfaced ''STALLED + cluster on INFRA-2003 trunk-RED''
+
     within ~5min of the first stuck PR.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2616

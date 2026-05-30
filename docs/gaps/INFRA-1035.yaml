@@ -1,12 +1,17 @@
 - id: INFRA-1035
   domain: INFRA
-  title: "EFFECTIVE: bot-merge.sh step-transition health file — record both 'started X' and 'finished X' with timestamps for crash recovery"
-  status: in_flight
+  title: 'EFFECTIVE: bot-merge.sh step-transition health file — record both ''started X'' and ''finished X'' with timestamps
+    for crash recovery'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "_bm_steps_append helper writes JSONL transitions to .chump-locks/bot-merge-<pid>.steps with {ts, step, transition: start|done|error, elapsed_s}"
-    - "on abnormal exit (trap EXIT/TERM), _bm_cleanup writes final entry with crashed:true when last transition was start without done"
-    - "new scripts/coord/bot-merge-recover.sh reads the steps file and prints last completed step + suggests where to resume"
-    - "test: SIGTERM bot-merge mid-step, assert steps file has start-without-done + crashed:true (7/7 pass)"
-    - "steps file is intentionally NOT deleted on cleanup — it is the crash recovery artifact"
+  - '_bm_steps_append helper writes JSONL transitions to .chump-locks/bot-merge-<pid>.steps with {ts, step, transition: start|done|error,
+    elapsed_s}'
+  - on abnormal exit (trap EXIT/TERM), _bm_cleanup writes final entry with crashed:true when last transition was start without
+    done
+  - new scripts/coord/bot-merge-recover.sh reads the steps file and prints last completed step + suggests where to resume
+  - 'test: SIGTERM bot-merge mid-step, assert steps file has start-without-done + crashed:true (7/7 pass)'
+  - steps file is intentionally NOT deleted on cleanup — it is the crash recovery artifact
+  closed_date: '2026-05-14'
+  closed_pr: 1773

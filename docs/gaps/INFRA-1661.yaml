@@ -1,18 +1,28 @@
 - id: INFRA-1661
   domain: INFRA
-  title: "CREDIBLE: ingest 2026-05-21 cron-loop session lessons into CLAUDE_GOTCHAS + SELF_HOSTED_RUNNERS docs"
-  status: open
+  title: 'CREDIBLE: ingest 2026-05-21 cron-loop session lessons into CLAUDE_GOTCHAS + SELF_HOSTED_RUNNERS docs'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Operationalization half of 2026-05-21 Marcus cron-loop session lessons. Six follow-up gaps (INFRA-1655..-1660) were filed for the work items; this gap covers ABSORPTION of the discovered patterns into the docs so next agent doesn't re-discover them. Without this, the lessons sit in commit messages no one re-reads.
-  acceptance_criteria:
-    - "docs/process/CLAUDE_GOTCHAS.md adds 'Tangled-stack rebase recipe' section: soft-reset to origin/main + selective git checkout origin/main -- <main-state-files> + single-commit force-push (links INFRA-1660 for tracking)"
-    - "docs/process/CLAUDE_GOTCHAS.md adds 'printf "
-    - " grep -q pipefail race' anti-pattern note with the tempfile-materialization fix recipe (links INFRA-755 + INFRA-1658)"
-    - "docs/process/CLAUDE_GOTCHAS.md adds 'EMIT_KIND vs _emit naming' note: scanner Pattern 4 lowercase _emit OR upcoming Pattern 8 uppercase EMIT_KIND (links INFRA-1659)"
-    - "docs/process/SELF_HOSTED_RUNNERS.md adds 'Current state (2026-05-21): CHUMP_SELF_HOSTED_ENABLED=false + 5 RUNNER_* vars deleted' section with rationale + flip-back procedure (links INFRA-1655)"
-    - All four edits land in one PR with squash-merge enabled
-  notes: |
-    META: knowledge ingestion follow-up. Bundles all six lesson-gap doc updates into one PR rather than spreading across the six implementation gaps. The implementation gaps still update docs as their own AC requires; this gap is the bridge so the docs are correct NOW even before implementations land.
+  description: 'Operationalization half of 2026-05-21 Marcus cron-loop session lessons. Six follow-up gaps (INFRA-1655..-1660)
+    were filed for the work items; this gap covers ABSORPTION of the discovered patterns into the docs so next agent doesn''t
+    re-discover them. Without this, the lessons sit in commit messages no one re-reads.
 
+    '
+  acceptance_criteria:
+  - 'docs/process/CLAUDE_GOTCHAS.md adds ''Tangled-stack rebase recipe'' section: soft-reset to origin/main + selective git
+    checkout origin/main -- <main-state-files> + single-commit force-push (links INFRA-1660 for tracking)'
+  - 'docs/process/CLAUDE_GOTCHAS.md adds ''printf '
+  - ' grep -q pipefail race'' anti-pattern note with the tempfile-materialization fix recipe (links INFRA-755 + INFRA-1658)'
+  - 'docs/process/CLAUDE_GOTCHAS.md adds ''EMIT_KIND vs _emit naming'' note: scanner Pattern 4 lowercase _emit OR upcoming
+    Pattern 8 uppercase EMIT_KIND (links INFRA-1659)'
+  - 'docs/process/SELF_HOSTED_RUNNERS.md adds ''Current state (2026-05-21): CHUMP_SELF_HOSTED_ENABLED=false + 5 RUNNER_* vars
+    deleted'' section with rationale + flip-back procedure (links INFRA-1655)'
+  - All four edits land in one PR with squash-merge enabled
+  notes: 'META: knowledge ingestion follow-up. Bundles all six lesson-gap doc updates into one PR rather than spreading across
+    the six implementation gaps. The implementation gaps still update docs as their own AC requires; this gap is the bridge
+    so the docs are correct NOW even before implementations land.
+
+    '
+  closed_date: '2026-05-22'
+  closed_pr: 2306

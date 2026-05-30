@@ -1,9 +1,14 @@
 - id: INFRA-859
   domain: INFRA
-  title: "CREDIBLE: Expand CLAUDE_GOTCHAS documentation"
-  status: open
+  title: 'CREDIBLE: Expand CLAUDE_GOTCHAS documentation'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. docs/process/CLAUDE_GOTCHAS.md gains 3+ new sections: (a) 'Fleet git worktree path confusion (INFRA-779)' — macOS /tmp→/private/tmp issue + recovery commands, (b) 'Stale lease cleanup' — when to run chump --release, how to detect orphaned leases, (c) 'EVENT_REGISTRY pre-commit guard bypass' — CHUMP_OBS_BUDGET_BYPASS=1 usage and when to avoid. 2. Each section: problem description, symptoms, solution, example commands. 3. scripts/ci/test-claude-gotchas-expanded.sh: verifies all 3 sections present with required headers and code blocks."
-
+  - '1. docs/process/CLAUDE_GOTCHAS.md gains 3+ new sections: (a) ''Fleet git worktree path confusion (INFRA-779)'' — macOS
+    /tmp→/private/tmp issue + recovery commands, (b) ''Stale lease cleanup'' — when to run chump --release, how to detect
+    orphaned leases, (c) ''EVENT_REGISTRY pre-commit guard bypass'' — CHUMP_OBS_BUDGET_BYPASS=1 usage and when to avoid. 2.
+    Each section: problem description, symptoms, solution, example commands. 3. scripts/ci/test-claude-gotchas-expanded.sh:
+    verifies all 3 sections present with required headers and code blocks.'
+  closed_date: '2026-05-12'
+  closed_pr: 1563

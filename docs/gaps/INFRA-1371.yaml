@@ -1,16 +1,28 @@
 - id: INFRA-1371
   domain: INFRA
-  title: "CREDIBLE: extend EVENT_REGISTRY.yaml schema with effect_metric field — every kind declares the metric proving it does its job; powers INFRA-1370 audit-sweep effect-leg check"
-  status: open
+  title: 'CREDIBLE: extend EVENT_REGISTRY.yaml schema with effect_metric field — every kind declares the metric proving it
+    does its job; powers INFRA-1370 audit-sweep effect-leg check'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Sister gap to INFRA-1370. Cheap enabling work: declares the 'how would we know if this event is doing its job?' contract upfront so the aha-sweep has structured per-kind effect-leg input instead of hard-coded heuristics. Every new kind gets a built-in self-test by construction. Estimated 80+ existing kinds need backfill — straightforward bulk YAML edit.
-  acceptance_criteria:
-    - "Extend docs/observability/EVENT_REGISTRY.yaml entry schema with two optional fields: effect_metric (string — name of metric that proves emit is doing its job, e.g. \"downstream_cache_hit_count\" or \"operator_action_within_60s\") and expected_min_per_day (int — alert threshold below which the sweep flags the kind as silent)"
-    - "Add the fields to all existing 80+ registered kinds — bulk-edit pass; kinds where metric is \"self\" (kind itself is the metric like alert_classifier_decision) get effect_metric=self"
-    - INFRA-1237 drift gate is extended to fail when a kind is emitted in code but its EVENT_REGISTRY entry has no effect_metric (catches forgotten declarations on new kinds)
-    - INFRA-1370 audit-sweep reads effect_metric per kind to drive the EFFECT leg check (no longer hard-coded)
-    - CI test scripts/ci/test-event-registry-effect-metric.sh validates the schema for every kind + asserts INFRA-1237 fails when effect_metric missing on a new kind
-    - docs/observability/EVENT_REGISTRY_FORMAT.md (new or appended) documents the field semantics + examples for each metric class
+  description: 'Sister gap to INFRA-1370. Cheap enabling work: declares the ''how would we know if this event is doing its
+    job?'' contract upfront so the aha-sweep has structured per-kind effect-leg input instead of hard-coded heuristics. Every
+    new kind gets a built-in self-test by construction. Estimated 80+ existing kinds need backfill — straightforward bulk
+    YAML edit.
 
+    '
+  acceptance_criteria:
+  - 'Extend docs/observability/EVENT_REGISTRY.yaml entry schema with two optional fields: effect_metric (string — name of
+    metric that proves emit is doing its job, e.g. "downstream_cache_hit_count" or "operator_action_within_60s") and expected_min_per_day
+    (int — alert threshold below which the sweep flags the kind as silent)'
+  - Add the fields to all existing 80+ registered kinds — bulk-edit pass; kinds where metric is "self" (kind itself is the
+    metric like alert_classifier_decision) get effect_metric=self
+  - INFRA-1237 drift gate is extended to fail when a kind is emitted in code but its EVENT_REGISTRY entry has no effect_metric
+    (catches forgotten declarations on new kinds)
+  - INFRA-1370 audit-sweep reads effect_metric per kind to drive the EFFECT leg check (no longer hard-coded)
+  - CI test scripts/ci/test-event-registry-effect-metric.sh validates the schema for every kind + asserts INFRA-1237 fails
+    when effect_metric missing on a new kind
+  - docs/observability/EVENT_REGISTRY_FORMAT.md (new or appended) documents the field semantics + examples for each metric
+    class
+  closed_date: '2026-05-16'
+  closed_pr: 2116

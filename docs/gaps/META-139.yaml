@@ -1,0 +1,10 @@
+- id: META-139
+  domain: META
+  title: "META: Extend Stub Pattern to All Lane Checks for Path-Filtering (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All lane checks (audit, test, ACP, fast-checks, clippy, cargo-test, e2e-pwa) are modified.
+    - When an individual lane check's underlying job is skipped due to path filters, it emits a 'success' status (stub-pass) to the aggregator.
+

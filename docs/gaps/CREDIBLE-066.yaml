@@ -1,15 +1,24 @@
 - id: CREDIBLE-066
   domain: CREDIBLE
-  title: "CREDIBLE: Public changelog auto-generation — git tags → CHANGELOG.md → repairman29.github.io/chump/changelog"
-  status: open
+  title: 'CREDIBLE: Public changelog auto-generation — git tags → CHANGELOG.md → repairman29.github.io/chump/changelog'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "CI workflow (or `scripts/ops/gen-changelog.sh`) generates `CHANGELOG.md` automatically from annotated git tags using conventional-commit subject lines; format: `## vX.Y.Z (YYYY-MM-DD)\n- <type>: <description> (#PR)` per entry"
-    - "`CHANGELOG.md` is committed to the repo root and updated on every tag push; the workflow runs on `on: push: tags: ['v*']`"
-    - "The changelog is also published to `repairman29.github.io/chump/changelog` via the existing GitHub Pages workflow within 10 min of tag push; smoke test: fetch the published URL after a test tag, assert HTTP 200 and page body contains the new version heading"
-    - "Entries are generated from git log between consecutive tags: `git log v0.1.0..v0.1.1 --pretty=format:'- %s (#%H)' --first-parent`; PR numbers extracted from commit body `gh pr list --search <SHA>` (cached via github_cache.db)"
-    - "Generation is idempotent: running twice for the same tag produces identical output (no duplicate entries, no timestamp drift)"
-    - "Smoke test `scripts/ci/test-changelog-gen.sh`: create two test tags on a temp branch, run gen-changelog.sh, assert CHANGELOG.md contains both version headings in reverse chronological order"
-    - "If no conventional-commit tags exist between two versions, a fallback `- (no changes)` entry is written (no silent empty section)"
+  - 'CI workflow (or `scripts/ops/gen-changelog.sh`) generates `CHANGELOG.md` automatically from annotated git tags using
+    conventional-commit subject lines; format: `## vX.Y.Z (YYYY-MM-DD)
 
+    - <type>: <description> (#PR)` per entry'
+  - '`CHANGELOG.md` is committed to the repo root and updated on every tag push; the workflow runs on `on: push: tags: [''v*'']`'
+  - 'The changelog is also published to `repairman29.github.io/chump/changelog` via the existing GitHub Pages workflow within
+    10 min of tag push; smoke test: fetch the published URL after a test tag, assert HTTP 200 and page body contains the new
+    version heading'
+  - 'Entries are generated from git log between consecutive tags: `git log v0.1.0..v0.1.1 --pretty=format:''- %s (#%H)'' --first-parent`;
+    PR numbers extracted from commit body `gh pr list --search <SHA>` (cached via github_cache.db)'
+  - 'Generation is idempotent: running twice for the same tag produces identical output (no duplicate entries, no timestamp
+    drift)'
+  - 'Smoke test `scripts/ci/test-changelog-gen.sh`: create two test tags on a temp branch, run gen-changelog.sh, assert CHANGELOG.md
+    contains both version headings in reverse chronological order'
+  - If no conventional-commit tags exist between two versions, a fallback `- (no changes)` entry is written (no silent empty
+    section)
+  closed_pr: 1975

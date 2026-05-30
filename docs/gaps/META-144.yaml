@@ -1,0 +1,10 @@
+- id: META-144
+  domain: META
+  title: "META: Implement Flake Un-quarantine Mechanism (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A mechanism (e.g., API endpoint, CLI tool) exists to manually un-quarantine a test.
+    - When a test is un-quarantined, it is no longer skipped by the aggregator and its actual status contributes to the 'verified' check.
+

@@ -1,0 +1,11 @@
+- id: META-148
+  domain: META
+  title: "META: Monitor Aggregator in Shadow Mode (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Monitoring dashboards are set up to track the 'Verified' aggregator's calculated status for all PRs over a defined period (e.g., 1 week).
+    - Any discrepancies or unexpected statuses from the aggregator are identified and investigated.
+    - A report summarizing shadow mode observations and confidence in the aggregator's correctness is produced.
+

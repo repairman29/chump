@@ -1,0 +1,16 @@
+- id: INFRA-2241
+  domain: INFRA
+  title: "EFFECTIVE P1: prebuilt chump-ci Docker image — Rust 1.82 + sccache + cargo-nextest + clippy + jq preinstalled; CI jobs use 'container: ghcr.io/repairman29/chump-ci:latest'; saves ~30s/job × 5 jobs × 20+ PRs/day = ~30min wall-clock daily; weekly auto-rebuild via GH Action"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. New file docker/Dockerfile.ci — multi-stage prebuilt image based on rust:1.82-bookworm with Rust toolchain, sccache, cargo-nextest, cargo-deny, clippy preinstalled. Image is named ghcr.io/repairman29/chump-ci:latest with semver+sha tag."
+    - "2. New .github/workflows/build-ci-image.yml — triggered weekly (cron) + on push to docker/Dockerfile.ci. Builds + pushes to ghcr.io with both :latest and :{sha} tags. Uses BuildKit layer cache from registry."
+    - "3. Modify .github/workflows/ci.yml: cargo-test, clippy, audit, fast-checks jobs gain 'container: ghcr.io/repairman29/chump-ci:latest' (when not self-hosted). Removes rustup-toolchain install step from each — saves ~30s/job."
+    - "4. Measurement: tag 5 PRs post-rollout, compare median wall-clock of cargo-test job before/after. Target: -30%."
+    - "5. Cache-fall-through: if ghcr.io pull fails (auth, throttle), CI falls back to current uncached path. Don't hard-break."
+    - "6. Doc: docs/process/CI_DOCKER_IMAGE.md explaining what's pinned, how to bump Rust version, how to rollback."
+    - "7. Test: scripts/ci/test-chump-ci-image.sh — assert workflow file references the image, image registry token is set, fall-back path exists"
+    - "8. INFRA-2241+EXT: integrate cargo-chef in Dockerfile.ci for recipe-based dep caching — 10× dep-rebuild speedup on layer-cache hit; uses 'cargo chef cook --release --recipe-path recipe.json' pattern"
+

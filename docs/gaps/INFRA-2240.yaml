@@ -1,0 +1,20 @@
+- id: INFRA-2240
+  domain: INFRA
+  title: "RESILIENT P0: chump rotate-sccache-r2-gh-only — atomic GH secret update for R2 token pair (no CF API scope needed, primary path; INFRA-2237 CF-API automation is backup)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/ops/rotate-sccache-r2-gh-only.sh — reads new R2 access_key_id + secret_access_key from a local input file (default ~/.chump/r2-new-token.txt) and atomically updates BOTH R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY GH secrets
+    - "Input file format: one KEY=VALUE per line; supports ACCESS_KEY_ID and SECRET_ACCESS_KEY keys; ignores comment lines (#) and blank lines"
+    - "Length validation: refuses to set if access_key_id != 32 chars or secret_access_key != 64 chars (the R2 standard); emits operator message naming the offending field"
+    - "Atomic-ish: writes ACCESS_KEY_ID first, then SECRET_ACCESS_KEY; if second write fails, emits kind=sccache_r2_gh_rotation_partial with WARN that GH is half-rotated and operator must re-paste from CF"
+    - "On success: securely deletes the input file (shred -uz preferred, rm -P fallback, plain rm last resort); emits kind=sccache_r2_gh_rotated with first-4/last-4 fingerprint of new ACCESS_KEY_ID"
+    - Dry-run by default (--execute required); --dry-run shows lengths + fingerprints + would-update target repo, no side effects
+    - "--input-file PATH flag overrides default location"
+    - "--repo SLUG flag overrides default repairman29/chump"
+    - "Smoke test scripts/ci/test-rotate-sccache-r2-gh-only.sh: validates --help, --bogus-flag, missing-file, wrong-length, dry-run safe defaults, ambient kinds present, no full-secret echo in any code path"
+    - docs/process/SCCACHE_R2_CACHE.md updated to make GH-only the PRIMARY rotation path; CF-API automation (INFRA-2237) demoted to 'Advanced backup'
+  notes: |
+    [2026-05-30T03:58:23Z] Filed by curator-opus-shepherd-2026-05-29 after live-fire incident 2026-05-30T03:55Z. INFRA-2237 (CF-API automation) requires User API Tokens: Edit scope which isn't on operator's daily CF token; that path is fine but heavier. The atomic GH-side update is the actual incident-eliminator (half-rotation = pair mismatch). This script makes the demonstrated manual flow (paste txt → run gh secret set twice) into a single audited command.
+

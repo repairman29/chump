@@ -1,32 +1,23 @@
 - id: INFRA-1329
   domain: INFRA
-  title: "PR #2031 stuck [REBASE] — DIRTY for 7h"
-  status: shipped
+  title: 'PR #2031 stuck [REBASE] — DIRTY for 7h'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    https://github.com/repairman29/chump/pull/2031
-
-    Detected by stuck-pr-filer (2026-05-15T13:01:38Z).
-
-    Trigger: DIRTY for 7h
-    Branch needs rebase. mergeStateStatus=DIRTY for 7h (threshold 4h).
-
-    Suggested action:
-      1. Check the PR — confirm whether the underlying gap landed elsewhere.
-      2. If yes: gh pr close 2031 --comment 'superseded'.
-      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
-
-    Original gap(s) cited in PR title/commits: INFRA-1314
-    Branch: chump/infra-1314-claim
-    Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  description: "https://github.com/repairman29/chump/pull/2031\n\nDetected by stuck-pr-filer (2026-05-15T13:01:38Z).\n\nTrigger:\
+    \ DIRTY for 7h\nBranch needs rebase. mergeStateStatus=DIRTY for 7h (threshold 4h).\n\nSuggested action:\n  1. Check the\
+    \ PR — confirm whether the underlying gap landed elsewhere.\n  2. If yes: gh pr close 2031 --comment 'superseded'.\n \
+    \ 3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.\n\nOriginal gap(s) cited in PR title/commits:\
+    \ INFRA-1314\nBranch: chump/infra-1314-claim\nStuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or\
+    \ human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper\n"
   acceptance_criteria:
-    - "PR #2031 status verified: closed and not merged (as of 2026-05-15T19:10:00Z)"
-    - "No recovery action needed: PR already automatically closed by fleet automation"
-    - "Gap marked as shipped since the tracking objective (detect and respond to stuck PR) completed via existing automation"
-    - "Event kind 'pr_stuck' was emitted to ambient.jsonl by stuck-pr-filer agent"
-  notes: |
-    PR #2031 already closed (state=closed merged=false) as of 13:08 UTC. INFRA-1329 was a tracking gap for the stuck-PR alert; no action needed since the PR is already gone. Recovery verified 2026-05-15T19:10:00Z.
+  - 'PR #2031 status verified: closed and not merged (as of 2026-05-15T19:10:00Z)'
+  - 'No recovery action needed: PR already automatically closed by fleet automation'
+  - Gap marked as shipped since the tracking objective (detect and respond to stuck PR) completed via existing automation
+  - Event kind 'pr_stuck' was emitted to ambient.jsonl by stuck-pr-filer agent
+  notes: 'PR #2031 already closed (state=closed merged=false) as of 13:08 UTC. INFRA-1329 was a tracking gap for the stuck-PR
+    alert; no action needed since the PR is already gone. Recovery verified 2026-05-15T19:10:00Z.
+
+    '
   closed_date: '2026-05-15'
   closed_pr: 2031
-

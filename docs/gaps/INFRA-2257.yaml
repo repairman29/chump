@@ -1,0 +1,23 @@
+- id: INFRA-2257
+  domain: INFRA
+  title: "EFFECTIVE P1: webhook-triggered chump binary rebuild — push-to-main triggers immediate rebuild + install; closes 30min gap between merge and fleet-running-new-binary (slowest hop in propagation chain)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. scripts/ops/github-webhook-receiver.py extended: on push event with ref=refs/heads/main, enqueue async 'binary-rebuild' job (webhook returns <1s)"
+    - "2. NEW: scripts/setup/webhook-binary-rebuild-worker.sh — long-lived daemon listening on local socket; on job receipt, dispatches to ONE of three build paths based on CHUMP_BINARY_BUILD_PATH env (default=auto):"
+    - "3. AUTO-DETECT logic: (a) if 'docker info' succeeds AND ghcr.io/repairman29/chump-ci:latest pullable → use Docker path; (b) else fall back to native cargo. Log chosen path + reasoning."
+    - "4. DOCKER path: pulls chump-ci:latest (INFRA-2241), runs 'cargo build --release --bin chump --target $TARGET' inside (host arch: x86_64-unknown-linux-gnu OR aarch64-apple-darwin via cross-compile setup), extracts binary via bind-mount. Hermetic."
+    - "5. NATIVE path: git fetch + detached worktree at origin/main + 'cargo build --release --bin chump' on host + install. Today's behavior. No-Docker-required."
+    - "6. HYBRID path (CHUMP_BINARY_BUILD_PATH=hybrid): Docker for Linux output (used by ARC fleet INFRA-2250), native for Mac output (operator + Mac runners). Both binaries installed to appropriate paths."
+    - "7. Common to all 3: git-sha hash-check skip if already-installed binary matches HEAD; emit kind=binary_rebuild_started + binary_rebuild_completed {path:docker"
+    - native
+    - hybrid, sha, elapsed_s}
+    - 8. Wire as launchd plist (com.chump.webhook-binary-rebuild) with RunAtLoad=true, KeepAlive=true
+    - "9. Coordination with existing com.chump.refresh-runner-binary (StartInterval=1800): cron stays as fallback when webhook missed; emit kind=binary_refresh_path {webhook"
+    - cron} for measurement
+    - "10. Test: scripts/ci/test-webhook-binary-rebuild.sh — assert (a) auto-detect picks Docker when available + native when not, (b) hash-check correctly skips, (c) all 3 paths produce installable binary"
+    - "11. Docs: docs/process/BINARY_REBUILD_DAEMON.md — operator setup, choice of build path, fallback semantics, troubleshooting"
+    - "12. Measurement: median time-from-merge to chump --version showing new sha, broken out per build path. Target: native ~60s, Docker ~90s, hybrid (parallel) ~90s for both arches"
+

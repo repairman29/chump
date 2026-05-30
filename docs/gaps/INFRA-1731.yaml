@@ -1,12 +1,14 @@
 - id: INFRA-1731
   domain: INFRA
-  title: "ZERO-WASTE: chump preflight runs event-registry-audit locally so orphan-event failures caught before push (3 PRs hit this 2026-05-22: 2348, 2355, 2359)"
-  status: open
+  title: 'ZERO-WASTE: chump preflight runs event-registry-audit locally so orphan-event failures caught before push (3 PRs
+    hit this 2026-05-22: 2348, 2355, 2359)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-23'
+  closed_pr: 2397

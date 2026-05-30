@@ -1,0 +1,10 @@
+- id: META-146
+  domain: META
+  title: "META: Implement Ruleset Change Watchdog Alerting (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Any modification to required CI checks on `main` emits an ambient `kind=ruleset_changed` event.
+    - A watchdog system is deployed and configured to alert if `required_status_checks` for the `main` branch are empty for more than 2 minutes.
+

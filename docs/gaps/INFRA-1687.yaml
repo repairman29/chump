@@ -1,28 +1,47 @@
 - id: INFRA-1687
   domain: INFRA
-  title: "EFFECTIVE: decompose src/main.rs (6k LOC) via inventory-style subcommand self-registration — kill hot-file shared-edit class"
-  status: open
+  title: 'EFFECTIVE: decompose src/main.rs (6k LOC) via inventory-style subcommand self-registration — kill hot-file shared-edit
+    class'
+  status: done
   priority: P1
   effort: l
-  description: |
-    Strategic followup from 2026-05-22 collision-scaling conversation. Today
+  description: 'Strategic followup from 2026-05-22 collision-scaling conversation. Today
+
     src/main.rs holds every CLI subcommand dispatch (~6000 LOC); every PR that
+
     adds a command must edit this one file. Observed concretely 2026-05-22:
+
     3+ agents holding main.rs leases concurrently (INFRA-1484/1682/1685). The
+
     lease model rations a scarce resource; deleting the scarcity is cheaper
+
     than scheduling around it. Same playbook applies to EVENT_REGISTRY.yaml
+
     (second hot-file in the fleet) after main.rs lands.
+
+    '
   acceptance_criteria:
-    - "Subcommand self-registration via inventory or linkme crate: each subcommand owns src/cmd/<name>.rs and submits Subcommand{name, run, help} at link time; no edits to main.rs to add a new subcommand"
-    - "src/main.rs reduces from ~6000 LOC to <500 LOC (router-only) — the leftover is arg-parse + global dispatch"
-    - "Pilot migration: chump fanout (INFRA-1484) + chump fleet plan/apply/spec-status (INFRA-1483) ported to the new pattern first; proves the registration ergonomics"
-    - "ci.yml gate scripts/ci/test-main-rs-loc.sh asserts main.rs LOC <500 — advisory during pilot, blocking after full migration"
-    - "EVENT_REGISTRY.yaml decomposition: docs/events/<kind>.yaml glob-loaded via build.rs; same playbook applied to the second hot-file"
-    - "Migration plan doc at docs/refactor/MAIN_RS_DECOMPOSITION.md names every subcommand and assigns a /s follow-up gap per owner"
-    - "Backward-compat: zero CLI surface changes; all existing chump <subcommand> invocations work identically (smoke: scripts/ci/test-cli-surface-baseline.sh)"
-    - "Telemetry: emit kind=hot_file_lease_collision when claim --paths detects an overlap on main.rs or EVENT_REGISTRY.yaml in the post-decomposition window; expectation is zero events after pilot lands"
-  notes: |
-    Manage-by-elimination of fleet contention. Pillar EFFECTIVE — reduces
+  - 'Subcommand self-registration via inventory or linkme crate: each subcommand owns src/cmd/<name>.rs and submits Subcommand{name,
+    run, help} at link time; no edits to main.rs to add a new subcommand'
+  - src/main.rs reduces from ~6000 LOC to <500 LOC (router-only) — the leftover is arg-parse + global dispatch
+  - 'Pilot migration: chump fanout (INFRA-1484) + chump fleet plan/apply/spec-status (INFRA-1483) ported to the new pattern
+    first; proves the registration ergonomics'
+  - ci.yml gate scripts/ci/test-main-rs-loc.sh asserts main.rs LOC <500 — advisory during pilot, blocking after full migration
+  - 'EVENT_REGISTRY.yaml decomposition: docs/events/<kind>.yaml glob-loaded via build.rs; same playbook applied to the second
+    hot-file'
+  - Migration plan doc at docs/refactor/MAIN_RS_DECOMPOSITION.md names every subcommand and assigns a /s follow-up gap per
+    owner
+  - 'Backward-compat: zero CLI surface changes; all existing chump <subcommand> invocations work identically (smoke: scripts/ci/test-cli-surface-baseline.sh)'
+  - 'Telemetry: emit kind=hot_file_lease_collision when claim --paths detects an overlap on main.rs or EVENT_REGISTRY.yaml
+    in the post-decomposition window; expectation is zero events after pilot lands'
+  notes: 'Manage-by-elimination of fleet contention. Pillar EFFECTIVE — reduces
+
     agent-velocity tax from collision rebases. Pairs with INFRA-1688
+
     (lease-as-advisory) and INFRA-1689 (AST-region claims, contingent).
+
     Top pick by ROI from 2026-05-22 architectural review with operator.
+
+    '
+  closed_date: '2026-05-22'
+  closed_pr: 2338

@@ -1,0 +1,10 @@
+- id: META-149
+  domain: META
+  title: "META: Configure Branch Protection for Single 'Verified' Aggregator (META-131 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Branch protection rules for the `main` branch are updated to require only the single 'Verified' aggregator check.
+    - All previously required individual lane checks are removed from `main` branch protection rules.
+

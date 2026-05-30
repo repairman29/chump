@@ -1,0 +1,11 @@
+- id: META-141
+  domain: META
+  title: "META: Implement Flake Detection and Tagging Logic (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The aggregator service can detect when a test fails 3+ times consecutively across PRs with the same error fingerprint.
+    - Detected flakes are tagged as 'flake' and stored persistently (e.g., in a database).
+    - An API endpoint or mechanism exists to query currently tagged flakes.
+

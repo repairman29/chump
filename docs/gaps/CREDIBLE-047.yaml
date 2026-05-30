@@ -1,20 +1,32 @@
 - id: CREDIBLE-047
   domain: CREDIBLE
-  title: "CREDIBLE: autonomous-ship-rate dashboard + alert — Q1 instrumentation; metric is % of fleet-filed PRs that merge with zero operator touch"
-  status: open
+  title: 'CREDIBLE: autonomous-ship-rate dashboard + alert — Q1 instrumentation; metric is % of fleet-filed PRs that merge
+    with zero operator touch'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Per 2026-05-11 three-questions research (docs/syntheses/2026-05-11-three-questions-research.md):
-    today's baseline is 12.5% (1 of 8 fleet-filed PRs landed without
+  description: 'Per 2026-05-11 three-questions research (docs/syntheses/2026-05-11-three-questions-research.md):
+
+    today''s baseline is 12.5% (1 of 8 fleet-filed PRs landed without
+
     operator touch in the last 50 merges). Without instrumentation, we
-    can't track whether the gates we ship raise this number.
+
+    can''t track whether the gates we ship raise this number.
+
+    '
   acceptance_criteria:
-    - "scripts/dispatch/autonomous-ship-rate.sh computes the metric daily: % of PRs merged in window W where (a) first commit was by a fleet author (chump-dispatch / t@t.t / bigpickle / claude-code-ide), AND (b) no jeffadkins1@gmail.com commits later in the branch, AND (c) no jeffadkins comments on the PR, AND (d) no gh-pr operator actions (review, force-merge)"
-    - "Output written to ~/.chump/metrics/autonomous-ship-rate.jsonl with daily rows: {date, total_prs, fleet_filed, fleet_filed_autonomous, autonomous_rate}"
-    - "Alert: if rate drops >10 percentage points day-over-day, emit ambient kind=autonomous_ship_rate_regression with old/new values"
-    - "Surfaced in chump fleet status + new PWA widget (sibling to PRODUCT-078 Daily Brief — autonomous rate as a top-line metric)"
-    - "Test fixture: synthesize 10 PRs with mix of fleet/operator authors; assert script computes expected rate"
-    - "Cohort breakdown: per-harness rate (claude-code-ide vs opencode-bigpickle vs fleet-dispatcher) once CREDIBLE-040 harness identity lands"
-    - "Documented in docs/process/FLEET_SLOS.md as the new headline metric — supplants 'ships/day' as the primary success signal"
-    - "Pairs with CREDIBLE-048 (per-gate fire-rate) — autonomous rate IS the outcome metric; gate fire rate IS the explanatory variable"
+  - 'scripts/dispatch/autonomous-ship-rate.sh computes the metric daily: % of PRs merged in window W where (a) first commit
+    was by a fleet author (chump-dispatch / t@t.t / bigpickle / claude-code-ide), AND (b) no jeffadkins1@gmail.com commits
+    later in the branch, AND (c) no jeffadkins comments on the PR, AND (d) no gh-pr operator actions (review, force-merge)'
+  - 'Output written to ~/.chump/metrics/autonomous-ship-rate.jsonl with daily rows: {date, total_prs, fleet_filed, fleet_filed_autonomous,
+    autonomous_rate}'
+  - 'Alert: if rate drops >10 percentage points day-over-day, emit ambient kind=autonomous_ship_rate_regression with old/new
+    values'
+  - Surfaced in chump fleet status + new PWA widget (sibling to PRODUCT-078 Daily Brief — autonomous rate as a top-line metric)
+  - 'Test fixture: synthesize 10 PRs with mix of fleet/operator authors; assert script computes expected rate'
+  - 'Cohort breakdown: per-harness rate (claude-code-ide vs opencode-bigpickle vs fleet-dispatcher) once CREDIBLE-040 harness
+    identity lands'
+  - Documented in docs/process/FLEET_SLOS.md as the new headline metric — supplants 'ships/day' as the primary success signal
+  - Pairs with CREDIBLE-048 (per-gate fire-rate) — autonomous rate IS the outcome metric; gate fire rate IS the explanatory
+    variable
+  closed_pr: 1709

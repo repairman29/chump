@@ -1,0 +1,14 @@
+- id: INFRA-2255
+  domain: INFRA
+  title: "EFFECTIVE P2: cascade-rebase extension — auto-resolve add-both conflicts on append-only files (event-registry-reserved.txt, Cargo.toml workspace members, EVENT_REGISTRY.yaml, bootstrap-manifest.yaml). Currently INFRA-2207 only handles BEHIND-style fast-forward; semantic add-both still requires manual sub-agent"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. scripts/coord/queue-driver.sh cascade_rebase_if_hot gains a new pre-step: when conflict detected during update-branch, fetch the conflict file list. If conflicts are ALL in the append-only allowlist (event-registry-reserved.txt, Cargo.toml workspace members, EVENT_REGISTRY.yaml, bootstrap-manifest.yaml, cascade-rebase-trigger-paths.txt) → auto-resolve via add-both pattern, push, retry update-branch."
+    - "2. Add scripts/coord/auto-resolve-add-both.sh — generic 'merge both versions' script that handles the 5 known append-only file types: keeps both sides of each conflict marker (HEAD + branch), removes the markers."
+    - 3. Add scripts/ci/test-auto-resolve-add-both.sh — fixture with synthetic conflicts on each of 5 file types; assert auto-resolve produces semantically-correct merged file (e.g. Cargo.toml workspace members list is union, no dups).
+    - 4. Emit kind=cascade_auto_resolved {file_count, files} on success; kind=cascade_resolve_skipped_semantic on file outside allowlist (operator must handle).
+    - "5. Measurement: of the next 20 cascade events, what ratio were auto-resolvable vs needed manual sub-agent? Target ratio >70% auto-resolved."
+    - "6. Doc: docs/process/CASCADE_REBASE.md updated with auto-resolve scope + opt-out for paranoid mode"
+

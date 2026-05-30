@@ -1,15 +1,23 @@
 - id: INFRA-1293
   domain: INFRA
-  title: "\"RESILIENT: CREDIBLE-001 pre-commit runs shellcheck repo-wide instead of on staged files only — blocks every commit on unrelated broken file\""
-  status: open
+  title: '"RESILIENT: CREDIBLE-001 pre-commit runs shellcheck repo-wide instead of on staged files only — blocks every commit
+    on unrelated broken file"'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    Discovered 2026-05-14: scripts/ci/credible-001-smoke.sh runs shellcheck across ALL *.sh files in scripts/, including files NOT in the current commit's diff. Result: a broken file landed by an earlier PR (e.g. INFRA-1220 cooldown-scanner.sh SC2034) blocks every subsequent commit through pre-commit. Fix: scope shellcheck to only files in 'git diff --cached --name-only' (or --staged). Repo-wide scan belongs in periodic CI, not per-commit.
-  acceptance_criteria:
-    - scripts/ci/test-infra-changes-smoke.sh shellcheck step uses 'changed_files' (already populated from $@ or git diff) filtered to scripts/coord/*.sh + scripts/dispatch/*.sh
-    - "If no shell files in the staged set: skip shellcheck step with clear log message"
-    - Operator escape CHUMP_CREDIBLE_001_FULL_SCAN=1 forces the old repo-wide scan (for periodic CI / on-demand)
-    - "Fix incidental bug: empty array iteration with set -u (macOS bash 3.2 compat) — yaml_files/changed_files/sh_files all use [@]:- pattern"
-    - "Test scripts/ci/test-credible-001-incremental.sh: clean+broken file repo; stage only clean → PASS; stage broken → FAIL; FULL_SCAN=1 with only clean → FAIL because of unrelated broken file"
+  description: 'Discovered 2026-05-14: scripts/ci/credible-001-smoke.sh runs shellcheck across ALL *.sh files in scripts/,
+    including files NOT in the current commit''s diff. Result: a broken file landed by an earlier PR (e.g. INFRA-1220 cooldown-scanner.sh
+    SC2034) blocks every subsequent commit through pre-commit. Fix: scope shellcheck to only files in ''git diff --cached
+    --name-only'' (or --staged). Repo-wide scan belongs in periodic CI, not per-commit.
 
+    '
+  acceptance_criteria:
+  - scripts/ci/test-infra-changes-smoke.sh shellcheck step uses 'changed_files' (already populated from $@ or git diff) filtered
+    to scripts/coord/*.sh + scripts/dispatch/*.sh
+  - 'If no shell files in the staged set: skip shellcheck step with clear log message'
+  - Operator escape CHUMP_CREDIBLE_001_FULL_SCAN=1 forces the old repo-wide scan (for periodic CI / on-demand)
+  - 'Fix incidental bug: empty array iteration with set -u (macOS bash 3.2 compat) — yaml_files/changed_files/sh_files all
+    use [@]:- pattern'
+  - 'Test scripts/ci/test-credible-001-incremental.sh: clean+broken file repo; stage only clean → PASS; stage broken → FAIL;
+    FULL_SCAN=1 with only clean → FAIL because of unrelated broken file'
+  closed_pr: 1957

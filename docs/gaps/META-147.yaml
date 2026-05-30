@@ -1,0 +1,11 @@
+- id: META-147
+  domain: META
+  title: "META: Configure Aggregator for Shadow Mode (Gating, Not Required) (META-131 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The 'Verified' aggregator service is configured to calculate its final status based on all lane checks, including path-skips and flake quarantines.
+    - The aggregator's calculated status is visible (e.g., as a non-required GitHub status check).
+    - The aggregator's status is *not* yet configured as a required branch protection check for `main`.
+

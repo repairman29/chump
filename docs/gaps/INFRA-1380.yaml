@@ -1,16 +1,22 @@
 - id: INFRA-1380
   domain: INFRA
-  title: "RESILIENT: tier cargo-test into fast (unit) + slow (integration), gate slow on fast — saves ~10min per failing PR"
-  status: open
+  title: 'RESILIENT: tier cargo-test into fast (unit) + slow (integration), gate slow on fast — saves ~10min per failing PR'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Most PR failures fail unit tests (logic bugs, type errors, fmt). Integration tests run anyway on a known-broken PR, wasting ~10min. Tiering: fast tier (lib/bins unit, ~2-3min) runs first; slow tier (integration tests, ~10-15min) skips when fast fails. Faster failure feedback for the operator AND saves CI minutes on broken-PR cycles. Cleanest as a Cargo workspace split since most integration tests already live in tests/*.rs files which the --tests flag exclusively targets.
-  acceptance_criteria:
-    - Split cargo-test job in ci.yml into cargo-test-fast (unit tests only, --lib + --bins, no --tests) and cargo-test-slow (integration --tests in tests/ + crates/*/tests/)
-    - "cargo-test-slow has `needs: cargo-test-fast` so it skips when fast fails"
-    - cargo-test-required (the gating job) needs both — but skips slow cleanly when fast fails so the failure surfaces in <3min instead of 15min
-    - "Measure baseline: timing of fast tier alone (target <3min) vs combined (current 10-15min)"
-    - "CI test scripts/ci/test-cargo-test-tiered.sh asserts the two jobs exist and the needs: chain is correct"
-    - "docs/process/CI_LANES.md gains a \"fast vs slow test tiering\" section"
+  description: 'Most PR failures fail unit tests (logic bugs, type errors, fmt). Integration tests run anyway on a known-broken
+    PR, wasting ~10min. Tiering: fast tier (lib/bins unit, ~2-3min) runs first; slow tier (integration tests, ~10-15min) skips
+    when fast fails. Faster failure feedback for the operator AND saves CI minutes on broken-PR cycles. Cleanest as a Cargo
+    workspace split since most integration tests already live in tests/*.rs files which the --tests flag exclusively targets.
 
+    '
+  acceptance_criteria:
+  - Split cargo-test job in ci.yml into cargo-test-fast (unit tests only, --lib + --bins, no --tests) and cargo-test-slow
+    (integration --tests in tests/ + crates/*/tests/)
+  - 'cargo-test-slow has `needs: cargo-test-fast` so it skips when fast fails'
+  - cargo-test-required (the gating job) needs both — but skips slow cleanly when fast fails so the failure surfaces in <3min
+    instead of 15min
+  - 'Measure baseline: timing of fast tier alone (target <3min) vs combined (current 10-15min)'
+  - 'CI test scripts/ci/test-cargo-test-tiered.sh asserts the two jobs exist and the needs: chain is correct'
+  - docs/process/CI_LANES.md gains a "fast vs slow test tiering" section
+  closed_date: '2026-05-16'

@@ -1,0 +1,18 @@
+- id: INFRA-2237
+  domain: INFRA
+  title: "RESILIENT P0: chump rotate-sccache-r2-token — operator-button to rotate Cloudflare R2 token + update GH secrets atomically (replaces 5-step manual dance)"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "scripts/ops/rotate-sccache-r2-token.sh: rotates the chump-sccache-ci R2 token via Cloudflare API + updates both R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY GH secrets atomically"
+    - Requires CHUMP_CF_API_TOKEN env var (CF API token with Workers R2 Storage Edit scope); refuses with operator message if unset
+    - Requires CHUMP_R2_ACCOUNT_ID env var (32-char hex); falls back to gh secret get R2_ACCOUNT_ID if unset
+    - "Flow: list R2 tokens → find chump-sccache-ci by name → call POST /accounts/{id}/r2/temp-access-credentials OR create new token + delete old → capture access_key_id + secret_access_key → gh secret set both → verify by triggering a CI run"
+    - Dry-run by default (--execute required to actually rotate); --dry-run shows what would happen without side effects
+    - "Atomic: trap EXIT/INT/TERM — if anything fails mid-rotation, attempt to restore the old GH secret values (preserved before update) so we never end in half-rotated state"
+    - Emit kind=sccache_r2_token_rotated on success with fields token_name, old_access_key_id_first4last4, new_access_key_id_first4last4 (no full secrets in ambient log)
+    - "Smoke test scripts/ci/test-rotate-sccache-r2-token.sh: dry-run mode + arg parsing + missing-env-var error paths (no real CF/GH API calls)"
+  notes: |
+    [2026-05-30T03:20:32Z] Filed by curator-opus-shepherd-2026-05-29 to unwedge the 40-PR queue. Today's root cause: R2_ACCESS_KEY_ID secret was wrong (cycle 7), operator updated it 2026-05-29T12:25Z but the matching R2_SECRET_ACCESS_KEY in GH wasn't touched since 2026-05-28T02:46Z — pair mismatch. This script eliminates the half-update class of error by rotating BOTH halves of the pair atomically.
+

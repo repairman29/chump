@@ -1,13 +1,18 @@
 - id: INFRA-1338
   domain: INFRA
-  title: "EFFECTIVE: backend /api/roadmap endpoint parses docs/ROADMAP.md server-side + caches — replaces INFRA-1207 frontend client-side markdown parser"
-  status: open
+  title: 'EFFECTIVE: backend /api/roadmap endpoint parses docs/ROADMAP.md server-side + caches — replaces INFRA-1207 frontend
+    client-side markdown parser'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "GET /api/roadmap returns {milestones:[{id,title,status,target_date,progress_pct,done_ratio,gaps,blockers}], generated_at_iso, cache_age_secs, roadmap_error}"
-    - "Server-side markdown parser in src/routes/roadmap.rs reuses crate::roadmap_status::parse_roadmap; 60s in-process cache via OnceLock<RwLock<Snapshot>>"
-    - "If docs/ROADMAP.md missing or unparseable returns HTTP 200 with milestones:[] + roadmap_error populated (never 500)"
-    - "Frontend <chump-view-roadmap> (web/v2/app.js) consumes /api/roadmap and the client-side #parseMarkdown fallback is removed"
-    - "scripts/ci/test-api-roadmap.sh validates schema + cache idempotency (same generated_at_iso on 2nd call within 60s) + missing-file degradation"
-    - "docs/api/WEB_API_REFERENCE.md documents the new endpoint schema"
+  - GET /api/roadmap returns {milestones:[{id,title,status,target_date,progress_pct,done_ratio,gaps,blockers}], generated_at_iso,
+    cache_age_secs, roadmap_error}
+  - Server-side markdown parser in src/routes/roadmap.rs reuses crate::roadmap_status::parse_roadmap; 60s in-process cache
+    via OnceLock<RwLock<Snapshot>>
+  - If docs/ROADMAP.md missing or unparseable returns HTTP 200 with milestones:[] + roadmap_error populated (never 500)
+  - 'Frontend <chump-view-roadmap> (web/v2/app.js) consumes /api/roadmap and the client-side #parseMarkdown fallback is removed'
+  - scripts/ci/test-api-roadmap.sh validates schema + cache idempotency (same generated_at_iso on 2nd call within 60s) + missing-file
+    degradation
+  - docs/api/WEB_API_REFERENCE.md documents the new endpoint schema
+  closed_date: '2026-05-23'

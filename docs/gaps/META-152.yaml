@@ -1,0 +1,18 @@
+- id: META-152
+  domain: META
+  title: chump fleet lane-recommend — current-state-aware curator-lane bottleneck picker (replaces ad-hoc AskUserQuestion at onboard time)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Demonstrated 2026-05-30: ci-audit-onboarding session sent AskUserQuestion "which lane should I onboard into?" — operator answered "no preference" — which means the FLEET should have decided. The data exists: 4 curator sessions DARK (target/external-collab/infra-watcher/observability never emitted from the 2026-05-28 cohort), 5 alive (ci-audit/handoff/decompose/shepherd/md-links). All 4 dark lanes were coverage gaps; ci-audit was alive-but-idle (silent_agent SLO root cause). A data-driven picker would have ranked ci-audit (alive-but-not-acting > dark on impact) or target (highest user-facing pillar gap) without operator input. Pairs with META-132 fresh-eyes (which audits AFTER lane-pick) — this acts BEFORE.
+  acceptance_criteria:
+    - chump fleet lane-recommend CLI exists; outputs ranked lanes with one-line why; supports --json and human table
+    - "Scoring inputs (combined): (a) lane darkness (0 heartbeats in last 4h = highest), (b) alive-but-idle ratio (heartbeats > 0 AND sub_agent_dispatched/DONE = 0 over 4 ticks), (c) pickable queue depth per lane skill_required tag, (d) shipped-PR rate last 24h per lane (low = starved), (e) roadmap-bottleneck-pillar alignment from docs/ROADMAP.md, (f) age of oldest stuck item in lane"
+    - "Lane coverage: target / ci-audit / handoff / shepherd / decompose / observability / external-collab / md-links / infra-watcher / fresh-eyes (when META-132 lands). Add new lanes via docs/agents/<role>.md presence"
+    - "Cold-start fallback: when no ambient data (< 10 events in 24h), rank by roadmap-bottleneck-pillar alignment only"
+    - "Auto-surface: SessionStart hook calls lane-recommend and folds top recommendation into the session digest (one line, behind a hint); /onboard slash command runs it"
+    - Emit kind=lane_recommended {top_lane, score, runner_up, reason} to ambient on each invocation; register in EVENT_REGISTRY.yaml
+    - "Score explainability: --explain flag shows per-lane breakdown of the 6 inputs"
+    - scripts/ci/test-fleet-lane-recommend.sh exercises a synthetic state (dark target, idle ci-audit, busy shepherd) and asserts target ranks highest
+

@@ -1,0 +1,15 @@
+- id: INFRA-2230
+  domain: INFRA
+  title: "CREDIBLE: gap-status-guard / auto-flip-on-merge not flipping consistently — 6 stale open-but-merged gaps found across cycles 7+10 (INFRA-2121 followup)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Diagnose why INFRA-2121 (auto-flip-on-merge action) silently no-ops on certain PR/gap pairs — survey 6 known cases this session: INFRA-2202/#2745, INFRA-2200/#2749, INFRA-2151/#2781, DOC-058/#2778, INFRA-2184/#2740, INFRA-2208/#2760"
+    - "Identify root cause: PR title regex miss? gh-action workflow not running on merge? state.db write path failing silently?"
+    - Add per-failure ambient kind=auto_flip_skipped with reason field (regex_miss, workflow_skip, state_db_error)
+    - Either fix the auto-flip-on-merge OR add a nightly catch-up job that scans recent merges for stale gap status and flips them
+    - "Smoke test: synth merged PR with INFRA-XXXX in subject, run auto-flip, verify state.db status flipped + ambient emit"
+  notes: |
+    [2026-05-30T02:15:05Z] Filed by curator-opus-shepherd-2026-05-29 cycle 11. Pattern across cycles 7 (INFRA-2208) + 10 (5 more flips: INFRA-2202/2200/2151/DOC-058/2184) suggests systemic miss. PRs all had clean conventional-commit subjects with the gap ID. Operator action: rotate R2 secret (INFRA-2127) is unrelated but also queue-blocking; this gap is about gap-status-flipping specifically.
+

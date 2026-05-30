@@ -1,0 +1,19 @@
+- id: META-153
+  domain: META
+  title: chump preflight --vs origin/main — diff-scoped failure attribution (pre-existing vs new), filter pre-existing fails from local CI
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Demonstrated 2026-05-30: chump preflight FAILed on (a) pr-hygiene (scripts/ci/check-pr-hygiene.sh referenced by preflight.rs:950 not in this worktree) and (b) event-registry-coverage (10 pre-existing emit-without-register violations including bad/good/skip/consensus_resolved/operator_escalation/preference/test_event/sccache_r2_token_*). My diff added zero new emit kinds. I spent 4min diagnosing both before bypassing with Preflight-Skip-Reason. This is the single biggest local-vs-CI friction class: preflight FAILs treat pre-existing baseline failures as if they were caused by my change. Need: "what failed that wasnt already failing on origin/main HEAD" mode.
+  acceptance_criteria:
+    - chump preflight --vs origin/main flag exists; runs preflight against current HEAD AND against origin/main; emits only gates that pass on origin/main and fail on HEAD as actionable failures
+    - origin/main preflight result cached at .chump/preflight-baseline.json with TTL=1h; cache key = main HEAD SHA; invalidate on SHA change
+    - "Output sections: \"NEW (your diff)\" — hard fail; \"PRE-EXISTING (not yours)\" — listed with originating-commit SHA + author + age, do NOT block"
+    - When --vs origin/main is set and baseline is unavailable (offline, SHA fetch fails), gracefully fall back to current behavior with a warning banner — never block the user
+    - Default scope behavior unchanged when --vs origin/main NOT passed; this is opt-in until proven, then promote to default in follow-up
+    - "chump preflight --vs origin/main --json emits structured {new_failures: [...], preexisting_failures: [...], baseline_sha: ..., baseline_age_seconds: ...} for tooling"
+    - Emit kind=preflight_baseline_diff {new_fail_count, preexisting_fail_count, baseline_sha} to ambient on each run; register in EVENT_REGISTRY.yaml
+    - "scripts/ci/test-preflight-vs-origin-main.sh fixture: synthetic 3-gate preflight (1 pre-existing fail, 1 new fail, 1 pass) — assert only the new fail is in NEW section"
+    - "Pre-commit hook integration: when --vs origin/main NEW section is non-empty, hook blocks; when only PRE-EXISTING, hook warns and proceeds"
+

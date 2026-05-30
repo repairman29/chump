@@ -1,15 +1,19 @@
 - id: INFRA-1539
   domain: INFRA
-  title: "RESILIENT: workflow sweep — guard all sudo/apt/pip steps with runner.os==Linux"
-  status: open
+  title: 'RESILIENT: workflow sweep — guard all sudo/apt/pip steps with runner.os==Linux'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - Audit every step in .github/workflows/*.yml that runs sudo, apt-get, or pip install (without bundled fallback).
-    - "Add if: runner.os == 'Linux' to each such step that does NOT already have a runner-os guard, INCLUDING jobs currently pinned to ubuntu-latest (idempotent, protects against future migration breakage)."
-    - "Exception: steps inside container: jobs (Linux guaranteed) left unguarded."
-    - New CI smoke scripts/ci/test-workflow-linux-guard.sh fails if any matching step lacks the guard; wired into pr-hygiene job.
-    - "Verify on M4 self-hosted: workflow run with CHUMP_SELF_HOSTED_ENABLED=true completes the freshly-migrated job without sudo password prompts."
-    - "Cross-link: this is proactive sweep counterpart to INFRA-1535 stage-by-stage migration; goal is zero per-stage guard-fix PRs going forward."
+  - Audit every step in .github/workflows/*.yml that runs sudo, apt-get, or pip install (without bundled fallback).
+  - 'Add if: runner.os == ''Linux'' to each such step that does NOT already have a runner-os guard, INCLUDING jobs currently
+    pinned to ubuntu-latest (idempotent, protects against future migration breakage).'
+  - 'Exception: steps inside container: jobs (Linux guaranteed) left unguarded.'
+  - New CI smoke scripts/ci/test-workflow-linux-guard.sh fails if any matching step lacks the guard; wired into pr-hygiene
+    job.
+  - 'Verify on M4 self-hosted: workflow run with CHUMP_SELF_HOSTED_ENABLED=true completes the freshly-migrated job without
+    sudo password prompts.'
+  - 'Cross-link: this is proactive sweep counterpart to INFRA-1535 stage-by-stage migration; goal is zero per-stage guard-fix
+    PRs going forward.'
   pillar: RESILIENT
-
+  closed_date: '2026-05-17'

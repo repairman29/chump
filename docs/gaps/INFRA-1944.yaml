@@ -1,16 +1,28 @@
 - id: INFRA-1944
   domain: INFRA
-  title: "INFRA-1862 slice A: broadcast.sh delivery-confirmation receipts — sender gets ack when recipient reads (file-mtime on cursor + ambient kind=a2a_msg_delivered)"
-  status: open
+  title: 'INFRA-1862 slice A: broadcast.sh delivery-confirmation receipts — sender gets ack when recipient reads (file-mtime
+    on cursor + ambient kind=a2a_msg_delivered)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Background — INFRA-1115 broadcast.sh / chump-inbox.sh dual-write to ambient.jsonl + .chump-locks/inbox/<session>.jsonl, but sender has zero visibility into whether recipient READ the msg. Today's session burned 30+ min sending dispatches into dormant inboxes (wizard at 16:24Z roll-call to 4 silent curators) with no signal back"
-    - "broadcast.sh emits a corr_id (UUID or msg-hash) on send + writes a side-record to .chump-locks/inbox/<sender>-sent-pending.jsonl with {ts, corr_id, to, expires_at}"
-    - "chump-inbox.sh read --since cursor consumes msgs + emits ambient kind=a2a_msg_delivered with {ts, corr_id, recipient, read_at} for each consumed msg"
-    - "New scripts/coord/a2a-delivery-tail.sh — when sender wants to check, tails ambient for kind=a2a_msg_delivered matching corr_id; returns 0 if delivered within timeout, 1 if not"
-    - "broadcast.sh --await flag (new) — sender blocks up to N seconds (default 0=fire-and-forget) waiting for delivered event; returns 0 if delivered, 2 if not, 0 if --no-await (legacy)"
-    - "Smoke test scripts/ci/test-a2a-delivery-receipts.sh — send 2 msgs (one to live recipient, one to a fixture inbox), assert delivered event for live recipient + no event for fixture within timeout"
-    - "Pairs with INFRA-1115 (the broadcast.sh / chump-inbox.sh foundation); INFRA-1862 (this slice is A of E)"
-    - "Done definition — broadcast.sh has --await flag working; wizard can know within N seconds whether dispatch was read, not just whether sent"
-  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  - Background — INFRA-1115 broadcast.sh / chump-inbox.sh dual-write to ambient.jsonl + .chump-locks/inbox/<session>.jsonl,
+    but sender has zero visibility into whether recipient READ the msg. Today's session burned 30+ min sending dispatches
+    into dormant inboxes (wizard at 16:24Z roll-call to 4 silent curators) with no signal back
+  - broadcast.sh emits a corr_id (UUID or msg-hash) on send + writes a side-record to .chump-locks/inbox/<sender>-sent-pending.jsonl
+    with {ts, corr_id, to, expires_at}
+  - chump-inbox.sh read --since cursor consumes msgs + emits ambient kind=a2a_msg_delivered with {ts, corr_id, recipient,
+    read_at} for each consumed msg
+  - New scripts/coord/a2a-delivery-tail.sh — when sender wants to check, tails ambient for kind=a2a_msg_delivered matching
+    corr_id; returns 0 if delivered within timeout, 1 if not
+  - broadcast.sh --await flag (new) — sender blocks up to N seconds (default 0=fire-and-forget) waiting for delivered event;
+    returns 0 if delivered, 2 if not, 0 if --no-await (legacy)
+  - Smoke test scripts/ci/test-a2a-delivery-receipts.sh — send 2 msgs (one to live recipient, one to a fixture inbox), assert
+    delivered event for live recipient + no event for fixture within timeout
+  - Pairs with INFRA-1115 (the broadcast.sh / chump-inbox.sh foundation); INFRA-1862 (this slice is A of E)
+  - Done definition — broadcast.sh has --await flag working; wizard can know within N seconds whether dispatch was read, not
+    just whether sent
+  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice
+    of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  closed_date: '2026-05-25'
+  closed_pr: 2535

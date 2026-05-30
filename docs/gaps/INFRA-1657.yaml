@@ -1,19 +1,25 @@
 - id: INFRA-1657
   domain: INFRA
-  title: "RESILIENT: wire conflict-resolver-agent into bot-merge.sh rebase-failure path (closes INFRA-1488 loop)"
-  status: open
+  title: 'RESILIENT: wire conflict-resolver-agent into bot-merge.sh rebase-failure path (closes INFRA-1488 loop)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    INFRA-1488 shipped scripts/coord/conflict-resolver-agent.sh default-OFF (CHUMP_CONFLICT_RESOLVER_ENABLED=1 to enable). But nothing calls it — bot-merge.sh still treats rebase conflict as terminal. Marcus's '45 min mental focus per PR rebase' time-sink only resolves if bot-merge dispatches the agent automatically.
-  acceptance_criteria:
-    - bot-merge.sh's rebase step detects conflict (exit code from git rebase != 0 with conflict markers present)
-    - On conflict, invokes scripts/coord/conflict-resolver-agent.sh with GAP_ID env
-    - If agent exits 0 (resolved + rebase --continued), bot-merge resumes normal flow
-    - If agent exits 1 (handoff), bot-merge calls git rebase --abort + emits existing handoff path
-    - Default behavior preserved when CHUMP_CONFLICT_RESOLVER_ENABLED!=1 (agent self-skips per its existing flag-gate)
-    - "CI test: synthetic 2-file conflict + flag-on → verify dispatch invoked; flag-off → verify pass-through"
-    - docs/process/CLAUDE_GOTCHAS.md adds note on enablement + rollback
-  notes: |
-    FOLLOW-UP from INFRA-1488 (Marcus M-C shipped 2026-05-21). Without this wiring, M-C is dead code-on-disk. Risk: low — agent is opt-in, fallback is current behavior.
+  description: 'INFRA-1488 shipped scripts/coord/conflict-resolver-agent.sh default-OFF (CHUMP_CONFLICT_RESOLVER_ENABLED=1
+    to enable). But nothing calls it — bot-merge.sh still treats rebase conflict as terminal. Marcus''s ''45 min mental focus
+    per PR rebase'' time-sink only resolves if bot-merge dispatches the agent automatically.
 
+    '
+  acceptance_criteria:
+  - bot-merge.sh's rebase step detects conflict (exit code from git rebase != 0 with conflict markers present)
+  - On conflict, invokes scripts/coord/conflict-resolver-agent.sh with GAP_ID env
+  - If agent exits 0 (resolved + rebase --continued), bot-merge resumes normal flow
+  - If agent exits 1 (handoff), bot-merge calls git rebase --abort + emits existing handoff path
+  - Default behavior preserved when CHUMP_CONFLICT_RESOLVER_ENABLED!=1 (agent self-skips per its existing flag-gate)
+  - 'CI test: synthetic 2-file conflict + flag-on → verify dispatch invoked; flag-off → verify pass-through'
+  - docs/process/CLAUDE_GOTCHAS.md adds note on enablement + rollback
+  notes: 'FOLLOW-UP from INFRA-1488 (Marcus M-C shipped 2026-05-21). Without this wiring, M-C is dead code-on-disk. Risk:
+    low — agent is opt-in, fallback is current behavior.
+
+    '
+  closed_date: '2026-05-22'
+  closed_pr: 2320

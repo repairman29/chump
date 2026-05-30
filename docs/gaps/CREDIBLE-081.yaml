@@ -1,0 +1,17 @@
+- id: CREDIBLE-081
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet-wire broadcast observability — emit/consumer ratio metric, alert on zero-consumer broadcasts"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today's NATS survey (2026-05-30) found ZERO peer-curator FEEDBACK responses to 4 broadcasted proposals over ~6 hours. Broadcasts went into the void with no visibility. We need a metric — for each broadcast subject + kind: emits, consumer_acks (events where a peer emitted a downstream event referencing the corr_id), zero-consumer streak. Alert when N consecutive broadcasts of same subject get zero consumer ack. This is the observability gap that hides 'nobody is listening' until you survey by hand. Pairs with EFFECTIVE-028 (corr_id threading) — the consumer ack needs the corr_id to attribute back. Pairs with META-155 (reader-side design) — once readers exist, this measures their reach.
+  acceptance_criteria:
+    - "scripts/dev/fleet-wire-leaderboard.sh script: prints per-subject (chump.events.<kind>) rows with emits_24h / unique_emitters / consumer_acks_24h / zero_consumer_streak_24h"
+    - Defines 'consumer ack' as ANY downstream event from a different session_id that includes the broadcaster's corr_id in payload (depends on EFFECTIVE-028 corr_id threading)
+    - "Alert rule: 5 consecutive broadcasts of same (subject + sender) with zero consumer_acks emits ambient kind=fleet_wire_zero_consumer (sender notified on next session-start brief)"
+    - Pure read tool — does not mutate state
+    - Smoke test seeds ambient.jsonl with mock broadcasts + acks, asserts leaderboard renders correct counts
+    - chump preflight green
+  depends_on: [META-155]
+

@@ -1,16 +1,28 @@
 - id: META-102
   domain: META
-  title: "MISSION P0: productize curator-opus-infra-watcher role — SRE-lane that proactively monitors launchd plist health + self-hosted runner state + /tmp pressure + load-avg + process count; would have caught today's 17h runner ghost-online + StartInterval-missing-plist + 154-claude-proc + disk_critical incidents within minutes instead of hours"
-  status: open
+  title: 'MISSION P0: productize curator-opus-infra-watcher role — SRE-lane that proactively monitors launchd plist health
+    + self-hosted runner state + /tmp pressure + load-avg + process count; would have caught today''s 17h runner ghost-online
+    + StartInterval-missing-plist + 154-claude-proc + disk_critical incidents within minutes instead of hours'
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
-    - 1. Create .claude/agents/infra-watcher.md following .claude/README.md discipline (capability lives in script; agent body delegates). Mirror .claude/agents/target.md + .claude/agents/harvester.md as templates
-    - "2. Create .claude/skills/infra-watcher/SKILL.md (~50-80 lines, user-invocable, allowed-tools). Triggers: 'check substrate health', 'audit daemons', 'check runners', 'why is /tmp full'"
-    - "3. Create scripts/coord/infra-watcher-loop.sh — harness-neutral CLI per OPERATOR_PLAYBOOK Section 5. Subcommands: tick (one cycle), audit-daemons (verify all launchd plists actually fire per their interval), check-runners (self-hosted runner ghost-online detection), check-disk (/tmp + /private/tmp pressure), check-procs (claude proc count + load avg). Emits kind=infra_watcher_finding with {category, severity, detail}"
-    - "4. Smoke test scripts/ci/test-infra-watcher-loop.sh: stub launchctl + gh + df + ps; assert daemon audit catches a synthetic missing-StartInterval plist; assert runner check catches ghost-online; assert exits clean when all green"
-    - 5. Register infra_watcher_finding event kind in scripts/ci/event-registry-reserved.txt
-    - "6. Baseline 2026-05-24: would have caught (a) prune-worktrees plist missing StartInterval (321 orphan worktrees), (b) runner ghost-online (17h PR wedge), (c) load-avg 36 / 154 claude procs (today's process bloat), (d) reaper_silent for branch+distill daemons within first audit-daemons cycle"
-    - "7. Lane discipline: NOT competing with curator-opus-shepherd (PR rescue) or opus-shepherd-generalist (cross-cutting drift) — focus is SUBSTRATE health, not application state"
-    - 8. Document in OPUS_SHEPHERD_PLAYBOOK.md (META-094) Sibling-roles section
-
+  - 1. Create .claude/agents/infra-watcher.md following .claude/README.md discipline (capability lives in script; agent body
+    delegates). Mirror .claude/agents/target.md + .claude/agents/harvester.md as templates
+  - '2. Create .claude/skills/infra-watcher/SKILL.md (~50-80 lines, user-invocable, allowed-tools). Triggers: ''check substrate
+    health'', ''audit daemons'', ''check runners'', ''why is /tmp full'''
+  - '3. Create scripts/coord/infra-watcher-loop.sh — harness-neutral CLI per OPERATOR_PLAYBOOK Section 5. Subcommands: tick
+    (one cycle), audit-daemons (verify all launchd plists actually fire per their interval), check-runners (self-hosted runner
+    ghost-online detection), check-disk (/tmp + /private/tmp pressure), check-procs (claude proc count + load avg). Emits
+    kind=infra_watcher_finding with {category, severity, detail}'
+  - '4. Smoke test scripts/ci/test-infra-watcher-loop.sh: stub launchctl + gh + df + ps; assert daemon audit catches a synthetic
+    missing-StartInterval plist; assert runner check catches ghost-online; assert exits clean when all green'
+  - 5. Register infra_watcher_finding event kind in scripts/ci/event-registry-reserved.txt
+  - '6. Baseline 2026-05-24: would have caught (a) prune-worktrees plist missing StartInterval (321 orphan worktrees), (b)
+    runner ghost-online (17h PR wedge), (c) load-avg 36 / 154 claude procs (today''s process bloat), (d) reaper_silent for
+    branch+distill daemons within first audit-daemons cycle'
+  - '7. Lane discipline: NOT competing with curator-opus-shepherd (PR rescue) or opus-shepherd-generalist (cross-cutting drift)
+    — focus is SUBSTRATE health, not application state'
+  - 8. Document in OPUS_SHEPHERD_PLAYBOOK.md (META-094) Sibling-roles section
+  closed_date: '2026-05-25'
+  closed_pr: 2543

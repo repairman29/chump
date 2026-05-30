@@ -1,12 +1,12 @@
 - id: MISSION-006
   domain: MISSION
-  title: "MISSION-007: scope + ship next customer-visible feature post-wedge-demolition (PWA A2A | Marcus M-C | fanout demo)"
-  status: open
+  title: 'MISSION-007: scope + ship next customer-visible feature post-wedge-demolition (PWA A2A | Marcus M-C | fanout demo)'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-25'

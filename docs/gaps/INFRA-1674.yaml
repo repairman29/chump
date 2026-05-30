@@ -1,15 +1,23 @@
 - id: INFRA-1674
   domain: INFRA
-  title: "EFFECTIVE: Custodian Blueprint Phase 5+6 — extend doc with CI/CD Gatekeeper + Federated Network forward-looking sections"
-  status: open
+  title: 'EFFECTIVE: Custodian Blueprint Phase 5+6 — extend doc with CI/CD Gatekeeper + Federated Network forward-looking
+    sections'
+  status: done
   priority: P2
   effort: xs
-  description: |
-    Forward-looking extension of the Custodian Blueprint shipped 2026-05-22 in PR #2310. Phases 5+6 added per operator request after reviewing the original prompt extension. Phase 5 documents continuous-custodianship (CI gates that enforce the framework). Phase 6 documents network-effect scaling (federated hub + repo-init template). Both are framework-only in this PR; substantive implementation tracked in INFRA-1675 through INFRA-1679.
-  acceptance_criteria:
-    - docs/process/CUSTODIAN_BLUEPRINT.md gains Phase 5 (CI/CD Gatekeeper) section with same artifact-checklist + enforcement-test format as Phases 1-4
-    - Phase 6 (Federated Network) section added with cross-repo / federated-hub / repo-init artifact checklists
-    - How-to-apply-to-new-repo section updated to reference 6 phases (was 4)
-    - Anti-patterns section extended with at least one new entry capturing 'CI gates that lint syntax but not architecture' OR 'single-repo curation that doesn't compose across an org'
-    - Cross-refs added to INFRA-1675/1676/1677/1678/1679 as the implementation gaps for the new phases
+  description: 'Forward-looking extension of the Custodian Blueprint shipped 2026-05-22 in PR #2310. Phases 5+6 added per
+    operator request after reviewing the original prompt extension. Phase 5 documents continuous-custodianship (CI gates that
+    enforce the framework). Phase 6 documents network-effect scaling (federated hub + repo-init template). Both are framework-only
+    in this PR; substantive implementation tracked in INFRA-1675 through INFRA-1679.
 
+    '
+  acceptance_criteria:
+  - docs/process/CUSTODIAN_BLUEPRINT.md gains Phase 5 (CI/CD Gatekeeper) section with same artifact-checklist + enforcement-test
+    format as Phases 1-4
+  - Phase 6 (Federated Network) section added with cross-repo / federated-hub / repo-init artifact checklists
+  - How-to-apply-to-new-repo section updated to reference 6 phases (was 4)
+  - Anti-patterns section extended with at least one new entry capturing 'CI gates that lint syntax but not architecture'
+    OR 'single-repo curation that doesn't compose across an org'
+  - Cross-refs added to INFRA-1675/1676/1677/1678/1679 as the implementation gaps for the new phases
+  closed_date: '2026-05-22'
+  closed_pr: 2318

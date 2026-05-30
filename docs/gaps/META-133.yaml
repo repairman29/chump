@@ -1,0 +1,11 @@
+- id: META-133
+  domain: META
+  title: "META: Inventory Current CI Checks (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A document `docs/strategy/CI_POLICY_AUDIT.md` exists.
+    - The document catalogs all current required and visible CI checks.
+    - For each check, the document specifies its purpose, the bug class it catches, and its current cost (time, flake rate).
+

@@ -1,15 +1,26 @@
 - id: INFRA-2155
   domain: INFRA
-  title: "EFFECTIVE P1: wire chump-policy check into scripts/coord/bot-merge.sh (INFRA-1489 integration follow-up) — call before --auto-merge arming; block + log via existing kind=auto_merge_policy_blocked emit; respect CHUMP_BYPASS_AUTO_MERGE_POLICY for recovery scenarios"
-  status: open
+  title: 'EFFECTIVE P1: wire chump-policy check into scripts/coord/bot-merge.sh (INFRA-1489 integration follow-up) — call
+    before --auto-merge arming; block + log via existing kind=auto_merge_policy_blocked emit; respect CHUMP_BYPASS_AUTO_MERGE_POLICY
+    for recovery scenarios'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - scripts/coord/bot-merge.sh calls `chump-policy check` after PR opens but BEFORE `gh pr merge --auto --squash` arming. If check exits 0, proceed to arm; if exits 1, log the kind=auto_merge_policy_blocked event line, skip arming, post a PR comment with the block reason + contributing scopes so operator sees the why
-    - Bypass env CHUMP_BYPASS_AUTO_MERGE_POLICY=1 skips the check (recovery scenarios). Each bypass emits kind=auto_merge_policy_bypassed to ambient for audit (additional kind registered in same PR)
-    - "Smoke test scripts/ci/test-bot-merge-policy-integration.sh: synth a sandbox repo, set repo-scope --enabled false, run bot-merge.sh on a fake PR, assert auto-merge was NOT armed + block message posted to PR"
-    - Cockpit (web/v2) shows current effective policy + per-scope detail at top of fleet view; uses `chump-policy show --json` for live data (no caching, refresh on every fleet-view load)
-  depends_on: [INFRA-1489]
-  notes: |
-    Filed 2026-05-29 by curator-opus-shepherd as follow-up to INFRA-1489. The chump-policy crate + CLI ships in #INFRA-1489-PR (new files only, no bot-merge.sh touch to avoid collision with INFRA-2119 lease). This gap is the wire-up half.
+  - scripts/coord/bot-merge.sh calls `chump-policy check` after PR opens but BEFORE `gh pr merge --auto --squash` arming.
+    If check exits 0, proceed to arm; if exits 1, log the kind=auto_merge_policy_blocked event line, skip arming, post a PR
+    comment with the block reason + contributing scopes so operator sees the why
+  - Bypass env CHUMP_BYPASS_AUTO_MERGE_POLICY=1 skips the check (recovery scenarios). Each bypass emits kind=auto_merge_policy_bypassed
+    to ambient for audit (additional kind registered in same PR)
+  - 'Smoke test scripts/ci/test-bot-merge-policy-integration.sh: synth a sandbox repo, set repo-scope --enabled false, run
+    bot-merge.sh on a fake PR, assert auto-merge was NOT armed + block message posted to PR'
+  - Cockpit (web/v2) shows current effective policy + per-scope detail at top of fleet view; uses `chump-policy show --json`
+    for live data (no caching, refresh on every fleet-view load)
+  depends_on:
+  - INFRA-1489
+  notes: 'Filed 2026-05-29 by curator-opus-shepherd as follow-up to INFRA-1489. The chump-policy crate + CLI ships in #INFRA-1489-PR
+    (new files only, no bot-merge.sh touch to avoid collision with INFRA-2119 lease). This gap is the wire-up half.
 
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2718

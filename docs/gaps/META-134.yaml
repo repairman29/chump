@@ -1,0 +1,12 @@
+- id: META-134
+  domain: META
+  title: "META: Draft Verified Aggregator Architecture Spec (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A design document `docs/design/CI_VERIFIED_AGGREGATOR.md` exists.
+    - The document proposes a single 'verified' check that fans out to path-aware lane checks.
+    - The document outlines initial rules for stub-pass on path-skip.
+    - The document outlines initial rules for flake-quarantine after N consecutive intermittent failures.
+

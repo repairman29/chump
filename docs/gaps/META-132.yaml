@@ -1,0 +1,24 @@
+- id: META-132
+  domain: META
+  title: fresh-eyes / mirror curator — periodic self-consistency audit comparing fleet self-reports to ground truth (catches silent_agent root causes the existing curators miss)
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Demonstrated 2026-05-30 during ci-audit onboarding: a fresh Opus session caught a trunk-red signal that 4 alive curators (ci-audit, handoff, decompose, shepherd from 2026-05-28) had missed for 32min. The blame_bot fired regression_attributed every 2min; ci-audit-loop.sh audit returned "quiet" because its scan grep at line 96 did not include regression_attributed; SessionStart fleet-brief said "✓ No urgent actions"; SLO was already breaching silent_agent=2/wk. The system self-reported healthy while the actual stream showed fire. Root cause: no curator role audits the gap between self-report and ground truth. Proposed: curator-opus-fresh-eyes (or named "mirror" — open). Compares fleet-brief output, SLO check, curator heartbeat-without-action ratios, detector grep coverage vs EVENT_REGISTRY.yaml kinds, roadmap-bottleneck vs pickable distribution. Emits exactly ONE finding per cycle (anti-noise discipline). Never picks gaps; files advisory P2 with observable signal. Three delivery surfaces: (1) recurring Opus curator on 2-4h cron, (2) thin /fresh-eyes slash command any role can run pre-pickup, (3) SessionStart hook enhancement in freshness-preamble.sh. Builds on META-127 (curator-role productization) and META-115 (freshness-preamble). Open question: name — fresh-eyes (colloquial), mirror (short), reality-check (descriptive), 10k-ft (operator phrase). Awaiting fleet FEEDBACK.
+  acceptance_criteria:
+    - .claude/agents/fresh-eyes.md role doc with discipline body (or whatever final name lands)
+    - "scripts/coord/fresh-eyes-loop.sh harness-neutral CLI with subcommands: tick (one cycle), audit (run all 5 comparators, emit findings), heartbeat (liveness), help"
+    - .claude/skills/fresh-eyes/SKILL.md thin wrapper following the ci-audit/handoff/target productization template
+    - launchd plist .chump/launchd/com.chump.fresh-eyes.plist runs scripts/coord/fresh-eyes-loop.sh tick on 4h cron; chump-fleet-bootstrap.sh installs it
+    - "Comparator 1: fleet-brief banner (\"No urgent actions\") vs ambient regression_attributed/pr_stuck/silent_agent count in last 30min — emit fresh_eyes_disagreement if banner=ok and events>0"
+    - "Comparator 2: union of detector greps in scripts/coord/*-loop.sh vs registered kinds in docs/observability/EVENT_REGISTRY.yaml — flag kinds with zero curator coverage"
+    - "Comparator 3: per-curator heartbeats/cycle vs sub_agent_dispatched + DONE broadcasts in same window — flag curators with heartbeat>0 and action=0 over 4+ ticks (silent_agent root cause)"
+    - "Comparator 4: SessionStart fleet-brief health-line vs chump health --slo-check exit — flag disagreement"
+    - "Comparator 5: docs/ROADMAP.md bottleneck milestone vs last-7d shipped PR title pillar distribution — flag if shipped distribution starves the bottleneck pillar"
+    - "Cycle output: exactly ONE finding per tick (rank-1 by severity); over-cap findings stored in .chump/fresh-eyes/backlog.jsonl for next cycle (anti-noise discipline)"
+    - "New ambient event kinds added to docs/observability/EVENT_REGISTRY.yaml: fresh_eyes_heartbeat, fresh_eyes_tick, fresh_eyes_disagreement (with comparator_id + detail field), fresh_eyes_coverage_gap, fresh_eyes_silent_curator (per session_id)"
+    - "Lane refusal: when operator says \"rescue this PR\" or \"claim this gap\", fresh-eyes refuses politely and routes to shepherd/target/ci-audit per the kind of work; never claims its own lane"
+    - scripts/ci/test-fresh-eyes-loop.sh smoke test exercising each subcommand + 1 fixture per comparator (5 synthetic disagreement injections, assert correct finding emitted)
+    - "Consensus broadcast: BEFORE landing the implementation PR, emit FEEDBACK broadcast asking fleet for name vote + scope objections + lane-boundary concerns; wait 24h for replies; record the consensus snapshot in docs/syntheses/FRESH_EYES_CONSENSUS_2026-05-30.md"
+

@@ -1,0 +1,11 @@
+- id: META-138
+  domain: META
+  title: "META: Implement Path-Aware Lane Skip Logic in Aggregator (META-131 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The 'Verified' aggregator service correctly identifies which lane checks are relevant based on PR path filters.
+    - The aggregator can determine when a lane check *should* be skipped due to path filters.
+    - The aggregator logs its path-filtering decisions for auditing.
+

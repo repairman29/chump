@@ -1,17 +1,26 @@
 - id: INFRA-1946
   domain: INFRA
-  title: "INFRA-1862 slice C: undeliverable-msg dead-letter queue — msgs to dormant inbox park in .chump-locks/inbox/dead-letter.jsonl after N=30min, operator-pageable via INFRA-626 operator-recall"
-  status: open
+  title: 'INFRA-1862 slice C: undeliverable-msg dead-letter queue — msgs to dormant inbox park in .chump-locks/inbox/dead-letter.jsonl
+    after N=30min, operator-pageable via INFRA-626 operator-recall'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Background — when wizard sends to a dormant inbox, the msg sits forever unread (today's session: 4 curator inboxes accumulated 5K-19K bytes of unread dispatches). No reaper, no pager, no closure. INFRA-1862 slice C closes the loop"
-    - "New scripts/coord/a2a-dead-letter-reaper.sh — every 30min, scans .chump-locks/inbox/*.jsonl + cursors; for each msg older than CHUMP_A2A_DEAD_LETTER_MIN (default 30) where the recipient has not read it (cursor age > msg ts), appends the msg to .chump-locks/inbox/dead-letter.jsonl with original recipient + ts + msg body"
-    - "Emits ambient kind=a2a_msg_dead_lettered {to, sender, age_min, msg_summary} per dead-lettered msg"
-    - "If N dead-lettered msgs in 30min exceed CHUMP_A2A_DEAD_LETTER_PAGE_THRESHOLD (default 5), invokes scripts/dispatch/operator-recall.sh --condition A2A_DEAD_LETTER_FLOOD with reason"
-    - "New scripts/setup/install-a2a-dead-letter-reaper-launchd.sh — 30min cadence"
-    - "Update bootstrap-manifest.yaml + the unmapped register per INFRA-1926 CI gate"
-    - "Smoke test scripts/ci/test-a2a-dead-letter.sh — synth inbox with msg older than threshold + unread cursor; run reaper; assert dead-letter file grew + a2a_msg_dead_lettered emitted; if N>=threshold, assert operator-recall called"
-    - "Pairs with INFRA-1944/1945; INFRA-1862 slice C of E"
-    - "Done definition — msgs to dormant inboxes never disappear silently; either delivered, dead-lettered, or flooded-paged"
-  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  - 'Background — when wizard sends to a dormant inbox, the msg sits forever unread (today''s session: 4 curator inboxes accumulated
+    5K-19K bytes of unread dispatches). No reaper, no pager, no closure. INFRA-1862 slice C closes the loop'
+  - New scripts/coord/a2a-dead-letter-reaper.sh — every 30min, scans .chump-locks/inbox/*.jsonl + cursors; for each msg older
+    than CHUMP_A2A_DEAD_LETTER_MIN (default 30) where the recipient has not read it (cursor age > msg ts), appends the msg
+    to .chump-locks/inbox/dead-letter.jsonl with original recipient + ts + msg body
+  - Emits ambient kind=a2a_msg_dead_lettered {to, sender, age_min, msg_summary} per dead-lettered msg
+  - If N dead-lettered msgs in 30min exceed CHUMP_A2A_DEAD_LETTER_PAGE_THRESHOLD (default 5), invokes scripts/dispatch/operator-recall.sh
+    --condition A2A_DEAD_LETTER_FLOOD with reason
+  - New scripts/setup/install-a2a-dead-letter-reaper-launchd.sh — 30min cadence
+  - Update bootstrap-manifest.yaml + the unmapped register per INFRA-1926 CI gate
+  - Smoke test scripts/ci/test-a2a-dead-letter.sh — synth inbox with msg older than threshold + unread cursor; run reaper;
+    assert dead-letter file grew + a2a_msg_dead_lettered emitted; if N>=threshold, assert operator-recall called
+  - Pairs with INFRA-1944/1945; INFRA-1862 slice C of E
+  - Done definition — msgs to dormant inboxes never disappear silently; either delivered, dead-lettered, or flooded-paged
+  notes: filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice
+    of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  closed_date: '2026-05-25'
+  closed_pr: 2535

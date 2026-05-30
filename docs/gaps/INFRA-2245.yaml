@@ -1,0 +1,12 @@
+- id: INFRA-2245
+  domain: INFRA
+  title: "EFFECTIVE P2: bacon.toml for operator dev hot-reload — fast incremental cargo check on file save (modern alternative to cargo-watch)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. bacon.toml at repo root with jobs: check (cargo check --all --workspace), clippy (cargo clippy --workspace --all-targets), test-quick (cargo nextest run --lib --no-fail-fast)"
+    - "2. Docs in docs/process/LOCAL_DEV.md explaining: install via cargo binstall bacon; run via 'bacon' in repo root; switch jobs with // keys"
+    - 3. CLAUDE.md / AGENTS.md gain a 'Local dev hot-reload' section pointing to bacon (alongside existing cargo-watch alternative)
+    - "4. Test: scripts/ci/test-bacon-config.sh — assert bacon.toml syntax valid + has the 3 jobs"
+

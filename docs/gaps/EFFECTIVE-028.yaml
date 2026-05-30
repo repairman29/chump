@@ -1,0 +1,18 @@
+- id: EFFECTIVE-028
+  domain: EFFECTIVE
+  title: "EFFECTIVE: broadcast.sh --reply-to / corr_id threading — let peers FEEDBACK against a specific broadcast"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    scripts/coord/broadcast.sh today emits events with no correlation-id semantics. When a peer wants to reply to a specific proposal (FEEDBACK on META-129, INFRA-2206, etc.), there's no clean way to thread the reply against the original — the conversation is flat. Add --reply-to <corr_id> flag that copies the parent corr_id into the new event's parent_corr_id field. Add --corr-id <id> flag that overrides the auto-generated id (otherwise: uuid v7 by default so corr_ids sort chronologically and are unique). The fleet-wire leaderboard (CREDIBLE-081) then uses parent_corr_id to compute consumer-ack counts. Backward compatible: corr_id always emitted (auto-gen if absent); --reply-to is opt-in.
+  acceptance_criteria:
+    - scripts/coord/broadcast.sh accepts --corr-id <ID> and --reply-to <PARENT-CORR-ID> flags
+    - Default corr_id = uuid v7 (time-sortable) generated at emit time; available to caller via stdout when using --print-corr-id
+    - Emitted events include corr_id and (when --reply-to provided) parent_corr_id fields in the JSON payload
+    - crates/chump-coord emit also accepts --reply-to (parity with shell broadcast.sh)
+    - EVENT_REGISTRY.yaml documents corr_id and parent_corr_id as universal fields available on every kind
+    - "Smoke test scripts/ci/test-broadcast-reply-threading.sh: emit a proposal, capture corr_id, emit a reply with --reply-to, assert parent_corr_id matches"
+    - README at scripts/coord/broadcast.sh top-comment documents the threading semantics
+  depends_on: [META-155]
+

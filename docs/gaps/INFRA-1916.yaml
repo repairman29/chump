@@ -1,13 +1,27 @@
 - id: INFRA-1916
   domain: INFRA
-  title: "EFFECTIVE P0: re-add chump-pillar-health hidden backing widget to web/v2/index.html — INFRA-1585 consolidation removed it, audit-required test-pillar-dashboard fails on EVERY PR (fleet-wedge keystone)"
-  status: open
+  title: 'EFFECTIVE P0: re-add chump-pillar-health hidden backing widget to web/v2/index.html — INFRA-1585 consolidation removed
+    it, audit-required test-pillar-dashboard fails on EVERY PR (fleet-wedge keystone)'
+  status: done
   priority: P0
   effort: xs
   acceptance_criteria:
-    - "Root cause — INFRA-1585 (#2475 PWA onboarding consolidation, merged 14:23Z 2026-05-24) removed the chump-pillar-health element from web/v2/index.html as part of the 4-chip header dedup; the underlying widget (pillar-health.js) still loads and polls /api/health/pillars but is never DOM-instantiated. scripts/ci/test-pillar-dashboard.sh §4 hard-greps for the literal element in index.html — fails. Test is in audit-required gate, so EVERY downstream PR fails audit-required with the same error. Today this wedged 7 PRs (#2436/#2438/#2448/#2455/#2460/#2464/#2466)"
-    - "Fix — add `<chump-pillar-health hidden></chump-pillar-health>` to web/v2/index.html (immediately after chump-status-footer) with an HTML comment explaining why it persists despite the visual consolidation. The hidden attribute keeps the test contract while respecting INFRA-1585's no-visible-chip intent"
-    - "Local verification — `bash scripts/ci/test-pillar-dashboard.sh` exits 0 (currently fails with FAIL <chump-pillar-health> missing from web/v2/index.html)"
-    - "Follow-up gap (separate, P2) — update test-pillar-dashboard.sh to check for the status-footer pillar-grades slot instead of the legacy element, then remove the hidden widget"
-    - "Done definition — PR merged + all 7 currently-wedged BLOCKED-armed PRs (#2436/#2438/#2448/#2455/#2460/#2464/#2466) clear audit-required on next CI cycle"
-  notes: filed 14:42Z 2026-05-24 by wizard during loop iter 3; fleet-wedge keystone bug — single-line fix unwedges 7 PRs. Adjacent pattern to INFRA-1832 (events.rs Debug panic) — 'broken on main, every PR fails' is exactly the class INFRA-1855 cargo-test workspace gate would catch
+  - Root cause — INFRA-1585 (#2475 PWA onboarding consolidation, merged 14:23Z 2026-05-24) removed the chump-pillar-health
+    element from web/v2/index.html as part of the 4-chip header dedup; the underlying widget (pillar-health.js) still loads
+    and polls /api/health/pillars but is never DOM-instantiated. scripts/ci/test-pillar-dashboard.sh §4 hard-greps for the
+    literal element in index.html — fails. Test is in audit-required gate, so EVERY downstream PR fails audit-required with
+    the same error. Today this wedged 7 PRs (#2436/#2438/#2448/#2455/#2460/#2464/#2466)
+  - Fix — add `<chump-pillar-health hidden></chump-pillar-health>` to web/v2/index.html (immediately after chump-status-footer)
+    with an HTML comment explaining why it persists despite the visual consolidation. The hidden attribute keeps the test
+    contract while respecting INFRA-1585's no-visible-chip intent
+  - Local verification — `bash scripts/ci/test-pillar-dashboard.sh` exits 0 (currently fails with FAIL <chump-pillar-health>
+    missing from web/v2/index.html)
+  - Follow-up gap (separate, P2) — update test-pillar-dashboard.sh to check for the status-footer pillar-grades slot instead
+    of the legacy element, then remove the hidden widget
+  - Done definition — PR merged + all 7 currently-wedged BLOCKED-armed PRs (#2436/#2438/#2448/#2455/#2460/#2464/#2466) clear
+    audit-required on next CI cycle
+  notes: filed 14:42Z 2026-05-24 by wizard during loop iter 3; fleet-wedge keystone bug — single-line fix unwedges 7 PRs.
+    Adjacent pattern to INFRA-1832 (events.rs Debug panic) — 'broken on main, every PR fails' is exactly the class INFRA-1855
+    cargo-test workspace gate would catch
+  closed_date: '2026-05-25'
+  closed_pr: 2534

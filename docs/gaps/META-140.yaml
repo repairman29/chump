@@ -1,0 +1,11 @@
+- id: META-140
+  domain: META
+  title: "META: Design Flake Quarantine Mechanism Details (META-131 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A detailed design document or section in `CI_VERIFIED_AGGREGATOR.md` specifies the exact criteria for flake detection (e.g., 3+ consecutive failures, error fingerprinting).
+    - The design specifies how flake data will be stored and managed.
+    - The design specifies the process for un-quarantining a test.
+

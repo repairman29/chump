@@ -1,30 +1,36 @@
 - id: INFRA-1237
   domain: INFRA
-  title: "CREDIBLE: EVENT_REGISTRY.yaml drift — 22 emit-without-register kinds + 88 register-without-emit orphans; pre-commit guard only checks staged diff"
-  status: open
+  title: 'CREDIBLE: EVENT_REGISTRY.yaml drift — 22 emit-without-register kinds + 88 register-without-emit orphans; pre-commit
+    guard only checks staged diff'
+  status: done
   priority: P0
   effort: m
-  description: |
-    Source: 2026-05-14 resilience+observability+UX audit, Part 2 finding #7 — top signal.
-    
-    scripts/git-hooks/pre-commit-event-registry.sh:42 enforces EVENT_REGISTRY.yaml on STAGED ADDITIONS only ('git diff --cached … -- '*.rs' …'). Existing emit sites that predate INFRA-754 or were committed while the guard was bypassed never get caught. Result today:
-      - 22 emit-without-register kinds in production: dup_pr_blocked (bot-merge), gh_secondary_limit_hit (lib/github.sh), meta_filed (gap-reserve), pr_scope_divergence, session_rescue, timeout_rescue, lint_storm, … and 15 more.
-      - 88 register-without-emit orphans: adversary_alert, auto_merge_armed, branch_protection_drift, cost_budget_breach, gap_abandoned, daemon_silent, … the registry is currently aspirational doc, not ground truth.
-    
-    Consumers (waste-tally, fleet-brief, kpi-report) parse these events to drive operator decisions. Registry drift degrades trust silently — operator dashboards display kinds that nobody emits and miss kinds that fire daily.
-    
-    Why P0: this is the credibility floor of the whole observability layer. Until fixed, every claim about 'we emit X' from CLAUDE.md is unverified.
-    
-    Acceptance:
-    1. scripts/ci/test-event-registry-coverage.sh: full repo grep for `"kind":"..."` literals in src/ + crates/ + scripts/ ; diff against EVENT_REGISTRY.yaml; fail on either direction (emit-without-register OR register-without-emit, with allowlist for intentional reserved kinds).
-    2. Add to fast-checks in .github/workflows/ci.yml so the gate is enforced on every PR, not just staged-diff.
-    3. Initial reconciliation: register the 22 emitters; either implement-or-prune the 88 orphans.
-    4. Document the registry as ground truth in docs/observability/EVENT_REGISTRY.yaml header.
+  description: "Source: 2026-05-14 resilience+observability+UX audit, Part 2 finding #7 — top signal.\n\nscripts/git-hooks/pre-commit-event-registry.sh:42\
+    \ enforces EVENT_REGISTRY.yaml on STAGED ADDITIONS only ('git diff --cached … -- '*.rs' …'). Existing emit sites that\
+    \ predate INFRA-754 or were committed while the guard was bypassed never get caught. Result today:\n  - 22 emit-without-register\
+    \ kinds in production: dup_pr_blocked (bot-merge), gh_secondary_limit_hit (lib/github.sh), meta_filed (gap-reserve), pr_scope_divergence,\
+    \ session_rescue, timeout_rescue, lint_storm, … and 15 more.\n  - 88 register-without-emit orphans: adversary_alert, auto_merge_armed,\
+    \ branch_protection_drift, cost_budget_breach, gap_abandoned, daemon_silent, … the registry is currently aspirational\
+    \ doc, not ground truth.\n\nConsumers (waste-tally, fleet-brief, kpi-report) parse these events to drive operator decisions.\
+    \ Registry drift degrades trust silently — operator dashboards display kinds that nobody emits and miss kinds that fire\
+    \ daily.\n\nWhy P0: this is the credibility floor of the whole observability layer. Until fixed, every claim about 'we\
+    \ emit X' from CLAUDE.md is unverified.\n\nAcceptance:\n1. scripts/ci/test-event-registry-coverage.sh: full repo grep\
+    \ for `\"kind\":\"...\"` literals in src/ + crates/ + scripts/ ; diff against EVENT_REGISTRY.yaml; fail on either direction\
+    \ (emit-without-register OR register-without-emit, with allowlist for intentional reserved kinds).\n2. Add to fast-checks\
+    \ in .github/workflows/ci.yml so the gate is enforced on every PR, not just staged-diff.\n3. Initial reconciliation: register\
+    \ the 22 emitters; either implement-or-prune the 88 orphans.\n4. Document the registry as ground truth in docs/observability/EVENT_REGISTRY.yaml\
+    \ header.\n"
   acceptance_criteria:
-    - "scripts/ci/test-event-registry-coverage.sh exists: greps src/ + crates/ + scripts/ for `\"kind\":\"...\"` JSON literals; parses docs/observability/EVENT_REGISTRY.yaml; reports emit-without-register AND register-without-emit drift"
-    - Drift gate fails the build on either direction unless the kind is in an explicit reserved-kinds allowlist (scripts/ci/event-registry-reserved.txt) with a comment explaining why
-    - "Initial reconciliation lands: every emit-without-register kind is added to EVENT_REGISTRY.yaml with proper {emitter, trigger, consumers, fields_required}; every register-without-emit orphan is either implemented or removed from the YAML"
-    - Audit script wired into fast-checks in .github/workflows/ci.yml so it runs on every PR (not just staged diff like the existing pre-commit-event-registry.sh)
-    - "EVENT_REGISTRY.yaml header updated to state explicitly: this file is the ground-truth contract — fleet-brief, waste-tally, kpi-report consumers depend on it; CI gate enforces both-direction coverage per INFRA-1237"
-    - "Fixture test: a tmp .rs file with an unregistered emit fails the audit; same emit registered passes; an unmatched register entry also fails"
-
+  - 'scripts/ci/test-event-registry-coverage.sh exists: greps src/ + crates/ + scripts/ for `"kind":"..."` JSON literals;
+    parses docs/observability/EVENT_REGISTRY.yaml; reports emit-without-register AND register-without-emit drift'
+  - Drift gate fails the build on either direction unless the kind is in an explicit reserved-kinds allowlist (scripts/ci/event-registry-reserved.txt)
+    with a comment explaining why
+  - 'Initial reconciliation lands: every emit-without-register kind is added to EVENT_REGISTRY.yaml with proper {emitter,
+    trigger, consumers, fields_required}; every register-without-emit orphan is either implemented or removed from the YAML'
+  - Audit script wired into fast-checks in .github/workflows/ci.yml so it runs on every PR (not just staged diff like the
+    existing pre-commit-event-registry.sh)
+  - 'EVENT_REGISTRY.yaml header updated to state explicitly: this file is the ground-truth contract — fleet-brief, waste-tally,
+    kpi-report consumers depend on it; CI gate enforces both-direction coverage per INFRA-1237'
+  - 'Fixture test: a tmp .rs file with an unregistered emit fails the audit; same emit registered passes; an unmatched register
+    entry also fails'
+  closed_date: '2026-05-14'

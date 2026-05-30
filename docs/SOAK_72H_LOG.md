@@ -109,3 +109,153 @@ or every hour for finer granularity; both work).
 | SQLite errors (last 500 lines) | 0 |
 | Largest logs | 20M vllm-mlx-8000.log;9.3M ollama-serve.log;8.8M farmer-brown-launchd.out.log; |
 
+
+### Checkpoint: 2026-05-29T22:12:50Z (T0+641h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 64K |
+| logs/ size | 398M |
+| sessions/ size | 5.0M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 0.3M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-29T23:11:59Z (T0+642h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 64K |
+| logs/ size | 402M |
+| sessions/ size | 5.0M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 0.3M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-29T23:12:53Z (T0+642h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 64K |
+| logs/ size | 402M |
+| sessions/ size | 5.0M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 0.3M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T00:13:07Z (T0+643h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 64K |
+| logs/ size | 404M |
+| sessions/ size | 5.0M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 7.3M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T01:13:11Z (T0+644h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 0B |
+| logs/ size | 403M |
+| sessions/ size | 4.9M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 7.5M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T02:13:44Z (T0+645h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 0B |
+| logs/ size | 404M |
+| sessions/ size | 4.9M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 8.0M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T03:24:50Z (T0+647h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 0B |
+| logs/ size | 404M |
+| sessions/ size | 4.9M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 3.0M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T03:26:35Z (T0+647h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 0B |
+| logs/ size | 404M |
+| sessions/ size | 4.9M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 7.9M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T04:26:36Z (T0+648h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 0B |
+| logs/ size | 404M |
+| sessions/ size | 4.9M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 7.9M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+
+
+### Checkpoint: 2026-05-30T05:26:39Z (T0+649h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.5M |
+| WAL | 145K |
+| logs/ size | 406M |
+| sessions/ size | 5.1M |
+| Model server | web_unreachable_000000 |
+| Chump RSS | 8.2M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 30M vllm-mlx-8000.log;13M farmer-brown-launchd.out.log;11M farmer-brown.log; |
+

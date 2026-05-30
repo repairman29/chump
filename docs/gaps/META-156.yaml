@@ -1,0 +1,18 @@
+- id: META-156
+  domain: META
+  title: bot-merge.sh init step hangs silently with no operator-visible signal — relies on 600s SIGTERM budget; logs land in worktree-local file curator can't easily find
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Demonstrated 2026-05-30T04:16-04:26Z: bot-merge.sh launched as background bash for CREDIBLE-079; foreground bash exited immediately with 0-byte output. The real log went to /private/tmp/chump-credible-079/.chump-locks/bot-merge-1462.log (worktree-local, no operator hint). Bot-merge ran preflight OK then tried chump claim which failed with "worktree path already exists" (re-claim from the outer claim wasn-t expected); it then hung 10min at "init" step until budget SIGTERM killed it at 04:26Z. Caller (this Opus session) had no idea bot-merge was dead until 25min later when I checked. The lease vanished, no PR opened, no branch pushed. Operator had to manually recover with CHUMP_OPERATOR_RECOVERY=1 git push, gh pr create, gh pr merge --auto. Real failure rate per session: high (saw it once today; SUBAGENT_DISPATCH.md already calls out the 15min budget as a stall pattern). Pairs with META-154 sibling-status (would have showed bot-merge session as silent within 5min) and META-152 lane-recommend (would not have re-recommended this lane while bot-merge silently dead).
+  acceptance_criteria:
+    - bot-merge.sh emits kind=bot_merge_step_started + kind=bot_merge_step_done to ambient.jsonl for each named step (init, preflight, claim, push, pr_create, pr_merge_arm, pr_wait_merge, post_ship). Step-done includes duration_ms and rc
+    - bot-merge.sh re-claim failure (worktree exists) auto-retries with --force-recover when the outer caller is the same session_id (read from CHUMP_SESSION_ID env if set); otherwise fails fast with operator-visible reason
+    - GraphQL 401 / graphql_exhausted is hard-fail-fast in bot-merge init step (don-t retry-loop until budget kills you) — emit kind=bot_merge_aborted_no_auth and exit 1 within 30s
+    - "bot-merge.sh log path advertised to operator: when launched as background, append .log path to a session-visible file (.chump-locks/bot-merge-active-<session_id>.path) so operator/curator can tail -F immediately"
+    - Foreground bot-merge.sh prints log path to stdout in first second of execution (not deferred to log file) so IDE callers see where output is going
+    - Budget enforcement (currently 600s default, CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S=900 per SUBAGENT_DISPATCH.md) emits intermediate alerts at 50% / 75% / 90% as kind=bot_merge_budget_warn — currently the FIRST signal operator sees is the 100% SIGTERM
+    - Step-done emits roll up into ambient kind=bot_merge_completed {gap_id, pr_number, duration_ms, terminal_state} on graceful exit; this is what META-154 sibling-status and downstream consumers should match against
+    - "scripts/ci/test-bot-merge-step-emits.sh smoke: stub out gh + git, run bot-merge --gap FIXTURE-001 against a tmp worktree, assert all 8 step-started/step-done events emitted in order"
+

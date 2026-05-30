@@ -1,14 +1,16 @@
 - id: INFRA-2041
   domain: INFRA
-  title: "EFFECTIVE: persist admin-merge ruleset JSON snapshots — eliminate /tmp GC silent-fail class"
-  status: open
+  title: 'EFFECTIVE: persist admin-merge ruleset JSON snapshots — eliminate /tmp GC silent-fail class'
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
-    - "scripts/ops/ruleset-snapshots/drop.json and restore.json are checked in and parse as valid JSON"
-    - "Both snapshot files contain required top-level keys: name, target, rules"
-    - "drop.json has no required_status_checks rule; restore.json has exactly one with contexts: test, audit, ACP protocol smoke test"
-    - "scripts/ops/admin-merge-cycle.sh --pr <N> wraps the drop/merge/restore cycle reading from snapshot files (no /tmp dependency)"
-    - "scripts/ci/test-ruleset-snapshots.sh passes 100% with no live API calls"
-    - "admin-merge-cycle.sh emits kind=admin_merge_cycle_ok or kind=admin_merge_cycle_restore_failed to ambient.jsonl"
-    - "CRITICAL restore failure exits with code 2 and prints operator recovery command"
+  - scripts/ops/ruleset-snapshots/drop.json and restore.json are checked in and parse as valid JSON
+  - 'Both snapshot files contain required top-level keys: name, target, rules'
+  - 'drop.json has no required_status_checks rule; restore.json has exactly one with contexts: test, audit, ACP protocol smoke
+    test'
+  - scripts/ops/admin-merge-cycle.sh --pr <N> wraps the drop/merge/restore cycle reading from snapshot files (no /tmp dependency)
+  - scripts/ci/test-ruleset-snapshots.sh passes 100% with no live API calls
+  - admin-merge-cycle.sh emits kind=admin_merge_cycle_ok or kind=admin_merge_cycle_restore_failed to ambient.jsonl
+  - CRITICAL restore failure exits with code 2 and prints operator recovery command
+  closed_date: '2026-05-27'

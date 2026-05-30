@@ -1,0 +1,17 @@
+- id: INFRA-2250
+  domain: INFRA
+  title: "EFFECTIVE P1 (META-128 SCALE): ARC (Actions Runner Controller) on K8s — ephemeral self-hosted runners auto-scaling to demand; replaces 4-Mac-mini bottleneck (today: 17 queued steady-state) blocking AI-fleet scaling past ~10 concurrent agents"
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "1. Survey decision: K8s cluster type (kind/minikube for dev validation; GKE/EKS for prod). Recommend GKE Autopilot for AI-fleet-scale (no node mgmt; pay-per-pod-second)."
+    - "2. Install ARC (Actions Runner Controller) via Helm: 'helm install arc' + RunnerDeployment YAML pointing at repairman29/chump."
+    - "3. RunnerDeployment spec: minReplicas=2 (warm pool), maxReplicas=50 (burst), runner image based on ghcr.io/repairman29/chump-ci:latest (INFRA-2241 prebuilt) so each runner has Rust+sccache+nextest ready."
+    - 4. Modify ci.yml self-hosted job 'runs-on' from current [self-hosted, macos-arm64, chump-fleet] to support a new label like [self-hosted, arc-linux] for jobs that don't need macOS.
+    - "5. Cost guard: AlertManager rule fires when monthly runner-cost > ; auto-pauses scaling at  cap. Operator override."
+    - "6. Migration: phase rollout — first migrate cargo-test (highest-volume job), then clippy/audit. Keep Mac runners for ACP smoke + tauri (mac-only)."
+    - "7. Validate: at 50 concurrent agents, runner queue drains in <2min steady-state (current: 17 queued for ~60min)."
+    - "8. Doc: docs/process/ARC_DEPLOYMENT.md — Helm install, label selectors, cost monitoring, rollback path back to fixed Mac runners."
+    - "9. Operator action: provide K8s cluster + cloud account; ARC needs cluster-admin Helm install"
+

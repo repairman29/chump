@@ -1,0 +1,19 @@
+- id: META-161
+  domain: META
+  title: "META-157-d: external-collab + infra-watcher + md-links + observability loops gain Phase 0 inbox-drain + feedback-peek (4 loops bundled)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Sub-slice D of META-157. Apply Phase 0 inbox-drain pattern to the 4 remaining dark loops (external-collab, infra-watcher, md-links, observability). See docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3 Slice 4. MIRROR what META-160 ships for decompose-loop — use the same _drain_inbox + _peek_pending_feedback helpers (copy or shared lib).
+  acceptance_criteria:
+    - scripts/coord/external-collab-loop.sh adds Phase 0 _drain_inbox + _peek_pending_feedback identical to META-160 decompose pattern
+    - scripts/coord/infra-watcher-loop.sh adds same Phase 0
+    - scripts/coord/md-links-loop.sh adds same Phase 0
+    - scripts/coord/observability-loop.sh adds same Phase 0
+    - "Per-loop test fixtures: scripts/ci/test-external-collab-loop.sh + test-infra-watcher-loop.sh + test-md-links-loop.sh + test-observability-loop.sh each gain a \"Phase 0 inbox-drain\" smoke test (stub up 1 inbox msg + 1 ambient FEEDBACK, assert actionable + header)"
+    - "Feature flag: gated behind CHUMP_FLEET_RECV_SIDE_V0=1; unset = skip Phase 0"
+    - "Optional but preferred: extract _drain_inbox + _peek_pending_feedback into scripts/coord/lib/inbox-helpers.sh and source from each loop (reduces duplication; if extracted, META-160 is NOT modified — that ships first, this just creates the shared lib and migrates the 4 new loops)"
+    - No edits outside the 4 loop scripts + 4 test scripts + optional scripts/coord/lib/inbox-helpers.sh + docs/gaps/META-161.yaml
+  closed_date: '2026-05-30'
+

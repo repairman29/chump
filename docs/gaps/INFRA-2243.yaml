@@ -1,0 +1,14 @@
+- id: INFRA-2243
+  domain: INFRA
+  title: "EFFECTIVE P1: nextest matrix sharding — split cargo-test across 4 ubuntu-latest runners via cargo-nextest --partition; 4× test wall-clock parallelism"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. .github/workflows/ci.yml cargo-test job converted to matrix with N=4 shards. Each runs 'cargo nextest run --partition count:i/4'. Parallel ubuntu-latest runners."
+    - 2. Required-check 'cargo-test-required' gates on all 4 shards passing (use github-required-checks aggregation pattern)
+    - 3. cargo-test-stub adjusts to also have N=4 stub names matching (cargo-test-1, cargo-test-2, etc.) so doc-only PRs satisfy all 4 via stubs
+    - 4. Coverage job stays single-runner (llvm-cov harder to merge across shards; can re-fan-out later if needed)
+    - "5. Measurement: median cargo-test wall-clock before vs after — target 60-75% reduction (limited by longest shard's tests)"
+    - "6. Test: scripts/ci/test-nextest-sharding.sh — assert matrix syntax, all 4 shards have stubs, required-check name aggregates"
+

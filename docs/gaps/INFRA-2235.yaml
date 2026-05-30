@@ -1,0 +1,15 @@
+- id: INFRA-2235
+  domain: INFRA
+  title: "RESILIENT: chump claim --force-recover destroys uncommitted worktree state — needs --commit-wip flag OR explicit confirmation prompt"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Detect uncommitted changes in target worktree before --force-recover wipes it
+    - "Default behavior: refuse with operator message naming the dirty files + suggesting (a) commit + push first, (b) --force-recover --discard-wip if data loss is intended, (c) edit lease file directly to take over the same session_id"
+    - Audit emit kind=force_recover_wip_loss with files_lost count + paths
+    - "Smoke test scripts/ci/test-claim-force-recover-wip.sh: synth worktree with 1 uncommitted file + lease, run chump claim --force-recover X, assert exit non-zero + operator message + WIP file still present in worktree"
+    - "Bypass: --discard-wip flag for legitimate destroy-state cases"
+  notes: |
+    [2026-05-30T02:58:11Z] Filed by curator-opus-shepherd-2026-05-29 cycle 14 after cycle-13 incident: dispatched Sonnet on INFRA-2071, Sonnet stalled at 7/8 tests (90% complete impl). My recovery attempt to re-claim used --force-recover (per the error message hint) which wiped: (a) Sonnet's 3 modified files + 1 new file, (b) my 2 fixes to the failing test. Loss was unrecoverable because nothing was committed. The --force-recover message says 'auto-clean' but doesn't warn that uncommitted changes will be lost. Self-improving fleet behavior: stop accidental data loss.
+
