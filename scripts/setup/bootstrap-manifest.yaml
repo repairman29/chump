@@ -133,3 +133,24 @@ installers:
     install: bash scripts/setup/install-fleet-server.sh
     check: launchctl list 2>/dev/null | grep -q com.chump.fleet-server
     adds: ~/Library/LaunchAgents/com.chump.fleet-server.plist + KeepAlive server on 127.0.0.1:7070
+
+  - id: daemon-activator-launchd
+    why: META-225 — 5-min Quartermaster auto-fixer that scans last 24h of main commits for new install-*.sh or *.plist files and loads them via launchctl if absent. Eliminates the manual "forgot to run the installer after merge" class of unwedging. Self-bootstrapping on first tick.
+    priority: P1
+    install: bash scripts/setup/install-daemon-activator.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.daemon-activator
+    adds: ~/Library/LaunchAgents/com.chump.daemon-activator.plist + 5-min run
+
+  - id: ghost-pr-closer-launchd
+    why: META-225 — 15-min Quartermaster auto-fixer that scans open PRs and closes those where the underlying gap is already status=done AND the PR is DIRTY/CONFLICTING. Eliminates the ghost-PR accumulation class of unwedging. Self-throttles to 5 closes per run; overflow deferred to .chump/ghost-pr-deferred.jsonl.
+    priority: P1
+    install: bash scripts/setup/install-ghost-pr-closer.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.ghost-pr-closer
+    adds: ~/Library/LaunchAgents/com.chump.ghost-pr-closer.plist + 15-min run
+
+  - id: main-worktree-drift-detector-launchd
+    why: META-225 — 30-min Quartermaster auto-fixer that measures untracked yaml under docs/gaps/ and commits-behind-origin/main in the main worktree; alerts via ambient event and auto-reserves a cleanup gap when thresholds breach (untracked>50 OR behind>20). Debounced 6h. Eliminates the silent drift accumulation that blocks shepherd operations.
+    priority: P1
+    install: bash scripts/setup/install-main-worktree-drift-detector.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.main-worktree-drift-detector
+    adds: ~/Library/LaunchAgents/com.chump.main-worktree-drift-detector.plist + 30-min run
