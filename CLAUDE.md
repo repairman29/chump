@@ -110,6 +110,12 @@ gh pr merge <N> --auto --squash
 chump gap ship <ID> --update-yaml
 ```
 
+## Scheduling discipline — session-bound vs fleet-durable
+
+For the full scheduling rule, decision table, anti-patterns, and migration guide from CronCreate to launchd, see **[`docs/process/SCHEDULING_LAYERS.md`](./docs/process/SCHEDULING_LAYERS.md)** (DOC-058).
+
+Quick rule: if the work must run after you close this Claude Code session → use a launchd plist (`chump cron install`). If it only needs to run while you're present → CronCreate / ScheduleWakeup / Monitor.
+
 ## Spawning subagents (META-027) — Claude-Code-only
 
 > Uses Claude Code's `Agent` tool. Non-Claude harnesses parallelize via the fleet (multiple workers) — see harness contract doc §Out-of-scope.
