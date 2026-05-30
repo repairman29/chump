@@ -117,6 +117,12 @@ bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on
 bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
 bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
 bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
+# META-156: per-step observability + fail-fast kinds
+bot_merge_step_started   # reason: META-156 AC#1 — emitted by _bm_emit_step_started() in bot-merge.sh at each named step (init/preflight/claim/push/pr_create/pr_merge_arm/pr_wait_merge/post_ship); helper uses variable-assembled printf so literal "kind":"bot_merge_step_started" not grep-scannable
+bot_merge_step_done      # reason: META-156 AC#1 — emitted by _bm_emit_step_done() in bot-merge.sh at each named step with duration_ms and rc; same variable-assembled printf pattern
+bot_merge_aborted_no_auth  # reason: META-156 AC#3 — emitted by bot-merge.sh on GraphQL 401 / graphql_exhausted hard-fail-fast in init step; variable-assembled printf
+bot_merge_budget_warn    # reason: META-156 AC#6 — emitted by bot-merge.sh total-budget watchdog at 50%/75%/90% thresholds; variable-assembled printf
+bot_merge_completed      # reason: META-156 AC#7 — emitted by bot-merge.sh graceful-exit roll-up with gap_id/pr_number/duration_ms/terminal_state; variable-assembled printf
 bypass_threshold_breach  # reason: INFRA-1837 — emitted by scripts/ops/audit-bypass-frequency.sh from inside a python3 heredoc dict (per breaching session); kind literal lives in python dict, not grep-scannable as kind=X
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
 capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/src/capability.rs publish_manifest(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
@@ -444,3 +450,6 @@ fleet_a2a_backpressure # reason: INFRA-1118 emitted via append_ambient() in even
 curator_failure_paged             # reason: INFRA-2239 emitted by chump-curator-supervisor (crates/chump-curator-supervisor/src/main.rs) when a novel curator failure fingerprint is detected AND a gap has been filed via `chump gap reserve`. Carries role, gap_id, priority, fingerprint, summary. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
 curator_respawned                 # reason: INFRA-2239 emitted by chump-curator-supervisor after tmux respawn-pane succeeds AND a fresh curator_heartbeat is detected within 60s. Carries role. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
 curator_respawn_failed            # reason: INFRA-2239 emitted by chump-curator-supervisor when tmux respawn-pane was attempted but no curator_heartbeat appeared within 60s. Carries role, reason. Triggers operator broadcast via scripts/coord/broadcast.sh. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+# ── INFRA-2070: cascade-unblock detector (META-118 sub-gap 4) ─────────────────
+cascade_unblocked                 # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh after a wedge_auto_fix PR merges and N open PRs with matching failure signature are rebased. Carries source_pr, signature_hash, matched_pr_numbers (csv), rebase_attempt_count, success_count, conflict_count. Scanner-anchor in cascade-unblock-detector.sh.
+cascade_unblock_skipped           # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh per-PR when a safety guard fires (operator_recent_comment, chump_hold_label, rebase_conflict, rate_limit_reached). Carries source_pr, signature_hash, pr_number, reason. Scanner-anchor in cascade-unblock-detector.sh.

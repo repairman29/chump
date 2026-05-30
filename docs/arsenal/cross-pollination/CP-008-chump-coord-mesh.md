@@ -3,7 +3,7 @@
 **Target:** public Chump's coord layer (INFRA-1118/1119/1120/1121 A2A layers + INFRA-1758/1759/1761/1802/1803 active work + INFRA-1804 BandwidthBudget port)
 **Arsenal match:** `chump-proprietary/crates/coord/` (locally cloned at `/Users/jeffadkins/Projects/chump-proprietary/crates/coord/`)
 **Recommended route:** **Dependency** (extract shared subset to new `chump-coord-mesh` crate inside chump-proprietary; both repos depend on it)
-**Status:** proposed (Harvester, 2026-05-23, INFRA-1815)
+**Status:** Side B shipped (2026-05-30, INFRA-1815) — `mesh-bridge` feature flag + re-export scaffold in `crates/chump-coord`. Side A (create `crates/coord-mesh` in the internal sibling repo and activate the git dep) tracked in INFRA-1815-sideA.
 
 > **Big finding:** chump-proprietary/crates/coord/Cargo.toml line 5 declares `license = "MIT"`. The substrate is already open-source-compatible. The risk we feared (proprietary→public leak) is not a licensing risk; it is a **duplication risk** — INFRA-1802/1803/1804 currently propose verbatim ports into public Chump, which would create two copies of the same MIT code that must drift in lockstep. CP-008 replaces "copy in" with "depend on a shared crate."
 

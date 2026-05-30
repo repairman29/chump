@@ -71,6 +71,11 @@ pub mod scratchpad;
 pub mod work_board;
 pub mod worker;
 
+// INFRA-1815: mesh-bridge — separate file to minimise collision surface with
+// sibling leases on lib.rs. Full doc + re-exports live in mesh_bridge.rs.
+#[cfg(feature = "mesh-bridge")]
+pub mod mesh_bridge;
+
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};
 use bytes::Bytes;
