@@ -22,7 +22,9 @@ async fn make_empty_repo() -> (TempDir, PathBuf) {
             .await
             .unwrap();
     }
-    tokio::fs::write(path.join("README.md"), "# test\n").await.unwrap();
+    tokio::fs::write(path.join("README.md"), "# test\n")
+        .await
+        .unwrap();
     tokio::process::Command::new("git")
         .args(["add", "README.md"])
         .current_dir(&path)

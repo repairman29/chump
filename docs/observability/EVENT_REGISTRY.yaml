@@ -2883,6 +2883,18 @@ events:
     trigger: broadcast.sh invocation rc != 0 when sending an RPC request
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
+  # ── INFRA-1758 / META-061: A2A Layer 1a subscribe_events stub ────────────
+  - kind: a2a_subscribe_stub_invoked
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs::subscribe_events (INFRA-1758)
+    trigger: >
+      subscribe_events() stub called before the real NATS JetStream consumer
+      (slice 2/4, INFRA-1118) is implemented. Signals which call-sites need
+      wiring once the real delivery layer ships.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, filter]
+    docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 1a)"
+    status: stable
   - kind: bypass_threshold_breach
     effect_metric: self
     emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)

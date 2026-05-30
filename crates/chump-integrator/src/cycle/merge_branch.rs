@@ -458,10 +458,7 @@ mod tests {
         tokio::fs::write(repo.join("README.md"), "# branch-a\n")
             .await
             .unwrap();
-        for args in [
-            vec!["add", "README.md"],
-            vec!["commit", "-m", "a"],
-        ] {
+        for args in [vec!["add", "README.md"], vec!["commit", "-m", "a"]] {
             tokio::process::Command::new("git")
                 .args(&args)
                 .current_dir(&repo)
