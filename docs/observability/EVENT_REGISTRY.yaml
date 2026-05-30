@@ -978,6 +978,13 @@ events:
     trigger: PR CI failure classified by FAILURE_MODES.yaml
     consumers: [pr-triage-bot]
 
+  - kind: pr_shepherd_tick
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh
+    trigger: emitted once per tick of the PR-shepherd daemon (META-181/META-180); skeleton stage counts open PRs read-only; classification and action paths are downstream sub-gaps (META-182+)
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, open_pr_count, dry_run]
+
   - kind: pr_merged
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh; GitHub webhook / PR close hook
@@ -1696,6 +1703,21 @@ events:
     emitter: operator-agent (INFRA-737, future)
     trigger: Layer-2 Sonnet escalates to Layer-3 Opus
     consumers: [audit-log, operator-recall]
+
+  - kind: operator_escalation_unjustified
+    effect_metric: self
+    emitter: future detector (not yet wired); manually emitted by orchestrator on self-audit until detector lands
+    trigger: >
+      Emitted when an agent invokes operator-escalation (AskUserQuestion / operator-recall.sh)
+      outside the 4 legitimate triggers (T1 irreversible third-party / T2 credential-rotation /
+      T3 operator-explicit-domain / T4 halt-class fleet condition). Reviewed via
+      scripts/dev/operator-escalation-leaderboard.sh. See AGENTS.md → No-operator-escalation discipline.
+    consumers: [scripts/dev/operator-escalation-leaderboard.sh]
+    fields_required:
+      - role        # the agent role that escalated
+      - escalation_kind  # ask_user_question | operator_recall | direct_message
+      - trigger_matched  # T1 | T2 | T3 | T4 | none
+    registered_by: META-207
 
   - kind: manual_rescue
     effect_metric: self
