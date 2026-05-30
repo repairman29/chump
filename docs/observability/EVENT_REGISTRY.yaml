@@ -982,9 +982,16 @@ events:
   - kind: pr_shepherd_tick
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh
-    trigger: emitted once per tick of the PR-shepherd daemon (META-181/META-180); skeleton stage counts open PRs read-only; classification and action paths are downstream sub-gaps (META-182+)
+    trigger: emitted once per tick of the PR-shepherd daemon (META-181/META-180); counts open PRs and drives classification + rebase-action phase (META-183/META-184)
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, open_pr_count, dry_run]
+
+  - kind: pr_action_taken
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-184)
+    trigger: emitted once per BEHIND PR per tick when the daemon attempts or skips a rebase action; action=rebase on success, action=rebase_failed on gh error, action=rebase_skipped with reason=trunk_red|claim|debounce|throttle|conflict when a safety guard fires
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, pr_number, action, reason, gap_id, dry_run]
 
   - kind: pr_merged
     effect_metric: self
