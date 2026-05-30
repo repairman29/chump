@@ -71,10 +71,7 @@ fn test_dry_run_log_contains_gap_ids() {
     let dir = tempfile::tempdir().unwrap();
     let log_path = dir.path().join("dry-run-ids.log");
 
-    let candidates = vec![
-        make_candidate("INFRA-101"),
-        make_candidate("INFRA-102"),
-    ];
+    let candidates = vec![make_candidate("INFRA-101"), make_candidate("INFRA-102")];
     let manifest = CycleManifest::new("deadbeef".to_string(), candidates);
     write_manifest_to_log(&manifest, &log_path);
 
