@@ -6294,9 +6294,165 @@ async fn main() -> Result<()> {
                 });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // INFRA-2239: chump fleet curator-status — one row per curator with
+            // role / last_tick_succeeded_at / last_heartbeat_at / state.db_mutations_1h
+            // / supervisor_mode / autorestart_flag.
+            "curator-status" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let state_db = repo_root.join(".chump/state.db");
+                let _log_dir = repo_root.join(".chump-locks/autopilot-logs");
+
+                // Supervisor config from env (mirrors crate defaults).
+                let supervisor_mode = std::env::var("CHUMP_CURATOR_SUPERVISOR_MODE")
+                    .unwrap_or_else(|_| "aggressive".to_string());
+                let autorestart = std::env::var("CHUMP_CURATOR_SUPERVISOR_AUTORESTART")
+                    .map(|v| v != "0" && v != "false")
+                    .unwrap_or(true);
+
+                let roles = &[
+                    "shepherd",
+                    "target",
+                    "handoff",
+                    "ci-audit",
+                    "decompose",
+                    "md-links",
+                ];
+
+                // Parse last 2000 lines of ambient.jsonl once for heartbeats.
+                let ambient_lines: Vec<String> = if ambient_path.exists() {
+                    std::fs::read_to_string(&ambient_path)
+                        .unwrap_or_default()
+                        .lines()
+                        .map(|l| l.to_string())
+                        .rev()
+                        .take(2000)
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+
+                // For each role: find latest curator_heartbeat ts.
+                let last_heartbeat_for = |role: &str| -> Option<String> {
+                    for line in &ambient_lines {
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|k| k.as_str()) == Some("curator_heartbeat")
+                            && v.get("role").and_then(|r| r.as_str()) == Some(role)
+                        {
+                            return v.get("ts").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        }
+                    }
+                    None
+                };
+
+                // For each role: find latest curator_failure_paged ts (as last_tick_succeeded proxy).
+                // A tick that succeeded = no curator_failure_paged since the last heartbeat.
+                // Simplified: last_tick_succeeded = same as last_heartbeat (when healthy).
+                let last_failure_for = |role: &str| -> Option<String> {
+                    for line in &ambient_lines {
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|k| k.as_str()) == Some("curator_failure_paged")
+                            && v.get("role").and_then(|r| r.as_str()) == Some(role)
+                        {
+                            return v.get("ts").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        }
+                    }
+                    None
+                };
+
+                // Query state.db for gap mutations attributed to role's session_id in last 1h.
+                let mutations_1h = |role: &str| -> i64 {
+                    let Ok(conn) = rusqlite::Connection::open(&state_db) else {
+                        return -1;
+                    };
+                    let has_table: bool = conn.query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='gap_history'",
+                        [], |r| r.get::<_, i64>(0),
+                    ).unwrap_or(0) > 0;
+                    if !has_table {
+                        return -1;
+                    }
+                    let date_str = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                    let session_id = format!("curator-opus-{role}-{date_str}");
+                    let cutoff = (chrono::Utc::now() - chrono::Duration::hours(1))
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string();
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM gap_history WHERE session_id = ?1 AND created_at >= ?2",
+                        rusqlite::params![session_id, cutoff],
+                        |r| r.get(0),
+                    ).unwrap_or(0)
+                };
+
+                if want_json {
+                    let rows: Vec<serde_json::Value> = roles
+                        .iter()
+                        .map(|role| {
+                            let hb = last_heartbeat_for(role);
+                            let fail = last_failure_for(role);
+                            let mut_count = mutations_1h(role);
+                            // last_tick_succeeded = heartbeat ts when no recent failure, else "degraded".
+                            let tick_status = if fail.is_some() {
+                                "degraded".to_string()
+                            } else {
+                                hb.clone().unwrap_or_else(|| "never".to_string())
+                            };
+                            serde_json::json!({
+                                "role": role,
+                                "last_tick_succeeded_at": tick_status,
+                                "last_heartbeat_at": hb.unwrap_or_else(|| "never".to_string()),
+                                "state_db_mutations_1h": mut_count,
+                                "supervisor_mode": supervisor_mode,
+                                "autorestart": autorestart,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&rows).unwrap_or_else(|_| "[]".to_string())
+                    );
+                } else {
+                    println!(
+                        "{:<12} {:<28} {:<28} {:>12}  {:<12} {:<11}",
+                        "ROLE",
+                        "LAST_TICK_OK",
+                        "LAST_HEARTBEAT",
+                        "MUTATIONS_1H",
+                        "SUPERVISOR",
+                        "AUTORESTART"
+                    );
+                    println!("{}", "-".repeat(110));
+                    for role in roles {
+                        let hb = last_heartbeat_for(role);
+                        let fail = last_failure_for(role);
+                        let mut_count = mutations_1h(role);
+                        let tick_str = if fail.is_some() {
+                            "DEGRADED".to_string()
+                        } else {
+                            hb.clone().unwrap_or_else(|| "never".to_string())
+                        };
+                        let hb_str = hb.unwrap_or_else(|| "never".to_string());
+                        let mut_str = if mut_count < 0 {
+                            "n/a".to_string()
+                        } else {
+                            mut_count.to_string()
+                        };
+                        let restart_str = if autorestart { "on" } else { "off" };
+                        println!(
+                            "{:<12} {:<28} {:<28} {:>12}  {:<12} {:<11}",
+                            role, tick_str, hb_str, mut_str, supervisor_mode, restart_str
+                        );
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
