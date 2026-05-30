@@ -1611,14 +1611,14 @@ elif [[ ${#GAP_IDS[@]} -gt 0 ]] && command -v chump >/dev/null 2>&1; then
 
     # Mode C: P0 priority + hot-fix keywords in title
     if [[ "$_bm_gap_priority" == "P0" ]] \
-        && printf '%s' "$_bm_gap_title" | grep -qiE 'TRUNK-RED|HOTFIX|SECURITY'; then
+        && printf '%s' "$_bm_gap_title" | grep -qiE 'TRUNK-RED|HOTFIX|SECURITY'; then  # pipefail-sweep-allowed
         _BM_MODE="C"
         _BM_MODE_REASON="P0+hot-fix keyword in title (${_bm_route_gap})"
     # Mode B: REVIEW: prefix in title, external-collab skill, or EXTERNAL domain
-    elif printf '%s' "$_bm_gap_title" | grep -qiE '^[[:space:]]*REVIEW:'; then
+    elif printf '%s' "$_bm_gap_title" | grep -qiE '^[[:space:]]*REVIEW:'; then  # pipefail-sweep-allowed
         _BM_MODE="B"
         _BM_MODE_REASON="REVIEW: title prefix (${_bm_route_gap})"
-    elif printf '%s' "$_bm_gap_skills" | grep -qi 'external-collab'; then
+    elif printf '%s' "$_bm_gap_skills" | grep -qi 'external-collab'; then  # pipefail-sweep-allowed
         _BM_MODE="B"
         _BM_MODE_REASON="external-collab skill (${_bm_route_gap})"
     elif [[ "$_bm_gap_domain" == "EXTERNAL" ]]; then
@@ -1806,7 +1806,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
             if [[ "$_claim_rc" -ne 0 ]]; then
                 _claim_worktree_exists=0
-                if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then
+                if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then  # pipefail-sweep-allowed
                     _claim_worktree_exists=1
                 fi
                 if [[ "$_claim_worktree_exists" -eq 1 ]]; then
