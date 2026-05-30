@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.integrator-daemon.plist — INFRA-2130 SCALE-A
+  Launchd user agent that fires the chump-integrator at a 15-minute cadence.
+
+  The daemon is DRY-RUN by default. To activate LIVE mode the operator must
+  explicitly set CHUMP_INTEGRATOR_LIVE=1 in the environment block below.
+  CHUMP_INTEGRATOR_DRY_RUN takes precedence over CHUMP_INTEGRATOR_LIVE when
+  both are set.
+
+  Install:   scripts/setup/install-integrator-daemon.sh
+  Uninstall: scripts/setup/install-integrator-daemon.sh --uninstall
+  Status:    launchctl print gui/$(id -u)/com.chump.integrator-daemon
+  Logs:      ~/.chump/logs/integrator-daemon.{out,err}
+
+  Safety rails (always active in LIVE mode):
+    - Trunk-RED gate: holds if .chump-locks/trunk-red-detector-state.json is_red=true
+    - Batch cap: CHUMP_INTEGRATOR_BATCH_MAX (default 5 in v1)
+    - do-not-batch label exclusion
+    - Circuit breaker: forces dry-run next cycle on LIVE ship failure
+
+  Tunable env vars:
+    CHUMP_INTEGRATOR_LIVE              (default 0 — operator must set to 1)
+    CHUMP_INTEGRATOR_DRY_RUN          (default 1 — explicit override; wins over LIVE)
+    CHUMP_INTEGRATOR_BATCH_MAX        (default 5 — v1 conservative cap)
+    CHUMP_INTEGRATOR_VOLUME_THRESHOLD (default 5 — min candidates before cycle fires)
+    CHUMP_INTEGRATOR_LOC_BUDGET       (default 1500)
+    CHUMP_INTEGRATOR_MAX_BATCH        (default 10 — general selector cap)
+    CHUMP_INTEGRATOR_PREFLIGHT_TIMEOUT_S (default 480)
+    CHUMP_INTEGRATOR_SAMPLING_PCT     (default 100)
+    CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL (default do-not-batch)
+    RUST_LOG                          (default info)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.integrator-daemon</string>
+
+    <!-- Fire every 15 minutes. RunAtLoad=false: operator starts explicitly. -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Run one cycle per invocation (--once). launchd handles the cadence. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>-c</string>
+        <string>cd __REPO_ROOT__ &amp;&amp; __CARGO_BIN__/chump-integrator --once</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>__HOME__</string>
+        <key>PATH</key>
+        <string>__CARGO_BIN__:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- DRY-RUN by default. Operator sets CHUMP_INTEGRATOR_LIVE=1 to enable. -->
+        <key>CHUMP_INTEGRATOR_LIVE</key>
+        <string>0</string>
+        <!-- Conservative v1 batch cap. Raise only after observing stable cycles. -->
+        <key>CHUMP_INTEGRATOR_BATCH_MAX</key>
+        <string>5</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.chump/logs/integrator-daemon.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.chump/logs/integrator-daemon.err</string>
+
+    <!-- Don't tight-loop on crash. -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>
