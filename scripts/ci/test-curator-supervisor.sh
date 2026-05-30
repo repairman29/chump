@@ -206,6 +206,13 @@ if [[ "$NEW_SPAWN_COUNT" -gt 0 ]]; then
     FAILED=1
 fi
 
+# RESILIENT-040 anti-race logic (gap_already_claimed + find_open_gap_with_fingerprint)
+# is verified by Rust unit tests in crates/chump-curator-supervisor/src/main.rs
+# (cargo test -p chump-curator-supervisor). Bash fixture is too fragile because
+# the dry-run gap_id format must align with the per-run fingerprint hash, and
+# the circuit-breaker activation count must be zeroed in a single nesting
+# point. Rust unit tests cover both paths deterministically.
+
 # ── result ──────────────────────────────────────────────────────────────────
 echo ""
 if [[ "$FAILED" -eq 0 ]]; then
