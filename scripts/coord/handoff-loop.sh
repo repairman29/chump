@@ -46,13 +46,22 @@
 #                        checklist (no actual Agent-tool invoke — that's the
 #                        harness's job). Emits kind=sub_agent_dispatched.
 #                        Exit 0 ok, exit 2 bad input.
+#   react-feedback <corr_id> <rationale_text>
+#                        Phase 1.5 — vote on a FEEDBACK proposal that proposes
+#                        a new Contract type. Checks schema well-formedness
+#                        (all 5 of Input/Output/Validate/prompt/ModelTier present)
+#                        and overlap with existing contracts. Votes +1 (well-
+#                        formed), -1 (schema incomplete), or 0 (overlaps existing).
+#                        Enforces 1-hour per-corr_id cooldown.
+#                        Gate: CHUMP_FLEET_WIRE_V1=1 required.
+#                        Exit 0 voted, exit 1 cooldown/skipped, exit 2 bad input.
 #   heartbeat            Emit kind=handoff_heartbeat to ambient.jsonl + inbox
 #                        broadcast to orchestrator-opus-<date>. Exit 0 always.
 #   help                 Print this.
 #
 # Exit codes:
 #   0 — success
-#   1 — quiet (no actionable items) for scan-handoffs
+#   1 — quiet (no actionable items) for scan-handoffs; cooldown active for react-feedback
 #   2 — bad subcommand or missing required arg
 #   3 — contracts.rs missing or unreadable (no chump-handoff crate)
 #
@@ -60,6 +69,7 @@
 #   CHUMP_SESSION_ID            session id used for inbox + emits (default: handoff-<pid>)
 #   CHUMP_AMBIENT_LOG           ambient.jsonl path override
 #   CHUMP_HANDOFF_LANE_OVERRIDE if "1", refuse-out-of-scope checks skip
+#   CHUMP_FLEET_WIRE_V1         if "1", Phase 1.5 react-feedback reactor is enabled
 
 set -uo pipefail
 
@@ -287,6 +297,140 @@ _cmd_heartbeat() {
     return 0
 }
 
+# ── Phase 1.5: react-feedback (META-170) ─────────────────────────────────────
+
+# The 5 required schema fields that a well-formed Contract proposal must mention
+# in its rationale text.
+_SCHEMA_FIELDS=(Input Output Validate prompt ModelTier)
+
+# Cooldown state file: one file per corr_id, stores epoch-second of last vote.
+_cooldown_file() {
+    local corr_id="$1"
+    # Store under LOCK_DIR so it's on a shared filesystem (multi-worktree safe).
+    printf '%s/handoff-reactor-cooldown-%s.ts' "$LOCK_DIR" "$corr_id"
+}
+
+# Returns 0 if cooldown NOT active (safe to vote), 1 if still within 1-hour window.
+_cooldown_active() {
+    local corr_id="$1"
+    local cf
+    cf="$(_cooldown_file "$corr_id")"
+    [[ -f "$cf" ]] || return 0   # no prior vote → safe
+    local last_vote
+    last_vote="$(cat "$cf" 2>/dev/null || echo 0)"
+    local now
+    now="$(date +%s)"
+    local elapsed=$(( now - last_vote ))
+    (( elapsed < 3600 )) && return 1   # within 1h → cooldown active
+    return 0
+}
+
+_cooldown_record() {
+    local corr_id="$1"
+    local cf
+    cf="$(_cooldown_file "$corr_id")"
+    mkdir -p "$LOCK_DIR" 2>/dev/null || true
+    date +%s > "$cf" 2>/dev/null || true
+}
+
+# Emit vote via `chump vote` if available; fall back to ambient event.
+_cast_vote() {
+    local corr_id="$1"
+    local vote="$2"       # +1, -1, or 0
+    local reason="$3"
+    local role="handoff-reactor"
+
+    # Attempt chump vote CLI first; tolerate absence gracefully.
+    if command -v chump >/dev/null 2>&1; then
+        chump vote "$corr_id" "$vote" --reason "${role}: ${reason}" 2>/dev/null || true
+    fi
+
+    # Always emit to ambient as the authoritative trail.
+    _emit_kind "handoff_contract_vote" \
+        "\"corr_id\":\"${corr_id}\",\"vote\":${vote},\"reason\":\"${reason//\"/\\\"}\""
+    # scanner-anchor: "kind":"handoff_contract_vote"
+}
+
+_cmd_react_feedback() {
+    # Gate: CHUMP_FLEET_WIRE_V1=1 required (AC #4)
+    if [[ "${CHUMP_FLEET_WIRE_V1:-0}" != "1" ]]; then
+        echo "[handoff] react-feedback gated behind CHUMP_FLEET_WIRE_V1=1 — skipping" >&2
+        return 1
+    fi
+
+    local corr_id="${1:-}"
+    local rationale="${2:-}"
+
+    if [[ -z "$corr_id" || -z "$rationale" ]]; then
+        echo "Usage: $0 react-feedback <corr_id> <rationale_text>" >&2
+        return 2
+    fi
+
+    # Check eligible: rationale must mention "Contract" (capital C) or "contracts.rs"
+    if ! echo "$rationale" | grep -qE '(Contract|contracts\.rs)'; then
+        echo "[handoff] react-feedback: rationale doesn't mention Contract or contracts.rs — not eligible, skipping"
+        return 1
+    fi
+
+    # Per-corr_id 1-hour cooldown (AC #2)
+    if ! _cooldown_active "$corr_id"; then
+        echo "[handoff] react-feedback: cooldown active for corr_id=$corr_id — skipping"
+        _emit_kind "handoff_reactor_cooldown_skip" "\"corr_id\":\"${corr_id}\""
+        # scanner-anchor: "kind":"handoff_reactor_cooldown_skip"
+        return 1
+    fi
+
+    # Anti-reaction-loop: skip if this is our own session's emitted event (AC #3)
+    # We detect this by checking if corr_id contains our SESSION_ID substring.
+    if [[ "$corr_id" == *"$SESSION_ID"* ]]; then
+        echo "[handoff] react-feedback: corr_id matches own session — anti-loop skip"
+        return 1
+    fi
+
+    # Extract proposed contract name: look for \w+Contract pattern in rationale.
+    local proposed_name
+    proposed_name="$(echo "$rationale" | grep -oE '[A-Za-z]+Contract' | head -1 || true)"
+
+    # ── Overlap check (AC #1 — vote 0 with hint if name already exists) ──────
+    if [[ -n "$proposed_name" && -f "$CONTRACTS_RS" ]]; then
+        if grep -q "pub struct ${proposed_name}" "$CONTRACTS_RS" 2>/dev/null; then
+            local reason="overlaps existing ${proposed_name} in contracts.rs"
+            echo "[handoff] react-feedback: ${proposed_name} already exists → vote 0 (${reason})"
+            _cast_vote "$corr_id" "0" "$reason"
+            _cooldown_record "$corr_id"
+            return 0
+        fi
+    fi
+
+    # ── Schema well-formedness check (AC #1) ─────────────────────────────────
+    # All 5 of: Input, Output, Validate, prompt, ModelTier must appear in rationale.
+    local missing=()
+    for field in "${_SCHEMA_FIELDS[@]}"; do
+        if ! echo "$rationale" | grep -qE "(^|[^A-Za-z])${field}([^A-Za-z]|$)"; then
+            missing+=("$field")
+        fi
+    done
+
+    if (( ${#missing[@]} == 0 )); then
+        # Well-formed → +1
+        local reason="schema well-formed: all 5 fields (Input/Output/Validate/prompt/ModelTier) present"
+        [[ -n "$proposed_name" ]] && reason="${reason}; proposed=${proposed_name}"
+        echo "[handoff] react-feedback: schema well-formed → vote +1"
+        _cast_vote "$corr_id" "1" "$reason"
+    else
+        # Schema incomplete → -1
+        local missing_str
+        missing_str="$(IFS=","; echo "${missing[*]}")"
+        local reason="schema incomplete: missing fields: ${missing_str}"
+        [[ -n "$proposed_name" ]] && reason="${reason}; proposed=${proposed_name}"
+        echo "[handoff] react-feedback: schema incomplete (missing: ${missing_str}) → vote -1"
+        _cast_vote "$corr_id" "-1" "$reason"
+    fi
+
+    _cooldown_record "$corr_id"
+    return 0
+}
+
 _cmd_help() {
     sed -n '1,/^set -uo pipefail$/p' "$0" | sed -n '/^# /p' | sed 's/^# //; s/^#$//'
 }
@@ -297,10 +441,11 @@ cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 
 case "$cmd" in
-    scan-handoffs)  _cmd_scan_handoffs "$@" ;;
-    review-pr)      _cmd_review_pr "$@" ;;
-    dispatch-sub)   _cmd_dispatch_sub "$@" ;;
-    heartbeat)      _cmd_heartbeat "$@" ;;
+    scan-handoffs)   _cmd_scan_handoffs "$@" ;;
+    review-pr)       _cmd_review_pr "$@" ;;
+    dispatch-sub)    _cmd_dispatch_sub "$@" ;;
+    react-feedback)  _cmd_react_feedback "$@" ;;
+    heartbeat)       _cmd_heartbeat "$@" ;;
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
         "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble handoff 2>/dev/null || true

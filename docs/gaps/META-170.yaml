@@ -1,0 +1,15 @@
+- id: META-170
+  domain: META
+  title: "META-167-d: handoff-loop reactor — react to FEEDBACK proposing new Contract types, vote +1 if schema well-formed"
+  status: shipped
+  priority: P1
+  effort: s
+  description: |
+    Sub-slice d of META-167. handoff-loop reactor — react to FEEDBACK proposing new Contract types in crates/chump-handoff/src/contracts.rs.
+  acceptance_criteria:
+    - "scripts/coord/handoff-loop.sh tick gains Phase 1.5 reactor: scan FEEDBACK proposals; if rationale mentions new Contract type or extension to existing, check schema well-formedness (Input/Output/Validate/prompt/ModelTier all named in rationale) → vote +1; if overlaps existing contract name → vote 0 with hint"
+    - Per-corr_id 1h cooldown
+    - Anti-reaction-loop same
+    - Feature flag CHUMP_FLEET_WIRE_V1=1
+    - "scripts/ci/test-handoff-reactor.sh: 3 fixtures (well-formed MissionLeadContract, schema-missing-Validate, overlapping existing DecomposeContract) → assert +1/-1/0"
+
