@@ -169,3 +169,10 @@ installers:
     check: launchctl list 2>/dev/null | grep -q com.chump.pr-shepherd
     depends_on: [chump-binary, github-liaison-launchd]
     adds: ~/Library/LaunchAgents/com.chump.pr-shepherd.plist + 60s run
+
+  - id: quartermaster-audit-launchd
+    why: "META-205 — 5-min Quartermaster shelfware-audit daemon. Scans git log origin/main since last checkpoint; fires when (ships >= 5) OR (age >= 30min AND ships >= 1). Greps curator role docs (.claude/agents/*.md, CLAUDE.md, AGENTS.md, docs/process/*.md) for each merged artifact; zero-hit = shelfware → files EFFECTIVE wiring gap (max 5/run, deferred to .chump/quartermaster-deferred.jsonl). Without this, every new daemon/CLI/protocol ships as shelf-ware (present on disk, absent from every curator workflow). Emits kind=shelfware_detected + kind=shelfware_audit_run to ambient.jsonl."
+    priority: P1
+    install: "cp scripts/launchd/com.chump.quartermaster-audit.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.chump.quartermaster-audit.plist"
+    check: launchctl list 2>/dev/null | grep -q com.chump.quartermaster-audit
+    adds: ~/Library/LaunchAgents/com.chump.quartermaster-audit.plist + 5-min shelfware-audit tick

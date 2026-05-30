@@ -71,6 +71,14 @@ Today's evidence: 3 occurrences (cycle 5, 6, 13 of today's loop). Trailer `Bot-M
 **Fix (per-occurrence).** Manual flip: `CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 chump gap ship INFRA-XXXX --closed-pr <N> --update-yaml`.
 **Fix (root cause).** INFRA-2230 (filed 2026-05-29): diagnose why INFRA-2121 silently misses certain PR/gap pairs. Add `kind=auto_flip_skipped` ambient with reason field (regex_miss / workflow_skip / state_db_error). Either fix the trigger OR add nightly catch-up scan.
 
+### Class 8 — Shelfware (operationalization gap)
+**Symptom.** A new daemon, CLI, ambient kind, scanner anchor, or protocol doc lands on `main` — but no curator role doc (`.claude/agents/*.md`, `CLAUDE.md`, `AGENTS.md`, `docs/process/*.md`) references it. The artifact is present on disk but absent from every workflow. Curators never reach for it. Effect: the investment that shipped the feature is wasted because the "elite machines" (operator's words) don't know the new tool exists.
+**Detection.** Run `bash scripts/coord/quartermaster-audit-loop.sh trigger-check` — if FIRE, run `bash scripts/coord/quartermaster-audit-loop.sh run`. The audit greps all role docs for the gap_id and each artifact basename from the merged commit; zero hits = shelfware finding. Ambient stream: `kind=shelfware_detected {gap_id, artifact, role_candidate}` followed by `kind=shelfware_audit_run {ships_checked, shelfware_found, gaps_filed, deferred_count}`.
+**Fix (per-finding).** The Quartermaster daemon files a follow-up gap automatically: `EFFECTIVE: Wire <artifact> into role <curator>`. The gap's AC specifies the exact role-doc location and paragraph. Claim it, add the reference (usually a 1–3 line edit), ship.
+**Fix (inline, obvious cases).** If the wiring is a trivial one-liner (e.g. adding a new daemon to a Cross-references table), an agent with access to both the PR context and the role doc may wire it inline within the same PR rather than waiting for a follow-up gap. Emit `kind=shelfware_detected` before the inline edit so the audit log is complete.
+**Prevention.** `com.chump.quartermaster-audit.plist` (META-205) — 5-min launchd daemon, ship-count-triggered (fires at ≥5 ships or ≥30min+1ship). Verify daemon is loaded: `launchctl list | grep quartermaster`. Verify checkpoint: `cat .chump/quartermaster-checkpoint.json`.
+**Role owner.** `curator-opus-quartermaster` (`.claude/agents/quartermaster.md`). Lane: shelfware audit + procedure authoring + role-doc sync. Out of lane: PR rescue, CI gates, gap slicing.
+
 ## 2. Ship-assist tooling inventory
 
 ### Tier 1 — Per-PR operator actions (you'll use these every session)
