@@ -302,10 +302,31 @@ Sibling rules: META-063 (no new duplicates), META-065 (auto-prioritization).
 
 ## Cache-first reads (INFRA-1081, 2026-05-14)
 
+> **🚨 DEFAULT to `cache_lookup_pr` / `sqlite3 .chump/github_cache.db`. `gh pr view` and `gh api` ONLY on cache miss.**
+>
+> The cache is fed in real-time by a smee.io tunnel → Python webhook receiver
+> → SQLite. Reading from it is **< 100 ms** per query. Polling `gh` is
+> **5-30 s per call** AND burns the global rate limit AND triggers
+> `graphql_exhausted` cascades that blind every other curator. There is **no
+> excuse** for `gh pr view <N>` when `.chump/github_cache.db` has the answer
+> with fresher data than gh's own GraphQL.
+>
+> If you find yourself running `gh pr view` / `gh api repos/.../check-runs`
+> in a loop — **stop**, read this section, and use the cache. Failure to do
+> so is anti-pattern #9 in [`docs/process/OPERATOR_PLAYBOOK.md`](./docs/process/OPERATOR_PLAYBOOK.md). Operator-paged 2026-05-30T09:27Z.
+
 The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated by a
-**webhook receiver** (`scripts/ops/github-webhook-receiver.py`). Every fleet
-script that wants PR state should **read from the cache first**, fall back to
+**webhook receiver** (`scripts/ops/github-webhook-receiver.py`) via a smee.io
+tunnel. Every fleet script that wants PR state should **read from the cache first**, fall back to
 direct `gh api` only on miss.
+
+**Setup + healthcheck:** see [OPERATOR_PLAYBOOK.md §7.5 Local Infrastructure](./docs/process/OPERATOR_PLAYBOOK.md#75-local-infrastructure--webhook--smee--cache--docker). Quick check before any "polling gh":
+
+```bash
+pgrep -fa 'smee-client'      # tunnel alive?
+pgrep -fa 'github-webhook'   # receiver alive?
+sqlite3 .chump/github_cache.db "SELECT MAX(fetched_at_local) FROM pr_state;"  # last update?
+```
 
 ```bash
 source "$(dirname "$0")/lib/github_cache.sh"

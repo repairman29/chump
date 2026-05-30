@@ -239,10 +239,28 @@ session, and someone else's PR is starving for review.
 
 ## Cache-first reads (INFRA-1081, 2026-05-14)
 
+> **🚨 DEFAULT to `cache_lookup_pr` / `sqlite3 .chump/github_cache.db`. `gh pr view` and `gh api` ONLY on cache miss.**
+>
+> The cache is fed in real-time by a smee.io tunnel → Python webhook receiver
+> → SQLite. Reading is **< 100 ms per query**. Polling `gh` is **5-30 s per call**
+> AND burns the global rate limit AND triggers `graphql_exhausted` cascades
+> that blind every other curator on the host. There is **no excuse** for
+> `gh pr view <N>` when the cache has the answer with fresher data than gh's
+> own GraphQL.
+>
+> Failure to use the cache is anti-pattern #9 in [OPERATOR_PLAYBOOK.md](./docs/process/OPERATOR_PLAYBOOK.md#anti-patterns-learned-2026-05-23--dont-repeat). Operator-paged 2026-05-30T09:27Z.
+
 The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated
-by a webhook receiver (`scripts/ops/github-webhook-receiver.py`). Every
-script that wants PR state should **read from the cache first**, fall back
-to direct `gh api` only on miss.
+by a webhook receiver (`scripts/ops/github-webhook-receiver.py`) via a
+smee.io tunnel. Every script that wants PR state should **read from the
+cache first**, fall back to direct `gh api` only on miss.
+
+**Setup, healthcheck, recovery** live in [OPERATOR_PLAYBOOK.md §7.5 Local Infrastructure](./docs/process/OPERATOR_PLAYBOOK.md#75-local-infrastructure--webhook--smee--cache--docker). One-line health probe before any `gh` call:
+
+```bash
+pgrep -fa 'smee-client' && pgrep -fa 'github-webhook' && \
+  sqlite3 .chump/github_cache.db "SELECT MAX(fetched_at_local) FROM pr_state;"
+```
 
 Source the helper lib then call the cache helpers:
 
