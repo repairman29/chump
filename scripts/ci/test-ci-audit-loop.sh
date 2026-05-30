@@ -159,6 +159,63 @@ else
 fi
 rm -rf "$_dir5"
 
+# ── Test 5c: audit picks up regression_attributed (CREDIBLE-079) ──────────
+echo "Test 5c: audit subcommand (synthetic regression_attributed ambient)..."
+_dir5c="$(mktemp -d)"
+_amb5c="$_dir5c/ambient.jsonl"
+# Three regression_attributed events fingering the same suspect_commits
+for i in 1 2 3; do
+    printf '{"ts":"2026-05-30T04:0%d:00Z","kind":"regression_attributed","source":"blame_bot","green_sha":"9b8dd5bf8994","suspect_commits":"3d02c15b3,f1c748788","checks_attributed":"test,audit","count":2}\n' "$i" >> "$_amb5c"
+done
+
+_rc=0
+CHUMP_AMBIENT_LOG="$_amb5c" \
+CHUMP_SESSION_ID="test-ci-audit-regression" \
+"$LOOP_SCRIPT" audit >/dev/null 2>&1 || _rc=$?
+
+if (( _rc == 0 )); then
+    _ok "audit exits 0 when regression_attributed event present"
+else
+    _bad "audit should exit 0 when regression_attributed found, got $_rc"
+fi
+
+# Capture stdout to assert bucket header + suspect surfacing
+_audit_out="$(CHUMP_AMBIENT_LOG="$_amb5c" CHUMP_SESSION_ID="test-ci-audit-regression" \
+    "$LOOP_SCRIPT" audit 2>&1 || true)"
+
+if echo "$_audit_out" | grep -q "regression_attributed events"; then
+    _ok "audit prints regression_attributed bucket header"
+else
+    _bad "audit missing regression_attributed bucket header"
+fi
+
+if echo "$_audit_out" | grep -q "blame-bot regression cluster"; then
+    _ok "audit labels bucket as blame-bot regression cluster"
+else
+    _bad "audit missing blame-bot cluster label"
+fi
+
+if echo "$_audit_out" | grep -q "suspect_commits: 3d02c15b3,f1c748788"; then
+    _ok "audit surfaces suspect_commits from event"
+else
+    _bad "audit did not surface suspect_commits"
+fi
+
+if echo "$_audit_out" | grep -q "checks_attributed: test,audit"; then
+    _ok "audit surfaces checks_attributed from event"
+else
+    _bad "audit did not surface checks_attributed"
+fi
+
+# ci_cluster_detected must still emit even when only the new bucket fires
+if grep -q '"kind":"ci_cluster_detected"' "$_amb5c" 2>/dev/null; then
+    _ok "audit emits ci_cluster_detected for regression_attributed cluster"
+else
+    _bad "audit did not emit ci_cluster_detected for regression_attributed"
+fi
+
+rm -rf "$_dir5c"
+
 # ── Test 6: audit exits 3 when ambient missing ────────────────────────────
 echo "Test 6: audit exits 3 when ambient missing..."
 _rc=0
