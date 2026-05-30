@@ -268,6 +268,70 @@ subsection. Pattern 13 here is the shepherd-side trigger; the operational
 script + smoke test are at `scripts/coord/dispatch-health-check.sh` +
 `scripts/ci/test-dispatch-hang-detection.sh` (both shipped via META-116 #2658).
 
+## Pattern 15 — No idle curators in loops (operator norm 2026-05-29)
+
+**Operator standing rule.** When you are running inside a `/loop` or a
+scheduled-task cron (CronCreate, `chump fleet autopilot`, etc.), **every
+cycle must produce a ship-class action**. "Queue is healthy, nothing to
+do" is **not** a valid loop outcome and **never** earns a no-op return.
+
+**Allowed cycle outcomes** (pick one or more):
+
+1. **Claim + ship**: `chump claim <ID>` → implement → push → arm. The
+   gap can be xs (file headers, 5-line scripts, registry entries) as
+   long as it actually ships and closes value.
+2. **Accept an inbound A2A handoff/dispatch**: someone broadcast a
+   HANDOFF or your gap-id appears in their lease coverage — take it.
+3. **Decompose an umbrella + dispatch Sonnet**: when the queue has an
+   umbrella gap with rough-shape description, run `chump gap decompose`
+   and either ship a sub-slice yourself or dispatch a Sonnet sub-agent
+   on it. Either way the cycle ends with new pickable AC in flight.
+4. **Drill into a wedge + ship the fix same-cycle**: if you find a
+   queue-wide blocker (failing required check, unmapped manifest entry,
+   broken workflow, etc.), the fix ships in the same loop turn that
+   discovered it. No "filed gap, will fix next cycle."
+5. **Pattern-14 verification surfaces a real action**: a rollup audit
+   that finds a genuine misalignment counts only if it produces a
+   shipped diff or a structured handoff to the owning curator.
+
+**Forbidden cycle outcomes**:
+
+- "Queue is flowing, no intervention needed" without a ship.
+- "Waiting for CI to clear" as a primary activity (CI clears on its
+  own; the loop's job is to find the next pickable gap).
+- "Conserving tokens for the next N hours" — the operator funds the
+  burn; cost-anxiety is not a curator's call to make.
+- "All gaps look claimed by others" — `chump gap list --status open`
+  routinely shows 50+ pickable P0/P1 xs/s gaps. If you see "nothing,"
+  scan deeper (by pillar, by week, by Marcus-arc tag).
+
+**The discipline at the top of every loop turn**:
+
+```bash
+# 1. Inbox sweep (existing Pattern 0).
+scripts/coord/chump-inbox.sh read --no-advance
+
+# 2. Pickable scan — proves at least one ship-class candidate exists.
+chump gap list --status open | grep -E "P0/(xs|s)|P1/(xs|s)" | head -10
+
+# 3. Active lease check — confirm you're NOT about to collide.
+ls .chump-locks/claim-*.json
+
+# 4. Commit to ONE of the 5 allowed outcomes BEFORE writing any more
+#    diagnostic output. The turn is over only when a ship action
+#    (PR open, gap claimed + diff started, Sonnet dispatched, structured
+#    HANDOFF sent) has been taken.
+```
+
+**Heartbeat compatibility**: Pattern 6 (heartbeat orchestrator every 4
+cycles) still applies. The heartbeat is a status PING; it does NOT
+substitute for the ship action that this Pattern requires.
+
+**When you genuinely shipped nothing**: the loop should not run at all.
+Either stop the cron with `CronDelete <id>` or convert to a sparser
+schedule the operator approved. Continuing a token-spending loop
+without shipping is the explicit anti-pattern this norm codifies.
+
 ## What NOT to do
 
 | Anti-pattern | Why it hurts |
