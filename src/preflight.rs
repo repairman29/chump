@@ -1006,7 +1006,7 @@ pub fn run(argv: &[String]) -> i32 {
             Some(ref_sha) => {
                 let cache_path = baseline_cache_path(&repo_root);
                 let cached = load_baseline_cache(&cache_path);
-                let fresh = cached.as_ref().map_or(false, |c| {
+                let fresh = cached.as_ref().is_some_and(|c| {
                     c.baseline_sha == ref_sha && baseline_age_secs(c) < BASELINE_CACHE_TTL_SECS
                 });
                 if fresh {
@@ -1577,11 +1577,7 @@ fn run_baseline_against_ref(
 /// Determine how many seconds old a baseline cache is.
 fn baseline_age_secs(cache: &BaselineCache) -> u64 {
     let now = unix_now();
-    if now > cache.generated_at_secs {
-        now - cache.generated_at_secs
-    } else {
-        0
-    }
+    now.saturating_sub(cache.generated_at_secs)
 }
 
 /// Result of the diff-scoped attribution pass.
