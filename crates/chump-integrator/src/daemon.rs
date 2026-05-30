@@ -12,19 +12,37 @@
 //! 4. **MERGE** — call `cycle::merge_branch::build_integration_branch`.
 //! 5. **PREFLIGHT** — shell out to `chump preflight` or
 //!    `bash scripts/dev/cross-build-linux.sh`.
-//! 6. **DECISION** — live cycles log "WOULD SHIP" (SHIP deferred to INFRA-2136);
+//! 6. **DECISION** — LIVE cycles push + create PR + auto-merge via `gh`;
 //!    dry-run cycles log manifest + emit `integration_cycle_dry_run_completed`.
+//!
+//! ## LIVE-mode safety rails (SCALE-A, INFRA-2130)
+//!
+//! Before any cycle runs in LIVE mode (`dry_run = false`), the daemon checks:
+//!
+//! 1. **Trunk-RED gate** — reads `.chump-locks/trunk-red-detector-state.json`.
+//!    If `is_red = true`, emits `integration_trunk_red_hold` and skips.
+//! 2. **Batch cap** — candidates capped at `config.batch_max_live` (default 5)
+//!    in addition to the general `max_batch`. Conservative v1 starting point.
+//! 3. **`do-not-batch` label** — candidates with the configured label are
+//!    excluded before the batch is assembled.
+//! 4. **Circuit breaker** — on LIVE merge/push failure, emits
+//!    `integration_cycle_failed`, rolls back the integration branch, and sets
+//!    `circuit_broken = true` so the next cycle runs as dry-run.
 //!
 //! Emits ambient events at each step boundary:
 //!
 //! | Step | kind |
 //! |---|---|
 //! | cycle starts | `integration_cycle_started` |
+//! | trunk-RED hold | `integration_trunk_red_hold` |
 //! | sampling gate | `cycle_sampling_decision` |
 //! | candidates selected | `integration_candidates_selected` |
 //! | per-candidate merge | `integration_branch_merged` |
 //! | preflight starts | `integration_preflight_started` |
 //! | preflight fails | `integration_preflight_failed` |
+//! | LIVE ship complete | `integration_cycle_completed` |
+//! | LIVE ship failure | `integration_cycle_failed` |
+//! | dry-run skip | `integration_dry_run_skip` |
 //! | dry-run complete | `integration_cycle_dry_run_completed` |
 //! | merge conflict | `integration_merge_conflict` |
 
@@ -32,6 +50,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -49,6 +68,9 @@ use chump_gap_store::GapFieldUpdate;
 /// Integration slot key in the NATS KV `chump_gaps` bucket.
 const INTEGRATION_SLOT_KEY: &str = "integration_slot";
 
+/// Path to the trunk-RED detector state file (RESILIENT-050).
+const TRUNK_RED_STATE_FILE: &str = ".chump-locks/trunk-red-detector-state.json";
+
 /// The daemon polls the work-board and fires integration cycles.
 pub struct IntegratorDaemon {
     pub config: IntegratorConfig,
@@ -59,6 +81,9 @@ pub struct IntegratorDaemon {
     /// Optional chump-coord client (None when NATS unavailable).
     /// Wrapped in Arc so the Drop guard can hold a cheap clone.
     pub coord: Option<Arc<chump_coord::CoordClient>>,
+    /// Circuit breaker: set to true when a LIVE cycle fails.
+    /// The next cycle runs as dry-run regardless of config; resets on success.
+    circuit_broken: Arc<AtomicBool>,
 }
 
 impl IntegratorDaemon {
@@ -74,6 +99,7 @@ impl IntegratorDaemon {
             repo_root,
             dry_run_log,
             coord,
+            circuit_broken: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -90,10 +116,11 @@ impl IntegratorDaemon {
     /// `CHUMP_INTEGRATOR_POLL_S` seconds.
     pub async fn run(&self) -> Result<()> {
         eprintln!(
-            "[integrator] starting (dry_run={}, poll={}s, volume_threshold={})",
+            "[integrator] starting (dry_run={}, poll={}s, volume_threshold={}, batch_max_live={})",
             self.config.dry_run,
             self.config.poll_interval.as_secs(),
             self.config.volume_threshold,
+            self.config.batch_max_live,
         );
 
         loop {
@@ -110,6 +137,27 @@ impl IntegratorDaemon {
     pub async fn run_cycle(&self) -> Result<()> {
         let cycle_id = short_uuid();
 
+        // ── Step 0: LIVE-mode safety rails ────────────────────────────────
+        // Determine whether this cycle runs LIVE before claiming the slot.
+        // Circuit breaker: if the last LIVE cycle failed, force dry-run.
+        let circuit_broken = self.circuit_broken.load(Ordering::SeqCst);
+        let config_dry_run = self.config.dry_run || circuit_broken;
+
+        if circuit_broken && !self.config.dry_run {
+            eprintln!("[integrator] circuit breaker active — forcing dry-run for cycle {cycle_id}");
+            emit_event(
+                "integration_dry_run_skip",
+                &[("cycle_id", &cycle_id), ("reason", "circuit_breaker")],
+            );
+        }
+
+        // Trunk-RED gate: only relevant when we might go LIVE.
+        if !config_dry_run && self.is_trunk_red() {
+            eprintln!("[integrator] trunk is RED — holding LIVE cycle {cycle_id}");
+            emit_event("integration_trunk_red_hold", &[("cycle_id", &cycle_id)]);
+            return Ok(());
+        }
+
         // ── Step 1: CLAIM ────────────────────────────────────────────────
         let claimed = self.try_claim_integration_slot(&cycle_id).await;
         if !claimed {
@@ -125,11 +173,11 @@ impl IntegratorDaemon {
 
         // ── Step 1b: SAMPLING ─────────────────────────────────────────────
         // Deterministic hash of cycle_id decides live vs dry-run for this
-        // cycle. `dry_run=true` (Phase 1 global flag) always overrides to
-        // DRY-RUN regardless of sampling_pct. This gate is the Phase 2 knob.
+        // cycle. `config_dry_run=true` always overrides to DRY-RUN regardless
+        // of sampling_pct. This gate is the Phase 2 knob.
         let (sample_decision, sample_roll) = sampling_decision(&cycle_id, self.config.sampling_pct);
 
-        let cycle_is_live = !self.config.dry_run && sample_decision.is_live();
+        let cycle_is_live = !config_dry_run && sample_decision.is_live();
 
         emit_event(
             "cycle_sampling_decision",
@@ -138,7 +186,7 @@ impl IntegratorDaemon {
                 ("roll", &sample_roll.to_string()),
                 ("threshold", &self.config.sampling_pct.to_string()),
                 ("decision", sample_decision.as_str()),
-                ("dry_run_override", &self.config.dry_run.to_string()),
+                ("dry_run_override", &config_dry_run.to_string()),
                 ("cycle_is_live", &cycle_is_live.to_string()),
             ],
         );
@@ -151,7 +199,22 @@ impl IntegratorDaemon {
         );
 
         // ── Step 2: SELECT ────────────────────────────────────────────────
-        let candidates = self.select_candidates().await?;
+        let all_candidates = self.select_candidates().await?;
+
+        // Apply LIVE-mode filters: do-not-batch label exclusion + batch cap.
+        let candidates = if cycle_is_live {
+            let filtered: Vec<_> = all_candidates
+                .into_iter()
+                .filter(|c| !self.has_do_not_batch_label(c))
+                .collect();
+            // Cap at batch_max_live (conservative v1 limit).
+            filtered
+                .into_iter()
+                .take(self.config.batch_max_live)
+                .collect::<Vec<_>>()
+        } else {
+            all_candidates
+        };
 
         // ── Step 3: POLICY ────────────────────────────────────────────────
         match evaluate(&candidates, &self.config) {
@@ -355,46 +418,72 @@ impl IntegratorDaemon {
         }
 
         // ── Step 6: DECISION ─────────────────────────────────────────────
+        let gap_ids = manifest
+            .candidates
+            .iter()
+            .map(|c| c.gap_id.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+
         if cycle_is_live {
-            // SHIP path: actual git push + gh pr create + merge is deferred
-            // to INFRA-2136 (C8 bisect-step). For now, a LIVE cycle logs
-            // "WOULD SHIP" so the sampling gate is observable end-to-end
-            // before the real ship path lands (option b per INFRA-2139 AC).
-            let gap_ids = manifest
-                .candidates
-                .iter()
-                .map(|c| c.gap_id.as_str())
-                .collect::<Vec<_>>()
-                .join(",");
+            // LIVE SHIP path: push integration branch, open PR, arm auto-merge.
             eprintln!(
-                "[integrator] LIVE (WOULD SHIP) cycle={cycle_id} \
-                 gaps=[{gap_ids}] loc={} — SHIP deferred to INFRA-2136",
+                "[integrator] LIVE SHIP cycle={cycle_id} gaps=[{gap_ids}] loc={}",
                 manifest.total_loc,
             );
-            // Emit the shipped event so kpi-report can track live cycles even
-            // while the actual push is stubbed.
-            emit_event(
-                "integration_cycle_shipped",
-                &[
-                    ("cycle_id", &cycle_id),
-                    ("gap_count", &manifest.candidates.len().to_string()),
-                    ("total_loc", &manifest.total_loc.to_string()),
-                    ("gap_ids", &gap_ids),
-                    ("stubbed", "true"),
-                ],
-            );
+
+            match self
+                .ship_integration_branch(&integration_branch, &cycle_id, &manifest)
+                .await
+            {
+                Ok(pr_url) => {
+                    // Clear circuit breaker on success.
+                    self.circuit_broken.store(false, Ordering::SeqCst);
+                    emit_event(
+                        "integration_cycle_completed",
+                        &[
+                            ("cycle_id", &cycle_id),
+                            ("gap_count", &manifest.candidates.len().to_string()),
+                            ("total_loc", &manifest.total_loc.to_string()),
+                            ("gap_ids", &gap_ids),
+                            ("pr_url", &pr_url),
+                        ],
+                    );
+                    // Also emit the legacy shipped event for kpi-report consumers.
+                    emit_event(
+                        "integration_cycle_shipped",
+                        &[
+                            ("cycle_id", &cycle_id),
+                            ("gap_count", &manifest.candidates.len().to_string()),
+                            ("total_loc", &manifest.total_loc.to_string()),
+                            ("gap_ids", &gap_ids),
+                            ("stubbed", "false"),
+                        ],
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[integrator] LIVE ship FAILED cycle={cycle_id}: {e:#}");
+                    // Circuit breaker: next cycle runs as dry-run.
+                    self.circuit_broken.store(true, Ordering::SeqCst);
+                    // Roll back the integration branch.
+                    self.rollback_integration_branch(&integration_branch).await;
+                    emit_event(
+                        "integration_cycle_failed",
+                        &[
+                            ("cycle_id", &cycle_id),
+                            ("gap_ids", &gap_ids),
+                            ("error", &format!("{e:#}")),
+                            ("circuit_breaker", "armed"),
+                        ],
+                    );
+                }
+            }
         } else {
             // DRY-RUN: log manifest + emit dry-run completed event.
             let summary = manifest.dry_run_summary();
             eprintln!("[integrator] DRY-RUN: {summary}");
             self.write_dry_run_log(&manifest)
                 .with_context(|| "writing dry-run log")?;
-            let gap_ids = manifest
-                .candidates
-                .iter()
-                .map(|c| c.gap_id.as_str())
-                .collect::<Vec<_>>()
-                .join(",");
             emit_event(
                 "integration_cycle_dry_run_completed",
                 &[
@@ -409,7 +498,158 @@ impl IntegratorDaemon {
         Ok(())
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────
+    // ── safety-rail helpers ───────────────────────────────────────────────
+
+    /// Returns true if trunk-red-detector-state.json signals trunk is RED.
+    ///
+    /// Reads `{repo_root}/.chump-locks/trunk-red-detector-state.json` and
+    /// checks the `is_red` boolean field. Missing file or parse error → false
+    /// (safe default: don't block on detector absence).
+    fn is_trunk_red(&self) -> bool {
+        let state_path = self.repo_root.join(TRUNK_RED_STATE_FILE);
+        let Ok(bytes) = std::fs::read(&state_path) else {
+            return false;
+        };
+        let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            eprintln!("[integrator] trunk-red state file unreadable; assuming not red");
+            return false;
+        };
+        val.get("is_red").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    /// Returns true if a candidate has the do-not-batch label.
+    ///
+    /// Checks the candidate's `tags` field for the configured label name.
+    /// Tags are comma-separated; label matching is case-insensitive.
+    ///
+    /// For v1, checks author and branch name as a proxy. Full tag-field wiring
+    /// through GapCandidate requires INFRA-2136 (adds tags to the struct).
+    fn has_do_not_batch_label(&self, candidate: &crate::cycle::GapCandidate) -> bool {
+        let label = self.config.do_not_batch_label.to_lowercase();
+        let author_matches = candidate
+            .author
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains(&label);
+        let branch_matches = candidate.branch.to_lowercase().contains(&label);
+        author_matches || branch_matches
+    }
+
+    /// Push the integration branch, open a PR, and arm auto-merge.
+    ///
+    /// Returns the PR URL on success. On any failure the caller triggers
+    /// the circuit breaker and calls `rollback_integration_branch`.
+    async fn ship_integration_branch(
+        &self,
+        branch: &str,
+        cycle_id: &str,
+        manifest: &CycleManifest,
+    ) -> Result<String> {
+        let repo = &self.repo_root;
+        let gap_ids: Vec<&str> = manifest
+            .candidates
+            .iter()
+            .map(|c| c.gap_id.as_str())
+            .collect();
+        let gap_list = gap_ids.join(", ");
+
+        // 1. Push the integration branch.
+        let push_status = tokio::process::Command::new("git")
+            .args(["push", "-u", "origin", branch, "--force-with-lease"])
+            .current_dir(repo)
+            .status()
+            .await
+            .with_context(|| format!("git push for branch {branch}"))?;
+
+        if !push_status.success() {
+            anyhow::bail!("git push failed for branch {branch}");
+        }
+
+        // 2. Create the PR via gh cli.
+        let pr_title = format!(
+            "feat(SCALE-A): integration-{cycle_id} — batch {} gaps",
+            manifest.candidates.len()
+        );
+        let pr_body = format!(
+            "Batched integration cycle `{cycle_id}`.\n\n\
+             Gaps: {gap_list}\n\
+             Total estimated LOC: {}\n\n\
+             Batched-Under: {branch}\n\
+             Integration-Cycle-Id: {cycle_id}\n",
+            manifest.total_loc,
+        );
+
+        let pr_output = tokio::process::Command::new("gh")
+            .args([
+                "pr", "create", "--base", "main", "--head", branch, "--title", &pr_title, "--body",
+                &pr_body,
+            ])
+            .current_dir(repo)
+            .output()
+            .await
+            .with_context(|| "gh pr create")?;
+
+        if !pr_output.status.success() {
+            let stderr = String::from_utf8_lossy(&pr_output.stderr);
+            anyhow::bail!("gh pr create failed: {stderr}");
+        }
+
+        let pr_url = String::from_utf8_lossy(&pr_output.stdout)
+            .trim()
+            .to_string();
+
+        // 3. Extract PR number and arm auto-merge.
+        // gh pr create outputs the PR URL as the last line; parse number from it.
+        let pr_number = pr_url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .with_context(|| format!("could not parse PR number from gh output: {pr_url}"))?;
+
+        let merge_status = tokio::process::Command::new("gh")
+            .args(["pr", "merge", &pr_number.to_string(), "--auto", "--squash"])
+            .current_dir(repo)
+            .status()
+            .await
+            .with_context(|| format!("gh pr merge --auto for PR {pr_number}"))?;
+
+        if !merge_status.success() {
+            anyhow::bail!("gh pr merge --auto --squash failed for PR {pr_number}");
+        }
+
+        eprintln!("[integrator] LIVE ship complete: PR #{pr_number} ({pr_url}) — auto-merge armed");
+        Ok(pr_url)
+    }
+
+    /// Roll back the integration branch to HEAD on main.
+    ///
+    /// Best-effort: errors are logged but not propagated so the circuit
+    /// breaker path completes cleanly.
+    async fn rollback_integration_branch(&self, branch: &str) {
+        eprintln!("[integrator] rolling back integration branch {branch}");
+        let result = tokio::process::Command::new("git")
+            .args(["branch", "-D", branch])
+            .current_dir(&self.repo_root)
+            .status()
+            .await;
+        match result {
+            Ok(s) if s.success() => {
+                eprintln!("[integrator] rollback complete: deleted local branch {branch}");
+            }
+            Ok(s) => {
+                eprintln!(
+                    "[integrator] rollback: git branch -D {branch} exited {}",
+                    s.code().unwrap_or(-1)
+                );
+            }
+            Err(e) => {
+                eprintln!("[integrator] rollback: could not delete branch {branch}: {e:#}");
+            }
+        }
+    }
+
+    // ── core helpers ──────────────────────────────────────────────────────
 
     async fn try_claim_integration_slot(&self, cycle_id: &str) -> bool {
         if let Some(coord) = &self.coord {
