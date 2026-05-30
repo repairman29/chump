@@ -1,0 +1,9 @@
+- id: INFRA-2222
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C3d curator-opus-incident-commander role — owns trunk-red recovery; cross-curator coordination; runs the rescue playbook"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
+
