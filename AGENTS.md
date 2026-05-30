@@ -361,6 +361,7 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 - [`docs/process/OPUS_MESSAGE_PROTOCOL.md`](./docs/process/OPUS_MESSAGE_PROTOCOL.md) — inbox DM format + handling
 - [`scripts/coord/broadcast.sh`](./scripts/coord/broadcast.sh) — NATS broadcast types: INTENT, HANDOFF, STUCK, DONE, WARN, ALERT, FEEDBACK
 - [`crates/chump-coord/src/lib.rs`](./crates/chump-coord/src/lib.rs) — `EVENTS_SUBJECT` (`chump.events.*`)
+- [`docs/process/SCHEDULING_LAYERS.md`](./docs/process/SCHEDULING_LAYERS.md) — when to use CronCreate / ScheduleWakeup / Monitor (session-bound) vs launchd plists (fleet-durable); decision table + anti-patterns (DOC-058)
 
 ## Where to find docs
 
