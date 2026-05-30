@@ -420,3 +420,4 @@ ship_bisect_root_cause            # reason: INFRA-2132 / META-124; registered in
 bisect_quarantine                 # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
 integration_cycle_shipped         # reason: INFRA-2132 / META-124; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped; related_kinds: [pr_merged] cross-ref set in registry.
 cycle_sampling_decision           # reason: INFRA-2132 / META-124 Phase 2 marker; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
+bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registered in EVENT_REGISTRY.yaml; emitter scripts/dev/integration-bisect-step.sh.

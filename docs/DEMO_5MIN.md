@@ -114,6 +114,7 @@ Credible / 56 Resilient / 16 Zero-Waste open gaps pickable — see
 - **Want to review the architecture?** Start with [`AGENTS.md`](./AGENTS.md), then [`CLAUDE.md`](../CLAUDE.md), then [`docs/design/A2A_ROADMAP.md`](./design/A2A_ROADMAP.md).
 - **Want to see today's actual numbers?** Run `bash scripts/dev/lightning-demo-timeline.sh` — refreshed in real time.
 - **Want to dispatch agents?** Drop a gap with concrete AC into `chump gap reserve --domain INFRA --title "EFFECTIVE: ..."` — the picker will route it.
+- **P&E Suite (Marcus M-D):** See [docs/strategy/CHUMP_PE_SUITE_DEMO_5MIN.md](strategy/CHUMP_PE_SUITE_DEMO_5MIN.md) for the 5-beat team-tier substrate demo — 14 curators deliberating on a real question in under 5 minutes (INFRA-2234).
 
 ---
 
