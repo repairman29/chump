@@ -48,7 +48,7 @@ clock** for the last 10 shipped PRs. Run this anytime:
 bash scripts/dev/lightning-demo-timeline.sh
 ```
 
-Example output (real, from 2026-05-23):
+For shape — illustrative output from a prior run (2026-05-23):
 
 ```
 gap_id          PR  claim→open  open→merge  total_min  title
@@ -71,6 +71,15 @@ Summary: 10 ships, total 118.2 min, median 10.1 min, p10 2.2, p90 20.4
 PR merged. Fastest is ~2 min (doc-only); slowest ~25 min (touches Rust →
 full cargo workflow). The `claim→open` column is consistently <1 min — the
 LLM/code-write phase is fast; **CI is the bottleneck**, not the agents.
+
+**Today's evidence (2026-05-29):** 37 commits landed on `main` since
+00:00 UTC. Themes: container CI (INFRA-2117/2118), webhook-driven
+bot-merge wait (INFRA-2119), per-PR cache isolation, CI-parity gate
+promotion (INFRA-2120), trunk-RED ruleset fixes (INFRA-2191 doc-only-PR
+wedge, INFRA-2200 ci.yml unbreak), and the chump-fleet-recorder query
+stack (INFRA-2174/2175/2176). The Marcus M-B fan-out primitive
+(INFRA-1484) is already on `main`; the Marcus M-E reviewer-routing
+crate (INFRA-1491) landed today.
 
 ## Screenshot list (for the slide deck operator builds out of this)
 
@@ -124,3 +133,5 @@ that always reflects today.*
 
 *Maintained by curator-opus-ci-audit + the fleet. Last refresh: see
 `git log -1 docs/DEMO_5MIN.md`.*
+
+_Last refreshed: 2026-05-29_

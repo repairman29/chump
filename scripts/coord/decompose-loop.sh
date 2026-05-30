@@ -286,6 +286,7 @@ case "$cmd" in
     slice)          cmd_slice "$@" ;;
     audit-pending)  cmd_audit_pending "$@" ;;
     heartbeat)      cmd_heartbeat "$@" ;;
+    tick)           cmd_audit_pending "$@" ;;  # INFRA-2238: fleet-autopilot.sh canonical entry point
     help|-h|--help) grep '^#' "$0" | sed -n '3,55p' | sed 's/^# \{0,1\}//' ;;
     *)
         echo "decompose-loop: unknown subcommand $cmd (try: decompose-loop.sh help)" >&2
