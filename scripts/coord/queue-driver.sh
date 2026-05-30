@@ -539,17 +539,29 @@ for pr in $behind_candidates; do
 done
 
 # DIRTY second (rebase + auto-resolve gaps.yaml only).
+# INFRA-2271: only count SUCCESSFUL resolution toward MAX budget. Semantic-skip
+# (resolve_dirty_pr returns non-zero) must continue to next DIRTY, otherwise
+# every invocation re-picks the same skipped PR and other DIRTY never get tried.
+skipped=0
 for pr in $dirty_candidates; do
   if [[ "$count" -ge "$MAX" ]]; then
     break
   fi
   echo "queue-driver: attempting DIRTY auto-resolve for PR #$pr"
   if resolve_dirty_pr "$pr"; then
-    : # success message printed by resolver
+    # success — count toward MAX budget
+    count=$((count + 1))
+    _ambient_write "$REPO_ROOT/.chump-locks/ambient.jsonl" \
+      "$(printf '{"ts":"%s","kind":"queue_driver_iter_attempted","pr":%s,"outcome":"resolved"}' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr")"
   else
-    echo "queue-driver: leaving #$pr for human owner"
+    # skip — DO NOT count toward MAX; advance to next DIRTY in same run
+    echo "queue-driver: leaving #$pr for human owner — continuing to next DIRTY"
+    skipped=$((skipped + 1))
+    _ambient_write "$REPO_ROOT/.chump-locks/ambient.jsonl" \
+      "$(printf '{"ts":"%s","kind":"queue_driver_iter_attempted","pr":%s,"outcome":"skipped_semantic"}' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr")"
   fi
-  count=$((count + 1))
 done
 
-echo "queue-driver: processed $count PR(s)"
+echo "queue-driver: processed $count PR(s), skipped $skipped semantic-conflict PR(s)"

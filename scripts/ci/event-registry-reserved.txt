@@ -456,3 +456,4 @@ cascade_unblock_skipped           # reason: INFRA-2070 emitted by scripts/coord/
 # ── INFRA-2006: A2A inbox-routing fix ────────────────────────────────────────
 a2a_inbox_alias_resolved        # reason: INFRA-2006; emitted by scripts/coord/chump-inbox.sh read when messages are found in a lease-id alias inbox (primary env-session-id != broadcast --to target); also by scripts/coord/lib/inbox-routing.sh resolve_inbox_target on sender-side lookup. Carries primary_session, alias_session, message_count. Registered in EVENT_REGISTRY.yaml.
 a2a_inbox_message_orphan        # reason: INFRA-2006; advisory event emitted by scripts/coord/chump-inbox.sh when a message is found in an inbox file no live session owns. Not fatal; archive-on-dead-session cleans up. Carries inbox_file, message_count. Registered in EVENT_REGISTRY.yaml.
+queue_driver_iter_attempted
