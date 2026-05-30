@@ -1,0 +1,16 @@
+- id: META-176
+  domain: META
+  title: "OPERATOR_PLAYBOOK + CLAUDE.md + AGENTS.md — codify webhook + smee + github_cache + docker discipline; add anti-pattern #9 polling-when-cache-exists"
+  status: open
+  priority: P0
+  effort: xs
+  description: |
+    Operator anger 2026-05-30T09:27Z: I (this Opus session) burned ~20 min polling gh API while github_cache.db was right there. Webhook receiver + smee tunnel ARE running and populating; my session just was lazy. Worse: OPERATOR_PLAYBOOK.md has ZERO mentions of webhook/cache/smee/docker — only CLAUDE.md + AGENTS.md mention the cache. The discipline rule "use cache, never poll" isnt in the playbook and isnt prominent enough in CLAUDE.md. Codify all three.
+  acceptance_criteria:
+    - "docs/process/OPERATOR_PLAYBOOK.md gains new section \"## 7.5 Local Infrastructure — webhook + smee + cache + docker\" with: setup steps (install-smee-tunnel-launchd.sh, github-webhook-receiver.py invocation, ~/.chump/secrets.env required keys CHUMP_SMEE_URL + CHUMP_GITHUB_WEBHOOK_SECRET), healthcheck commands (pgrep smee-client, sqlite3 .chump/github_cache.db, fetched_at_local recency check), recovery (when receiver stale > 1h, restart launchd job)"
+    - "OPERATOR_PLAYBOOK.md Anti-patterns section gains entry #9: \"Polling gh when webhook cache exists\" with concrete example (gh pr view 2855 → sqlite3 .chump/github_cache.db SELECT ...) + symptoms (graphql_exhausted events firing, agent burns minutes on rate-limited reads)"
+    - "CLAUDE.md Cache-first-reads section (lines 297+) gets a BOLD discipline-reminder banner: \"DEFAULT to cache_lookup_pr / sqlite3 .chump/github_cache.db; gh pr view / gh api ONLY on cache miss\". Move section earlier in CLAUDE.md (currently after Push routing) so its more prominent"
+    - AGENTS.md mirrors the CLAUDE.md discipline reminder (lines 242+) — same bold banner + same emphasis
+    - "New playbook subsection: docker setup (docker/Dockerfile + docker/docker-compose.yml for Marcus PWA env + Ollama sidecar) — when to use, when not to, healthcheck"
+    - "PR commit message includes: \"Discipline-Hardening: codify cache-first reads + smee + docker per operator 2026-05-30T09:27Z. This session burned 20 min on gh polling because the docs didnt make this prominent enough.\""
+
