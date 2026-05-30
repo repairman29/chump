@@ -3308,7 +3308,77 @@ print(f"{incomplete} {failed} {total}")
                     stage_done
                 fi
             fi
-            if [[ $_rest_direct_merged -eq 0 ]] && [[ "${_policy_blocked:-0}" != "1" ]]; then
+            # ── INFRA-1813: HITL approval gate (Marcus M-B trust substrate) ──
+            # Vendored from repairman29/BEAST-MODE @ 612ff45f73791
+            # (website/app/api/tasks/[id]/{approve,reject}/route.ts, CP-003).
+            #
+            # When `CHUMP_REQUIRE_HITL=1` (env) OR `.chump/require-hitl` file
+            # exists at repo root, bot-merge will NOT arm auto-merge unless an
+            # explicit approval signal is present for this PR.
+            #
+            # Approval signals (any one is sufficient):
+            #   1. `CHUMP_HITL_APPROVED=1` env var (operator one-shot)
+            #   2. `.chump-locks/hitl-approved-<PR>.flag` file (file-flag, easy
+            #      for PWA/operator scripts to drop)
+            #   3. `hitl-approved` label on the PR (GitHub-native operator UX)
+            #
+            # On block: emit `kind=hitl_approval_required` to ambient with
+            # pr + branch + diff summary so the operator surface (PWA tray,
+            # tail script) can present it for approval. Skip arming entirely;
+            # PR stays open for human review.
+            #
+            # Default OFF (`require_hitl` unset) — Chump-internal repos stay
+            # full-auto. Per-repo opt-in via `.chump/require-hitl` flag file
+            # OR fleet env `CHUMP_REQUIRE_HITL=1`. Schema additions to
+            # `chump.fleet.yaml` (`require_hitl: true`) tracked as follow-up.
+            _hitl_block=0
+            _require_hitl=0
+            if [[ "${CHUMP_REQUIRE_HITL:-0}" == "1" ]] || [[ -f "$REPO_ROOT/.chump/require-hitl" ]]; then
+                _require_hitl=1
+            fi
+            if [[ $_rest_direct_merged -eq 0 ]] && [[ "${_policy_blocked:-0}" != "1" ]] && [[ $_require_hitl -eq 1 ]]; then
+                stage_start "INFRA-1813: HITL approval check (PR $TARGET_PR)"
+                _hitl_approved=0
+                _hitl_signal=""
+                if [[ "${CHUMP_HITL_APPROVED:-0}" == "1" ]]; then
+                    _hitl_approved=1
+                    _hitl_signal="env:CHUMP_HITL_APPROVED"
+                elif [[ -f "$REPO_ROOT/.chump-locks/hitl-approved-${TARGET_PR}.flag" ]]; then
+                    _hitl_approved=1
+                    _hitl_signal="file:.chump-locks/hitl-approved-${TARGET_PR}.flag"
+                elif gh pr view "$TARGET_PR" --json labels --jq '.labels[].name' 2>/dev/null | grep -qx "hitl-approved"; then
+                    _hitl_approved=1
+                    _hitl_signal="label:hitl-approved"
+                fi
+                if [[ $_hitl_approved -eq 1 ]]; then
+                    green "  HITL approval present (signal=$_hitl_signal) — proceeding with auto-merge"
+                    # scanner-anchor: "kind":"hitl_approval_granted"
+                    printf '{"ts":"%s","kind":"hitl_approval_granted","pr":%s,"signal":"%s","session":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET_PR" "$_hitl_signal" "${CHUMP_SESSION_ID:-unknown}" \
+                        >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                    stage_done
+                else
+                    red "  HITL approval REQUIRED — auto-merge NOT armed (Marcus M-B gate)"
+                    _hitl_diff_summary=$(gh pr diff "$TARGET_PR" --name-only 2>/dev/null | head -10 | tr '\n' ',' | sed 's/,$//' || echo "unknown")
+                    _hitl_branch="${BRANCH:-unknown}"
+                    # scanner-anchor: "kind":"hitl_approval_required"
+                    printf '{"ts":"%s","kind":"hitl_approval_required","pr":%s,"branch":"%s","files":"%s","session":"%s","approve_hint":"touch %s/.chump-locks/hitl-approved-%s.flag OR gh pr edit %s --add-label hitl-approved"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET_PR" "$_hitl_branch" "$_hitl_diff_summary" "${CHUMP_SESSION_ID:-unknown}" \
+                        "$REPO_ROOT" "$TARGET_PR" "$TARGET_PR" \
+                        >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                    gh pr comment "$TARGET_PR" --body "🛑 INFRA-1813: HITL approval required (Marcus M-B trust gate). Auto-merge NOT armed.
+
+Approve via any of:
+- \`gh pr edit $TARGET_PR --add-label hitl-approved\` then re-run bot-merge
+- \`touch .chump-locks/hitl-approved-$TARGET_PR.flag\` then re-run bot-merge
+- \`CHUMP_HITL_APPROVED=1 scripts/coord/bot-merge.sh --gap <ID> --auto-merge\`
+
+See docs/process/HITL_APPROVAL.md for the full operator flow." 2>/dev/null || true
+                    stage_done
+                    _hitl_block=1
+                fi
+            fi
+            if [[ $_rest_direct_merged -eq 0 ]] && [[ "${_policy_blocked:-0}" != "1" ]] && [[ $_hitl_block -eq 0 ]]; then
                 # INFRA-1113: delegate to centralized armer to enforce 5s spacing.
                 # INFRA-1311: auto-merge-armer.sh now enforces per-PR exponential
                 # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts

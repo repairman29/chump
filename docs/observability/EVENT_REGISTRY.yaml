@@ -6200,3 +6200,35 @@ events:
       bypass).
     consumers: [ops-audit]
     fields_required: [ts, kind, pr, limit, recent_count]
+  # ── INFRA-1813: Marcus M-B HITL trust-gate ────────────────────────────────
+  # Vendored shape from BEAST-MODE approve/reject route handlers (CP-003).
+  - kind: hitl_approval_required
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-1813)
+    # scanner-anchor: "kind":"hitl_approval_required"
+    trigger: >
+      Emitted when bot-merge encounters a PR that needs human-in-the-loop
+      approval (require_hitl is on AND no approval signal present). The
+      auto-merge arm is skipped; PR stays open. Carries pr/branch/files +
+      approve_hint so the operator surface (PWA tray, tail script) can
+      present an actionable prompt.
+    consumers: [ops-audit, pwa-hitl-tray, waste-tally]
+    fields_required: [ts, kind, pr, branch, files, session, approve_hint]
+    expected_volume: "0..N per repo per day (off by default; opt-in)"
+    status: stable
+    # payload: {pr: number, branch: string, files: string (comma list), session: string, approve_hint: string, ts: string}
+
+  - kind: hitl_approval_granted
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-1813)
+    # scanner-anchor: "kind":"hitl_approval_granted"
+    trigger: >
+      Emitted by bot-merge when an HITL approval signal is detected
+      (env CHUMP_HITL_APPROVED=1, file .chump-locks/hitl-approved-<PR>.flag,
+      OR PR label hitl-approved) and auto-merge proceeds. Pairs with
+      hitl_approval_required for audit-trail completeness.
+    consumers: [ops-audit, pwa-hitl-tray, waste-tally]
+    fields_required: [ts, kind, pr, signal, session]
+    expected_volume: "matches hitl_approval_required volume on resolution"
+    status: stable
+    # payload: {pr: number, signal: string (env:X | file:Y | label:Z), session: string, ts: string}
