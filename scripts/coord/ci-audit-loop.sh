@@ -42,6 +42,7 @@
 #   CHUMP_SESSION_ID          session id for inbox + emits (default: ci-audit-<pid>)
 #   CHUMP_AMBIENT_LOG         ambient.jsonl path override
 #   CHUMP_CI_AUDIT_LANE_OVERRIDE  if "1", lane-scope checks skip
+#   CHUMP_FLEET_WIRE_V1       set to "1" to enable Phase 1.5 reactor (META-169)
 
 set -euo pipefail
 
@@ -52,7 +53,7 @@ if [[ "$_GIT_COMMON" == ".git" ]]; then
 else
     MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
 fi
-LOCK_DIR="$MAIN_REPO/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-ci-audit-$$}"
 
@@ -110,6 +111,265 @@ _peek_inbox() {
     fi
 }
 
+# ── Phase 1.5 reactor helpers (META-169) ──────────────────────────────────────
+
+# Drain all FEEDBACK kind=proposal messages from all inbox files owned by
+# this session (primary + any lease-id inboxes). Returns one JSON line per
+# message, deduped by message_id / ts+session+kind triple.
+# Only called when CHUMP_FLEET_WIRE_V1=1.
+_drain_inbox_proposals() {
+    local seen_ids=()
+    local inbox_dir="$LOCK_DIR/inbox"
+    [[ -d "$inbox_dir" ]] || return 0
+
+    # Collect candidate inbox files: primary SESSION_ID + any claim-*.json lease ids
+    local files=()
+    local primary="$inbox_dir/${SESSION_ID}.jsonl"
+    [[ -f "$primary" ]] && files+=("$primary")
+
+    local lease_file
+    for lease_file in "$LOCK_DIR"/claim-*.json; do
+        [[ -f "$lease_file" ]] || continue
+        local lease_session
+        lease_session="$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lease_file" 2>/dev/null | head -1)"
+        [[ -z "$lease_session" || "$lease_session" == "$SESSION_ID" ]] && continue
+        local lease_inbox="$inbox_dir/${lease_session}.jsonl"
+        [[ -f "$lease_inbox" ]] && files+=("$lease_inbox")
+    done
+
+    local f line event kind msg_id dedup_key
+    for f in "${files[@]}"; do
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            event="$(printf '%s' "$line" | sed -n 's/.*"event"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+            [[ "$event" != "FEEDBACK" ]] && continue
+            kind="$(printf '%s' "$line" | sed -n 's/.*"kind"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+            [[ "$kind" != "proposal" ]] && continue
+            # Dedupe
+            msg_id="$(printf '%s' "$line" | sed -n 's/.*"message_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+            if [[ -n "$msg_id" ]]; then
+                dedup_key="$msg_id"
+            else
+                local ts session_f
+                ts="$(printf '%s' "$line" | sed -n 's/.*"ts"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+                session_f="$(printf '%s' "$line" | sed -n 's/.*"session"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+                dedup_key="${ts}|${session_f}|${kind}"
+            fi
+            local already=0
+            local id
+            for id in "${seen_ids[@]:-}"; do
+                [[ "$id" == "$dedup_key" ]] && already=1 && break
+            done
+            (( already )) && continue
+            seen_ids+=("$dedup_key")
+            printf '%s\n' "$line"
+        done < "$f"
+    done
+}
+
+# Check if a corr_id has already fired consensus_result in recent ambient.
+_consensus_fired() {
+    local corr_id="$1"
+    [[ ! -f "$AMBIENT" ]] && return 1
+    grep -q "\"kind\":\"consensus_result\".*\"corr_id\":\"${corr_id}\"" "$AMBIENT" 2>/dev/null \
+        || grep -q "\"corr_id\":\"${corr_id}\".*\"kind\":\"consensus_result\"" "$AMBIENT" 2>/dev/null
+}
+
+# Return suspect_commits count from the most recent regression_attributed event
+# in the last 200 ambient lines matching an optional corr_id filter.
+# Outputs the integer count (0 if not found).
+_regression_suspect_count() {
+    local corr_id_filter="${1:-}"
+    [[ ! -f "$AMBIENT" ]] && printf '0' && return 1
+    local line candidates
+    candidates="$(tail -200 "$AMBIENT" 2>/dev/null \
+        | grep '"kind":"regression_attributed"' || true)"
+    if [[ -z "$candidates" ]]; then
+        printf '0'
+        return 1
+    fi
+    # If corr_id filter provided, restrict to matching lines
+    if [[ -n "$corr_id_filter" ]]; then
+        local filtered
+        filtered="$(printf '%s\n' "$candidates" \
+            | grep "\"corr_id\":\"${corr_id_filter}\"" || true)"
+        [[ -n "$filtered" ]] && candidates="$filtered"
+    fi
+    # Take the most recent line
+    line="$(printf '%s\n' "$candidates" | tail -1)"
+    # Extract suspect_commits (numeric field)
+    local count
+    count="$(printf '%s' "$line" \
+        | sed -n 's/.*"suspect_commits"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' \
+        | head -1)"
+    # Fallback: suspect_commits might be a string
+    if [[ -z "$count" ]]; then
+        count="$(printf '%s' "$line" \
+            | sed -n 's/.*"suspect_commits"[[:space:]]*:[[:space:]]*"\([0-9][0-9]*\)".*/\1/p' \
+            | head -1)"
+    fi
+    printf '%s' "${count:-0}"
+}
+
+# Check if regression_attributed event exists in ambient for the given
+# corr_id within the last 4 hours. Returns 0 if found, 1 if not.
+# If corr_id is empty, checks for ANY regression_attributed in last 4h.
+_regression_in_last_4h() {
+    local corr_id_filter="${1:-}"
+    [[ ! -f "$AMBIENT" ]] && return 1
+
+    local now_epoch cutoff line_ts line_epoch
+    now_epoch="$(date +%s 2>/dev/null || python3 -c 'import time; print(int(time.time()))')"
+    cutoff=$(( now_epoch - 14400 ))  # 4h = 14400s
+
+    local found=0
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" != *'"kind":"regression_attributed"'* ]] && continue
+        if [[ -n "$corr_id_filter" ]]; then
+            [[ "$line" != *"\"corr_id\":\"${corr_id_filter}\""* ]] && continue
+        fi
+        line_ts="$(printf '%s' "$line" | sed -n 's/.*"ts"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        [[ -z "$line_ts" ]] && continue
+        line_epoch="$(date -d "$line_ts" +%s 2>/dev/null \
+            || python3 -c "import datetime,calendar; t=datetime.datetime.strptime('${line_ts}','%Y-%m-%dT%H:%M:%SZ'); print(calendar.timegm(t.timetuple()))" 2>/dev/null \
+            || echo 0)"
+        if (( line_epoch >= cutoff )); then
+            found=1
+            break
+        fi
+    done < <(tail -200 "$AMBIENT" 2>/dev/null)
+
+    return $(( 1 - found ))
+}
+
+# Emit a FEEDBACK kind=vote to ambient for the given corr_id + vote value.
+# Also writes to the deliberator's inbox if available.
+_cast_vote() {
+    local corr_id="$1"
+    local vote_val="$2"   # +1 or 0
+    local reason="${3:-ci-audit: regression_attributed suspect_commits vote}"
+
+    # Emit to ambient (deliberator reads from here)
+    local extra
+    extra="$(printf '"event":"FEEDBACK","kind":"vote","corr_id":"%s","vote":%s,"reason":"%s","voter_role":"ci-audit"' \
+        "$corr_id" "$vote_val" "$reason")"
+    _emit_kind "ci_audit_reactor_voted" \
+        "$(printf '"corr_id":"%s","vote":%s,"reason":"%s"' "$corr_id" "$vote_val" "$reason")"
+    # scanner-anchor: "kind":"ci_audit_reactor_voted"
+
+    # Write FEEDBACK vote line directly to ambient so deliberator can tally it
+    local vote_body
+    vote_body="$(printf '{"ts":"%s","event":"FEEDBACK","kind":"vote","session":"%s","corr_id":"%s","vote":%s,"reason":"%s","voter_role":"ci-audit"}' \
+        "$(_now_iso)" "$SESSION_ID" "$corr_id" "$vote_val" "$reason")"
+    printf '%s\n' "$vote_body" >> "$AMBIENT" 2>/dev/null || true
+
+    # Also broadcast to deliberator inbox if broadcast.sh available
+    local broadcast_sh="$MAIN_REPO/scripts/coord/broadcast.sh"
+    if [[ -x "$broadcast_sh" ]]; then
+        local today
+        today="$(date -u +%Y-%m-%d)"
+        "$broadcast_sh" --to "curator-opus-deliberator-${today}" \
+            FEEDBACK vote "ci-audit reactor: regression_attributed corr_id=${corr_id}" \
+            "ci-audit voted ${vote_val} on ${corr_id}: ${reason}" \
+            "$vote_val" >/dev/null 2>&1 || true
+    fi
+}
+
+# ── Phase 1.5: FEEDBACK proposal reactor (META-169) ───────────────────────────
+#
+# Scans FEEDBACK kind=proposal messages from inbox.
+# For each proposal whose description/rationale references "regression_attributed":
+#   1. Verify a matching regression_attributed event exists in ambient (last 4h)
+#   2. Get suspect_commits count from that event
+#   3. Vote +1 (high confidence) if count >= 3; vote 0 (low confidence) if < 3
+#   4. Skip if no ambient match (not our lane)
+# Gated by CHUMP_FLEET_WIRE_V1=1.
+# Returns 0 if any votes were cast, 1 if quiet.
+_phase_1_5_reactor() {
+    if [[ "${CHUMP_FLEET_WIRE_V1:-0}" != "1" ]]; then
+        return 1  # Feature flag off — noop
+    fi
+
+    local voted=0
+    local cooldown_dir="$LOCK_DIR/ci-audit-vote-cooldown"
+    mkdir -p "$cooldown_dir" 2>/dev/null || true
+
+    local proposal
+    while IFS= read -r proposal; do
+        [[ -z "$proposal" ]] && continue
+
+        # ── Anti-reaction-loop guard (META-168 AC #3 pattern) ──────────────
+        # Skip kind=vote events (only react to proposal/preference/defect/retro)
+        local p_kind
+        p_kind="$(printf '%s' "$proposal" | sed -n 's/.*"kind"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        [[ "$p_kind" == "vote" ]] && continue
+
+        # Skip own-session broadcasts
+        local p_session
+        p_session="$(printf '%s' "$proposal" | sed -n 's/.*"session"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        [[ "$p_session" == "$SESSION_ID" ]] && continue
+
+        # Extract corr_id
+        local corr_id
+        corr_id="$(printf '%s' "$proposal" | sed -n 's/.*"corr_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        [[ -z "$corr_id" ]] && continue
+
+        # Skip if consensus_result already fired for this corr_id
+        _consensus_fired "$corr_id" && continue
+
+        # ── 30min per-corr_id cooldown ──────────────────────────────────────
+        local cooldown_file="$cooldown_dir/${corr_id}"
+        if [[ -f "$cooldown_file" ]]; then
+            local file_mtime now_epoch age_s
+            now_epoch="$(date +%s 2>/dev/null || python3 -c 'import time; print(int(time.time()))')"
+            file_mtime="$(stat -f %m "$cooldown_file" 2>/dev/null \
+                || stat -c %Y "$cooldown_file" 2>/dev/null \
+                || echo 0)"
+            age_s=$(( now_epoch - file_mtime ))
+            (( age_s < 1800 )) && continue  # 30min = 1800s
+        fi
+
+        # ── Lane check: does this proposal reference regression_attributed? ──
+        local subject rationale
+        subject="$(printf '%s' "$proposal" | sed -n 's/.*"subject"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        rationale="$(printf '%s' "$proposal" | sed -n 's/.*"rationale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        local combined="${subject} ${rationale}"
+        if [[ "$combined" != *"regression_attributed"* ]]; then
+            continue  # Not our lane — skip
+        fi
+
+        # ── Ambient cross-reference: regression_attributed event in last 4h ──
+        if ! _regression_in_last_4h ""; then
+            # No regression_attributed event in ambient — not our lane
+            echo "  [phase1.5] corr_id=${corr_id}: no regression_attributed event in last 4h — skip"
+            continue
+        fi
+
+        # ── Vote per suspect_commits count ─────────────────────────────────
+        local suspect_count vote_val vote_reason
+        suspect_count="$(_regression_suspect_count "")"
+        if (( suspect_count >= 3 )); then
+            vote_val=1
+            vote_reason="ci-audit: high-confidence regression (suspect_commits=${suspect_count}>=3)"
+        else
+            vote_val=0
+            vote_reason="ci-audit: low-confidence regression (suspect_commits=${suspect_count}<3)"
+        fi
+
+        echo "  [phase1.5] corr_id=${corr_id}: regression_attributed found, suspect_commits=${suspect_count} → vote=${vote_val}"
+        _cast_vote "$corr_id" "$vote_val" "$vote_reason"
+
+        # Stamp cooldown file
+        touch "$cooldown_file" 2>/dev/null || true
+
+        voted=$(( voted + 1 ))
+    done < <(_drain_inbox_proposals)
+
+    (( voted > 0 )) && return 0
+    return 1
+}
+
 # ── Subcommands ──────────────────────────────────────────────────────────────
 
 _cmd_tick() {
@@ -128,6 +388,18 @@ _cmd_tick() {
         echo "  (no inbox items)"
     fi
     echo
+
+    # Phase 1.5: FEEDBACK proposal reactor (META-169, gated by CHUMP_FLEET_WIRE_V1=1)
+    if [[ "${CHUMP_FLEET_WIRE_V1:-0}" == "1" ]]; then
+        echo "## Phase 1.5: FEEDBACK reactor (CHUMP_FLEET_WIRE_V1)"
+        if _phase_1_5_reactor; then
+            echo "  [phase1.5] votes cast"
+            actionable=1
+        else
+            echo "  [phase1.5] no regression_attributed proposals to vote on"
+        fi
+        echo
+    fi
 
     # Phase 2: Ambient CI event scan
     echo "## Ambient CI events (last 100 lines)"

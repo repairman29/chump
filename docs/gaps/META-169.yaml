@@ -1,0 +1,14 @@
+- id: META-169
+  domain: META
+  title: "META-167-c: ci-audit-loop reactor — react to FEEDBACK proposals referencing regression_attributed, vote per blame-bot intel"
+  status: shipped
+  priority: P1
+  effort: s
+  description: |
+    Sub-slice c of META-167. ci-audit-loop reactor — react to FEEDBACK proposals referencing regression_attributed kind.
+  acceptance_criteria:
+    - "scripts/coord/ci-audit-loop.sh tick gains Phase 1.5 reactor: scan FEEDBACK proposals; if description/rationale references regression_attributed kind AND ambient has matching event in last 4h, vote per blame-bot suspect_commits count (count>=3 → +1; count<3 → 0)"
+    - Per-corr_id 30min cooldown
+    - "Anti-reaction-loop same as META-168 AC #3"
+    - Feature flag CHUMP_FLEET_WIRE_V1=1 gates the reactor
+    - "scripts/ci/test-ci-audit-reactor.sh: 3 fixtures (regression match high-conf, regression match low-conf, non-regression) → assert votes +1/0/skip"
