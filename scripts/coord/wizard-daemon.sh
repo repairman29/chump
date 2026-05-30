@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/coord/wizard-daemon.sh — META-109/META-107 (THE FLOOR DRIVE primitive)
+# scripts/coord/wizard-daemon.sh — META-109/META-107/META-118 (THE FLOOR DRIVE primitive)
 #
 # Autonomous orchestrator that drives PRs toward merge without requiring a
 # human operator or Opus session on duty.
@@ -19,6 +19,14 @@
 #             blocked on the same trunk-RED → trigger gh pr update-branch;
 #             rate-limited to 3/hr per INFRA-1993 recovery-queue
 #
+# Phase 3 (META-118 sub-gap 2 / INFRA-2068) — Step 7:
+#   Step 7 — Auto-wedge-file: consume kind=wedge_class_detected events from
+#             INFRA-2067 classifier; for each novel signature auto-file a P1/xs
+#             INFRA gap with title, AC stub, and wedge_auto_filed:true tag.
+#             Deduplication: if an OPEN gap with the same signature_hash already
+#             exists in state.db, append a new sample rather than duplicate.
+#             Rate-limit: max CHUMP_WIZARD_WEDGE_FILE_RATE (default 5) per hour.
+#
 # Safety (mandatory — NEVER remove):
 #   - REFUSES to act when `chump health --temp` is HOT
 #   - REFUSES to act on a PR with mergeStateStatus=CONFLICTING
@@ -26,6 +34,7 @@
 #   - REFUSES to dispatch >CHUMP_WIZARD_MAX_PARALLEL concurrent gaps (Step 4)
 #   - REFUSES to dispatch gaps tagged wizard_skip:true (Step 4)
 #   - REFUSES cascade rebase on PRs not authored by repairman29 (Step 5 anti-fork-takeover)
+#   - REFUSES to auto-file >CHUMP_WIZARD_WEDGE_FILE_RATE wedge gaps per hour (Step 7)
 #   - DEFAULT DISABLED: requires CHUMP_WIZARD_DAEMON_ENABLED=1 to run
 #
 # Usage:
@@ -49,6 +58,9 @@
 #   CHUMP_WIZARD_DISPATCH_TIMEOUT_S     seconds before a dead-PID dispatch is marked FAILED (default 900)
 #   CHUMP_WIZARD_DISPATCH_GAP_COOLDOWN_S seconds after FAILED before re-dispatch allowed (default 1800)
 #   CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS  max FAILED dispatches per gap in 24h before give-up (default 3)
+#   CHUMP_WIZARD_WEDGE_FILE_RATE        max auto-filed wedge gaps per hour (default 5)
+#   CHUMP_WIZARD_WEDGE_LOOKBACK_S       how far back to scan ambient for wedge_class_detected events (default 600)
+#   CHUMP_STATE_DB                      override path to .chump/state.db (tests)
 #
 # Audit events emitted:
 #   wizard_daemon_action           — every classification + decision
@@ -62,6 +74,9 @@
 #   wizard_cascade_rebase_triggered — cascade rebase triggered for a sibling PR (Step 5)
 #   wizard_dispatch_cooldown       — dispatch skipped: gap failed recently, within cooldown window (INFRA-2051)
 #   wizard_dispatch_giveup         — dispatch abandoned: gap hit max failed attempts; gap tagged wizard_skip (INFRA-2051)
+#   wedge_auto_filed               — auto-filed a new INFRA gap for a novel wedge signature (Step 7, INFRA-2068)
+#   wedge_auto_file_deduped        — signature already has an open gap; appended sample to notes (Step 7, INFRA-2068)
+#   wedge_auto_file_rate_limited   — Step 7 rate-limit hit; no new gap filed this cycle (INFRA-2068)
 #
 # Launchd: scripts/setup/install-wizard-daemon-launchd.sh (5-min cadence)
 # Kill switch: CHUMP_WIZARD_DAEMON_PAUSE=1 OR remove plist from ~/Library/LaunchAgents/
@@ -77,6 +92,9 @@
 # scanner-anchor: "kind":"wizard_cascade_rebase_triggered"
 # scanner-anchor: "kind":"wizard_dispatch_cooldown"
 # scanner-anchor: "kind":"wizard_dispatch_giveup"
+# scanner-anchor: "kind":"wedge_auto_filed"
+# scanner-anchor: "kind":"wedge_auto_file_deduped"
+# scanner-anchor: "kind":"wedge_auto_file_rate_limited"
 
 set -uo pipefail
 
@@ -101,6 +119,11 @@ DRY_RUN="${CHUMP_WIZARD_DAEMON_DRY_RUN:-0}"
 DISPATCH_TIMEOUT_S="${CHUMP_WIZARD_DISPATCH_TIMEOUT_S:-900}"
 DISPATCH_GAP_COOLDOWN_S="${CHUMP_WIZARD_DISPATCH_GAP_COOLDOWN_S:-1800}"
 MAX_DISPATCH_ATTEMPTS="${CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS:-3}"
+
+# Step 7 config (INFRA-2068 / META-118 sub-gap 2)
+WEDGE_FILE_RATE="${CHUMP_WIZARD_WEDGE_FILE_RATE:-5}"
+WEDGE_LOOKBACK_S="${CHUMP_WIZARD_WEDGE_LOOKBACK_S:-600}"
+STATE_DB="${CHUMP_STATE_DB:-$REPO_ROOT/.chump/state.db}"
 # Note: Step 3 uses an inline keyword pattern table derived from
 # docs/process/WEDGE_CLASS_CATALOG.md — update both when adding new W-NNN classes.
 
@@ -112,6 +135,7 @@ LIB_CACHE="$REPO_ROOT/scripts/coord/lib/github_cache.sh"
 # Per-run rate-limit counters
 _RECOVERY_EMITS_THIS_RUN=0
 _CASCADE_REBASES_THIS_RUN=0
+_WEDGE_FILES_THIS_RUN=0
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -165,7 +189,7 @@ fi
 
 mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
 
-log "wizard-daemon: starting (Phase 1+2 — steps 1, 2, 3, 4, 5, 6)"
+log "wizard-daemon: starting (Phase 1+2+3 — steps 1, 2, 3, 4, 5, 6, 7)"
 
 # ── Guard: fleet-hold ─────────────────────────────────────────────────────────
 # If cluster-detector has raised a fleet-hold, respect it.
@@ -1338,15 +1362,254 @@ PY
         "\"rebased_count\":$rebased_count,\"rebases_this_run\":$_CASCADE_REBASES_THIS_RUN"
 }
 
+# ── Step 7: Auto-wedge-file (META-118 sub-gap 2 / INFRA-2068) ────────────────
+#
+# Consumes kind=wedge_class_detected events (emitted by INFRA-2067
+# novel-wedge-classifier). For each event within WEDGE_LOOKBACK_S:
+#
+#   1. Check per-hour rate limit (max WEDGE_FILE_RATE gaps this hour)
+#   2. Deduplication: query state.db for OPEN gap whose notes contain
+#      "signature_hash: <hash>"; if found → append new sample, skip reserve
+#   3. File new gap via `chump gap reserve` + `chump gap set`
+#   4. Emit kind=wedge_auto_filed with gap_id, signature_hash, sample_pr_numbers
+#
+# Rate limit uses count of wedge_auto_filed events in the last 3600s from
+# ambient.jsonl (same pattern as novel-wedge-classifier's own rate limit).
+#
+step7_auto_wedge_file() {
+    log "Step 7: scanning for wedge_class_detected events..."
+
+    if [[ ! -f "$AMBIENT" ]]; then
+        log "Step 7: ambient.jsonl not found — skipping"
+        return 0
+    fi
+
+    # Compute cutoff epoch for lookback window
+    local cutoff_epoch
+    cutoff_epoch="$(date -u -v-"${WEDGE_LOOKBACK_S}"S +%s 2>/dev/null \
+        || date -u -d "-${WEDGE_LOOKBACK_S} seconds" +%s 2>/dev/null \
+        || echo "0")"
+
+    # Extract wedge_class_detected events within window via Python
+    local wedge_events
+    wedge_events="$(python3 - "$AMBIENT" "$cutoff_epoch" <<'PY' 2>/dev/null || true
+import json, sys, datetime
+
+ambient_path = sys.argv[1]
+try:
+    cutoff = int(sys.argv[2])
+except Exception:
+    cutoff = 0
+
+try:
+    with open(ambient_path) as f:
+        lines = f.readlines()
+except Exception:
+    sys.exit(0)
+
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    if '"wedge_class_detected"' not in line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("kind") != "wedge_class_detected":
+        continue
+    ts_str = d.get("ts", "")
+    try:
+        t = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+        epoch = int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
+    except Exception:
+        epoch = 0
+    if epoch >= cutoff:
+        print(json.dumps(d))
+PY
+)"
+
+    if [[ -z "$wedge_events" ]]; then
+        log "Step 7: no wedge_class_detected events in last ${WEDGE_LOOKBACK_S}s — nothing to file"
+        return 0
+    fi
+
+    local event_count; event_count="$(printf '%s\n' "$wedge_events" | wc -l | tr -d ' ')"
+    log "Step 7: found $event_count wedge_class_detected event(s) to process"
+
+    # Compute per-hour auto-file count from ambient (rate-limit check)
+    local hour_cutoff
+    hour_cutoff="$(date -u -v-3600S +%s 2>/dev/null \
+        || date -u -d "-3600 seconds" +%s 2>/dev/null \
+        || echo "0")"
+    local hour_filed
+    hour_filed="$(python3 - "$AMBIENT" "$hour_cutoff" <<'PY' 2>/dev/null || echo 0
+import json, sys, datetime
+ambient_path = sys.argv[1]
+try:
+    cutoff = int(sys.argv[2])
+except Exception:
+    cutoff = 0
+count = 0
+try:
+    with open(ambient_path) as f:
+        for line in f:
+            line = line.strip()
+            if '"wedge_auto_filed"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            if d.get("kind") != "wedge_auto_filed":
+                continue
+            ts_str = d.get("ts", "")
+            try:
+                t = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+                epoch = int(t.replace(tzinfo=datetime.timezone.utc).timestamp())
+            except Exception:
+                epoch = 0
+            if epoch >= cutoff:
+                count += 1
+except Exception:
+    pass
+print(count)
+PY
+)"
+    hour_filed="${hour_filed:-0}"
+
+    # Process each wedge_class_detected event
+    while IFS= read -r evt_line; do
+        [[ -z "$evt_line" ]] && continue
+
+        # Rate-limit check: max WEDGE_FILE_RATE per hour (ambient + this run)
+        local total_filed=$(( hour_filed + _WEDGE_FILES_THIS_RUN ))
+        if [[ "$total_filed" -ge "$WEDGE_FILE_RATE" ]]; then
+            log "Step 7: rate limit reached ($total_filed >= $WEDGE_FILE_RATE/hr) — stopping"
+            emit_ambient "wedge_auto_file_rate_limited" \
+                "\"filed_this_hour\":$total_filed,\"rate_limit\":$WEDGE_FILE_RATE"
+            emit_action "step7" "fleet" "rate_limited" \
+                "\"filed_this_hour\":$total_filed,\"rate_limit\":$WEDGE_FILE_RATE"
+            break
+        fi
+
+        # Parse event fields via Python
+        local parsed
+        parsed="$(python3 - "$evt_line" <<'PY' 2>/dev/null || echo "ERROR||||"
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    print("ERROR||||"); sys.exit(0)
+sig   = d.get("signature_hash", "") or ""
+test  = d.get("failing_test_name", "") or ""
+err   = d.get("first_error_line", "") or ""
+prs   = d.get("sample_pr_numbers", []) or []
+evts  = d.get("ts", "") or ""
+# sample_pr_numbers may be a list or csv string
+if isinstance(prs, list):
+    prs_csv = ",".join(str(p) for p in prs[:5])
+else:
+    prs_csv = str(prs)
+# Sanitize for shell: strip chars that break printf/jq
+import re
+def san(s): return re.sub(r'["\x27\\\n\r\t]', ' ', str(s))[:120]
+print(f"{san(sig)}|{san(test)}|{san(err)}|{san(prs_csv)}|{san(evts)}")
+PY
+)"
+
+        [[ "$parsed" == "ERROR"* ]] && continue
+        IFS='|' read -r sig_hash sample_test sample_err sample_prs event_ts <<<"$parsed"
+        [[ -z "$sig_hash" ]] && continue
+
+        log "Step 7: processing sig=$sig_hash test=$sample_test prs=$sample_prs"
+
+        # ── Deduplication: check state.db for existing OPEN gap with this sig ──
+        local existing_gap_id=""
+        if [[ -f "$STATE_DB" ]] && command -v sqlite3 >/dev/null 2>&1; then
+            existing_gap_id="$(sqlite3 "$STATE_DB" \
+                "SELECT id FROM gaps WHERE status='open' AND notes LIKE '%signature_hash: ${sig_hash}%' LIMIT 1;" \
+                2>/dev/null || true)"
+        fi
+
+        if [[ -n "$existing_gap_id" ]]; then
+            log "Step 7: sig=$sig_hash already has open gap $existing_gap_id — appending sample"
+            # Append new sample to notes (SC2155: declare+assign separately)
+            local append_note
+            append_note="[auto_refile $(ts)] new sample: test=$sample_test prs=$sample_prs err=$(printf '%s' "$sample_err" | head -c 80)"
+            "$CHUMP_BIN" gap set "$existing_gap_id" \
+                --add-note "$append_note" 2>/dev/null || true
+            emit_ambient "wedge_auto_file_deduped" \
+                "\"gap_id\":\"$existing_gap_id\",\"signature_hash\":\"$sig_hash\",\"sample_pr_numbers\":\"$sample_prs\""
+            emit_action "step7" "$existing_gap_id" "deduped_appended_sample" \
+                "\"signature_hash\":\"$sig_hash\",\"sample_prs\":\"$sample_prs\""
+            continue
+        fi
+
+        # ── Reserve new gap ──────────────────────────────────────────────────
+        local gap_title="auto-filed wedge: ${sample_test} sig ${sig_hash:0:12}"
+        # Truncate title to 120 chars for registry health
+        gap_title="${gap_title:0:120}"
+
+        local new_gap_id=""
+        new_gap_id="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_RESERVE_SCAN_OPEN_PRS=0 \
+            "$CHUMP_BIN" gap reserve \
+            --domain INFRA \
+            --priority P1 \
+            --effort xs \
+            --title "$gap_title" \
+            2>/dev/null | grep -E '^INFRA-[0-9]+$' | head -1 || true)"
+
+        if [[ -z "$new_gap_id" ]]; then
+            log "WARN: Step 7: chump gap reserve failed for sig=$sig_hash — skipping"
+            emit_action "step7" "fleet" "reserve_failed" \
+                "\"signature_hash\":\"$sig_hash\",\"test\":\"$sample_test\""
+            continue
+        fi
+
+        log "Step 7: reserved $new_gap_id for sig=$sig_hash"
+
+        # ── Set AC stub + notes ──────────────────────────────────────────────
+        local ac0="Reproduce failing signature via fixture: ${sample_err:0:100}"
+        local ac1="Fix root cause + 4 fixture cases pass"
+        local ac2="Smoke test green"
+        local notes_val
+        notes_val="$(printf 'wedge_auto_filed: true\nsource_event_ts: %s\nsource_pr_numbers: %s\nsignature_hash: %s' \
+            "$event_ts" "$sample_prs" "$sig_hash")"
+
+        "$CHUMP_BIN" gap set "$new_gap_id" \
+            --acceptance-criteria "$ac0" \
+            --acceptance-criteria "$ac1" \
+            --acceptance-criteria "$ac2" \
+            --notes "$notes_val" \
+            2>/dev/null || true
+
+        _WEDGE_FILES_THIS_RUN=$(( _WEDGE_FILES_THIS_RUN + 1 ))
+
+        # ── Audit emit ───────────────────────────────────────────────────────
+        emit_ambient "wedge_auto_filed" \
+            "\"gap_id\":\"$new_gap_id\",\"signature_hash\":\"$sig_hash\",\"sample_pr_numbers\":\"$sample_prs\",\"sample_test_name\":\"$sample_test\""
+        emit_action "step7" "$new_gap_id" "auto_filed" \
+            "\"signature_hash\":\"$sig_hash\",\"sample_prs\":\"$sample_prs\",\"files_this_run\":$_WEDGE_FILES_THIS_RUN"
+
+        log "Step 7: auto-filed $new_gap_id (sig=$sig_hash, filed_this_run=$_WEDGE_FILES_THIS_RUN)"
+
+    done < <(printf '%s\n' "$wedge_events")
+
+    log "Step 7: auto-wedge-file cycle done (filed_this_run=$_WEDGE_FILES_THIS_RUN)"
+}
+
 # ── Run the orchestration loop ────────────────────────────────────────────────
 
 step1_classify_prs
 step4_dispatch_pickable_gaps
 step5_cascade_rebase
 step6_broadcast_on_stall
+step7_auto_wedge_file
 
-log "wizard-daemon: Phase 1+2 cycle complete (recovery_emits=$_RECOVERY_EMITS_THIS_RUN cascade_rebases=$_CASCADE_REBASES_THIS_RUN)"
+log "wizard-daemon: Phase 1+2+3 cycle complete (recovery_emits=$_RECOVERY_EMITS_THIS_RUN cascade_rebases=$_CASCADE_REBASES_THIS_RUN wedge_files=$_WEDGE_FILES_THIS_RUN)"
 emit_ambient "wizard_daemon_action" \
-    "\"step\":\"cycle_complete\",\"target\":\"fleet\",\"decision\":\"done\",\"recovery_emits_this_run\":$_RECOVERY_EMITS_THIS_RUN,\"cascade_rebases_this_run\":$_CASCADE_REBASES_THIS_RUN,\"rate_limit_state\":\"limit=${RECOVERY_RATE_LIMIT}\""
+    "\"step\":\"cycle_complete\",\"target\":\"fleet\",\"decision\":\"done\",\"recovery_emits_this_run\":$_RECOVERY_EMITS_THIS_RUN,\"cascade_rebases_this_run\":$_CASCADE_REBASES_THIS_RUN,\"wedge_files_this_run\":$_WEDGE_FILES_THIS_RUN,\"rate_limit_state\":\"limit=${RECOVERY_RATE_LIMIT}\""
 
 exit 0

@@ -6232,3 +6232,83 @@ events:
     expected_volume: "matches hitl_approval_required volume on resolution"
     status: stable
     # payload: {pr: number, signal: string (env:X | file:Y | label:Z), session: string, ts: string}
+
+  # ── INFRA-2067: novel-wedge classifier daemon (META-118 sub-gap 1) ───────────
+  - kind: wedge_class_detected
+    effect_metric: resilient
+    emitter: scripts/coord/novel-wedge-classifier.sh (INFRA-2067)
+    trigger: >
+      Emitted when a (failing_test_name, first_error_line_signature_hash) pair
+      recurs >= CHUMP_WEDGE_CLASSIFIER_THRESHOLD times (default 3) within
+      CHUMP_WEDGE_CLASSIFIER_WINDOW_S seconds (default 1800s). Deduplication:
+      same signature_hash not re-emitted within the same window. Rate-limited to
+      CHUMP_WEDGE_CLASSIFIER_RATE_LIMIT emits per hour (default 5). Consumed by
+      INFRA-2068 wizard-daemon Step 7 to auto-file P1/xs gap.
+    consumers:
+      - INFRA-2068 (auto-wedge-file — wizard-daemon Step 7)
+      - INFRA-2069 (wedge-template-library)
+      - INFRA-2070 (cascade-unblock-detector)
+      - INFRA-2071 (admin-merge circuit-breaker)
+      - ops-audit
+    fields_required: [ts, kind, signature_hash, failing_test_name, first_error_line,
+                      occurrence_count, sample_pr_numbers, window_s, threshold, source]
+    expected_volume: "0–5/hr (rate-limited); spikes during CI rot bursts"
+    status: stable
+    # payload: {signature_hash: str (hex[:16]), failing_test_name: str,
+    #   first_error_line: str, occurrence_count: int, sample_pr_numbers: [str,...],
+    #   window_s: int, threshold: int, source: "novel-wedge-classifier"}
+
+  - kind: wedge_class_known
+    effect_metric: resilient
+    emitter: scripts/coord/novel-wedge-classifier.sh (INFRA-2067)
+    trigger: >
+      Emitted when a signature matches a known W-NNN entry in
+      scripts/coord/known-wedges.yaml. Informational only — no auto-dispatch.
+      Distinguishes "we already know about this" from wedge_class_detected.
+    consumers: [ops-audit, ci-audit]
+    fields_required: [ts, kind, signature_hash, wedge_class, matched_pattern]
+    expected_volume: "low; only fires when known wedge recurs"
+    status: stable
+    # payload: {signature_hash: str, wedge_class: str (W-NNN), matched_pattern: str}
+
+  # ── INFRA-2068: wizard-daemon Step 7 auto-wedge-file (META-118 sub-gap 2) ───
+  - kind: wedge_auto_filed
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh Step 7 (INFRA-2068)
+    trigger: >
+      Emitted by wizard-daemon Step 7 when a wedge_class_detected event results
+      in a new P1/xs INFRA gap being auto-filed via `chump gap reserve`. Rate-
+      limited to CHUMP_WIZARD_WEDGE_FILE_RATE per hour (default 5). Only emitted
+      for NOVEL signatures (dedup path emits wedge_auto_file_deduped instead).
+    consumers: [ops-audit, fleet-brief, kpi-report]
+    fields_required: [ts, kind, gap_id, signature_hash, sample_pr_numbers, sample_test_name]
+    expected_volume: "0–5/hr (rate-limited); matches wedge_class_detected volume"
+    status: stable
+    # payload: {gap_id: str (INFRA-NNNN), signature_hash: str, sample_pr_numbers: str (csv),
+    #   sample_test_name: str}
+
+  - kind: wedge_auto_file_deduped
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh Step 7 (INFRA-2068)
+    trigger: >
+      Emitted when a wedge_class_detected event is processed but an OPEN gap
+      with the same signature_hash already exists in state.db. Notes of the
+      existing gap are appended with the new sample instead of filing a duplicate.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, gap_id, signature_hash, sample_pr_numbers]
+    expected_volume: "low; only when classifier fires on a signature already tracked"
+    status: stable
+    # payload: {gap_id: str, signature_hash: str, sample_pr_numbers: str (csv)}
+
+  - kind: wedge_auto_file_rate_limited
+    effect_metric: resilient
+    emitter: scripts/coord/wizard-daemon.sh Step 7 (INFRA-2068)
+    trigger: >
+      Emitted when the per-hour WEDGE_FILE_RATE cap is reached and a pending
+      wedge_class_detected event is skipped rather than filed. Prevents runaway
+      gap flooding during fmt-drift or CI rot storms.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, filed_this_hour, rate_limit]
+    expected_volume: "rare; only during CI rot bursts that exceed the rate cap"
+    status: stable
+    # payload: {filed_this_hour: int, rate_limit: int}
