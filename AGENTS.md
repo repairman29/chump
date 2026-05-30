@@ -383,6 +383,19 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 | [`docs/process/EXTERNAL_REPO_USAGE.md`](./docs/process/EXTERNAL_REPO_USAGE.md) | Onboarding guide for non-Chump repos using Chump as a coordination platform (DOC-022) |
 
+## Mission Driver — loop discipline (INFRA-2208, 2026-05-29)
+
+Every /loop / scheduled-job / babysit-prs tick must end in **one** of:
+
+1. A shipped change (PR merged or armed for auto-merge).
+2. A dispatched Sonnet subagent (with gap ID + shipping epilogue baked in).
+3. A defensible BLOCKED with a clear, named unblock condition (e.g. "waiting for INFRA-NNN to land", "GraphQL exhausted until HH:MM reset").
+4. A documented pickup of the next-best pickable gap that fits your lane (name the gap; claim it before the tick closes).
+
+**"Standing by", "queue quiet", "conserving tokens for later", "waiting for CI", and "everything in expected state" are not valid end-states.** Throughput is the constraint, not token budget.
+
+**Diagnostic:** if 3 consecutive ticks produce no shipped work + no dispatch + no defensible BLOCKED, broadcast `STUCK` on NATS (`scripts/coord/broadcast.sh WARN "STUCK: <reason>"`) and stop the loop pending operator review. See [comms policy](#communication-channels--what-goes-where-infra-2202-2026-05-29) for the broadcast-vs-inbox channel rule.
+
 ## How to claim work
 
 Chump uses a **gap registry** stored canonically in `.chump/state.db`
