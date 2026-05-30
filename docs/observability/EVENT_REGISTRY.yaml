@@ -2883,6 +2883,18 @@ events:
     trigger: broadcast.sh invocation rc != 0 when sending an RPC request
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
+  # ── INFRA-1758 / META-061: A2A Layer 1a subscribe_events stub ────────────
+  - kind: a2a_subscribe_stub_invoked
+    effect_metric: self
+    emitter: crates/chump-coord/src/events.rs::subscribe_events (INFRA-1758)
+    trigger: >
+      subscribe_events() stub called before the real NATS JetStream consumer
+      (slice 2/4, INFRA-1118) is implemented. Signals which call-sites need
+      wiring once the real delivery layer ships.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, filter]
+    docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 1a)"
+    status: stable
   - kind: bypass_threshold_breach
     effect_metric: self
     emitter: scripts/ops/audit-bypass-frequency.sh (INFRA-1837)
@@ -5881,3 +5893,17 @@ events:
     related_kinds: [arch_fit_query]
     expected_volume: "0-N per session (paired with arch_fit_query events)"
     # payload: {gap_id: string, rating: "fit"|"stretch"|"fork"|"retracted", rationale: string, confidence: "high"|"med"|"low", original_rating: string|null, correction: boolean, ts: string}
+  - kind: bisect_step_evaluated
+    effect_metric: resilient
+    emitter: scripts/dev/integration-bisect-step.sh (INFRA-2168)
+    trigger: >
+      Emitted after each git bisect step completes in the integration-cycle
+      bisect oracle. Records whether the commit was classified as good (0),
+      bad (1), or skip/flake (125), along with which flake class matched (if
+      any) and the wall-clock duration. Enables post-hoc analysis of bisect
+      efficiency and flake-class hit rates without log parsing.
+    consumers: [ci-audit, ops-audit, kpi-report]
+    fields_required: [ts, kind, commit, outcome, duration_s, matched_class]
+    expected_volume: "N per bisect run (one per commit evaluated)"
+    status: stable
+    # payload: {commit: string (short sha), outcome: "good"|"bad"|"skip", duration_s: float, matched_class: string (id or "none"), ts: string}
