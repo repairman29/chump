@@ -11489,6 +11489,40 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-2137: `chump gap requeue <GAP-ID>` — move bisect_quarantined
+            // → ready_to_ship after operator review.
+            "requeue" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap requeue <GAP-ID>");
+                    eprintln!("  Moves a bisect_quarantined gap back to ready_to_ship after operator review.");
+                    std::process::exit(2);
+                });
+                match store.requeue_gap(&gap_id) {
+                    Ok(()) => {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let event = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_requeued\",\
+                             \"gap_id\":\"{gap_id}\",\"by\":\"operator\"}}\n"
+                        );
+                        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = f.write_all(event.as_bytes());
+                        }
+                        println!("requeued {} → ready_to_ship", gap_id);
+                        println!("  Run `chump gap show {}` to confirm.", gap_id);
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap requeue: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
             // INFRA-1220: operator override to clear a post-close cooldown.
             // Usage: chump gap clear-cooldown <GAP-ID> --reason "text"
             "clear-cooldown" => {
@@ -11768,6 +11802,7 @@ async fn main() -> Result<()> {
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
                 eprintln!("  clear-cooldown   <GAP-ID> --reason \"text\"  # INFRA-1220: operator override for post-close cooldown");
+                eprintln!("  requeue          <GAP-ID>                  # INFRA-2137: bisect_quarantined → ready_to_ship after operator review");
                 eprintln!("  sync             (--check | --pull | --push) [--dry-run] [--json] [--state-db PATH] [--gaps-dir PATH]");
                 eprintln!("                                # INFRA-2053: bidirectional YAML <-> state.db reconciliation");
                 std::process::exit(2);
