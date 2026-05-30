@@ -38,6 +38,27 @@ fi
 
 BROADCAST=1
 JSON_OUT=0
+
+# INFRA-2238: fleet-autopilot.sh wires curator panes to call
+# `<script> tick` and `<script> heartbeat`. Recognize these two
+# positional subcommands first so the autopilot wrapper stops silently
+# no-op'ing every 5 minutes. `tick` runs the triage cycle as a no-flag
+# invocation; `heartbeat` emits an ambient event and exits.
+if [[ "${1:-}" == "tick" ]]; then
+    shift
+elif [[ "${1:-}" == "heartbeat" ]]; then
+    python3 -c "
+import datetime, json
+print(json.dumps({
+    'ts': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'kind': 'shepherd_heartbeat',
+    'session': '$SESSION_ID',
+    'role': 'curator-opus-shepherd-triage',
+}, separators=(',', ':')))
+" >> "$AMBIENT" 2>/dev/null || true
+    exit 0
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-broadcast) BROADCAST=0; shift ;;
