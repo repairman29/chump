@@ -34,6 +34,7 @@ install-git-stash-trace.sh
 install-github-cache-reconcile-launchd.sh
 install-github-liaison.sh
 install-hooks.sh
+install-integrator-daemon.sh
 install-lint-storm-detector-launchd.sh
 install-merge-drivers.sh
 install-merge-queue-monitor.sh
@@ -64,6 +65,7 @@ install-stale-auditor-finding-reaper-launchd.sh
 install-stale-branch-reaper-launchd.sh
 install-stale-gap-lock-reaper-launchd.sh
 install-stale-pr-reaper-launchd.sh
+install-stale-pr-rebase-bot.sh
 install-stale-worktree-reaper-launchd.sh
 install-stuck-pr-filer-launchd.sh
 install-syspolicyd-doctor-launchd.sh
