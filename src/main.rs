@@ -144,6 +144,7 @@ mod operator_presence;
 mod orchestrate;
 mod paramedic;
 mod patch_apply;
+mod pe_suite_status; // INFRA-2229: chump pe-suite status dashboard
 mod pending_peer_approval;
 mod perception;
 mod peripheral_sensor;
@@ -688,6 +689,7 @@ fn print_help() {
     println!(
         "  session-summary    merged + armed + filed PRs in current session window (INFRA-1437)"
     );
+    println!("  pe-suite status    P&E suite operator dashboard: curator liveness + consensus (INFRA-2229)");
     println!("  health-digest      markdown digest with P0/P1 counts + warnings");
     println!("  fleet-status       per-worker throughput + lease state");
     println!("  fleet-velocity     PRs/day and ship-rate trend");
@@ -1221,6 +1223,33 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("session-summary") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(session_summary::run(&sub_args));
+    }
+
+    // `chump pe-suite status` (INFRA-2229, META-127/C7) — P&E suite operator
+    // dashboard: active curators, FEEDBACK engagement, consensus convergence.
+    // Reads .chump-locks/ + ambient.jsonl; no network calls required.
+    if args.get(1).map(String::as_str) == Some("pe-suite") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        // sub_args[0] should be "status"; any other subcommand errors gracefully.
+        let subcmd = sub_args.first().map(String::as_str).unwrap_or("status");
+        match subcmd {
+            "status" => {
+                let flags: Vec<String> = sub_args.iter().skip(1).cloned().collect();
+                std::process::exit(pe_suite_status::run(&flags));
+            }
+            "-h" | "--help" | "help" => {
+                println!("Usage: chump pe-suite <subcommand>");
+                println!();
+                println!("Subcommands:");
+                println!("  status [--json]  Show P&E suite operator dashboard (INFRA-2229)");
+                std::process::exit(0);
+            }
+            other => {
+                eprintln!("chump pe-suite: unknown subcommand '{}'", other);
+                eprintln!("Try: chump pe-suite status [--json]");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump onboard <repo-url-or-path>` (INFRA-2108, META-123 Wave 2) —

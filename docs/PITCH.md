@@ -113,3 +113,5 @@ threshold. The coordination layer is not experimental; it runs production worklo
   machine-readable index of every CLI command, flag, and agent capability
 - **Full operator and agent guide:** [AGENTS.md](../AGENTS.md) — tool-agnostic
   reference for any coding agent or operator working in this repo
+- **Team-tier substrate demo (Marcus M-D):** [docs/strategy/CHUMP_PE_SUITE_DEMO_5MIN.md](strategy/CHUMP_PE_SUITE_DEMO_5MIN.md) —
+  5-beat runbook showing 14 curators deliberating in real time; run via `bash scripts/demo/chump-pe-suite-demo.sh` (INFRA-2234)
