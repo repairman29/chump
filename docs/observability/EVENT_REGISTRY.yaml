@@ -2078,6 +2078,28 @@ events:
     fields_required: [ts, kind, machine, pid]
     fields_optional: [dry_run]
 
+  # ── INFRA-1713: CI-failure rescue action ──────────────────────────────────
+  - kind: ci_rescue_attempt
+    effect_metric: self
+    emitter: src/paramedic.rs (INFRA-1713)
+    trigger: >
+      paramedic RESCUE_CI_FAILURE action fires on a BLOCKED PR with ≥1 required
+      check FAILURE and no author push in the last 30 min; emitted once per
+      dispatch attempt with the outcome (dispatched | gave_up | dry_run).
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, kind, pr, check_name, failure_class, outcome]
+    fields_optional: [dry_run]
+
+  - kind: ci_rescue_exhausted
+    effect_metric: self
+    emitter: src/paramedic.rs (INFRA-1713)
+    trigger: >
+      3 consecutive RESCUE_CI_FAILURE attempts on the same PR all failed;
+      paramedic posts a "recommend manual review" comment and stops attempting.
+      Signals the operator that the PR needs human attention.
+    consumers: [fleet-brief, kpi-report, operator-recall]
+    fields_required: [ts, kind, pr, check_name, attempt_count]
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     effect_metric: self
