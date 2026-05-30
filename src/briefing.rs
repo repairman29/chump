@@ -35,6 +35,29 @@ const STRATEGIC_DOCS: &[&str] = &[
     "docs/briefs/CHUMP_RESEARCH_BRIEF.md",
 ];
 
+/// Umbrella context for a gap that depends on a META-NNN parent.
+///
+/// INFRA-2165: surfaced before "Recent File Activity" so spawned Sonnet
+/// workers arrive with full integration-cycle awareness — no "read META-124
+/// first" instruction needed in dispatch prompts.
+#[derive(Debug, Clone, Default)]
+pub struct UmbrellaContext {
+    /// Parent META gap ID (e.g. "META-124").
+    pub meta_id: String,
+    /// Parent META gap title.
+    pub meta_title: String,
+    /// Parent META acceptance_criteria, truncated to 80 lines with an
+    /// ellipsis hint when longer. Empty string when the parent has no AC.
+    pub meta_ac_truncated: String,
+    /// Whether the AC was truncated (hint to renderer to emit "… run chump
+    /// gap show <meta_id> for full AC").
+    pub ac_truncated: bool,
+    /// Up to 5 integration-cycle ambient events from the last 24 h, drawn
+    /// from kinds: integration_cycle_started, integration_candidates_selected,
+    /// integration_cycle_shipped, bisect_quarantine. Raw JSON lines.
+    pub recent_cycle_events: Vec<String>,
+}
+
 /// One structured briefing for a gap.
 ///
 /// **INFRA-482:** derives `Default` so test construction sites can use
@@ -78,6 +101,10 @@ pub struct GapBriefing {
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
+    /// INFRA-2165: umbrella context injected when the gap depends on a META
+    /// umbrella gap. `None` when no META dependency exists or the parent
+    /// lookup fails gracefully.
+    pub umbrella_context: Option<UmbrellaContext>,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -155,6 +182,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             session_stats: crate::session_ledger::SessionStats::default(),
             recent_path_edits: Vec::new(),
             gap_not_found: true,
+            umbrella_context: None,
         };
     };
 
@@ -248,6 +276,10 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // taken (and what fraction shipped).
     let session_stats = crate::session_ledger::session_stats_for_domain(root, &parsed.domain);
 
+    // INFRA-2165: inject umbrella context when the gap depends on a META-NNN.
+    // Graceful: logs debug on miss, never blocks the rest of the briefing.
+    let umbrella_context = build_umbrella_context(root, &parsed.depends_on, &ambient_path);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -265,7 +297,145 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         session_stats,
         recent_path_edits,
         gap_not_found: false,
+        umbrella_context,
     }
+}
+
+/// INFRA-2165: scan `depends_on` for a META-NNN reference, fetch the parent
+/// gap's title + AC from state.db (or YAML fallback), and pull recent
+/// integration-cycle events from ambient.jsonl.
+///
+/// Returns `None` gracefully when:
+/// - no META dep exists
+/// - parent gap not found (logged at debug level)
+/// - ambient.jsonl is missing (cycle events sub-section simply omitted)
+fn build_umbrella_context(
+    root: &Path,
+    depends_on: &[String],
+    ambient_path: &Path,
+) -> Option<UmbrellaContext> {
+    // Detect first META-NNN reference in depends_on.
+    let meta_id = depends_on
+        .iter()
+        .find(|dep| {
+            let upper = dep.to_uppercase();
+            // Match "META-NNN" pattern: starts with META- followed by digits.
+            upper.starts_with("META-")
+                && upper[5..]
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+        })?
+        .clone();
+
+    // Fetch parent gap — try state.db first, then per-file YAML.
+    let parent = parse_gap_from_db(root, &meta_id).or_else(|| {
+        let per_file = root.join("docs/gaps").join(format!("{meta_id}.yaml"));
+        fs::read_to_string(&per_file)
+            .ok()
+            .and_then(|s| parse_gap(&s, &meta_id))
+            .or_else(|| {
+                let closed = root
+                    .join("docs/gaps/closed")
+                    .join(format!("{meta_id}.yaml"));
+                fs::read_to_string(&closed)
+                    .ok()
+                    .and_then(|s| parse_gap(&s, &meta_id))
+            })
+    });
+
+    let Some(parent) = parent else {
+        // Graceful degradation: emit to stderr at debug level, don't fail the briefing.
+        if std::env::var("CHUMP_DEBUG").is_ok() {
+            eprintln!(
+                "[briefing] umbrella-context: parent gap {} not found — skipping",
+                meta_id
+            );
+        }
+        return None;
+    };
+
+    // Truncate AC to 80 lines.
+    let (meta_ac_truncated, ac_truncated) = match &parent.acceptance {
+        None => (String::new(), false),
+        Some(ac) => {
+            let lines: Vec<&str> = ac.lines().collect();
+            if lines.len() > 80 {
+                (lines[..80].join("\n"), true)
+            } else {
+                (ac.clone(), false)
+            }
+        }
+    };
+
+    // Pull recent integration-cycle events from ambient.jsonl (last 24 h).
+    let recent_cycle_events = filter_cycle_events(ambient_path, 24 * 3600, 5);
+
+    Some(UmbrellaContext {
+        meta_id,
+        meta_title: parent.title,
+        meta_ac_truncated,
+        ac_truncated,
+        recent_cycle_events,
+    })
+}
+
+/// Integration-cycle ambient event kinds to surface in the umbrella context.
+const CYCLE_EVENT_KINDS: &[&str] = &[
+    "integration_cycle_started",
+    "integration_candidates_selected",
+    "integration_cycle_shipped",
+    "bisect_quarantine",
+];
+
+/// Read the tail of `ambient.jsonl` and keep the most recent `limit` lines
+/// whose `"kind"` field is one of the integration-cycle kinds, emitted within
+/// `within_secs` seconds of now.
+pub fn filter_cycle_events(path: &Path, within_secs: u64, limit: usize) -> Vec<String> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cutoff_secs = now_secs.saturating_sub(within_secs);
+
+    let mut hits: Vec<String> = contents
+        .lines()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            // Must be one of the integration-cycle kinds.
+            if !CYCLE_EVENT_KINDS
+                .iter()
+                .any(|k| lower.contains(&format!("\"kind\":\"{}\"", k)))
+            {
+                return false;
+            }
+            // Must be within the time window.
+            if let Some(ts_start) = line.find("\"ts\":\"") {
+                let rest = &line[ts_start + 6..];
+                if let Some(ts_end) = rest.find('"') {
+                    let ts = &rest[..ts_end];
+                    if let Some(event_secs) = parse_iso8601_utc_to_epoch(ts) {
+                        return event_secs >= cutoff_secs;
+                    }
+                }
+            }
+            // Unparseable timestamp — include conservatively.
+            true
+        })
+        .map(|s| s.to_string())
+        .collect();
+
+    if hits.len() > limit {
+        let start = hits.len() - limit;
+        hits = hits.split_off(start);
+    }
+    hits
 }
 
 /// Extract file-path-like tokens from arbitrary gap text.
@@ -854,6 +1024,38 @@ pub fn render_markdown(b: &GapBriefing) -> String {
             ));
         }
         out.push('\n');
+    }
+
+    // INFRA-2165: umbrella context — inserted before Recent File Activity so
+    // spawned workers see integration-cycle state first.
+    if let Some(ref uc) = b.umbrella_context {
+        out.push_str("## Umbrella context\n\n");
+        out.push_str(&format!(
+            "**Parent umbrella:** {} — {}\n\n",
+            uc.meta_id, uc.meta_title
+        ));
+        if !uc.meta_ac_truncated.is_empty() {
+            out.push_str("**Parent AC:**\n\n");
+            out.push_str(&uc.meta_ac_truncated);
+            out.push('\n');
+            if uc.ac_truncated {
+                out.push_str(&format!(
+                    "\n_(truncated — run `chump gap show {}` for full AC)_\n",
+                    uc.meta_id
+                ));
+            }
+            out.push('\n');
+        }
+        if !uc.recent_cycle_events.is_empty() {
+            out.push_str("**Recent integration-cycle events (last 24 h):**\n\n");
+            for ev in &uc.recent_cycle_events {
+                let summary = summarize_ambient_event(ev);
+                out.push_str(&format!("- {}\n", summary));
+            }
+            out.push('\n');
+        } else {
+            out.push_str("_No integration-cycle events in the last 24 h._\n\n");
+        }
     }
 
     // Recent path edits
@@ -1541,5 +1743,271 @@ gaps:
         assert!(!b.gap_not_found);
         assert_eq!(b.gap_title, "yaml-only fallback");
         assert_eq!(b.gap_priority, "P2");
+    }
+
+    // ── INFRA-2165: umbrella context tests ──────────────────────────────────
+
+    /// Synthetic fixture: INFRA-XXXX depends on META-YYY; META-YYY has AC;
+    /// ambient.jsonl has 3 integration_cycle_started events within 24 h.
+    /// Assert briefing output contains parent AC + event manifest.
+    #[test]
+    fn build_umbrella_context_surfaces_parent_ac_and_cycle_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+
+        // Seed META-YYY as the parent umbrella.
+        fs::write(
+            gaps_dir.join("META-900.yaml"),
+            concat!(
+                "- id: META-900\n",
+                "  domain: infra\n",
+                "  title: Test umbrella\n",
+                "  status: open\n",
+                "  priority: P0\n",
+                "  effort: xl\n",
+                "  acceptance: >\n",
+                "    Mode A: dry-run.\n",
+                "    Mode B: ship.\n",
+            ),
+        )
+        .unwrap();
+
+        // Seed INFRA-XXXX that depends on META-900.
+        fs::write(
+            gaps_dir.join("INFRA-9001.yaml"),
+            concat!(
+                "- id: INFRA-9001\n",
+                "  domain: infra\n",
+                "  title: child gap\n",
+                "  status: open\n",
+                "  priority: P1\n",
+                "  effort: s\n",
+                "  depends_on:\n",
+                "    - META-900\n",
+            ),
+        )
+        .unwrap();
+
+        // Seed ambient.jsonl with 3 integration_cycle_started events (future ts
+        // so they are always within any reasonable within_secs window).
+        let locks_dir = dir.path().join(".chump-locks");
+        fs::create_dir_all(&locks_dir).unwrap();
+        let ambient = locks_dir.join("ambient.jsonl");
+        let body = concat!(
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"integration_cycle_started\",\"cycle_id\":\"c1\"}\n",
+            "{\"ts\":\"2099-01-01T00:01:00Z\",\"kind\":\"integration_cycle_started\",\"cycle_id\":\"c2\"}\n",
+            "{\"ts\":\"2099-01-01T00:02:00Z\",\"kind\":\"integration_cycle_started\",\"cycle_id\":\"c3\"}\n",
+            "{\"ts\":\"2099-01-01T00:03:00Z\",\"kind\":\"file_edit\",\"path\":\"unrelated.rs\"}\n",
+        );
+        fs::write(&ambient, body).unwrap();
+
+        let b = build_briefing_at("INFRA-9001", dir.path());
+
+        {
+            let uc = b
+                .umbrella_context
+                .as_ref()
+                .expect("umbrella_context should be Some");
+            assert_eq!(uc.meta_id, "META-900");
+            assert_eq!(uc.meta_title, "Test umbrella");
+            assert!(
+                uc.meta_ac_truncated.contains("Mode A"),
+                "AC missing: {}",
+                uc.meta_ac_truncated
+            );
+            assert!(!uc.ac_truncated, "short AC should not be truncated");
+            // 3 cycle events, file_edit excluded.
+            assert_eq!(
+                uc.recent_cycle_events.len(),
+                3,
+                "got {:?}",
+                uc.recent_cycle_events
+            );
+            assert!(uc.recent_cycle_events[0].contains("integration_cycle_started"));
+        }
+
+        // Rendered markdown must include the umbrella section before file activity.
+        let md = render_markdown(&b);
+        assert!(md.contains("## Umbrella context"), "missing section: {md}");
+        assert!(md.contains("META-900"), "missing meta id: {md}");
+        assert!(md.contains("Test umbrella"), "missing title: {md}");
+        assert!(md.contains("Mode A"), "missing AC: {md}");
+
+        // Umbrella section must appear before Recent File Activity.
+        let umbrella_pos = md.find("## Umbrella context").unwrap_or(usize::MAX);
+        let file_activity_pos = md.find("## Recent File Activity").unwrap_or(usize::MAX);
+        assert!(
+            umbrella_pos < file_activity_pos,
+            "umbrella context should appear before Recent File Activity"
+        );
+    }
+
+    /// When no META dependency exists, umbrella_context is None and the
+    /// rendered markdown has no umbrella section.
+    #[test]
+    fn build_umbrella_context_none_when_no_meta_dep() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("INFRA-9002.yaml"),
+            concat!(
+                "- id: INFRA-9002\n",
+                "  domain: infra\n",
+                "  title: no umbrella dep\n",
+                "  status: open\n",
+                "  priority: P2\n",
+                "  effort: s\n",
+            ),
+        )
+        .unwrap();
+
+        let b = build_briefing_at("INFRA-9002", dir.path());
+        assert!(
+            b.umbrella_context.is_none(),
+            "expected None with no META dep"
+        );
+        let md = render_markdown(&b);
+        assert!(
+            !md.contains("## Umbrella context"),
+            "unexpected umbrella section in: {md}"
+        );
+    }
+
+    /// When META parent not found, build_umbrella_context returns None
+    /// (graceful degradation).
+    #[test]
+    fn build_umbrella_context_none_when_parent_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("INFRA-9003.yaml"),
+            concat!(
+                "- id: INFRA-9003\n",
+                "  domain: infra\n",
+                "  title: orphaned child\n",
+                "  status: open\n",
+                "  priority: P1\n",
+                "  effort: s\n",
+                "  depends_on:\n",
+                "    - META-9999\n",
+            ),
+        )
+        .unwrap();
+        // META-9999 deliberately not seeded.
+
+        let b = build_briefing_at("INFRA-9003", dir.path());
+        assert!(
+            b.umbrella_context.is_none(),
+            "expected None when parent not found"
+        );
+    }
+
+    /// AC longer than 80 lines is truncated with ac_truncated=true.
+    #[test]
+    fn build_umbrella_context_truncates_ac_beyond_80_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+
+        // Seed META-901 via state.db so the acceptance JSON array produces
+        // 100 bullet lines — the YAML `>` block scalar collapses to one line
+        // through the tiny parser, so state.db is the right path for this test.
+        let store = gap_store::GapStore::open(dir.path()).unwrap();
+        let conn = store.conn_for_test();
+        // Build a 100-element JSON array.
+        let items: Vec<String> = (0..100).map(|i| format!("line {i}")).collect();
+        let ac_json = serde_json::to_string(&items).unwrap();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, priority, effort, status, acceptance_criteria, depends_on)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                "META-901", "infra", "long AC", "P0", "xl", "open",
+                ac_json,
+                "[]",
+            ],
+        )
+        .unwrap();
+        // Seed INFRA-9004 child with depends_on=["META-901"].
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, priority, effort, status, acceptance_criteria, depends_on)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                "INFRA-9004", "infra", "child of long-ac parent", "P1", "s", "open",
+                "[]",
+                r#"["META-901"]"#,
+            ],
+        )
+        .unwrap();
+        drop(store);
+
+        let b = build_briefing_at("INFRA-9004", dir.path());
+        {
+            let uc = b
+                .umbrella_context
+                .as_ref()
+                .expect("should have umbrella context");
+            assert!(uc.ac_truncated, "expected truncation flag for >80-line AC");
+            let line_count = uc.meta_ac_truncated.lines().count();
+            assert!(
+                line_count <= 80,
+                "truncated AC has {line_count} lines, expected <=80"
+            );
+        }
+        let md = render_markdown(&b);
+        assert!(
+            md.contains("chump gap show META-901"),
+            "truncation hint missing: {md}"
+        );
+    }
+
+    /// filter_cycle_events only returns integration-cycle kinds, ignores others.
+    #[test]
+    fn filter_cycle_events_returns_only_cycle_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        let body = concat!(
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"integration_cycle_started\"}\n",
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"integration_candidates_selected\"}\n",
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"bisect_quarantine\"}\n",
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"integration_cycle_shipped\"}\n",
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"file_edit\",\"path\":\"unrelated\"}\n",
+            "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"pr_merged\"}\n",
+        );
+        fs::write(&path, body).unwrap();
+        // Use a huge within_secs so all timestamps qualify.
+        let hits = filter_cycle_events(&path, 999_999_999, 10);
+        assert_eq!(hits.len(), 4, "got {:?}", hits);
+        assert!(hits.iter().all(|h| {
+            h.contains("integration_cycle_started")
+                || h.contains("integration_candidates_selected")
+                || h.contains("bisect_quarantine")
+                || h.contains("integration_cycle_shipped")
+        }));
+    }
+
+    /// filter_cycle_events caps at limit.
+    #[test]
+    fn filter_cycle_events_caps_at_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        let mut body = String::new();
+        for _ in 0..20 {
+            body.push_str(
+                "{\"ts\":\"2099-01-01T00:00:00Z\",\"kind\":\"integration_cycle_started\"}\n",
+            );
+        }
+        fs::write(&path, body).unwrap();
+        let hits = filter_cycle_events(&path, 999_999_999, 5);
+        assert_eq!(hits.len(), 5);
+    }
+
+    /// filter_cycle_events returns empty when file missing.
+    #[test]
+    fn filter_cycle_events_missing_file_returns_empty() {
+        let hits = filter_cycle_events(Path::new("/nonexistent/ambient.jsonl"), 86400, 5);
+        assert!(hits.is_empty());
     }
 }

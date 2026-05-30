@@ -104,6 +104,7 @@ extern crate chump_ship;
 mod audit;
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod completion;
+mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -252,6 +253,8 @@ mod web_push_send;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
+// META-159: fleet recv-side v0 voting CLIs (chump vote + chump consensus-tally).
+mod commands;
 
 #[cfg(test)]
 mod consciousness_exercise;
@@ -1262,6 +1265,31 @@ async fn main() -> Result<()> {
         std::process::exit(onboard::run(&sub_args));
     }
 
+    // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
+    // emit a FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
+    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1; prints "feature flag off,
+    // vote not emitted" and exits 0 when flag is unset.
+    if args.get(1).map(String::as_str) == Some("vote") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::vote::run(&sub_args));
+    }
+
+    // `chump consensus-tally [--corr-id X | --all] [--since <dur>]` (META-159) —
+    // aggregate FEEDBACK kind=vote events from ambient.jsonl per corr_id
+    // and compute a verdict. Always runs regardless of feature flag (read-only).
+    if args.get(1).map(String::as_str) == Some("consensus-tally") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::consensus_tally::run(&sub_args));
+    }
+
+    // `chump sibling-status [--json] [--watch]` (META-154) — per-active-lease
+    // progress matrix. Beats "lease exists" by classifying each holder as
+    // progressing / in-flight / heartbeat-only / stalled / silent / expired.
+    if args.get(1).map(String::as_str) == Some("sibling-status") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::sibling_status::run(&sub_args));
+    }
+
     // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.
     // Opens a 3-pane tmux session (or text snapshot if --no-tmux) for the
     // active lease of the given gap: worktree shell, live ambient tail, and
@@ -1339,6 +1367,58 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump disk status|plan|budget` (INFRA-2196, META-128/C5) — operator + subprocess
+    // surface for disk-aware fleet decisions. Reads ~/.chump/disk-inventory.json
+    // (written by chump-disk-inventory-daemon INFRA-2193) and DISK_COST_MODEL.yaml
+    // (INFRA-2195). Exit codes: 0=OK, 1=REFUSE, 2=WAIT (for `chump disk plan`).
+    if args.get(1).map(String::as_str) == Some("disk") {
+        let sub = args.get(2).map(String::as_str);
+        let repo_root = repo_path::repo_root();
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        let exit_code = match sub {
+            Some("status") => match disk_cmd::run_status(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk status: {e:#}");
+                    1
+                }
+            },
+            Some("plan") => match disk_cmd::run_plan(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk plan: {e:#}");
+                    1
+                }
+            },
+            Some("budget") => match disk_cmd::run_budget(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk budget: {e:#}");
+                    1
+                }
+            },
+            _ => {
+                println!("Usage: chump disk <subcommand> [options]");
+                println!();
+                println!("Subcommands:");
+                println!("  status [--json]                     disk snapshot: total/free/used/headroom + top consumers");
+                println!("  plan <action-class> [--count N]     OK|WAIT|REFUSE projection from DISK_COST_MODEL.yaml");
+                println!("  budget [--for <action-class>]       max-safe-N for action class(es)");
+                println!();
+                println!("Env:");
+                println!("  CHUMP_DISK_FLOOR_GB=5               free-space floor (default 5 GB)");
+                println!(
+                    "  CHUMP_DISK_INVENTORY_PATH=...       override ~/.chump/disk-inventory.json"
+                );
+                println!("  CHUMP_DISK_COST_MODEL_PATH=...      override docs/process/DISK_COST_MODEL.yaml");
+                println!();
+                println!("Exit codes (disk plan): 0=OK, 1=REFUSE, 2=WAIT");
+                2
+            }
+        };
+        std::process::exit(exit_code);
     }
 
     // `chump pr-rescue` (INFRA-1714) — closed-loop PR rescue. v0 handles two
@@ -6222,9 +6302,165 @@ async fn main() -> Result<()> {
                 });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // INFRA-2239: chump fleet curator-status — one row per curator with
+            // role / last_tick_succeeded_at / last_heartbeat_at / state.db_mutations_1h
+            // / supervisor_mode / autorestart_flag.
+            "curator-status" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let state_db = repo_root.join(".chump/state.db");
+                let _log_dir = repo_root.join(".chump-locks/autopilot-logs");
+
+                // Supervisor config from env (mirrors crate defaults).
+                let supervisor_mode = std::env::var("CHUMP_CURATOR_SUPERVISOR_MODE")
+                    .unwrap_or_else(|_| "aggressive".to_string());
+                let autorestart = std::env::var("CHUMP_CURATOR_SUPERVISOR_AUTORESTART")
+                    .map(|v| v != "0" && v != "false")
+                    .unwrap_or(true);
+
+                let roles = &[
+                    "shepherd",
+                    "target",
+                    "handoff",
+                    "ci-audit",
+                    "decompose",
+                    "md-links",
+                ];
+
+                // Parse last 2000 lines of ambient.jsonl once for heartbeats.
+                let ambient_lines: Vec<String> = if ambient_path.exists() {
+                    std::fs::read_to_string(&ambient_path)
+                        .unwrap_or_default()
+                        .lines()
+                        .map(|l| l.to_string())
+                        .rev()
+                        .take(2000)
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+
+                // For each role: find latest curator_heartbeat ts.
+                let last_heartbeat_for = |role: &str| -> Option<String> {
+                    for line in &ambient_lines {
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|k| k.as_str()) == Some("curator_heartbeat")
+                            && v.get("role").and_then(|r| r.as_str()) == Some(role)
+                        {
+                            return v.get("ts").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        }
+                    }
+                    None
+                };
+
+                // For each role: find latest curator_failure_paged ts (as last_tick_succeeded proxy).
+                // A tick that succeeded = no curator_failure_paged since the last heartbeat.
+                // Simplified: last_tick_succeeded = same as last_heartbeat (when healthy).
+                let last_failure_for = |role: &str| -> Option<String> {
+                    for line in &ambient_lines {
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|k| k.as_str()) == Some("curator_failure_paged")
+                            && v.get("role").and_then(|r| r.as_str()) == Some(role)
+                        {
+                            return v.get("ts").and_then(|t| t.as_str()).map(|s| s.to_string());
+                        }
+                    }
+                    None
+                };
+
+                // Query state.db for gap mutations attributed to role's session_id in last 1h.
+                let mutations_1h = |role: &str| -> i64 {
+                    let Ok(conn) = rusqlite::Connection::open(&state_db) else {
+                        return -1;
+                    };
+                    let has_table: bool = conn.query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='gap_history'",
+                        [], |r| r.get::<_, i64>(0),
+                    ).unwrap_or(0) > 0;
+                    if !has_table {
+                        return -1;
+                    }
+                    let date_str = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                    let session_id = format!("curator-opus-{role}-{date_str}");
+                    let cutoff = (chrono::Utc::now() - chrono::Duration::hours(1))
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string();
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM gap_history WHERE session_id = ?1 AND created_at >= ?2",
+                        rusqlite::params![session_id, cutoff],
+                        |r| r.get(0),
+                    ).unwrap_or(0)
+                };
+
+                if want_json {
+                    let rows: Vec<serde_json::Value> = roles
+                        .iter()
+                        .map(|role| {
+                            let hb = last_heartbeat_for(role);
+                            let fail = last_failure_for(role);
+                            let mut_count = mutations_1h(role);
+                            // last_tick_succeeded = heartbeat ts when no recent failure, else "degraded".
+                            let tick_status = if fail.is_some() {
+                                "degraded".to_string()
+                            } else {
+                                hb.clone().unwrap_or_else(|| "never".to_string())
+                            };
+                            serde_json::json!({
+                                "role": role,
+                                "last_tick_succeeded_at": tick_status,
+                                "last_heartbeat_at": hb.unwrap_or_else(|| "never".to_string()),
+                                "state_db_mutations_1h": mut_count,
+                                "supervisor_mode": supervisor_mode,
+                                "autorestart": autorestart,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&rows).unwrap_or_else(|_| "[]".to_string())
+                    );
+                } else {
+                    println!(
+                        "{:<12} {:<28} {:<28} {:>12}  {:<12} {:<11}",
+                        "ROLE",
+                        "LAST_TICK_OK",
+                        "LAST_HEARTBEAT",
+                        "MUTATIONS_1H",
+                        "SUPERVISOR",
+                        "AUTORESTART"
+                    );
+                    println!("{}", "-".repeat(110));
+                    for role in roles {
+                        let hb = last_heartbeat_for(role);
+                        let fail = last_failure_for(role);
+                        let mut_count = mutations_1h(role);
+                        let tick_str = if fail.is_some() {
+                            "DEGRADED".to_string()
+                        } else {
+                            hb.clone().unwrap_or_else(|| "never".to_string())
+                        };
+                        let hb_str = hb.unwrap_or_else(|| "never".to_string());
+                        let mut_str = if mut_count < 0 {
+                            "n/a".to_string()
+                        } else {
+                            mut_count.to_string()
+                        };
+                        let restart_str = if autorestart { "on" } else { "off" };
+                        println!(
+                            "{:<12} {:<28} {:<28} {:>12}  {:<12} {:<11}",
+                            role, tick_str, hb_str, mut_str, supervisor_mode, restart_str
+                        );
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -6354,7 +6590,8 @@ async fn main() -> Result<()> {
 
                         if json_out {
                             // Extend JSON output with schema_version (INFRA-1548),
-                            // ac_count + ac_has_todos (CREDIBLE-033).
+                            // ac_count + ac_has_todos (CREDIBLE-033),
+                            // shipped_in as nested object when present (INFRA-2134).
                             let mut val = serde_json::to_value(&g).unwrap_or_default();
                             if let Some(obj) = val.as_object_mut() {
                                 obj.insert(
@@ -6369,6 +6606,16 @@ async fn main() -> Result<()> {
                                     "ac_has_todos".to_string(),
                                     serde_json::Value::Bool(ac_has_todos),
                                 );
+                                // INFRA-2134: replace the shipped_in string with a
+                                // parsed JSON object so consumers get a native object,
+                                // not a double-encoded string.
+                                if let Some(raw) = &g.shipped_in {
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(raw)
+                                    {
+                                        obj.insert("shipped_in".to_string(), parsed);
+                                    }
+                                }
                             }
                             println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
                         } else if brief_mode {
@@ -6494,6 +6741,49 @@ async fn main() -> Result<()> {
                                 println!("  notes: |");
                                 for line in g.notes.lines() {
                                     println!("    {}", line);
+                                }
+                            }
+                            // INFRA-2134: render shipped_in when present.
+                            // Only emit for shipped/done gaps; open gaps have NULL.
+                            if let Some(raw) = &g.shipped_in {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(raw) {
+                                    println!("  shipped_in:");
+                                    // Integration-cycle shape: 5-key form.
+                                    if let Some(iid) =
+                                        parsed.get("integration_id").and_then(|v| v.as_str())
+                                    {
+                                        println!("    integration: {}", iid);
+                                    }
+                                    if let Some(ipr) =
+                                        parsed.get("integration_pr").and_then(|v| v.as_str())
+                                    {
+                                        println!("    pr: {}", ipr);
+                                    }
+                                    if let Some(cc) =
+                                        parsed.get("child_commit").and_then(|v| v.as_str())
+                                    {
+                                        // Abbreviate to 7 chars to match AC spec.
+                                        println!("    commit: {}", &cc[..cc.len().min(7)]);
+                                    }
+                                    if let Some(ms) =
+                                        parsed.get("merge_sha").and_then(|v| v.as_str())
+                                    {
+                                        println!("    merge_sha: {}", &ms[..ms.len().min(7)]);
+                                    }
+                                    // Per-PR backwards-compat shape: pr_url + merge_sha.
+                                    if let Some(pu) = parsed.get("pr_url").and_then(|v| v.as_str())
+                                    {
+                                        println!("    pr: {}", pu);
+                                    }
+                                    // merge_sha already handled above (same key in both shapes).
+                                    // For per-PR shape where integration keys are absent:
+                                    if parsed.get("integration_id").is_none() {
+                                        if let Some(ms) =
+                                            parsed.get("merge_sha").and_then(|v| v.as_str())
+                                        {
+                                            println!("    merge_sha: {}", &ms[..ms.len().min(7)]);
+                                        }
+                                    }
                                 }
                             }
                             // INFRA-1220: show cooldown status if active.
@@ -11416,6 +11706,40 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-2137: `chump gap requeue <GAP-ID>` — move bisect_quarantined
+            // → ready_to_ship after operator review.
+            "requeue" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap requeue <GAP-ID>");
+                    eprintln!("  Moves a bisect_quarantined gap back to ready_to_ship after operator review.");
+                    std::process::exit(2);
+                });
+                match store.requeue_gap(&gap_id) {
+                    Ok(()) => {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let event = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_requeued\",\
+                             \"gap_id\":\"{gap_id}\",\"by\":\"operator\"}}\n"
+                        );
+                        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = f.write_all(event.as_bytes());
+                        }
+                        println!("requeued {} → ready_to_ship", gap_id);
+                        println!("  Run `chump gap show {}` to confirm.", gap_id);
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap requeue: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
             // INFRA-1220: operator override to clear a post-close cooldown.
             // Usage: chump gap clear-cooldown <GAP-ID> --reason "text"
             "clear-cooldown" => {
@@ -11695,6 +12019,7 @@ async fn main() -> Result<()> {
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
                 eprintln!("  clear-cooldown   <GAP-ID> --reason \"text\"  # INFRA-1220: operator override for post-close cooldown");
+                eprintln!("  requeue          <GAP-ID>                  # INFRA-2137: bisect_quarantined → ready_to_ship after operator review");
                 eprintln!("  sync             (--check | --pull | --push) [--dry-run] [--json] [--state-db PATH] [--gaps-dir PATH]");
                 eprintln!("                                # INFRA-2053: bidirectional YAML <-> state.db reconciliation");
                 std::process::exit(2);

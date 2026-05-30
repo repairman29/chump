@@ -5,8 +5,18 @@
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "scripts/coord/local-merge-queue.sh implements the Phase 1→2 design from docs/design/OFFLINE_FIRST.md §2: NATS KV CAS lock at chump.merge-queue.lock (TTL=120s, renewed every 30s by holder); falls back to flock on .chump-locks/merge-queue.lock when CHUMP_NATS_URL unset or broker unreachable, emits kind=local_merge_lock_degraded."
+    - "Worker entry point: chump gap ship <ID> --local-merge [--branch B]. Internally calls local-merge-queue.sh; success means the gap commit is on local main, state.db status=done, and (if push enabled) branch is in pending-push queue. No GitHub call required for any step."
+    - "Pre-merge gate: runs scripts/ci/run-local-ci.sh (INFRA-1322) twice — once on the claim branch, again post-rebase against local main. If either fails, abort, release lock, emit kind=local_merge_ci_failed with {gap, failing_check, duration_s}. Do not touch state.db."
+    - "Lock semantics: exactly one local-merge-queue.sh in-flight per repo. Lost-race workers (CAS fails) get kind=local_merge_lock_blocked with {gap, blocked_by_gap, lock_held_for_s}; back off with jittered retry (1s..30s)."
+    - "Push deferral: on success, append {branch, sha, ts, gap} to .chump-locks/pending-push.jsonl and emit kind=pending_push_queued with current queue depth. Network sync daemon (separate gap, Phase 2→3) flushes the queue."
+    - "Events emitted (register in EVENT_REGISTRY.yaml): local_merge_lock_acquired, local_merge_lock_blocked, local_merge_lock_degraded, local_merge_ci_failed, local_merge_rebase_conflict, local_merge_succeeded, pending_push_queued."
+    - "Failure-class taxonomy: TRANSIENT={lock_contention,nats_blip,best_effort_fetch_failed} → auto-retry; PERMANENT={ci_red,rebase_conflict_unresolvable,state_db_corrupt} → require operator action; DEGRADED={nats_unreachable_using_flock,run_local_ci_partial} → proceed with warning event. Each kind in the taxonomy maps to a distinct ambient event so chump waste-tally --by-kind can attribute time/cost cleanly."
+    - "Cost attribution: emit local_merge_succeeded with ci_duration_s and rebase_duration_s fields; chump waste-tally --kind local_merge tallies wall-clock + (if any) LLM tokens used in CI smoke tests. Zero API spend in the offline path is the steady state."
+    - "Acceptance test scripts/ci/test-local-merge-queue.sh: spawn 3 fake gap branches in /tmp; race them through local-merge-queue.sh with WiFi simulated off (export CHUMP_GITHUB_MODE=offline; deny outbound to *.github.com via env-stub); assert (a) all 3 land in local main in some FIFO-of-CAS-publish order, (b) exactly one merge per cycle, (c) lost-race workers exit 0 not 1, (d) state.db status=done for all 3 with closed_pr_event_received_at NULL and source_of_truth='local-merge', (e) pending-push.jsonl has 3 entries, (f) zero outbound network calls (verified via tcpdump or stub)."
+    - "Smoke verification: from a clean worktree with WiFi off, 'chump gap claim X && chump gap ship X --local-merge' completes in <90s with state.db updated, kind=local_merge_succeeded in ambient.jsonl, and entry in pending-push.jsonl. Re-enable WiFi → INFRA-1322's network sync daemon flushes within 30s."
+    - Replaces bot-merge.sh ONLY when CHUMP_GITHUB_MODE=offline. Online mode still uses bot-merge.sh + GitHub auto-merge unchanged. Mode switch (INFRA-1323 Phase 3→4) auto-detects.
+    - "Documentation: docs/design/OFFLINE_FIRST.md §2 updated with the ACTUAL implementation (CAS specifics, env vars, exact command surface). Operator runbook in docs/process/ for 'when to use --local-merge' and 'how to diagnose a stuck local-merge-queue.sh'."
+  notes: |
+    [2026-05-30T04:21:08Z] [2026-05-29 offline-first classification] Public-side, Phase 3 of INFRA-2246 offline-first roadmap. Rust implementation of the local-merge-queue shape; uses NATS KV for serialization.
 

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.curator-supervisor.plist — INFRA-2239
+  Launchd user agent that runs chump-curator-supervisor every 300 seconds.
+
+  The supervisor checks the 6 productized curators (shepherd/target/handoff/
+  ci-audit/decompose/md-links) for silent failures, files gaps, optionally
+  spawns a Sonnet sub-agent, and optionally restarts the failing tmux pane.
+
+  Install:   scripts/setup/install-curator-supervisor.sh
+  Uninstall: scripts/setup/install-curator-supervisor.sh --uninstall
+  Status:    launchctl print gui/$(id -u)/com.chump.curator-supervisor
+  Logs:      ~/Library/Logs/Chump/curator-supervisor.out.log
+             ~/Library/Logs/Chump/curator-supervisor.err.log
+
+  Tunable env vars (see crates/chump-curator-supervisor/src/main.rs for full list):
+    CHUMP_CURATOR_SUPERVISOR_MODE         (default aggressive)
+    CHUMP_CURATOR_SUPERVISOR_AUTORESTART  (default 1)
+    CHUMP_CURATOR_SUPERVISOR_DRY_RUN      (default unset)
+    CHUMP_CURATOR_HEARTBEAT_STALL_M       (default 10)
+    RUST_LOG                              (default info)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.curator-supervisor</string>
+
+    <!-- Run every 300 seconds (StartInterval, not KeepAlive). -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <!-- Run once immediately on load. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Binary path substituted by install-curator-supervisor.sh -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>CHUMP_CURATOR_SUPERVISOR_BIN_PLACEHOLDER</string>
+    </array>
+
+    <!-- Environment — repo root substituted at install time. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>CHUMP_REPO_ROOT</key>
+        <string>CHUMP_REPO_ROOT_PLACEHOLDER</string>
+        <key>CHUMP_CURATOR_SUPERVISOR_MODE</key>
+        <string>aggressive</string>
+        <key>CHUMP_CURATOR_SUPERVISOR_AUTORESTART</key>
+        <string>1</string>
+        <key>CHUMP_CURATOR_HEARTBEAT_STALL_M</key>
+        <string>10</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/curator-supervisor.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/curator-supervisor.err.log</string>
+</dict>
+</plist>

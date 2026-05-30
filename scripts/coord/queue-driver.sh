@@ -155,7 +155,7 @@ cascade_rebase_if_hot() {
         return 0
     fi
 
-    local ok=0 fail=0
+    local ok=0 fail=0 auto_resolved=0
     for pr in $all_prs; do
         if [[ "$DRY_RUN" -eq 1 ]]; then
             echo "queue-driver: (dry-run) cascade would rebase PR #$pr"
@@ -165,8 +165,17 @@ cascade_rebase_if_hot() {
                 echo "queue-driver: ✓ cascade rebased PR #$pr"
                 ok=$((ok + 1))
             else
-                echo "queue-driver: ✗ cascade rebase failed for PR #$pr (may already be up-to-date or DIRTY)"
-                fail=$((fail + 1))
+                # INFRA-2255: server-side update-branch failed (DIRTY add-both).
+                # Try local rebase + auto-resolve via the allowlist before
+                # giving up. This kills today's manual rebase loop.
+                if cascade_auto_resolve_pr "$pr"; then
+                    echo "queue-driver: ✓ cascade auto-resolved PR #$pr"
+                    ok=$((ok + 1))
+                    auto_resolved=$((auto_resolved + 1))
+                else
+                    echo "queue-driver: ✗ cascade rebase failed for PR #$pr (may already be up-to-date or DIRTY with semantic conflicts)"
+                    fail=$((fail + 1))
+                fi
             fi
         fi
     done
@@ -175,10 +184,144 @@ cascade_rebase_if_hot() {
     local now
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     _ambient_write "$ambient" \
-        "$(printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"dry_run":%d}' \
-            "$now" "$triggered_by" "$ok" "$fail" "$DRY_RUN")"
+        "$(printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"auto_resolved":%d,"dry_run":%d}' \
+            "$now" "$triggered_by" "$ok" "$fail" "$auto_resolved" "$DRY_RUN")"
 
-    echo "queue-driver: cascade done — $ok rebased, $fail failed"
+    echo "queue-driver: cascade done — $ok rebased ($auto_resolved auto-resolved), $fail failed"
+}
+
+# INFRA-2255: when `gh pr update-branch` fails during cascade because the PR
+# is DIRTY with add-both conflicts on append-only files, fall back to a local
+# rebase + auto-resolve via scripts/coord/auto-resolve-add-both.sh.
+#
+# Returns 0 if the rebase + push succeeded (PR now refreshed); non-zero
+# otherwise (out-of-scope conflict, worktree failure, push failure).
+#
+# Allowlist source-of-truth lives in auto-resolve-add-both.sh; we re-check
+# here so we can emit kind=cascade_resolve_skipped_semantic with the
+# offending file list before delegating.
+cascade_auto_resolve_pr() {
+    local pr="$1"
+    local branch
+    branch=$(cache_lookup_pr "$pr" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get("headRefName") or d.get("head_ref") or "")
+except Exception:
+    pass
+' 2>/dev/null)
+    if [[ -z "$branch" ]]; then
+        branch=$(chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+    fi
+    if [[ -z "$branch" ]]; then
+        return 1
+    fi
+
+    local _amb="$REPO_ROOT/.chump-locks/ambient.jsonl"
+    local _now; _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    if ! git -C "$REPO_ROOT" worktree add --quiet "$tmpdir" "origin/$branch" 2>&1; then
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    pushd "$tmpdir" >/dev/null
+
+    git fetch origin main --quiet 2>&1 || true
+
+    if git rebase origin/main 2>&1 | grep -q "Successfully rebased"; then
+        # Clean rebase — push.
+        local _push_out _push_rc
+        _push_out=$(git push origin "HEAD:$branch" --force-with-lease 2>&1)
+        _push_rc=$?
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return $_push_rc
+    fi
+
+    # Conflicted — classify against the allowlist (must match
+    # auto-resolve-add-both.sh's allowlist).
+    local conflicting
+    conflicting=$(git diff --name-only --diff-filter=U)
+
+    if [[ -z "$conflicting" ]]; then
+        # No conflicts and no "Successfully rebased" — odd state, abort.
+        git rebase --abort 2>/dev/null || true
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return 1
+    fi
+
+    local out_of_scope=""
+    local in_scope=""
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            scripts/ci/event-registry-reserved.txt|\
+            Cargo.toml|\
+            docs/observability/EVENT_REGISTRY.yaml|\
+            scripts/setup/bootstrap-manifest.yaml|\
+            scripts/coord/cascade-rebase-trigger-paths.txt)
+                in_scope+="$f "
+                ;;
+            *)
+                out_of_scope+="$f "
+                ;;
+        esac
+    done <<< "$conflicting"
+
+    if [[ -n "$out_of_scope" ]]; then
+        # scanner-anchor: "kind":"cascade_resolve_skipped_semantic"
+        _ambient_write "$_amb" \
+            "$(printf '{"ts":"%s","kind":"cascade_resolve_skipped_semantic","pr":%s,"out_of_scope":"%s"}' \
+                "$_now" "$pr" "${out_of_scope% }")"
+        git rebase --abort 2>/dev/null || true
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return 1
+    fi
+
+    # All conflicts in allowlist → delegate to auto-resolve-add-both.sh.
+    # shellcheck disable=SC2086
+    if ! "$REPO_ROOT/scripts/coord/auto-resolve-add-both.sh" $in_scope >/dev/null 2>&1; then
+        git rebase --abort 2>/dev/null || true
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return 1
+    fi
+
+    # Stage resolved files + continue rebase.
+    local file_count=0
+    for f in $in_scope; do
+        git add "$f" 2>/dev/null || true
+        file_count=$((file_count + 1))
+    done
+
+    if ! git -c core.editor=true rebase --continue 2>&1 | tail -3 >/dev/null; then
+        git rebase --abort 2>/dev/null || true
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return 1
+    fi
+
+    # Push the resolved branch.
+    local _push_out _push_rc
+    _push_out=$(git push origin "HEAD:$branch" --force-with-lease 2>&1)
+    _push_rc=$?
+    popd >/dev/null
+    git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+
+    if [[ $_push_rc -eq 0 ]]; then
+        # scanner-anchor: "kind":"cascade_auto_resolved"
+        _ambient_write "$_amb" \
+            "$(printf '{"ts":"%s","kind":"cascade_auto_resolved","pr":%s,"file_count":%d,"files":"%s"}' \
+                "$_now" "$pr" "$file_count" "${in_scope% }")"
+        return 0
+    fi
+    return 1
 }
 
 # INFRA-1137: Auto-resolve a DIRTY PR by rebasing on main + leveraging the

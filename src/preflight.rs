@@ -303,6 +303,10 @@ struct Args {
     /// invocation stays under its speed target and doesn't fail-close on a diff
     /// that hasn't yet had its commit message authored.
     pre_commit: bool,
+    /// META-153: diff-scoped failure attribution. When Some("origin/main"),
+    /// run preflight against origin/main HEAD (with caching) to determine which
+    /// failures are pre-existing vs. caused by the current diff.
+    vs_ref: Option<String>,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -314,6 +318,7 @@ fn parse_args(argv: &[String]) -> Args {
         scope: ScopeArg::Auto,
         bad_scope: None,
         pre_commit: false,
+        vs_ref: None,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -342,6 +347,15 @@ fn parse_args(argv: &[String]) -> Args {
                     Some(s) => a.scope = s,
                     None => a.bad_scope = Some(v.to_string()),
                 }
+            }
+            "--vs" => {
+                if i + 1 < argv.len() {
+                    a.vs_ref = Some(argv[i + 1].clone());
+                    i += 1;
+                }
+            }
+            s if s.starts_with("--vs=") => {
+                a.vs_ref = Some(s["--vs=".len()..].to_string());
             }
             _ => {} // ignore unknowns for forward-compat
         }
@@ -375,6 +389,13 @@ OPTIONS:
                     scripts/coord/chump-commit.sh on the path leading to a
                     real commit; the bare 'chump preflight' silently skips
                     these so it stays fast for ad-hoc validation runs.
+    --vs <REF>      META-153: diff-scoped failure attribution. REF is typically
+                    'origin/main'. Runs preflight against both HEAD and REF,
+                    separates failures into NEW (your diff broke this — blocks)
+                    and PRE-EXISTING (already failing on REF — warns only).
+                    Baseline cached at .chump/preflight-baseline.json (TTL 1h,
+                    keyed by REF HEAD SHA). Falls back to normal mode when REF
+                    is unreachable. Pairs with --json for structured output.
     -h, --help      This message
 
 BYPASS:
@@ -392,8 +413,8 @@ GATES (in order):
     6. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
 
 EXIT CODES:
-    0   all gates passed
-    1   one or more gates failed (see stdout)
+    0   all gates passed (or --vs: only pre-existing failures)
+    1   one or more NEW gates failed (see stdout)
     2   bad usage"
     );
 }
@@ -968,9 +989,69 @@ pub fn run(argv: &[String]) -> i32 {
         }
     }
 
+    // ── META-153: --vs baseline resolution ──────────────────────────────────
+    // Resolve baseline BEFORE running HEAD gates so we can tell the operator
+    // early if baseline is unavailable (and fall back gracefully per AC #4).
+    let baseline: Option<BaselineCache> = if let Some(ref vs_ref) = args.vs_ref {
+        eprintln!("[preflight] --vs {}: resolving baseline SHA …", vs_ref);
+        match resolve_ref_sha(&repo_root, vs_ref) {
+            None => {
+                eprintln!(
+                    "\x1b[33m⚠  [preflight] --vs {}: could not resolve ref (offline or not fetched).\x1b[0m",
+                    vs_ref
+                );
+                eprintln!("   Falling back to normal preflight (no baseline diff).");
+                None
+            }
+            Some(ref_sha) => {
+                let cache_path = baseline_cache_path(&repo_root);
+                let cached = load_baseline_cache(&cache_path);
+                let fresh = cached.as_ref().map_or(false, |c| {
+                    c.baseline_sha == ref_sha && baseline_age_secs(c) < BASELINE_CACHE_TTL_SECS
+                });
+                if fresh {
+                    let age = baseline_age_secs(cached.as_ref().unwrap());
+                    eprintln!(
+                        "[preflight] baseline cache HIT — sha={} age={}s",
+                        &ref_sha[..std::cmp::min(12, ref_sha.len())],
+                        age
+                    );
+                    cached
+                } else {
+                    eprintln!(
+                        "[preflight] baseline cache MISS — running preflight on {} …",
+                        &ref_sha[..std::cmp::min(12, ref_sha.len())]
+                    );
+                    match run_baseline_against_ref(&repo_root, &ref_sha, &steps) {
+                        None => {
+                            eprintln!(
+                                "\x1b[33m⚠  [preflight] --vs: worktree checkout failed for {}.\x1b[0m",
+                                &ref_sha[..std::cmp::min(12, ref_sha.len())]
+                            );
+                            eprintln!("   Falling back to normal preflight (no baseline diff).");
+                            None
+                        }
+                        Some(results) => {
+                            let _ = save_baseline_cache(&cache_path, &ref_sha, &results);
+                            Some(BaselineCache {
+                                baseline_sha: ref_sha.clone(),
+                                generated_at_secs: unix_now(),
+                                gate_results: results,
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        None
+    };
+
     let started = Instant::now();
     let mut any_failed = false;
     let mut json_results: Vec<String> = vec![];
+    // Collect HEAD gate outcomes for baseline diff later.
+    let mut head_outcomes: Vec<(String, Status, u128)> = vec![];
 
     if steps.is_empty() {
         eprintln!(
@@ -993,8 +1074,11 @@ pub fn run(argv: &[String]) -> i32 {
                 s.name, out.status, out.elapsed_ms
             ));
         }
+        head_outcomes.push((s.name.to_string(), out.status, out.elapsed_ms));
         if out.status == Status::Fail {
-            any_failed = true;
+            // In --vs mode we run all gates (need full picture for diff),
+            // otherwise respect --keep-going.
+            let should_continue = baseline.is_some() || args.keep_going;
             if let Some(cap) = &out.captured {
                 eprintln!("---- {} output ----", s.name);
                 // Truncate to first ~2KB to avoid swamping the terminal.
@@ -1010,20 +1094,153 @@ pub fn run(argv: &[String]) -> i32 {
                 eprintln!("{}", trunc);
                 eprintln!("---- end ----");
             }
-            if !args.keep_going {
+            if !should_continue {
+                any_failed = true;
                 break;
             }
         }
     }
 
     let total_ms = started.elapsed().as_millis();
-    if args.json {
-        println!("[{}]", json_results.join(","));
-    }
+
     // INFRA-1788: fold the inline docs-delta-trailer outcome into the
     // overall pass/fail decision (it runs outside the generic step loop).
     if docs_delta_failed {
         any_failed = true;
+    }
+
+    // ── META-153: diff attribution output ───────────────────────────────────
+    if let Some(ref cache) = baseline {
+        let baseline_age = baseline_age_secs(cache);
+        let mut new_failures: Vec<String> = vec![];
+        let mut preexisting: Vec<BaselineGateResult> = vec![];
+
+        for (name, status, _) in &head_outcomes {
+            if *status != Status::Fail {
+                continue;
+            }
+            // Check if this gate also failed on baseline.
+            let failed_on_baseline = cache
+                .gate_results
+                .iter()
+                .any(|r| r.name == *name && !r.passed);
+            if failed_on_baseline {
+                if let Some(r) = cache.gate_results.iter().find(|r| r.name == *name) {
+                    preexisting.push(r.clone());
+                }
+            } else {
+                new_failures.push(name.clone());
+            }
+        }
+        // docs_delta_failed is always NEW (pre-commit gate, not run on baseline).
+        if docs_delta_failed {
+            new_failures.push("docs-delta-trailer".to_string());
+        }
+
+        // Output sections per AC #3.
+        eprintln!();
+        if new_failures.is_empty() && preexisting.is_empty() {
+            eprintln!(
+                "\n[preflight --vs] PASS — no failures on HEAD ({}ms)",
+                total_ms
+            );
+        } else {
+            if !new_failures.is_empty() {
+                eprintln!("╔══ NEW (your diff broke this — BLOCKS) ══╗");
+                for name in &new_failures {
+                    eprintln!("  ✗  {}", name);
+                }
+                eprintln!("╚════════════════════════════════════════╝");
+            }
+            if !preexisting.is_empty() {
+                eprintln!("┌── PRE-EXISTING (not yours — warns, does not block) ──┐");
+                for r in &preexisting {
+                    let short_sha = &r.originating_commit_sha
+                        [..std::cmp::min(8, r.originating_commit_sha.len())];
+                    let age_h = baseline_age / 3600;
+                    eprintln!(
+                        "  ⚠  {} (baseline sha={} by {} ~{}h ago)",
+                        r.name, short_sha, r.originating_commit_author, age_h
+                    );
+                }
+                eprintln!("└──────────────────────────────────────────────────────┘");
+            }
+        }
+
+        // JSON output per AC #6.
+        if args.json {
+            let new_json: Vec<String> = new_failures.iter().map(|n| json_str(n)).collect();
+            let pre_json: Vec<String> = preexisting
+                .iter()
+                .map(|r| {
+                    format!(
+                        r#"{{"name":{},"baseline_sha":{},"author":{}}}"#,
+                        json_str(&r.name),
+                        json_str(&r.originating_commit_sha),
+                        json_str(&r.originating_commit_author),
+                    )
+                })
+                .collect();
+            println!(
+                r#"{{"new_failures":[{}],"preexisting_failures":[{}],"baseline_sha":{},"baseline_age_seconds":{}}}"#,
+                new_json.join(","),
+                pre_json.join(","),
+                json_str(&cache.baseline_sha),
+                baseline_age,
+            );
+        }
+
+        // Emit ambient event per AC #7.
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "preflight_baseline_diff".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![
+                ("new_fail_count".to_string(), new_failures.len().to_string()),
+                (
+                    "preexisting_fail_count".to_string(),
+                    preexisting.len().to_string(),
+                ),
+                (
+                    "baseline_sha".to_string(),
+                    cache.baseline_sha[..std::cmp::min(12, cache.baseline_sha.len())].to_string(),
+                ),
+            ],
+            ..Default::default()
+        });
+
+        // Per AC #3: only NEW failures block.
+        if !new_failures.is_empty() {
+            eprintln!(
+                "\n[preflight --vs] FAIL — {} new failure(s) introduced by your diff ({}ms)",
+                new_failures.len(),
+                total_ms
+            );
+            eprintln!("   Bypass: CHUMP_PREFLIGHT_SKIP=1 + 'Preflight-Skip-Reason: <why>' trailer");
+            return 1;
+        } else if !preexisting.is_empty() {
+            eprintln!(
+                "\n[preflight --vs] PASS (with {} pre-existing warning(s)) — your diff is clean ({}ms)",
+                preexisting.len(),
+                total_ms
+            );
+            return 0;
+        } else {
+            eprintln!("\n[preflight --vs] PASS — all gates green ({}ms)", total_ms);
+            return 0;
+        }
+    }
+
+    // ── Normal (non --vs) path ───────────────────────────────────────────────
+    // Collect any gate failures not yet counted in the loop above.
+    for (_, status, _) in &head_outcomes {
+        if *status == Status::Fail {
+            any_failed = true;
+            break;
+        }
+    }
+
+    if args.json {
+        println!("[{}]", json_results.join(","));
     }
     if any_failed {
         eprintln!(
@@ -1052,6 +1269,331 @@ fn find_repo_root() -> Option<std::path::PathBuf> {
     } else {
         Some(std::path::PathBuf::from(path))
     }
+}
+
+// ─── META-153: diff-scoped failure attribution ──────────────────────────────
+
+/// One gate result stored in the baseline cache.
+#[derive(Debug, Clone)]
+struct BaselineGateResult {
+    name: String,
+    passed: bool,
+    duration_ms: u128,
+    /// SHA of the commit that introduced this baseline.
+    originating_commit_sha: String,
+    /// Author of that commit.
+    originating_commit_author: String,
+}
+
+/// The on-disk cache at `.chump/preflight-baseline.json`.
+struct BaselineCache {
+    baseline_sha: String,
+    generated_at_secs: u64,
+    gate_results: Vec<BaselineGateResult>,
+}
+
+const BASELINE_CACHE_TTL_SECS: u64 = 3600; // 1 hour per AC #2
+
+/// Resolve the HEAD SHA of a ref (e.g. "origin/main") in the given repo.
+/// Returns None on any error (offline, not fetched, etc.).
+fn resolve_ref_sha(repo_root: &std::path::Path, git_ref: &str) -> Option<String> {
+    let out = Command::new("git")
+        .args(["rev-parse", git_ref])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if sha.len() < 7 {
+        None
+    } else {
+        Some(sha)
+    }
+}
+
+/// Resolve commit author for a SHA. Falls back to "<unknown>" on error.
+fn commit_author(repo_root: &std::path::Path, sha: &str) -> String {
+    let out = Command::new("git")
+        .args(["log", "-1", "--pretty=%an", sha])
+        .current_dir(repo_root)
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() {
+                "<unknown>".to_string()
+            } else {
+                s
+            }
+        }
+        _ => "<unknown>".to_string(),
+    }
+}
+
+/// Seconds since UNIX epoch (best-effort; returns 0 on error).
+fn unix_now() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Path to the baseline cache file.
+fn baseline_cache_path(repo_root: &std::path::Path) -> std::path::PathBuf {
+    repo_root.join(".chump").join("preflight-baseline.json")
+}
+
+/// Load the baseline cache from disk. Returns None on any parse / IO error.
+fn load_baseline_cache(path: &std::path::Path) -> Option<BaselineCache> {
+    let content = std::fs::read_to_string(path).ok()?;
+    // Minimal hand-rolled JSON parse — no serde dependency required.
+    // Format:
+    // {"baseline_sha":"<sha>","generated_at":"<iso>","generated_at_secs":<N>,"gate_results":[...]}
+    let sha = extract_json_str(&content, "baseline_sha")?;
+    let gen_secs = extract_json_u64(&content, "generated_at_secs").unwrap_or(0);
+    let results = parse_gate_results(&content);
+    Some(BaselineCache {
+        baseline_sha: sha,
+        generated_at_secs: gen_secs,
+        gate_results: results,
+    })
+}
+
+/// Persist baseline cache to disk.
+fn save_baseline_cache(
+    path: &std::path::Path,
+    sha: &str,
+    results: &[BaselineGateResult],
+) -> std::io::Result<()> {
+    let now_secs = unix_now();
+    let now_iso = {
+        // Minimal ISO-8601 UTC timestamp without chrono.
+        let s = now_secs;
+        let sec = s % 60;
+        let min = (s / 60) % 60;
+        let hour = (s / 3600) % 24;
+        let days = s / 86400;
+        // Approximate date from epoch (good enough for TTL bookkeeping).
+        let year = 1970 + days / 365;
+        let doy = days % 365;
+        let month = doy / 30 + 1;
+        let day = doy % 30 + 1;
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            year, month, day, hour, min, sec
+        )
+    };
+    let mut entries = Vec::with_capacity(results.len());
+    for r in results {
+        entries.push(format!(
+            r#"{{"name":{},"result":"{}","duration_ms":{},"originating_commit_sha":{},"originating_commit_author":{}}}"#,
+            json_str(&r.name),
+            if r.passed { "pass" } else { "fail" },
+            r.duration_ms,
+            json_str(&r.originating_commit_sha),
+            json_str(&r.originating_commit_author),
+        ));
+    }
+    let json = format!(
+        r#"{{"baseline_sha":{},"generated_at":{},"generated_at_secs":{},"gate_results":[{}]}}"#,
+        json_str(sha),
+        json_str(&now_iso),
+        now_secs,
+        entries.join(","),
+    );
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(path, json)
+}
+
+/// Quote a string as a JSON string value (handles backslash + double-quote).
+fn json_str(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{}\"", escaped)
+}
+
+/// Minimal JSON string extraction — pulls the first `"key":"<value>"` match.
+fn extract_json_str(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":\"", key);
+    let start = json.find(&needle)? + needle.len();
+    let rest = &json[start..];
+    let mut val = String::new();
+    let mut chars = rest.chars();
+    loop {
+        match chars.next()? {
+            '"' => break,
+            '\\' => match chars.next()? {
+                '"' => val.push('"'),
+                '\\' => val.push('\\'),
+                'n' => val.push('\n'),
+                c => val.push(c),
+            },
+            c => val.push(c),
+        }
+    }
+    Some(val)
+}
+
+/// Minimal JSON u64 extraction — pulls the first `"key":<N>` match.
+fn extract_json_u64(json: &str, key: &str) -> Option<u64> {
+    let needle = format!("\"{}\":", key);
+    let start = json.find(&needle)? + needle.len();
+    let rest = json[start..].trim_start();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+/// Parse the `gate_results` array from cached JSON. Returns empty vec on parse failure.
+fn parse_gate_results(json: &str) -> Vec<BaselineGateResult> {
+    let mut results = Vec::new();
+    // Find gate_results array content.
+    let arr_needle = "\"gate_results\":[";
+    let Some(arr_start) = json.find(arr_needle) else {
+        return results;
+    };
+    let arr_content = &json[arr_start + arr_needle.len()..];
+    // Split on object boundaries — each entry is a {...} block.
+    let mut depth = 0i32;
+    let mut obj_start = None;
+    for (i, c) in arr_content.char_indices() {
+        match c {
+            '{' => {
+                if depth == 0 {
+                    obj_start = Some(i);
+                }
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(s) = obj_start {
+                        let obj = &arr_content[s..=i];
+                        if let Some(r) = parse_one_gate_result(obj) {
+                            results.push(r);
+                        }
+                        obj_start = None;
+                    }
+                }
+            }
+            ']' if depth == 0 => break,
+            _ => {}
+        }
+    }
+    results
+}
+
+fn parse_one_gate_result(obj: &str) -> Option<BaselineGateResult> {
+    let name = extract_json_str(obj, "name")?;
+    let result_str = extract_json_str(obj, "result")?;
+    let passed = result_str == "pass";
+    let duration_ms = extract_json_u64(obj, "duration_ms").unwrap_or(0);
+    let originating_commit_sha =
+        extract_json_str(obj, "originating_commit_sha").unwrap_or_else(|| "unknown".to_string());
+    let originating_commit_author = extract_json_str(obj, "originating_commit_author")
+        .unwrap_or_else(|| "<unknown>".to_string());
+    Some(BaselineGateResult {
+        name,
+        passed,
+        duration_ms: duration_ms.into(),
+        originating_commit_sha,
+        originating_commit_author,
+    })
+}
+
+/// Run all preflight steps against a temporary worktree checked out at `ref_sha`.
+/// Returns the gate results (name → passed).
+/// On any setup error, returns None (caller falls back to normal mode).
+fn run_baseline_against_ref(
+    repo_root: &std::path::Path,
+    ref_sha: &str,
+    steps: &[Step],
+) -> Option<Vec<BaselineGateResult>> {
+    // Create a temp dir for the worktree.
+    let tmp_dir = std::env::temp_dir().join(format!("chump-baseline-{}", &ref_sha[..8]));
+    // Clean up any stale worktree from a previous run.
+    if tmp_dir.exists() {
+        // Remove the worktree via git first.
+        let _ = Command::new("git")
+            .args(["worktree", "remove", "--force", &tmp_dir.to_string_lossy()])
+            .current_dir(repo_root)
+            .output();
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+    // Add worktree at ref SHA (detached HEAD).
+    let out = Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "--detach",
+            &tmp_dir.to_string_lossy(),
+            ref_sha,
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        let _ = Command::new("git")
+            .args(["worktree", "remove", "--force", &tmp_dir.to_string_lossy()])
+            .current_dir(repo_root)
+            .output();
+        return None;
+    }
+
+    let author = commit_author(repo_root, ref_sha);
+    let mut results = Vec::with_capacity(steps.len());
+
+    for s in steps {
+        let started = Instant::now();
+        // Run the step with cwd = the baseline worktree.
+        let mut cmd = Command::new(&s.argv[0]);
+        cmd.args(&s.argv[1..])
+            .current_dir(&tmp_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let pass = cmd.output().map(|o| o.status.success()).unwrap_or(false);
+        results.push(BaselineGateResult {
+            name: s.name.to_string(),
+            passed: pass,
+            duration_ms: started.elapsed().as_millis(),
+            originating_commit_sha: ref_sha[..std::cmp::min(12, ref_sha.len())].to_string(),
+            originating_commit_author: author.clone(),
+        });
+    }
+
+    // Clean up the worktree.
+    let _ = Command::new("git")
+        .args(["worktree", "remove", "--force", &tmp_dir.to_string_lossy()])
+        .current_dir(repo_root)
+        .output();
+
+    Some(results)
+}
+
+/// Determine how many seconds old a baseline cache is.
+fn baseline_age_secs(cache: &BaselineCache) -> u64 {
+    let now = unix_now();
+    if now > cache.generated_at_secs {
+        now - cache.generated_at_secs
+    } else {
+        0
+    }
+}
+
+/// Result of the diff-scoped attribution pass.
+struct BaselineDiff {
+    /// Gates that PASS on baseline but FAIL on HEAD — caused by the diff.
+    new_failures: Vec<String>,
+    /// Gates that FAIL on baseline AND FAIL on HEAD — not caused by the diff.
+    preexisting_failures: Vec<BaselineGateResult>,
+    /// SHA of the baseline ref used.
+    baseline_sha: String,
+    /// Age of the cache in seconds.
+    baseline_age_secs: u64,
 }
 
 #[cfg(test)]
@@ -1248,5 +1790,191 @@ mod tests {
             "docs"
         );
         assert_eq!(Scope::none().label(), "none (always-fast only)");
+    }
+
+    // ── META-153: baseline cache + diff attribution tests ─────────────────
+
+    #[test]
+    fn parse_args_vs_flag_separate() {
+        let argv = vec!["--vs".to_string(), "origin/main".to_string()];
+        let a = parse_args(&argv);
+        assert_eq!(a.vs_ref, Some("origin/main".to_string()));
+    }
+
+    #[test]
+    fn parse_args_vs_flag_equals() {
+        let argv = vec!["--vs=origin/main".to_string()];
+        let a = parse_args(&argv);
+        assert_eq!(a.vs_ref, Some("origin/main".to_string()));
+    }
+
+    #[test]
+    fn parse_args_vs_absent_is_none() {
+        let a = parse_args(&[]);
+        assert!(a.vs_ref.is_none());
+    }
+
+    #[test]
+    fn baseline_cache_parse_roundtrip() {
+        // Write a synthetic cache and read it back.
+        let tmp = std::env::temp_dir().join("chump-test-baseline-cache.json");
+        let results = vec![
+            BaselineGateResult {
+                name: "gate-A".to_string(),
+                passed: false,
+                duration_ms: 42,
+                originating_commit_sha: "abc123".to_string(),
+                originating_commit_author: "alice".to_string(),
+            },
+            BaselineGateResult {
+                name: "gate-B".to_string(),
+                passed: true,
+                duration_ms: 11,
+                originating_commit_sha: "def456".to_string(),
+                originating_commit_author: "bob".to_string(),
+            },
+        ];
+        save_baseline_cache(&tmp, "deadbeefcafe", &results).expect("save should succeed");
+        let loaded = load_baseline_cache(&tmp).expect("load should succeed");
+        let _ = std::fs::remove_file(&tmp);
+
+        assert_eq!(loaded.baseline_sha, "deadbeefcafe");
+        assert_eq!(loaded.gate_results.len(), 2);
+        assert_eq!(loaded.gate_results[0].name, "gate-A");
+        assert!(!loaded.gate_results[0].passed);
+        assert_eq!(loaded.gate_results[0].originating_commit_author, "alice");
+        assert_eq!(loaded.gate_results[1].name, "gate-B");
+        assert!(loaded.gate_results[1].passed);
+    }
+
+    #[test]
+    fn baseline_diff_attribution() {
+        // Synthetic scenario:
+        //   gate-A: fails on baseline AND HEAD  → PRE-EXISTING
+        //   gate-B: passes on baseline, fails on HEAD → NEW
+        //   gate-C: passes both → no mention
+        let cache = BaselineCache {
+            baseline_sha: "abc".to_string(),
+            generated_at_secs: unix_now(),
+            gate_results: vec![
+                BaselineGateResult {
+                    name: "gate-A".to_string(),
+                    passed: false,
+                    duration_ms: 1,
+                    originating_commit_sha: "aaa".to_string(),
+                    originating_commit_author: "alice".to_string(),
+                },
+                BaselineGateResult {
+                    name: "gate-B".to_string(),
+                    passed: true,
+                    duration_ms: 1,
+                    originating_commit_sha: "bbb".to_string(),
+                    originating_commit_author: "bob".to_string(),
+                },
+                BaselineGateResult {
+                    name: "gate-C".to_string(),
+                    passed: true,
+                    duration_ms: 1,
+                    originating_commit_sha: "ccc".to_string(),
+                    originating_commit_author: "carol".to_string(),
+                },
+            ],
+        };
+
+        // HEAD outcomes: gate-A fails, gate-B fails, gate-C passes.
+        let head_outcomes = vec![
+            ("gate-A".to_string(), Status::Fail, 1u128),
+            ("gate-B".to_string(), Status::Fail, 1u128),
+            ("gate-C".to_string(), Status::Pass, 1u128),
+        ];
+
+        let mut new_failures: Vec<String> = vec![];
+        let mut preexisting: Vec<BaselineGateResult> = vec![];
+        for (name, status, _) in &head_outcomes {
+            if *status != Status::Fail {
+                continue;
+            }
+            let failed_on_baseline = cache
+                .gate_results
+                .iter()
+                .any(|r| r.name == *name && !r.passed);
+            if failed_on_baseline {
+                if let Some(r) = cache.gate_results.iter().find(|r| r.name == *name) {
+                    preexisting.push(r.clone());
+                }
+            } else {
+                new_failures.push(name.clone());
+            }
+        }
+
+        // AC #8 assertions:
+        assert_eq!(
+            new_failures,
+            vec!["gate-B".to_string()],
+            "gate-B must be NEW"
+        );
+        assert_eq!(preexisting.len(), 1, "gate-A must be PRE-EXISTING");
+        assert_eq!(preexisting[0].name, "gate-A");
+        // gate-C must not appear in either list.
+        assert!(!new_failures.contains(&"gate-C".to_string()));
+        assert!(!preexisting.iter().any(|r| r.name == "gate-C"));
+    }
+
+    #[test]
+    fn baseline_age_secs_fresh() {
+        let cache = BaselineCache {
+            baseline_sha: "abc".to_string(),
+            generated_at_secs: unix_now(),
+            gate_results: vec![],
+        };
+        let age = baseline_age_secs(&cache);
+        // Generated "now" → age should be <5s in any reasonable test run.
+        assert!(age < 5, "fresh cache should have age < 5s, got {}", age);
+    }
+
+    #[test]
+    fn baseline_age_secs_stale() {
+        let cache = BaselineCache {
+            baseline_sha: "abc".to_string(),
+            // 2 hours ago
+            generated_at_secs: unix_now().saturating_sub(7200),
+            gate_results: vec![],
+        };
+        let age = baseline_age_secs(&cache);
+        assert!(
+            age >= 7200,
+            "stale cache should report age >= 7200s, got {}",
+            age
+        );
+        assert!(age > BASELINE_CACHE_TTL_SECS, "stale cache must exceed TTL");
+    }
+
+    #[test]
+    fn extract_json_str_basic() {
+        let json = r#"{"baseline_sha":"deadbeef","other":"val"}"#;
+        assert_eq!(
+            extract_json_str(json, "baseline_sha"),
+            Some("deadbeef".to_string())
+        );
+        assert_eq!(extract_json_str(json, "other"), Some("val".to_string()));
+        assert_eq!(extract_json_str(json, "missing"), None);
+    }
+
+    #[test]
+    fn extract_json_u64_basic() {
+        let json = r#"{"generated_at_secs":1234567,"other":99}"#;
+        assert_eq!(
+            extract_json_u64(json, "generated_at_secs"),
+            Some(1234567u64)
+        );
+        assert_eq!(extract_json_u64(json, "other"), Some(99u64));
+        assert_eq!(extract_json_u64(json, "missing"), None);
+    }
+
+    #[test]
+    fn json_str_escaping() {
+        assert_eq!(json_str("hello"), "\"hello\"");
+        assert_eq!(json_str("say \"hi\""), "\"say \\\"hi\\\"\"");
+        assert_eq!(json_str("back\\slash"), "\"back\\\\slash\"");
     }
 }

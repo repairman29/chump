@@ -117,9 +117,16 @@ bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on
 bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
 bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
 bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
+# META-156: per-step observability + fail-fast kinds
+bot_merge_step_started   # reason: META-156 AC#1 — emitted by _bm_emit_step_started() in bot-merge.sh at each named step (init/preflight/claim/push/pr_create/pr_merge_arm/pr_wait_merge/post_ship); helper uses variable-assembled printf so literal "kind":"bot_merge_step_started" not grep-scannable
+bot_merge_step_done      # reason: META-156 AC#1 — emitted by _bm_emit_step_done() in bot-merge.sh at each named step with duration_ms and rc; same variable-assembled printf pattern
+bot_merge_aborted_no_auth  # reason: META-156 AC#3 — emitted by bot-merge.sh on GraphQL 401 / graphql_exhausted hard-fail-fast in init step; variable-assembled printf
+bot_merge_budget_warn    # reason: META-156 AC#6 — emitted by bot-merge.sh total-budget watchdog at 50%/75%/90% thresholds; variable-assembled printf
+bot_merge_completed      # reason: META-156 AC#7 — emitted by bot-merge.sh graceful-exit roll-up with gap_id/pr_number/duration_ms/terminal_state; variable-assembled printf
 bypass_threshold_breach  # reason: INFRA-1837 — emitted by scripts/ops/audit-bypass-frequency.sh from inside a python3 heredoc dict (per breaching session); kind literal lives in python dict, not grep-scannable as kind=X
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
-capability_published  # reason: INFRA-1825 — capability-publish.sh after successful NATS KV publish
+capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/src/capability.rs publish_manifest(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
+capability_heartbeat  # reason: INFRA-1120 — crates/chump-coord/src/capability.rs heartbeat_loop(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
@@ -249,6 +256,9 @@ loud_detector     # reason: META-103 test-fixture synthetic kind used in scripts
 noisy_kind        # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 2; not a production emit
 normal_kind       # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 4; not a production emit
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
+test_file_fallback  # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs file-fallback receipt test; not a production emit
+test_roundtrip      # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs NATS roundtrip latency test; not a production emit
+test_backpressure   # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs backpressure detection test; not a production emit
 oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on THE_PATH.md hash change; printf-direct JSON not grep-scannable as kind=X literal
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
 oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable
@@ -278,6 +288,11 @@ hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-p
 
 # ── RESILIENT-031: admin-merge discipline audit trail ─────────────────────────
 admin_merge_forced  # reason: RESILIENT-031 emitted by scripts/ops/admin-merge-cycle.sh _emit() via printf — emit site uses a # scanner-anchor comment (INFRA-1237 pattern 8b) but formal EVENT_REGISTRY.yaml entry added in same commit; reserved here to satisfy strict-mode register-without-emit until the scanner can resolve scanner-anchor patterns
+
+# ── INFRA-2071: admin-merge burst circuit-breaker ─────────────────────────────
+admin_merge_cycle_run          # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh after successful merge — the counter event the burst threshold counts; scanner-anchor in _emit_cycle_run helper
+admin_merge_burst              # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh _check_burst when count >= threshold; scanner-anchor in _check_burst helper; operator_action_needed=true
+admin_merge_burst_overridden   # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh burst override block when --force-admin or CHUMP_ADMIN_MERGE_FORCE=1 bypasses a tripped circuit-breaker; scanner-anchor in burst override block
 
 # ── INFRA-1993 / META-106 (THE FLOOR Phase 3): operator-recovery queue ───────
 operator_recovery_requested  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-emit.sh (worker-facing CLI) when a worker requests an admin-merge cycle for a PR cluster; the queue service consumes these events
@@ -422,3 +437,22 @@ integration_cycle_shipped         # reason: INFRA-2132 / META-124; registered in
 cycle_sampling_decision           # reason: INFRA-2132 / META-124 Phase 2 marker; registered in EVENT_REGISTRY.yaml; emitter INFRA-2130 not yet shipped.
 bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registered in EVENT_REGISTRY.yaml; emitter scripts/dev/integration-bisect-step.sh.
 fleet_scale_changed               # reason: INFRA-2198 (META-128/C7); disk-plan gate + fleet auto-scale emitter; fields: from, to, reason.
+external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; registered in EVENT_REGISTRY.yaml; emitter scripts/coord/pr-rescue.sh (INFRA-2114 fork-aware path).
+
+# ── INFRA-1118: A2A Layer 1a — file-fallback + degraded/recovered event kinds ──
+# Emit sites in crates/chump-coord/src/events.rs use Rust format! macro patterns
+# not grep-scannable as bare "kind":"<value>" literals in PROD_PATHS scanner.
+fleet_a2a_degraded    # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+fleet_a2a_recovered   # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+fleet_a2a_backpressure # reason: INFRA-1118 emitted via append_ambient() in events.rs; format!() emit not grep-scannable as literal
+
+# ── INFRA-2239: chump-curator-supervisor L3 daemon ───────────────────────────
+curator_failure_paged             # reason: INFRA-2239 emitted by chump-curator-supervisor (crates/chump-curator-supervisor/src/main.rs) when a novel curator failure fingerprint is detected AND a gap has been filed via `chump gap reserve`. Carries role, gap_id, priority, fingerprint, summary. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+curator_respawned                 # reason: INFRA-2239 emitted by chump-curator-supervisor after tmux respawn-pane succeeds AND a fresh curator_heartbeat is detected within 60s. Carries role. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+curator_respawn_failed            # reason: INFRA-2239 emitted by chump-curator-supervisor when tmux respawn-pane was attempted but no curator_heartbeat appeared within 60s. Carries role, reason. Triggers operator broadcast via scripts/coord/broadcast.sh. Scanner-anchor: crates/chump-curator-supervisor/src/main.rs.
+# ── INFRA-2070: cascade-unblock detector (META-118 sub-gap 4) ─────────────────
+cascade_unblocked                 # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh after a wedge_auto_fix PR merges and N open PRs with matching failure signature are rebased. Carries source_pr, signature_hash, matched_pr_numbers (csv), rebase_attempt_count, success_count, conflict_count. Scanner-anchor in cascade-unblock-detector.sh.
+cascade_unblock_skipped           # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh per-PR when a safety guard fires (operator_recent_comment, chump_hold_label, rebase_conflict, rate_limit_reached). Carries source_pr, signature_hash, pr_number, reason. Scanner-anchor in cascade-unblock-detector.sh.
+# ── INFRA-2006: A2A inbox-routing fix ────────────────────────────────────────
+a2a_inbox_alias_resolved        # reason: INFRA-2006; emitted by scripts/coord/chump-inbox.sh read when messages are found in a lease-id alias inbox (primary env-session-id != broadcast --to target); also by scripts/coord/lib/inbox-routing.sh resolve_inbox_target on sender-side lookup. Carries primary_session, alias_session, message_count. Registered in EVENT_REGISTRY.yaml.
+a2a_inbox_message_orphan        # reason: INFRA-2006; advisory event emitted by scripts/coord/chump-inbox.sh when a message is found in an inbox file no live session owns. Not fatal; archive-on-dead-session cleans up. Carries inbox_file, message_count. Registered in EVENT_REGISTRY.yaml.

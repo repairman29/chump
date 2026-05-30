@@ -62,10 +62,19 @@ pub mod consensus;
 pub mod events;
 pub mod help_request;
 pub mod mesh;
+/// INFRA-2266: Layer 1a slice 3/4 — NATS-primary JetStream durable consumer.
+/// Public surface re-exports `events` types + exposes durable_consumer_name,
+/// max_ack_pending, and layer_enabled helpers.
+pub mod nats_primary;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;
 pub mod worker;
+
+// INFRA-1815: mesh-bridge — separate file to minimise collision surface with
+// sibling leases on lib.rs. Full doc + re-exports live in mesh_bridge.rs.
+#[cfg(feature = "mesh-bridge")]
+pub mod mesh_bridge;
 
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};
@@ -148,6 +157,10 @@ pub struct CoordClient {
     /// board so help requests can hang off either subtasks or gaps
     /// and survive subtask state transitions.
     pub(crate) help_requests_kv: kv::Store,
+    /// INFRA-1120 Layer 2c: capability manifests KV bucket.
+    /// Workers publish their CapabilityManifest here at startup and every
+    /// 30s heartbeat; TTL = 5 min. Picker reads this to route gaps.
+    pub capabilities_kv: kv::Store,
 }
 
 impl CoordClient {
@@ -209,12 +222,16 @@ impl CoordClient {
         // be tuned independently.
         let help_requests_kv = help_request::init_bucket(&js).await?;
 
+        // INFRA-1120 Layer 2c: capability manifests KV bucket.
+        let capabilities_kv = capability::init_capabilities_bucket(&js).await?;
+
         Ok(Self {
             nats,
             js,
             gaps_kv,
             work_board_kv,
             help_requests_kv,
+            capabilities_kv,
         })
     }
 
@@ -386,5 +403,31 @@ impl CoordClient {
             .flush()
             .await
             .map_err(|e| anyhow!("NATS flush error: {}", e))
+    }
+
+    // ── Capability manifest API (INFRA-1120 Layer 2c) ─────────────────────────
+
+    /// Publish a CapabilityManifest for the current session to the
+    /// `chump_capabilities` KV bucket and append to the file audit trail.
+    ///
+    /// Call at worker startup and then via [`capability::heartbeat_loop`]
+    /// every 30 seconds. Manifests older than `ttl_seconds` (default 300s)
+    /// are treated as stale by [`Self::list_capabilities`].
+    pub async fn publish_capability(
+        &self,
+        manifest: &capability::CapabilityManifest,
+    ) -> Result<()> {
+        capability::publish_manifest(&self.capabilities_kv, manifest).await
+    }
+
+    /// List all live (non-stale) capability manifests currently in the
+    /// `chump_capabilities` KV bucket.
+    ///
+    /// Stale manifests (heartbeat_at older than their `ttl_seconds`) are
+    /// excluded — they represent dead or unreachable sessions. Picker uses
+    /// this to route gaps to capable sessions (AC-4: >=1 routing decision
+    /// per gap during the 7-day release gate).
+    pub async fn list_capabilities(&self) -> Result<Vec<capability::CapabilityManifest>> {
+        capability::list_capabilities(&self.capabilities_kv).await
     }
 }

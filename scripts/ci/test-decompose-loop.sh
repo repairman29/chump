@@ -116,4 +116,89 @@ if [[ "$rc" != "0" ]]; then
 fi
 echo "  ok: slice --help exits 0"
 
+# ── Test 8 (META-160): tick with stubbed inbox + FEEDBACK emits actionable ──
+# This test exercises Phase 0: _drain_inbox + _peek_pending_feedback.
+# The test does NOT require chump CLI — it only uses the Phase 0 helpers.
+{
+    TMP_DIR8="$(mktemp -d)"
+    TMP_AMB8="$TMP_DIR8/ambient.jsonl"
+    TMP_LOCK8="$TMP_DIR8/locks"
+    SESSION8="test-decompose-p0"
+    mkdir -p "$TMP_LOCK8/inbox"
+
+    # Stub inbox: 1 message in SESSION8's inbox file
+    printf '{"ts":"2026-05-30T00:00:00Z","kind":"decompose_request","gap_id":"META-TEST-1","rationale":"test"}\n' \
+        > "$TMP_LOCK8/inbox/${SESSION8}.jsonl"
+
+    # Stub ambient: 1 FEEDBACK/proposal event with corr_id "TEST-CORR-1"
+    # (no consensus_result → should surface as pending)
+    printf '{"ts":"2026-05-30T00:00:01Z","event":"FEEDBACK","kind":"proposal","corr_id":"TEST-CORR-1","body":"needs vote"}\n' \
+        > "$TMP_AMB8"
+
+    set +e
+    tick_out="$(
+        CHUMP_FLEET_RECV_SIDE_V0=1 \
+        CHUMP_AMBIENT_LOG="$TMP_AMB8" \
+        CHUMP_LOCK_DIR="$TMP_LOCK8" \
+        CHUMP_SESSION_ID="$SESSION8" \
+        bash "$SCRIPT" tick 2>&1 || true
+    )"
+    set -e
+
+    # Assert "Pending FEEDBACK" header present in stdout
+    if ! printf '%s\n' "$tick_out" | grep -q "Pending FEEDBACK"; then
+        echo "FAIL Test 8: 'Pending FEEDBACK' header not found in tick output"
+        printf '%s\n' "$tick_out"
+        exit 1
+    fi
+    echo "  ok Test 8: tick with FEEDBACK proposal prints 'Pending FEEDBACK' header"
+
+    # Assert corr_id surfaced
+    if ! printf '%s\n' "$tick_out" | grep -q "TEST-CORR-1"; then
+        echo "FAIL Test 8: corr_id 'TEST-CORR-1' not found in tick output"
+        printf '%s\n' "$tick_out"
+        exit 1
+    fi
+    echo "  ok Test 8: tick surfaces corr_id TEST-CORR-1"
+
+    # Assert inbox message was printed (drain)
+    if ! printf '%s\n' "$tick_out" | grep -q "decompose_request"; then
+        echo "FAIL Test 8: inbox message not printed in tick output"
+        printf '%s\n' "$tick_out"
+        exit 1
+    fi
+    echo "  ok Test 8: inbox drained and message printed"
+
+    # Assert cursor advanced
+    cursor_file="$TMP_LOCK8/inbox/${SESSION8}.cursor"
+    if [[ ! -f "$cursor_file" ]]; then
+        echo "FAIL Test 8: cursor file not created at $cursor_file"
+        exit 1
+    fi
+    cursor_val="$(cat "$cursor_file")"
+    if [[ "$cursor_val" != "1" ]]; then
+        echo "FAIL Test 8: cursor should be 1, got '$cursor_val'"
+        exit 1
+    fi
+    echo "  ok Test 8: inbox cursor advanced to 1"
+
+    # Verify feature-flag gate: without CHUMP_FLEET_RECV_SIDE_V0, Phase 0 skipped
+    set +e
+    tick_out_gated="$(
+        CHUMP_FLEET_RECV_SIDE_V0=0 \
+        CHUMP_AMBIENT_LOG="$TMP_AMB8" \
+        CHUMP_LOCK_DIR="$TMP_LOCK8" \
+        CHUMP_SESSION_ID="${SESSION8}-gated" \
+        bash "$SCRIPT" tick 2>&1 || true
+    )"
+    set -e
+    if printf '%s\n' "$tick_out_gated" | grep -q "Pending FEEDBACK"; then
+        echo "FAIL Test 8: Phase 0 ran even though CHUMP_FLEET_RECV_SIDE_V0=0"
+        exit 1
+    fi
+    echo "  ok Test 8: feature flag gates Phase 0 correctly"
+
+    rm -rf "$TMP_DIR8"
+}
+
 echo "test-decompose-loop: PASS"

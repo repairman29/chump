@@ -19,6 +19,13 @@
 # Emits kind=inbox_advance event to ambient.jsonl after a successful cursor
 # update, with {ts, kind, session, messages_read, new_offset}.
 #
+# INFRA-2006 (A2A inbox-routing bug fix): the `read` subcommand now unions
+# messages from ALL inbox files owned by the current session — both the
+# primary env-session-id inbox AND any lease-id inboxes (from claim-*.json
+# files). This fixes the silent-loss bug where broadcast.sh --to <lease-id>
+# wrote to a different file than the reader was checking. Deduplication is
+# by message_id field (falls back to ts+session+kind triple).
+#
 # INFRA-1998 (Rust-first Phase 1): when CHUMP_MESSAGING_RUST=1, the
 # `read` subcommand (default-path, no exotic flags) exec's the chump-inbox
 # binary if it's on $PATH. All other subcommands + flag combinations
@@ -48,12 +55,28 @@ fi
 
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-_GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
-if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
-LOCK_DIR="$MAIN_REPO/.chump-locks"
+# INFRA-2006: honour LOCK_DIR env override (used by tests and synthetic
+# workspaces). Only fall back to git-derived path when not set.
+if [[ -z "${LOCK_DIR:-}" ]]; then
+    REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
+    LOCK_DIR="$MAIN_REPO/.chump-locks"
+fi
 INBOX_DIR="$LOCK_DIR/inbox"
 AMBIENT="$LOCK_DIR/ambient.jsonl"
+
+# INFRA-2006: source inbox-routing helpers for multi-inbox union reads.
+# Provide LOCK_DIR so the lib doesn't need to re-resolve it.
+_IR_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/inbox-routing.sh"
+if [[ -f "$_IR_LIB" ]]; then
+    # shellcheck source=lib/inbox-routing.sh
+    # shellcheck disable=SC1091
+    source "$_IR_LIB"
+    _HAS_ROUTING_LIB=1
+else
+    _HAS_ROUTING_LIB=0
+fi
 
 resolve_session() {
     local sid="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
@@ -64,6 +87,35 @@ resolve_session() {
         sid="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
     fi
     printf '%s' "$sid"
+}
+
+# INFRA-2006: return all inbox files this session should read (union of
+# primary env-session inbox + all lease-id aliases). Falls back to just
+# the primary inbox if the routing lib is unavailable.
+collect_inbox_files() {
+    if [[ "$_HAS_ROUTING_LIB" -eq 1 ]]; then
+        resolve_inbox_targets
+    else
+        local primary; primary="$(resolve_session)"
+        [[ -n "$primary" ]] && printf '%s\n' "$INBOX_DIR/$primary.jsonl"
+    fi
+}
+
+# Emit kind=a2a_inbox_alias_resolved when we find messages in an alias file.
+emit_alias_resolved() {
+    local alias_file="$1" msg_count="$2"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local alias_name; alias_name="$(basename "$alias_file" .jsonl)"
+    printf '{"ts":"%s","kind":"a2a_inbox_alias_resolved","session":"%s","alias_session":"%s","message_count":%d}\n' \
+        "$ts" "$SESSION" "$alias_name" "$msg_count" >> "$AMBIENT" 2>/dev/null || true
+}
+
+# Emit kind=a2a_inbox_message_orphan for inboxes with no live session owner.
+emit_orphan() {
+    local orphan_file="$1" msg_count="$2"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"a2a_inbox_message_orphan","inbox_file":"%s","message_count":%d}\n' \
+        "$ts" "$orphan_file" "$msg_count" >> "$AMBIENT" 2>/dev/null || true
 }
 
 SUB="${1:-help}"
@@ -116,44 +168,86 @@ case "$SUB" in
         tail -f "$INBOX_FILE"
         ;;
     read)
-        if [[ ! -f "$INBOX_FILE" ]]; then
-            [[ "$WANT_JSON" -eq 1 ]] && echo "[]" || true
-            exit 0
-        fi
-        # Resolve --since to a byte offset.
-        local_offset=0
-        case "$SINCE" in
-            all) local_offset=0 ;;
-            cursor)
-                if [[ -f "$CURSOR_FILE" ]]; then
-                    local_offset="$(cat "$CURSOR_FILE" 2>/dev/null | tr -d '[:space:]')"
-                    [[ "$local_offset" =~ ^[0-9]+$ ]] || local_offset=0
-                fi
-                ;;
-            *)
-                # Treat as ISO timestamp; python filters lines by ts.
-                local_offset=0
-                ;;
-        esac
-        file_size="$(wc -c < "$INBOX_FILE" | tr -d ' ')"
-        if [[ "$local_offset" -gt "$file_size" ]]; then
-            # File was truncated/archived; reset to start.
-            local_offset=0
-        fi
-        # Write the tail slice to a temp file so python can read it without
-        # colliding with the python-script-on-stdin convention.
-        slice_file="$(mktemp "$INBOX_DIR/.read-slice.XXXXXX")"
-        tail -c +"$((local_offset + 1))" "$INBOX_FILE" > "$slice_file"
-        if [[ ! -s "$slice_file" ]]; then
-            rm -f "$slice_file"
+        # INFRA-2006: collect ALL inbox files this session owns (primary +
+        # lease-id aliases), union their contents, deduplicate by message_id.
+        # bash 3.2-compatible: read loop instead of mapfile.
+        mkdir -p "$INBOX_DIR"
+        INBOX_FILES=()
+        while IFS= read -r _line; do
+            [[ -n "$_line" ]] && INBOX_FILES+=("$_line")
+        done < <(collect_inbox_files)
+
+        # Check whether any inbox file exists at all.
+        _any_inbox=0
+        for _f in "${INBOX_FILES[@]}"; do
+            [[ -f "$_f" ]] && { _any_inbox=1; break; }
+        done
+        if [[ "$_any_inbox" -eq 0 ]]; then
             [[ "$WANT_JSON" -eq 1 ]] && echo "[]" || true
             exit 0
         fi
 
-        # Filter via python: argv order is <slice-file> <since> <want-json> <filter1> <filter2> ...
-        # ${arr[@]+"${arr[@]}"} is the bash 3.2-safe "expand-or-nothing" idiom
-        # for an array that may be empty under set -u.
-        filtered="$(python3 - "$slice_file" "$SINCE" "$WANT_JSON" ${FILTERS[@]+"${FILTERS[@]}"} <<'PY'
+        # Build a merged slice tmp file from all inbox files.
+        # For each file we apply the cursor independently (per-file cursor).
+        # The primary file's cursor is the canonical one for --no-advance logic.
+        merged_slice="$(mktemp "$INBOX_DIR/.read-slice.XXXXXX")"
+        total_primary_size=0
+
+        for _inbox_file in "${INBOX_FILES[@]}"; do
+            [[ -f "$_inbox_file" ]] || continue
+            _cursor_file="${_inbox_file%.jsonl}.cursor"
+            # Substitute primary cursor path for the primary inbox.
+            [[ "$_inbox_file" == "$INBOX_FILE" ]] && _cursor_file="$CURSOR_FILE"
+
+            _local_offset=0
+            case "$SINCE" in
+                all) _local_offset=0 ;;
+                cursor)
+                    if [[ -f "$_cursor_file" ]]; then
+                        _local_offset="$(cat "$_cursor_file" 2>/dev/null | tr -d '[:space:]')"
+                        [[ "$_local_offset" =~ ^[0-9]+$ ]] || _local_offset=0
+                    fi
+                    ;;
+                *) _local_offset=0 ;;
+            esac
+            _fsize="$(wc -c < "$_inbox_file" | tr -d ' ')"
+            [[ "$_local_offset" -gt "$_fsize" ]] && _local_offset=0
+
+            # Track primary file size for cursor advancement.
+            if [[ "$_inbox_file" == "$INBOX_FILE" ]]; then
+                total_primary_size="$_fsize"
+            fi
+
+            # Append new bytes from this file into the merged slice.
+            if [[ "$_fsize" -gt "$_local_offset" ]]; then
+                tail -c +"$((_local_offset + 1))" "$_inbox_file" >> "$merged_slice"
+
+                # Emit alias-resolved event when messages come from a non-primary inbox.
+                if [[ "$_inbox_file" != "$INBOX_FILE" ]]; then
+                    _alias_lines="$(tail -c +"$((_local_offset + 1))" "$_inbox_file" | grep -c '' 2>/dev/null || true)"
+                    if [[ "$_alias_lines" -gt 0 ]]; then
+                        emit_alias_resolved "$_inbox_file" "$_alias_lines"
+                    fi
+                fi
+
+                # Advance per-alias cursor atomically (non-primary files only).
+                if [[ "$NO_ADVANCE" -ne 1 && "$_inbox_file" != "$INBOX_FILE" ]]; then
+                    _ctmp="${_cursor_file}.tmp.$$"
+                    printf '%s' "$_fsize" > "$_ctmp"
+                    mv "$_ctmp" "$_cursor_file"
+                fi
+            fi
+        done
+
+        if [[ ! -s "$merged_slice" ]]; then
+            rm -f "$merged_slice"
+            [[ "$WANT_JSON" -eq 1 ]] && echo "[]" || true
+            exit 0
+        fi
+
+        # Filter + deduplicate via python.
+        # argv: <merged-slice> <since> <want-json> <filter1> ...
+        filtered="$(python3 - "$merged_slice" "$SINCE" "$WANT_JSON" ${FILTERS[@]+"${FILTERS[@]}"} <<'PY'
 import json, sys
 slice_path = sys.argv[1]
 since = sys.argv[2]
@@ -177,6 +271,14 @@ if since not in ("cursor", "all"):
     except Exception:
         since_dt = None
 
+def dedup_key(evt):
+    """Stable deduplication key: message_id field, or ts+session+kind triple."""
+    mid = evt.get("message_id")
+    if mid:
+        return ("mid", mid)
+    return ("tsk", evt.get("ts",""), evt.get("session",""), evt.get("kind", evt.get("event","")))
+
+seen_keys = set()
 matched = []
 with open(slice_path) as f:
     for line in f:
@@ -187,6 +289,12 @@ with open(slice_path) as f:
             evt = json.loads(line)
         except Exception:
             continue
+        # Deduplicate.
+        dk = dedup_key(evt)
+        if dk in seen_keys:
+            continue
+        seen_keys.add(dk)
+        # Apply predicates.
         if predicates:
             ok = True
             for k, v in predicates:
@@ -199,6 +307,7 @@ with open(slice_path) as f:
                     if str(evt.get(k, "")) != v: ok = False; break
             if not ok:
                 continue
+        # Apply since timestamp filter.
         if since_dt is not None:
             try:
                 from datetime import datetime
@@ -216,7 +325,7 @@ else:
         print(json.dumps(m))
 PY
         )"
-        rm -f "$slice_file"
+        rm -f "$merged_slice"
         if [[ -n "$filtered" ]]; then
             printf '%s\n' "$filtered"
         elif [[ "$WANT_JSON" -eq 1 ]]; then
@@ -224,13 +333,13 @@ PY
         fi
 
         if [[ "$NO_ADVANCE" -ne 1 ]]; then
-            # Atomic cursor update via rename.
+            # Advance the primary inbox cursor atomically.
             tmp="$CURSOR_FILE.tmp.$$"
-            printf '%s' "$file_size" > "$tmp"
+            printf '%s' "$total_primary_size" > "$tmp"
             mv "$tmp" "$CURSOR_FILE"
-            # Count emitted lines (one per matched event, plus possibly a JSON wrapper line).
+            # Count emitted lines for the advance event.
             slice_lines="$(printf '%s' "$filtered" | grep -c '' || true)"
-            emit_advance "$slice_lines" "$file_size"
+            emit_advance "$slice_lines" "$total_primary_size"
         fi
         ;;
     help|"")

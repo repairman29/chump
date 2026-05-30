@@ -1,0 +1,21 @@
+- id: INFRA-2264
+  domain: INFRA
+  title: "EFFECTIVE: INFRA-1815-sideA — create crates/coord-mesh in internal sibling repo and activate mesh-bridge git dep"
+  status: open
+  priority: P2
+  effort: m
+  effort: s
+  acceptance_criteria:
+    1. Inside the internal sibling repo, create `crates/coord-mesh/` as described in CP-008 (docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md §New crate layout). Move `mesh::abstract_impl` + `consensus/mod.rs` + `mesh/simulator.rs` (feature-gated) into `coord-mesh/src/`. Add re-exports in `crates/coord/src/lib.rs` so existing proprietary consumers compile unchanged.
+    2. In public Chump `crates/chump-coord/Cargo.toml`, uncomment the `[dependencies.coord-mesh]` git-dep block and fill in the HEAD SHA of the internal sibling repo commit that ships the crate. Change the feature line from `mesh-bridge = []` to `mesh-bridge = ["dep:coord-mesh"]`.
+    3. In `crates/chump-coord/src/mesh_bridge.rs`, replace `pub use crate::mesh::*` re-exports with `pub use coord_mesh::mesh::*` (and `pub use coord_mesh::consensus::*` for the consensus sub-module). The checklist at the top of `mesh_bridge.rs` documents the exact line-by-line swap.
+    4. `cargo build --features mesh-bridge` passes in public Chump with the live git dep.
+    5. `cargo test -p chump-coord --lib --features mesh-bridge` passes (57 tests, same as without the feature).
+    6. Update CP-008 status line from "Side B shipped" to "fully implemented".
+  notes: |
+    Depends on: INFRA-1815 (Side B scaffold — already shipped, PR in flight).
+    The internal sibling repo work (step 1) does not touch the public Chump git tree.
+    Consumption mechanism decision is already recorded in CP-008: git dep with SHA pin.
+    Internal sibling repo path: /Users/jeffadkins/Projects/chump-proprietary (local clone exists).
+    Do NOT push internal repo changes to public Chump remote.
+

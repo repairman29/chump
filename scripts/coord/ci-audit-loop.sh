@@ -93,7 +93,7 @@ _scan_ambient_for_ci() {
     fi
     local hits
     hits="$(tail -"${window}" "$AMBIENT" 2>/dev/null \
-        | grep -E '"kind":"(pr_stuck|fleet_wedge|ci_cluster_detected|ci_audit_heartbeat|sub_agent_dispatched)"' \
+        | grep -E '"kind":"(pr_stuck|fleet_wedge|regression_attributed|ci_cluster_detected|ci_audit_heartbeat|sub_agent_dispatched)"' \
         || true)"
     if [[ -n "$hits" ]]; then
         printf '%s\n' "$hits"
@@ -208,6 +208,45 @@ _cmd_audit() {
         echo "  BUCKET: bot-merge silent wedge candidate (${wedge_count} fleet_wedge events)"
         echo "  → Cross-check with INFRA-1939 pattern: PR merged but gap not shipped"
         printf '%s\n' "$wedge_events" | tail -3
+        found=1
+    else
+        echo "  (none)"
+    fi
+    echo
+
+    # Scan for regression_attributed events → blame-bot fingered specific commits
+    # CREDIBLE-079: missing bucket was masking trunk-red signal — curator
+    # heartbeat without action (L1-SLO-1 silent_agent breach root cause).
+    echo "## regression_attributed events (last 200 ambient lines)"
+    local regr_events
+    regr_events="$(tail -200 "$AMBIENT" 2>/dev/null \
+        | grep '"kind":"regression_attributed"' || true)"
+    if [[ -n "$regr_events" ]]; then
+        local regr_count
+        regr_count="$(printf '%s\n' "$regr_events" | wc -l | tr -d ' ')"
+        echo "  BUCKET: blame-bot regression cluster (${regr_count} regression_attributed events)"
+        echo "  → Cross-check with CREDIBLE-080: blame-bot may be firing against stale green_sha"
+        # Surface suspect_commits + checks_attributed from the most recent event
+        local latest_regr
+        latest_regr="$(printf '%s\n' "$regr_events" | tail -1)"
+        local suspects
+        suspects="$(printf '%s' "$latest_regr" | sed -n 's/.*"suspect_commits":"\([^"]*\)".*/\1/p')"
+        local checks
+        checks="$(printf '%s' "$latest_regr" | sed -n 's/.*"checks_attributed":"\([^"]*\)".*/\1/p')"
+        local green
+        green="$(printf '%s' "$latest_regr" | sed -n 's/.*"green_sha":"\([^"]*\)".*/\1/p')"
+        [[ -n "$suspects" ]] && echo "  suspect_commits: $suspects"
+        [[ -n "$checks" ]] && echo "  checks_attributed: $checks"
+        [[ -n "$green" ]] && echo "  green_sha: $green"
+        # Stale-green hint: if green_sha is > 5 commits behind HEAD, warn
+        if [[ -n "$green" ]]; then
+            local behind
+            behind="$(git -C "$REPO_ROOT" rev-list --count "${green}..HEAD" 2>/dev/null || echo 0)"
+            if (( behind > 5 )); then
+                echo "  ⚠ stale-green warning: green_sha is ${behind} commits behind HEAD — see CREDIBLE-080"
+            fi
+        fi
+        printf '%s\n' "$regr_events" | tail -3
         found=1
     else
         echo "  (none)"

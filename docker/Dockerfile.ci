@@ -1,0 +1,67 @@
+# Dockerfile.ci — INFRA-2241
+#
+# Prebuilt CI image for chump: Rust 1.82 + sccache + cargo-nextest + cargo-deny
+# + clippy + jq preinstalled. Pushed weekly to ghcr.io/repairman29/chump-ci.
+#
+# Multi-stage with cargo-chef (AC #8) for 10x dep-layer cache hit on rebuild.
+#
+# Operational notes:
+#   - Final stage is lean: only the toolchain + tools, no source tree, no recipe.
+#   - Source/recipe are baked into the intermediate `builder` stage so cargo's
+#     dep graph is warm in /usr/local/cargo for the cargo-test job.
+#   - Bump Rust version by editing the `FROM rust:X.Y-bookworm` lines below;
+#     the weekly build-ci-image.yml cron will push a new :latest the following
+#     Sunday. Rollback: pin a specific :{sha} tag in ci.yml.
+#
+# Usage (in ci.yml — deferred to follow-up INFRA-2241B):
+#   jobs:
+#     cargo-test:
+#       container: ghcr.io/repairman29/chump-ci:latest
+#
+# See: docs/process/CI_DOCKER_IMAGE.md for full operator surface.
+
+# ── Stage 1: chef — install cargo-chef + binstall + tools ────────────────────
+FROM rust:1.82-bookworm AS chef
+RUN cargo install --locked cargo-chef cargo-binstall
+RUN cargo binstall -y --no-confirm sccache cargo-nextest cargo-deny \
+    || cargo install --locked sccache cargo-nextest cargo-deny
+WORKDIR /chump
+
+# ── Stage 2: planner — produce recipe.json from workspace manifests ──────────
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ── Stage 3: builder — cook deps from recipe (this layer caches deps) ────────
+FROM chef AS builder
+COPY --from=planner /chump/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# ── Stage 4: final — lean operational image (toolchain + tools only) ─────────
+FROM rust:1.82-bookworm
+# Copy preinstalled tools from chef stage (kept lean: no source, no recipe).
+COPY --from=chef /usr/local/cargo/bin/sccache /usr/local/bin/sccache
+COPY --from=chef /usr/local/cargo/bin/cargo-nextest /usr/local/bin/cargo-nextest
+COPY --from=chef /usr/local/cargo/bin/cargo-deny /usr/local/bin/cargo-deny
+
+# Runtime utilities expected by CI scripts.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl jq sqlite3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure clippy + rustfmt components are present (rustup ships them but make sure).
+RUN rustup component add clippy rustfmt
+
+ENV CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUSTC_WRAPPER=sccache \
+    SCCACHE_DIR=/sccache
+
+# Sanity check on build (fails the image build if any tool is missing).
+RUN rustc --version && cargo --version && clippy-driver --version \
+    && cargo nextest --version && cargo deny --version \
+    && sccache --version && jq --version && git --version
+
+LABEL org.opencontainers.image.source="https://github.com/repairman29/chump"
+LABEL org.opencontainers.image.description="Chump CI toolchain image (Rust 1.82 + sccache + nextest + deny + clippy + jq)"
+LABEL org.opencontainers.image.licenses="MIT"
