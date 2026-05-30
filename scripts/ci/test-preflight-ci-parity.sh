@@ -153,6 +153,11 @@ INFRA_JOBS = {
     "clippy-required", "cargo-test-required", "fast-checks-required",
     "audit-required",
     "tauri-cowork-e2e", "e2e-pwa", "e2e-battle-sim", "e2e-golden-path",
+    # META-202: matrix orchestration job — its run: step is a template
+    # expression (bash scripts/ci/${{ matrix.test }}) that cannot be resolved
+    # to a concrete script. Individual gates are accounted for via the
+    # fast-checks job (kept with if: false so its step list remains parseable).
+    "fast-checks-matrix",
 }
 
 lines = ci_yml.read_text().splitlines()

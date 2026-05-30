@@ -331,6 +331,15 @@ Detect R2 secret presence                    # reason: INFRA-2093 secret-presenc
 sccache --show-stats                         # reason: INFRA-2093 observability emit at end of cargo-test (only runs when R2 configured). Pure runtime stats reporting, no source code dependency; not preflight-shaped.
 nextest via INFRA-764                        # reason: INFRA-2094 step-name fragment for `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script reads only first line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content.
 
+# ── META-202: fast-checks-matrix orchestration steps ─────────────────────────
+# The matrix job's single run: step is `bash scripts/ci/${{ matrix.test }}`
+# which is a template expression — the parity script cannot resolve it to a
+# concrete script name. The job is added to INFRA_JOBS in the parity script
+# itself so its template step is skipped. Individual scripts invoked by the
+# matrix are already accounted for via the old fast-checks job (kept as
+# if: false so its step list remains parseable by the parity checker).
+fast-checks-matrix                               # reason: META-202 orchestration job; template run: step cannot be resolved to a concrete script; individual gates accounted for via fast-checks (if:false) step list; gap: META-202
+
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
 # (tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path are in INFRA_JOBS skip list)
