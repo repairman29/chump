@@ -48,7 +48,7 @@ if [[ "$_GIT_COMMON" == ".git" ]]; then
 else
     MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
 fi
-LOCK_DIR="$MAIN_REPO/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$MAIN_REPO/.chump-locks}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-md-links-$$}"
 DOCS_ROOT="${CHUMP_MD_LINKS_DOCS:-$REPO_ROOT/docs}"
@@ -95,7 +95,6 @@ _scan_file_internal() {
     while IFS= read -r line; do
         lineno=$((lineno + 1))
         # Extract all ](target) occurrences on this line
-        local targets
         # Use grep to pull out the (target) portion — allow multiple per line
         while IFS= read -r raw_target; do
             [[ -z "$raw_target" ]] && continue
@@ -216,9 +215,72 @@ _do_scan() {
     fi
 }
 
+# ── Phase 1.5 reactor (CHUMP_FLEET_WIRE_V1=1) ────────────────────────────────
+# Votes +1 if proposal rationale references docs/ paths or markdown anchors;
+# -1 if not a lane-match (no docs/ reference). Cooldown 6h per corr_id.
+
+_run_md_links_reactor() {
+    local inbox_file="$LOCK_DIR/inbox/${SESSION_ID}.jsonl"
+    [[ -f "$inbox_file" ]] || return 0
+
+    local cooldown_dir="$LOCK_DIR/md-links-vote-cooldown"
+    mkdir -p "$cooldown_dir" 2>/dev/null || true
+    local cooldown_s=21600   # 6h
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local kind corr_id subject rationale broadcaster
+        kind="$(printf '%s' "$line" | grep -oE '"kind":"[^"]*"' | head -1 | sed 's/"kind":"//;s/"//')"
+        corr_id="$(printf '%s' "$line" | grep -oE '"corr_id":"[^"]*"' | head -1 | sed 's/"corr_id":"//;s/"//')"
+        subject="$(printf '%s' "$line" | grep -oE '"subject":"[^"]*"' | head -1 | sed 's/"subject":"//;s/"//' || echo "")"
+        rationale="$(printf '%s' "$line" | grep -oE '"rationale":"[^"]*"' | head -1 | sed 's/"rationale":"//;s/"//' || echo "")"
+        broadcaster="$(printf '%s' "$line" | grep -oE '"session":"[^"]*"' | head -1 | sed 's/"session":"//;s/"//' || echo "")"
+
+        # Anti-reaction-loop guards
+        [[ "$kind" != "proposal" ]] && continue
+        [[ "$broadcaster" == "$SESSION_ID" ]] && continue
+        if grep -q "\"kind\":\"consensus_result\".*\"corr_id\":\"${corr_id}\"" "$AMBIENT" 2>/dev/null; then continue; fi
+
+        [[ -z "$corr_id" ]] && continue
+        local cooldown_file="$cooldown_dir/$corr_id"
+        if [[ -f "$cooldown_file" ]]; then
+            local file_age
+            file_age="$(($(date +%s) - $(stat -f %m "$cooldown_file" 2>/dev/null || stat -c %Y "$cooldown_file" 2>/dev/null || echo 0)))"
+            [[ "$file_age" -lt "$cooldown_s" ]] && continue
+        fi
+
+        # Decision: +1 if proposal references docs/ paths or markdown anchors; -1 otherwise
+        local vote=-1
+        local reason="not-lane-match:no-docs-ref"
+        local combined_text
+        combined_text="$(printf '%s %s' "$subject" "$rationale")"
+        # Match docs/ paths OR .md file references OR #anchor patterns
+        if printf '%s' "$combined_text" | grep -qE 'docs/|\.md(#[a-z]|$)|#[a-z][a-z0-9_-]{2,}'; then
+            vote=1
+            reason="lane-match:docs-ref"
+        fi
+
+        if command -v chump >/dev/null 2>&1 && [[ -n "$corr_id" ]]; then
+            chump vote "$corr_id" "$vote" --reason "md-links-reactor: $reason" 2>/dev/null || true
+        fi
+
+        _emit "md_links_reactor_voted" \
+            "\"corr_id\":\"${corr_id}\"" \
+            "\"vote\":${vote}" \
+            "\"reason\":\"${reason}\""
+
+        touch "$cooldown_file" 2>/dev/null || true
+    done < <(tail -50 "$inbox_file" 2>/dev/null || true)
+}
+# scanner-anchor: "kind":"md_links_reactor_voted"
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 
 cmd_tick() {
+    # Phase 1.5: md-links reactor (feature-flagged)
+    if [[ "${CHUMP_FLEET_WIRE_V1:-0}" == "1" ]]; then
+        _run_md_links_reactor
+    fi
     # Fast scan: docs/process/*.md only
     local fast_path="$DOCS_ROOT/process"
     if [[ ! -d "$fast_path" ]]; then

@@ -6354,6 +6354,71 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind]
     expected_volume: "once per 15-min cycle while trunk is RED"
+
+  # ── META-171 fleet-wire Phase 1.5 reactor event kinds ───────────────────────
+
+  - kind: target_heartbeat
+    emitter: scripts/coord/target-loop.sh (META-171)
+    # scanner-anchor: "kind":"target_heartbeat"
+    trigger: Emitted by target-loop.sh heartbeat subcommand each curator cycle.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session]
+    status: stable
+
+  - kind: target_reactor_voted
+    emitter: scripts/coord/target-loop.sh (META-171)
+    # scanner-anchor: "kind":"target_reactor_voted"
+    trigger: >
+      Emitted by target-loop.sh Phase 1.5 reactor (CHUMP_FLEET_WIRE_V1=1) when it
+      votes on an incoming proposal. Vote +1 if proposal subject matches ROADMAP.md
+      bottleneck pillar; 0 otherwise. Cooldown 2h per corr_id.
+    consumers: [deliberator, ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, corr_id, vote, reason, bottleneck_pillar]
+    status: stable
+
+  - kind: shepherd_reactor_voted
+    emitter: scripts/coord/opus-shepherd-triage.sh (META-171)
+    # scanner-anchor: "kind":"shepherd_reactor_voted"
+    trigger: >
+      Emitted by opus-shepherd-triage.sh Phase 1.5 reactor (CHUMP_FLEET_WIRE_V1=1)
+      when it votes on an incoming proposal. Vote +1 if rationale matches a VOA-001
+      wedge class; -1 if proposal reinvents existing rescue; 0 otherwise.
+      Cooldown 1h per corr_id.
+    consumers: [deliberator, ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, corr_id, vote, reason]
+    status: stable
+
+  - kind: md_links_reactor_voted
+    emitter: scripts/coord/md-links-loop.sh (META-171)
+    # scanner-anchor: "kind":"md_links_reactor_voted"
+    trigger: >
+      Emitted by md-links-loop.sh Phase 1.5 reactor (CHUMP_FLEET_WIRE_V1=1) when
+      it votes on an incoming proposal. Vote +1 if proposal references docs/ paths
+      or .md#anchors (lane match); -1 otherwise. Cooldown 6h per corr_id.
+    consumers: [deliberator, ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, corr_id, vote, reason]
+    status: stable
+
+  - kind: proposal
+    emitter: scripts/coord/broadcast.sh (META-157 fleet-wire v0)
+    # scanner-anchor: "kind":"proposal"
+    trigger: >
+      Fleet-wire FEEDBACK event with kind=proposal. Emitted by any curator or
+      operator session to propose a change for multi-role consensus voting.
+      Consumed by Phase 1.5 reactors in curator loops (META-167 slice series).
+    consumers: [target-loop, opus-shepherd-triage, md-links-loop, deliberator]
+    fields_required: [ts, kind, corr_id, session, subject, rationale]
+    status: stable
+
+  - kind: vote
+    emitter: chump CLI vote subcommand (META-167)
+    # scanner-anchor: "kind":"vote"
+    trigger: >
+      Cast by a curator reactor via `chump vote <corr_id> <+1|-1|0>`. Tallied
+      by the deliberator role to produce consensus_result. Anti-reaction-loop
+      guards prevent reactors from re-acting to this kind.
+    consumers: [deliberator, ops-audit]
+    fields_required: [ts, kind, corr_id, session, vote, reason]
     status: stable
 
   # ── INFRA-2274: consensus-merge-gate (replaces 2026-05-30 admin-merge bypass) ──
