@@ -104,6 +104,7 @@ extern crate chump_ship;
 mod audit;
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod completion;
+mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -1358,6 +1359,58 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump disk status|plan|budget` (INFRA-2196, META-128/C5) — operator + subprocess
+    // surface for disk-aware fleet decisions. Reads ~/.chump/disk-inventory.json
+    // (written by chump-disk-inventory-daemon INFRA-2193) and DISK_COST_MODEL.yaml
+    // (INFRA-2195). Exit codes: 0=OK, 1=REFUSE, 2=WAIT (for `chump disk plan`).
+    if args.get(1).map(String::as_str) == Some("disk") {
+        let sub = args.get(2).map(String::as_str);
+        let repo_root = repo_path::repo_root();
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        let exit_code = match sub {
+            Some("status") => match disk_cmd::run_status(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk status: {e:#}");
+                    1
+                }
+            },
+            Some("plan") => match disk_cmd::run_plan(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk plan: {e:#}");
+                    1
+                }
+            },
+            Some("budget") => match disk_cmd::run_budget(&sub_args, &repo_root) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("chump disk budget: {e:#}");
+                    1
+                }
+            },
+            _ => {
+                println!("Usage: chump disk <subcommand> [options]");
+                println!();
+                println!("Subcommands:");
+                println!("  status [--json]                     disk snapshot: total/free/used/headroom + top consumers");
+                println!("  plan <action-class> [--count N]     OK|WAIT|REFUSE projection from DISK_COST_MODEL.yaml");
+                println!("  budget [--for <action-class>]       max-safe-N for action class(es)");
+                println!();
+                println!("Env:");
+                println!("  CHUMP_DISK_FLOOR_GB=5               free-space floor (default 5 GB)");
+                println!(
+                    "  CHUMP_DISK_INVENTORY_PATH=...       override ~/.chump/disk-inventory.json"
+                );
+                println!("  CHUMP_DISK_COST_MODEL_PATH=...      override docs/process/DISK_COST_MODEL.yaml");
+                println!();
+                println!("Exit codes (disk plan): 0=OK, 1=REFUSE, 2=WAIT");
+                2
+            }
+        };
+        std::process::exit(exit_code);
     }
 
     // `chump pr-rescue` (INFRA-1714) — closed-loop PR rescue. v0 handles two
