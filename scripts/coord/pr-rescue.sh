@@ -342,6 +342,34 @@ for PR_NUM in ${PR_NUMBERS}; do
             log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
         fi
         emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY} fork=${IS_CROSS_REPO}"
+
+        # ── INFRA-2169: external-repo ship audit receipt ──────────────────────
+        # After a cross-repository fork PR is successfully merged, emit a
+        # kind=external_repo_ship event so operators can audit Mode D throughput.
+        if [[ "${IS_CROSS_REPO}" == "true" && -n "${FORK_OWNER}" ]]; then
+            _pr_url="https://github.com/${REPO}/pull/${PR_NUM}"
+            # Count files touched by the PR (best-effort; 0 on REST failure).
+            _files_count="$(chump_gh api "repos/${REPO}/pulls/${PR_NUM}/files?per_page=100" \
+                --jq 'length' 2>/dev/null || echo '0')"
+            _shipper_session="${CHUMP_SESSION_ID:-${SESSION_ID:-unknown}}"
+            _external_repo="${FORK_OWNER}/${BASE_REPO_NAME}"
+            _gap_id="${CHUMP_GAP_ID:-unknown}"
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _ext_locks_dir="${REPO_ROOT}/.chump-locks"
+            mkdir -p "${_ext_locks_dir}" 2>/dev/null || true
+            _ambient_write "${_ext_locks_dir}/ambient.jsonl" \
+                "$(printf '{"ts":"%s","kind":"external_repo_ship","gap_id":"%s","external_repo":"%s","pr_url":"%s","head_sha":"%s","files_touched_count":%s,"shipper_session":"%s"}' \
+                    "${_ts}" "${_gap_id}" "${_external_repo}" "${_pr_url}" \
+                    "${PR_HEAD_SHA}" "${_files_count}" "${_shipper_session}")"
+            # Broadcast DONE so other agents on the bus know this cross-repo PR shipped.
+            if [[ -x "${SCRIPT_DIR}/broadcast.sh" ]]; then
+                CHUMP_SESSION_ID="${_shipper_session}" \
+                    bash "${SCRIPT_DIR}/broadcast.sh" DONE "${_gap_id}" "${PR_HEAD_SHA}" \
+                    2>/dev/null || true
+            fi
+            log "PR #${PR_NUM}: external_repo_ship emitted (external_repo=${_external_repo} head_sha=${PR_HEAD_SHA})."
+        fi
+
         RESCUED=$((RESCUED + 1))
     else
         log "PR #${PR_NUM}: rebase failed (conflicts?). FAILED."
