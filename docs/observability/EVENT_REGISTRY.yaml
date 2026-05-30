@@ -6174,3 +6174,29 @@ events:
     fields_required: [ts, kind, inbox_file, message_count]
     expected_volume: "0-N; non-zero is advisory, not actionable unless persistent"
     # payload: {inbox_file: string, message_count: int, ts: string}
+  - kind: trunk_cascade_broken
+    effect_metric: resilient
+    emitter: scripts/ops/break-trunk-cascade.sh (INFRA-2087)
+    trigger: >
+      Emitted on every successful invocation of break-trunk-cascade.sh —
+      records the bypass for audit. Carries pr_number, reason,
+      snapshot_contexts (the original required_status_checks list),
+      bypass_duration_ms (how long protections were dropped),
+      merge_exit, and operator session id. Combined with INFRA-2201
+      required_status_checks_empty kind, this forms the full audit
+      trail for any cascade-break operation.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, pr, reason, snapshot_contexts, bypass_duration_ms]
+
+  - kind: trunk_cascade_rate_limited
+    effect_metric: resilient
+    emitter: scripts/ops/break-trunk-cascade.sh (INFRA-2087)
+    trigger: >
+      Emitted when break-trunk-cascade.sh refuses to run because
+      CHUMP_BREAK_CASCADE_PER_HOUR (default 1) has been exceeded within
+      a rolling 1h window. Carries pr_number, limit, recent_count so the
+      operator can audit pattern (frequent rate-limited attempts = signal
+      the trunk-cascade root cause needs structural fix, not repeated
+      bypass).
+    consumers: [ops-audit]
+    fields_required: [ts, kind, pr, limit, recent_count]
