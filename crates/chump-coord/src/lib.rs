@@ -55,6 +55,7 @@
 //!
 //! - [`work_board`] — FLEET-008 shared subtask queue (post / claim / complete).
 //! - [`help_request`] — FLEET-010 help-seeking protocol (post / claim / complete).
+//! - [`mission`] — META-164 public Mission / PersistentMission / Replanner surface (INFRA-2247).
 
 pub mod assign;
 pub mod capability;
@@ -62,10 +63,7 @@ pub mod consensus;
 pub mod events;
 pub mod help_request;
 pub mod mesh;
-/// INFRA-2266: Layer 1a slice 3/4 — NATS-primary JetStream durable consumer.
-/// Public surface re-exports `events` types + exposes durable_consumer_name,
-/// max_ack_pending, and layer_enabled helpers.
-pub mod nats_primary;
+pub mod mission;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;

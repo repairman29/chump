@@ -6310,3 +6310,69 @@ events:
     fields_required: [ts, kind]
     expected_volume: "once per 15-min cycle while trunk is RED"
     status: stable
+
+  # ── INFRA-2274: consensus-merge-gate (replaces 2026-05-30 admin-merge bypass) ──
+  - kind: consensus_gate_approved
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-2274)
+    # scanner-anchor: "kind":"consensus_gate_approved"
+    trigger: >
+      Emitted by bot-merge.sh when the INFRA-2274 consensus merge gate
+      queries chump consensus-tally and receives verdict=PASSED (>=3 +1
+      votes from curators). The auto-merge proceeds normally. Pairs with
+      consensus_gate_blocked / consensus_gate_would_block / consensus_bypass_used
+      for full audit trail of the 2026-05-30 admin-merge replacement.
+    consumers: [ops-audit, consensus-bypass-leaderboard]
+    fields_required: [ts, kind, pr, corr_id, verdict, mode, gap_id]
+    expected_volume: "1 per merge once enforce mode is active"
+    status: shadow
+    # payload: {pr: number, corr_id: string (pr-N), verdict: "PASSED", mode: "1"|"enforce", gap_id: string, ts: string}
+
+  - kind: consensus_gate_would_block
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-2274)
+    # scanner-anchor: "kind":"consensus_gate_would_block"
+    trigger: >
+      Emitted by bot-merge.sh in SHADOW mode when consensus verdict is
+      NOT PASSED (FAILED, NO_QUORUM, or EXTENDED). The merge proceeds
+      anyway (shadow = log only); this event signals the merge WOULD have
+      been blocked in enforce mode. 7-day observation window before flip
+      to enforce. Drives the consensus-bypass-leaderboard "shadow_would_block"
+      column.
+    consumers: [ops-audit, consensus-bypass-leaderboard]
+    fields_required: [ts, kind, pr, corr_id, verdict, mode, gap_id, note]
+    expected_volume: "high during 7-day shadow window; trends down as fleet adopts vote discipline"
+    status: shadow
+    # payload: {pr: number, corr_id: string, verdict: "FAILED"|"NO_QUORUM"|"EXTENDED", mode: "shadow", gap_id: string, note: string, ts: string}
+
+  - kind: consensus_gate_blocked
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-2274)
+    # scanner-anchor: "kind":"consensus_gate_blocked"
+    trigger: >
+      Emitted by bot-merge.sh in ENFORCE mode when consensus verdict is
+      NOT PASSED. bot-merge exits non-zero; PR stays open. Operator can
+      cast votes via `chump vote pr-N +1 --reason "..."` or use the
+      CHUMP_OPERATOR_CONSENSUS_BYPASS escape hatch.
+    consumers: [ops-audit, consensus-bypass-leaderboard]
+    fields_required: [ts, kind, pr, corr_id, verdict, mode, gap_id, note]
+    expected_volume: "low; spikes signal fleet-wide vote-cast discipline drift"
+    status: planned
+    # payload: {pr: number, corr_id: string, verdict: string, mode: "enforce", gap_id: string, note: string, ts: string}
+
+  - kind: consensus_bypass_used
+    effect_metric: credible
+    emitter: scripts/coord/bot-merge.sh (INFRA-2274)
+    # scanner-anchor: "kind":"consensus_bypass_used"
+    trigger: >
+      Emitted by bot-merge.sh when CHUMP_OPERATOR_CONSENSUS_BYPASS=<reason>
+      is set. The merge gate is skipped entirely; this is the operator
+      escape hatch that replaces today's drop-required-checks pattern.
+      Every use is auditable via consensus-bypass-leaderboard.sh; daily
+      bypass_ratio > 10% should trigger a structural review (not
+      another bypass).
+    consumers: [ops-audit, consensus-bypass-leaderboard, pwa-hitl-tray]
+    fields_required: [ts, kind, pr, corr_id, reason, operator_session_id, mode, gap_id]
+    expected_volume: "low; target <10% of total merges once enforce mode is active"
+    status: stable
+    # payload: {pr: number, corr_id: string, reason: string, operator_session_id: string, mode: string, gap_id: string, ts: string}
