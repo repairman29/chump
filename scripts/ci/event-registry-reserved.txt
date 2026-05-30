@@ -282,6 +282,11 @@ hook_silent_passthrough  # reason: INFRA-1988 emitted by scripts/git-hooks/pre-p
 # ── RESILIENT-031: admin-merge discipline audit trail ─────────────────────────
 admin_merge_forced  # reason: RESILIENT-031 emitted by scripts/ops/admin-merge-cycle.sh _emit() via printf — emit site uses a # scanner-anchor comment (INFRA-1237 pattern 8b) but formal EVENT_REGISTRY.yaml entry added in same commit; reserved here to satisfy strict-mode register-without-emit until the scanner can resolve scanner-anchor patterns
 
+# ── INFRA-2071: admin-merge burst circuit-breaker ─────────────────────────────
+admin_merge_cycle_run          # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh after successful merge — the counter event the burst threshold counts; scanner-anchor in _emit_cycle_run helper
+admin_merge_burst              # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh _check_burst when count >= threshold; scanner-anchor in _check_burst helper; operator_action_needed=true
+admin_merge_burst_overridden   # reason: INFRA-2071 emitted by scripts/ops/admin-merge-cycle.sh burst override block when --force-admin or CHUMP_ADMIN_MERGE_FORCE=1 bypasses a tripped circuit-breaker; scanner-anchor in burst override block
+
 # ── INFRA-1993 / META-106 (THE FLOOR Phase 3): operator-recovery queue ───────
 operator_recovery_requested  # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-emit.sh (worker-facing CLI) when a worker requests an admin-merge cycle for a PR cluster; the queue service consumes these events
 operator_recovery_executed   # reason: INFRA-1993 emitted by scripts/coord/recovery-queue-service.sh after each successful drop+merge+re-arm cycle with merged/failed PR lists + ruleset_id

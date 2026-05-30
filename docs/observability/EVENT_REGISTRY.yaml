@@ -5256,6 +5256,48 @@ events:
     consumers: [ops-audit, fleet-brief, operator-recall]
     fields_required: [ts, kind, pr, ruleset_id, restore_json, severity]
 
+  # INFRA-2071: admin-merge burst circuit-breaker
+  - kind: admin_merge_cycle_run
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Emitted once per successful admin-merge cycle immediately before
+      admin_merge_cycle_ok. This is the counter event the burst circuit-breaker
+      counts: when CHUMP_ADMIN_MERGE_BURST_THRESHOLD or more of these appear
+      within CHUMP_ADMIN_MERGE_BURST_WINDOW_S seconds, the next invocation
+      trips the circuit-breaker and emits admin_merge_burst instead of
+      proceeding. Fields capture the PR, the justification (noise-class id or
+      force-admin reason), and the operator session id for retrospectives.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, reason, operator_session_id]
+
+  - kind: admin_merge_burst
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Circuit-breaker tripped: admin_merge_cycle_run count in the past
+      CHUMP_ADMIN_MERGE_BURST_WINDOW_S seconds reached or exceeded
+      CHUMP_ADMIN_MERGE_BURST_THRESHOLD. The script exits non-zero (exit 3)
+      and refuses to proceed. Operator must triage the root cause of the
+      repeated admin-merge need OR re-run with --force-admin / CHUMP_ADMIN_MERGE_FORCE=1
+      to override (which emits admin_merge_burst_overridden instead).
+      operator_action_needed=true signals operator-recall consumers.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, count, window_s, threshold, operator_action_needed]
+
+  - kind: admin_merge_burst_overridden
+    effect_metric: self
+    emitter: scripts/ops/admin-merge-cycle.sh (INFRA-2071)
+    trigger: >
+      Operator explicitly overrode the burst circuit-breaker via --force-admin
+      or CHUMP_ADMIN_MERGE_FORCE=1 after it tripped (admin_merge_burst was
+      emitted first). The merge proceeds but this separate kind is logged so
+      the override pattern is visible in retrospectives and can be audited
+      independently from the burst itself. override_method distinguishes the
+      two override paths.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr, count, window_s, threshold, override_method]
+
   # INFRA-1979: inbox jsonl rotation — emitted after each prune run
   - kind: inbox_pruned
     effect_metric: self

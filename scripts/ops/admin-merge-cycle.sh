@@ -36,11 +36,16 @@
 #   CHUMP_NOISE_CLASSES_FILE        override path to known-noise-classes.yaml
 #   CHUMP_ADMIN_MERGE_TEST_GH       mock gh binary for testing
 #   CHUMP_ADMIN_MERGE_TEST_GAP_STATUS <id>:<status>  mock gap status for testing
+#   CHUMP_ADMIN_MERGE_BURST_THRESHOLD N   burst trip count (default 3)
+#   CHUMP_ADMIN_MERGE_BURST_WINDOW_S  N   burst window in seconds (default 3600)
+#   CHUMP_ADMIN_MERGE_FORCE=1         bypass burst circuit-breaker (emits burst_overridden)
+#   OPERATOR_SESSION_ID               optional: tag cycle_run events with session id
 #
 # Exit codes:
 #   0  PR merged and ruleset restored (or --list-classes printed)
 #   1  usage error, noise-class mismatch, or non-critical failure
 #   2  CRITICAL: PR merged but ruleset restore failed (requires operator action)
+#   3  circuit-breaker tripped: burst threshold exceeded; use --force-admin or CHUMP_ADMIN_MERGE_FORCE=1 to override
 
 set -euo pipefail
 
@@ -61,6 +66,11 @@ NOISE_CLASS=""
 FORCE_ADMIN=0
 FORCE_REASON=""
 LIST_CLASSES=0
+
+# Burst circuit-breaker (INFRA-2071)
+BURST_THRESHOLD="${CHUMP_ADMIN_MERGE_BURST_THRESHOLD:-3}"
+BURST_WINDOW_S="${CHUMP_ADMIN_MERGE_BURST_WINDOW_S:-3600}"
+ADMIN_MERGE_FORCE="${CHUMP_ADMIN_MERGE_FORCE:-0}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -112,6 +122,85 @@ _run() {
     else
         "$@"
     fi
+}
+
+# ── Burst circuit-breaker helpers (INFRA-2071) ────────────────────────────────
+
+# Count admin_merge_cycle_run events in the ambient log within BURST_WINDOW_S
+_count_recent_runs() {
+    local log="$1"
+    local window_s="$2"
+    if [[ ! -f "$log" ]]; then
+        echo "0"
+        return
+    fi
+    local now_epoch
+    now_epoch="$(date -u +%s)"
+    local cutoff_epoch=$(( now_epoch - window_s ))
+    python3 - "$log" "$cutoff_epoch" <<'PYEOF'
+import sys, json
+log_path = sys.argv[1]
+cutoff   = int(sys.argv[2])
+count = 0
+with open(log_path) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("kind") != "admin_merge_cycle_run":
+            continue
+        ts = ev.get("ts", "")
+        # Parse ISO-8601 ts to epoch
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            ev_epoch = int(dt.timestamp())
+        except Exception:
+            continue
+        if ev_epoch >= cutoff:
+            count += 1
+print(count)
+PYEOF
+}
+
+# Emit kind=admin_merge_cycle_run (the counter event)
+_emit_cycle_run() {
+    local pr="$1"
+    local reason="$2"
+    local session_id="${OPERATOR_SESSION_ID:-${USER:-unknown}}"
+    # scanner-anchor: "kind":"admin_merge_cycle_run"
+    _emit "admin_merge_cycle_run" \
+        "\"pr\":\"$pr\"" \
+        "\"reason\":\"$(printf '%s' "$reason" | sed 's/"/\\"/g')\"" \
+        "\"operator_session_id\":\"$session_id\""
+}
+
+# Check burst threshold; if tripped, emit admin_merge_burst and return 1
+# Returns 0 if safe to proceed, 1 if tripped (caller should exit unless override)
+_check_burst() {
+    local count
+    count="$(_count_recent_runs "$AMBIENT_LOG" "$BURST_WINDOW_S")"
+    if [[ "$count" -ge "$BURST_THRESHOLD" ]]; then
+        local window_h=$(( BURST_WINDOW_S / 3600 ))
+        echo "[admin-merge-cycle] BURST DETECTED: $count admin_merge_cycle_run events in past ${BURST_WINDOW_S}s (threshold=$BURST_THRESHOLD)" >&2
+        echo "[admin-merge-cycle] admin-merge burst detected: $count cycles in past ${window_h}h exceeds threshold $BURST_THRESHOLD; pause to triage root cause OR re-run with --force-admin to override" >&2
+        if [[ "$DRY_RUN" != "1" ]]; then
+            # scanner-anchor: "kind":"admin_merge_burst"
+            _emit "admin_merge_burst" \
+                "\"count\":$count" \
+                "\"window_s\":$BURST_WINDOW_S" \
+                "\"threshold\":$BURST_THRESHOLD" \
+                "\"operator_action_needed\":true"
+        else
+            echo "[dry-run] would emit kind=admin_merge_burst (count=$count window_s=$BURST_WINDOW_S threshold=$BURST_THRESHOLD)" >&2
+        fi
+        return 1
+    fi
+    return 0
 }
 
 # ── --list-classes ─────────────────────────────────────────────────────────────
@@ -315,6 +404,30 @@ PYEOF
     return 0
 }
 
+# ── Burst circuit-breaker check (INFRA-2071) ─────────────────────────────────
+# Must run before merge dispatch. --force-admin AND CHUMP_ADMIN_MERGE_FORCE=1
+# both bypass the breaker, but still emit admin_merge_burst_overridden for audit.
+
+if ! _check_burst; then
+    # Burst tripped
+    if [[ "$FORCE_ADMIN" == "1" || "$ADMIN_MERGE_FORCE" == "1" ]]; then
+        echo "[admin-merge-cycle] burst override active (--force-admin or CHUMP_ADMIN_MERGE_FORCE=1); proceeding despite burst." >&2
+        if [[ "$DRY_RUN" != "1" ]]; then
+            # scanner-anchor: "kind":"admin_merge_burst_overridden"
+            _emit "admin_merge_burst_overridden" \
+                "\"pr\":\"$PR_NUM\"" \
+                "\"count\":$(_count_recent_runs "$AMBIENT_LOG" "$BURST_WINDOW_S")" \
+                "\"window_s\":$BURST_WINDOW_S" \
+                "\"threshold\":$BURST_THRESHOLD" \
+                "\"override_method\":\"$([ "$FORCE_ADMIN" == "1" ] && echo "--force-admin" || echo "CHUMP_ADMIN_MERGE_FORCE")\""
+        else
+            echo "[dry-run] would emit kind=admin_merge_burst_overridden for PR $PR_NUM" >&2
+        fi
+    else
+        exit 3
+    fi
+fi
+
 # ── Dispatch noise-class or force-admin ───────────────────────────────────────
 
 if [[ "$FORCE_ADMIN" == "1" ]]; then
@@ -400,6 +513,20 @@ if [[ "$MERGE_EXIT" -ne 0 ]]; then
 fi
 
 echo "[admin-merge-cycle] OK: PR #$PR_NUM merged and ruleset restored" >&2
+
+# Emit cycle_run counter event BEFORE cycle_ok (INFRA-2071: this is what the burst counter counts)
+if [[ "$DRY_RUN" != "1" ]]; then
+    _REASON_TAG=""
+    if [[ "$FORCE_ADMIN" == "1" ]]; then
+        _REASON_TAG="force-admin: $(printf '%s' "$FORCE_REASON" | sed 's/"/\\"/g')"
+    else
+        _REASON_TAG="noise-class: $NOISE_CLASS"
+    fi
+    _emit_cycle_run "$PR_NUM" "$_REASON_TAG"
+else
+    echo "[dry-run] would emit kind=admin_merge_cycle_run for PR $PR_NUM" >&2
+fi
+
 _emit "admin_merge_cycle_ok" \
     "\"pr\":\"$PR_NUM\"" \
     "\"ruleset_id\":\"$RULESET_ID\""
