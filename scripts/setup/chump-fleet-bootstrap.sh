@@ -46,6 +46,12 @@ REQUIRED_DAEMONS=(
     # and headless `claude -p` subprocesses (Oracle, JIT scheduler) silently
     # return "Not logged in". Symptom cascade: INFRA-2122 Oracle silent fail.
     "com.chump.oauth-refresh|scripts/setup/install-oauth-refresh-launchd.sh"
+    # META-162: deliberator — tallies fleet votes, emits consensus_result, escalates NO_QUORUM.
+    "com.chump.deliberator|scripts/setup/install-deliberator-launchd.sh"
+    # INFRA-2239: Curator supervisor — L3 detection+file+dispatch+restart daemon.
+    # Without this, silently failing curators go undetected (32-hour incident
+    # 2026-05-30). Runs every 300s via StartInterval launchd, not KeepAlive.
+    "com.chump.curator-supervisor|scripts/setup/install-curator-supervisor.sh"
 )
 UID_VAL="$(id -u)"
 

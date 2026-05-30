@@ -1,0 +1,16 @@
+- id: INFRA-2260
+  domain: INFRA
+  title: "EFFECTIVE: VOA aggregation — chump voice top + auto-generated docs/voice/WEDGE_HEATMAP.md + 3-VOA-same-class auto-promote to P0 (Voice-of-Agent protocol Part 2)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New src/commands/voice_top.rs implements chump voice top subcommand — prints top-N VOA gaps ranked by impact_estimate = minutes_lost × frequency-of-wedge_class-in-last-30d
+    - Auto-generated docs/voice/WEDGE_HEATMAP.md updated nightly via launchd plist or scripts/coord/voice-heatmap-cron.sh; 30-day rolling window per wedge_class with counts and total-minutes-lost summed
+    - "Auto-promote rule: when ≥3 VOA gaps with the same wedge_class land within 30 days, automatically promote the proposed_fix gap (if it exists) to P0 and cross-link the source VOAs; emit kind=voice_of_agent_promoted"
+    - "Operator dashboard at chump voice status: shows top-3 wedge_classes this week, total minutes-lost across fleet, count of agents who filed VOAs, count of fixes shipped traced to VOA reports"
+    - "Smoke test scripts/ci/test-voice-aggregation.sh: synth 3 VOA gaps with same wedge_class, run aggregator, assert promoted-gap status flipped to P0 + ambient emit captured"
+    - "Privacy preservation: aggregation aggregates only on anonymized fields; opt-in target_repos appear in operator dashboard only if user explicitly opted in"
+  notes: |
+    [2026-05-30T05:04:43Z] Voice-of-Agent protocol Part 2. Aggregation surface that makes part 1 valuable at scale. Defer until INFRA-2258 ships first.
+

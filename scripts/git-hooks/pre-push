@@ -740,7 +740,7 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
 
             if [[ -x "$_RERUN_SCRIPT" ]]; then
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
-                    "${_PREPUSH_WRAPPER_OVERRIDE[@]}" \
+                    ${_PREPUSH_WRAPPER_OVERRIDE[@]:+"${_PREPUSH_WRAPPER_OVERRIDE[@]}"} \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     bash "$_RERUN_SCRIPT" -- \
                         cargo test --bin chump --tests --no-fail-fast --quiet \
@@ -783,7 +783,7 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                 # INFRA-1744: same timeout protection as the rerun-script path above.
                 # INFRA-2184: same sccache liveness override as the rerun path.
                 if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
-                    "${_PREPUSH_WRAPPER_OVERRIDE[@]}" \
+                    ${_PREPUSH_WRAPPER_OVERRIDE[@]:+"${_PREPUSH_WRAPPER_OVERRIDE[@]}"} \
                     timeout "${_PREPUSH_TEST_TIMEOUT_S}s" \
                     cargo test --bin chump --tests --no-fail-fast --quiet \
                         ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \

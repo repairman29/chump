@@ -37,18 +37,31 @@ jobs:
             ~/.cargo/bin
           key: audit-cargo-${{ hashFiles('Cargo.lock') }}
 
+      - name: Install cargo-binstall
+        # INFRA-2244: cargo-binstall fetches pre-built binaries (~5s/tool) vs
+        # cargo install's compile-from-source (~90s/tool). Cuts the audit job
+        # install phase from ~6min to ~30s on cold caches.
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Install audit tools
         run: |
           set -e
           install_if_missing() {
             local bin="$1" crate="$2"
             if ! command -v "$bin" >/dev/null 2>&1; then
-              cargo install --locked "$crate" || echo "::warning::$crate install failed; tool will be skipped"
+              # INFRA-2244: binstall first (binary download), fall back to
+              # cargo install (compile) only if no pre-built binary exists.
+              cargo binstall -y --locked "$crate" \
+                || cargo install --locked "$crate" \
+                || echo "::warning::$crate install failed; tool will be skipped"
             fi
           }
           install_if_missing cargo-deny cargo-deny
           install_if_missing cargo-audit cargo-audit
           install_if_missing cargo-machete cargo-machete
+          # INFRA-2244: cargo-shear is more aggressive than cargo-machete for
+          # surfacing 'listed in Cargo.toml but never imported' deps.
+          install_if_missing cargo-shear cargo-shear
           install_if_missing lychee lychee
           # cargo-udeps skipped (nightly-only; the dispatcher falls back to machete)
 

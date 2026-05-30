@@ -515,9 +515,11 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 
 ## On-demand docs (read only when you hit the failure surface)
 
+- Ship-assist playbook — wedge taxonomy (7 classes), tooling inventory, decision flow for picking the right rescue tool, top-3 highest-leverage missing gaps, reliability lessons: [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](./docs/process/SHIP_ASSIST_PLAYBOOK.md) (INFRA-2256)
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
 - Subagent dispatch: model defaults, no-clarifying-questions directive, shipping epilogue, WIP-rescue: [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
 - Script taxonomy, canonical tool per task, entry points per directory: [`scripts/README.md`](./scripts/README.md)
 - Coordination script entry points, decision guide, full coord/ reference: [`scripts/coord/README.md`](./scripts/coord/README.md)
 - A2A frontier roadmap — six layers from NATS-primary delivery to signed provenance, mapped onto today's chump-coord primitives: [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) (META-061; sub-gaps INFRA-1118 through INFRA-1123)
 - Integration-cycle ship pipeline — strategy + architecture for batched fleet output (Mode A/B/C/D), bisect-on-red, migration phases, and metrics: [`docs/strategy/INTEGRATION_CYCLE_2026-05-29.md`](./docs/strategy/INTEGRATION_CYCLE_2026-05-29.md)
+- Disk-aware fleet — 4-layer architecture (inventory daemon / cost model / `chump disk plan` / adaptive scaler), 4-wave migration, open questions: [`docs/strategy/DISK_AWARE_FLEET_2026-05-29.md`](./docs/strategy/DISK_AWARE_FLEET_2026-05-29.md) (META-128)

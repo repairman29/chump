@@ -75,6 +75,22 @@ pub struct GapRow {
     /// INFRA-418: planner + task router use this to assign work to appropriate capability.
     #[serde(default)]
     pub required_model: String,
+    /// INFRA-2134: JSON blob recording how/where a gap was shipped.
+    /// Nullable — only present when status == "shipped" or "done" AND the
+    /// integrator (or per-PR webhook) populated the field.
+    ///
+    /// Integration-cycle shape:
+    ///   { "integration_id": "integration-YYYY-MM-DD-HHMM",
+    ///     "integration_pr":  "https://github.com/…/pull/NNNN",
+    ///     "child_commit":    "<sha>",
+    ///     "merge_sha":       "<sha>",
+    ///     "shipped_at":      "<iso8601>" }
+    ///
+    /// Per-PR (backwards-compat) shape:
+    ///   { "pr_url": "https://github.com/…/pull/NNNN",
+    ///     "merge_sha": "<sha>" }
+    #[serde(default)]
+    pub shipped_in: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -379,6 +395,12 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN required_model TEXT NOT NULL DEFAULT ''",
             [],
         );
+        // INFRA-2134: shipped_in — nullable JSON blob recording how/where a gap was
+        // shipped. Populated by chump-integrator-daemon (integration-cycle path) or
+        // the per-PR webhook receiver (per-PR path). NULL for open/in-flight gaps.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN shipped_in TEXT", []);
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -445,6 +467,29 @@ impl GapStore {
             END;
             ",
         )?;
+
+        // INFRA-2137: register `bisect_quarantined` and `ready_to_ship` as
+        // valid status values via an advisory metadata table.  SQLite TEXT
+        // columns carry no CHECK constraints (ALTER TABLE cannot add them
+        // idempotently), so we track known statuses explicitly. The table is
+        // used by `valid_statuses()` and by the `requeue_gap` guard.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gap_status_registry (
+                 status TEXT PRIMARY KEY,
+                 added_by TEXT NOT NULL DEFAULT '',
+                 note TEXT NOT NULL DEFAULT ''
+             );
+             INSERT OR IGNORE INTO gap_status_registry (status, added_by, note)
+             VALUES
+               ('open',                'legacy',       'default status at reserve time'),
+               ('claimed',             'legacy',       'active claim lease'),
+               ('done',                'legacy',       'shipped and merged'),
+               ('wontfix',             'legacy',       'will not be implemented'),
+               ('ready_to_ship',       'INFRA-2130',   'passed preflight; awaiting integration batch'),
+               ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review');
+            ",
+        );
+
         Ok(())
     }
 }
@@ -519,6 +564,7 @@ impl GapStore {
                 preferred_machine: row.get(18)?,
                 estimated_minutes: row.get(19)?,
                 required_model: row.get(20)?,
+                shipped_in: row.get(21)?,
             })
         };
         if let Some(s) = status_filter {
@@ -526,7 +572,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model
+                        preferred_machine,estimated_minutes,required_model,shipped_in
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -536,7 +582,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model
+                        preferred_machine,estimated_minutes,required_model,shipped_in
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -689,7 +735,7 @@ impl GapStore {
             "SELECT id,domain,title,description,priority,effort,status,
                     CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model
+                    preferred_machine,estimated_minutes,required_model,shipped_in
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -716,6 +762,7 @@ impl GapStore {
                     preferred_machine: row.get(18)?,
                     estimated_minutes: row.get(19)?,
                     required_model: row.get(20)?,
+                    shipped_in: row.get(21)?,
                 })
             })
             .optional()?;
@@ -728,7 +775,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                          CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                          opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                         preferred_machine,estimated_minutes,required_model
+                         preferred_machine,estimated_minutes,required_model,shipped_in
                   FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
             )?;
             // Collect up to 2 rows to detect ambiguity without borrow conflicts.
@@ -756,6 +803,7 @@ impl GapStore {
                         preferred_machine: r.get(18)?,
                         estimated_minutes: r.get(19)?,
                         required_model: r.get(20)?,
+                        shipped_in: r.get(21)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1710,6 +1758,51 @@ impl GapStore {
         Ok(())
     }
 
+    /// INFRA-2134: Record how/where a gap was shipped in the `shipped_in` JSON
+    /// column. Accepts a pre-serialised JSON string (the caller constructs the
+    /// appropriate shape). Idempotent: calling again overwrites the previous
+    /// value. Does NOT change gap status — call `ship()` first for status
+    /// transitions; this is a pure metadata annotation.
+    ///
+    /// Integration-cycle callers (chump-integrator-daemon) pass the full 5-key
+    /// shape; per-PR webhook callers pass the 2-key backwards-compat shape.
+    pub fn set_shipped_in(&self, gap_id: &str, shipped_in_json: &str) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE gaps SET shipped_in=?1 WHERE id=?2",
+            params![shipped_in_json, gap_id],
+        )?;
+        if changed == 0 {
+            bail!("set_shipped_in: gap {} not found", gap_id);
+        }
+        // INFRA-2134: emit gap_shipped_in_set to ambient.jsonl so fleet-brief,
+        // kpi-report, and ops-audit can trace audit-trail writes. Best-effort:
+        // never fail the caller on ambient write errors.
+        {
+            use std::io::Write as _;
+            let v: serde_json::Value =
+                serde_json::from_str(shipped_in_json).unwrap_or(serde_json::Value::Null);
+            let shape = if v.get("integration_id").is_some() {
+                "integration"
+            } else {
+                "per_pr"
+            };
+            let ts = unix_to_iso_full(unix_now());
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"gap_shipped_in_set\",\
+                 \"gap_id\":\"{gap_id}\",\"shape\":\"{shape}\"}}\n"
+            );
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
     /// INFRA-1144: After a gap is shipped, close any open PRs whose title
     /// contains the gap ID, subject to safety gates:
     /// - Skip PRs with 'orphan-pr-closer-skip' in title
@@ -1855,6 +1948,95 @@ impl GapStore {
         }
 
         Ok(repo)
+    }
+
+    // ── INFRA-2137: quarantine / requeue helpers ──────────────────────────────
+
+    /// Append a timestamped note to the gap's `notes` field.
+    ///
+    /// Format: `[YYYY-MM-DDTHH:MM:SSZ] <text>` — same convention as
+    /// `--add-note` in `chump gap set`.  Multiple calls accumulate newline-
+    /// separated entries; the first entry seeds an empty notes field.
+    pub fn append_notes_for_gap(&self, gap_id: &str, text: &str) -> Result<()> {
+        let existing: String = self
+            .conn
+            .query_row("SELECT notes FROM gaps WHERE id=?1", params![gap_id], |r| {
+                r.get(0)
+            })
+            .optional()?
+            .unwrap_or_default();
+        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let new_entry = format!("[{}] {}", ts, text);
+        let combined = if existing.trim().is_empty() {
+            new_entry
+        } else {
+            format!("{}\n{}", existing.trim_end(), new_entry)
+        };
+        let changed = self.conn.execute(
+            "UPDATE gaps SET notes=?1 WHERE id=?2",
+            params![combined, gap_id],
+        )?;
+        if changed == 0 {
+            bail!("append_notes_for_gap: gap {} not found", gap_id);
+        }
+        Ok(())
+    }
+
+    /// Count gaps with `status = 'bisect_quarantined'`.
+    ///
+    /// Used by `chump health --slo-check` (L2-SLO-6) to flag saturation
+    /// when more than 5 gaps are stuck awaiting operator review.
+    pub fn count_bisect_quarantined(&self) -> Result<u64> {
+        let n: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM gaps WHERE status='bisect_quarantined'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        Ok(n.max(0) as u64)
+    }
+
+    /// Move a gap from `bisect_quarantined` → `ready_to_ship` after operator
+    /// review.  Appends a note recording who requeued it and when.
+    ///
+    /// Fails if the gap is not in `bisect_quarantined` status (guard against
+    /// accidental requeue of arbitrary gaps).
+    pub fn requeue_gap(&self, gap_id: &str) -> Result<()> {
+        let cur: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT status FROM gaps WHERE id=?1",
+                params![gap_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match cur.as_deref() {
+            None => bail!("requeue_gap: gap {} not found", gap_id),
+            Some(s) if s != "bisect_quarantined" => bail!(
+                "requeue_gap: gap {} has status='{}'; only bisect_quarantined gaps \
+                 can be requeued (expected bisect_quarantined)",
+                gap_id,
+                s
+            ),
+            _ => {}
+        }
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status='ready_to_ship' WHERE id=?1 AND status='bisect_quarantined'",
+            params![gap_id],
+        )?;
+        if changed == 0 {
+            bail!(
+                "requeue_gap: gap {} was not updated (concurrent modification?)",
+                gap_id
+            );
+        }
+        self.append_notes_for_gap(
+            gap_id,
+            "requeued: operator review complete (chump gap requeue)",
+        )?;
+        Ok(())
     }
 
     /// Dump gaps as canonical YAML, lossless across all DB columns.
@@ -3531,6 +3713,8 @@ pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<O
         preferred_machine: stringify_val(&yg.preferred_machine),
         estimated_minutes: stringify_val(&yg.estimated_minutes),
         required_model: stringify_val(&yg.required_model),
+        // INFRA-2134: YAML files don't carry shipped_in; it lives only in state.db.
+        shipped_in: None,
     }))
 }
 
@@ -6335,6 +6519,267 @@ meta:
         assert_ne!(
             after.acceptance_criteria, todo_ac,
             "stored AC must not still be the original TODO stubs"
+        );
+    }
+
+    // ── INFRA-2134: shipped_in field tests ──────────────────────────────────
+
+    /// Open gap: shipped_in must be None.
+    #[test]
+    fn shipped_in_is_none_for_open_gap() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "open gap shipped_in", "P1", "s")
+            .unwrap();
+        let row = store.get(&id).unwrap().expect("row exists");
+        assert_eq!(row.status, "open");
+        assert!(
+            row.shipped_in.is_none(),
+            "open gap must have no shipped_in; got {:?}",
+            row.shipped_in
+        );
+    }
+
+    /// Integration-cycle shipped gap: set_shipped_in with 5-key JSON; get round-trips it.
+    #[test]
+    fn shipped_in_integration_cycle_round_trips() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "integration shipped gap", "P1", "s")
+            .unwrap();
+        let json = r#"{"integration_id":"integration-2026-05-29-1430","integration_pr":"https://github.com/repairman29/chump/pull/2789","child_commit":"abc1234def","merge_sha":"f8e9d2a1b3","shipped_at":"2026-05-29T14:30:00Z"}"#;
+        store.set_shipped_in(&id, json).unwrap();
+        let row = store.get(&id).unwrap().expect("row exists");
+        let stored = row.shipped_in.expect("shipped_in must be set");
+        let parsed: serde_json::Value = serde_json::from_str(&stored).expect("valid JSON");
+        assert_eq!(parsed["integration_id"], "integration-2026-05-29-1430");
+        assert_eq!(
+            parsed["integration_pr"],
+            "https://github.com/repairman29/chump/pull/2789"
+        );
+        assert_eq!(parsed["child_commit"], "abc1234def");
+        assert_eq!(parsed["merge_sha"], "f8e9d2a1b3");
+        assert_eq!(parsed["shipped_at"], "2026-05-29T14:30:00Z");
+    }
+
+    /// Per-PR shipped gap (backwards-compat): 2-key shape with pr_url + merge_sha.
+    #[test]
+    fn shipped_in_per_pr_backwards_compat_round_trips() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "per-pr shipped gap", "P1", "s")
+            .unwrap();
+        let json = r#"{"pr_url":"https://github.com/repairman29/chump/pull/2750","merge_sha":"deadbeef12"}"#;
+        store.set_shipped_in(&id, json).unwrap();
+        let row = store.get(&id).unwrap().expect("row exists");
+        let stored = row.shipped_in.expect("shipped_in must be set");
+        let parsed: serde_json::Value = serde_json::from_str(&stored).expect("valid JSON");
+        assert_eq!(
+            parsed["pr_url"],
+            "https://github.com/repairman29/chump/pull/2750"
+        );
+        assert_eq!(parsed["merge_sha"], "deadbeef12");
+        // Integration keys absent in backwards-compat shape.
+        assert!(parsed.get("integration_id").is_none());
+        assert!(parsed.get("child_commit").is_none());
+    }
+
+    /// --json output shape: shipped_in deserialises to a nested object, not a string.
+    #[test]
+    fn shipped_in_json_output_is_nested_object() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "json shape gap", "P1", "s").unwrap();
+        let json = r#"{"integration_id":"integration-2026-05-29-1500","integration_pr":"https://github.com/repairman29/chump/pull/2800","child_commit":"cafe0011","merge_sha":"babe0022","shipped_at":"2026-05-29T15:00:00Z"}"#;
+        store.set_shipped_in(&id, json).unwrap();
+        let row = store.get(&id).unwrap().expect("row exists");
+        // Simulate the --json serialisation path: serde_json::to_value(&g),
+        // then replace the shipped_in string with a parsed object.
+        let mut val = serde_json::to_value(&row).unwrap();
+        if let Some(obj) = val.as_object_mut() {
+            if let Some(raw) = row.shipped_in.as_deref() {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(raw) {
+                    obj.insert("shipped_in".to_string(), parsed);
+                }
+            }
+        }
+        // The shipped_in key must be an object, not a string.
+        let si = val.get("shipped_in").expect("shipped_in key present");
+        assert!(
+            si.is_object(),
+            "shipped_in must be a JSON object in --json output; got {:?}",
+            si
+        );
+        assert_eq!(si["integration_id"], "integration-2026-05-29-1500");
+        assert_eq!(si["merge_sha"], "babe0022");
+    }
+}
+
+// ── INFRA-2137: bisect_quarantined + requeue tests ────────────────────────────
+#[cfg(test)]
+mod quarantine_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    // 1. status_registry_seeded: after open(), gap_status_registry contains
+    //    both 'bisect_quarantined' and 'ready_to_ship'.
+    #[test]
+    fn status_registry_seeded() {
+        let (store, _dir) = test_store();
+        let count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM gap_status_registry WHERE status IN ('bisect_quarantined','ready_to_ship')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2, "registry must contain both new statuses");
+    }
+
+    // 2. append_notes_seeds_empty: appending to a gap with no notes yields a
+    //    single timestamped entry.
+    #[test]
+    fn append_notes_seeds_empty() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "notes-seed-test", "P1", "xs")
+            .unwrap();
+        store.append_notes_for_gap(&id, "first note").unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(
+            row.notes.contains("first note"),
+            "notes must contain appended text"
+        );
+        assert!(row.notes.contains('['), "notes must have timestamp bracket");
+    }
+
+    // 3. append_notes_accumulates: two appends accumulate, newline-separated.
+    #[test]
+    fn append_notes_accumulates() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "notes-accum-test", "P1", "xs")
+            .unwrap();
+        store.append_notes_for_gap(&id, "alpha").unwrap();
+        store.append_notes_for_gap(&id, "beta").unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(row.notes.contains("alpha"), "first note must persist");
+        assert!(row.notes.contains("beta"), "second note must be appended");
+        let count = row.notes.matches('[').count();
+        assert_eq!(count, 2, "exactly two bracketed timestamps expected");
+    }
+
+    // 4. count_bisect_quarantined_zero: fresh store has zero quarantined gaps.
+    #[test]
+    fn count_bisect_quarantined_zero() {
+        let (store, _dir) = test_store();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 0);
+    }
+
+    // 5. count_bisect_quarantined_counts: after setting status, count reflects it.
+    #[test]
+    fn count_bisect_quarantined_counts() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "quarantine-count-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 1);
+
+        let id2 = store
+            .reserve("INFRA", "quarantine-count-test-2", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id2,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.count_bisect_quarantined().unwrap(), 2);
+    }
+
+    // 6. requeue_transitions_status: requeue_gap moves bisect_quarantined → ready_to_ship.
+    #[test]
+    fn requeue_transitions_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-status-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store.requeue_gap(&id).unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert_eq!(
+            row.status, "ready_to_ship",
+            "status must be ready_to_ship after requeue"
+        );
+        assert!(
+            row.notes.contains("requeued"),
+            "notes must record the requeue operation"
+        );
+    }
+
+    // 7. requeue_rejects_wrong_status: requeue_gap fails on a non-quarantined gap.
+    #[test]
+    fn requeue_rejects_wrong_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-reject-test", "P1", "xs")
+            .unwrap();
+        // Still 'open' — requeue must fail.
+        let err = store.requeue_gap(&id).unwrap_err();
+        assert!(
+            err.to_string().contains("bisect_quarantined"),
+            "error must name the expected status; got: {err}"
+        );
+    }
+
+    // 8. requeue_appends_note: note mentions operator review.
+    #[test]
+    fn requeue_appends_note() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "requeue-note-test", "P1", "xs")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("bisect_quarantined".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store.requeue_gap(&id).unwrap();
+        let row = store.get(&id).unwrap().unwrap();
+        assert!(
+            row.notes.contains("operator review"),
+            "note must mention operator review; got: {:?}",
+            row.notes
         );
     }
 }

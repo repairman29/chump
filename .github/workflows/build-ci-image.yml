@@ -1,0 +1,97 @@
+name: Build chump-ci Docker image
+
+# INFRA-2241: build + push the prebuilt CI toolchain image to GHCR.
+#
+# Triggers:
+#   - Weekly cron (Sundays 07:23 UTC) — picks up base-image security updates
+#     and any cargo-binstall-able tool version drift.
+#   - On push to docker/Dockerfile.ci on main — rebuild immediately when the
+#     pin set changes.
+#   - workflow_dispatch — manual rebuild for operator emergencies.
+#
+# Output tags:
+#   - ghcr.io/repairman29/chump-ci:latest   (rolling — points at most recent)
+#   - ghcr.io/repairman29/chump-ci:{git-sha} (immutable — rollback target)
+#
+# BuildKit cache:
+#   - Reads from ghcr.io/repairman29/chump-ci:cache (registry-mode cache).
+#   - Writes the same on success (mode=max — full multi-stage cache).
+#
+# Permissions:
+#   - packages: write — push to GHCR.
+#   - contents: read  — checkout source.
+#
+# See: docker/Dockerfile.ci, docs/process/CI_DOCKER_IMAGE.md
+
+on:
+  schedule:
+    - cron: "23 7 * * 0"  # Sundays 07:23 UTC
+  push:
+    branches: [main]
+    paths:
+      - "docker/Dockerfile.ci"
+      - ".github/workflows/build-ci-image.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-ci-image
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/repairman29/chump-ci
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA:0:12}"
+          echo "sha_tag=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (multi-tag, registry cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.ci
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.tags.outputs.sha_tag }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
+          provenance: false
+
+      - name: Summarize
+        run: |
+          {
+            echo "## chump-ci image pushed"
+            echo
+            echo "- \`${IMAGE}:latest\`"
+            echo "- \`${IMAGE}:${{ steps.tags.outputs.sha_tag }}\`"
+            echo
+            echo "Rollback: pin \`${IMAGE}:{sha}\` in \`.github/workflows/ci.yml\`."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,21 @@
+# INFRA-2242: pin the Rust toolchain so contributors + CI agree on the
+# compiler version. Cargo auto-installs the channel on first use, so a
+# fresh checkout only needs `rustup` installed — no manual `rustup default`.
+#
+# Components are required for the in-tree workflow:
+#   - rustfmt + clippy: enforced by `chump preflight` and CI shards 1 + 2
+#   - llvm-tools-preview: required by sccache profiling and INFRA-2118
+#     code-coverage probes
+#
+# Targets are minimal (host-only); the chump-coord cross-build script
+# (scripts/dev/cross-build-linux.sh) installs additional targets on demand.
+#
+# Channel rationale (stable + min 1.82):
+#   - Stable codegen-backend syntax (`[profile.dev] codegen-backend = "..."`)
+#     landed in 1.82, which INFRA-2242 relies on for the cranelift dev opt-in.
+#   - "stable" tracks the latest stable release; bump the minimum here when
+#     a newer feature is adopted.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+profile = "minimal"
