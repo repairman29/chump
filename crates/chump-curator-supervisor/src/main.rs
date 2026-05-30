@@ -507,6 +507,37 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
         }
     }
 
+    // RESILIENT-040: anti-race check #1 — has someone ALREADY filed a gap for
+    // this fingerprint? If so, don't file a duplicate AND don't spawn a
+    // racing Sonnet against it. Counts as a circuit-breaker activation so
+    // a flapping role still trips RESILIENT-035 even when remediation is
+    // a no-op.
+    if !cfg.dry_run {
+        if let Some(existing_gap) = find_open_gap_with_fingerprint(cfg, &fp)? {
+            let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+            emit_ambient(
+                &cfg.ambient_path,
+                &serde_json::json!({
+                    "ts": ts,
+                    "kind": "curator_supervisor_gap_already_filed",
+                    "role": det.role,
+                    "fingerprint": fp,
+                    "existing_gap_id": existing_gap,
+                }),
+            );
+            info!(
+                role = %det.role,
+                fingerprint = %fp,
+                existing_gap_id = %existing_gap,
+                "RESILIENT-040: gap with this fingerprint already filed — skipping"
+            );
+            // Write sentinel + count as activation to feed circuit breaker.
+            write_sentinel(&sentinel_path, &fp)?;
+            record_spawn_activation(cfg, det)?;
+            return Ok(());
+        }
+    }
+
     let priority = if multi_failure { "P0" } else { "P1" };
     let log_tail = get_log_tail(cfg, &det.role, 20);
     let summary = det.failure_summary();
@@ -595,6 +626,37 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
         return Ok(());
     }
 
+    // RESILIENT-040: anti-race check #2 — does the gap we're about to act on
+    // already have an active claim by another session? If so, another worker
+    // is already on it; spawning a parallel Sonnet creates a claim collision.
+    let claim_collision = !cfg.dry_run && gap_already_claimed(cfg, &gap_id_for_sonnet)?;
+    if claim_collision {
+        let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        emit_ambient(
+            &cfg.ambient_path,
+            &serde_json::json!({
+                "ts": ts,
+                "kind": "curator_supervisor_spawn_skipped_claim_collision",
+                "role": det.role,
+                "gap_id": gap_id_for_sonnet,
+            }),
+        );
+        info!(
+            role = %det.role,
+            gap_id = %gap_id_for_sonnet,
+            "RESILIENT-040: gap already claimed elsewhere — skipping spawn"
+        );
+        // Count as activation so flapping still trips the breaker.
+        record_spawn_activation(cfg, det)?;
+        // Still allow autorestart — the claim collision is about gap work,
+        // not about the curator process itself.
+        if cfg.autorestart {
+            autorestart_curator(cfg, det).await?;
+            record_spawn_activation(cfg, det)?;
+        }
+        return Ok(());
+    }
+
     // Aggressive mode: spawn Sonnet sub-agent (spawn_sonnet handles dry_run internally).
     if cfg.mode == SupervisorMode::Aggressive {
         spawn_sonnet(cfg, det, &gap_id_for_sonnet, &log_tail).await?;
@@ -608,6 +670,75 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
     }
 
     Ok(())
+}
+
+// ── RESILIENT-040 anti-race helpers ───────────────────────────────────────────
+
+/// Check whether any `.chump-locks/claim-<gap-lower>-*.json` files exist for
+/// the given gap_id. Existence alone counts as a claim (the supervisor itself
+/// doesn't hold gap claims, so any present file is another session's work).
+fn gap_already_claimed(cfg: &Config, gap_id: &str) -> Result<bool> {
+    if gap_id.is_empty() {
+        return Ok(false);
+    }
+    let lock_dir = cfg
+        .ambient_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(".chump-locks"));
+    let prefix = format!("claim-{}-", gap_id.to_lowercase());
+    let read = match fs::read_dir(&lock_dir) {
+        Ok(r) => r,
+        Err(_) => return Ok(false),
+    };
+    for entry in read.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with(&prefix) && name_str.ends_with(".json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Grep `chump gap list --status open --json` for an open gap whose
+/// description / notes contain the given fingerprint substring. Returns the
+/// gap_id of the FIRST match (lexical order), or None if no open gap matches.
+/// Best-effort: shells out to `chump`; returns None silently on any failure
+/// so the supervisor degrades to "no match" rather than crashing.
+fn find_open_gap_with_fingerprint(cfg: &Config, fingerprint: &str) -> Result<Option<String>> {
+    let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+    let output = std::process::Command::new(&chump_bin)
+        .args(["gap", "list", "--status", "open", "--json"])
+        .current_dir(&cfg.repo_root)
+        .output();
+    let bytes = match output {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return Ok(None),
+    };
+    let v: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    let arr = match v.as_array() {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    for g in arr {
+        let id = g
+            .get("id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let desc = g.get("description").and_then(|x| x.as_str()).unwrap_or("");
+        let notes = g.get("notes").and_then(|x| x.as_str()).unwrap_or("");
+        let title = g.get("title").and_then(|x| x.as_str()).unwrap_or("");
+        if desc.contains(fingerprint) || notes.contains(fingerprint) || title.contains(fingerprint)
+        {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
 }
 
 // ── RESILIENT-035 circuit breaker ─────────────────────────────────────────────
@@ -1222,5 +1353,86 @@ mod tests {
         let (stalled, _) =
             silent_stall_check(&ambient, "decompose", Duration::from_secs(600)).unwrap();
         assert!(!stalled, "fresh heartbeat should not stall");
+    }
+
+    // ── RESILIENT-040 anti-race helper tests ─────────────────────────────────
+
+    fn _test_cfg_at(root: &Path) -> Config {
+        Config {
+            repo_root: root.to_path_buf(),
+            log_dir: root.join("logs"),
+            ambient_path: root.join("locks/ambient.jsonl"),
+            sentinel_dir: root.join("supervisor/seen"),
+            sentinel_ttl: Duration::from_secs(3600),
+            stall_threshold: Duration::from_secs(600),
+            productivity_window: Duration::from_secs(3600),
+            mode: SupervisorMode::Aggressive,
+            autorestart: true,
+            dry_run: true,
+            interval: Duration::from_secs(300),
+            max_spawns_per_hour: 3,
+            flapping_window: Duration::from_secs(1800),
+            flapping_threshold: 3,
+        }
+    }
+
+    #[test]
+    fn test_gap_already_claimed_returns_false_for_empty_gap_id() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        // ambient_path is locks/ambient.jsonl → lock_dir = locks/
+        fs::create_dir_all(dir.path().join("locks")).unwrap();
+        assert!(!gap_already_claimed(&cfg, "").unwrap());
+    }
+
+    #[test]
+    fn test_gap_already_claimed_returns_false_when_no_claim_file() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        fs::create_dir_all(dir.path().join("locks")).unwrap();
+        assert!(!gap_already_claimed(&cfg, "INFRA-9999").unwrap());
+    }
+
+    #[test]
+    fn test_gap_already_claimed_returns_true_when_claim_file_present() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        let locks = dir.path().join("locks");
+        fs::create_dir_all(&locks).unwrap();
+        // gap_id is lowercased before glob match.
+        fs::write(
+            locks.join("claim-infra-9999-12345-1780000000.json"),
+            r#"{"session_id":"sibling-x"}"#,
+        )
+        .unwrap();
+        assert!(gap_already_claimed(&cfg, "INFRA-9999").unwrap());
+    }
+
+    #[test]
+    fn test_gap_already_claimed_works_for_dry_run_ids() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        let locks = dir.path().join("locks");
+        fs::create_dir_all(&locks).unwrap();
+        fs::write(
+            locks.join("claim-dry-run-decompose:abc12345-1-1.json"),
+            r#"{"session_id":"sibling-x"}"#,
+        )
+        .unwrap();
+        // DRY-RUN prefix no longer short-circuits — it should detect the claim
+        // so dry-run smoke tests can validate the collision path.
+        assert!(gap_already_claimed(&cfg, "DRY-RUN-decompose:abc12345").unwrap());
+    }
+
+    #[test]
+    fn test_find_open_gap_with_fingerprint_degrades_silently_when_chump_missing() {
+        let dir = TempDir::new().unwrap();
+        let cfg = _test_cfg_at(dir.path());
+        // Point CHUMP_BIN at a non-existent binary so the shell-out fails.
+        std::env::set_var("CHUMP_BIN", "/does/not/exist/chump-missing");
+        let result = find_open_gap_with_fingerprint(&cfg, "decompose:deadbeef");
+        std::env::remove_var("CHUMP_BIN");
+        // Should return Ok(None) — degraded path, not a crash.
+        assert!(matches!(result, Ok(None)));
     }
 }
