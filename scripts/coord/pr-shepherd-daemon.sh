@@ -5,6 +5,10 @@
 #           and emits one pr_classified ambient event per PR.
 # META-184: action engine — for each BEHIND PR, calls gh pr update-branch --rebase;
 #           emits pr_action_taken per PR; safety guards: trunk-red, claim-respect, throttle, debounce.
+# META-185: BLOCKED sub-state classification — extends BLOCKED into:
+#           BLOCKED_GREEN     (all checks pass, no auto-merge armed — auto-rearm target)
+#           BLOCKED_REAL_FAIL (at least one check FAILURE — file-gap target)
+#           BLOCKED           (catch-all: checks still running or inconclusive)
 #
 # Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs,
 # classifies each, and (META-184+) acts on BEHIND PRs via rebase.
@@ -142,34 +146,66 @@ _record_rebase_debounce() {
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
+  # META-185: also fetch statusCheckRollup for BLOCKED sub-state classification.
   # Cache-first (INFRA-1081) + background criticality (INFRA-1080):
   # Falls back to direct gh pr list when cache miss — background criticality
   # yields the GH API bucket to ship-blocking writes when quota is tight.
   local prs_json
   prs_json=$(CHUMP_GH_CALL_CRITICALITY=background gh pr list --state open --limit 200 \
-    --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid 2>/dev/null || echo "[]")
+    --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid,statusCheckRollup 2>/dev/null || echo "[]")
 
   local count
   count=$(printf '%s' "$prs_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
   emit_tick "$count"
 
   # Classify each PR and emit one pr_classified event per PR.
-  # Classification logic (META-183):
-  #   BEHIND    — mergeStateStatus=BEHIND (main moved, needs rebase)
-  #   MERGEABLE — mergeStateStatus=CLEAN and no autoMergeRequest (ready to merge, not yet armed)
-  #   ARMED     — mergeStateStatus=CLEAN and autoMergeRequest set (auto-merge already armed — daemon leaves alone)
-  #   DIRTY     — mergeStateStatus=DIRTY (semantic merge conflict)
-  #   BLOCKED   — mergeStateStatus=BLOCKED (required checks failing or still running)
-  #   UNKNOWN   — mergeStateStatus=UNKNOWN/null (GitHub still computing)
+  # Classification logic (META-183 + META-185):
+  #   BEHIND           — mergeStateStatus=BEHIND (main moved, needs rebase)
+  #   MERGEABLE        — mergeStateStatus=CLEAN and no autoMergeRequest (ready to merge, not yet armed)
+  #   ARMED            — mergeStateStatus=CLEAN and autoMergeRequest set (auto-merge already armed — daemon leaves alone)
+  #   DIRTY            — mergeStateStatus=DIRTY (semantic merge conflict)
+  #   BLOCKED_GREEN    — mergeStateStatus=BLOCKED, all checks SUCCESS/SKIPPED, no auto-merge armed
+  #                      (effectively MERGEABLE — target for auto-rearm-daemon; META-185)
+  #   BLOCKED_REAL_FAIL— mergeStateStatus=BLOCKED, at least one check FAILURE
+  #                      (real content failure — target for gap filing; META-185)
+  #   BLOCKED          — mergeStateStatus=BLOCKED, checks still in-flight or inconclusive (catch-all)
+  #   UNKNOWN          — mergeStateStatus=UNKNOWN/null (GitHub still computing)
   local classified
   classified=$(printf '%s' "$prs_json" | python3 -c "
 import json, sys, re
 from datetime import datetime, timezone
+
+TERMINAL_NON_FAILURE = {'SUCCESS', 'SKIPPED', 'NEUTRAL', 'STALE', 'ACTION_REQUIRED'}
+
+def classify_blocked(checks, has_automerge):
+    # Conservative default: BLOCKED (checks still running)
+    if not checks:
+        return 'BLOCKED'
+    has_failure = False
+    all_terminal = True
+    for ch in checks:
+        conclusion = (ch.get('conclusion') or '').upper()
+        status = (ch.get('status') or '').upper()
+        if status not in ('COMPLETED',):
+            # Still running (QUEUED, IN_PROGRESS, WAITING, PENDING, REQUESTED)
+            all_terminal = False
+        if conclusion == 'FAILURE':
+            has_failure = True
+    # Conservative: any FAILURE -> BLOCKED_REAL_FAIL regardless of others
+    if has_failure:
+        return 'BLOCKED_REAL_FAIL'
+    # All completed with no failures and no auto-merge -> BLOCKED_GREEN
+    if all_terminal and not has_automerge:
+        return 'BLOCKED_GREEN'
+    # Checks still running (or auto-merge already armed but still BLOCKED — unusual)
+    return 'BLOCKED'
+
 prs = json.load(sys.stdin)
 now = datetime.now(timezone.utc)
 for p in prs:
     ms = p.get('mergeStateStatus')
     has_automerge = p.get('autoMergeRequest') is not None
+    checks = p.get('statusCheckRollup') or []
     if ms == 'BEHIND':
         c = 'BEHIND'
     elif ms == 'CLEAN' and not has_automerge:
@@ -179,7 +215,7 @@ for p in prs:
     elif ms == 'DIRTY':
         c = 'DIRTY'
     elif ms == 'BLOCKED':
-        c = 'BLOCKED'
+        c = classify_blocked(checks, has_automerge)
     else:
         c = 'UNKNOWN'
 
