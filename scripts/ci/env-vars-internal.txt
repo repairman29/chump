@@ -911,3 +911,14 @@ CHUMP_GAP_SUPERVISOR_MAX_RESTARTS
 CHUMP_GAP_SUPERVISOR_STATE
 # detected in: (standard input)
 CHUMP_GAP_SUPERVISOR_WINDOW_S
+CHUMP_BLAME_BOT_DEDUPE_WINDOW_S
+# detected in: (standard input)
+CHUMP_BLAME_BOT_STALE_THRESHOLD
+# detected in: (standard input)
+CHUMP_BLAME_BOT_STALE_WINDOW_S
+# detected in: (standard input)
+CHUMP_BLAME_BOT_TEST_CHECK_RUNS
+# detected in: (standard input)
+CHUMP_BLAME_BOT_TEST_GREEN_SHA
+# detected in: (standard input)
+CHUMP_BLAME_BOT_TEST_REPO_ROOT
