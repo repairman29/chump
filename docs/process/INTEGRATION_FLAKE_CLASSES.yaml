@@ -1,0 +1,93 @@
+# INTEGRATION_FLAKE_CLASSES.yaml — INFRA-2168
+#
+# Registry of CI failure signatures that can appear during integration-cycle
+# bisect and should NOT be classified as "bad" (regression) commits. The
+# integration-bisect-step.sh oracle consults this list before returning exit
+# code 1 (bad); a match causes it to return 125 (skip — git bisect untestable)
+# instead, preventing innocent gap branches from being quarantined.
+#
+# Why this is distinct from KNOWN_FLAKES.yaml
+#   KNOWN_FLAKES.yaml is scoped to cargo-test test *names* and drives the
+#   cargo-test-with-rerun.sh autorerun harness. This file is scoped to
+#   CI-level failure *signatures* (log substrings / regexes) that appear in
+#   integration-cycle preflight output, where the failure is infrastructure
+#   noise rather than a gap's code regression.
+#
+# Discipline
+#   1. NEVER add an entry without a discovered_in gap that traces the
+#      evidence. Entries without provenance are removed at next audit.
+#   2. recovery_action drives what the oracle does when it matches:
+#        skip      — return 125; git bisect skips the commit as untestable.
+#        rerun     — retry the preflight once; if second run passes, return 0.
+#        quarantine — rare; surface to operator before continuing bisect.
+#   3. max_retries applies to recovery_action: rerun only. skip/quarantine
+#      ignore it.
+#   4. After the root-cause is structurally fixed AND 10 consecutive
+#      integration cycles are clean, remove or mark the entry status: retired.
+#      Do not leave stale entries; they mask future regressions.
+#
+# Schema
+#   schema_version:          integer
+#   last_audit:              YYYY-MM-DD
+#   classes:                 list of class entries
+#     - id:                  slug (e.g. acp-cache-collision)
+#       failure_signature_regex: ERE-compatible regex matched against preflight stdout+stderr
+#       recovery_action:     skip | rerun | quarantine
+#       max_retries:         integer (default 2; only used for recovery_action: rerun)
+#       discovered_in:       gap ID that first surfaced this class
+#       notes:               one- or two-sentence explanation + structural fix ref if any
+#       status:              active (default) | retired
+#
+# Consumed by
+#   scripts/dev/integration-bisect-step.sh — bisect oracle
+#   scripts/ci/test-integration-flake-classes.sh — fixture-based regression test
+#
+# Ambient event: kind=bisect_step_evaluated (INFRA-2168)
+#   Fields: commit, outcome (good|bad|skip), duration_s, matched_class (id or "none")
+
+schema_version: 1
+last_audit: "2026-05-29"
+
+classes:
+
+  # ── Infrastructure / cache races ─────────────────────────────────────────
+
+  - id: acp-cache-collision
+    failure_signature_regex: "Failed to save.*Unable to reserve cache with key"
+    recovery_action: skip
+    max_retries: 2
+    discovered_in: INFRA-2126
+    notes: >
+      Concurrent PRs collide on the same rust-cache key in GitHub Actions
+      (ACP = actions/cache). Structurally fixed in INFRA-2126 by scoping the
+      cache key to the branch; caught defensively here in case a window opens
+      during a batched integration cycle where multiple branches race.
+    status: active
+
+  - id: cargo-test-cache-race
+    failure_signature_regex: "failed to read .*Cargo.toml.*No such file or directory"
+    recovery_action: skip
+    max_retries: 2
+    discovered_in: INFRA-2168
+    notes: >
+      During bisect, cargo may read a stale incremental build cache from a
+      previous step that referenced a Cargo.toml path that no longer exists
+      at the bisected commit. The error is transient; re-running from a clean
+      cache state (or skipping the commit as untestable) is the correct
+      response. Not a regression in the gap under test.
+    status: active
+
+  # ── E2E / Playwright flakes ───────────────────────────────────────────────
+
+  - id: e2e-pwa-flake
+    failure_signature_regex: "Error: browserType.launch.*Timeout|net::ERR_CONNECTION_REFUSED.*localhost:[0-9]+|locator.click.*waiting for element.*to be visible|Test timeout of [0-9]+ms exceeded"
+    recovery_action: rerun
+    max_retries: 1
+    discovered_in: META-123
+    notes: >
+      Intermittent Playwright / PWA-shell lifecycle race: web server boot or
+      Playwright fixture teardown races with test execution. Catalog mirrors
+      KNOWN_FLAKES.yaml playwright_flakes (INFRA-1335) but expressed as a
+      log-level signature for the bisect oracle. A single rerun is sufficient
+      to distinguish infrastructure noise from a genuine PWA regression.
+    status: active
