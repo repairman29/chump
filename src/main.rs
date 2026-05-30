@@ -69,6 +69,7 @@ mod diff_review_tool;
 mod discord;
 mod discord_dm;
 mod discord_intent;
+mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (META-128/C7)
 mod dispatch;
 mod doctor;
 mod ego_tool;
@@ -4589,6 +4590,142 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-2198 (META-128/C7): disk-aware fleet auto-scale.
+            // Reads current N workers + disk inventory; scales down 1 when
+            // disk < 20 GB, scales up 1 when disk > 60 GB AND ship-rate is
+            // healthy.  Max delta 1 per tick.  Run every 5 min via launchd
+            // (installer: scripts/dispatch/chump-fleet-autoscale-launchd.sh).
+            //
+            // Usage: chump fleet auto-scale [--apply] [--json]
+            //
+            // CHUMP_FLEET_SCALE_LOW_GB   — disk free threshold to scale down (default 20.0)
+            // CHUMP_FLEET_SCALE_HIGH_GB  — disk free threshold to scale up   (default 60.0)
+            "auto-scale" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                let as_json = args.iter().any(|a| a == "--json");
+
+                let current_size: u32 =
+                    std::fs::read_to_string(repo_root.join(".chump/fleet-desired-size"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(2);
+
+                let low_gb: f64 = std::env::var("CHUMP_FLEET_SCALE_LOW_GB")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(20.0);
+                let high_gb: f64 = std::env::var("CHUMP_FLEET_SCALE_HIGH_GB")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(60.0);
+
+                // Load disk snapshot (graceful fallback when INFRA-2196 absent).
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                let inv_path_override = std::env::var("CHUMP_DISK_INVENTORY_PATH").ok();
+                let inv_path = if let Some(ref p) = inv_path_override {
+                    std::path::PathBuf::from(p)
+                } else {
+                    std::path::Path::new(&home).join(".chump/disk-inventory.json")
+                };
+
+                let free_gb: Option<f64> = std::fs::read_to_string(&inv_path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|v| v["free_gb"].as_f64());
+
+                // Ship-rate health: use fleet_velocity snapshot (1h shipped count).
+                let vel = fleet_velocity::snapshot(&repo_root);
+                let ship_rate_healthy =
+                    vel.rate_per_hour_1h() > 0.0 || vel.rate_per_hour_6h() > 0.0;
+
+                #[derive(Debug)]
+                enum AutoScaleAction {
+                    ScaleDown { reason: &'static str },
+                    ScaleUp { reason: &'static str },
+                    NoChange { reason: &'static str },
+                }
+
+                let action: AutoScaleAction = match free_gb {
+                    None => AutoScaleAction::NoChange {
+                        reason:
+                            "disk-inventory.json absent — no disk data (INFRA-2193 not running?)",
+                    },
+                    Some(free) if free < low_gb => AutoScaleAction::ScaleDown {
+                        reason: "disk free < low threshold",
+                    },
+                    Some(free) if free > high_gb && ship_rate_healthy => AutoScaleAction::ScaleUp {
+                        reason: "disk free > high threshold AND ship-rate healthy",
+                    },
+                    Some(free) if free > high_gb => AutoScaleAction::NoChange {
+                        reason: "disk free > high threshold but ship-rate zero — not scaling up",
+                    },
+                    Some(_) => AutoScaleAction::NoChange {
+                        reason: "disk headroom within normal range",
+                    },
+                };
+
+                let (new_size, action_label, reason_str) = match &action {
+                    AutoScaleAction::ScaleDown { reason } => {
+                        (current_size.saturating_sub(1).max(1), "scale_down", *reason)
+                    }
+                    AutoScaleAction::ScaleUp { reason } => (current_size + 1, "scale_up", *reason),
+                    AutoScaleAction::NoChange { reason } => (current_size, "no_change", *reason),
+                };
+
+                let free_gb_display = free_gb
+                    .map(|f| format!("{f:.1}"))
+                    .unwrap_or_else(|| "N/A".to_string());
+
+                if as_json {
+                    println!(
+                        "{{\"fleet_auto_scale\":true,\
+                         \"action\":\"{action_label}\",\
+                         \"current_size\":{current_size},\
+                         \"new_size\":{new_size},\
+                         \"free_gb\":\"{free_gb_display}\",\
+                         \"reason\":\"{reason_str}\"}}"
+                    );
+                } else {
+                    println!(
+                        "[fleet auto-scale] action={action_label} current={current_size} → new={new_size}  \
+                         free={free_gb_display}GB  reason={reason_str}"
+                    );
+                }
+
+                if new_size != current_size {
+                    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    // Emit ambient event regardless of --apply (the event is the record of intent).
+                    if let Ok(mut af) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                    {
+                        let _ = writeln!(
+                            af,
+                            "{{\"ts\":\"{ts}\",\"kind\":\"fleet_scale_changed\",\
+                             \"from\":{current_size},\"to\":{new_size},\
+                             \"reason\":\"auto-scale: {reason_str}\"}}"
+                        );
+                    }
+
+                    if apply {
+                        let _ = std::fs::write(
+                            repo_root.join(".chump/fleet-desired-size"),
+                            format!("{new_size}\n"),
+                        );
+                        if !as_json {
+                            println!(
+                                "[fleet auto-scale] --apply: wrote fleet-desired-size={new_size}"
+                            );
+                        }
+                    } else if !as_json {
+                        println!("[fleet auto-scale] dry-run; run with --apply to execute");
+                    }
+                }
+
+                return Ok(());
+            }
             // INFRA-650: fleet auto-prune-down controller.
             // Evaluates 4 conditions and recommends (or applies) a scale-down.
             "auto-resize" => {
@@ -5221,6 +5358,76 @@ async fn main() -> Result<()> {
                 let size = flag("--size")
                     .or_else(|| cfg("size"))
                     .unwrap_or_else(|| "2".to_string());
+
+                // INFRA-2198: disk-aware gate — consult chump disk plan before
+                // allocating N workers.  Falls back gracefully when INFRA-2196
+                // (chump disk) is not yet installed.
+                let requested_n: u32 = size.parse().unwrap_or(2);
+                let accept_wait = std::env::var("CHUMP_FLEET_ACCEPT_WAIT").as_deref() == Ok("1");
+                let gate_decision =
+                    disk_plan_gate::check("sonnet_dispatch_with_worktree", requested_n, &repo_root);
+                let effective_n: u32 = match gate_decision {
+                    disk_plan_gate::DiskPlanDecision::Ok => requested_n,
+                    disk_plan_gate::DiskPlanDecision::Wait { recommended_n } => {
+                        if accept_wait {
+                            eprintln!(
+                                "[fleet up] WARN: disk headroom low (WAIT) for {} workers; \
+                                 CHUMP_FLEET_ACCEPT_WAIT=1 — proceeding.",
+                                requested_n
+                            );
+                            requested_n
+                        } else {
+                            let safe_n = recommended_n.max(1);
+                            eprintln!(
+                                "[fleet up] WARN: disk headroom low (WAIT); downsizing \
+                                 {} → {} workers. Set CHUMP_FLEET_ACCEPT_WAIT=1 to override.",
+                                requested_n, safe_n
+                            );
+                            // Emit ambient event.
+                            let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            if let Ok(mut af) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                let _ = writeln!(
+                                    af,
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"fleet_scale_changed\",\
+                                     \"from\":{requested_n},\"to\":{safe_n},\
+                                     \"reason\":\"disk_budget\"}}"
+                                );
+                            }
+                            safe_n
+                        }
+                    }
+                    disk_plan_gate::DiskPlanDecision::Refuse { recommended_n } => {
+                        let safe_n = recommended_n.max(1);
+                        eprintln!(
+                            "[fleet up] REFUSE: insufficient disk headroom for {} workers; \
+                             auto-downsizing to {} (disk budget max-safe-N).",
+                            requested_n, safe_n
+                        );
+                        // Emit ambient event.
+                        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        if let Ok(mut af) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            let _ = writeln!(
+                                af,
+                                "{{\"ts\":\"{ts}\",\"kind\":\"fleet_scale_changed\",\
+                                 \"from\":{requested_n},\"to\":{safe_n},\
+                                 \"reason\":\"disk_budget\"}}"
+                            );
+                        }
+                        safe_n
+                    }
+                };
+                // Override size with the disk-gated value.
+                let size = effective_n.to_string();
                 let model = flag("--model")
                     .or_else(|| cfg("model"))
                     .unwrap_or_else(|| "sonnet".to_string());
@@ -6070,7 +6277,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -6089,6 +6296,9 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-pids  [--apply]");
                 eprintln!("  brief       [--json] [--window SECS]");
                 eprintln!("  auto-widen  [--apply]  -- widen effort/priority filter on starvation");
+                eprintln!(
+                    "  auto-scale  [--apply] [--json]  -- disk-aware up/down by 1 per tick (INFRA-2198)"
+                );
                 eprintln!(
                     "  auto-resize [--apply] [--json]  -- scale down on 4 conditions (INFRA-650)"
                 );
