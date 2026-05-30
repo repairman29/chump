@@ -147,9 +147,14 @@ mkdir -p "$LOG_DIR"
 # ── substitute placeholders in plist template ─────────────────────────────────
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
+# INFRA-2302: substitute __CARGO_BIN__ with the DIRECTORY of the binary we
+# actually found (via _find_integrator above), not the $CARGO_BIN env default.
+# The default ~/.cargo/bin/chump-integrator is only correct for cargo-installed
+# global binaries — most installs find the binary at target/{debug,release}/.
+INTEGRATOR_BIN_DIR="$(dirname "$INTEGRATOR_BIN")"
 sed \
     -e "s|__REPO_ROOT__|${REPO_ROOT}|g" \
-    -e "s|__CARGO_BIN__|${CARGO_BIN}|g" \
+    -e "s|__CARGO_BIN__|${INTEGRATOR_BIN_DIR}|g" \
     -e "s|__HOME__|${HOME}|g" \
     "$PLIST_TEMPLATE" > "$INSTALLED_PLIST"
 
