@@ -117,6 +117,12 @@ bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on
 bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
 bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
 bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
+# META-156: per-step observability + fail-fast kinds
+bot_merge_step_started   # reason: META-156 AC#1 — emitted by _bm_emit_step_started() in bot-merge.sh at each named step (init/preflight/claim/push/pr_create/pr_merge_arm/pr_wait_merge/post_ship); helper uses variable-assembled printf so literal "kind":"bot_merge_step_started" not grep-scannable
+bot_merge_step_done      # reason: META-156 AC#1 — emitted by _bm_emit_step_done() in bot-merge.sh at each named step with duration_ms and rc; same variable-assembled printf pattern
+bot_merge_aborted_no_auth  # reason: META-156 AC#3 — emitted by bot-merge.sh on GraphQL 401 / graphql_exhausted hard-fail-fast in init step; variable-assembled printf
+bot_merge_budget_warn    # reason: META-156 AC#6 — emitted by bot-merge.sh total-budget watchdog at 50%/75%/90% thresholds; variable-assembled printf
+bot_merge_completed      # reason: META-156 AC#7 — emitted by bot-merge.sh graceful-exit roll-up with gap_id/pr_number/duration_ms/terminal_state; variable-assembled printf
 bypass_threshold_breach  # reason: INFRA-1837 — emitted by scripts/ops/audit-bypass-frequency.sh from inside a python3 heredoc dict (per breaching session); kind literal lives in python dict, not grep-scannable as kind=X
 capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit.sh "<kind>"` positional arg, not grep-scannable as a JSON `"kind":"X"` literal
 capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/src/capability.rs publish_manifest(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal

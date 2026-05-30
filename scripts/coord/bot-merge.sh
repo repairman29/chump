@@ -114,6 +114,8 @@ _BM_WATCHDOG_PID=""
 _BM_CLEANUP_DONE=0
 # INFRA-1422: per-stage budget watchdog PID (separate from gap-done watchdog).
 __STAGE_BUDGET_PID=""
+# META-156 AC#6: budget-warn watchdog PID.
+_BM_BUDGET_WARN_PID=""
 
 # INFRA-1035: append one JSONL entry to the steps file.
 # Usage: _bm_steps_append <transition> <step> [elapsed_s]
@@ -130,6 +132,10 @@ _bm_steps_append() {
 _bm_cleanup() {
     [[ "$_BM_CLEANUP_DONE" == "1" ]] && return
     _BM_CLEANUP_DONE=1
+    # META-156 AC#7: emit bot_merge_completed roll-up on any exit path.
+    _bm_completed_emit 2>/dev/null || true
+    # META-156 AC#6: kill budget-warn watchdog subprocesses on exit.
+    [[ -n "${_BM_BUDGET_WARN_PID:-}" ]] && kill "$_BM_BUDGET_WARN_PID" 2>/dev/null || true
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     # INFRA-1422: cancel any live stage-budget watchdog on exit.
@@ -161,6 +167,81 @@ _bm_cleanup() {
 }
 trap '_bm_cleanup' EXIT
 trap '_bm_cleanup; exit 1' TERM INT
+
+# ── META-156: per-step ambient observability ─────────────────────────────────
+# Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
+# for each named step (init, preflight, claim, push, pr_create, pr_merge_arm,
+# pr_wait_merge, post_ship). step_done includes duration_ms and rc.
+#
+# Usage:
+#   _bm_step_start <step-name>
+#   ... do work ...
+#   _bm_step_done  <step-name> <rc>
+#
+# scanner-anchor: kind=bot_merge_step_started  (variable-assembled printf)
+# scanner-anchor: kind=bot_merge_step_done     (variable-assembled printf)
+_BM_NAMED_STEP=""
+_BM_NAMED_STEP_T0_MS=0
+
+_bm_ms_now() {
+    # milliseconds since epoch; python3 fallback if date -s not available.
+    python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || \
+        echo $(( $(date +%s) * 1000 ))
+}
+
+_bm_step_start() {
+    local step="$1"
+    _BM_NAMED_STEP="$step"
+    _BM_NAMED_STEP_T0_MS="$(_bm_ms_now)"
+    local ts gap_label ambient
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_step_started"
+    printf '{"ts":"%s","kind":"bot_merge_step_started","step":"%s","gap":"%s","pid":%d,"note":"META-156 AC#1"}\n' \
+        "$ts" "$step" "$gap_label" "$_BM_PID" \
+        >> "$ambient" 2>/dev/null || true
+}
+
+_bm_step_done() {
+    local step="${1:-${_BM_NAMED_STEP:-unknown}}" rc="${2:-0}"
+    local now_ms duration_ms ts gap_label ambient
+    now_ms="$(_bm_ms_now)"
+    duration_ms=$(( now_ms - _BM_NAMED_STEP_T0_MS ))
+    [[ "$duration_ms" -lt 0 ]] && duration_ms=0
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_step_done"
+    printf '{"ts":"%s","kind":"bot_merge_step_done","step":"%s","gap":"%s","pid":%d,"duration_ms":%d,"rc":%d,"note":"META-156 AC#1"}\n' \
+        "$ts" "$step" "$gap_label" "$_BM_PID" "$duration_ms" "$rc" \
+        >> "$ambient" 2>/dev/null || true
+    _BM_NAMED_STEP=""
+}
+
+# META-156 AC#7: graceful-exit roll-up — emit bot_merge_completed with
+# {gap_id, pr_number, duration_ms, terminal_state} on any exit path.
+# Called from the EXIT trap so it fires even on error paths.
+_BM_COMPLETED_EMITTED=0
+_BM_SESSION_T0_MS=0
+_BM_TERMINAL_STATE="unknown"
+_bm_completed_emit() {
+    [[ "$_BM_COMPLETED_EMITTED" == "1" ]] && return 0
+    _BM_COMPLETED_EMITTED=1
+    local now_ms duration_ms ts gap_label pr_number ambient
+    now_ms="$(_bm_ms_now)"
+    duration_ms=$(( now_ms - _BM_SESSION_T0_MS ))
+    [[ "$duration_ms" -lt 0 ]] && duration_ms=0
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    pr_number="${TARGET_PR:-${EXISTING_PR:-0}}"
+    [[ -z "$pr_number" ]] && pr_number=0
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_completed"
+    printf '{"ts":"%s","kind":"bot_merge_completed","gap_id":"%s","pr_number":%s,"duration_ms":%d,"terminal_state":"%s","pid":%d,"note":"META-156 AC#7"}\n' \
+        "$ts" "$gap_label" "$pr_number" "$duration_ms" "${_BM_TERMINAL_STATE:-unknown}" "$_BM_PID" \
+        >> "$ambient" 2>/dev/null || true
+}
 
 # ── RESILIENT-010: step-specific failure helper ───────────────────────────────
 # Usage: _bm_fail <step-name> <exit-code> [message]
@@ -954,7 +1035,37 @@ _bm_health_init() {
         ) &
         _BM_WATCHDOG_PID=$!
         disown "$_BM_WATCHDOG_PID" 2>/dev/null || true
+
+        # META-156 AC#6: intermediate budget-warn at 50%/75%/90%.
+        # Currently the FIRST operator-visible signal is the 100% SIGTERM.
+        # These warn checkpoints allow operators to react before the hard kill.
+        # scanner-anchor: "kind":"bot_merge_budget_warn"
+        local _bw_ppid="$ppid" _bw_ambient="$ambient" _bw_sf="$sf" _bw_budget="$budget"
+        (
+            local pcts=(50 75 90)
+            for pct in "${pcts[@]}"; do
+                local warn_secs=$(( _bw_budget * pct / 100 ))
+                sleep "$warn_secs" 2>/dev/null
+                local step now elapsed_s
+                step="$(cat "$_bw_sf" 2>/dev/null || echo unknown)"
+                now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                elapsed_s="$warn_secs"
+                # Only emit if parent process is still alive
+                kill -0 "$_bw_ppid" 2>/dev/null || break
+                printf '{"ts":"%s","kind":"bot_merge_budget_warn","pid":%d,"current_step":"%s","elapsed_s":%d,"budget_s":%d,"pct_used":%d,"note":"META-156 AC#6 — %d%% of budget elapsed; SIGTERM at 100%%"}\n' \
+                    "$now" "$_bw_ppid" "$step" "$elapsed_s" "$_bw_budget" "$pct" "$pct" \
+                    >> "$_bw_ambient" 2>/dev/null || true
+                printf '\033[0;33m[bot-merge] BUDGET-WARN: %d%% of total budget elapsed (%ds/%ds) — current step: %s\033[0m\n' \
+                    "$pct" "$elapsed_s" "$_bw_budget" "$step" >&2 || true
+                : # pcts iteration handles spacing; sleep to next threshold handled by outer loop
+            done
+        ) &
+        _BM_BUDGET_WARN_PID=$!
+        disown "$_BM_BUDGET_WARN_PID" 2>/dev/null || true
     fi
+
+    # META-156 AC#7: record session start time for bot_merge_completed duration.
+    _BM_SESSION_T0_MS="$(_bm_ms_now 2>/dev/null || echo 0)"
 
     info "INFRA-119: health monitoring active (file=$(basename "$_BM_HEALTH_FILE") budget=${budget}s steps=$(basename "$_BM_STEPS_FILE"))"
 }
@@ -1141,16 +1252,24 @@ _bm_health_init "$REPO_ROOT/.chump-locks"
 # want the script's stdout to flow only through their own pipe).
 if [[ "${DRY_RUN:-0}" != "1" && "${CHUMP_BOT_MERGE_NO_TEE:-0}" != "1" ]]; then
     _BM_LOG_FILE="${REPO_ROOT}/.chump-locks/bot-merge-${_BM_PID}.log"
-    # Print BEFORE redirecting so the operator-visible message lands on the
-    # original stdout (the log file gets it too via subsequent writes).
+    # META-156 AC#5: print log path to stdout in first second so IDE callers
+    # see where output is going before any buffering can occur.
+    printf '[bot-merge] log: %s\n' "$_BM_LOG_FILE"
+    # Print legacy banner too (keeps existing tooling that scans for INFRA-1034).
     info "[INFRA-1034] full log: $_BM_LOG_FILE  (tail -f to follow)"
+    # META-156 AC#4: advertise the log path to a session-visible file so
+    # operators/curators can `tail -F` immediately without knowing the PID.
+    # Written to LOCK_DIR (main repo .chump-locks/) so it's visible to siblings.
+    _bm_active_path_file="${LOCK_DIR:-${REPO_ROOT}/.chump-locks}/bot-merge-active-${CHUMP_SESSION_ID:-$$}.path"
+    printf '%s\n' "$_BM_LOG_FILE" > "$_bm_active_path_file" 2>/dev/null || true
     # Emit a discoverable marker so fleet-brief / operator-recall / chump-
     # ambient-glance can show "bot-merge currently running, log at X" without
     # scanning ps. Debounced to once per script invocation by virtue of being
     # outside the heartbeat loop.
     _bm_amb_path="${REPO_ROOT}/.chump-locks/ambient.jsonl"
-    printf '{"ts":"%s","kind":"bot_merge_log_started","pid":%d,"log_path":"%s","branch":"%s"}\n' \
+    printf '{"ts":"%s","kind":"bot_merge_log_started","pid":%d,"log_path":"%s","branch":"%s","active_path_file":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BM_PID" "$_BM_LOG_FILE" "${BRANCH:-unknown}" \
+        "${_bm_active_path_file:-}" \
         >> "$_bm_amb_path" 2>/dev/null || true
     # Process substitution: every subsequent write to stdout/stderr is
     # duplicated into the log file. tee runs in its own subprocess that
@@ -1211,9 +1330,17 @@ if [[ "${CHUMP_BOT_MERGE_RECOVERY_MODE:-0}" == "1" ]]; then
     exit 0
 fi
 
+# ── META-156 AC#1: step=init start ───────────────────────────────────────────
+_bm_step_start "init"
+
 # ── INFRA-539: probe GitHub API before doing any real work ────────────────────
 if [[ "${DRY_RUN:-0}" != "1" ]]; then
-    gh_api_probe || { red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."; exit 1; }
+    gh_api_probe || {
+        red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."
+        _bm_step_done "init" 1
+        _BM_TERMINAL_STATE="aborted_no_auth"
+        exit 1
+    }
     # INFRA-1055: circuit breaker — check quota headroom before any real work.
     # Returns 2 (exhausted) → hard stop; returns 1 (approaching) → degraded mode.
     if declare -F rate_limit_gate >/dev/null 2>&1; then
@@ -1221,13 +1348,85 @@ if [[ "${DRY_RUN:-0}" != "1" ]]; then
         rate_limit_gate "startup" --source "bot-merge.sh" || _rl_gate_rc=$?
         if [[ $_rl_gate_rc -eq 2 ]]; then
             red "INFRA-1055: REST API quota exhausted — aborting bot-merge to prevent churn (rate_limit_exhausted event emitted)."
+            _bm_step_done "init" 1
+            _BM_TERMINAL_STATE="aborted_no_auth"
             exit 1
         fi
         # _rl_gate_rc=1 (approaching): continue in degraded mode — GraphQL-heavy
         # optional phases will be skipped below when RL_GQL_PCT is low.
         export _BM_RL_DEGRADED="${_rl_gate_rc:-0}"
     fi
+
+    # META-156 AC#3: GraphQL 401 / graphql_exhausted hard-fail-fast in init.
+    # Detects a recent graphql_exhausted event in ambient.jsonl (within last
+    # CHUMP_BOT_MERGE_AUTH_PROBE_LOOKBACK_S, default 300s=5min) OR a live
+    # GraphQL 401 response and emits kind=bot_merge_aborted_no_auth, then
+    # exits within 30s. Does NOT enter the retry loop that burns 600s.
+    # Bypass: CHUMP_BOT_MERGE_AUTH_PROBE_SKIP=1
+    if [[ "${CHUMP_BOT_MERGE_AUTH_PROBE_SKIP:-0}" != "1" ]]; then
+        _auth_probe_lookback="${CHUMP_BOT_MERGE_AUTH_PROBE_LOOKBACK_S:-300}"
+        _auth_probe_ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+        _auth_abort=0
+        _auth_abort_reason=""
+
+        # Check ambient for recent graphql_exhausted event.
+        if [[ -r "$_auth_probe_ambient" ]]; then
+            _auth_cutoff=$(date -u -v-"${_auth_probe_lookback}"S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                || date -u -d "@$(( $(date +%s) - _auth_probe_lookback ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                || echo "")
+            if [[ -n "$_auth_cutoff" ]]; then
+                _auth_gql_hit=$(tail -100 "$_auth_probe_ambient" 2>/dev/null | python3 -c "
+import json, sys
+cutoff = '''$_auth_cutoff'''
+for line in sys.stdin:
+    try:
+        o = json.loads(line.strip())
+    except Exception:
+        continue
+    if isinstance(o, dict) and o.get('kind') == 'graphql_exhausted' and o.get('ts','') > cutoff:
+        print(o.get('ts','?'))
+        sys.exit(0)
+" 2>/dev/null || true)
+                if [[ -n "$_auth_gql_hit" ]]; then
+                    _auth_abort=1
+                    _auth_abort_reason="graphql_exhausted in ambient stream (last event: $_auth_gql_hit)"
+                fi
+            fi
+        fi
+
+        # If not already aborting, do a live GraphQL probe (10s timeout).
+        if [[ "$_auth_abort" -eq 0 ]]; then
+            _auth_gql_rc=0
+            timeout 10 gh api graphql -f query='{ viewer { login } }' >/dev/null 2>&1 || _auth_gql_rc=$?
+            if [[ "$_auth_gql_rc" -eq 1 ]]; then
+                # exit 1 from gh api typically means auth error / 401.
+                _auth_abort=1
+                _auth_abort_reason="GraphQL probe exited ${_auth_gql_rc} (likely 401 / token expired)"
+            fi
+        fi
+
+        if [[ "$_auth_abort" -eq 1 ]]; then
+            _auth_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _auth_gap="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+            # scanner-anchor: "kind":"bot_merge_aborted_no_auth"
+            printf '{"ts":"%s","kind":"bot_merge_aborted_no_auth","gap":"%s","branch":"%s","reason":"%s","note":"META-156 AC#3 — hard-fail-fast; fix auth then retry"}\n' \
+                "$_auth_ts" "$_auth_gap" "${BRANCH:-unknown}" "$_auth_abort_reason" \
+                >> "$_auth_probe_ambient" 2>/dev/null || true
+            red "META-156 AC#3: GraphQL auth failure detected — hard-fail-fast (not burning 600s budget)."
+            red "  Reason: $_auth_abort_reason"
+            red "  Fix: gh auth status / gh auth refresh / CHUMP_BOT_MERGE_GRAPHQL_WEDGE_LOOKBACK_S"
+            red "  Bypass: CHUMP_BOT_MERGE_AUTH_PROBE_SKIP=1"
+            _bm_step_done "init" 1
+            _BM_TERMINAL_STATE="aborted_no_auth"
+            exit 1
+        fi
+        unset _auth_probe_lookback _auth_probe_ambient _auth_abort _auth_abort_reason \
+              _auth_gql_rc _auth_gql_hit _auth_ts _auth_gap _auth_cutoff
+    fi
 fi
+
+# META-156 AC#1: step=init done (AC#3 probe passed, API reachable)
+_bm_step_done "init" 0
 
 # ── INFRA-379: chump-doctor preflight ─────────────────────────────────────────
 # macOS Sequoia syspolicyd occasionally wedges a chump binary's inode at
@@ -1462,17 +1661,24 @@ Bypass: CHUMP_BOT_MERGE_AUTO_COMMIT_M=0 to opt out (handles staging manually)."
 fi
 
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
+# META-156 AC#1: step=preflight
 if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+    _bm_step_start "preflight"
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
     # INFRA-193: when speculative, export so gap-preflight allows the
     # concurrent-speculative case (still blocks non-speculative collisions).
     if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
+        _bm_step_done "preflight" 10
+        _BM_TERMINAL_STATE="preflight_failed"
         _bm_fail "preflight" 10 "gap already done or claimed"
     fi
     green "Gap pre-flight passed."
+    _bm_step_done "preflight" 0
 
+    # META-156 AC#1: step=claim
+    _bm_step_start "claim"
     # Write gap claim to lease file (replaces YAML in_progress edit — no merge conflicts).
     # INFRA-193: under `set -u`, an empty bash array can't be safely expanded with
     # "${arr[@]}". Build the optional flag as a string, then word-split via $arr.
@@ -1480,7 +1686,52 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
-            chump claim "$gid" $_claim_extra
+            # META-156 AC#2: re-claim failure auto-retry.
+            # If `chump claim` fails with "worktree already exists", detect whether
+            # the existing claim belongs to OUR session_id (CHUMP_SESSION_ID). If so,
+            # retry with --force-recover (same session; safe to re-enter). If a
+            # different session owns it, fail fast with an operator-visible message.
+            _claim_rc=0
+            _claim_out=""
+            _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
+            if [[ "$_claim_rc" -ne 0 ]]; then
+                _claim_worktree_exists=0
+                if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then
+                    _claim_worktree_exists=1
+                fi
+                if [[ "$_claim_worktree_exists" -eq 1 ]]; then
+                    # Check existing claim's session_id via the lease file.
+                    _existing_claim_session=""
+                    for _lf in "$LOCK_DIR"/*.json; do
+                        [[ -f "$_lf" ]] || continue
+                        _lf_gid="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('gap_id',''))" "$_lf" 2>/dev/null || true)"
+                        if [[ "$_lf_gid" == "$gid" ]]; then
+                            _existing_claim_session="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('session_id',''))" "$_lf" 2>/dev/null || true)"
+                            break
+                        fi
+                    done
+                    if [[ -n "${CHUMP_SESSION_ID:-}" && "$_existing_claim_session" == "$CHUMP_SESSION_ID" ]]; then
+                        # Same session — safe to force-recover.
+                        info "META-156 AC#2: re-claim failure (same session_id=$CHUMP_SESSION_ID) — retrying with --force-recover"
+                        chump claim "$gid" $_claim_extra --force-recover 2>/dev/null || true
+                    else
+                        red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
+                        red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
+                        red "  Existing claim session: ${_existing_claim_session:-<unknown>}"
+                        red "  Resolution: wait for that session to finish, or release it with:"
+                        red "    chump --release --session ${_existing_claim_session:-<session-id>}"
+                        _bm_step_done "claim" "$_claim_rc"
+                        _BM_TERMINAL_STATE="claim_failed_session_mismatch"
+                        exit "$_claim_rc"
+                    fi
+                else
+                    # Some other claim failure — re-emit output and fail.
+                    printf '%s\n' "$_claim_out" >&2
+                    _bm_step_done "claim" "$_claim_rc"
+                    _BM_TERMINAL_STATE="claim_failed"
+                    exit "$_claim_rc"
+                fi
+            fi
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.
             chump session-track --start "$gid" >/dev/null 2>&1 || true
@@ -1488,6 +1739,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             info "[dry-run] chump claim $gid $_claim_extra"
         fi
     done
+    _bm_step_done "claim" 0
 fi
 
 # ── INFRA-537: ship-quality grade signal accumulators ───────────────────────
@@ -2204,6 +2456,8 @@ print(' '.join(conflicts))
 fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
+# META-156 AC#1: step=push
+_bm_step_start "push"
 stage_start "git push $BRANCH → $REMOTE"
 # INFRA-719: signal to the pre-push hook that this push is bot-merge-initiated.
 # The hook blocks first-push of chump/* branches unless this flag is set, to
@@ -2269,12 +2523,17 @@ if [[ "$_bm_push_exit" -eq 124 ]]; then
     red "git push stalled: pre-push hook did not complete within ${_BM_PUSH_TIMEOUT_S}s."
     red "  → kind=bot_merge_stall_detected emitted to ambient.jsonl"
     red "  → Retry with: CHUMP_FMT_CHECK=0 scripts/coord/bot-merge.sh --gap ${GAP_IDS[0]:-<ID>} --auto-merge"
+    _bm_step_done "push" 15
+    _BM_TERMINAL_STATE="push_failed"
     _bm_fail "push" 15 "pre-push hook stalled after ${_BM_PUSH_TIMEOUT_S}s"
 elif [[ "$_bm_push_exit" -ne 0 ]]; then
     red "git push failed (exit ${_bm_push_exit})."
+    _bm_step_done "push" "$_bm_push_exit"
+    _BM_TERMINAL_STATE="push_failed"
     _bm_fail "push" 15 "force-with-lease rejected or network error"
 fi
 stage_done
+_bm_step_done "push" 0
 green "Pushed."
 
 # ── 5b. INFRA-084 advisory: warn if PR diff hand-edits docs/gaps.yaml ───────
@@ -2299,6 +2558,8 @@ if [[ "${CHUMP_RAW_YAML_EDIT_CHECK:-1}" != "0" ]]; then
 fi
 
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
+# META-156 AC#1: step=pr_create
+_bm_step_start "pr_create"
 # INFRA-1082: cache-first branch→PR-number lookup; REST fallback on miss.
 EXISTING_PR=""
 if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
@@ -2495,6 +2756,8 @@ EOF
 else
     green "PR #$EXISTING_PR already exists — updated by push."
 fi
+# META-156 AC#1: step=pr_create done
+_bm_step_done "pr_create" 0
 
 # ── INFRA-103: apply parallelism label to the PR ─────────────────────────────
 # Classify this PR as 'serializing' or 'parallel-safe' based on whether it
@@ -2538,6 +2801,8 @@ fi
 # (Moved body to end of section 7, after gh pr merge --auto --squash.)
 
 # ── 7. Enable auto-merge (optional) ──────────────────────────────────────────
+# META-156 AC#1: step=pr_merge_arm
+_bm_step_start "pr_merge_arm"
 if [[ $AUTO_MERGE -eq 1 ]]; then
     TARGET_PR="${EXISTING_PR:-}"
     if [[ -z "$TARGET_PR" ]]; then
@@ -2948,6 +3213,9 @@ print(f"{incomplete} {failed} {total}")
                 fi
             fi
 
+            # META-156 AC#1: pr_merge_arm step done — auto-merge armed or REST-direct merged
+            _bm_step_done "pr_merge_arm" 0
+
             # ── INFRA-2119: webhook-cache MERGED wait (opt-in) ──────────────
             # Replaces the legacy poll-sleep `gh pr checks` watchdog pattern
             # that caused bot_merge_hung wedges (33 events / 14d as of
@@ -2979,6 +3247,8 @@ print(f"{incomplete} {failed} {total}")
                     && [[ $DRY_RUN -eq 0 ]] \
                     && [[ -n "$TARGET_PR" ]] \
                     && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]]; then
+                # META-156 AC#1: step=pr_wait_merge
+                _bm_step_start "pr_wait_merge"
                 stage_start "INFRA-2119: webhook-cache MERGED wait (PR #$TARGET_PR)"
                 _wait_timeout_s="${CHUMP_BOT_MERGE_WAIT_TIMEOUT_S:-900}"
                 _wait_poll_interval_s="${CHUMP_BOT_MERGE_WAIT_POLL_INTERVAL_S:-5}"
@@ -3041,8 +3311,13 @@ except Exception:
                     sleep "$_wait_poll_interval_s"
                 done
                 stage_done
+                # META-156 AC#1: step=pr_wait_merge done
+                _bm_step_done "pr_wait_merge" 0
             fi
         fi
+        # META-156 AC#1: close pr_merge_arm step on AUTO_MERGE=0 path (no-op if
+        # already closed by the AUTO_MERGE=1 branch above).
+        [[ "${_BM_NAMED_STEP:-}" == "pr_merge_arm" ]] && _bm_step_done "pr_merge_arm" 0
 
         # ── INFRA-1030: Auto-close gap AFTER auto-merge arm ──────────────────────
         # This is the LAST irreversible state change. If bot-merge dies here, the
@@ -3294,6 +3569,10 @@ if [[ $DRY_RUN -eq 0 ]]; then
     fi
 fi
 
+# META-156 AC#1: step=post_ship — covers shipped-marker + distill + session-end
+_bm_step_start "post_ship"
+_BM_TERMINAL_STATE="shipped"
+
 # ── 8. Write shipped-marker (INFRA-BOT-MERGE-LOCK) ───────────────────────────
 # Presence of .bot-merge-shipped causes chump-commit.sh to refuse further
 # commits in this worktree — enforcing the "PR frozen once shipped" rule from
@@ -3382,5 +3661,9 @@ fi
 if [[ $DRY_RUN -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]]; then
     rm -f "$REPO_ROOT/.chump-locks/${CHUMP_SESSION_ID}.json" 2>/dev/null || true
 fi
+
+# META-156 AC#1: close post_ship step; AC#7: emit roll-up completed event
+_bm_step_done "post_ship" 0
+_bm_completed_emit
 
 green "=== bot-merge done. ==="
