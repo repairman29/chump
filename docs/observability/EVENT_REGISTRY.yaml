@@ -6593,3 +6593,19 @@ events:
     fields_required: [ts, kind, reason, prior_pid, prior_gap_id]
     expected_volume: "low; one per skipped tick while incident is open"
     status: stable
+  # ── INFRA-2069: wedge-fixer template library (META-118 sub-gap 3) ──────────
+  - kind: wedge_fixer_template_rendered
+    effect_metric: resilient
+    emitter: scripts/coord/wedge-fixer-dispatch.sh (INFRA-2069)
+    trigger: >
+      Emitted by wedge-fixer-dispatch.sh when the operator runs with --execute
+      (not --dry-run). Carries the template_name selected, the gap_id being fixed,
+      and dry_run=false. Used by ambient consumers to track how often each template
+      class is dispatched and whether the dispatch-to-ship ratio is healthy.
+      Auto-dispatch (consume kind=wedge_class_detected → auto-render-and-dispatch)
+      is deferred to the follow-up PR that ships once INFRA-2068 lands.
+    consumers: [ops-audit, kpi-report, ci-audit]
+    fields_required: [ts, kind, template_name, gap_id, dry_run]
+    expected_volume: "0-N per session (operator-initiated only until INFRA-2068 ships)"
+    status: stable
+    # payload: {template_name: "fmt-drift"|"orphan-event"|"printf-grep", gap_id: string, dry_run: boolean, ts: string}
