@@ -6326,6 +6326,39 @@ events:
     expected_volume: "0–N per cascade run (N = blocked PRs that hit safety guards)"
     status: stable
     # payload: {source_pr: int, signature_hash: str, pr_number: int, reason: str}
+  # INFRA-2280: META-118 scheduling activation — daemon lifecycle events
+  - kind: meta_118_daemon_started
+    effect_metric: effective
+    emitter: scripts/setup/install-meta-118-daemons.sh (INFRA-2280)
+    # scanner-anchor: "kind":"meta_118_daemon_started"
+    trigger: >
+      Emitted once by install-meta-118-daemons.sh immediately after both
+      launchd plists are loaded. Confirms the META-118 scheduling chain has
+      been activated on this host. Carries labels (array of launchd label
+      strings for the two installed daemons).
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, source, labels]
+    expected_volume: "1 per host install/reinstall"
+    status: stable
+    # payload: {labels: [str], source: str}
+
+  - kind: meta_118_daemon_tick
+    effect_metric: effective
+    emitter: scripts/coord/novel-wedge-classifier.sh (INFRA-2280) + scripts/coord/cascade-unblock-detector.sh (INFRA-2280)
+    # scanner-anchor: "kind":"meta_118_daemon_tick"
+    trigger: >
+      Emitted at the start of each scheduled run by the two META-118 daemon
+      scripts: novel-wedge-classifier.sh (every 15 min) and
+      cascade-unblock-detector.sh (every 5 min). Carries daemon name so
+      fleet-doctor and INFRA-2278 SessionStart surface can count ticks and
+      confirm liveness. Missing ticks indicate launchd misconfiguration or
+      script crash.
+    consumers: [ops-audit, fleet-doctor, infra-2278-session-start]
+    fields_required: [ts, kind, daemon]
+    expected_volume: "~6/hr (4 cascade + 1 classifier) per host"
+    status: stable
+    # payload: {daemon: str (novel-wedge-classifier | cascade-unblock-detector)}
+
   # INFRA-2006: A2A inbox-routing fix — alias resolution events
   - kind: a2a_inbox_alias_resolved
     effect_metric: resilient
