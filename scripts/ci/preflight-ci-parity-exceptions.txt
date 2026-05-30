@@ -330,6 +330,7 @@ gap-ID lease uniqueness gate                 # reason: INFRA-1970 inline race-wi
 Detect R2 secret presence                    # reason: INFRA-2093 secret-presence detector — sets a step output to gate downstream sccache steps. GH Actions doesn't allow `secrets.X` in `if:` (PR-trigger security model), so this env-routed indirection is required; pure CI-side plumbing, not preflight-shaped.
 sccache --show-stats                         # reason: INFRA-2093 observability emit at end of cargo-test (only runs when R2 configured). Pure runtime stats reporting, no source code dependency; not preflight-shaped.
 nextest via INFRA-764                        # reason: INFRA-2094 step-name fragment for `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script reads only first line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content.
+test-sccache-reaper.sh                       # reason: INFRA-2303 reaper coverage test — not a ci.yml gate; tests sccache + incremental reap logic locally. No CI-side counterpart to mirror.
 
 # ── META-268: sibling workflow steps not using scripts/ci/*.sh paths ─────────
 # These are caught by the widened scan (META-268) but use non-scripts/ci/ paths.

@@ -7,9 +7,9 @@
 #
 # Pressure ladder (defaults; tunable via env):
 #   ≥ 50 GB free → IDLE (no action)
-#   20-50 GB    → Tier 1: target/ idle > 6h (delegates to target-dir-reaper)
-#   10-20 GB    → Tier 2: target/ idle > 2h + whole-worktree if PR merged + branch deleted
-#    5-10 GB    → Tier 3: whole-worktree idle > 30min, no active lease, no uncommitted edits
+#   20-50 GB    → Tier 1: target/ idle > 6h (delegates to target-dir-reaper) + git worktree prune
+#   10-20 GB    → Tier 2: target/ idle > 2h + whole-worktree if PR merged + branch deleted + sccache reap if >5GB
+#    5-10 GB    → Tier 3: whole-worktree idle > 30min, no active lease, no uncommitted edits + target/debug/incremental reap
 #    < 5 GB     → Tier 4 (RED): emit ALERT, fall back to operator escalation per INFRA-1471
 #
 # Each tier is strictly safe: never deletes a worktree with uncommitted/
@@ -74,7 +74,9 @@ emit_ambient() {
   fi
 }
 
-# ── Tier 1: target/ idle > 6h ────────────────────────────────────────────
+# ── Tier 1: target/ idle > 6h + git worktree prune ───────────────────────
+SCCACHE_REAPER="$REPO_ROOT/scripts/coord/sccache-reaper.sh"
+
 if [[ "$tier" -ge 1 ]]; then
   info "tier $tier: delegate to target-dir-reaper (idle > 6h)"
   if [[ -x "$TARGET_REAPER" ]]; then
@@ -86,15 +88,52 @@ if [[ "$tier" -ge 1 ]]; then
   else
     warn "target-dir-reaper not found at $TARGET_REAPER"
   fi
+
+  # Prune stale worktree registrations. Safe: only removes entries whose
+  # backing dir is already gone; never deletes live dirs. INFRA-2303.
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    info "[DRY-RUN] would run: git worktree prune -v"
+  else
+    prune_out=$(git -C "$REPO_ROOT" worktree prune -v 2>&1 || true)
+    prune_count=$(echo "$prune_out" | grep -c "^Removing" || true)
+    if [[ "$prune_count" -gt 0 ]]; then
+      ok "git worktree prune removed $prune_count stale entries"
+      emit_ambient "\"kind\":\"git_worktree_pruned\",\"count\":${prune_count}"
+    else
+      ok "git worktree prune: no stale entries found"
+    fi
+  fi
 fi
 
-# ── Tier 2+: tighter idle window for target/, plus whole-worktree if PR merged ──
+# ── Tier 2+: tighter idle window for target/, whole-worktree if PR merged, sccache reap ──
 if [[ "$tier" -ge 2 ]]; then
   info "tier $tier: target/ idle > 2h + whole-worktree if PR merged & branch deleted"
   if [[ -x "$TARGET_REAPER" ]]; then
     CHUMP_TARGET_REAPER_IDLE_H=2 CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) \
       "$TARGET_REAPER" $([[ "$DRY_RUN" -eq 1 ]] || echo --execute --force) 2>&1 | tail -5
   fi
+
+  # Invoke sccache-reaper if sccache dir >5GB. INFRA-2303.
+  SCCACHE_DIR="${SCCACHE_DIR:-$HOME/Library/Caches/Mozilla.sccache}"
+  if [[ -d "$SCCACHE_DIR" ]]; then
+    sccache_kb=$(du -sk "$SCCACHE_DIR" 2>/dev/null | awk '{print $1}')
+    sccache_threshold_kb=$(( 5 * 1024 * 1024 ))  # 5GB in KB
+    if [[ "$sccache_kb" -gt "$sccache_threshold_kb" ]]; then
+      info "tier 2: sccache dir is ${sccache_kb}KB (>5GB) — invoking sccache-reaper"
+      if [[ -x "$SCCACHE_REAPER" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --dry-run 2>&1 | tail -5
+        else
+          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --execute 2>&1 | tail -5
+        fi
+      else
+        warn "sccache-reaper not found at $SCCACHE_REAPER"
+      fi
+    else
+      ok "sccache dir ${sccache_kb}KB (≤5GB) — skipping sccache reap at tier 2"
+    fi
+  fi
+
   # Whole-worktree reap when its branch is gone from remote (merged-and-deleted).
   scan_pattern="/private/tmp/chump-*"
   reaped_wt=0
@@ -123,7 +162,7 @@ if [[ "$tier" -ge 2 ]]; then
   [[ "$reaped_wt" -gt 0 ]] && ok "tier 2 reaped $reaped_wt worktrees"
 fi
 
-# ── Tier 3: aggressive — whole-worktree if no lease + no uncommitted, 30min idle ──
+# ── Tier 3: aggressive — whole-worktree + target/debug/incremental reap ──
 if [[ "$tier" -ge 3 ]]; then
   warn "tier $tier (5-10GB free): aggressive whole-worktree reap"
   # Build active-lease gap-id set.
@@ -154,6 +193,28 @@ if [[ "$tier" -ge 3 ]]; then
     fi
   done
   [[ "$reaped_t3" -gt 0 ]] && ok "tier 3 reaped $reaped_t3 worktrees"
+
+  # Reap target/debug/incremental from the main repo if no active rustc
+  # process is writing to it. Safe: cargo regenerates incrementals lazily.
+  # Only touch main repo target — worktree targets are handled above. INFRA-2303.
+  INCREMENTAL_DIR="$REPO_ROOT/target/debug/incremental"
+  if [[ -d "$INCREMENTAL_DIR" ]]; then
+    if pgrep -x rustc >/dev/null 2>&1; then
+      info "tier 3: active rustc process detected — skipping incremental reap"
+    else
+      incr_kb=$(du -sk "$INCREMENTAL_DIR" 2>/dev/null | awk '{print $1}')
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        warn "[DRY-RUN] would rm -rf $INCREMENTAL_DIR (~${incr_kb}KB) — no active rustc"
+      else
+        rm -rf "${INCREMENTAL_DIR:?}"/* 2>/dev/null || true
+        incr_freed_bytes=$(( incr_kb * 1024 ))
+        ok "tier 3: reaped target/debug/incremental (~${incr_kb}KB freed)"
+        emit_ambient "\"kind\":\"incremental_reaped\",\"bytes_freed\":${incr_freed_bytes},\"freed_kb\":${incr_kb},\"dir\":\"${INCREMENTAL_DIR}\""
+      fi
+    fi
+  else
+    info "tier 3: $INCREMENTAL_DIR does not exist — skipping"
+  fi
 fi
 
 # ── Tier 4 (RED): operator escalation ────────────────────────────────────
