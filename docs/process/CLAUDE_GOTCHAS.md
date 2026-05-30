@@ -2014,3 +2014,5 @@ bypasses that mask CI state.
 **Discipline**: `bash scripts/coord/freshness-preamble.sh` (META-115) classifies session-start state into FRESH / STALE / CRITICAL_STALE. Chain `freshness-gate.sh && chump claim ...` to refuse MUTATE-class ops on stale source. Full anti-pattern catalog + decision rules in [FRESHNESS_DISCIPLINE.md](FRESHNESS_DISCIPLINE.md).
 
 **Related staleness layers** — same doc covers state.db ↔ YAML drift (`chump gap sync`, INFRA-2053), chump binary drift (`chump --rebuild-if-stale`, INFRA-2054), launchd plist drift (`chump cron health`, INFRA-2046).
+
+**Session-bound vs fleet-durable scheduling** — if a CronCreate or ScheduleWakeup is dying at session close when it should persist, you have a layer mismatch. See [`docs/process/SCHEDULING_LAYERS.md`](./SCHEDULING_LAYERS.md) for the decision rule, anti-pattern catalog, and migration guide (DOC-058).
