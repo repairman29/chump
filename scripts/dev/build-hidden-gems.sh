@@ -175,6 +175,10 @@ for section in ("cli", "mcp", "env", "hidden"):
         lines.append("  " + example)
         lines.append("  ```")
         lines.append("")
+lines.append("---")
+lines.append("")
+lines.append("_Last refreshed: " + datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d") + "_")
+lines.append("")
 new_md = "\n".join(lines) + "\n"
 
 old_md = OUT.read_text() if OUT.exists() else ""
