@@ -1,0 +1,15 @@
+- id: META-168
+  domain: META
+  title: "META-167-b: decompose-loop reactor — react to FEEDBACK kind=proposal on umbrella gaps, emit chump vote with reasoning"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Sub-slice b of META-167. decompose-loop reactor — react to FEEDBACK kind=proposal on umbrella gaps. See docs/strategy/FLEET_WIRE_V1_2026-05-30.md §2 reactor table.
+  acceptance_criteria:
+    - "scripts/coord/decompose-loop.sh tick subcommand gains Phase 1.5 reactor: drains inbox, for each kind=proposal event with status open + AC count >= 3 + no existing sub-gaps emits chump vote +1; if AC vague (TODO present or count < 3) emits chump vote -1; emits kind=decompose_reactor_voted to ambient with reasoning"
+    - Per-corr_id cooldown 1h via .chump-locks/decompose-vote-cooldown/<corr_id> mtime check
+    - "Anti-reaction-loop: SKIP own-session broadcasts, SKIP kind=vote events, SKIP if consensus_result already fired for corr_id"
+    - Feature flag CHUMP_FLEET_WIRE_V1=1 gates the reactor; default off
+    - "scripts/ci/test-decompose-reactor.sh: stub up 3 FEEDBACK proposals (vague, well-formed, with existing sub-gaps); assert 3 votes with correct +1/-1/0 reasoning"
+

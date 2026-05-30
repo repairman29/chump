@@ -717,3 +717,14 @@ CHUMP_UNBLOCK_TEST_CHUMP
 # detected in: (standard input)
 CHUMP_UNBLOCK_TEST_GH
 CHUMP_PREFLIGHT_BASELINE_OVERRIDE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_WIRE_V1
+# detected in: (standard input)
+CHUMP_STUB
+# detected in: (standard input)
+CHUMP_TEST_LOG
+# detected in: (standard input)
+CHUMP_TEST_STUB_DIR
