@@ -6232,3 +6232,47 @@ events:
     expected_volume: "matches hitl_approval_required volume on resolution"
     status: stable
     # payload: {pr: number, signal: string (env:X | file:Y | label:Z), session: string, ts: string}
+
+  # ── INFRA-2067: novel-wedge classifier daemon (META-118 sub-gap 1) ───────────
+  - kind: wedge_class_detected
+    effect_metric: resilient
+    emitter: scripts/coord/novel-wedge-classifier.sh (INFRA-2067)
+    trigger: >
+      Emitted by novel-wedge-classifier.sh when a (failing_test_name,
+      first_error_line_signature_hash) pair recurs >= CHUMP_WEDGE_CLASSIFIER_THRESHOLD
+      times (default 3) within CHUMP_WEDGE_CLASSIFIER_WINDOW_S seconds (default
+      1800s). Signals a novel CI failure pattern that has crystallized into a
+      repeating wedge class. Deduplication: the same signature_hash is not
+      re-emitted within the same window. Rate limit: max
+      CHUMP_WEDGE_CLASSIFIER_RATE_LIMIT emits per hour (default 5).
+      signature_hash is SHA256[:16] of "failing_test_name|normalized_error_line"
+      where normalization strips timestamps, file:line refs, paths, and hex
+      strings to produce a stable fingerprint.
+    consumers:
+      - INFRA-2068 (auto-wedge-file — downstream gap filer, not yet shipped)
+      - INFRA-2069 (wedge-template-library, shipped — provides remediation templates)
+      - INFRA-2070 (cascade-unblock-detector, shipped — triggers cascade rebase)
+      - INFRA-2071 (admin-merge circuit-breaker, shipped — safety gate)
+      - ops-audit
+    fields_required:
+      - ts
+      - kind
+      - signature_hash
+      - failing_test_name
+      - first_error_line
+      - occurrence_count
+      - sample_pr_numbers
+      - window_s
+      - threshold
+      - source
+    expected_volume: "0–5/hr (rate-limited); spikes during CI rot bursts"
+    # payload: {
+    #   signature_hash: str (hex[:16]),
+    #   failing_test_name: str,
+    #   first_error_line: str (raw, pre-normalization),
+    #   occurrence_count: int,
+    #   sample_pr_numbers: [str, ...] (up to 5),
+    #   window_s: int,
+    #   threshold: int,
+    #   source: "novel-wedge-classifier"
+    # }
