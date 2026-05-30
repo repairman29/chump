@@ -21,6 +21,7 @@ members = [
     "crates/mcp-servers/chump-mcp-eval",
     "crates/mcp-servers/chump-mcp-coord",
     "crates/mcp-servers/chump-mcp-memory",
+    "crates/mcp-servers/chump-mcp-fleet",
     "crates/chump-gh-app",
     "crates/chump-team",
     "crates/chump-demo",

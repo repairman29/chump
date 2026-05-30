@@ -1,0 +1,32 @@
+[package]
+name = "chump-mcp-fleet"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server: Chump fleet OS — inbox drain, broadcast, vote, consensus, capabilities over stdio/Unix socket"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/mcp-servers/chump-mcp-fleet"
+license = "MIT"
+keywords = ["mcp", "chump", "fleet", "agent", "json-rpc"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+
+[[bin]]
+name = "chump-mcp-fleet"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[package.metadata.dist]
+dist = false
+
+[lints]
+workspace = true
