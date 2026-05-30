@@ -155,6 +155,57 @@ if [[ "$NEW_FILED" -gt 0 ]]; then
     FAILED=1
 fi
 
+# ── RESILIENT-035 circuit breaker test ─────────────────────────────────────
+# Seed 3 activation sentinels for decompose (max_spawns_per_hour=3 default →
+# 4th detection must trip the breaker). Use a DIFFERENT fingerprint each
+# time to bypass the existing sentinel dedup.
+echo ""
+echo "[test-curator-supervisor] === RUN 3: expect circuit-breaker trip on 4th activation ==="
+ACTIVATION_DIR="$SENTINEL_DIR/../activations/decompose"
+mkdir -p "$ACTIVATION_DIR"
+for i in 1 2 3; do
+    touch "$ACTIVATION_DIR/marker_$i.act"
+done
+
+# Clear sentinel dedup so the supervisor reaches the spawn/restart phase
+# again, and rewrite the log with a NEW error pattern so we get a fresh
+# fingerprint (otherwise dedup catches it before the breaker).
+rm -rf "$SENTINEL_DIR"
+mkdir -p "$SENTINEL_DIR"
+{
+  for i in 1 2 3 4 5 6; do
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] error: fresh-pattern-for-circuit-test-iteration-$i"
+  done
+} > "$LOG_DIR/curator-decompose.log"
+
+# Snapshot ambient before run 3.
+PRE_RUN3_LINES=$(wc -l < "$AMBIENT" 2>/dev/null || echo 0)
+
+CHUMP_CURATOR_SUPERVISOR_LOG_DIR="$LOG_DIR" \
+  CHUMP_CURATOR_SUPERVISOR_AMBIENT="$AMBIENT" \
+  CHUMP_CURATOR_SUPERVISOR_SENTINEL_DIR="$SENTINEL_DIR" \
+  CHUMP_CURATOR_SUPERVISOR_MODE=aggressive \
+  CHUMP_CURATOR_SUPERVISOR_AUTORESTART=1 \
+  CHUMP_CURATOR_SUPERVISOR_DRY_RUN=1 \
+  "$BIN"
+
+BREAKER_COUNT=$(tail -n +$((PRE_RUN3_LINES + 1)) "$AMBIENT" 2>/dev/null \
+    | grep -c '"kind":"curator_supervisor_circuit_broken"' || echo 0)
+NEW_SPAWN_COUNT=$(tail -n +$((PRE_RUN3_LINES + 1)) "$AMBIENT" 2>/dev/null \
+    | grep -c '"action":"would-spawn-sonnet"' || echo 0)
+
+echo "[test-curator-supervisor] curator_supervisor_circuit_broken events in run 3: $BREAKER_COUNT"
+echo "[test-curator-supervisor] would-spawn-sonnet events in run 3: $NEW_SPAWN_COUNT"
+
+if [[ "$BREAKER_COUNT" -lt 1 ]]; then
+    echo "[test-curator-supervisor] FAIL: expected >=1 curator_supervisor_circuit_broken event after 3 prior activations, got $BREAKER_COUNT"
+    FAILED=1
+fi
+if [[ "$NEW_SPAWN_COUNT" -gt 0 ]]; then
+    echo "[test-curator-supervisor] FAIL: circuit broken but would-spawn-sonnet still fired ($NEW_SPAWN_COUNT times) — breaker did not halt remediation"
+    FAILED=1
+fi
+
 # ── result ──────────────────────────────────────────────────────────────────
 echo ""
 if [[ "$FAILED" -eq 0 ]]; then
