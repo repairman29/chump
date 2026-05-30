@@ -227,6 +227,7 @@ mod tests {
             preferred_machine: machine.to_string(),
             estimated_minutes: String::new(),
             required_model: String::new(),
+            shipped_in: None,
         }
     }
 
