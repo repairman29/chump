@@ -2160,6 +2160,35 @@ events:
       PR merged via REST API rather than auto-merge queue
     consumers: [fleet-brief, audit-log]
 
+  # ── Auto-merge rearm daemon (INFRA-2309) ──────────────────────────────────
+  - kind: auto_merge_rearmed
+    effect_metric: effective
+    emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
+    trigger: >
+      CLEAN PR had autoMergeRequest=null (disarmed by force-push/rebase);
+      daemon re-armed auto-merge via gh pr merge --auto --squash.
+      dry_run=true when CHUMP_AUTO_MERGE_REARM_DRY_RUN is set.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, pr, reason, dry_run]
+
+  - kind: auto_merge_rearm_skipped
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
+    trigger: >
+      CLEAN+unarmed PR was found but its title prefix is not in
+      scripts/coord/lib/fix-class-allowlist.txt; operator must either
+      set CHUMP_AUTO_MERGE_REARM_OPEN=1 or add the prefix to the allowlist.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, pr, reason, dry_run]
+
+  - kind: auto_merge_rearm_failed
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
+    trigger: gh pr merge --auto --squash returned non-zero for a CLEAN+allowlisted PR;
+      PR remains unarmed. Investigate gh auth / branch protection settings.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr, reason, dry_run]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     effect_metric: self

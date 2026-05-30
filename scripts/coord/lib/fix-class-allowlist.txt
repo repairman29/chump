@@ -1,0 +1,36 @@
+# fix-class-allowlist.txt — INFRA-2309
+#
+# Fix-class title prefixes that are safe to auto-merge via the
+# auto-merge-rearm-daemon (scripts/coord/auto-merge-rearm-daemon.sh).
+#
+# Format: one prefix per line. Daemon matches with prefix (PR title starts with).
+# Blank lines and lines starting with '#' are ignored.
+#
+# Safety model: feat-class and non-conventional-commit PRs require explicit
+# operator review OR CHUMP_AUTO_MERGE_REARM_OPEN=1 to bypass this list.
+# The listed classes are low-regression-risk by convention:
+#   fix(     — bug fixes
+#   docs(    — documentation only
+#   chore(   — maintenance, dep bumps, config
+#   hotfix(  — urgent production fixes
+#   ci(      — CI/CD pipeline changes
+#   test(    — test additions/corrections
+#   revert(  — explicit reverts (already reviewed once)
+#   build(   — build system changes
+#   style(   — formatting, whitespace (no logic change)
+#   refactor( — code restructure (no behavior change)
+#   perf(    — performance improvements
+#
+# To add feat( or other classes: set CHUMP_AUTO_MERGE_REARM_OPEN=1 in env,
+# or append the prefix below with a comment explaining why it's safe.
+fix(
+docs(
+chore(
+hotfix(
+ci(
+test(
+revert(
+build(
+style(
+refactor(
+perf(
