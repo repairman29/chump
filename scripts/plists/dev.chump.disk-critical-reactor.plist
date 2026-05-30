@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.disk-critical-reactor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/disk-critical-reactor.sh</string>
+  </array>
+  <!-- Long-lived consumer of disk_critical events. Tails ambient.jsonl and on
+       each disk_critical event invokes disk-pressure-reaper.sh with an
+       escalated tier (current+1, bounded by 4) and pages the operator via
+       operator-recall.sh DISK_CRITICAL halt-class if post-reap free% is still
+       below threshold. INFRA-2304. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-disk-critical-reactor.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-disk-critical-reactor.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

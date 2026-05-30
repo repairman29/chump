@@ -20,6 +20,12 @@
 #                             CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300) exist AND
 #                             ≥1 self-hosted runner has status=online,busy=false.
 #                             Guard: CHUMP_RUNNER_GHOST_ONLINE_DETECT (default 1, set to 0 to disable)
+#   (f) DISK_CRITICAL       — ≥1 disk_critical event in last
+#                             CHUMP_DISK_CRITICAL_WINDOW_SECS (default 600) AND
+#                             current free% < CHUMP_DISK_CRITICAL_PCT (default 5).
+#                             Fires when the INFRA-2304 reactor's escalated reap
+#                             could not recover sufficient headroom — operator
+#                             must intervene (manual reap, fleet pause, etc.)
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
@@ -36,6 +42,8 @@
 #   CHUMP_QUEUE_STARVE_SECS                default 86400
 #   CHUMP_RUNNER_QUEUE_THRESHOLD_S         seconds a run stays queued before ghost-online fires (default 300)
 #   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable RUNNER_GHOST_ONLINE detection (default 1)
+#   CHUMP_DISK_CRITICAL_WINDOW_SECS        recency window for disk_critical events (default 600)
+#   CHUMP_DISK_CRITICAL_PCT                free% threshold below which to page (default 5)
 #   CHUMP_AMBIENT_LOG                      path to ambient.jsonl
 
 set -uo pipefail
@@ -53,6 +61,8 @@ _ci_window="${CHUMP_CI_BROKEN_WINDOW_SECS:-7200}"
 _queue_starve="${CHUMP_QUEUE_STARVE_SECS:-86400}"
 _runner_queue_threshold="${CHUMP_RUNNER_QUEUE_THRESHOLD_S:-300}"
 _runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
+_disk_critical_window="${CHUMP_DISK_CRITICAL_WINDOW_SECS:-600}"
+_disk_critical_pct="${CHUMP_DISK_CRITICAL_PCT:-5}"
 
 _check_only=0
 _forced_condition=""
@@ -354,6 +364,23 @@ fi
 # (e) RUNNER_GHOST_ONLINE — queued runs stale + runner online-but-idle contradiction
 if (( _runner_ghost_detect != 0 )); then
     _detect_runner_ghost_online
+fi
+
+# (f) DISK_CRITICAL — disk_critical event recently AND current free% still below threshold
+_disk_hits=$(_scan_ambient "$_disk_critical_window" '"kind":"disk_critical"' | wc -l 2>/dev/null || echo 0)
+_disk_hits="${_disk_hits//[[:space:]]/}"
+if (( _disk_hits > 0 )); then
+    _cur_free_pct=$(df -P /System/Volumes/Data 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print 100-$5}' || echo 100)
+    _cur_free_pct="${_cur_free_pct//[[:space:]]/}"
+    if [[ -n "$_cur_free_pct" ]] && (( _cur_free_pct < _disk_critical_pct )); then
+        _reason="${_disk_hits} disk_critical event(s) in last ${_disk_critical_window}s AND current free=${_cur_free_pct}% (<${_disk_critical_pct}%); reactor escalation insufficient — operator must intervene"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=DISK_CRITICAL: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "DISK_CRITICAL" "$_reason"
+        fi
+    fi
 fi
 
 if (( _check_only && _any_halt )); then
