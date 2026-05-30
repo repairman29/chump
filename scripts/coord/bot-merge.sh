@@ -2919,6 +2919,103 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         TARGET_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
     fi
     if [[ -n "$TARGET_PR" ]]; then
+        # ── INFRA-2274 Consensus merge gate (shadow mode default) ────────────
+        # Replaces the 2026-05-30 operator admin-merge bypass surface with
+        # multi-curator consensus. Default mode is SHADOW: gate runs, logs
+        # would-block events to ambient (kind=consensus_gate_would_block) for
+        # 7 days, but does NOT block the merge. Flip to enforce mode after
+        # observation window with CHUMP_CONSENSUS_MERGE_GATE=enforce.
+        #
+        # Gate behaviour:
+        #   CHUMP_CONSENSUS_MERGE_GATE unset (or 0) → skipped entirely
+        #   CHUMP_CONSENSUS_MERGE_GATE=1            → shadow (log only)
+        #   CHUMP_CONSENSUS_MERGE_GATE=enforce      → blocking
+        #   CHUMP_OPERATOR_CONSENSUS_BYPASS=<reason>→ skip with audit emit
+        #
+        # Verdict is computed via `chump consensus-tally --corr-id pr-N --since 1h`;
+        # PASSED proceeds, anything else (FAILED, NO_QUORUM, EXTENDED) blocks
+        # in enforce mode and logs in shadow mode.
+        # scanner-anchor: "kind":"consensus_gate_would_block"
+        # scanner-anchor: "kind":"consensus_gate_blocked"
+        # scanner-anchor: "kind":"consensus_gate_approved"
+        # scanner-anchor: "kind":"consensus_bypass_used"
+        _consensus_mode="${CHUMP_CONSENSUS_MERGE_GATE:-0}"
+        _consensus_bypass_reason="${CHUMP_OPERATOR_CONSENSUS_BYPASS:-}"
+        if [[ "$_consensus_mode" != "0" ]]; then
+            _cg_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _cg_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+            _cg_session="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
+            _cg_corr="pr-${TARGET_PR}"
+            stage_start "INFRA-2274: consensus merge gate (mode=$_consensus_mode)"
+
+            if [[ -n "$_consensus_bypass_reason" ]]; then
+                # Operator escape hatch — proceed, emit audit event.
+                _cg_line="$(printf '{"ts":"%s","kind":"consensus_bypass_used","pr":%d,"corr_id":"%s","reason":"%s","operator_session_id":"%s","mode":"%s","gap_id":"%s"}' \
+                    "$_cg_ts" "$TARGET_PR" "$_cg_corr" \
+                    "${_consensus_bypass_reason//\"/\\\"}" \
+                    "$_cg_session" "$_consensus_mode" \
+                    "${GAP_IDS[0]:-unknown}")"
+                _ambient_write "$_cg_amb" "$_cg_line"
+                yellow "INFRA-2274: operator consensus bypass invoked — reason=\"$_consensus_bypass_reason\""
+                yellow "INFRA-2274: kind=consensus_bypass_used emitted for audit"
+            else
+                # Find a `chump` binary. Prefer fresh debug build, fall back to PATH.
+                _cg_chump=""
+                if [[ -x "${REPO_ROOT:-.}/target/debug/chump" ]]; then
+                    _cg_chump="${REPO_ROOT:-.}/target/debug/chump"
+                elif command -v chump >/dev/null 2>&1; then
+                    _cg_chump="$(command -v chump)"
+                fi
+
+                _cg_verdict="NO_QUORUM"
+                if [[ -n "$_cg_chump" ]]; then
+                    # Query the tally side. consensus-tally is read-only and
+                    # always runs (no feature-flag gate). Window 1h matches
+                    # the freshness requirement from the gap spec.
+                    _cg_out="$("$_cg_chump" consensus-tally --corr-id "$_cg_corr" --since 1h 2>/dev/null || true)"
+                    # Output shape: "corr_id=...  ...  verdict=PASSED"
+                    if echo "$_cg_out" | grep -q "verdict=PASSED"; then
+                        _cg_verdict="PASSED"
+                    elif echo "$_cg_out" | grep -q "verdict=FAILED"; then
+                        _cg_verdict="FAILED"
+                    elif echo "$_cg_out" | grep -q "verdict=EXTENDED"; then
+                        _cg_verdict="EXTENDED"
+                    elif echo "$_cg_out" | grep -q "verdict=NO_QUORUM"; then
+                        _cg_verdict="NO_QUORUM"
+                    fi
+                else
+                    info "INFRA-2274: chump binary not found — verdict defaults to NO_QUORUM"
+                fi
+
+                if [[ "$_cg_verdict" == "PASSED" ]]; then
+                    _cg_line="$(printf '{"ts":"%s","kind":"consensus_gate_approved","pr":%d,"corr_id":"%s","verdict":"PASSED","mode":"%s","gap_id":"%s"}' \
+                        "$_cg_ts" "$TARGET_PR" "$_cg_corr" "$_consensus_mode" "${GAP_IDS[0]:-unknown}")"
+                    _ambient_write "$_cg_amb" "$_cg_line"
+                    green "INFRA-2274: consensus gate PASSED — proceeding"
+                else
+                    if [[ "$_consensus_mode" == "enforce" ]]; then
+                        # Hard block path.
+                        _cg_line="$(printf '{"ts":"%s","kind":"consensus_gate_blocked","pr":%d,"corr_id":"%s","verdict":"%s","mode":"enforce","gap_id":"%s","note":"INFRA-2274: enforce mode — merge blocked; cast votes via chump vote pr-%d +1 --reason approve from N=3 curators (handoff, ci-audit, infra-watcher)"}' \
+                            "$_cg_ts" "$TARGET_PR" "$_cg_corr" "$_cg_verdict" \
+                            "${GAP_IDS[0]:-unknown}" "$TARGET_PR")"
+                        _ambient_write "$_cg_amb" "$_cg_line"
+                        red "INFRA-2274: consensus gate BLOCKED — verdict=$_cg_verdict (enforce mode)"
+                        red "  Need: 3 +1 votes from curators via 'chump vote $_cg_corr +1 --reason \"...\"'"
+                        red "  Bypass (emergency): CHUMP_OPERATOR_CONSENSUS_BYPASS=\"<reason>\" scripts/coord/bot-merge.sh ..."
+                        exit 1
+                    else
+                        # Shadow mode — log would-block, proceed anyway.
+                        _cg_line="$(printf '{"ts":"%s","kind":"consensus_gate_would_block","pr":%d,"corr_id":"%s","verdict":"%s","mode":"shadow","gap_id":"%s","note":"INFRA-2274: shadow mode — would block in enforce; set CHUMP_CONSENSUS_MERGE_GATE=enforce after observation window"}' \
+                            "$_cg_ts" "$TARGET_PR" "$_cg_corr" "$_cg_verdict" \
+                            "${GAP_IDS[0]:-unknown}")"
+                        _ambient_write "$_cg_amb" "$_cg_line"
+                        yellow "INFRA-2274: consensus gate WOULD BLOCK — verdict=$_cg_verdict (shadow mode, proceeding)"
+                    fi
+                fi
+            fi
+            stage_done
+        fi
+
         # ── 6.5 Code-reviewer agent gate (INFRA-AGENT-CODEREVIEW MVP) ────────
         # If the PR touches src/* or crates/*/src/*, run the code-reviewer
         # agent before enabling auto-merge. APPROVE/SKIP -> proceed; CONCERN
