@@ -2004,6 +2004,21 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
 
+  # ── INFRA-2169: Mode D external-ship audit receipt ────────────────────────
+  - kind: external_repo_ship
+    effect_metric: effective
+    emitter: scripts/coord/pr-rescue.sh (INFRA-2169)
+    trigger: >
+      A cross-repository (fork) PR was successfully rebased and merged
+      by the fork-aware shepherd (INFRA-2114). Emitted once per merged
+      fork PR so operators can audit Mode D (external-repo) throughput.
+      Also fires broadcast.sh DONE <gap_id> <head_sha> for A2A routing.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, external_repo, pr_url, head_sha, files_touched_count, shipper_session]
+    related_kinds: [pr_rescue_completed]
+    status: stable
+    # payload: {ts: string, gap_id: string, external_repo: "owner/repo", pr_url: string, head_sha: string, files_touched_count: number, shipper_session: string}
+
   # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
   - kind: paramedic_action
     emitter: src/paramedic.rs (INFRA-1375)
