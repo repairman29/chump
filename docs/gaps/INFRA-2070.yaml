@@ -1,7 +1,7 @@
 - id: INFRA-2070
   domain: INFRA
   title: "RESILIENT: cascade-unblock detector (META-118 sub-gap 4) — when wedge_auto_fix PR MERGES, identify all open PRs whose CI failed on same signature; trigger gh pr update-branch on each; emit kind=cascade_unblocked"
-  status: open
+  status: ready_to_ship
   priority: P1
   effort: xs
   acceptance_criteria:
