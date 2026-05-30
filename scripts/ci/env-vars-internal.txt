@@ -729,3 +729,26 @@ CHUMP_CONSENSUS_MERGE_GATE
 CHUMP_EOF
 # detected in: (standard input)
 CHUMP_OPERATOR_CONSENSUS_BYPASS
+CHUMP_AMBIENT_OVERRIDE
+# detected in: (standard input)
+CHUMP_EC_AMBIENT_LOG
+# detected in: (standard input)
+CHUMP_EC_LOCK_DIR
+# detected in: (standard input)
+CHUMP_EC_REPO_ROOT
+# detected in: (standard input)
+CHUMP_FLEET_RECV_SIDE_V0
+# detected in: (standard input)
+CHUMP_INFRA_WATCHER_PLIST_DIR
+# detected in: (standard input)
+CHUMP_IW_AMBIENT_LOG
+# detected in: (standard input)
+CHUMP_IW_LOCK_DIR
+# detected in: (standard input)
+CHUMP_LAUNCHAGENTS_OVERRIDE
+# detected in: (standard input)
+CHUMP_MD_LINKS_DOCS
+# detected in: (standard input)
+CHUMP_OBS_DRY_RUN
+# detected in: (standard input)
+CHUMP_OBS_LOCK_DIR
