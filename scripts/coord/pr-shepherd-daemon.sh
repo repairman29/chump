@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # scripts/coord/pr-shepherd-daemon.sh — META-181 / META-180 slice 1
+# META-182: cache-first tick via cache_query_open_prs + CHUMP_GH_CALL_CRITICALITY=background
 #
 # Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs
 # (read-only), counts them, and emits one ambient pr_shepherd_tick event with
@@ -19,6 +20,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
 DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
 
+# Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
+# cache_query_open_prs instead of burning raw GraphQL quota.
+# shellcheck source=scripts/coord/lib/github_cache.sh
+source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
 emit_tick() {
   local count="$1"
   local ts
@@ -34,22 +40,15 @@ emit_tick() {
 }
 
 cmd_tick() {
-  # Cache-first: prefer scripts/coord/lib/github_cache.sh if available
-  # Raw gh pr list used here: META-181 skeleton; migration to chump_gh wrapper deferred to META-182 (cache-first integration)
+  # Cache-first (INFRA-1081) + background criticality (INFRA-1080):
+  # cache_query_open_prs reads from .chump/github_cache.db (SQLite) first,
+  # falls back to a single REST call on miss — never burns GraphQL quota.
+  # CHUMP_GH_CALL_CRITICALITY=background yields the GH API bucket to
+  # ship-blocking writes (gh pr merge, gh pr create) when quota is tight.
   local count
-  if command -v gh >/dev/null 2>&1; then
-    count=$(gh pr list --state open --json number --jq 'length' 2>/dev/null || echo 0)
-  else
-    count=0
-  fi
+  count=$(CHUMP_GH_CALL_CRITICALITY=background cache_query_open_prs 2>/dev/null | wc -l | tr -d ' ')
   emit_tick "$count"
-  local dry_label
-  if [ -n "$DRY_RUN" ]; then
-    dry_label="true"
-  else
-    dry_label="false"
-  fi
-  echo "[pr-shepherd-daemon] tick — open PRs: $count, dry_run: $dry_label" >&2
+  echo "[pr-shepherd-daemon] tick — open PRs: $count, dry_run: ${DRY_RUN:-false}" >&2
 }
 
 case "${1:-}" in
