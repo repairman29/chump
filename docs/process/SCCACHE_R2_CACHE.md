@@ -46,37 +46,65 @@ authenticates against the R2 bucket. The most common cause is a **half-rotation*
 one secret value was updated in GH but the matching half was not, breaking
 the pair (see 2026-05-29 incident — INFRA-2127 / INFRA-2237).
 
-**Fix in one command (INFRA-2237):**
+### Primary path — atomic GH-secret update (INFRA-2240)
+
+This is the daily-driver rotation flow. No Cloudflare API scope required —
+operator regenerates the R2 token via the CF dashboard (a one-click flow
+they're already doing), then a 20-line script atomically updates both
+GH secrets so the pair can never end up half-rotated.
+
+1. **CF dashboard** → R2 → Manage R2 API Tokens → roll the
+   `chump-sccache-ci` token. New `Access Key ID` (32-char hex) and
+   `Secret Access Key` (64-char hex) appear on-screen, **once only**.
+2. **Paste both** into `~/.chump/r2-new-token.txt`:
+   ```
+   ACCESS_KEY_ID=<32-char-hex>
+   SECRET_ACCESS_KEY=<64-char-hex>
+   ```
+   `chmod 600 ~/.chump/r2-new-token.txt` (gitignored under `~/.chump/`).
+3. **Run:**
+   ```bash
+   # Dry-run shows lengths + fingerprints + intended writes:
+   bash scripts/ops/rotate-sccache-r2-gh-only.sh
+
+   # Actually rotate (single shell, both secrets, audit emit, file shredded):
+   bash scripts/ops/rotate-sccache-r2-gh-only.sh --execute
+   ```
+
+The script validates lengths (refuses any deviation from 32/64), writes
+`R2_ACCESS_KEY_ID` then `R2_SECRET_ACCESS_KEY` back-to-back, verifies both
+secret timestamps land within 1-2 seconds of each other (pair-mismatch class
+avoided), securely deletes the input file (`shred -uz` preferred,
+`rm -P` fallback), and emits `kind=sccache_r2_gh_rotated` with first-4/last-4
+audit fingerprints (never full secret values).
+
+After rotation, the next CI run on any Rust PR uses the new pair. Trigger
+with a push (any PR) or `gh workflow run ci.yml --ref main`. Watch for
+`sccache` log to switch from `S3Error Unauthorized` to cache hit/miss stats.
+
+### Advanced backup — full CF-API automation (INFRA-2237)
+
+For operators who want zero manual dashboard interaction (CI/CD-style
+rotation), `scripts/ops/rotate-sccache-r2-token.sh` automates the CF token
+regen via API too. **Requires a Cloudflare API token with
+`User API Tokens: Edit` scope** — a privileged scope an operator may not
+want to keep around for everyday rotations.
 
 ```bash
-# One-time setup: create a Cloudflare API token with
-#   Account → Workers R2 Storage → Edit
-# at https://dash.cloudflare.com/profile/api-tokens
-# (this is DIFFERENT from the R2 S3-compat token being rotated; it's the
-# parent token that grants permission to rotate other tokens.)
-export CHUMP_CF_API_TOKEN='cf-api-token-with-r2-edit-scope'
+export CHUMP_CF_API_TOKEN='cf-api-token-with-user-api-tokens-edit-scope'
 export CHUMP_R2_ACCOUNT_ID='32-char-cf-account-hex'
-
-# Dry-run shows what would change:
-bash scripts/ops/rotate-sccache-r2-token.sh
-
-# Actually rotate (atomic — new CF token + both GH secrets in one operation):
-bash scripts/ops/rotate-sccache-r2-token.sh --execute
+bash scripts/ops/rotate-sccache-r2-token.sh           # dry-run
+bash scripts/ops/rotate-sccache-r2-token.sh --execute # full rotation
 ```
 
-The script: validates the CF API token; finds the existing token by name
-(default `chump-sccache-ci`); creates a NEW R2 token with the same name +
-permissions; updates BOTH `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` GH
-secrets atomically; deletes the OLD R2 token; emits
-`kind=sccache_r2_token_rotated` with first-4/last-4 audit fingerprints.
+This path creates a NEW R2 token via CF API, updates both GH secrets,
+deletes the old CF token, emits `kind=sccache_r2_token_rotated`. Trap
+EXIT/INT/TERM cleans up orphan new tokens on partial failure.
 
-If anything fails mid-flow, the script attempts to delete the orphan new CF
-token before exiting non-zero. If step 4 partially succeeds (one secret
-updated, other failed), GH is half-rotated and the operator must re-run the
-script or manually re-paste from the still-valid old token.
-
-After rotation, the next CI run on any branch should switch from `S3Error
-Unauthorized` to cache hit/miss stats.
+Both paths emit `kind=sccache_r2_gh_rotation_partial` (GH-only) or
+`kind=sccache_r2_token_rotation_partial` (CF-API) if the second GH-secret
+write fails after the first succeeds, with an explicit operator-recovery
+message naming the half-rotated state.
 
 ## Operator: remaining R2 steps (~10 min — first-time setup only)
 
