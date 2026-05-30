@@ -996,10 +996,20 @@ events:
 
   - kind: pr_action_taken
     effect_metric: self
-    emitter: scripts/coord/pr-shepherd-daemon.sh (META-184)
-    trigger: emitted once per BEHIND PR per tick when the daemon attempts or skips a rebase action; action=rebase on success, action=rebase_failed on gh error, action=rebase_skipped with reason=trunk_red|claim|debounce|throttle|conflict when a safety guard fires
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-184/META-186)
+    trigger: |
+      emitted once per actioned PR per tick; action enum (META-186 extended):
+        rebase               — BEHIND PR rebased via gh pr update-branch
+        rebase_failed        — gh error on rebase
+        rebase_skipped       — rebase guard fired; reason=trunk_red|claim|debounce|throttle|conflict
+        arm_auto_merge       — BLOCKED_GREEN PR armed via gh pr merge --auto --squash
+        arm_auto_merge_failed — gh error on arm
+        arm_auto_merge_skipped — arm guard fired; reason=trunk_red|throttle
+        file_followup_gap    — BLOCKED_REAL_FAIL gap filed via chump gap reserve; new_gap_id field present
+        file_followup_gap_skipped — gap filing skipped; reason=trunk_red|throttle|dedup
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, pr_number, action, reason, gap_id, dry_run]
+    fields_optional: [new_gap_id]
 
   - kind: pr_merged
     effect_metric: self

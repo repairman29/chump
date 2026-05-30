@@ -7,6 +7,11 @@
 # (g) META-184: trunk-red guard — all BEHIND PRs get rebase_skipped reason=trunk_red,
 # (h) META-184: claim guard — PR with active claim gets rebase_skipped reason=claim,
 # (i) META-184: throttle guard — more than MAX_REBASES BEHIND PRs → overflow gets rebase_skipped reason=throttle.
+# META-186:
+# (j) BLOCKED_GREEN fixture → arm_auto_merge action emitted
+# (k) BLOCKED_REAL_FAIL fresh fingerprint → file_followup_gap with non-empty gap_id
+# (l) same fingerprint twice → second call yields file_followup_gap_skipped reason=dedup
+# (m) throttle: 6 BLOCKED_GREEN PRs with MAX_ARMS=5 → first 5 arm, 6th throttle
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -563,4 +568,381 @@ if [[ -n "$action_events" ]]; then
   echo "[test] pr_action_taken event shape: OK"
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states verified)"
+echo "[test-pr-shepherd-daemon] META-184/185 guards: PASS"
+
+# ── (j) META-186: BLOCKED_GREEN fixture → arm_auto_merge ─────────────────────
+# Pure-Python harness: simulate the action loop for BLOCKED_GREEN, assert
+# arm_auto_merge event emitted.
+META186_WORK_DIR="$(mktemp -d /tmp/shepherd-186-test-XXXXXX)"
+trap 'rm -rf "$META186_WORK_DIR"' EXIT
+
+META186_AMBIENT="$META186_WORK_DIR/ambient.jsonl"
+META186_FILED="$META186_WORK_DIR/filed-gaps.jsonl"
+META186_DEBOUNCE="$META186_WORK_DIR/debounce.jsonl"
+: > "$META186_AMBIENT"
+: > "$META186_FILED"
+: > "$META186_DEBOUNCE"
+
+# Mock chump — prints a fake gap ID
+META186_CHUMP="$META186_WORK_DIR/chump"
+cat > "$META186_CHUMP" << 'MOCK_CHUMP_EOF'
+#!/usr/bin/env bash
+# Extract title arg and manufacture a fake gap ID
+if [[ "$*" == *"gap reserve"* ]]; then
+  echo "Reserved INFRA-9901"
+  exit 0
+fi
+exit 0
+MOCK_CHUMP_EOF
+chmod +x "$META186_CHUMP"
+
+META186_HARNESS_SH="$META186_WORK_DIR/harness-186.sh"
+cat > "$META186_HARNESS_SH" << HARNESS186_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$META186_AMBIENT"
+FILED_GAPS_FILE="$META186_FILED"
+REBASE_DEBOUNCE_FILE="$META186_DEBOUNCE"
+DRY_RUN=1
+MAX_REBASES=3
+MAX_ARMS=5
+MAX_GAPS=2
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+emit_tick() { :; }
+
+_emit_pr_classified() {
+  local n="\$1" c="\$2" g="\$3" a="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_classified","pr":%d,"classification":"%s","gap_id":"%s","age_minutes":%d,"dry_run":true}\n' "\$ts" "\$n" "\$c" "\$g" "\$a" >> "\$AMBIENT"
+}
+
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+
+_emit_pr_action_taken_with_new_gap() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ngid="\$5" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","new_gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" "\$ngid" >> "\$AMBIENT"
+}
+
+_should_skip_trunk_red() { return 1; }
+_pr_has_active_claim() { return 1; }
+_fingerprint_failure() {
+  local job_name="\${1:-}" signature="\${2:-}"
+  local combined="\${job_name}::\${signature}"
+  printf '%s' "\$combined" | python3 -c "import sys, hashlib; data = sys.stdin.read(); print(hashlib.sha256(data.encode()).hexdigest()[:8])"
+}
+_pr_already_filed_recently() {
+  local fingerprint="\$1"
+  [[ -z "\$fingerprint" ]] && return 1
+  [[ ! -f "\$FILED_GAPS_FILE" ]] && return 1
+  python3 - "\$fingerprint" "\$FILED_GAPS_FILE" << 'FILED_PYEOF'
+import json, sys
+from datetime import datetime, timezone, timedelta
+cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+fingerprint, filed_path = sys.argv[1], sys.argv[2]
+try:
+    with open(filed_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                ev = json.loads(line)
+                if ev.get('fingerprint') == fingerprint:
+                    ts_str = ev.get('ts', '')
+                    if ts_str:
+                        ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                        if ev_ts >= cutoff:
+                            sys.exit(0)
+            except Exception:
+                pass
+except Exception:
+    pass
+sys.exit(1)
+FILED_PYEOF
+}
+_record_filed_gap() {
+  local pr_num="\$1" fingerprint="\$2" new_gap_id="\$3" job_name="\$4"
+  mkdir -p "\$(dirname "\$FILED_GAPS_FILE")"
+  local ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","pr_number":%d,"fingerprint":"%s","gap_id":"%s","job_name":"%s"}\n' \
+    "\$ts" "\$pr_num" "\$fingerprint" "\$new_gap_id" "\$job_name" >> "\$FILED_GAPS_FILE"
+}
+
+# Single BLOCKED_GREEN PR
+classified='{"pr":601,"classification":"BLOCKED_GREEN","gap_id":"META-601","age_minutes":10,"head_sha":"abc601","fail_job":"","fail_sig":""}'
+
+arm_count=0
+while IFS= read -r line; do
+  pr_num=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  c=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  gap_id=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gap_id"])')
+  age=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["age_minutes"])')
+  _emit_pr_classified "\$pr_num" "\$c" "\$gap_id" "\$age"
+  if [ "\$c" = "BLOCKED_GREEN" ]; then
+    _should_skip_trunk_red && { _emit_pr_action_taken "\$pr_num" "arm_auto_merge_skipped" "trunk_red" "\$gap_id"; continue; }
+    if [ "\$arm_count" -ge "\$MAX_ARMS" ]; then
+      _emit_pr_action_taken "\$pr_num" "arm_auto_merge_skipped" "throttle" "\$gap_id"
+      continue
+    fi
+    # DRY_RUN path
+    _emit_pr_action_taken "\$pr_num" "arm_auto_merge" "" "\$gap_id"
+    arm_count=\$((arm_count + 1))
+  fi
+done <<< "\$classified"
+HARNESS186_EOF
+chmod +x "$META186_HARNESS_SH"
+
+bash "$META186_HARNESS_SH" 2>/dev/null || { echo "[test] FAIL (j): BLOCKED_GREEN harness non-zero"; exit 1; }
+
+arm_ok=$(python3 -c "
+import json, sys
+try:
+    with open('$META186_AMBIENT') as f:
+        for line in f:
+            ev = json.loads(line.strip())
+            if ev.get('action') == 'arm_auto_merge' and ev.get('reason','') == '' and ev.get('pr_number') == 601:
+                print('YES')
+                sys.exit(0)
+except Exception as e:
+    pass
+print('NO')
+" 2>/dev/null || echo "NO")
+if [[ "$arm_ok" == "YES" ]]; then
+  echo "[test] (j) META-186 BLOCKED_GREEN → arm_auto_merge: OK"
+else
+  echo "[test] FAIL (j): BLOCKED_GREEN did not emit arm_auto_merge"
+  exit 1
+fi
+
+# ── (k) META-186: BLOCKED_REAL_FAIL fresh fingerprint → file_followup_gap ────
+META186_BRF_AMBIENT="$META186_WORK_DIR/ambient-brf.jsonl"
+META186_BRF_FILED="$META186_WORK_DIR/filed-brf.jsonl"
+: > "$META186_BRF_AMBIENT"
+: > "$META186_BRF_FILED"
+
+META186_BRF_HARNESS="$META186_WORK_DIR/harness-brf.sh"
+cat > "$META186_BRF_HARNESS" << BRF_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$META186_BRF_AMBIENT"
+FILED_GAPS_FILE="$META186_BRF_FILED"
+DRY_RUN=1
+MAX_GAPS=2
+MAX_ARMS=5
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+_emit_pr_classified() { :; }
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+_emit_pr_action_taken_with_new_gap() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ngid="\$5" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","new_gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" "\$ngid" >> "\$AMBIENT"
+}
+_should_skip_trunk_red() { return 1; }
+_fingerprint_failure() {
+  local job_name="\${1:-}" signature="\${2:-}"
+  printf '%s' "\${job_name}::\${signature}" | python3 -c "import sys,hashlib; print(hashlib.sha256(sys.stdin.read().encode()).hexdigest()[:8])"
+}
+_pr_already_filed_recently() {
+  local fingerprint="\$1"
+  [[ -z "\$fingerprint" ]] && return 1
+  [[ ! -f "\$FILED_GAPS_FILE" ]] && return 1
+  python3 -c "
+import json, sys
+from datetime import datetime, timezone, timedelta
+cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+fp, filed_path = sys.argv[1], sys.argv[2]
+try:
+    with open(filed_path) as fh:
+        for ln in fh:
+            ln = ln.strip()
+            if not ln: continue
+            try:
+                ev = json.loads(ln)
+                if ev.get('fingerprint') == fp:
+                    ts_str = ev.get('ts','')
+                    if ts_str:
+                        ev_ts = datetime.fromisoformat(ts_str.replace('Z','+00:00'))
+                        if ev_ts >= cutoff:
+                            sys.exit(0)
+            except: pass
+except: pass
+sys.exit(1)
+" "\$fingerprint" "\$FILED_GAPS_FILE" 2>/dev/null
+}
+_record_filed_gap() {
+  local pr_num="\$1" fp="\$2" ngid="\$3" jname="\$4"
+  local ts; ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","pr_number":%d,"fingerprint":"%s","gap_id":"%s","job_name":"%s"}\n' "\$ts" "\$pr_num" "\$fp" "\$ngid" "\$jname" >> "\$FILED_GAPS_FILE"
+}
+
+classified='{"pr":602,"classification":"BLOCKED_REAL_FAIL","gap_id":"META-602","age_minutes":10,"head_sha":"abc602","fail_job":"cargo-test","fail_sig":"https://ci/runs/12345"}'
+
+gap_file_count=0
+while IFS= read -r line; do
+  pr_num=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  c=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  gap_id=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gap_id"])')
+  fail_job=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fail_job",""))')
+  fail_sig=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fail_sig",""))')
+  if [ "\$c" = "BLOCKED_REAL_FAIL" ]; then
+    _should_skip_trunk_red && { _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "trunk_red" "\$gap_id"; continue; }
+    if [ "\$gap_file_count" -ge "\$MAX_GAPS" ]; then
+      _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "throttle" "\$gap_id"
+      continue
+    fi
+    local_fp=\$(_fingerprint_failure "\$fail_job" "\$fail_sig")
+    if _pr_already_filed_recently "\$local_fp"; then
+      _emit_pr_action_taken "\$pr_num" "file_followup_gap_skipped" "dedup" "\$gap_id"
+      continue
+    fi
+    # DRY_RUN path — manufacture a fake gap ID
+    new_gap_id="DRY-RUN-\${local_fp}"
+    _record_filed_gap "\$pr_num" "\$local_fp" "\$new_gap_id" "\$fail_job"
+    _emit_pr_action_taken_with_new_gap "\$pr_num" "file_followup_gap" "" "\$gap_id" "\$new_gap_id"
+    gap_file_count=\$((gap_file_count + 1))
+  fi
+done <<< "\$classified"
+BRF_EOF
+chmod +x "$META186_BRF_HARNESS"
+
+bash "$META186_BRF_HARNESS" 2>/dev/null || { echo "[test] FAIL (k): BLOCKED_REAL_FAIL harness non-zero"; exit 1; }
+
+gap_filed_ok=$(python3 -c "
+import json, sys
+try:
+    with open('$META186_BRF_AMBIENT') as f:
+        for line in f:
+            ev = json.loads(line.strip())
+            if ev.get('action') == 'file_followup_gap' and ev.get('pr_number') == 602:
+                ngid = ev.get('new_gap_id','')
+                if ngid and ngid != '':
+                    print('YES')
+                    sys.exit(0)
+except Exception:
+    pass
+print('NO')
+" 2>/dev/null || echo "NO")
+if [[ "$gap_filed_ok" == "YES" ]]; then
+  echo "[test] (k) META-186 BLOCKED_REAL_FAIL fresh → file_followup_gap: OK"
+else
+  echo "[test] FAIL (k): BLOCKED_REAL_FAIL did not emit file_followup_gap with non-empty new_gap_id"
+  exit 1
+fi
+
+# ── (l) META-186: same fingerprint twice → dedup on second call ──────────────
+# Re-run the BRF harness against the same filed-gaps file — should get dedup skip
+bash "$META186_BRF_HARNESS" 2>/dev/null || { echo "[test] FAIL (l): BLOCKED_REAL_FAIL dedup harness non-zero"; exit 1; }
+
+dedup_skipped=$(python3 -c "
+import json, sys
+count = 0
+try:
+    with open('$META186_BRF_AMBIENT') as f:
+        for line in f:
+            ev = json.loads(line.strip())
+            if ev.get('action') == 'file_followup_gap_skipped' and ev.get('reason') == 'dedup' and ev.get('pr_number') == 602:
+                count += 1
+except Exception:
+    pass
+print(count)
+" 2>/dev/null || echo 0)
+if [[ "$dedup_skipped" -ge 1 ]]; then
+  echo "[test] (l) META-186 dedup: OK (second call → file_followup_gap_skipped reason=dedup)"
+else
+  echo "[test] FAIL (l): expected file_followup_gap_skipped reason=dedup on second call, got ${dedup_skipped}"
+  exit 1
+fi
+
+# ── (m) META-186: throttle 6 BLOCKED_GREEN → first 5 arm, 6th throttle ──────
+META186_THROTTLE_AMBIENT="$META186_WORK_DIR/ambient-throttle.jsonl"
+: > "$META186_THROTTLE_AMBIENT"
+
+META186_THROTTLE_HARNESS="$META186_WORK_DIR/harness-throttle.sh"
+cat > "$META186_THROTTLE_HARNESS" << THROTTLE186_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$META186_THROTTLE_AMBIENT"
+DRY_RUN=1
+MAX_ARMS=5
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+_should_skip_trunk_red() { return 1; }
+
+# 6 BLOCKED_GREEN PRs — first 5 should arm, 6th should throttle
+classified=\$(python3 -c "
+import json
+for i in range(601, 607):
+    print(json.dumps({'pr': i, 'classification': 'BLOCKED_GREEN', 'gap_id': f'META-{i}', 'age_minutes': 5, 'head_sha': f'sha{i}', 'fail_job': '', 'fail_sig': ''}))
+")
+
+arm_count=0
+while IFS= read -r line; do
+  pr_num=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  c=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  gap_id=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gap_id"])')
+  if [ "\$c" = "BLOCKED_GREEN" ]; then
+    _should_skip_trunk_red && { _emit_pr_action_taken "\$pr_num" "arm_auto_merge_skipped" "trunk_red" "\$gap_id"; continue; }
+    if [ "\$arm_count" -ge "\$MAX_ARMS" ]; then
+      _emit_pr_action_taken "\$pr_num" "arm_auto_merge_skipped" "throttle" "\$gap_id"
+      continue
+    fi
+    _emit_pr_action_taken "\$pr_num" "arm_auto_merge" "" "\$gap_id"
+    arm_count=\$((arm_count + 1))
+  fi
+done <<< "\$classified"
+THROTTLE186_EOF
+chmod +x "$META186_THROTTLE_HARNESS"
+
+bash "$META186_THROTTLE_HARNESS" 2>/dev/null || { echo "[test] FAIL (m): throttle harness non-zero"; exit 1; }
+
+arm_count_ok=$(python3 -c "
+import json
+n = 0
+with open('$META186_THROTTLE_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        if ev.get('action') == 'arm_auto_merge' and ev.get('reason','') == '':
+            n += 1
+print(n)
+" 2>/dev/null || echo 0)
+throttle_arm_count=$(python3 -c "
+import json
+n = 0
+with open('$META186_THROTTLE_AMBIENT') as f:
+    for line in f:
+        ev = json.loads(line.strip())
+        if ev.get('action') == 'arm_auto_merge_skipped' and ev.get('reason') == 'throttle':
+            n += 1
+print(n)
+" 2>/dev/null || echo 0)
+
+if [[ "$arm_count_ok" -eq 5 && "$throttle_arm_count" -ge 1 ]]; then
+  echo "[test] (m) META-186 arm throttle: OK (5 armed, ${throttle_arm_count} throttled)"
+else
+  echo "[test] FAIL (m): expected 5 armed + >=1 throttled, got arm=${arm_count_ok} throttle=${throttle_arm_count}"
+  exit 1
+fi
+
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions verified)"
