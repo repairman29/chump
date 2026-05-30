@@ -3,7 +3,6 @@
   title: "EFFECTIVE: INFRA-1815-sideA — create crates/coord-mesh in internal sibling repo and activate mesh-bridge git dep"
   status: open
   priority: P2
-  effort: m
   effort: s
   acceptance_criteria:
     1. Inside the internal sibling repo, create `crates/coord-mesh/` as described in CP-008 (docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md §New crate layout). Move `mesh::abstract_impl` + `consensus/mod.rs` + `mesh/simulator.rs` (feature-gated) into `coord-mesh/src/`. Add re-exports in `crates/coord/src/lib.rs` so existing proprietary consumers compile unchanged.
