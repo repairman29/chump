@@ -1,0 +1,17 @@
+- id: INFRA-2258
+  domain: INFRA
+  title: "EFFECTIVE: chump voice subcommand — file VOA-NNNN gap from agent session with anonymized friction report + optional PR-from-user submission (Voice-of-Agent protocol Part 1)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New src/commands/voice.rs implements chump voice subcommand with flags: --wedge-class <id>, --minutes-lost <int>, --workaround <text>, --fix-shape <doc|tooling|gate|new-subcommand|other>, --fix <text>, --target-repo <slug|opt-in:slug|anonymous>, --evidence <gap-or-pr-id,...>"
+    - "Writes docs/gaps/VOA-NNNN.yaml (auto-incremented ID per VOA series); fields per VOA-001 schema; defaults target_repo=anonymous unless --target-repo opt-in:X explicitly set"
+    - Reads ~/.chump/voice-opt-in.toml for blanket-consent power-users; honors per-VOA disclosure overrides via flag
+    - "Optional --ship flag: after writing YAML, opens a PR against repairman29/chump from user's gh auth identity with VOA-NNNN attached; respects opt-in identity disclosure"
+    - Emit kind=voice_of_agent_filed (anonymized fields only; never raw target_repo unless opt-in)
+    - "Smoke test scripts/ci/test-voice-subcommand.sh: invoke with anonymized flags, assert VOA-NNNN.yaml written with correct shape + no opt-in leaks; assert --ship --dry-run prints the PR body without actually opening PR"
+    - docs/process/VOICE_OF_AGENT.md updated with CLI usage examples and opt-in.toml schema
+  notes: |
+    [2026-05-30T05:04:42Z] Voice-of-Agent protocol Part 1. Companion to INFRA-2260 (aggregation). Pairs with VOA-001 (the retroactive test case + schema definition).
+

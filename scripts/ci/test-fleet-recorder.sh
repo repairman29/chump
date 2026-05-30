@@ -175,6 +175,27 @@ info "post_restart_event rows: ${POST_RESTART} (expected 2)"
     fail "Expected 2 post-restart events, got ${POST_RESTART} (zero-event-loss test FAILED)"
 pass "SIGTERM + restart: 2 post-restart events captured (zero loss)"
 
+# ── INFRA-2203: assert gap_id='' not NULL for events with no gap field ────────
+# Append a line with no gap_id so the recorder must coerce None→''.
+printf '{"ts":"2026-05-29T12:02:00Z","kind":"no_gap_event","session":"null-gap-s1"}\n' \
+    >> "$AMBIENT_PATH"
+info "Appended ambient line with no gap_id (INFRA-2203 NULL-coerce test)"
+sleep 1  # allow recorder to ingest
+
+NULL_GAP_ROW=$(sqlite3 "$DB_PATH" \
+    "SELECT COUNT(*) FROM events WHERE event_kind='no_gap_event' AND gap_id IS NULL;" \
+    2>/dev/null || echo "0")
+EMPTY_GAP_ROW=$(sqlite3 "$DB_PATH" \
+    "SELECT COUNT(*) FROM events WHERE event_kind='no_gap_event' AND gap_id='';" \
+    2>/dev/null || echo "0")
+info "no_gap_event rows with gap_id IS NULL : ${NULL_GAP_ROW} (must be 0)"
+info "no_gap_event rows with gap_id=''      : ${EMPTY_GAP_ROW} (must be 1)"
+[[ "$NULL_GAP_ROW" -eq 0 ]] || \
+    fail "INFRA-2203: recorder wrote NULL gap_id instead of '' for event with no gap field"
+[[ "$EMPTY_GAP_ROW" -eq 1 ]] || \
+    fail "INFRA-2203: expected gap_id='' row not found (got ${EMPTY_GAP_ROW})"
+pass "INFRA-2203: gap_id='' (not NULL) for event with no gap field"
+
 # ── schema sanity: verify all columns and indexes exist ──────────────────────
 COLS=$(sqlite3 "$DB_PATH" "PRAGMA table_info(events);" | awk -F'|' '{print $2}' | sort | tr '\n' ',')
 for col in ts ts_ms source subject event_kind session_id gap_id payload; do

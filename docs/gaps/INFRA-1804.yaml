@@ -1,0 +1,17 @@
+- id: INFRA-1804
+  domain: INFRA
+  title: "ZERO-WASTE: import BandwidthBudget + MessageQueue offline-fallback patterns; wire into INFRA-1758 file-fallback + chump_gh throttle layer"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Port BandwidthBudget + MessageQueue from internal sibling repo crates/coord/src/mesh/abstract_impl.rs
+    - BandwidthBudget {remaining, total, window_seconds, window_start} with can_send(message_size) -> bool + deduct(message_size) + reset() — adapt 'bytes' framing to 'tokens' for our LLM-agent use case (per CHUMP_GH_MAX_CALLS_PER_MIN + token-budget tracking)
+    - MessageQueue {pending, max_size} with enqueue/dequeue/len/is_empty — used for INFRA-1758 file-fallback path when NATS unreachable
+    - Add to crates/chump-coord/src/mesh.rs (depends on INFRA-1802)
+    - "Wire into existing chump_gh self-throttle: when remaining < threshold AND criticality=background, defer the call. Compatibility shim around current CHUMP_GH_MAX_CALLS_PER_MIN env"
+    - "Integration test: BandwidthBudget windowing + MessageQueue full-drop behavior"
+    - Pairs with INFRA-1802 (mesh foundation) + INFRA-1040 (GraphQL exhaustion handling)
+  notes: |
+    [2026-05-30T04:21:09Z] [2026-05-29 offline-first classification] Public-side derived from internal sibling repo, Phase 2 of INFRA-2246. BandwidthBudget + MessageQueue lift; on INFRA-2248 ship this gap can be closed (subsumed).
+

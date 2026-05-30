@@ -301,8 +301,15 @@ jobs:
           key: tauri-driver-crate-ubuntu-amd64-v1
 
       - name: Install tauri-driver
+        # INFRA-2244: cargo-binstall fetches pre-built binary (~5s) vs cargo
+        # install's compile-from-source (~90s). Falls back to compile if no
+        # pre-built binary is published for the tool/platform.
         if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
-        run: cargo install tauri-driver --locked
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
+            || cargo install cargo-binstall --locked
+          cargo binstall -y tauri-driver \
+            || cargo install tauri-driver --locked
 
       - name: Build chump + Cowork (Tauri) shell
         run: |
