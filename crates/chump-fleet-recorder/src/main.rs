@@ -737,38 +737,60 @@ mod tests {
         let conn = in_memory_conn();
         let db = Arc::new(Mutex::new(conn));
 
-        // Seek cursor to head so the tail picks up from byte 0.
+        // Seek cursor to byte 0 with the FILE'S REAL INODE so ambient_tail_loop
+        // doesn't interpret (0, 0) as "no cursor → seek to EOF" (line 369 of
+        // this file). INFRA-2236: the prior version saved (0, 0) and then
+        // commented "override inode to 0 to trigger proper detection", but the
+        // tail loop's "no saved cursor" branch keys off (position == 0 AND
+        // inode == 0), so the cursor was being treated as absent and the test
+        // silently raced against an EOF seek. With the real inode persisted
+        // alongside position=0, the tail correctly starts at byte 0.
         {
             let c = db.lock().await;
             let meta = fs::metadata(&tmp_path).unwrap();
-            save_cursor(&c, &format!("file:{}", tmp_path.display()), 0, 0).unwrap();
-            // override inode to 0 to trigger proper detection
-            let _ = meta;
+            use std::os::unix::fs::MetadataExt;
+            save_cursor(&c, &format!("file:{}", tmp_path.display()), 0, meta.ino()).unwrap();
         }
 
         // Write the line before we tail so the tail finds it.
         let db_clone = Arc::clone(&db);
         let path_clone = tmp_path.clone();
 
-        // Run tail with a short timeout.
-        let _ = tokio::time::timeout(
-            Duration::from_millis(800),
-            ambient_tail_loop(db_clone, path_clone),
-        )
-        .await;
+        // INFRA-2236: poll-until-success bounded at 5s ceiling. The previous
+        // fixed 800ms timeout was tight against the 250ms AMBIENT_POLL_INTERVAL_MS
+        // — on shared CI runners the tail loop could miss its first poll cycle
+        // before the timeout fired, causing flakes. The new pattern: spawn the
+        // tail, sleep 50ms slices, break when count>=1 or 5s elapsed. Fails fast
+        // with a clear elapsed-time assertion when the ingestion doesn't land.
+        let handle = tokio::spawn(ambient_tail_loop(db_clone, path_clone));
 
-        let count: i64 = {
+        let deadline = std::time::Instant::now() + Duration::from_millis(5000);
+        let mut last_count: i64 = 0;
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
             let conn = db.lock().await;
-            conn.query_row(
-                "SELECT COUNT(*) FROM events WHERE event_kind='test_event'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap()
-        };
+            last_count = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE event_kind='test_event'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            drop(conn);
+            if last_count >= 1 {
+                break;
+            }
+        }
+
+        // Cancel the tail loop now that we have our answer (or timed out).
+        handle.abort();
+
         assert_eq!(
-            count, 1,
-            "ambient tail should have ingested the test_event line"
+            last_count,
+            1,
+            "ambient tail should have ingested the test_event line within 5s \
+             (last_count={last_count}, file={})",
+            tmp_path.display(),
         );
     }
 }
