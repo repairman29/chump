@@ -224,6 +224,61 @@ This section is the audit trail. Future shepherds reading the wedge-class table 
 - `docs/design/MISSION_LAYER_INTERFACE.md` — public interface design for mission layer
 - `CLAUDE.md` — session rules, hard rules, pre-flight checklist, bypass trailers
 
+## Class 8 — Shelfware (daemon shipped but never wired into any curator doc)
+
+**Symptom.** A daemon, CLI, or plist exists on disk and runs via launchd, but no `.claude/agents/*.md`, `CLAUDE.md`, or `docs/process/*.md` mentions it. The operator discovers it only when something breaks.
+**Detection.** `bash scripts/coord/quartermaster-audit-loop.sh run` — scans merged commits, greps role-doc tree, emits `kind=shelfware_detected` for orphaned artifacts.
+**Fix.** File a wiring gap (EFFECTIVE, P1/s) via the Quartermaster daemon. The gap AC is: add a section to the appropriate curator role doc, add the artifact to `scripts/setup/bootstrap-manifest.yaml` if it's a launchd plist.
+**Prevention.** Quartermaster daemon fires after every 5 ships or after 30 min idle. Any new `scripts/coord/*.sh` or `scripts/launchd/*.plist` that doesn't appear in a role doc within 24h of merge generates a `shelfware_detected` event.
+
+## Class 9 — Quartermaster auto-fixers (META-225)
+
+Three daemons that eliminate the three manual unwedging classes the operator had to approve on 2026-05-30. These run continuously without operator involvement.
+
+**Operator-visible cheat sheet:**
+
+| Daemon | Cadence | Detects | Auto-action | Ambient kind |
+|---|---|---|---|---|
+| `daemon-activator-loop.sh` | Every 5 min | New `install-*.sh` or `*.plist` on `origin/main` with label not in `launchctl list` | Runs the installer | `daemon_auto_activated` / `daemon_activator_failed` |
+| `ghost-pr-closer.sh` | Every 15 min | Open PR (DIRTY or CONFLICTING) whose gap is `status:done` | Closes PR with comment | `ghost_pr_closed` |
+| `main-worktree-drift-detector.sh` | Every 30 min | >50 untracked yaml OR >20 commits behind `origin/main` in main worktree | Emits alert + reserves cleanup gap | `main_worktree_drift_detected` |
+
+**Install / verify:**
+```bash
+# Install once after META-225 merges:
+bash scripts/setup/install-daemon-activator.sh
+bash scripts/setup/install-ghost-pr-closer.sh
+bash scripts/setup/install-main-worktree-drift-detector.sh
+
+# Verify all three are running:
+launchctl list | grep -E "com.chump.(daemon-activator|ghost-pr-closer|main-worktree-drift-detector)"
+```
+
+**Logs:**
+```
+~/.chump/logs/daemon-activator.{out,err}
+~/.chump/logs/ghost-pr-closer.{out,err}
+~/.chump/logs/main-worktree-drift-detector.{out,err}
+```
+
+**Ambient stream monitoring:**
+```bash
+tail -50 .chump-locks/ambient.jsonl | grep -E '"kind":"(daemon_auto_activated|daemon_activator_failed|ghost_pr_closed|main_worktree_drift_detected)"'
+```
+
+**Decision doctrine:** `docs/process/SHEPHERD_AUTONOMY_LADDER.md` — full approval matrix for which unwedging moves are auto-execute vs. operator-approve.
+
+**If a daemon is not running:**
+```bash
+# Reinstall (idempotent):
+bash scripts/setup/install-<daemon-name>.sh
+
+# Or check bootstrap manifest:
+bash scripts/setup/chump-fleet-bootstrap.sh --check
+```
+
+---
+
 ## Maintenance
 
 This playbook should be **updated whenever a new wedge class is discovered** (new entry in §1), a **new ship-assist tool ships** (entry added to §2), or a **lesson-learning gap closes** (move from §4/§5 in-flight to §6 shipped + cross-link the doc to the fix's PR).

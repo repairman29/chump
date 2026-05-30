@@ -20,6 +20,7 @@ install-ci-flake-rerun-launchd.sh
 install-claude-tmp-cleanup-launchd.sh
 install-curator-jit-scheduler-launchd.sh
 install-curator-launchd.sh
+install-daemon-activator.sh
 install-decomposition-tracker-launchd.sh
 install-disk-health-monitor-launchd.sh
 install-disk-pressure-reaper-launchd.sh
@@ -30,12 +31,14 @@ install-gap-curate-launchd.sh
 install-gap-doctor-cron-launchd.sh
 install-gh-shim.sh
 install-gh-token-rotate-launchd.sh
+install-ghost-pr-closer.sh
 install-git-stash-trace.sh
 install-github-cache-reconcile-launchd.sh
 install-github-liaison.sh
 install-hooks.sh
 install-integrator-daemon.sh
 install-lint-storm-detector-launchd.sh
+install-main-worktree-drift-detector.sh
 install-merge-drivers.sh
 install-merge-queue-monitor.sh
 install-mission-grade-launchd.sh
