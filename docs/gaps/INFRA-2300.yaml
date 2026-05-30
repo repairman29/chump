@@ -1,0 +1,12 @@
+- id: INFRA-2300
+  domain: INFRA
+  title: "ZERO-WASTE: more self-hosted Mac runners — install actions/runner on additional operator-owned machines; 4→8 runners ≈ 2× throughput; ship install-bootstrap script + auto-discover"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

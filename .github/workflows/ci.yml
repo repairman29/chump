@@ -833,6 +833,9 @@ jobs:
       - name: pr-auto-rebase plist installer (INFRA-1779)
         run: bash scripts/ci/test-install-pr-auto-rebase.sh
 
+      - name: stale-pr-rebase-bot — 3-strike circuit-break (INFRA-2295)
+        run: bash scripts/ci/test-stale-pr-rebase-bot.sh
+
       - name: paramedic stale-branch auto-rebase (INFRA-1429)
         run: bash scripts/ci/test-stale-branch-rebase.sh
 

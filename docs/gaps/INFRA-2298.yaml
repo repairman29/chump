@@ -1,0 +1,12 @@
+- id: INFRA-2298
+  domain: INFRA
+  title: "ZERO-WASTE: GitHub merge queue — enable merge_group: trigger in ci.yml + repo-settings opt-in; collapses N concurrent PR CIs into one train run; targets 30-PR queue blowout"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
