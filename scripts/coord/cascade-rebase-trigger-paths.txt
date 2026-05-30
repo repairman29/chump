@@ -6,3 +6,13 @@ src/lib.rs
 src/agent_loop/**
 src/dispatch.rs
 .github/workflows/ci.yml
+# INFRA-2207 (2026-05-29): paths whose change on main wedges every open PR's
+# pre-merge checks until they pull the fix forward. Each addition proven by a
+# real-world keystone-merge incident that required manual cascade-rebase:
+# - bootstrap-manifest.yaml: #2752 fix-installer-manifest unwedged pr-hygiene queue-wide
+# - event-registry-reserved.txt: every PR runs event-registry-coverage against this
+# - scripts/git-hooks/pre-commit + install-hooks.sh: every PR re-runs hooks on rebase
+scripts/setup/bootstrap-manifest.yaml
+scripts/ci/event-registry-reserved.txt
+scripts/git-hooks/pre-commit
+scripts/setup/install-hooks.sh

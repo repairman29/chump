@@ -101,8 +101,9 @@ editing to regenerate.
 +-----------------------------------------------------------------------+
 ```
 
-Note: actual screenshot not committed (browser capture unavailable in CI
-environment). The above is a text-art preview. See INFRA-2176 for follow-up.
+The text-art above mirrors the layout of the real screenshot at
+`screenshots/scrubber-fixtures.png` (1440×900, captured via headless Chrome
+against `?fixtures=1`).
 
 ## CI smoke test
 
@@ -124,7 +125,7 @@ web/fleet-scrubber/
     segments.json       Pre-generated segments (56 entries, 3 sessions, 2h)
     events.json         Pre-generated events (181 entries)
   screenshots/
-    scrubber-fixtures.png  (placeholder — see README note above)
+    scrubber-fixtures.png  Real 1440×900 capture (fixtures mode)
 scripts/dev/
   chump-fleet-view.sh   Opens http://localhost:7070/scrubber (or fixture mode)
 scripts/ci/

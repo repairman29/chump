@@ -306,6 +306,10 @@ for arg in "$@"; do
         --required-checks)    NEXT_IS_REQUIRED_CHECKS=1 ;;
         --allow-mass-delete)  ALLOW_MASS_DELETE=1 ;;  # INFRA-993 scratch-commit-guard override
         --force-duplicate)    FORCE_DUPLICATE=1 ;;    # INFRA-996 dup-PR-guard override
+        # INFRA-2133: META-124/C5 mode-routing flags
+        --review)             BM_FORCE_REVIEW=1 ;;    # Mode B: skip batched queue, use existing PR flow
+        --hot-fix)            BM_FORCE_HOTFIX=1 ;;    # Mode C: P0 hot-fix, skip batched queue
+        --legacy)             BM_LEGACY_MODE=1 ;;     # force old behavior (Mode B) for all gaps
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -1263,6 +1267,96 @@ if [[ -n "$STACK_ON_GAP" ]]; then
 fi
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
+
+# ── INFRA-2133: META-124/C5 Mode A/B/C routing ───────────────────────────────
+# Mode A (DEFAULT — batched): normal gaps routed to chump-integrator-daemon via
+#   ready_to_ship status + work-board NATS post. Exits 0 without opening a PR.
+# Mode B (review/external-collab): runs existing PR-create + auto-merge flow.
+# Mode C (hot-fix): P0 priority + TRUNK-RED/HOTFIX/SECURITY in title, or
+#   --hot-fix flag: runs existing PR-create + auto-merge flow (same as B, distinct
+#   for operator visibility and future escalation paths).
+# Fallback: NATS unavailable (chump-coord exits non-zero on post) → treat as Mode B.
+# Bypass:  --legacy flag or BM_LEGACY_MODE=1 forces Mode B unconditionally.
+#
+# Detection uses the first gap ID only (same as existing preflight logic).
+_BM_MODE="A"   # default: batched integration queue
+_BM_MODE_REASON=""
+
+if [[ "${BM_LEGACY_MODE:-0}" == "1" ]]; then
+    _BM_MODE="B"
+    _BM_MODE_REASON="legacy flag"
+elif [[ "${BM_FORCE_HOTFIX:-0}" == "1" ]]; then
+    _BM_MODE="C"
+    _BM_MODE_REASON="--hot-fix flag"
+elif [[ "${BM_FORCE_REVIEW:-0}" == "1" || "${CHUMP_FORCE_REVIEW:-}" == "1" ]]; then
+    _BM_MODE="B"
+    _BM_MODE_REASON="--review flag or CHUMP_FORCE_REVIEW"
+elif [[ ${#GAP_IDS[@]} -gt 0 ]] && command -v chump >/dev/null 2>&1; then
+    _bm_route_gap="${GAP_IDS[0]}"
+    # Pull fields from gap metadata for routing decisions.
+    _bm_gap_meta="$(chump gap show "$_bm_route_gap" 2>/dev/null || true)"
+    _bm_gap_title="$(printf '%s' "$_bm_gap_meta" | grep -E '^\s+title:' | sed 's/^[[:space:]]*title:[[:space:]]*//' | tr -d '"' || true)"
+    _bm_gap_priority="$(printf '%s' "$_bm_gap_meta" | grep -E '^\s+priority:' | awk '{print $2}' || true)"
+    _bm_gap_domain="$(printf '%s' "$_bm_gap_meta" | grep -E '^\s+domain:' | awk '{print $2}' || true)"
+    _bm_gap_skills="$(printf '%s' "$_bm_gap_meta" | grep -E 'skills_required' || true)"
+
+    # Mode C: P0 priority + hot-fix keywords in title
+    if [[ "$_bm_gap_priority" == "P0" ]] \
+        && printf '%s' "$_bm_gap_title" | grep -qiE 'TRUNK-RED|HOTFIX|SECURITY'; then
+        _BM_MODE="C"
+        _BM_MODE_REASON="P0+hot-fix keyword in title (${_bm_route_gap})"
+    # Mode B: REVIEW: prefix in title, external-collab skill, or EXTERNAL domain
+    elif printf '%s' "$_bm_gap_title" | grep -qiE '^[[:space:]]*REVIEW:'; then
+        _BM_MODE="B"
+        _BM_MODE_REASON="REVIEW: title prefix (${_bm_route_gap})"
+    elif printf '%s' "$_bm_gap_skills" | grep -qi 'external-collab'; then
+        _BM_MODE="B"
+        _BM_MODE_REASON="external-collab skill (${_bm_route_gap})"
+    elif [[ "$_bm_gap_domain" == "EXTERNAL" ]]; then
+        _BM_MODE="B"
+        _BM_MODE_REASON="EXTERNAL domain (${_bm_route_gap})"
+    fi
+fi
+
+info "INFRA-2133: routing mode=${_BM_MODE} reason=${_BM_MODE_REASON:-default}"
+
+if [[ "$_BM_MODE" == "A" ]]; then
+    # Mode A: batched integration queue. Mark gap ready_to_ship, post to work-board.
+    _bm_route_gap="${GAP_IDS[0]:-}"
+    _bm_a_amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+    _bm_a_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    # Attempt NATS work-board post first; fall back to Mode B if unavailable.
+    _bm_nats_ok=0
+    if [[ -n "$_bm_route_gap" ]]; then
+        if chump-coord work-board post "$_bm_route_gap" ship-ready \
+            "Mode A: ready for integration" >/dev/null 2>&1; then
+            _bm_nats_ok=1
+        fi
+    fi
+
+    if [[ "$_bm_nats_ok" == "0" ]]; then
+        # Fallback: NATS unavailable → treat as Mode B (existing flow).
+        info "INFRA-2133: NATS/work-board unavailable — falling back to Mode B (existing PR flow)"
+        _ambient_write "$_bm_a_amb" \
+            "$(printf '{"ts":"%s","kind":"bot_merge_mode_fallback","gap_id":"%s","from":"A","to":"B","reason":"nats_unavailable"}' \
+                "$_bm_a_ts" "$_bm_route_gap")"
+        # Fall through to existing PR-create flow below (no exit).
+    else
+        # NATS succeeded: mark gap status and emit ambient event.
+        if [[ -n "$_bm_route_gap" ]]; then
+            chump gap set "$_bm_route_gap" --status ready_to_ship 2>/dev/null || true
+            chump gap set "$_bm_route_gap" --notes-append \
+                "Mode: batched (chump-integrator-daemon will pick up)" 2>/dev/null || true
+        fi
+        _ambient_write "$_bm_a_amb" \
+            "$(printf '{"ts":"%s","kind":"gap_routed_to_batched","gap_id":"%s","branch":"%s","mode":"A","note":"INFRA-2133: routed to integration queue; chump-integrator-daemon will ship"}' \
+                "$_bm_a_ts" "$_bm_route_gap" "$BRANCH")"
+        green "Gap ${_bm_route_gap:-none} routed to batched integration queue. Integrator daemon will ship in next cycle."
+        exit 0
+    fi
+fi
+# Mode B or C: fall through to existing PR-create + auto-merge flow (unchanged).
 
 # ── INFRA-1346: shadow ship-plan probe ────────────────────────────────────────
 # Calls `chump ship plan` once at main-flow entry and emits a ship_plan_advisory

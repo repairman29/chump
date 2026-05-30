@@ -4,20 +4,23 @@
 //!
 //! 1. **CLAIM** — lock the integration slot in NATS KV (atomic CAS).  Falls
 //!    back to an advisory file lock when NATS is unavailable.
+//!    1b. **SAMPLING** — deterministic hash of `cycle_id` decides live vs dry-run
+//!        (Phase 2 gate, INFRA-2139). Emits `cycle_sampling_decision`.
 //! 2. **SELECT** — call `cycle::select::select_candidates` against the
 //!    NATS work-board (state.db fallback when NATS absent).
 //! 3. **POLICY** — apply `policy::evaluate`; skip if below volume threshold.
 //! 4. **MERGE** — call `cycle::merge_branch::build_integration_branch`.
 //! 5. **PREFLIGHT** — shell out to `chump preflight` or
 //!    `bash scripts/dev/cross-build-linux.sh`.
-//! 6. **DECISION** — in dry-run mode: log manifest + emit ambient event;
-//!    live mode deferred to INFRA-2136.
+//! 6. **DECISION** — live cycles log "WOULD SHIP" (SHIP deferred to INFRA-2136);
+//!    dry-run cycles log manifest + emit `integration_cycle_dry_run_completed`.
 //!
 //! Emits ambient events at each step boundary:
 //!
 //! | Step | kind |
 //! |---|---|
 //! | cycle starts | `integration_cycle_started` |
+//! | sampling gate | `cycle_sampling_decision` |
 //! | candidates selected | `integration_candidates_selected` |
 //! | per-candidate merge | `integration_branch_merged` |
 //! | preflight starts | `integration_preflight_started` |
@@ -38,8 +41,10 @@ use crate::cycle::merge_branch::build_integration_branch;
 use crate::cycle::select::{select_candidates, StateDbWorkBoard};
 use crate::cycle::CycleManifest;
 use crate::policy::{evaluate, PolicyDecision};
+use crate::sampling::sampling_decision;
 
 use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
+use chump_gap_store::GapFieldUpdate;
 
 /// Integration slot key in the NATS KV `chump_gaps` bucket.
 const INTEGRATION_SLOT_KEY: &str = "integration_slot";
@@ -118,6 +123,33 @@ impl IntegratorDaemon {
 
         emit_event("integration_cycle_started", &[("cycle_id", &cycle_id)]);
 
+        // ── Step 1b: SAMPLING ─────────────────────────────────────────────
+        // Deterministic hash of cycle_id decides live vs dry-run for this
+        // cycle. `dry_run=true` (Phase 1 global flag) always overrides to
+        // DRY-RUN regardless of sampling_pct. This gate is the Phase 2 knob.
+        let (sample_decision, sample_roll) = sampling_decision(&cycle_id, self.config.sampling_pct);
+
+        let cycle_is_live = !self.config.dry_run && sample_decision.is_live();
+
+        emit_event(
+            "cycle_sampling_decision",
+            &[
+                ("cycle_id", &cycle_id),
+                ("roll", &sample_roll.to_string()),
+                ("threshold", &self.config.sampling_pct.to_string()),
+                ("decision", sample_decision.as_str()),
+                ("dry_run_override", &self.config.dry_run.to_string()),
+                ("cycle_is_live", &cycle_is_live.to_string()),
+            ],
+        );
+        eprintln!(
+            "[integrator] sampling: roll={} threshold={} decision={} live={}",
+            sample_roll,
+            self.config.sampling_pct,
+            sample_decision.as_str(),
+            cycle_is_live,
+        );
+
         // ── Step 2: SELECT ────────────────────────────────────────────────
         let candidates = self.select_candidates().await?;
 
@@ -186,51 +218,191 @@ impl IntegratorDaemon {
             );
         }
 
-        // ── Step 5: PREFLIGHT ─────────────────────────────────────────────
-        emit_event(
-            "integration_preflight_started",
-            &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
-        );
+        // ── Step 5: PREFLIGHT + bisect-quarantine loop (INFRA-2137) ──────────
+        // Max 3 quarantine cycles: on each preflight failure we bisect to find
+        // the offending gap, quarantine it, rebuild the integration branch
+        // without it, and retry.  After 3 quarantine passes we abort entirely.
+        const MAX_QUARANTINE_CYCLES: usize = 3;
+        let mut remaining_candidates = candidates.clone();
+        let mut quarantine_count: usize = 0;
 
-        let preflight_ok = self.run_preflight(&integration_branch).await;
+        loop {
+            if remaining_candidates.is_empty() {
+                eprintln!("[integrator] no candidates remain after quarantine — aborting cycle {cycle_id}");
+                return Ok(());
+            }
 
-        if !preflight_ok {
+            emit_event(
+                "integration_preflight_started",
+                &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
+            );
+
+            let preflight_ok = self.run_preflight(&integration_branch).await;
+
+            if preflight_ok {
+                // Preflight passed — proceed to DECISION below.
+                break;
+            }
+
             emit_event(
                 "integration_preflight_failed",
                 &[("cycle_id", &cycle_id), ("branch", &integration_branch)],
             );
-            eprintln!("[integrator] preflight FAILED for cycle {cycle_id}");
-            return Ok(());
+            eprintln!("[integrator] preflight FAILED for cycle {cycle_id} (quarantine_count={quarantine_count})");
+
+            if quarantine_count >= MAX_QUARANTINE_CYCLES {
+                eprintln!(
+                    "[integrator] reached max quarantine cycles ({MAX_QUARANTINE_CYCLES}) — aborting cycle {cycle_id}"
+                );
+                return Ok(());
+            }
+            quarantine_count += 1;
+
+            // Bisect: identify the offending gap (currently: first candidate as
+            // a conservative heuristic; INFRA-2136 replaces with git-bisect oracle).
+            let offending = remaining_candidates[0].clone();
+            eprintln!(
+                "[integrator] quarantining {} (cycle {cycle_id}, pass {quarantine_count})",
+                offending.gap_id
+            );
+
+            // Quarantine in state.db.
+            if let Ok(store) = chump_gap_store::GapStore::open(&self.repo_root) {
+                let reason = format!(
+                    "Quarantined from integration-{cycle_id}: preflight failure (quarantine pass {quarantine_count})"
+                );
+                let _ = store.set_fields(
+                    &offending.gap_id,
+                    GapFieldUpdate {
+                        status: Some("bisect_quarantined".to_string()),
+                        ..Default::default()
+                    },
+                );
+                let _ = store.append_notes_for_gap(&offending.gap_id, &reason);
+            }
+
+            // Emit ambient bisect_quarantine event.
+            emit_event(
+                "bisect_quarantine",
+                &[
+                    ("cycle_id", &cycle_id),
+                    ("gap_id", &offending.gap_id),
+                    ("quarantine_pass", &quarantine_count.to_string()),
+                ],
+            );
+
+            // Post to work-board for operator review (best-effort; NATS may be absent).
+            if let Some(coord) = &self.coord {
+                use chump_coord::work_board::{Requirement, Subtask};
+                let mut subtask = Subtask::new(
+                    &offending.gap_id,
+                    &format!(
+                        "Manual review needed: {} failed integration {}",
+                        offending.gap_id, cycle_id
+                    ),
+                    "chump-integrator",
+                    Requirement {
+                        task_class: "bisect-review".to_string(),
+                        ..Default::default()
+                    },
+                );
+                subtask.description = format!(
+                    "Gap {} was quarantined by the integration daemon on cycle {} \
+                     (quarantine pass {}). Run `chump gap requeue {}` after fixing \
+                     the underlying failure.",
+                    offending.gap_id, cycle_id, quarantine_count, offending.gap_id
+                );
+                if let Err(e) = coord.post_subtask(&subtask).await {
+                    eprintln!("[integrator] work-board post failed (best-effort): {e:#}");
+                }
+            }
+
+            // Remove offending gap from remaining candidates and rebuild branch.
+            remaining_candidates.retain(|c| c.gap_id != offending.gap_id);
+
+            if remaining_candidates.is_empty() {
+                eprintln!(
+                    "[integrator] no candidates remain after quarantining {} — aborting",
+                    offending.gap_id
+                );
+                return Ok(());
+            }
+
+            // Rebuild integration branch without the offending gap.
+            let _ = tokio::process::Command::new("git")
+                .args(["checkout", "-B", &integration_branch, "HEAD"])
+                .current_dir(&self.repo_root)
+                .status()
+                .await;
+            match build_integration_branch(
+                &remaining_candidates,
+                &integration_branch,
+                &self.repo_root,
+            )
+            .await
+            {
+                Ok(_) => {
+                    eprintln!(
+                        "[integrator] rebuilt integration branch without {} — retrying preflight",
+                        offending.gap_id
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[integrator] failed to rebuild integration branch: {e:#}");
+                    return Ok(());
+                }
+            }
         }
 
-        // ── Step 6: DECISION (dry-run) ────────────────────────────────────
-        if self.config.dry_run {
+        // ── Step 6: DECISION ─────────────────────────────────────────────
+        if cycle_is_live {
+            // SHIP path: actual git push + gh pr create + merge is deferred
+            // to INFRA-2136 (C8 bisect-step). For now, a LIVE cycle logs
+            // "WOULD SHIP" so the sampling gate is observable end-to-end
+            // before the real ship path lands (option b per INFRA-2139 AC).
+            let gap_ids = manifest
+                .candidates
+                .iter()
+                .map(|c| c.gap_id.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            eprintln!(
+                "[integrator] LIVE (WOULD SHIP) cycle={cycle_id} \
+                 gaps=[{gap_ids}] loc={} — SHIP deferred to INFRA-2136",
+                manifest.total_loc,
+            );
+            // Emit the shipped event so kpi-report can track live cycles even
+            // while the actual push is stubbed.
+            emit_event(
+                "integration_cycle_shipped",
+                &[
+                    ("cycle_id", &cycle_id),
+                    ("gap_count", &manifest.candidates.len().to_string()),
+                    ("total_loc", &manifest.total_loc.to_string()),
+                    ("gap_ids", &gap_ids),
+                    ("stubbed", "true"),
+                ],
+            );
+        } else {
+            // DRY-RUN: log manifest + emit dry-run completed event.
             let summary = manifest.dry_run_summary();
             eprintln!("[integrator] DRY-RUN: {summary}");
             self.write_dry_run_log(&manifest)
                 .with_context(|| "writing dry-run log")?;
+            let gap_ids = manifest
+                .candidates
+                .iter()
+                .map(|c| c.gap_id.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
             emit_event(
                 "integration_cycle_dry_run_completed",
                 &[
                     ("cycle_id", &cycle_id),
                     ("gap_count", &manifest.candidates.len().to_string()),
                     ("total_loc", &manifest.total_loc.to_string()),
-                    (
-                        "gap_ids",
-                        &manifest
-                            .candidates
-                            .iter()
-                            .map(|c| c.gap_id.as_str())
-                            .collect::<Vec<_>>()
-                            .join(","),
-                    ),
+                    ("gap_ids", &gap_ids),
                 ],
-            );
-        } else {
-            // Live SHIP step deferred to INFRA-2136 (C8).
-            eprintln!(
-                "[integrator] live ship not yet implemented (INFRA-2136); \
-                 dry_run=false but SHIP step deferred"
             );
         }
 
