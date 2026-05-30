@@ -1,0 +1,768 @@
+# daemons.toml — INFRA-2211
+# Static catalog mapping every Chump launchd daemon to its purpose,
+# cadence, emits_kinds, and log path.
+#
+# Precursor to INFRA-2206 (daemon view in chump-fleet-server).
+# Generated 2026-05-29 by enumerating:
+#   - scripts/setup/launchd/*.plist
+#   - scripts/setup/*.plist
+#   - scripts/launchd/*.plist
+#   - scripts/ops/*.plist
+#   - scripts/plists/*.plist
+#   - launchd/*.plist
+#   - ~/Library/LaunchAgents/com.chump.*.plist (installed, no repo source)
+#   - ~/Library/LaunchAgents/dev.chump.*.plist (installed, no repo source)
+#
+# cadence values:
+#   "persistent"       — KeepAlive=true, no interval; launchd keeps it alive
+#   "event-triggered"  — fires via launchd path/port monitor or QueueDirectories
+#   <integer>          — StartInterval in seconds
+#   "daily@HH:MM"      — StartCalendarInterval, daily
+#   "weekly@sun09:00"  — StartCalendarInterval, weekly
+#   "hourly@:MM"       — StartCalendarInterval, top of hour (minute offset)
+#
+# plist_path is relative to repo root (or "installed-only" if not committed).
+
+# ─────────────────────────────────────────────────────────────
+# Core infrastructure
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.nats-server"
+purpose = "Runs the NATS JetStream broker on port 4222 with persistent store at ~/.chump/nats. All fleet ambient event routing, JIT scheduler broadcasts, and fleet-recorder subscriptions depend on this being alive."
+cadence = "persistent"
+emits_kinds = []
+log_path = "~/.chump/nats/server.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.fleet-server"
+purpose = "Serves the fleet visualization REST + WebSocket API on 127.0.0.1:7070 (CHUMP_FLEET_SERVER_PORT). Reads from .chump/fleet_events.db written by fleet-recorder. Foundation for INFRA-2164 scrubber frontend."
+cadence = "persistent"
+emits_kinds = []
+log_path = "~/Library/Logs/Chump/fleet-server.out.log"
+plist_path = "scripts/setup/launchd/com.chump.fleet-server.plist"
+
+[[daemon]]
+name = "com.chump.fleet-recorder"
+purpose = "Subscribes to NATS chump.events.> and chump.work.> via JetStream durable consumers and tails .chump-locks/ambient.jsonl. Writes deduplicated events into .chump/fleet_events.db (SQLite). Source DB for fleet-server and the scrubber frontend."
+cadence = "persistent"
+emits_kinds = ["fleet_recorder_ttl_pruned"]
+log_path = "~/Library/Logs/Chump/fleet-recorder.out.log"
+plist_path = "scripts/setup/com.chump.fleet-recorder.plist"
+
+[[daemon]]
+name = "com.chump.fleet-daemon"
+purpose = "Long-lived chump-owned scheduler (INFRA-964). Replaces the Claude-Code-hosted scheduled-tasks MCP path. Reads scripts/coord/system-gap-frequencies.yaml for cadence and shells out to each task's script. All ticks observable as kind=daemon_tick."
+cadence = "persistent"
+emits_kinds = ["daemon_tick"]
+log_path = "/tmp/chump-fleet-daemon.out.log"
+plist_path = "launchd/com.chump.fleet-daemon.plist"
+
+[[daemon]]
+name = "com.chump.smee-tunnel"
+purpose = "Proxies GitHub webhook deliveries from smee.io to the local webhook receiver at http://localhost:9097/webhook. Required when the machine is not publicly reachable."
+cadence = "persistent"
+emits_kinds = []
+log_path = "/tmp/chump-smee-tunnel.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.github-webhook-receiver"
+purpose = "Python HTTP server (port 9097) that receives GitHub webhook payloads and writes PR state into .chump/github_cache.db. Foundation for the cache-first read pattern (INFRA-1081)."
+cadence = "persistent"
+emits_kinds = []
+log_path = "/tmp/chump-webhook-receiver.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Auth & credentials
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.oauth-refresh"
+purpose = "Refreshes ~/.chump/oauth-token.json every 5 minutes by re-extracting the current Claude Code OAuth access token from macOS Keychain. Workers and headless claude -p subprocesses read this file to inherit a fresh CLAUDE_CODE_OAUTH_TOKEN (INFRA-2124)."
+cadence = 300
+emits_kinds = ["oauth_token_refreshed", "oauth_token_refresh_failed"]
+log_path = "/tmp/chump-oauth-refresh.out.log"
+plist_path = "launchd/com.chump.oauth-refresh.plist"
+
+[[daemon]]
+name = "com.chump.gh-token-rotate"
+purpose = "Runs chump gh-token rotate every 50 minutes (10-min slack on the 60-minute GitHub App installation-token expiry). Reads ~/.chump/github_apps.toml, writes fresh tokens to ~/.chump/oauth-token-{critical,background}.json for the INFRA-1076 lane-routing scaffold (INFRA-1361)."
+cadence = 3000
+emits_kinds = []
+log_path = "~/Library/Logs/chump-gh-token-rotate.log"
+plist_path = "launchd/com.chump.gh-token-rotate.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Health & self-healing
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.paramedic"
+purpose = "Chump paramedic daemon (INFRA-1397). Triages stuck PRs every 10 minutes, takes per-PR actions within a 90-second budget. Primary automated PR-rescue path."
+cadence = 600
+emits_kinds = []
+log_path = "~/Library/Logs/Chump/paramedic.out.log"
+plist_path = "scripts/setup/com.chump.paramedic.plist"
+
+[[daemon]]
+name = "com.chump.self-doctor"
+purpose = "Runs chump fleet doctor --heal --json every 5 minutes (INFRA-1595). Wave 0b outer loop: catches paramedic death, missed bootstrap daemons, and SLO-breaching stuck PRs. With CHUMP_FLEET_SELF_DOCTOR_HEAL=true it auto-fixes; without it, emits self_doctor_tick diagnose-only."
+cadence = 300
+emits_kinds = ["self_doctor_tick"]
+log_path = "~/Library/Logs/Chump/self-doctor.out.log"
+plist_path = "scripts/setup/com.chump.self-doctor.plist"
+
+[[daemon]]
+name = "com.chump.main-health-watchdog"
+purpose = "Detects red main-branch CI once per day at 02:00 and files a P0 INFRA-NEW-MAIN-RED-<date> gap (INFRA-1656). Emits kind=main_red_detected to ambient.jsonl on each sweep."
+cadence = "daily@02:00"
+emits_kinds = ["main_red_detected"]
+log_path = "/tmp/chump-main-health-watchdog.out.log"
+plist_path = "launchd/com.chump.main-health-watchdog.plist"
+
+[[daemon]]
+name = "com.chump.ci-health-gate"
+purpose = "CI health gate daemon (INFRA-1607). Runs every 5 minutes. Writes .chump/fleet-paused when CI is jammed (≥50% BLOCKED PRs) or any SLO is breached. Clears the sentinel after 2 consecutive clean runs."
+cadence = 300
+emits_kinds = ["pipeline_health_throttle", "slo_breach"]
+log_path = "/tmp/chump-ci-health-gate.out.log"
+plist_path = "launchd/com.chump.ci-health-gate.plist"
+
+[[daemon]]
+name = "com.chump.emergency-fast-path"
+purpose = "Emergency fleet-state read/write accessor with flock(1) locking (INFRA-847). Runs every 5 minutes via launchd. Detects high-confidence fleet_wedge / silent_agent_cluster signals. Guard rail only; primary decisions handled by opus-curator at 600s."
+cadence = 300
+emits_kinds = ["system_gap_tick", "fleet_state_lock_contention"]
+log_path = "/tmp/chump-emergency-fast-path.out.log"
+plist_path = "launchd/com.chump.emergency-fast-path.plist"
+
+[[daemon]]
+name = "dev.chump.system-invariants-monitor"
+purpose = "Runs 7 cross-cutting health invariant checks every 10 minutes (META-033). On violation emits ambient ALERT kind=invariant_violation with id + details. Files a cleanup gap automatically after 2+ consecutive failures."
+cadence = 600
+emits_kinds = ["invariant_violation"]
+log_path = "/tmp/chump-system-invariants-monitor.out.log"
+plist_path = "launchd/dev.chump.system-invariants-monitor.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Fleet orchestration & scheduling
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.opus-curator"
+purpose = "Proactive fleet health auditor (INFRA-842). Runs every 10 minutes: checks P0 inflation, vague gaps, pillar balance, stale PRs, waste rate. Primary fleet decision-maker."
+cadence = 600
+emits_kinds = ["curator_decision", "slo_breach", "slo_recovered", "curator_auto_exec_armed"]
+log_path = "/tmp/chump-opus-curator.out.log"
+plist_path = "launchd/com.chump.opus-curator.plist"
+
+[[daemon]]
+name = "com.chump.curator-jit-scheduler"
+purpose = "Bash daemon that tails ambient.jsonl, watches for curator DONE events (kind=gap_shipped or DONE broadcast), and auto-broadcasts the next-best gap from the prioritized backlog (INFRA-1892). Replaces orchestrator-as-pebble-scheduler antipattern."
+cadence = "persistent"
+emits_kinds = []
+log_path = "/tmp/chump-curator-jit-scheduler.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.fleet-autopilot"
+purpose = "Single daemon set that runs the full operator playbook as one command (META-090). Manages PR-drain daemons (auto-rebase, auto-rearm, pr-pulse, pr-pulse-consumer, transient-retrigger), oracle refresh, JIT scheduler, and 6 named curator tmux windows. Emits heartbeat every 5 minutes."
+cadence = 300
+emits_kinds = []
+log_path = ".chump-locks/autopilot-logs/heartbeat-stdout.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.planner"
+purpose = "Runs chump-plan --format json hourly to refresh the forward-looking fleet plan. Reads state.db + ambient.jsonl and writes a prioritized plan artifact for operator and JIT-scheduler consumption (INFRA-1257)."
+cadence = 3600
+emits_kinds = []
+log_path = "~/Library/Logs/chump-planner.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.wizard-daemon"
+purpose = "Autonomous orchestrator that drives PRs toward merge without requiring a human operator or Opus session (META-109/META-107). Classifies PR state, triggers recovery-queue for BLOCKED PRs, matches wedge catalog signatures, dispatches pickable gaps, and triggers post-merge cascade rebases."
+cadence = 300
+emits_kinds = ["wedge_detected"]
+log_path = ".chump-locks/wizard-daemon.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.oracle-refresh"
+purpose = "Every 4 hours spawns a bounded Opus burst to re-contemplate docs/process/THE_PATH.md against current state.db open gaps + recent ambient events. Auto-commits and auto-PRs if the Oracle changes (META-088)."
+cadence = 14400
+emits_kinds = ["oracle_refresh_skipped", "oracle_refresh_failed", "oracle_refresh_empty", "oracle_refresh_noop", "oracle_refresh_drift", "oracle_refresh_pr_opened", "oracle_stale_despite_heartbeat"]
+log_path = ".chump-locks/oracle-refresh.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.inbox-injector"
+purpose = "Watches .chump-locks/inbox/*.jsonl for new high-urgency A2A messages and slips them in front of running fleet-worker tmux panes via send-keys (INFRA-2014). Converts A2A from dead-letter mailbox into live signal. Polls every 10 seconds."
+cadence = 10
+emits_kinds = []
+log_path = ".chump-locks/inbox-injector.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# PR management & merge pipeline
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.bot-merge-watchdog"
+purpose = "Kills wedged bot-merge.sh processes after a timeout (INFRA-1006). Runs every 5 minutes. Emits kind=bot_merge_watchdog_killed or bot_merge_watchdog_stuck to ambient.jsonl."
+cadence = 300
+emits_kinds = ["bot_merge_watchdog_killed", "bot_merge_watchdog_stuck"]
+log_path = ".chump-locks/bot-merge-watchdog.log"
+plist_path = "launchd/com.chump.bot-merge-watchdog.plist"
+
+[[daemon]]
+name = "com.chump.pr-pulse-consumer"
+purpose = "Consumer daemon for pr-pulse (INFRA-1898). Watches ambient.jsonl for kind=pr_oversight_snapshot and acts: WEDGED → DM lane curators; SATURATED → page operator; HEALTHY → no-op. Throttled per-verdict within 30-minute windows."
+cadence = 300
+emits_kinds = ["daemon_silent_noop"]
+log_path = ".chump-locks/pr-pulse-consumer.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.transient-retrigger"
+purpose = "Auto-recognizes known-transient CI failure patterns (audit-cancel, DNS hiccup, runner cancel, etc.) on open PRs and pushes an empty commit to force a fresh CI run (INFRA-1899). Capped at 2 retries per PR per 6-hour window."
+cadence = 300
+emits_kinds = []
+log_path = "/tmp/chump-transient-retrigger.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.cluster-detector"
+purpose = "Detects CI-failure clusters: when N≥3 OPEN PRs share the identical set of failing checks within a trailing 30-minute window (INFRA-1987, THE FLOOR Phase 1). Emits kind=ci_failure_cluster and auto-files a META cluster RCA gap. Idempotent within 60 minutes per cluster."
+cadence = 120
+emits_kinds = ["ci_failure_cluster", "ci_failure_cluster_resolved", "daemon_silent_noop"]
+log_path = ".chump-locks/cluster-detector.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.wedge-state-machine"
+purpose = "Converts the wedge catalog (13 classes in WEDGE_CLASS_CATALOG.md) from passive docs into an executable state machine (INFRA-1994). Consumes wedge_detected events from ambient.jsonl, rate-limits to 1/class/30min, runs per-W-NNN remediation functions. Escalates chronic patterns (3 detections/24h) to kind=wedge_chronic."
+cadence = 300
+emits_kinds = ["wedge_remediated", "wedge_remediation_failed", "wedge_chronic", "daemon_silent_noop"]
+log_path = ".chump-locks/wedge-state-machine.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.recovery-queue-service"
+purpose = "Consumes operator_recovery_requested events from ambient.jsonl, rate-limited to max 3 admin-merge cycles per hour fleet-wide (INFRA-1993, THE FLOOR Phase 3). Runs the canonical drop-gates → admin-merge → re-arm cycle. Emits kind=operator_recovery_executed with pre/post diff."
+cadence = 60
+emits_kinds = ["operator_recovery_executed", "recovery_queue_rate_limited", "daemon_silent_noop"]
+log_path = ".chump-locks/recovery-queue-service.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.post-push-integrity"
+purpose = "Detects post-push PR auto-close incidents where a stale-base force-push causes GitHub to auto-close a PR (INFRA-2026). Auto-reopens the PR, emits kind=post_push_auto_close_recovered, and broadcasts an URGENT-INBOX alert. Runs every 60 seconds."
+cadence = 60
+emits_kinds = ["post_push_auto_close_recovered", "post_push_integrity_watch_ok", "post_push_integrity_watch_err"]
+log_path = ".chump-locks/post-push-integrity.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.queue-driver"
+purpose = "Closes the last manual gap in the PR drain (INFRA-1304). Every 5 minutes: scans BEHIND PRs from the github_cache.db and triggers gh pr update-branch; scans DIRTY PRs and triggers rebase + merge-driver auto-resolve."
+cadence = 300
+emits_kinds = []
+log_path = "/tmp/chump-queue-driver.out.log"
+plist_path = "scripts/plists/dev.chump.queue-driver.plist"
+
+[[daemon]]
+name = "dev.chump.pr-auto-rebase"
+purpose = "Auto-rebases BEHIND PRs via gh pr update-branch or local git rebase. Runs every 5 minutes. Emits kind=pr_auto_rebased, pr_auto_rebase_skipped, pr_auto_rebase_failed, pr_auto_rebase_fallback."
+cadence = 300
+emits_kinds = ["pr_auto_rebased", "pr_auto_rebase_skipped", "pr_auto_rebase_failed", "pr_auto_rebase_fallback"]
+log_path = "/tmp/chump-pr-auto-rebase.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.auto-arm-sweeper"
+purpose = "Arms auto-merge on any OPEN PR that lost or never got its auto-merge state (INFRA-374). Runs every 30 minutes. Safety guards: only arms non-draft, non-WIP, non-CONFLICTING PRs by the current user."
+cadence = 1800
+emits_kinds = []
+log_path = "/tmp/chump-auto-arm-sweeper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.pr-watch-shepherd"
+purpose = "Scans all open ARMED PRs and auto-recovers DIRTY-after-arm ones via pr-watch.sh regardless of whether the original author's worktree/agent is still alive (INFRA-354). Runs every 10 minutes."
+cadence = 600
+emits_kinds = []
+log_path = "/tmp/chump-pr-watch-shepherd.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.pr-blocked-watch"
+purpose = "Emits kind=pr_blocked_long ALERT to ambient.jsonl when a PR has been BLOCKED for longer than the configured threshold (INFRA-550). Runs every hour."
+cadence = 3600
+emits_kinds = ["pr_blocked_long"]
+log_path = "/tmp/chump-pr-blocked-watch.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.stuck-pr-filer"
+purpose = "Converts stuck-PR detection into queued INFRA gaps (INFRA-307). Walks open PRs, scores them against 4 stuck conditions (DIRTY, CI_RED, BEHIND, STALE), and auto-files xs/s P1 INFRA gaps so fleet agents can claim them. Runs every hour."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-stuck-pr-filer.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.bounced-pr-detector"
+purpose = "Detects PRs closed without merging where work has not re-landed via another PR (INFRA-781). Emits kind=pr_bounced_unfinished and auto-files recovery gaps. Runs every 30 minutes."
+cadence = 1800
+emits_kinds = ["pr_bounced_unfinished", "pr_bounced_relanded"]
+log_path = "/tmp/chump-bounced-pr-detector.out.log"
+plist_path = "launchd/com.chump.bounced-pr-detector.plist"
+
+[[daemon]]
+name = "dev.chump.premature-closure-watch"
+purpose = "Runs scripts/ci/test-gap-closure-consistency.sh --strict --emit-alert every 15 minutes (CREDIBLE-039). Detects done gaps whose closed_pr PR is not merged (premature closure) and open gaps whose closed_pr PR is already merged."
+cadence = 900
+emits_kinds = ["premature_closure_auto_fixed", "gap_closure_check_gh_unavailable"]
+log_path = "logs/premature-closure-watch.out.log"
+plist_path = "launchd/dev.chump.premature-closure-watch.plist"
+
+# ─────────────────────────────────────────────────────────────
+# GitHub cache & API
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.github-cache-reconcile"
+purpose = "Catches webhook deliveries missed by smee/receiver by comparing one bulk gh api call against .chump/github_cache.db every 5 minutes (INFRA-1105). Emits kind=cache_drift per row that differs."
+cadence = 300
+emits_kinds = ["cache_drift"]
+log_path = "/tmp/chump-cache-reconcile.out.log"
+plist_path = "launchd/com.chump.github-cache-reconcile.plist"
+
+[[daemon]]
+name = "dev.chump.github-liaison"
+purpose = "Elects ONE fleet process as the sole GitHub API reader (INFRA-1317 Phase 1). Uses atomic lockdir election; heartbeat refreshed every cycle. Calls github-cache-reconcile.sh each poll interval (default 60s). Other workers read from the cache. Opt-in via CHUMP_LIAISON_ENABLED=1."
+cadence = "persistent"
+emits_kinds = []
+log_path = "~/Library/Logs/Chump/github-liaison.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Process & disk hygiene
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.claude-reaper"
+purpose = "Reaps orphan claude binary subprocesses leaked by long-running autonomous loops every 5 minutes (INFRA-1662). Emits kind=orphan_subprocess_reaped on each sweep. Motivated by 354 wedged subprocesses leaked over 60 hours."
+cadence = 300
+emits_kinds = ["orphan_subprocess_reaped", "reaper_pty_pressure"]
+log_path = "/tmp/chump-claude-reaper.out.log"
+plist_path = "launchd/com.chump.claude-reaper.plist"
+
+[[daemon]]
+name = "com.chump.claude-subagent-reaper"
+purpose = "Reaps stale Claude subagent processes via ~/.local/bin/reap-stale-claude-subagents.sh every 30 minutes. Companion to claude-reaper; covers the subagent-specific process namespace."
+cadence = 1800
+emits_kinds = []
+log_path = "/tmp/com.chump.claude-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.stale-process-watchdog"
+purpose = "Generalizes the claude-binary reaper to the long tail of leaked fleet subprocesses (rustc, cargo, chump health, worker.sh, bot-merge.sh, run-fleet.sh) (INFRA-1663). Runs every 30 minutes. Emits kind=stale_process_reaped."
+cadence = 1800
+emits_kinds = ["stale_process_reaped"]
+log_path = "/tmp/chump-stale-process-watchdog.out.log"
+plist_path = "launchd/com.chump.stale-process-watchdog.plist"
+
+[[daemon]]
+name = "com.chump.claude-tmp-cleanup"
+purpose = "Prunes stale /private/tmp/claude-*/ task-output directories older than 24 hours (INFRA-400). Preserves currently-active session paths. Emits kind=tmp_cleanup. Runs daily at 04:00."
+cadence = "daily@04:00"
+emits_kinds = ["tmp_cleanup"]
+log_path = "/tmp/chump-tmp-cleanup.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.prune-worktrees"
+purpose = "Runs chump fleet prune-worktrees --apply daily at 03:00. Removes linked worktrees older than CHUMP_WT_MAX_AGE_H (default 48h) with no open PR and no uncommitted changes (INFRA-832)."
+cadence = "daily@03:00"
+emits_kinds = []
+log_path = "/tmp/chump-prune-worktrees.out.log"
+plist_path = "launchd/com.chump.prune-worktrees.plist"
+
+[[daemon]]
+name = "dev.chump.disk-health-monitor"
+purpose = "Monitors /, /System/Volumes/Data, /tmp, ~/Projects/Chump disk utilization every 5 minutes. Emits ALERT to ambient.jsonl at three thresholds: <10% → disk_low; <5% → disk_critical; <2% → disk_critical with level=BLOCKING (pauses fleet)."
+cadence = 300
+emits_kinds = ["disk_low", "disk_critical"]
+log_path = "/tmp/chump-disk-health-monitor.out.log"
+plist_path = "scripts/plists/dev.chump.disk-health-monitor.plist"
+
+[[daemon]]
+name = "dev.chump.disk-pressure-reaper"
+purpose = "Pressure-tiered disk reaper (INFRA-1471). Runs every 15 minutes. Tier 1 (20-50 GB free): reap target/ idle >6h; Tier 2 (10-20 GB): reap target/ idle >2h + merged worktrees; Tier 3 (5-10 GB): aggressive whole-worktree reap; Tier 4 (<5 GB): ALERT + escalation."
+cadence = 900
+emits_kinds = []
+log_path = "/tmp/chump-disk-pressure-reaper.log"
+plist_path = "scripts/plists/dev.chump.disk-pressure-reaper.plist"
+
+[[daemon]]
+name = "dev.chump.target-reaper"
+purpose = "Reaps cargo target/ artifact directories when disk pressure threshold is crossed (INFRA-1349). Runs every 30 minutes. Emits kind=target_artifact_reaped or target_artifact_critical_reap."
+cadence = 1800
+emits_kinds = ["target_artifact_reaped", "target_artifact_critical_reap"]
+log_path = "/tmp/chump-target-reaper.log"
+plist_path = "scripts/plists/dev.chump.target-reaper.plist"
+
+[[daemon]]
+name = "dev.chump.active-target-reaper"
+purpose = "Purges target/ directories in linked worktrees that haven't been touched in 1 day (INFRA-NNN). Companion to stale-worktree-reaper: keeps active worktrees on disk but reclaims their build cache when they go quiet. Runs every 4 hours."
+cadence = 14400
+emits_kinds = []
+log_path = "/tmp/chump-active-target-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.cargo-target-reaper"
+purpose = "Reclaims stale cargo build artifacts to prevent 60GB+ unbounded growth (INFRA-1250/INFRA-1170/INFRA-2125). Runs hourly."
+cadence = 3600
+emits_kinds = []
+log_path = "~/.chump/logs/cargo-target-reaper.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.stale-worktree-reaper"
+purpose = "Auto-removes linked worktrees whose branches have already merged to main or had their remote branch deleted. Runs hourly. Emits kind=reaper_run."
+cadence = 3600
+emits_kinds = ["reaper_run"]
+log_path = "/tmp/chump-stale-worktree-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.stale-branch-reaper"
+purpose = "Auto-deletes remote branches with MERGED or CLOSED PRs older than CHUMP_BRANCH_REAPER_AGE_DAYS (default 7 days). Daily cadence (INFRA-697)."
+cadence = 86400
+emits_kinds = []
+log_path = "/tmp/chump-stale-branch-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.stale-gap-lock-reaper"
+purpose = "Sweeps .chump-locks/.gap-*.lock files whose owning session lease is gone (INFRA-676). Runs every 5 minutes. Catches orphaned locks from SIGKILLed workers."
+cadence = 300
+emits_kinds = []
+log_path = "/tmp/chump-stale-gap-lock-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.reap-stale-leases"
+purpose = "Safely removes expired claim session leases from completed gaps (INFRA-1208). Runs hourly (at :07). Checks expires_at in past and gap status done/shipped/closed. Emits per-action ambient events."
+cadence = "hourly@:07"
+emits_kinds = []
+log_path = "/tmp/chump-reap-stale-leases.out.log"
+plist_path = "launchd/com.chump.reap-stale-leases.plist"
+
+[[daemon]]
+name = "dev.chump.stale-pr-reaper"
+purpose = "Scans open PRs and closes ones whose gaps are already done on main and branch is >15 commits behind (INFRA-NNN). Runs hourly."
+cadence = 3600
+emits_kinds = ["ghost_status_closed", "pr_auto_closed_for_respawn"]
+log_path = "/tmp/chump-stale-pr-reaper.out.log"
+plist_path = "scripts/plists/dev.chump.stale-pr-reaper.plist"
+
+[[daemon]]
+name = "dev.chump.stale-bot-merge-reaper"
+purpose = "Kills bash bot-merge.sh processes older than 1 hour that were wedging the fleet (INFRA-NNN). Runs every 30 minutes. Motivated by 38 zombie processes observed 2026-05-08."
+cadence = 1800
+emits_kinds = []
+log_path = "/tmp/chump-stale-bot-merge-reaper.out.log"
+plist_path = "scripts/plists/dev.chump.stale-bot-merge-reaper.plist"
+
+[[daemon]]
+name = "dev.chump.reaper-watchdog"
+purpose = "Watchdog that monitors reaper scripts' heartbeat events and alerts if any reaper goes silent (daemon_silent / reaper_silent via reaper-heartbeat-watchdog.sh). Runs every 30 minutes."
+cadence = 1800
+emits_kinds = ["daemon_silent", "reaper_silent"]
+log_path = "/tmp/chump-reaper-watchdog.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.auditor-reaper"
+purpose = "Auto-closes auditor-filed gaps that no human has engaged with in N days (default 30). Prevents accumulation of stale noisy findings. Runs hourly."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-auditor-reaper.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.fleet-worker-watchdog"
+purpose = "Monitors fleet worker heartbeat files and emits ALERT kind=fleet_worker_silent if a worker goes silent (INFRA-NNN). Runs every 2 minutes."
+cadence = 120
+emits_kinds = ["fleet_worker_silent"]
+log_path = "/tmp/chump-fleet-watchdog.log"
+plist_path = "scripts/ops/com.chump.fleet-worker-watchdog.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Queue & gap health
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.queue-health-monitor"
+purpose = "Hourly check for known queue/agent failure modes (INFRA-052). Detects PRs OPEN >45min with failing checks, active session leases >90min since last commit, and linked worktrees >5GB. Writes to .chump/health.jsonl + .chump/alerts.log + ambient.jsonl."
+cadence = 3600
+emits_kinds = ["pr_stuck"]
+log_path = "/tmp/chump-queue-health-monitor.out.log"
+plist_path = "launchd/com.chump.queue-health-monitor.plist"
+
+[[daemon]]
+name = "dev.chump.queue-health-monitor"
+purpose = "Same as com.chump.queue-health-monitor but installed under the dev.chump namespace. Runs hourly. Duplicate install; both write to the same health outputs."
+cadence = 3600
+emits_kinds = ["pr_stuck"]
+log_path = "/tmp/chump-queue-health-monitor.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.gap-curate"
+purpose = "Nightly gap-store self-curation (INFRA-NNN). Runs at 04:00: gap rebalance --apply, gap consolidate --apply, gap retention-sweep --apply. Emits kind=gap_store_curated."
+cadence = "daily@04:00"
+emits_kinds = ["gap_store_curated"]
+log_path = "logs/gap-curate.out.log"
+plist_path = "launchd/com.chump.gap-curate.plist"
+
+[[daemon]]
+name = "dev.chump.gap-doctor-cron"
+purpose = "Runs gap-doctor.py safe-sweep every 15 minutes to catch and fix common gap registry inconsistencies (double-encoded depends_on, missing AC, stale status). Runs gap-doctor's safe-sweep mode to avoid destructive operations."
+cadence = 900
+emits_kinds = []
+log_path = "/tmp/chump-gap-doctor-cron.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.soak-checkpoint"
+purpose = "Captures system metrics and appends a checkpoint to docs/SOAK_72H_LOG.md every 4 hours during soak tests. Also saves raw JSON to logs/soak-checkpoint-YYYY-MM-DDTHH.json."
+cadence = 14400
+emits_kinds = []
+log_path = "logs/soak-launchd.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.soak-checkpoint"
+purpose = "Same as com.chump.soak-checkpoint but installed under the dev.chump namespace. Runs hourly (3600s) rather than 4-hourly per the installed plist."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-soak-checkpoint.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# CI & lint
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "dev.chump.ci-flake-rerun"
+purpose = "Pattern-matches known CI flakes on open PRs and auto-reruns failed jobs once (INFRA-375). Allowlist covers: audit-cancel, DNS EAI_AGAIN, ETIMEDOUT, git-network, rustup-missing, OOM-kill. Max 1 auto-rerun per PR per failing run-id. Runs hourly."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-ci-flake-rerun.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.lint-storm-detector"
+purpose = "Detects when 3+ open PRs fail the same clippy lint and files an INFRA gap to relax it at workspace.lints.clippy (INFRA-672). Runs hourly."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-lint-storm-detector.out.log"
+plist_path = "scripts/plists/dev.chump.lint-storm-detector.plist"
+
+[[daemon]]
+name = "dev.chump.branch-protection-drift"
+purpose = "Checks branch protection rules for drift from the expected configuration and emits alert if rules have changed. Runs daily."
+cadence = 86400
+emits_kinds = []
+log_path = "/tmp/chump-branch-protection-drift.out.log"
+plist_path = "launchd/dev.chump.branch-protection-drift.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Ambient log & event hygiene
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "dev.chump.ambient-rotate"
+purpose = "Retention policy for .chump-locks/ambient.jsonl. Keeps events from the last 7 days in-place; archives older events to gzip files. Runs daily at 03:00. Appends a rotated event summary after rotation."
+cadence = "daily@03:00"
+emits_kinds = []
+log_path = "/tmp/chump-ambient-rotate.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Agent & subagent monitoring
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.subagent-watchdog"
+purpose = "Monitors subagent heartbeat events in ambient.jsonl and emits ALERT kind=subagent_silent if a subagent has not heartbeated within SUBAGENT_SILENT_TIMEOUT_S (default 900s = 3× heartbeat interval) (INFRA-334). Runs every 5 minutes."
+cadence = 300
+emits_kinds = ["subagent_silent"]
+log_path = "logs/subagent-watchdog.out.log"
+plist_path = "launchd/com.chump.subagent-watchdog.plist"
+
+[[daemon]]
+name = "com.chump.heartbeat-watcher"
+purpose = "Persistent daemon that tails ambient.jsonl and alerts on silent agents (INFRA-819). Detects silent_agent events in two formats: JSON kind field and ALERT kind=silent_agent text lines. Restarts on crash; does not restart on clean exit."
+cadence = "persistent"
+emits_kinds = []
+log_path = "logs/heartbeat-watcher.out.log"
+plist_path = "launchd/com.chump.heartbeat-watcher.plist"
+
+# ─────────────────────────────────────────────────────────────
+# Binary & runner refresh
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.binary-refresh"
+purpose = "Runs scripts/ops/refresh-chump-binary.sh hourly. Rebuilds ~/.cargo/bin/chump when origin/main has new commits touching src/ ahead of the binary's baked SHA. Prevents the INFRA-825 staleness guard from firing during fleet activity (INFRA-1065)."
+cadence = 3600
+emits_kinds = ["chump_binary_refreshed", "chump_binary_refresh_failed"]
+log_path = "/tmp/chump-binary-refresh.out.log"
+plist_path = "launchd/com.chump.binary-refresh.plist"
+
+[[daemon]]
+name = "com.chump.refresh-runner-binary"
+purpose = "Rebuilds the chump binary from current origin/main and hard-copies it to /opt/homebrew/bin/chump so 4 self-hosted CI runners always run against a current binary (CREDIBLE-076). Runs every 30 minutes. Emits kind=runner_binary_advance on advance."
+cadence = 1800
+emits_kinds = ["runner_binary_advance"]
+log_path = ".chump-locks/binary-refresh-logs/launchd-stdout.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Actions runners
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.actions-runner"
+purpose = "GitHub Actions self-hosted runner process (runner 1 of 4). Executes CI jobs for this repository on the local machine."
+cadence = "persistent"
+emits_kinds = []
+log_path = "installed-only"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.actions-runner-2"
+purpose = "GitHub Actions self-hosted runner process (runner 2 of 4). Executes CI jobs for this repository on the local machine."
+cadence = "persistent"
+emits_kinds = []
+log_path = "installed-only"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.actions-runner-3"
+purpose = "GitHub Actions self-hosted runner process (runner 3 of 4). Executes CI jobs for this repository on the local machine."
+cadence = "persistent"
+emits_kinds = []
+log_path = "installed-only"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.actions-runner-4"
+purpose = "GitHub Actions self-hosted runner process (runner 4 of 4). Executes CI jobs for this repository on the local machine."
+cadence = "persistent"
+emits_kinds = []
+log_path = "installed-only"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Research, docs & synthesis
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "com.chump.roadmap-update-agent"
+purpose = "Weekly LLM-driven roadmap-update agent (INFRA-1147). Runs Sunday at 09:00. Reads ROADMAP.md + recent ship log + shipped gaps, calls Claude (haiku default), opens a PR for operator review. Never auto-merges."
+cadence = "weekly@sun09:00"
+emits_kinds = []
+log_path = "/tmp/chump-roadmap-update-agent.out.log"
+plist_path = "scripts/launchd/com.chump.roadmap-update-agent.plist"
+
+[[daemon]]
+name = "com.chump.synthesis-pass"
+purpose = "Periodic synthesis pass (INFRA-NNN). Collects session activity since the last pass and writes a structured markdown summary to docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md. Does NOT call an LLM — output is structured data for human or future-agent consumption. Runs every 6 hours."
+cadence = 21600
+emits_kinds = []
+log_path = "logs/synthesis-pass.out.log"
+plist_path = "launchd/com.chump.synthesis-pass.plist"
+
+[[daemon]]
+name = "com.chump.api-cost-digest"
+purpose = "Runs scripts/dev/api-cost-leaderboard.sh --window 24h --emit-ambient daily at 09:00. Emits kind=api_cost_digest_emitted to ambient.jsonl with {window_hours, total_calls, top_script, top_api, total_estimated_points} for fleet-brief / operator-recall to surface daily rankings (INFRA-1077)."
+cadence = "daily@09:00"
+emits_kinds = ["api_cost_digest_emitted"]
+log_path = "/tmp/chump-api-cost-digest.out.log"
+plist_path = "launchd/com.chump.api-cost-digest.plist"
+
+[[daemon]]
+name = "dev.chump.overnight-research"
+purpose = "Executes every job in scripts/overnight/ in alphabetical order at 02:00 local. Moves research churn (eval sweeps, A/B studies, ablations) to overnight to avoid competing with dispatch coding agents during the day."
+cadence = "daily@02:00"
+emits_kinds = []
+log_path = "/tmp/chump-overnight-research.out.log"
+plist_path = "launchd/dev.chump.overnight-research.plist"
+
+[[daemon]]
+name = "dev.chump.decomposition-tracker"
+purpose = "Reads ambient decomposition_hint events from bot-merge.sh, resolves each against gh pr list to determine outcome, and writes normalized rows to .chump/decomposition-outcomes.jsonl (FLEET-026). Runs daily at 09:00."
+cadence = "daily@09:00"
+emits_kinds = []
+log_path = "/tmp/chump-decomposition-tracker.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "com.chump.decompose-loop"
+purpose = "Curator-opus-decompose audit-pending sweep + heartbeat (INFRA-1924). Every 30 minutes: emits kind=decompose_heartbeat, then runs audit-pending subcommand to sweep stale-umbrella candidates. Exits 0 cleanly when zero stale-umbrella candidates remain."
+cadence = 1800
+emits_kinds = ["decompose_heartbeat", "decompose_sliced", "decompose_audit", "decompose_complete"]
+log_path = "/tmp/chump-decompose-loop.out.log"
+plist_path = "scripts/launchd/com.chump.decompose-loop.plist"
+
+[[daemon]]
+name = "dev.chump.distill-pr-skills"
+purpose = "Scans recently merged PRs, runs pattern-match rules over the diff, and INSERTs improvement_target rows into chump_improvement_targets for the load_spawn_lessons() cross-agent skill sharing path (INFRA-195). Runs hourly."
+cadence = 3600
+emits_kinds = []
+log_path = "/tmp/chump-distill-pr-skills.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Chump stack keepalive (non-fleet services)
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "dev.chump.farmer-brown"
+purpose = "Chump keeper: diagnoses the stack (model, embed, worker, Discord), kills stale processes when something is listening but unhealthy, then runs keep-chump-online to bring things back up. Runs every 2 minutes in a fix-loop."
+cadence = 120
+emits_kinds = []
+log_path = "logs/farmer-brown-launchd.out.log"
+plist_path = "installed-only"
+
+[[daemon]]
+name = "dev.chump.keepalive"
+purpose = "Keeps the Chump stack online (Ollama, optional embed server, optional Discord bot) by checking liveness and starting any stopped services. Runs every 2 minutes."
+cadence = 120
+emits_kinds = []
+log_path = "/tmp/chump-keepalive.out.log"
+plist_path = "installed-only"
+
+# ─────────────────────────────────────────────────────────────
+# Monitoring & observability
+# ─────────────────────────────────────────────────────────────
+
+[[daemon]]
+name = "dev.chump.syspolicyd-doctor"
+purpose = "Runs scripts/dev/chump-doctor.sh every 30 minutes to detect and remediate syspolicyd gating issues (macOS security policy blockers) that silently prevent cargo / rustc from running on the self-hosted runners."
+cadence = 1800
+emits_kinds = []
+log_path = "/tmp/chump-syspolicyd-doctor.out.log"
+plist_path = "installed-only"

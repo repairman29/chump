@@ -442,6 +442,14 @@ class ChumpViewCockpit extends HTMLElement {
             </div>
             <div id="slot-fleet"></div>
           </div>
+          <!-- EFFECTIVE-026: daemon-set health panel alongside autopilot toggle -->
+          <div>
+            <div class="zone-header">
+              <span>Daemon set</span>
+              <span class="question">What's loaded?</span>
+            </div>
+            <div id="slot-daemon-set"></div>
+          </div>
           <div class="ambient-collapsed" id="ambient-wrap">
             <button class="ambient-toggle" id="ambient-toggle" type="button"
                     aria-expanded="false">
@@ -464,6 +472,7 @@ class ChumpViewCockpit extends HTMLElement {
     this.#mount('slot-stuck', 'chump-stuck-items');   // PRODUCT-080
     this.#mount('slot-inbox', 'chump-inbox');
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
+    this.#mount('slot-daemon-set', 'chump-daemon-set-panel'); // EFFECTIVE-026
     this.#mount('slot-ambient', 'chump-ambient-viewer');
     this.#mount('slot-quick', 'chump-quick-actions');
     // Center: synthesize Read/Signal/Noise from ambient + gap-queue.
