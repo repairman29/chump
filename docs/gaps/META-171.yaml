@@ -1,0 +1,15 @@
+- id: META-171
+  domain: META
+  title: "META-167-e: target + shepherd + md-links reactors bundle — vote per pillar/wedge/lane match"
+  status: closed
+  priority: P1
+  effort: m
+  description: Sub-slice e of META-167. target + shepherd + md-links reactors bundled.
+  acceptance_criteria:
+    - scripts/coord/target-loop.sh tick gains Phase 1.5 reactor — votes per pillar-alignment with active demo-target; 2h cooldown
+    - scripts/coord/opus-shepherd-triage.sh tick gains Phase 1.5 reactor — votes +1 per VOA-001 wedge-class match; 1h cooldown
+    - scripts/coord/md-links-loop.sh tick gains Phase 1.5 reactor — votes +1 if proposal touches docs/; -1 otherwise; 6h cooldown
+    - Anti-reaction-loop applied to all 3
+    - Feature flag CHUMP_FLEET_WIRE_V1=1
+    - scripts/ci/test-target-reactor.sh + test-shepherd-reactor.sh + test-md-links-reactor.sh — 2 fixtures each per role
+

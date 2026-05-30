@@ -29,11 +29,18 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 OPERATOR_ID="${CHUMP_OPERATOR_ID:-$(cat .chump/operator_id 2>/dev/null || echo operator-unknown)}"
 SESSION_ID="${CHUMP_SESSION_ID:-$(cat .chump-locks/.wt-session-id 2>/dev/null || echo opus-unknown)}"
 
-# Bypass support (per META-091 AC #6)
+# Bypass support (per META-091 AC #6) — skip the Python triage body, but
+# still allow Phase 1.5 reactor to run on tick when CHUMP_FLEET_WIRE_V1=1.
+# Full exit-0 only when NOT in a tick context OR fleet wire is off.
+_TRIAGE_BYPASS=0
 if [[ "${CHUMP_OPUS_SHEPHERD_TRIAGE:-1}" == "0" ]]; then
-    python3 -c "import json,datetime; print(json.dumps({'ts':datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),'kind':'opus_shepherd_triage_skipped','session':'$SESSION_ID','reason':'CHUMP_OPUS_SHEPHERD_TRIAGE=0'},separators=(',',':')))" >> "$AMBIENT"
-    echo "[opus-shepherd-triage] skipped (CHUMP_OPUS_SHEPHERD_TRIAGE=0)" >&2
-    exit 0
+    _TRIAGE_BYPASS=1
+    # Only skip entirely if this isn't a tick call with fleet wire enabled
+    if [[ "${1:-}" != "tick" || "${CHUMP_FLEET_WIRE_V1:-0}" != "1" ]]; then
+        python3 -c "import json,datetime; print(json.dumps({'ts':datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),'kind':'opus_shepherd_triage_skipped','session':'$SESSION_ID','reason':'CHUMP_OPUS_SHEPHERD_TRIAGE=0'},separators=(',',':')))" >> "$AMBIENT"
+        echo "[opus-shepherd-triage] skipped (CHUMP_OPUS_SHEPHERD_TRIAGE=0)" >&2
+        exit 0
+    fi
 fi
 
 BROADCAST=1
@@ -47,6 +54,93 @@ JSON_OUT=0
 if [[ "${1:-}" == "tick" ]]; then
     # INFRA-2262: read fleet wire before doing triage work.
     "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble shepherd 2>/dev/null || true
+    # Phase 1.5: shepherd reactor (META-171) — feature-flagged
+    if [[ "${CHUMP_FLEET_WIRE_V1:-0}" == "1" ]]; then
+        _run_shepherd_reactor() {
+            local lock_dir
+            lock_dir="$(git rev-parse --git-common-dir 2>/dev/null | sed 's|\.git$||')"
+            lock_dir="${lock_dir:-.}"
+            lock_dir="${CHUMP_LOCK_DIR:-${lock_dir}.chump-locks}"
+            local inbox_file="$lock_dir/inbox/${SESSION_ID}.jsonl"
+            [[ -f "$inbox_file" ]] || return 0
+
+            local cooldown_dir="$lock_dir/shepherd-vote-cooldown"
+            mkdir -p "$cooldown_dir" 2>/dev/null || true
+            local cooldown_s=3600   # 1h
+
+            # VOA-001 7 wedge classes (from docs/gaps/VOA-001.yaml)
+            local wedge_classes="fmt-drift raw-gh-allowlist-miss sccache-R2-pair-mismatch bot-merge-silent-wedge sonnet-stall force-recover-wip-loss gap-status-auto-flip-noop"
+
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                local kind corr_id subject rationale broadcaster
+                kind="$(printf '%s' "$line" | grep -oE '"kind":"[^"]*"' | head -1 | sed 's/"kind":"//;s/"//')"
+                corr_id="$(printf '%s' "$line" | grep -oE '"corr_id":"[^"]*"' | head -1 | sed 's/"corr_id":"//;s/"//')"
+                subject="$(printf '%s' "$line" | grep -oE '"subject":"[^"]*"' | head -1 | sed 's/"subject":"//;s/"//' || echo "")"
+                rationale="$(printf '%s' "$line" | grep -oE '"rationale":"[^"]*"' | head -1 | sed 's/"rationale":"//;s/"//' || echo "")"
+                broadcaster="$(printf '%s' "$line" | grep -oE '"session":"[^"]*"' | head -1 | sed 's/"session":"//;s/"//' || echo "")"
+
+                # Anti-reaction-loop guards
+                [[ "$kind" != "proposal" ]] && continue
+                [[ "$broadcaster" == "$SESSION_ID" ]] && continue
+                if grep -q "\"kind\":\"consensus_result\".*\"corr_id\":\"${corr_id}\"" "$AMBIENT" 2>/dev/null; then continue; fi
+
+                [[ -z "$corr_id" ]] && continue
+                local cooldown_file="$cooldown_dir/$corr_id"
+                if [[ -f "$cooldown_file" ]]; then
+                    local file_age
+                    file_age="$(($(date +%s) - $(stat -f %m "$cooldown_file" 2>/dev/null || stat -c %Y "$cooldown_file" 2>/dev/null || echo 0)))"
+                    [[ "$file_age" -lt "$cooldown_s" ]] && continue
+                fi
+
+                # Decision: +1 if rationale matches a known wedge class, -1 if reinvents existing rescue
+                local vote=0
+                local reason="no-wedge-class-match"
+                local combined_text
+                combined_text="$(printf '%s %s' "$subject" "$rationale" | tr '[:upper:]' '[:lower:]')"
+                for wc in $wedge_classes; do
+                    if printf '%s' "$combined_text" | grep -qF "$wc"; then
+                        vote=1
+                        reason="wedge-class-match:${wc}"
+                        break
+                    fi
+                done
+                # -1 if proposal uses "new wedge rescue" phrasing but matches no known class
+                if [[ "$vote" -eq 0 ]]; then
+                    if printf '%s' "$combined_text" | grep -qE "wedge.rescue|new.rescue|re.invent.*wedge|duplicate.*wedge"; then
+                        vote=-1
+                        reason="reinvents-existing-wedge-rescue"
+                    fi
+                fi
+
+                if command -v chump >/dev/null 2>&1 && [[ -n "$corr_id" ]]; then
+                    chump vote "$corr_id" "$vote" --reason "shepherd-reactor: $reason" 2>/dev/null || true
+                fi
+
+                python3 -c "
+import json, datetime
+print(json.dumps({'ts': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'kind': 'shepherd_reactor_voted',
+    'session': '${SESSION_ID}',
+    'corr_id': '${corr_id}',
+    'vote': ${vote},
+    'reason': '${reason}'
+}, separators=(',', ':')))
+" >> "$AMBIENT" 2>/dev/null || true
+
+                touch "$cooldown_file" 2>/dev/null || true
+            done < <(tail -50 "$inbox_file" 2>/dev/null || true)
+        }
+        _run_shepherd_reactor
+        echo "[shepherd-triage] Phase 1.5 reactor complete" >&2
+    fi
+    # scanner-anchor: "kind":"shepherd_reactor_voted"
+    # If full triage is bypassed, emit skipped event and exit after reactor.
+    if [[ "${_TRIAGE_BYPASS:-0}" == "1" ]]; then
+        python3 -c "import json,datetime; print(json.dumps({'ts':datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),'kind':'opus_shepherd_triage_skipped','session':'${SESSION_ID}','reason':'CHUMP_OPUS_SHEPHERD_TRIAGE=0'},separators=(',',':')))" >> "$AMBIENT" 2>/dev/null || true
+        echo "[opus-shepherd-triage] skipped (CHUMP_OPUS_SHEPHERD_TRIAGE=0)" >&2
+        exit 0
+    fi
     shift
 elif [[ "${1:-}" == "heartbeat" ]]; then
     python3 -c "
@@ -82,7 +176,7 @@ export CHUMP_TRIAGE_JSON="$JSON_OUT"
 # Python writes summary to $CHUMP_TRIAGE_SUMMARY for the bash broadcast step,
 # and prints human/json output to stdout for the caller/test.
 SUMMARY_FILE=$(mktemp)
-trap "rm -f '$SUMMARY_FILE'" EXIT
+trap 'rm -f "$SUMMARY_FILE"' EXIT
 export CHUMP_TRIAGE_SUMMARY="$SUMMARY_FILE"
 python3 <<'PYEOF'
 import datetime, json, os, re, subprocess, sys
