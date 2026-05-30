@@ -46,6 +46,8 @@ REQUIRED_DAEMONS=(
     # and headless `claude -p` subprocesses (Oracle, JIT scheduler) silently
     # return "Not logged in". Symptom cascade: INFRA-2122 Oracle silent fail.
     "com.chump.oauth-refresh|scripts/setup/install-oauth-refresh-launchd.sh"
+    # META-162: deliberator — tallies fleet votes, emits consensus_result, escalates NO_QUORUM.
+    "com.chump.deliberator|scripts/setup/install-deliberator-launchd.sh"
 )
 UID_VAL="$(id -u)"
 

@@ -627,6 +627,7 @@ impl GapRow {
             preferred_machine: String::new(),
             estimated_minutes: String::new(),
             required_model: String::new(),
+            shipped_in: None,
         }
     }
 }
