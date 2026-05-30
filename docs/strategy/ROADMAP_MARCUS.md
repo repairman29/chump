@@ -46,9 +46,11 @@ Marcus's Q2 single biggest time-sink: 45 min of intense mental focus per PR reba
 |---|---|---|---|
 | INFRA-1488 merge-conflict-resolution agent | m | **P1** | open |
 
-### M-D — Team-tier substrate (P1)
+### M-D — Team-tier substrate (P1) — DEMOED-BY INFRA-2234
 
 The two named reasons Marcus would swipe the $49/op/mo Team-tier card. Both l-effort. Should land after M-A + M-B because their value-prop is invisible without the canonical demo working first.
+
+> Demo runbook: [docs/strategy/CHUMP_PE_SUITE_DEMO_5MIN.md](CHUMP_PE_SUITE_DEMO_5MIN.md) — 5-beat synthetic demo (install → status → ask → reply → resolve+pivot). Run via `bash scripts/demo/chump-pe-suite-demo.sh`.
 
 | Gap | Effort | Pri | Status |
 |---|---|---|---|
