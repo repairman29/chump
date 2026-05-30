@@ -519,13 +519,28 @@ impl IntegratorDaemon {
 
     /// Returns true if a candidate has the do-not-batch label.
     ///
-    /// Checks the candidate's `tags` field for the configured label name.
-    /// Tags are comma-separated; label matching is case-insensitive.
+    /// Checks three surfaces (case-insensitive):
+    ///   1. `candidate.tags` — comma-separated tags from the work-board
+    ///      (the authoritative surface; set on the originating gap).
+    ///   2. `candidate.branch` — proxy for branches named after the label.
+    ///   3. `candidate.author` — proxy for author logins that embed the label.
     ///
-    /// For v1, checks author and branch name as a proxy. Full tag-field wiring
-    /// through GapCandidate requires INFRA-2136 (adds tags to the struct).
+    /// Surfaces 2 and 3 catch the case where the operator names a branch or
+    /// author to encode intent but never sets the tag on the gap.
     fn has_do_not_batch_label(&self, candidate: &crate::cycle::GapCandidate) -> bool {
-        let label = self.config.do_not_batch_label.to_lowercase();
+        Self::candidate_has_label(&self.config.do_not_batch_label, candidate)
+    }
+
+    /// Pure helper for `has_do_not_batch_label` — extracted for unit testing.
+    fn candidate_has_label(label: &str, candidate: &crate::cycle::GapCandidate) -> bool {
+        let label = label.to_lowercase();
+        if label.is_empty() {
+            return false;
+        }
+        let tag_matches = candidate
+            .tags
+            .split(',')
+            .any(|t| t.trim().to_lowercase() == label);
         let author_matches = candidate
             .author
             .as_deref()
@@ -533,7 +548,7 @@ impl IntegratorDaemon {
             .to_lowercase()
             .contains(&label);
         let branch_matches = candidate.branch.to_lowercase().contains(&label);
-        author_matches || branch_matches
+        tag_matches || author_matches || branch_matches
     }
 
     /// Push the integration branch, open a PR, and arm auto-merge.
@@ -860,5 +875,71 @@ fn emit_event(kind: &str, fields: &[(&str, &str)]) {
     };
     if let Err(e) = emit(&args) {
         eprintln!("[integrator] ambient emit {kind} failed: {e:#}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cycle::GapCandidate;
+
+    fn candidate(branch: &str, author: Option<&str>, tags: &str) -> GapCandidate {
+        GapCandidate {
+            gap_id: "INFRA-9999".to_string(),
+            title: "Test gap".to_string(),
+            priority: "P1".to_string(),
+            ready_at: "2026-05-30T00:00:00Z".to_string(),
+            queue_age_s: 0,
+            estimated_loc: 100,
+            branch: branch.to_string(),
+            author: author.map(|s| s.to_string()),
+            tags: tags.to_string(),
+        }
+    }
+
+    #[test]
+    fn label_matches_via_tags_when_branch_and_author_clean() {
+        // The silent-miss regression the doc TODO warned about: PR has the
+        // do-not-batch tag set via gap notes, but the branch is named
+        // normally and the author is the usual fleet identity.
+        let c = candidate(
+            "chump/infra-1234-claim",
+            Some("repairman29"),
+            "do-not-batch,foo",
+        );
+        assert!(IntegratorDaemon::candidate_has_label("do-not-batch", &c));
+    }
+
+    #[test]
+    fn label_matches_case_insensitively_in_tags() {
+        let c = candidate("chump/infra-1234-claim", None, "Do-Not-Batch");
+        assert!(IntegratorDaemon::candidate_has_label("do-not-batch", &c));
+    }
+
+    #[test]
+    fn label_matches_via_branch_proxy() {
+        let c = candidate("chump/infra-9999-do-not-batch", None, "");
+        assert!(IntegratorDaemon::candidate_has_label("do-not-batch", &c));
+    }
+
+    #[test]
+    fn label_does_not_match_clean_candidate() {
+        let c = candidate("chump/infra-1234-claim", Some("repairman29"), "foo,bar");
+        assert!(!IntegratorDaemon::candidate_has_label("do-not-batch", &c));
+    }
+
+    #[test]
+    fn empty_label_never_matches() {
+        // Guard: an empty configured label must not match every candidate.
+        let c = candidate("chump/infra-1234-claim", Some("repairman29"), "foo");
+        assert!(!IntegratorDaemon::candidate_has_label("", &c));
+    }
+
+    #[test]
+    fn tag_match_requires_full_token_equality_not_substring() {
+        // "do-not-batch-later" should NOT match label "do-not-batch" via the
+        // tags surface — tags are token-equality, not substring.
+        let c = candidate("chump/infra-1234-claim", None, "do-not-batch-later");
+        assert!(!IntegratorDaemon::candidate_has_label("do-not-batch", &c));
     }
 }

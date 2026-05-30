@@ -314,6 +314,7 @@ mod tests {
             estimated_loc: 50,
             branch: branch.to_string(),
             author: author.map(str::to_string),
+            tags: String::new(),
         }
     }
 
