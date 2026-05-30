@@ -1222,9 +1222,16 @@ jobs:
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
         run: |
-          if [ -n "${R2_KEY:-}" ]; then
+          # RESILIENT-041 (2026-05-30): tightened length check from `-n` to `>= 16`.
+          # A misconfigured secret stored as a single character used to pass `-n`
+          # → sccache crashed with `Credential access key has length 1, should be 32`
+          # → cargo metadata exit 101 → cargo-test exit 102 → queue-wide trunk-RED.
+          # Length floor of 16 routes garbage creds through the existing graceful
+          # no-cache fallback instead of crashing the toolchain.
+          if [ "${#R2_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
+            echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
 

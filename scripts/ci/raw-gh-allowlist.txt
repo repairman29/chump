@@ -55,3 +55,6 @@ scripts/ops/backfill-shipped-gaps.sh      # INFRA-2218: one-off historical backf
 # Trunk-RED emergency tools — META-177 hotfix 2026-05-30
 scripts/ops/break-trunk-cascade.sh           # INFRA-2087: branch-protection + ruleset CRUD (GET/POST/PUT) and gh pr merge --admin bypass are GitHub Admin API operations not proxied by the cache layer; raw gh is the only path
 scripts/ops/chump-post-integration-prune.sh  # integration branch pruner: gh api -X DELETE (mutation) + gh pr view for merge-state verification; DELETE mutations are write-ops not covered by cache abstraction
+
+# META-181: PR-shepherd daemon skeleton — cache-first integration deferred to META-182
+scripts/coord/pr-shepherd-daemon.sh  # META-181: skeleton; migration to chump_gh wrapper deferred to META-182 (cache-first integration)
