@@ -6728,3 +6728,21 @@ events:
       restoring required checks.
     consumers: [fleet-doctor, ops-audit]
     fields_required: [ts, kind, bp_count, ruleset_count, source]
+  # ── INFRA-2214: curator role-doc template — confidence calibration loop ──────
+  - kind: curator_confidence_calibrated
+    effect_metric: credible
+    emitter: any curator-opus-* role (.claude/agents/*.md confidence calibration loop)
+    trigger: >
+      Emitted by any curator when a subsequent verification proves a prior
+      finding or recommendation wrong (e.g. claimed a file was missing but
+      it exists on main). The emitting curator drops its confidence tier by
+      one for the rest of the session. Carries role, original_confidence,
+      new_confidence, and reason so the operator can audit calibration
+      accuracy across the curator fleet. Operationally proven useful on
+      2026-05-29 when handoff curator false-positived on a file existence
+      check and needed to calibrate down to 0.75.
+    consumers: [ops-audit, fleet-brief, kpi-report]
+    fields_required: [ts, kind, role, original_confidence, new_confidence, reason]
+    expected_volume: "0-5 per curator session (rare; only on verified misfires)"
+    status: stable
+    # payload: {role: string, original_confidence: "high"|"med"|"low", new_confidence: "high"|"med"|"low", reason: string, ts: string}

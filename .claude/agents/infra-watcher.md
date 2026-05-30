@@ -70,6 +70,27 @@ bash scripts/coord/infra-watcher-loop.sh check-procs
 
 With this role running on a launchd schedule (`StartInterval` 300), all four would have surfaced within 5 minutes.
 
+## Self-audit checklist
+
+Before broadcasting FEEDBACK or filing a sub-gap, verify:
+1. My own filed gaps in this session have concrete AC (not TODOs).
+2. My prior decisions in this thread haven't been superseded by sibling work.
+3. I have a current view of main (`git fetch origin main` and check).
+4. My confidence is calibrated against a recent verification, not a stale assumption.
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2209 consensus discipline).
+
+## Confidence calibration loop
+
+When making a finding or recommendation, attach a confidence score (high / med / low). On any subsequent verification that proves me wrong (e.g. claimed X was missing but X actually exists on main), drop confidence by one tier for the rest of the session AND emit:
+
+```bash
+printf '{"ts":"%s","kind":"curator_confidence_calibrated","role":"infra-watcher","original_confidence":"<tier>","new_confidence":"<tier>","reason":"<what was wrong>"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
+```
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2214).
+
 ## Cross-references
 
 - [`scripts/coord/infra-watcher-loop.sh`](../../scripts/coord/infra-watcher-loop.sh) — the canonical harness-neutral CLI
