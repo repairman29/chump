@@ -86,6 +86,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod fleet_lane_recommend; // META-152: data-driven curator-lane bottleneck picker
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
@@ -6450,9 +6451,26 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // META-152: data-driven curator-lane bottleneck picker.
+            // Scores 11 curator lanes across 6 inputs (darkness, alive-but-idle,
+            // queue depth, ship rate, roadmap alignment, stuck age) and
+            // recommends which lane most needs coverage.
+            //
+            // Usage: chump fleet lane-recommend [--json] [--explain]
+            "lane-recommend" => {
+                let opts = fleet_lane_recommend::RecommendOpts {
+                    json: args.iter().any(|a| a == "--json"),
+                    explain: args.iter().any(|a| a == "--explain"),
+                    ambient_path_override: None,
+                    db_path_override: None,
+                    repo_root_override: None,
+                };
+                fleet_lane_recommend::run(&opts);
+                std::process::exit(0);
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|lane-recommend>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -6493,6 +6511,12 @@ async fn main() -> Result<()> {
                 );
                 eprintln!(
                     "              -- with --fixtures: serves web/fleet-scrubber/ locally, no server needed"
+                );
+                eprintln!(
+                    "  lane-recommend [--json] [--explain]  -- data-driven curator-lane bottleneck picker (META-152)"
+                );
+                eprintln!(
+                    "              -- scores 11 lanes; recommends which most needs coverage; emits kind=lane_recommended"
                 );
                 std::process::exit(2);
             }
