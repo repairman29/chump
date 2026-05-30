@@ -2004,6 +2004,21 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
 
+  # ── INFRA-2169: Mode D external-ship audit receipt ────────────────────────
+  - kind: external_repo_ship
+    effect_metric: effective
+    emitter: scripts/coord/pr-rescue.sh (INFRA-2169)
+    trigger: >
+      A cross-repository (fork) PR was successfully rebased and merged
+      by the fork-aware shepherd (INFRA-2114). Emitted once per merged
+      fork PR so operators can audit Mode D (external-repo) throughput.
+      Also fires broadcast.sh DONE <gap_id> <head_sha> for A2A routing.
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, external_repo, pr_url, head_sha, files_touched_count, shipper_session]
+    related_kinds: [pr_rescue_completed]
+    status: stable
+    # payload: {ts: string, gap_id: string, external_repo: "owner/repo", pr_url: string, head_sha: string, files_touched_count: number, shipper_session: string}
+
   # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
   - kind: paramedic_action
     emitter: src/paramedic.rs (INFRA-1375)
@@ -5819,17 +5834,20 @@ events:
 
   - kind: cycle_sampling_decision
     effect_metric: credible
-    emitter: scripts/coord/integration-cycle.sh (INFRA-2130)
+    emitter: crates/chump-integrator/src/daemon.rs (INFRA-2139)
     trigger: >
-      Phase 2 marker. Emitted when the cycle's sampling logic decides
-      whether to include or exclude a candidate gap based on probabilistic
-      or priority-weighted selection. Enables post-hoc analysis of
-      sampling fairness across gap classes.
+      Phase 2 gate. Emitted once per cycle immediately after CLAIM, before
+      SELECT. A deterministic FNV-1a hash of cycle_id mod 100 + 1 gives a
+      roll in [1, 100]; if roll <= threshold the cycle runs LIVE, otherwise
+      it stays DRY-RUN. Enables post-hoc analysis of sampling rate and
+      live-cycle frequency. dry_run_override=true means the global
+      CHUMP_INTEGRATOR_DRY_RUN flag forced DRY-RUN regardless of roll.
     consumers: [kpi-report, ops-audit]
-    fields_required: [ts, kind, cycle_id, gap_id, decision, reason]
-    expected_volume: "N per cycle (one per candidate evaluated)"
+    fields_required: [ts, kind, cycle_id, roll, threshold, decision, dry_run_override, cycle_is_live]
+    expected_volume: "1 per cycle attempt"
     status: stable
-    # payload: {cycle_id: string, gap_id: string, decision: "include"|"exclude", reason: string, ts: string}
+    # payload: {cycle_id: string, roll: number, threshold: number, decision: "live"|"dry_run",
+    #           dry_run_override: bool, cycle_is_live: bool, ts: string}
 
   # META-127 C3c — curator-opus-velocity-tracker (INFRA-2221)
   - kind: velocity_tracker_tick
@@ -5922,3 +5940,17 @@ events:
       without re-scanning the inbox files.
     consumers: [ops-audit, fleet-doctor, pwa-dashboard]
     fields_required: [ts, kind, unread_count, session]
+  - kind: gap_shipped_in_set
+    effect_metric: credible
+    emitter: crates/chump-gap-store/src/lib.rs (INFRA-2134)
+    trigger: >
+      Emitted by GapStore::set_shipped_in() whenever a shipped_in JSON blob
+      is written for a gap. Enables audit trails for both integration-cycle
+      and per-PR shipping paths. Contains the gap_id and the shape of the
+      shipped_in record (integration vs per_pr).
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, gap_id, shape]
+    related_kinds: [cycle_shipped, pr_merged]
+    expected_volume: "1 per gap shipped via any path"
+    status: stable
+    # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}

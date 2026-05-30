@@ -24,6 +24,7 @@
 # ── Infrastructure / setup steps (cannot mirror — Linux-only or runner state) ─
 Free disk space            # reason: sudo/apt Linux-only disk cleanup; runner-specific; Tier-D in spirit
 Install Linux packages     # reason: apt-get Linux-only; macOS self-hosted skips via `if: runner.os == 'Linux'`
+Install mold linker        # reason: INFRA-2242 apt-get install mold; Linux-only; macOS self-hosted skips via `if: runner.os == 'Linux'`
 Install PyYAML             # reason: pip install step; Linux CI runner only; macOS runner skips
 Install Rust toolchain     # reason: dtolnay/rust-toolchain action; GitHub Actions only
 Cache cargo                # reason: Swatinem/rust-cache action; GitHub Actions only
