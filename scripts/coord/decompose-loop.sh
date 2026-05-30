@@ -153,7 +153,7 @@ _peek_pending_feedback() {
     local found=0
     while IFS= read -r cid; do
         [[ -z "$cid" ]] && continue
-        if ! printf '%s\n' "$resolved_ids" | grep -qxF "$cid" 2>/dev/null; then
+        if ! printf '%s\n' "$resolved_ids" | grep -qxF "$cid" 2>/dev/null; then  # pipefail-sweep-allowed
             printf '%s\n' "$cid"
             found=1
         fi
