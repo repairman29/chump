@@ -47,6 +47,8 @@ JSON_OUT=0
 if [[ "${1:-}" == "tick" ]]; then
     # INFRA-2262: read fleet wire before doing triage work.
     "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble shepherd 2>/dev/null || true
+    # CREDIBLE-084: emit tick_outcome at script exit (covers all triage paths).
+    trap '_RC=$?; "$(dirname "$0")/ambient-context-inject.sh" --tick-outcome shepherd "$_RC" 2>/dev/null || true' EXIT
     shift
 elif [[ "${1:-}" == "heartbeat" ]]; then
     python3 -c "

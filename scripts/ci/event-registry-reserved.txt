@@ -439,6 +439,9 @@ bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registere
 fleet_scale_changed               # reason: INFRA-2198 (META-128/C7); disk-plan gate + fleet auto-scale emitter; fields: from, to, reason.
 external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; registered in EVENT_REGISTRY.yaml; emitter scripts/coord/pr-rescue.sh (INFRA-2114 fork-aware path).
 
+# ── CREDIBLE-084: tick_outcome event for no-idle policy audit + observability ──
+tick_outcome                      # reason: CREDIBLE-084 emitted by scripts/coord/ambient-context-inject.sh --tick-outcome at end of each productized curator-loop tick. Carries role, session, outcome (shipped|dispatched_sub|blocked_defensible|picked_nextbest|none), exit_code, optional gap_id. Drives the no-idle-policy compliance audit (INFRA-2208) + fleet-wire emit/consumer-ack leaderboard (CREDIBLE-081). Scanner-anchor: scripts/coord/ambient-context-inject.sh.
+
 # ── INFRA-1118: A2A Layer 1a — file-fallback + degraded/recovered event kinds ──
 # Emit sites in crates/chump-coord/src/events.rs use Rust format! macro patterns
 # not grep-scannable as bare "kind":"<value>" literals in PROD_PATHS scanner.
