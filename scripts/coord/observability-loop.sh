@@ -22,8 +22,23 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 AMBIENT="${CHUMP_AMBIENT_OVERRIDE:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+
+# ── Phase 0 inbox-drain helpers (META-161 / META-157) ────────────────────────
+_GIT_COMMON_OBS="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON_OBS" == ".git" ]]; then
+    _MAIN_REPO_OBS="$REPO_ROOT"
+else
+    _MAIN_REPO_OBS="$(cd "$_GIT_COMMON_OBS/.." && pwd)"
+fi
+LOCK_DIR="${CHUMP_OBS_LOCK_DIR:-$_MAIN_REPO_OBS/.chump-locks}"
+SESSION_ID="${CHUMP_SESSION_ID:-observability-$$}"
+
+_INBOX_HELPERS="$SCRIPT_DIR/lib/inbox-helpers.sh"
+# shellcheck disable=SC1090
+[[ -f "$_INBOX_HELPERS" ]] && source "$_INBOX_HELPERS"
 EVENT_REGISTRY="${CHUMP_OBS_EVENT_REGISTRY:-$REPO_ROOT/scripts/ci/event-registry-reserved.txt}"
 COST_LEADERBOARD="$REPO_ROOT/scripts/dev/api-cost-leaderboard.sh"
 LAUNCHAGENTS_DIR="${CHUMP_LAUNCHAGENTS_OVERRIDE:-$HOME/Library/LaunchAgents}"
@@ -488,6 +503,15 @@ for line in sys.stdin:
 
 cmd_tick() {
     echo "=== observability-loop tick: $(_ts) ==="
+
+    # Phase 0: inbox-drain + feedback-peek (META-161 / META-157)
+    # Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" ]] && declare -f _phase0_inbox_drain >/dev/null 2>&1; then
+        local _obs_actionable=0
+        _phase0_inbox_drain "$LOCK_DIR" "$SESSION_ID" "$AMBIENT" "observability" _obs_actionable
+        echo ""
+    fi
+
     cmd_audit_event_registry
     echo ""
     cmd_reaper_cadence_audit

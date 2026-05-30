@@ -304,5 +304,53 @@ test_disk_pressure
 test_process_bloat
 test_all_green
 
+# ── Case: Phase 0 inbox-drain smoke test (META-161) ───────────────────────────
+test_phase0_inbox_drain() {
+    local T
+    T="$(mktemp -d)"
+    trap 'rm -rf "$T"' RETURN
+
+    # Copy loop + shared lib
+    mkdir -p "$T/scripts/coord/lib"
+    cp "$LOOP" "$T/scripts/coord/infra-watcher-loop.sh"
+    local helpers
+    helpers="$(cd "$(dirname "$LOOP")" && pwd)/lib/inbox-helpers.sh"
+    [[ -f "$helpers" ]] && cp "$helpers" "$T/scripts/coord/lib/inbox-helpers.sh"
+
+    local session_id="test-iw-phase0-$$"
+    mkdir -p "$T/.chump-locks/inbox"
+
+    # 1 inbox message
+    printf '{"ts":"2026-05-30T00:00:00Z","kind":"test_msg","session":"%s"}\n' "$session_id" \
+        > "$T/.chump-locks/inbox/${session_id}.jsonl"
+
+    # 1 ambient FEEDBACK event with unresolved corr_id
+    printf '{"ts":"2026-05-30T00:00:01Z","kind":"FEEDBACK","corr_id":"corr-iw-123","session":"other"}\n' \
+        > "$T/.chump-locks/ambient.jsonl"
+
+    local out rc=0
+    out="$(
+        REPO_ROOT="$T" \
+        CHUMP_IW_AMBIENT_LOG="$T/.chump-locks/ambient.jsonl" \
+        CHUMP_IW_LOCK_DIR="$T/.chump-locks" \
+        CHUMP_SESSION_ID="$session_id" \
+        CHUMP_FLEET_RECV_SIDE_V0=1 \
+        CHUMP_INFRA_WATCHER_PLIST_DIR="$T/no-plists" \
+            bash "$T/scripts/coord/infra-watcher-loop.sh" tick 2>&1
+    )" || rc=$?
+
+    if printf '%s' "$out" | grep -q "Pending FEEDBACK"; then
+        PASS=$((PASS+1)); printf 'PASS Phase 0 infra-watcher: Pending FEEDBACK header present\n'
+    else
+        FAIL=$((FAIL+1)); printf 'FAIL Phase 0 infra-watcher: Pending FEEDBACK header missing; output=%s\n' "$out"
+    fi
+    if printf '%s' "$out" | grep -q "Phase 0"; then
+        PASS=$((PASS+1)); printf 'PASS Phase 0 infra-watcher: Phase 0 header present\n'
+    else
+        FAIL=$((FAIL+1)); printf 'FAIL Phase 0 infra-watcher: Phase 0 header missing\n'
+    fi
+}
+test_phase0_inbox_drain
+
 printf '\n=== Results: %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [[ "$FAIL" -eq 0 ]]

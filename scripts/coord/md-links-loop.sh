@@ -41,6 +41,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then
@@ -52,6 +53,11 @@ LOCK_DIR="$MAIN_REPO/.chump-locks"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 SESSION_ID="${CHUMP_SESSION_ID:-md-links-$$}"
 DOCS_ROOT="${CHUMP_MD_LINKS_DOCS:-$REPO_ROOT/docs}"
+
+# ── Phase 0 inbox-drain helpers (META-161 / META-157) ────────────────────────
+_INBOX_HELPERS="$SCRIPT_DIR/lib/inbox-helpers.sh"
+# shellcheck disable=SC1090
+[[ -f "$_INBOX_HELPERS" ]] && source "$_INBOX_HELPERS"
 
 _now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -95,6 +101,7 @@ _scan_file_internal() {
     while IFS= read -r line; do
         lineno=$((lineno + 1))
         # Extract all ](target) occurrences on this line
+        # shellcheck disable=SC2034
         local targets
         # Use grep to pull out the (target) portion — allow multiple per line
         while IFS= read -r raw_target; do
@@ -219,6 +226,14 @@ _do_scan() {
 # ── Subcommands ───────────────────────────────────────────────────────────────
 
 cmd_tick() {
+    # Phase 0: inbox-drain + feedback-peek (META-161 / META-157)
+    # Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" ]] && declare -f _phase0_inbox_drain >/dev/null 2>&1; then
+        local _ml_actionable=0
+        _phase0_inbox_drain "$LOCK_DIR" "$SESSION_ID" "$AMBIENT" "md-links" _ml_actionable
+        echo
+    fi
+
     # Fast scan: docs/process/*.md only
     local fast_path="$DOCS_ROOT/process"
     if [[ ! -d "$fast_path" ]]; then

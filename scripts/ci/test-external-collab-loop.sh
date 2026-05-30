@@ -222,6 +222,53 @@ else
     fail "Case 5: expected 0 findings, got ${finding_count}; ambient=$(cat "$T5/.chump-locks/ambient.jsonl" 2>/dev/null)"
 fi
 
+# ── Case 6 (META-161): Phase 0 inbox-drain smoke test ─────────────────────────
+# Stub 1 inbox message + 1 ambient FEEDBACK, run tick with flag set,
+# assert exit 0 (actionable) and "Pending FEEDBACK" header in stdout.
+T6="$TMP/case6"
+setup_fake_repo "$T6"
+
+# copy the shared lib
+mkdir -p "$T6/scripts/coord/lib"
+cp "$REPO_ROOT/scripts/coord/lib/inbox-helpers.sh" "$T6/scripts/coord/lib/inbox-helpers.sh"
+
+SESSION6="test-ec-phase0-$$"
+mkdir -p "$T6/.chump-locks/inbox"
+
+# 1 inbox message
+printf '{"ts":"2026-05-30T00:00:00Z","kind":"test_msg","session":"%s"}\n' "$SESSION6" \
+    > "$T6/.chump-locks/inbox/${SESSION6}.jsonl"
+
+# 1 ambient FEEDBACK event with a corr_id that has no matching consensus_result
+printf '{"ts":"2026-05-30T00:00:01Z","kind":"FEEDBACK","corr_id":"corr-abc123","session":"other"}\n' \
+    > "$T6/.chump-locks/ambient.jsonl"
+
+output6=$(
+    CHUMP_EC_REPO_ROOT="$T6" \
+    CHUMP_EC_AMBIENT_LOG="$T6/.chump-locks/ambient.jsonl" \
+    CHUMP_EC_LOCK_DIR="$T6/.chump-locks" \
+    CHUMP_SESSION_ID="$SESSION6" \
+    CHUMP_FLEET_RECV_SIDE_V0=1 \
+        bash "$T6/scripts/coord/external-collab-loop.sh" tick 2>&1
+)
+rc6=$?
+
+if [ "$rc6" -eq 0 ]; then
+    ok "Case 6 Phase 0: tick exits 0"
+else
+    fail "Case 6 Phase 0: expected exit 0, got $rc6"
+fi
+if printf '%s' "$output6" | grep -q "Pending FEEDBACK"; then
+    ok "Case 6 Phase 0: 'Pending FEEDBACK' header present in stdout"
+else
+    fail "Case 6 Phase 0: 'Pending FEEDBACK' header missing; output: $output6"
+fi
+if printf '%s' "$output6" | grep -q "Phase 0"; then
+    ok "Case 6 Phase 0: Phase 0 header present"
+else
+    fail "Case 6 Phase 0: Phase 0 header missing"
+fi
+
 # ── summary ───────────────────────────────────────────────────────────────────
 echo ""
 printf 'Results: %d passed, %d failed\n' "$PASS" "$FAIL"

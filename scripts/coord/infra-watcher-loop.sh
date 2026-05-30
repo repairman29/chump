@@ -19,7 +19,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Allow REPO_ROOT override for testing
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+AMBIENT_LOG="${CHUMP_IW_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+
+# ── Phase 0 inbox-drain helpers (META-161 / META-157) ────────────────────────
+_GIT_COMMON_IW="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON_IW" == ".git" ]]; then
+    _MAIN_REPO_IW="$REPO_ROOT"
+else
+    _MAIN_REPO_IW="$(cd "$_GIT_COMMON_IW/.." && pwd)"
+fi
+LOCK_DIR="${CHUMP_IW_LOCK_DIR:-$_MAIN_REPO_IW/.chump-locks}"
+SESSION_ID="${CHUMP_SESSION_ID:-infra-watcher-$$}"
+
+_INBOX_HELPERS="$SCRIPT_DIR/lib/inbox-helpers.sh"
+# shellcheck disable=SC1090
+[[ -f "$_INBOX_HELPERS" ]] && source "$_INBOX_HELPERS"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -480,6 +494,14 @@ cmd_tick() {
     local ts
     ts="$(_ts)"
     printf '[infra-watcher] tick start ts=%s\n' "$ts"
+
+    # Phase 0: inbox-drain + feedback-peek (META-161 / META-157)
+    # Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" ]] && declare -f _phase0_inbox_drain >/dev/null 2>&1; then
+        local _iw_actionable=0
+        _phase0_inbox_drain "$LOCK_DIR" "$SESSION_ID" "$AMBIENT_LOG" "infra-watcher" _iw_actionable
+    fi
+
     cmd_audit_daemons
     cmd_check_runners
     cmd_check_disk
