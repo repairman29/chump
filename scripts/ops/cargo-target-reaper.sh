@@ -27,6 +27,16 @@
 #   (g) INFRA-2125/C: /tmp/chump-*/target/ in worktrees with ACTIVE lease but
 #       whose PR is open + auto-merge armed + local HEAD matches remote tip
 #       (work is safely on origin; rebuild cost is bounded)
+#   (h) INFRA-2188: ~/.cache/chump-runner/cargo-target/{debug,release}/
+#       .fingerprint/* AND deps/lib*.rlib by FLEET_AGE_D mtime. Filed because
+#       the self-hosted runner accumulates 40-60GB here unbounded — it never
+#       runs as a worktree so (c)/(d) miss it. Safety guard: skip the
+#       sub-target dir if any chump-* binary mtime <24h ago (worker is hot).
+#
+# Disk-pressure escalation (INFRA-2188):
+#   CHUMP_DISK_CRITICAL_GB (default 20) — when df reports free < N GB on
+#   $HOME, FINGERPRINT_AGE_D is forced to 1 and FLEET_AGE_D to 2 for this
+#   run. Emits kind=cargo_reaper_aggressive_mode_engaged on entry.
 
 set -euo pipefail
 
@@ -38,6 +48,13 @@ EVENT_LISTEN=0
 FINGERPRINT_AGE_D="${CHUMP_CARGO_REAPER_FINGERPRINT_AGE_D:-14}"
 FLEET_AGE_D="${CHUMP_CARGO_REAPER_FLEET_AGE_D:-7}"
 MIN_FREE_GB=1
+# INFRA-2188: when free disk drops below DISK_CRITICAL_GB on $HOME, the reaper
+# escalates: FINGERPRINT_AGE_D→1 and FLEET_AGE_D→2 for this run.
+DISK_CRITICAL_GB="${CHUMP_DISK_CRITICAL_GB:-20}"
+# INFRA-2188: ~/.cache/chump-runner/cargo-target/{debug,release}. Override for
+# tests via CHUMP_CARGO_REAPER_RUNNER_CACHE.
+RUNNER_CACHE_BASE="${CHUMP_CARGO_REAPER_RUNNER_CACHE:-${HOME}/.cache/chump-runner/cargo-target}"
+RUNNER_HOT_BIN_AGE_H="${CHUMP_CARGO_REAPER_RUNNER_HOT_AGE_H:-24}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -138,6 +155,22 @@ _free_gb=$(( _free_kb / 1024 / 1024 ))
 if [[ $_free_gb -lt $MIN_FREE_GB ]]; then
     echo "[cargo-target-reaper] ABORT: only ${_free_gb}GB free — less than minimum ${MIN_FREE_GB}GB." >&2
     exit 1
+fi
+
+# INFRA-2188: 3. Disk-critical escalation — when free space below
+# CHUMP_DISK_CRITICAL_GB on $HOME, drop FINGERPRINT_AGE_D→1 and FLEET_AGE_D→2
+# so this run reaps aggressively. Operator can opt out with
+# CHUMP_DISK_CRITICAL_GB=0.
+AGGRESSIVE_MODE=0
+if [[ "$DISK_CRITICAL_GB" -gt 0 ]]; then
+    _home_free_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo "9999999")
+    _home_free_gb=$(( _home_free_kb / 1024 / 1024 ))
+    if [[ $_home_free_gb -lt $DISK_CRITICAL_GB ]]; then
+        AGGRESSIVE_MODE=1
+        FINGERPRINT_AGE_D=1
+        FLEET_AGE_D=2
+        echo "[cargo-target-reaper] disk-critical: ${_home_free_gb}GB free on \$HOME (< ${DISK_CRITICAL_GB}GB threshold) — escalating: FINGERPRINT_AGE_D=${FINGERPRINT_AGE_D} FLEET_AGE_D=${FLEET_AGE_D}"
+    fi
 fi
 
 AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
@@ -403,17 +436,89 @@ for _lease_file in "${REPO_ROOT}/.chump-locks"/*.json; do
         >> "$AMBIENT_LOG" 2>/dev/null || true
 done
 
+# ── (h) INFRA-2188: chump-runner cargo-target cache ─────────────────────────
+# The self-hosted runner sets CARGO_TARGET_DIR=~/.cache/chump-runner/cargo-target
+# and accumulates 40-60GB there unbounded. It's never a worktree path so (c)/(d)
+# miss it. We mirror the (a+b) pattern but key the safety guard on per-profile
+# hot-binary mtime: if any chump-* binary in the profile dir was touched within
+# the last RUNNER_HOT_BIN_AGE_H hours, skip that profile (runner job in flight).
+_runner_scope_count=0
+if [[ -d "$RUNNER_CACHE_BASE" ]]; then
+    echo "[cargo-target-reaper] Scanning ${RUNNER_CACHE_BASE}/{debug,release} (runner-scope; hot-touch guard ${RUNNER_HOT_BIN_AGE_H}h)…"
+    for _profile in debug release; do
+        _prof_dir="${RUNNER_CACHE_BASE}/${_profile}"
+        [[ -d "$_prof_dir" ]] || continue
+
+        # Hot-touch guard: scan top-level chump-* binaries (no extension) for
+        # any mtime newer than RUNNER_HOT_BIN_AGE_H hours. If hot, skip.
+        _hot=0
+        _hot_age_s=$(( RUNNER_HOT_BIN_AGE_H * 3600 ))
+        _now_epoch=$(date +%s)
+        while IFS= read -r -d '' _bin; do
+            [[ -f "$_bin" ]] || continue
+            # Skip .d / .rlib / .rmeta / dirs
+            case "$_bin" in *.d|*.rlib|*.rmeta) continue ;; esac
+            _bmtime=$(stat -f%m "$_bin" 2>/dev/null || stat -c%Y "$_bin" 2>/dev/null || echo 0)
+            if [[ $(( _now_epoch - _bmtime )) -lt $_hot_age_s ]]; then
+                _hot=1
+                echo "  skip (${_profile}: hot binary $(basename "$_bin") <${RUNNER_HOT_BIN_AGE_H}h)"
+                break
+            fi
+        done < <(find "$_prof_dir" -mindepth 1 -maxdepth 1 -name 'chump*' -type f -print0 2>/dev/null)
+        [[ $_hot -eq 1 ]] && continue
+
+        # Reap .fingerprint/* > FLEET_AGE_D
+        if [[ -d "${_prof_dir}/.fingerprint" ]]; then
+            while IFS= read -r -d '' _entry; do
+                _rs_size=$(du -sk "$_entry" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
+                _rs_age=$(( ( _now_epoch - $(stat -f%m "$_entry" 2>/dev/null || stat -c%Y "$_entry" 2>/dev/null || echo 0) ) / 86400 ))
+                echo "${_dry_label}  runner-scope reap: ${_entry} (${_rs_age}d old, ~$(( _rs_size / 1024 / 1024 ))MB)"
+                if [[ $EXECUTE -eq 1 ]]; then
+                    rm -rf "$_entry" 2>/dev/null || true
+                fi
+                _total_bytes=$(( _total_bytes + _rs_size ))
+                _reaped_count=$(( _reaped_count + 1 ))
+                _runner_scope_count=$(( _runner_scope_count + 1 ))
+                printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"runner_cache","profile":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_entry" "$_rs_size" "$_rs_age" \
+                    "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" "$_profile" \
+                    >> "$AMBIENT_LOG" 2>/dev/null || true
+            done < <(find "${_prof_dir}/.fingerprint" -mindepth 1 -maxdepth 1 -mtime "+${FLEET_AGE_D}" -print0 2>/dev/null)
+        fi
+
+        # Reap deps/lib*.rlib > FLEET_AGE_D
+        if [[ -d "${_prof_dir}/deps" ]]; then
+            while IFS= read -r -d '' _entry; do
+                _rs_size=$(stat -f%z "$_entry" 2>/dev/null || stat -c%s "$_entry" 2>/dev/null || echo 0)
+                _rs_age=$(( ( _now_epoch - $(stat -f%m "$_entry" 2>/dev/null || stat -c%Y "$_entry" 2>/dev/null || echo 0) ) / 86400 ))
+                echo "${_dry_label}  runner-scope reap: ${_entry} (${_rs_age}d old, ~$(( _rs_size / 1024 / 1024 ))MB)"
+                if [[ $EXECUTE -eq 1 ]]; then
+                    rm -f "$_entry" 2>/dev/null || true
+                fi
+                _total_bytes=$(( _total_bytes + _rs_size ))
+                _reaped_count=$(( _reaped_count + 1 ))
+                _runner_scope_count=$(( _runner_scope_count + 1 ))
+                printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"class":"runner_cache","profile":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_entry" "$_rs_size" "$_rs_age" \
+                    "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" "$_profile" \
+                    >> "$AMBIENT_LOG" 2>/dev/null || true
+            done < <(find "${_prof_dir}/deps" -maxdepth 1 -name 'lib*.rlib' -mtime "+${FLEET_AGE_D}" -print0 2>/dev/null)
+        fi
+    done
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 _total_mb=$(( _total_bytes / 1024 / 1024 ))
 echo ""
-echo "[cargo-target-reaper] ${_dry_label} Done: ${_reaped_count} artifacts, ~${_total_mb}MB (orphaned /tmp worktrees: ${_tmp_orphan_count})"
+echo "[cargo-target-reaper] ${_dry_label} Done: ${_reaped_count} artifacts, ~${_total_mb}MB (orphaned /tmp worktrees: ${_tmp_orphan_count}, runner-scope: ${_runner_scope_count})"
 if [[ $EXECUTE -eq 0 && $_reaped_count -gt 0 ]]; then
     echo "[cargo-target-reaper] Re-run with --execute to actually delete."
 fi
 
-# Summary ambient event — includes worktree_orphan_count (INFRA-1170) + INFRA-2125 class counts.
-printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s,"worktree_orphan_count":%d,"cross_build_count":%d,"cargo_test_target_count":%d,"lease_auto_merge_count":%d}\n' \
+# Summary ambient event — includes worktree_orphan_count (INFRA-1170) + INFRA-2125 class counts + INFRA-2188 runner_scope_count + aggressive_mode flag.
+printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s,"worktree_orphan_count":%d,"cross_build_count":%d,"cargo_test_target_count":%d,"lease_auto_merge_count":%d,"runner_scope_count":%d,"aggressive_mode":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_reaped_count" "$_total_bytes" \
     "$([[ $EXECUTE -eq 1 ]] && echo 'true' || echo 'false')" \
     "$_tmp_orphan_count" "$_cross_build_count" "$_cargo_test_target_count" "$_lease_armed_count" \
+    "$_runner_scope_count" "$([[ $AGGRESSIVE_MODE -eq 1 ]] && echo 'true' || echo 'false')" \
     >> "$AMBIENT_LOG" 2>/dev/null || true

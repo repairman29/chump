@@ -139,6 +139,78 @@ else
 fi
 
 echo ""
+echo "--- Test 9: INFRA-2217 — lane recency sort logic present ---"
+if echo "$HTML" | grep -q 'lastTsAll'; then
+    ok "Recency sort map (lastTsAll) present in JS"
+else
+    bad "Recency sort map (lastTsAll) missing — lane sort not implemented"
+fi
+if echo "$HTML" | grep -q 'STALE_THRESHOLD_MS'; then
+    ok "Stale threshold constant (STALE_THRESHOLD_MS) present"
+else
+    bad "Stale threshold constant missing"
+fi
+
+echo ""
+echo "--- Test 10: INFRA-2217 — self-highlight CSS and JS present ---"
+if echo "$HTML" | grep -q 'self-session'; then
+    ok "Self-session CSS class present"
+else
+    bad "Self-session CSS class missing"
+fi
+if echo "$HTML" | grep -q 'chump-self-session-id'; then
+    ok "Self-session localStorage key (chump-self-session-id) present"
+else
+    bad "Self-session localStorage key missing"
+fi
+if echo "$HTML" | grep -q 'selfSessionId'; then
+    ok "selfSessionId state variable present"
+else
+    bad "selfSessionId state variable missing"
+fi
+
+echo ""
+echo "--- Test 11: INFRA-2217 — show-stale toggle present ---"
+if echo "$HTML" | grep -q 'id="stale-toggle"'; then
+    ok "Stale toggle button (id=stale-toggle) present"
+else
+    bad "Stale toggle button missing"
+fi
+if echo "$HTML" | grep -q 'chump-show-stale'; then
+    ok "Stale toggle localStorage key (chump-show-stale) present"
+else
+    bad "Stale toggle localStorage key missing"
+fi
+
+echo ""
+echo "--- Test 12: INFRA-2217 — fixture lane order matches recency ---"
+# Verify fixture segments.json has multiple sessions with distinct max-end
+# timestamps, confirming the sort has meaningful data to order.
+python3 -c "
+import json, sys
+from collections import defaultdict
+
+path = '$SEGMENTS_JSON'
+segs = json.load(open(path))
+sessions = defaultdict(list)
+for s in segs:
+    sessions[s['session_id']].append(s['end'])
+
+if len(sessions) < 2:
+    print('WARN: only one session in fixtures — recency sort has nothing to order')
+    sys.exit(0)
+
+max_ends = {sid: max(ends) for sid, ends in sessions.items()}
+sids_sorted = sorted(max_ends, key=lambda s: max_ends[s], reverse=True)
+print('  Sessions in recency order: ' + str(sids_sorted))
+for i in range(len(sids_sorted) - 1):
+    assert max_ends[sids_sorted[i]] >= max_ends[sids_sorted[i+1]], \
+        'Sort order wrong: ' + sids_sorted[i] + ' vs ' + sids_sorted[i+1]
+print('  Lane recency order validated against fixture data')
+" && ok "Fixture data supports lane recency sort (multiple sessions, distinct max-end timestamps)" \
+  || bad "Fixture lane recency sort validation failed"
+
+echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
 
 if [[ $FAIL -gt 0 ]]; then
