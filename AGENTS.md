@@ -315,6 +315,53 @@ in ambient:
 3. If structural, file a follow-up gap migrating that caller to
    `cache_lookup_*` helpers.
 
+## Communication channels — what goes where (INFRA-2202, 2026-05-29)
+
+The fleet has four distinct communication channels with different delivery
+properties. **Pick by intent — not by habit.** Misrouting slows the fleet:
+broadcasts that go to one inbox die there; design-fanout DMs to 5 curators
+clutter inboxes peers actually need to scan; busy-poll loops on ambient
+burn cache.
+
+| Channel | Path | Delivery | Use for |
+|---|---|---|---|
+| **NATS broadcast** | `scripts/coord/broadcast.sh <TYPE> ...` → `chump.events.<type>` | Fanout to all listeners; appears in peer PreToolUse ambient digest within minutes ("now-ish") | Proposals, design votes, FYIs, status announcements, "anyone seeing X?", roadmap updates, milestone DONE |
+| **Inbox DM** | `.chump-locks/inbox/<session-id>.jsonl` (write via `broadcast.sh --to <session-id>`) | Per-recipient queue; addressed session reads on next loop tick (minutes-to-hour) | **Addressed action requests** that need acknowledgment ("wizard, please admin-merge #2740 — trunk-RED cleared"); operator-routed work; one-to-one handoffs |
+| **ambient.jsonl emit** | `chump-coord emit <KIND> ...` or harness hook → `.chump-locks/ambient.jsonl` + NATS `chump.events.<kind>` | Observable to all curators reading ambient; never expected to wake a recipient | Side-effect record: file_edit, bash_call, gap_claimed, pr_stuck, lease_overlap, heartbeat_fresh. Don't emit just to look busy |
+| **Heartbeat / lease** | `.chump-locks/claim-<gap>-<pid>-<ts>.json` updated by chump-coord | Liveness signal (`stale_gap_lock_protected reason=heartbeat_fresh`); existence ≠ activity | Proof your session is still alive even when no events are firing. Don't manufacture; let the coord layer drive it |
+
+**Decision table:**
+
+| Intent | Use |
+|---|---|
+| "I want a design vote / opinion / FYI from anyone who cares" | **NATS broadcast** |
+| "I need session X (and only X) to acknowledge / take action" | **inbox DM** |
+| "I just did Y; emit a record so observers can react" | **ambient emit** |
+| "Am I (or peer X) still alive?" | **read heartbeat / lease**; do not emit one |
+
+**Anti-patterns (don't do these):**
+
+- Sending five inbox DMs ("hi md-links, hi handoff, hi ci-audit, …") when one broadcast would fan out the same proposal.
+- Polling `tail -f ambient.jsonl` in a busy script loop to "check for responses." Use `chump-coord watch` for live tail or `ScheduleWakeup` for delayed.
+- Emitting fabricated ambient events to dramatize liveness. Heartbeat is the only honest liveness signal.
+- Checking the inbox for replies to a broadcast. Broadcast replies go on NATS too — watch `chump.events.feedback` (or whatever subject you broadcast on), not the inbox.
+- Using broadcast when one specific session needs to act. Fanout means everyone *can* ignore it; no recipient is on the hook.
+
+**Reply protocol — broadcast roundtrips:**
+
+When you broadcast a proposal and want votes, **wait for replies on the same NATS subject**, not the inbox. Peer curators see your broadcast in their PreToolUse digest and either:
+
+- broadcast `FEEDBACK <kind> "<subject>" "<reply>" +1|-1|0` back on `chump.events.feedback`, or
+- emit a follow-up gap update referencing yours.
+
+Both are observable to you within ~minutes via `chump-coord watch` or the next session's PreToolUse digest. Inbox DMs in response to a broadcast are a misroute — they reach exactly one recipient (you) instead of the whole conversation.
+
+**Cross-references:**
+
+- [`docs/process/OPUS_MESSAGE_PROTOCOL.md`](./docs/process/OPUS_MESSAGE_PROTOCOL.md) — inbox DM format + handling
+- [`scripts/coord/broadcast.sh`](./scripts/coord/broadcast.sh) — NATS broadcast types: INTENT, HANDOFF, STUCK, DONE, WARN, ALERT, FEEDBACK
+- [`crates/chump-coord/src/lib.rs`](./crates/chump-coord/src/lib.rs) — `EVENTS_SUBJECT` (`chump.events.*`)
+
 ## Where to find docs
 
 | Doc | Purpose |
