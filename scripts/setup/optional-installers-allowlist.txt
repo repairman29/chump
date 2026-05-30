@@ -92,3 +92,4 @@ install-fleet-recorder-launchd.sh
 install-fleet-server.sh
 install-chump-integrator-launchd.sh
 install-post-integration-prune-launchd.sh
+install-auto-merge-rearm-daemon.sh
