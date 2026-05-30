@@ -11,7 +11,7 @@
   both are set.
 
   Install:   scripts/setup/install-integrator-daemon.sh
-  Uninstall: scripts/setup/install-integrator-daemon.sh --uninstall
+  Uninstall: scripts/setup/install-integrator-daemon.sh (with the uninstall flag)
   Status:    launchctl print gui/$(id -u)/com.chump.integrator-daemon
   Logs:      ~/.chump/logs/integrator-daemon.{out,err}
 
@@ -45,7 +45,7 @@
     <key>RunAtLoad</key>
     <false/>
 
-    <!-- Run one cycle per invocation (--once). launchd handles the cadence. -->
+    <!-- Run one cycle per invocation (single-shot, see ProgramArguments below). launchd handles cadence. -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
