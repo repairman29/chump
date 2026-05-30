@@ -129,6 +129,8 @@ capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/s
 capability_heartbeat  # reason: INFRA-1120 — crates/chump-coord/src/capability.rs heartbeat_loop(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
+force_recover_wip_loss     # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_loss; same regex pattern miss as chump_claim_force_recover
+force_recover_wip_discarded  # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_discarded; same regex pattern miss as chump_claim_force_recover
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
 ci_cascade_cancelled  # reason: INFRA-1870 emitted via _emit_ambient dict-payload in github-webhook-receiver.py workflow_run handler; dict-construction emit pattern not grep-scannable as "kind":"ci_cascade_cancelled" literal in PROD_PATHS
 ci_parity_drift            # reason: emitted by scripts/ci/test-preflight-ci-parity.sh (INFRA-1867); scripts/ci/ is outside PROD_PATHS grep scan
