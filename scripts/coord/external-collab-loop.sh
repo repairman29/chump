@@ -44,6 +44,20 @@ MARCUS_STALL_DAYS="${CHUMP_EC_MARCUS_STALL_DAYS:-7}"
 
 GAPS_DIR="$REPO_ROOT/docs/gaps"
 
+# ── Phase 0 inbox-drain helpers (META-161 / META-157) ────────────────────────
+_GIT_COMMON_EC="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON_EC" == ".git" ]]; then
+    _MAIN_REPO_EC="$REPO_ROOT"
+else
+    _MAIN_REPO_EC="$(cd "$_GIT_COMMON_EC/.." && pwd)"
+fi
+LOCK_DIR="${CHUMP_EC_LOCK_DIR:-$_MAIN_REPO_EC/.chump-locks}"
+SESSION_ID="${CHUMP_SESSION_ID:-external-collab-$$}"
+
+_INBOX_HELPERS="$SCRIPT_DIR/lib/inbox-helpers.sh"
+# shellcheck disable=SC1090
+[[ -f "$_INBOX_HELPERS" ]] && source "$_INBOX_HELPERS"
+
 SUBCOMMAND="${1:-tick}"
 
 # ── ambient emit helper ───────────────────────────────────────────────────────
@@ -284,6 +298,15 @@ cmd_partnership_pipeline() {
 cmd_tick() {
     echo "[external-collab] tick — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "──────────────────────────────────────────"
+
+    # Phase 0: inbox-drain + feedback-peek (META-161 / META-157)
+    # Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" == "1" ]] && declare -f _phase0_inbox_drain >/dev/null 2>&1; then
+        local _ec_actionable=0
+        _phase0_inbox_drain "$LOCK_DIR" "$SESSION_ID" "$AMBIENT_LOG" "external-collab" _ec_actionable
+        echo "──────────────────────────────────────────"
+    fi
+
     cmd_surface_freshness
     echo "──────────────────────────────────────────"
     cmd_voice_audit

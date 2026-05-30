@@ -200,6 +200,54 @@ else
     _bad "tick should not exit 2 (bad subcommand); got $_rc"
 fi
 
+# ── Phase 0 inbox-drain smoke test (META-161) ─────────────────────────────────
+_dir_p0="$(mktemp -d)"
+trap 'rm -rf "$_dir_p0"' EXIT
+
+# Copy loop + shared lib into isolated dir
+mkdir -p "$_dir_p0/scripts/coord/lib"
+cp "$LOOP_SCRIPT" "$_dir_p0/scripts/coord/md-links-loop.sh"
+_helpers="$(cd "$(dirname "$LOOP_SCRIPT")" && pwd)/lib/inbox-helpers.sh"
+[[ -f "$_helpers" ]] && cp "$_helpers" "$_dir_p0/scripts/coord/lib/inbox-helpers.sh"
+
+mkdir -p "$_dir_p0/.chump-locks/inbox" "$_dir_p0/docs/process"
+# Minimal git repo so git rev-parse works
+git -C "$_dir_p0" init --quiet 2>/dev/null
+git -C "$_dir_p0" config user.email "test@example.com"
+git -C "$_dir_p0" config user.name "Test"
+
+_session_p0="test-ml-phase0-$$"
+
+# 1 inbox message
+printf '{"ts":"2026-05-30T00:00:00Z","kind":"test_msg","session":"%s"}\n' "$_session_p0" \
+    > "$_dir_p0/.chump-locks/inbox/${_session_p0}.jsonl"
+
+# 1 ambient FEEDBACK event with unresolved corr_id
+printf '{"ts":"2026-05-30T00:00:01Z","kind":"FEEDBACK","corr_id":"corr-ml-456","session":"other"}\n' \
+    > "$_dir_p0/.chump-locks/ambient.jsonl"
+
+_out_p0=""
+_rc_p0=0
+_out_p0="$(
+    GIT_DIR="$_dir_p0/.git" GIT_WORK_TREE="$_dir_p0" \
+    CHUMP_AMBIENT_LOG="$_dir_p0/.chump-locks/ambient.jsonl" \
+    CHUMP_MD_LINKS_DOCS="$_dir_p0/docs" \
+    CHUMP_SESSION_ID="$_session_p0" \
+    CHUMP_FLEET_RECV_SIDE_V0=1 \
+        bash "$_dir_p0/scripts/coord/md-links-loop.sh" tick 2>&1
+)" || _rc_p0=$?
+
+if printf '%s' "$_out_p0" | grep -q "Pending FEEDBACK"; then
+    _ok "Phase 0 md-links: 'Pending FEEDBACK' header present"
+else
+    _bad "Phase 0 md-links: 'Pending FEEDBACK' header missing; output: $_out_p0"
+fi
+if printf '%s' "$_out_p0" | grep -q "Phase 0"; then
+    _ok "Phase 0 md-links: Phase 0 header present"
+else
+    _bad "Phase 0 md-links: Phase 0 header missing"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf '\n%d passed, %d failed\n' "$_pass" "$_fail"
 if (( _fail > 0 )); then

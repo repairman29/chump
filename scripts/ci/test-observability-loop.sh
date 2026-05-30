@@ -212,6 +212,57 @@ CHUMP_OBS_HIGH_VOLUME_PER_DAY=100 \
 
 assert_finding "Test 5" "high_volume_kind"
 
+# ── Test 6 (META-161): Phase 0 inbox-drain smoke test ─────────────────────────
+echo ""
+echo "Test 6 (META-161): Phase 0 inbox-drain — stub inbox + FEEDBACK, assert header"
+
+_T6="$(mktemp -d)"
+trap 'rm -rf "$_T6"' EXIT
+
+# Copy loop + shared lib
+mkdir -p "$_T6/scripts/coord/lib"
+cp "$SCRIPT" "$_T6/scripts/coord/observability-loop.sh"
+_helpers="$(cd "$(dirname "$SCRIPT")" && pwd)/lib/inbox-helpers.sh"
+[[ -f "$_helpers" ]] && cp "$_helpers" "$_T6/scripts/coord/lib/inbox-helpers.sh"
+
+_SESSION6="test-obs-phase0-$$"
+mkdir -p "$_T6/.chump-locks/inbox"
+> "$_T6/.chump-locks/ambient.jsonl"
+
+# 1 inbox message
+printf '{"ts":"2026-05-30T00:00:00Z","kind":"test_msg","session":"%s"}\n' "$_SESSION6" \
+    > "$_T6/.chump-locks/inbox/${_SESSION6}.jsonl"
+
+# 1 ambient FEEDBACK event with unresolved corr_id
+printf '{"ts":"2026-05-30T00:00:01Z","kind":"FEEDBACK","corr_id":"corr-obs-789","session":"other"}\n' \
+    >> "$_T6/.chump-locks/ambient.jsonl"
+
+_out6=""
+_out6="$(
+    CHUMP_AMBIENT_OVERRIDE="$_T6/.chump-locks/ambient.jsonl" \
+    CHUMP_OBS_LOCK_DIR="$_T6/.chump-locks" \
+    CHUMP_SESSION_ID="$_SESSION6" \
+    CHUMP_FLEET_RECV_SIDE_V0=1 \
+    CHUMP_OBS_DRY_RUN=1 \
+    CHUMP_LAUNCHAGENTS_OVERRIDE="$_T6/no-agents" \
+        bash "$_T6/scripts/coord/observability-loop.sh" tick 2>&1
+)" || true
+
+_t6_pass=0
+if printf '%s' "$_out6" | grep -q "Pending FEEDBACK"; then
+    echo "PASS Test 6: 'Pending FEEDBACK' header present"
+    _t6_pass=$((_t6_pass+1))
+else
+    echo "FAIL Test 6: 'Pending FEEDBACK' header missing; output: $_out6"
+    exit 1
+fi
+if printf '%s' "$_out6" | grep -q "Phase 0"; then
+    echo "PASS Test 6: Phase 0 header present"
+else
+    echo "FAIL Test 6: Phase 0 header missing"
+    exit 1
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo "All 5 observability-loop smoke tests passed."
+echo "All 6 observability-loop smoke tests passed."
