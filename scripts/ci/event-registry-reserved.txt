@@ -249,6 +249,9 @@ loud_detector     # reason: META-103 test-fixture synthetic kind used in scripts
 noisy_kind        # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 2; not a production emit
 normal_kind       # reason: META-103 test-fixture synthetic kind used in scripts/ci/test-observability-loop.sh Test 4; not a production emit
 x  # reason: INFRA-1456 test-fixture placeholder ("x" used as kind in synthetic ambient.jsonl test inputs); not a production emit
+test_file_fallback  # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs file-fallback receipt test; not a production emit
+test_roundtrip      # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs NATS roundtrip latency test; not a production emit
+test_backpressure   # reason: INFRA-1118 test-fixture kind used in crates/chump-coord/tests/a2a_layer1a.rs backpressure detection test; not a production emit
 oracle_refresh_drift  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on THE_PATH.md hash change; printf-direct JSON not grep-scannable as kind=X literal
 oracle_refresh_noop  # reason: META-088 — scripts/coord/oracle-refresh.sh emits on idempotent no-op (same hash); printf-direct JSON not grep-scannable
 oracle_refresh_skipped  # reason: META-088 — scripts/coord/oracle-refresh.sh emits when claude CLI missing or burst empty; printf-direct JSON not grep-scannable

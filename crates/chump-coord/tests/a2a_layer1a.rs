@@ -105,6 +105,62 @@ async fn layer1_no_nats_returns_stream_not_error() {
     std::env::remove_var("CHUMP_NATS_URL");
 }
 
+/// AC#5 (file-fallback): write an event to ambient.jsonl, subscribe with filter,
+/// assert receipt within 500ms. CHUMP_A2A_LAYER=0 (default file-only path).
+#[tokio::test]
+async fn file_fallback_receives_event_within_500ms() {
+    use std::io::Write;
+
+    // Use a temp file so this test never touches the live ambient.jsonl
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    let tmp_path = tmp.path().to_str().unwrap().to_string();
+
+    std::env::remove_var("CHUMP_A2A_LAYER"); // layer 0 — file only
+    std::env::set_var("CHUMP_AMBIENT_LOG", &tmp_path);
+
+    // Subscribe BEFORE writing — tail-poll starts at EOF, only sees new lines
+    let mut stream = subscribe_events_with_session(
+        EventFilter::Kind("test_file_fallback".to_string()),
+        Some("test-ff-session".to_string()),
+    )
+    .await
+    .expect("subscribe must succeed in layer-0 mode");
+
+    // Small delay so the tokio task positions at EOF before we write
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Write a matching event directly to the ambient log
+    let ts = chrono::Utc::now().to_rfc3339();
+    let event_line = format!(
+        r#"{{"ts":"{ts}","kind":"test_file_fallback","session_id":"test-ff-session","payload":{{}}}}"#
+    );
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&tmp_path)
+            .expect("open tmp log for write");
+        writeln!(f, "{event_line}").expect("write event line");
+    }
+
+    // Assert receipt within 500ms (file-fallback p99 budget from INFRA-1118 scope)
+    let start = Instant::now();
+    let received = tokio::time::timeout(Duration::from_millis(500), stream.next())
+        .await
+        .expect("event not received within 500ms — file-fallback latency budget exceeded")
+        .expect("stream ended unexpectedly");
+
+    let elapsed = start.elapsed();
+    assert_eq!(
+        received.kind, "test_file_fallback",
+        "wrong kind: expected test_file_fallback, got {}",
+        received.kind
+    );
+    eprintln!("file-fallback receipt latency: {}ms", elapsed.as_millis());
+
+    std::env::remove_var("CHUMP_AMBIENT_LOG");
+}
+
 // ── NATS integration tests (skipped if no server) ───────────────────────────
 
 /// Check if NATS is reachable. Returns the URL if yes, None if should skip.
