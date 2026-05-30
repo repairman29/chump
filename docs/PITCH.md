@@ -90,14 +90,28 @@ tail -f .chump-locks/ambient.jsonl | jq -r '.kind'   # live fleet event stream
 
 **Working now:**
 - Atomic gap claim across concurrent agents — no race conditions observed across
-  72+ hours of 4-worker fleet operation
+  72+ hours of multi-worker fleet operation
 - Full ship pipeline: `chump claim` → commit → `bot-merge.sh --auto-merge` → merged PR
+- `chump preflight` — single local CI command (fmt + clippy + check + scoped tests)
+  with CI-parity gate that blocks new GitHub-only steps from drifting (INFRA-2120)
+- Containerized CI on GH-hosted ubuntu (INFRA-2117) plus per-PR `CARGO_TARGET_DIR`
+  isolation (INFRA-2118) — cross-PR target corruption is no longer a class of failure
+- Webhook-driven bot-merge wait (INFRA-2119) and webhook-cache reads for
+  BEHIND/DIRTY/cascade scans (INFRA-2186) — kills the poll-sleep round-trip and
+  the GraphQL exhaustion path that used to wedge the queue
+- OAuth refresh daemon (INFRA-2124) keeps subscription tokens fresh for headless
+  workers; per-PR auto-merge policy override (INFRA-1489) gives operators a
+  per-repo trust-cliff knob
 - Local-LLM path via Ollama and vLLM — no cloud API required for the coordinator
 
 **In progress:**
+- Marcus M-B substrate (single `chump.fleet.yaml` → multi-repo fan-out):
+  spec (INFRA-1483) and fan-out primitive (INFRA-1484) both shipped; HITL
+  approval gate (INFRA-1813) and PR-bot visual-diff (INFRA-1605) in flight
 - Predictive collision detection and skill-aware gap routing
 - Cross-agent lesson propagation (lesson store exists; peer injection is queued)
-- `chump preflight` as a single local CI command (wrapping fmt/clippy/check)
+- chump-fleet-recorder + query API + gantt timeline (INFRA-2174/2175/2176) —
+  NATS+ambient capture daemon with replay-capable web UI
 
 **Honest caveat:** the cognitive-architecture layer (neuromodulation, surprisal
 tracking) is experimental — the first A/B returned null at the preregistered
@@ -115,3 +129,7 @@ threshold. The coordination layer is not experimental; it runs production worklo
   reference for any coding agent or operator working in this repo
 - **Team-tier substrate demo (Marcus M-D):** [docs/strategy/CHUMP_PE_SUITE_DEMO_5MIN.md](strategy/CHUMP_PE_SUITE_DEMO_5MIN.md) —
   5-beat runbook showing 14 curators deliberating in real time; run via `bash scripts/demo/chump-pe-suite-demo.sh` (INFRA-2234)
+
+---
+
+_Last refreshed: 2026-05-29_
