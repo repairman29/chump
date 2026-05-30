@@ -1,0 +1,18 @@
+- id: META-174
+  domain: META
+  title: "META-167-h: crates/chump-mcp-fleet — MCP server exposing inbox_drain / broadcast / vote / consensus_status / capabilities for any Claude instance"
+  status: shipped
+  priority: P1
+  effort: m
+  description: |
+    Sub-slice h of META-167. New MCP server crate exposing 5 tools so any Claude instance gets the fleet OS without learning shell.
+  acceptance_criteria:
+    - crates/chump-mcp-fleet/ new crate with Cargo.toml, src/lib.rs, src/server.rs
+    - "5 MCP tools registered: mcp__chump_fleet__inbox_drain (read pending events for caller session), mcp__chump_fleet__broadcast (emit FEEDBACK), mcp__chump_fleet__vote (cast vote on corr_id), mcp__chump_fleet__consensus_status (read tally for corr_id), mcp__chump_fleet__capabilities (list online curators)"
+    - "Each tool wraps the existing shell+CLI: inbox_drain→read .chump-locks/inbox; broadcast→scripts/coord/broadcast.sh FEEDBACK; vote→chump vote (META-159); consensus_status→chump consensus-tally (META-159); capabilities→NATS KV chump_capabilities read"
+    - "Transport: stdio for Claude Code launch via mcp-config; Unix socket at /tmp/chump-mcp-fleet.sock for daemonized callers"
+    - Integrates with existing chump-mcp-lifecycle crate (do not duplicate lifecycle plumbing)
+    - docs/mcp-servers/chump-fleet.md describes the 5 tools + sample mcp-config snippet for Claude Code
+    - "crates/chump-mcp-fleet/tests/integration.rs: spawn server in stdio mode, exercise each tool, assert structured response shape"
+    - Feature flag CHUMP_FLEET_WIRE_V1=1 gates server startup; off = server exits with informational message
+
