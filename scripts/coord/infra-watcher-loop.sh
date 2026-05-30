@@ -490,6 +490,14 @@ cmd_tick() {
 }
 
 # ── main ──────────────────────────────────────────────────────────────────────
+
+# META-165: curator-sentinel — producer for META-158 fan-out-to-inbox.
+# shellcheck source=scripts/coord/lib/curator-sentinel.sh
+# shellcheck disable=SC1091  # dynamic path resolved at runtime via dirname
+source "$(dirname "$0")/lib/curator-sentinel.sh"
+_create_curator_sentinel infra-watcher
+_setup_sentinel_trap infra-watcher
+
 CMD="${1:-tick}"
 shift || true
 

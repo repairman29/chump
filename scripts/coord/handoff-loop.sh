@@ -293,6 +293,13 @@ _cmd_help() {
 
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 
+# META-165: curator-sentinel — producer for META-158 fan-out-to-inbox.
+# shellcheck source=scripts/coord/lib/curator-sentinel.sh
+# shellcheck disable=SC1091  # dynamic path resolved at runtime via dirname
+source "$(dirname "$0")/lib/curator-sentinel.sh"
+_create_curator_sentinel handoff
+_setup_sentinel_trap handoff
+
 cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 

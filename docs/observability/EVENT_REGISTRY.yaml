@@ -6232,3 +6232,51 @@ events:
     expected_volume: "matches hitl_approval_required volume on resolution"
     status: stable
     # payload: {pr: number, signal: string (env:X | file:Y | label:Z), session: string, ts: string}
+
+  - kind: curator_sentinel_created
+    effect_metric: resilient
+    emitter: scripts/coord/lib/curator-sentinel.sh _create_curator_sentinel (META-165)
+    # scanner-anchor: "kind":"curator_sentinel_created"
+    trigger: >
+      Emitted when a curator-loop script creates its sentinel file at
+      .chump-locks/.curator-opus-<role>.lock. This event fires once per
+      curator invocation at startup, before any tick work begins. Its
+      presence confirms the curator is registered as a live recipient for
+      META-158 FEEDBACK fan-out broadcasts.
+    consumers: [observability-loop, broadcast-fanout, operator-dashboard]
+    fields_required: [ts, kind, role, pid, session]
+    expected_volume: "1 per curator startup (9 roles × invocation frequency)"
+    status: stable
+    # payload: {role: string, pid: number, session: string, ts: string}
+
+  - kind: curator_sentinel_removed
+    effect_metric: resilient
+    emitter: scripts/coord/lib/curator-sentinel.sh _remove_curator_sentinel (META-165)
+    # scanner-anchor: "kind":"curator_sentinel_removed"
+    trigger: >
+      Emitted when a curator-loop script removes its sentinel file on EXIT,
+      INT, or TERM. Pairs with curator_sentinel_created for lifecycle
+      audit. Absence of this event after a curator stops (with no
+      curator_sentinel_reaped following) indicates a crash without EXIT
+      trap fire — the reaper will clean up within 5 min.
+    consumers: [observability-loop, broadcast-fanout, operator-dashboard]
+    fields_required: [ts, kind, role, pid, session]
+    expected_volume: "matches curator_sentinel_created volume on clean exit"
+    status: stable
+    # payload: {role: string, pid: number, session: string, ts: string}
+
+  - kind: curator_sentinel_reaped
+    effect_metric: resilient
+    emitter: scripts/ops/curator-sentinel-reaper.sh (META-165)
+    # scanner-anchor: "kind":"curator_sentinel_reaped"
+    trigger: >
+      Emitted by the curator-sentinel-reaper launchd daemon when it removes
+      a stale .curator-opus-<role>.lock whose PID is dead (reason=pid_dead)
+      or whose mtime exceeds 30 min (reason=stale_mtime_<age>s). Each
+      reap event indicates a curator crashed without firing its EXIT trap.
+      Elevated frequency suggests curator instability; file a gap.
+    consumers: [observability-loop, operator-dashboard]
+    fields_required: [ts, kind, role, reason, session]
+    expected_volume: "0 under normal operation; >0 indicates curator crash"
+    status: stable
+    # payload: {role: string, reason: string (pid_dead | stale_mtime_<N>s), session: string, ts: string}

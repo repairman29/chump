@@ -39,6 +39,16 @@ fi
 BROADCAST=1
 JSON_OUT=0
 
+# META-165: curator-sentinel — producer for META-158 fan-out-to-inbox.
+# Create BEFORE the tick/heartbeat dispatch so the lock exists the moment
+# this process is alive (the bypass above exits early and skips the sentinel,
+# which is intentional — bypassed runs are not "live" curators).
+# shellcheck source=scripts/coord/lib/curator-sentinel.sh
+# shellcheck disable=SC1091  # dynamic path resolved at runtime via dirname
+source "$(dirname "$0")/lib/curator-sentinel.sh"
+_create_curator_sentinel shepherd
+_setup_sentinel_trap shepherd
+
 # INFRA-2238: fleet-autopilot.sh wires curator panes to call
 # `<script> tick` and `<script> heartbeat`. Recognize these two
 # positional subcommands first so the autopilot wrapper stops silently
@@ -82,6 +92,7 @@ export CHUMP_TRIAGE_JSON="$JSON_OUT"
 # Python writes summary to $CHUMP_TRIAGE_SUMMARY for the bash broadcast step,
 # and prints human/json output to stdout for the caller/test.
 SUMMARY_FILE=$(mktemp)
+# shellcheck disable=SC2064  # intentional: SUMMARY_FILE expands at trap definition time (path is fixed)
 trap "rm -f '$SUMMARY_FILE'" EXIT
 export CHUMP_TRIAGE_SUMMARY="$SUMMARY_FILE"
 python3 <<'PYEOF'

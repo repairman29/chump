@@ -52,6 +52,11 @@ REQUIRED_DAEMONS=(
     # Without this, silently failing curators go undetected (32-hour incident
     # 2026-05-30). Runs every 300s via StartInterval launchd, not KeepAlive.
     "com.chump.curator-supervisor|scripts/setup/install-curator-supervisor.sh"
+    # META-165: Curator-sentinel reaper — removes stale .curator-opus-*.lock
+    # files every 5 min when PID is dead or mtime > 30 min. Without this,
+    # crashed curators leave ghost sentinels and META-158 fan-out routes
+    # proposals to dead inboxes indefinitely.
+    "com.chump.curator-sentinel-reaper|scripts/setup/install-curator-sentinel-reaper.sh"
 )
 UID_VAL="$(id -u)"
 

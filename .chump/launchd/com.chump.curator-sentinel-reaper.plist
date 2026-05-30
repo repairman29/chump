@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.curator-sentinel-reaper — META-165 LaunchAgent.
+
+  Runs scripts/ops/curator-sentinel-reaper.sh every 5 minutes.
+  Removes .chump-locks/.curator-opus-*.lock files whose PID is dead
+  (via _curator_sentinel_alive) OR whose mtime is > 30 minutes old.
+
+  Without this reaper, a crashed curator leaves a stale lock file and
+  broadcast.sh's META-158 FEEDBACK fan-out routes proposals to a dead
+  inbox indefinitely.
+
+  Producer side: scripts/coord/*-loop.sh (META-165)
+  Fan-out side:  scripts/coord/broadcast.sh (META-158)
+  Reaper script: scripts/ops/curator-sentinel-reaper.sh
+
+  INSTALLATION (use scripts/setup/chump-fleet-bootstrap.sh; or manual):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp .chump/launchd/com.chump.curator-sentinel-reaper.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.curator-sentinel-reaper.plist
+    4. Verify: launchctl list | grep chump.curator-sentinel-reaper
+    5. Manual run: launchctl start com.chump.curator-sentinel-reaper
+       Logs: tail /tmp/chump-curator-sentinel-reaper.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.curator-sentinel-reaper.plist
+    rm ~/Library/LaunchAgents/com.chump.curator-sentinel-reaper.plist
+
+  Tunables (env vars passed via EnvironmentVariables block or runtime):
+    CHUMP_SENTINEL_STALE_SECS=1800   mtime threshold (default 30 min)
+    CHUMP_LOCK_DIR=<path>            override .chump-locks dir
+    CHUMP_AMBIENT_LOG=<path>         override ambient.jsonl path
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.curator-sentinel-reaper</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/curator-sentinel-reaper.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 5 minutes: fast enough to bound stale-lock window to <10 min
+       (5 min interval + up to 5 min launchd scheduling jitter). -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-curator-sentinel-reaper.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-curator-sentinel-reaper.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

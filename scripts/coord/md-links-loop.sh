@@ -95,6 +95,7 @@ _scan_file_internal() {
     while IFS= read -r line; do
         lineno=$((lineno + 1))
         # Extract all ](target) occurrences on this line
+        # shellcheck disable=SC2034  # targets is populated in the while-read below
         local targets
         # Use grep to pull out the (target) portion — allow multiple per line
         while IFS= read -r raw_target; do
@@ -244,6 +245,13 @@ cmd_help() {
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
+
+# META-165: curator-sentinel — producer for META-158 fan-out-to-inbox.
+# shellcheck source=scripts/coord/lib/curator-sentinel.sh
+# shellcheck disable=SC1091  # dynamic path resolved at runtime via dirname
+source "$(dirname "$0")/lib/curator-sentinel.sh"
+_create_curator_sentinel md-links
+_setup_sentinel_trap md-links
 
 SUBCMD="${1:-help}"
 shift || true

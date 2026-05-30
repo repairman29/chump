@@ -296,6 +296,14 @@ cmd_tick() {
 }
 
 # ── dispatch ──────────────────────────────────────────────────────────────────
+
+# META-165: curator-sentinel — producer for META-158 fan-out-to-inbox.
+# shellcheck source=scripts/coord/lib/curator-sentinel.sh
+# shellcheck disable=SC1091  # dynamic path resolved at runtime via dirname
+source "$(dirname "$0")/lib/curator-sentinel.sh"
+_create_curator_sentinel external-collab
+_setup_sentinel_trap external-collab
+
 case "$SUBCOMMAND" in
     tick|status)         cmd_tick ;;
     marcus-status)       cmd_marcus_status ;;
