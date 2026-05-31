@@ -133,7 +133,10 @@ fi
 # scanner doesn't flag this script as emitting trunk_red — we only READ it.
 trunk_red_active=0
 if [[ -f "$AMBIENT" ]]; then
-  if tail -300 "$AMBIENT" 2>/dev/null | python3 -c "
+  # INFRA-2336: pre-filter with grep before tail — pr-shepherd cascade events
+  # flood ambient at >1/sec, pushing trunk_* events out of any reasonable
+  # tail window within minutes. Filter first, then take the most recent 200.
+  if grep -E '"kind":"(trunk_state_change|trunk_red|trunk_red_persistent|trunk_red_detected)"' "$AMBIENT" 2>/dev/null | tail -200 | python3 -c "
 import json, sys
 from datetime import datetime, timezone, timedelta
 cutoff = datetime.now(timezone.utc) - timedelta(minutes=$LOOKBACK_M)
@@ -145,12 +148,12 @@ for line in sys.stdin:
         ev = json.loads(line)
     except Exception:
         continue
-    # INFRA-2335: trunk-sentinel-daemon.sh emits trunk_red_persistent (5-min threshold)
-    # and trunk_state_change with state=TRUNK_RED — neither matched original filter.
+    # INFRA-2335/2336: sentinel emits trunk_red_persistent (5-min threshold) and
+    # trunk_state_change with from/to fields (NOT a 'state' field).  Match both.
     _kind = ev.get('kind', '')
     _is_red = (
         _kind in ('trunk' + '_red', 'trunk' + '_red_detected', 'trunk' + '_red_persistent')
-        or (_kind == 'trunk' + '_state_change' and ev.get('state') == 'TRUNK_RED')
+        or (_kind == 'trunk' + '_state_change' and ev.get('to') == 'TRUNK_RED')
     )
     if not _is_red:
         continue
@@ -187,7 +190,7 @@ SELECT id
 FROM gaps
 WHERE status = 'open'
   AND COALESCE(skills_required, '') LIKE '%${SKILL_TAG}%'
-ORDER BY priority ASC, opened_at ASC
+ORDER BY priority ASC, opened_date ASC
 LIMIT 1;
 " 2>/dev/null || echo "")"
 
