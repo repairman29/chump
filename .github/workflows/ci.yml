@@ -1270,23 +1270,54 @@ jobs:
   # (e2e-dogfood-nightly.yml) — it was the dominant tail and continue-on-error
   # anyway.
 
-  # ── E2E Shard A: PWA Playwright ──────────────────────────────────────────
-  # Ollama + qwen2.5:7b, cargo build (debug), chump --web, Playwright.
-  # Skipped when no e2e-relevant files change.  Target wall-clock: ~10-12 min.
-  e2e-pwa:
+  # ── E2E matrix (META-267) ─────────────────────────────────────────────────
+  # Merges former e2e-pwa / e2e-battle-sim / e2e-golden-path into one job.
+  # GitHub Actions produces distinct check-run names: e2e (pwa), e2e (battle-sim),
+  # e2e (golden-path). Reduces ci.yml job count from 18 → 16 (META-258 gap).
+  #
+  # Per-suite notes:
+  #   pwa        — Ollama + qwen2.5:7b, cargo build, chump --web, Playwright.
+  #                Runs on ARM runner (INFRA-2298). Target wall-clock: ~10-12 min.
+  #   battle-sim — RESILIENT-016 (2026-05-17): disabled on PR runs (ci-nightly.yml).
+  #   golden-path— RESILIENT-016 (2026-05-17): disabled on PR runs (ci-nightly.yml).
+  e2e:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Shard A: PWA Playwright (enabled — ARM runner, Ollama)
+          - suite: pwa
+            enabled: true
+            runs-on-expr: "${{ vars.RUNNER_E2E_PWA != '' && fromJSON(vars.RUNNER_E2E_PWA) || 'ubuntu-24.04-arm' }}"
+            cache-key: ci-e2e-pwa
+            timeout: 60
+          # Shard B: Battle sim (RESILIENT-016: disabled on PR runs)
+          - suite: battle-sim
+            enabled: false
+            runs-on-expr: ubuntu-latest
+            cache-key: ci-e2e-battle-sim
+            timeout: 30
+          # Shard C: Golden path (RESILIENT-016: disabled on PR runs)
+          - suite: golden-path
+            enabled: false
+            runs-on-expr: "${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}"
+            cache-key: ci-e2e-golden
+            timeout: 30
+    # INFRA-1342: push trigger removed (same rollup-FAILURE trap as tauri).
+    # pwa suite: runs when e2e files change or merge_group.
+    # battle-sim / golden-path: RESILIENT-016 disabled (enabled=false → job skipped).
+    if: matrix.enabled == true && (needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group')
     continue-on-error: true
-    # INFRA-2298 (CI-speed Tier 1+2, 2026-05-30): upgraded from ubuntu-latest to
-    # ubuntu-24.04-arm (16-core GH-hosted ARM). Repo var RUNNER_E2E_PWA override intact.
-    runs-on: ${{ vars.RUNNER_E2E_PWA != '' && fromJSON(vars.RUNNER_E2E_PWA) || 'ubuntu-24.04-arm' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-24.04-arm)
-    timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
+    runs-on: ${{ matrix.runs-on-expr }}
+    timeout-minutes: ${{ matrix.timeout }}
     steps:
       - uses: actions/checkout@v6
 
+      # ── Shared setup (pwa + golden-path need Linux packages + Rust) ────────
       - name: Free disk space
-        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
+        if: runner.os == 'Linux' && (matrix.suite == 'pwa' || matrix.suite == 'golden-path')
+        # INFRA-1539: proactive Linux-only guard
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -1295,7 +1326,8 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        if: runner.os == 'Linux' && (matrix.suite == 'pwa' || matrix.suite == 'golden-path')
+        # INFRA-1534: macOS self-hosted skips apt
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -1309,25 +1341,31 @@ jobs:
             librsvg2-dev
 
       - name: Install Rust toolchain
+        if: matrix.suite == 'pwa' || matrix.suite == 'golden-path'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
+        if: matrix.suite == 'pwa' || matrix.suite == 'golden-path'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci-e2e-pwa
+          shared-key: ${{ matrix.cache-key }}
 
+      # ── pwa-only: Ollama + Playwright ───────────────────────────────────────
       - name: Cache Ollama models
+        if: matrix.suite == 'pwa'
         uses: actions/cache@v5
         with:
           path: ~/.ollama/models
           key: ollama-models-${{ runner.os }}-qwen25-7b-v2
 
       - name: Ollama for PWA Playwright (real LLM)
+        if: matrix.suite == 'pwa'
         env:
           CHUMP_CI_OLLAMA_MODEL: qwen2.5:7b
         run: bash scripts/ci/ci-setup-ollama-e2e.sh
 
       - name: PWA Playwright E2E
+        if: matrix.suite == 'pwa'
         env:
           CHUMP_E2E_BASE_URL: http://127.0.0.1:3847
           CHUMP_LIGHT_CONTEXT: "1"
@@ -1354,77 +1392,29 @@ jobs:
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
-  # ── E2E Shard B: Battle sim ───────────────────────────────────────────────
-  # No Ollama, no cargo build (SKIP_CARGO=1), no LLM (SKIP_IF_NO_LLM=1).
-  # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
-  e2e-battle-sim:
-    needs: changes
-    # RESILIENT-016 (2026-05-17): disabled on PR runs — moved to ci-nightly.yml.
-    if: false
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
+      # ── battle-sim-only: lightweight, no LLM, no cargo ──────────────────────
       - name: Battle sim suite (no web / no LLM)
+        if: matrix.suite == 'battle-sim' && matrix.enabled == true
+        # RESILIENT-016: enabled=false above; this step only runs if manually re-enabled.
         env:
           BATTLE_SIM_SKIP_CARGO: 1
           BATTLE_SIM_SKIP_IF_NO_LLM: 1
         run: bash scripts/ci/run-battle-sim-suite.sh
 
-  # ── E2E Shard C: Golden path ──────────────────────────────────────────────
-  # cargo build (debug) + file-presence checks + timing log.
-  # No Ollama.  Target wall-clock: ~5 min.
-  e2e-golden-path:
-    needs: changes
-    # RESILIENT-016 (2026-05-17): disabled on PR runs — moved to ci-nightly.yml.
-    if: false
-    continue-on-error: true
-    runs-on: ${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Free disk space
-        if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
-          sudo docker image prune --all --force || true
-          df -h /
-
-      - name: Install Linux packages for chump-desktop (workspace member)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-e2e-golden
-
+      # ── golden-path-only: cargo build, no Ollama ────────────────────────────
       - name: External golden path smoke
+        if: matrix.suite == 'golden-path' && matrix.enabled == true
+        # RESILIENT-016: enabled=false above; this step only runs if manually re-enabled.
         run: bash scripts/ci/verify-external-golden-path.sh
 
       - name: Golden path timing (JSONL + artifact)
+        if: matrix.suite == 'golden-path' && matrix.enabled == true
         env:
           GOLDEN_MAX_CARGO_BUILD_SEC: 1800
         run: bash scripts/ci/golden-path-timing.sh
 
       - name: Upload golden path timing log
-        if: always()
+        if: always() && matrix.suite == 'golden-path' && matrix.enabled == true
         uses: actions/upload-artifact@v7
         with:
           name: golden-path-timing
@@ -1433,9 +1423,10 @@ jobs:
 
   # ── E2E rollup (keeps the required-check name) ────────────────────────────
   # Same pattern as the `test` rollup (INFRA-213): thin job that succeeds iff
-  # all three e2e shards succeed (or are skipped on non-e2e PRs).
+  # all matrix e2e shards succeed (or are skipped on non-e2e PRs).
+  # Updated by META-267: was needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path].
   test-e2e:
-    needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
+    needs: [e2e]
     if: always()
     runs-on: ubuntu-latest
     # INFRA-1348: e2e shards all have continue-on-error: true, so test-e2e
@@ -1444,24 +1435,14 @@ jobs:
     # auto-merge on PRs where all required checks (test, audit, ACP) passed.
     continue-on-error: true
     steps:
-      - name: Verify all e2e shards passed
+      - name: Verify all e2e matrix shards passed
         run: |
-          pwa="${{ needs.e2e-pwa.result }}"
-          sim="${{ needs.e2e-battle-sim.result }}"
-          golden="${{ needs.e2e-golden-path.result }}"
-          echo "e2e-pwa=$pwa  e2e-battle-sim=$sim  e2e-golden-path=$golden"
-          fail=0
-          for r in "$pwa" "$sim" "$golden"; do
-            case "$r" in
-              success|skipped) ;;
-              *) fail=1 ;;
-            esac
-          done
-          if [ "$fail" = "1" ]; then
-            echo "::error::One or more e2e shards failed (see results above)"
-            exit 1
-          fi
-          echo "All e2e shards green (or appropriately skipped)."
+          result="${{ needs.e2e.result }}"
+          echo "e2e matrix result=$result"
+          case "$result" in
+            success|skipped) echo "All e2e shards green (or appropriately skipped)." ;;
+            *) echo "::error::e2e matrix failed (result=$result)"; exit 1 ;;
+          esac
 
   # INFRA-503 (2026-05-06): cargo audit was the dominant per-PR cycle-time
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
