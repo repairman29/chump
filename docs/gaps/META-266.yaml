@@ -1,0 +1,11 @@
+- id: META-266
+  domain: META
+  title: Collapse 5 integration workflows or path-filter to reach <=10 workflows/push (META-258 tail)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. Per-PR workflow count drops from 15 to ≤10 (verify with gh api repos/.../actions/workflows --jq '[.workflows[] "
+    - " select(.state==\"active\")] "
+    - " length'). 2. Required check 'ACP protocol smoke test (Zed / JetBrains compatible)' is preserved and still passes on PRs. 3. A single integrations.yml (or equivalent) replaces acp-real-clients.yml, editor-integration.yml, e2e-pwa-advisory.yml, pwa-visual-diff.yml, voice-lint.yml — those 5 files are deleted. 4. yaml lint passes (python3 -c 'import yaml,sys; yaml.safe_load(sys.stdin)' < integrations.yml). 5. No required status check is removed."
+
