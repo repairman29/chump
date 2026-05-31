@@ -17,37 +17,9 @@ name: FTUE clean-machine 2026 (INFRA-600 / INFRA-799 / INFRA-NEW-orchestrate)
 #     criterion #4 ("operator types 'spawn the fleet…', fleet starts").
 
 on:
-  workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'Formula/**'
-      - 'src/chump_init.rs'
-      - 'src/gen.rs'
-      - 'src/fleet*.rs'
-      - 'src/mcp_discovery.rs'
-      - 'src/intent_parser.rs'
-      - 'src/orchestrate*.rs'
-      - 'chump-mcp.json'
-      - 'scripts/dispatch/**'
-      - 'scripts/ci/test-chump-init-clean-machine.sh'
-      - '.github/workflows/ftue-clean-machine-2026.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'Formula/**'
-      - 'src/chump_init.rs'
-      - 'src/gen.rs'
-      - 'src/fleet*.rs'
-      - 'src/mcp_discovery.rs'
-      - 'src/intent_parser.rs'
-      - 'src/orchestrate*.rs'
-      - 'chump-mcp.json'
-      - 'scripts/dispatch/**'
-      - 'scripts/ci/test-chump-init-clean-machine.sh'
-      - '.github/workflows/ftue-clean-machine-2026.yml'
   schedule:
-    - cron: '0 12 * * 1'  # weekly Monday 12:00 UTC
+    - cron: '0 6 * * *'  # META-260: nightly 06:00 UTC (moved from per-PR push/pull_request)
+  workflow_dispatch:
 
 permissions:
   contents: read

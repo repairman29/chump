@@ -13,13 +13,8 @@ name: Branch protection drift
 
 on:
   schedule:
-    - cron: "23 7 * * *"  # daily 07:23 UTC
+    - cron: '0 6 * * *'  # META-260: nightly 06:00 UTC (push trigger dropped)
   workflow_dispatch: {}
-  push:
-    paths:
-      - "docs/baselines/branch-protection-main.json"
-      - "scripts/ops/branch-protection-drift.sh"
-      - ".github/workflows/branch-protection-drift.yml"
 
 permissions:
   contents: read

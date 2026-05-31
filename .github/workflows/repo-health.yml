@@ -18,8 +18,8 @@ name: Repo health
 # protection only after a few cycles of clean runs.
 
 on:
-  pull_request:
-    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'  # META-260: nightly 06:00 UTC (moved from per-PR pull_request)
   workflow_dispatch: {}
 
 permissions:
