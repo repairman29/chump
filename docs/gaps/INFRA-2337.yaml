@@ -1,0 +1,14 @@
+- id: INFRA-2337
+  domain: INFRA
+  title: trunk-loop end-to-end integration test + comprehensive fix
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - test-trunk-loop-e2e.sh exits 0
+    - test-trunk-sentinel.sh still passes
+    - bash -n on both daemons clean
+    - dispatcher resolves worktree without claim.worktree field
+    - sentinel files claimable gap with paths
+    - recovery emits trunk_recovered + closes filed gap
+

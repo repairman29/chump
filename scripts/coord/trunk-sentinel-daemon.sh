@@ -278,21 +278,36 @@ land BEHIND a red trunk; bot-merge will refuse to arm new ones until green.
 DESC
 )"
 
+    # INFRA-2337: `chump gap reserve` only persists domain+title+priority+effort
+    # (see src/main.rs:7683 reserve_verified signature). --description and
+    # --skills-required are PARSED but SILENTLY DROPPED — the flags never reach
+    # the gap row. Backfill via `chump gap set` after reserve.
     local out exit_code gap_id
-    out="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
+    out="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         "$CHUMP_BIN" gap reserve \
         --domain INFRA \
         --priority P0 \
         --effort s \
         --title "$title" \
-        --description "$description" \
-        --skills-required "fix_trunk,ci_repair" \
         --force-duplicate 2>&1)" || exit_code=$?
     exit_code="${exit_code:-0}"
 
     gap_id="$(printf '%s' "$out" | grep -oE 'INFRA-[0-9]+' | head -1)"
     if [[ -n "$gap_id" ]]; then
         log "filed fix-trunk gap: $gap_id (fp=$fingerprint)"
+
+        # Backfill skills_required + description via `chump gap set` (the
+        # canonical store.set_fields path; src/main.rs:8538). Both fields are
+        # load-bearing: the dispatcher's SQL filter is
+        # `WHERE skills_required LIKE '%fix_trunk%'`, so missing the tag means
+        # the dispatcher won't find this gap. Description carries the run-id +
+        # fingerprint context the Sonnet sub-agent needs.
+        if ! "$CHUMP_BIN" gap set "$gap_id" \
+            --skills-required "fix_trunk,ci_repair" \
+            --description "$description" >/dev/null 2>&1; then
+            log "WARN: failed to backfill skills_required/description on $gap_id"
+        fi
+
         printf '%s' "$gap_id"
     else
         log "WARN: gap reserve failed (exit=$exit_code): $out"
