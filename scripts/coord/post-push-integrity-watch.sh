@@ -121,11 +121,21 @@ fi
 # We filter to PRs closed since CUTOFF_ISO.
 # Output format: NUMBER\tBRANCH\tSTATE\tSTATE_REASON\tCLOSED_AT
 CLOSED_PRS_JSON=""
+# INFRA-2316 (2026-05-31): try with stateReason first; fall back without it
+# on older gh CLI versions that don't recognize the field. The downstream
+# state_reason extraction uses d.get('stateReason','') which gracefully
+# returns "" when the field is absent — auto-close detection will miss
+# the NOT_PLANNED signal in fallback mode but won't crash.
 CLOSED_PRS_JSON="$(gh pr list \
     --repo "$REPO_SLUG" \
     --state closed \
     --limit 20 \
-    --json number,headRefName,state,stateReason,closedAt,title 2>/dev/null)" || {
+    --json number,headRefName,state,stateReason,closedAt,title 2>/dev/null)" || \
+CLOSED_PRS_JSON="$(gh pr list \
+    --repo "$REPO_SLUG" \
+    --state closed \
+    --limit 20 \
+    --json number,headRefName,state,closedAt,title 2>/dev/null)" || {
     log "WARN: gh pr list failed (API issue); skipping this cycle"
     emit post_push_integrity_watch_err '"reason":"gh_pr_list_failed"'
     exit 0
