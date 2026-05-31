@@ -145,7 +145,14 @@ for line in sys.stdin:
         ev = json.loads(line)
     except Exception:
         continue
-    if ev.get('kind') != 'trunk' + '_red' and ev.get('kind') != 'trunk' + '_red_detected':
+    # INFRA-2335: trunk-sentinel-daemon.sh emits trunk_red_persistent (5-min threshold)
+    # and trunk_state_change with state=TRUNK_RED — neither matched original filter.
+    _kind = ev.get('kind', '')
+    _is_red = (
+        _kind in ('trunk' + '_red', 'trunk' + '_red_detected', 'trunk' + '_red_persistent')
+        or (_kind == 'trunk' + '_state_change' and ev.get('state') == 'TRUNK_RED')
+    )
+    if not _is_red:
         continue
     ts_str = ev.get('ts', '')
     if not ts_str:
