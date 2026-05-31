@@ -1099,63 +1099,46 @@ jobs:
   # ── Shard 2: clippy ───────────────────────────────────────────────────────
   # Workspace-wide clippy with -D warnings. Runs in parallel with cargo-test
   # and fast-checks. Target wall-clock: 3-5 min.
+  #
+  # META-262 (CI-REVIEW Lever 1 pilot): migrated to ghcr.io/repairman29/chump-ci
+  # container image. The image pre-bakes Rust toolchain + clippy + rustfmt +
+  # sccache + webkit2gtk (chump-desktop dep) + mold, eliminating ~3 min of
+  # apt-get + dtolnay/rust-toolchain install overhead per run.
+  #
+  # ONLY clippy is migrated as a pilot. cargo-test and audit will follow once
+  # clippy proves stable for ~10 PR cycles (tracked in META-262 AC #2/#3/#4).
+  #
+  # Roll-back: remove `container:` line and uncomment the old steps below,
+  # or pin a specific SHA: container: ghcr.io/repairman29/chump-ci:<sha>
+  # (find SHA tags at https://github.com/repairman29/chump/pkgs/container/chump-ci)
   clippy:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-2117 (CI-REVIEW Lever 1A, 2026-05-29): default to GH-hosted ubuntu.
-    # Self-hosted Mac caused ~50% of CI-rot tax (DOC-063 post-mortem).
-    # Feature-flag fallback: CHUMP_SELF_HOSTED_CLIPPY=true reverts this lane.
+    # META-262: container image replaces GH-hosted runner toolchain install.
+    # Self-hosted fallback still available via CHUMP_SELF_HOSTED_CLIPPY=true
+    # (will ignore container: directive and use macOS runner natively).
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    container:
+      image: ghcr.io/repairman29/chump-ci:latest
+      # Fall-through safety: if GHCR pull fails, GH Actions reports a pull
+      # error and the job fails. Operator action: pin previous :{sha} tag.
+      # See docs/process/CI_DOCKER_IMAGE.md §Roll-back.
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
     env:
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      # sccache configured in image via RUSTC_WRAPPER=sccache; override bucket
+      # to use the same R2 cache as the non-containerized jobs.
+      SCCACHE_BUCKET: ${{ vars.SCCACHE_BUCKET || 'chump-sccache' }}
+      SCCACHE_REGION: auto
+      SCCACHE_ENDPOINT: ${{ secrets.R2_ACCOUNT_ID && format('https://{0}.r2.cloudflarestorage.com', secrets.R2_ACCOUNT_ID) || '' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Free disk space
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted has no /opt/hostedtoolcache
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
-          sudo docker image prune --all --force || true
-          df -h /
-
-      - name: Install Linux packages for chump-desktop (workspace member)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            util-linux
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy  # INFRA-2242: cranelift dev backend
-
-      # INFRA-2242: mold linker drops link phase 10-15% on Linux.
-      - name: Install mold linker (Linux only)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y mold
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-clippy
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          # Different PRs may have different Cargo.toml manifests; sharing the
-          # cache silently poisons incremental builds (the "works on my PR but
-          # not yours" class of flake).
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+      # NOTE: No "Free disk space", "Install Linux packages", "Install Rust toolchain",
+      # or "Install mold" steps — all pre-baked in ghcr.io/repairman29/chump-ci:latest.
+      # Saves ~3 min per run × ~10 PR jobs/day = ~30 min/day wall-clock.
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
