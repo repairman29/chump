@@ -50,13 +50,9 @@ CORRECTNESS_GATES=(
     clippy
     cargo-test
     pr-hygiene
-    clippy-stub
     clippy-required
-    cargo-test-stub
     cargo-test-required
-    fast-checks-stub
     fast-checks-required
-    audit-stub
     audit-required
 )
 
@@ -76,8 +72,8 @@ job_pattern = re.compile(r'^  ([a-z][a-z0-9_-]+):\s*$', re.MULTILINE)
 positions = [(m.start(), m.group(1)) for m in job_pattern.finditer(jobs_section)]
 
 required = {'test', 'audit', 'fast-checks', 'clippy', 'cargo-test', 'pr-hygiene',
-            'clippy-stub', 'clippy-required', 'cargo-test-stub', 'cargo-test-required',
-            'fast-checks-stub', 'fast-checks-required', 'audit-stub', 'audit-required'}
+            'clippy-required', 'cargo-test-required',
+            'fast-checks-required', 'audit-required'}
 
 issues = []
 audited = 0

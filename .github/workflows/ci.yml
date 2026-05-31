@@ -1871,191 +1871,103 @@ jobs:
       - name: inbox-prune — size + age rotation caps for inbox jsonl files (INFRA-1979)
         run: bash scripts/ci/test-inbox-prune.sh
 
-  # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
-  # Required status checks in branch protection block forever when their path
-  # filter says to skip (skipped ≠ passing in GitHub Actions). The stub pattern
-  # avoids this: every gated job (clippy, cargo-test, fast-checks, audit) has
-  # TWO siblings — the real heavy job (conditional on code changes) and a 5s
-  # stub (conditional on NO code changes). A rollup job requires both and
-  # always reports success if either one succeeded.
+  # ── META-261: collapsed stub/required pairs (CI strip-back §5.NEW) ────────
+  # The old INFRA-1143 stub pattern (synthetic-green "stub" jobs that fired on
+  # non-code PRs to satisfy required checks) is replaced by native
+  # needs.result-based aggregators. GitHub treats a job with `if: always()` +
+  # `needs:` as always emitting a check-run, and skipped ≠ failure at the
+  # branch-protection layer when the aggregator explicitly maps SKIPPED → exit 0.
   #
-  # Branch protection migration (operator action, post-merge):
-  #   Old required contexts:   test, audit
-  #   New required contexts:   clippy-required, cargo-test-required,
-  #                            fast-checks-required, audit-required
-  #   Migration order:
-  #     1. Merge this PR (stubs + rollups land in main).
-  #     2. Admin: add new -required contexts to branch protection.
-  #     3. Admin: remove old test + audit contexts (or keep both during overlap).
-  #     4. INFRA-1142: narrow 'code' filter to Rust-only paths.
+  # Pattern per aggregator:
+  #   if: always()                          # always emits a check-run
+  #   needs: [<real-job>]                   # no stub dep
+  #   step: if result == success OR skipped → exit 0; else exit 1
   #
-  # Why add both contexts during overlap: any PR that predates the branch-
-  # protection edit would still be validated by the old `test` check. Once
-  # all open PRs have the new contexts, remove the old ones.
+  # This drops 4 stub jobs (clippy-stub, cargo-test-stub, fast-checks-stub,
+  # audit-stub) that existed solely to inject SUCCESS when the real job skipped.
+  # The *-required job names and context names are UNCHANGED — branch-protection
+  # rulesets continue to consume the same check-run contexts.
   # ──────────────────────────────────────────────────────────────────────────
-
-  # ── clippy-stub: passes in <10s when no code changes ─────────────────────
-  clippy-stub:
-    name: clippy-stub
-    needs: changes
-    if: |
-      needs.changes.outputs.code != 'true' &&
-      github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Clippy skipped (no Rust/code changes detected)
-        run: |
-          echo "clippy-stub: no code-filter changes — clippy is not required for this diff."
-          echo "Branch protection satisfied by this stub."
 
   # ── clippy-required: rollup that branch protection enforces ──────────────
   clippy-required:
     name: clippy-required
-    needs: [clippy, clippy-stub]
+    needs: [clippy]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Verify clippy or clippy-stub passed
+      - name: Verify clippy passed or was appropriately skipped
         run: |
-          real="${{ needs.clippy.result }}"
-          stub="${{ needs.clippy-stub.result }}"
-          echo "clippy=$real  clippy-stub=$stub"
-          if [[ "$real" == "success" || "$stub" == "success" ]]; then
-            echo "clippy-required: PASS (real=$real, stub=$stub)"
-          elif [[ "$real" == "skipped" && "$stub" == "skipped" ]]; then
-            echo "clippy-required: both skipped (push/merge_group path — acceptable)"
+          result="${{ needs.clippy.result }}"
+          echo "clippy=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "clippy-required: PASS (result=$result)"
           else
-            echo "::error::clippy-required FAIL — neither real nor stub succeeded (real=$real, stub=$stub)"
+            echo "::error::clippy-required FAIL (result=$result)"
             exit 1
           fi
-
-  # ── cargo-test-stub: passes in <10s when no code changes ─────────────────
-  cargo-test-stub:
-    name: cargo-test-stub
-    needs: changes
-    if: |
-      needs.changes.outputs.code != 'true' &&
-      github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: cargo-test skipped (no Rust/code changes detected)
-        run: |
-          echo "cargo-test-stub: no code-filter changes — cargo test not required for this diff."
-          echo "Branch protection satisfied by this stub."
 
   # ── cargo-test-required: rollup that branch protection enforces ───────────
   cargo-test-required:
     name: cargo-test-required
-    needs: [cargo-test, cargo-test-stub]
+    needs: [cargo-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Verify cargo-test or cargo-test-stub passed
+      - name: Verify cargo-test passed or was appropriately skipped
         run: |
-          real="${{ needs.cargo-test.result }}"
-          stub="${{ needs.cargo-test-stub.result }}"
-          echo "cargo-test=$real  cargo-test-stub=$stub"
-          if [[ "$real" == "success" || "$stub" == "success" ]]; then
-            echo "cargo-test-required: PASS (real=$real, stub=$stub)"
-          elif [[ "$real" == "skipped" && "$stub" == "skipped" ]]; then
-            echo "cargo-test-required: both skipped (push/merge_group path — acceptable)"
+          result="${{ needs.cargo-test.result }}"
+          echo "cargo-test=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "cargo-test-required: PASS (result=$result)"
           else
-            echo "::error::cargo-test-required FAIL — neither real nor stub succeeded (real=$real, stub=$stub)"
+            echo "::error::cargo-test-required FAIL (result=$result)"
             exit 1
           fi
-
-  # ── fast-checks-stub: passes in <10s when no code changes ────────────────
-  fast-checks-stub:
-    name: fast-checks-stub
-    needs: changes
-    if: |
-      needs.changes.outputs.code != 'true' &&
-      github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: fast-checks skipped (no code changes detected)
-        run: |
-          echo "fast-checks-stub: no code-filter changes — fast-checks not required for this diff."
-          echo "Branch protection satisfied by this stub."
 
   # ── fast-checks-required: rollup that branch protection enforces ──────────
   fast-checks-required:
     name: fast-checks-required
-    needs: [fast-checks, fast-checks-stub]
+    needs: [fast-checks]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Verify fast-checks or fast-checks-stub passed
+      - name: Verify fast-checks passed or was appropriately skipped
         run: |
-          real="${{ needs.fast-checks.result }}"
-          stub="${{ needs.fast-checks-stub.result }}"
-          echo "fast-checks=$real  fast-checks-stub=$stub"
-          if [[ "$real" == "success" || "$stub" == "success" ]]; then
-            echo "fast-checks-required: PASS"
-          elif [[ "$real" == "skipped" && "$stub" == "skipped" ]]; then
-            echo "fast-checks-required: both skipped (push/merge_group path — acceptable)"
+          result="${{ needs.fast-checks.result }}"
+          echo "fast-checks=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "fast-checks-required: PASS (result=$result)"
           else
-            echo "::error::fast-checks-required FAIL (real=$real, stub=$stub)"
+            echo "::error::fast-checks-required FAIL (result=$result)"
             exit 1
           fi
 
-  # ── audit-stub: emits as `audit` check-run when real audit skips ─────────
-  # INFRA-2191 (2026-05-29): the stub's `name:` is intentionally `audit` (not
-  # `audit-stub`). Branch protection rulesets historically required the bare
-  # `audit` context — on doc/yaml-only PRs the real `audit` job's `if:` short-
-  # circuits to skip, so without a stub emitting under the same name, no
-  # `audit` check-run ever exists and the PR sits BLOCKED with 0 fails 0
-  # pending forever (the wedge that took down 6 PRs on 2026-05-29, requiring
-  # manual cascade-break: temporarily removing required_status_checks from
-  # ruleset 15133729 + merging armed PRs + restoring the rule).
-  #
-  # Mutual exclusion contract (validated by scripts/ci/test-ruleset-doc-only-pr.sh):
-  #   real `audit`  if: docs_only != 'true' || event != 'pull_request'
-  #   `audit-stub`  if: (code != 'true' || docs_only == 'true') && event == 'pull_request'
-  # → For any PR, exactly one of {audit, audit-stub} runs and emits `audit`.
-  # → For push/merge_group, real `audit` runs; stub skips (event != PR).
-  audit-stub:
-    name: audit  # INFRA-2191: emit as `audit` to satisfy ruleset required-check on doc-only PRs
-    needs: changes
-    # INFRA-1379: fire when code filter is empty (original condition) OR when
-    # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
-    if: |
-      (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
-      github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: audit skipped (no code changes or docs-only lane detected)
-        run: |
-          echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
-          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub (emits as 'audit')."
-
   # ── audit-required: rollup that branch protection enforces ───────────────
+  # META-261: audit-stub (INFRA-2191) is dropped. The real `audit` job already
+  # runs on all push/merge_group events and on PRs where docs_only != 'true'.
+  # On docs-only PRs the `audit` job is skipped — this aggregator maps that
+  # SKIPPED result to SUCCESS (exit 0), satisfying branch protection without
+  # a stub job.
   audit-required:
     name: audit-required
-    needs: [audit, audit-stub]
+    needs: [audit]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - name: Verify audit or audit-stub passed
+      - name: Verify audit passed or was appropriately skipped
         run: |
-          real="${{ needs.audit.result }}"
-          stub="${{ needs.audit-stub.result }}"
-          echo "audit=$real  audit-stub=$stub"
-          if [[ "$real" == "success" || "$stub" == "success" ]]; then
-            echo "audit-required: PASS"
-          elif [[ "$real" == "skipped" && "$stub" == "skipped" ]]; then
-            echo "audit-required: both skipped (push/merge_group path — acceptable)"
+          result="${{ needs.audit.result }}"
+          echo "audit=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "audit-required: PASS (result=$result)"
           else
-            echo "::error::audit-required FAIL (real=$real, stub=$stub)"
+            echo "::error::audit-required FAIL (result=$result)"
             exit 1
           fi
       - name: INFRA-779 gitdir auto-repair — corrupt + verify repair + ambient event (INFRA-1033)

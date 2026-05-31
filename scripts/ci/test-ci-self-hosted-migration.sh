@@ -67,7 +67,7 @@ else
 fi
 
 # Test 3: no `runs-on: ubuntu-latest` exists for jobs we explicitly migrated.
-MIGRATED_JOBS="changes test pr-hygiene e2e-battle-sim test-e2e clippy-stub clippy-required cargo-test-stub cargo-test-required fast-checks-stub fast-checks-required audit-stub audit-required integration-test"
+MIGRATED_JOBS="changes test pr-hygiene e2e-battle-sim test-e2e clippy-required cargo-test-required fast-checks-required audit-required integration-test"
 for job in $MIGRATED_JOBS; do
     python3 - "$CI_YML" "$job" <<'PY'
 import re, sys

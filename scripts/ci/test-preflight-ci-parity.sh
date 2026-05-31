@@ -151,8 +151,7 @@ gates = []  # list of (job, step_name, run_cmd)
 INFRA_JOBS = {
     "changes", "test", "test-e2e", "coverage", "integration-test",
     "clippy-required", "cargo-test-required", "fast-checks-required",
-    "audit-required", "clippy-stub", "cargo-test-stub",
-    "fast-checks-stub", "audit-stub",
+    "audit-required",
     "tauri-cowork-e2e", "e2e-pwa", "e2e-battle-sim", "e2e-golden-path",
 }
 

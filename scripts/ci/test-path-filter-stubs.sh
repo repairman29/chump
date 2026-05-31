@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# scripts/ci/test-path-filter-stubs.sh — INFRA-1143 (2026-05-14)
+# scripts/ci/test-path-filter-stubs.sh — META-261 (2026-05-31, was INFRA-1143 2026-05-14)
 #
-# Validates that the synthetic-green stub pattern is correctly wired in
-# .github/workflows/ci.yml for all required CI checks.
+# META-261: the stub/required pair pattern (INFRA-1143) was collapsed. The 4
+# synthetic-green stub jobs (clippy-stub, cargo-test-stub, fast-checks-stub,
+# audit-stub) are deleted. Each *-required aggregator now maps the real job's
+# SKIPPED result directly to exit 0 via needs.result check. This file guards
+# the collapsed pattern — asserting stubs are ABSENT and aggregators use the
+# new native SKIPPED-as-pass logic.
 #
 # Tests:
-#   1. clippy-stub job exists with correct condition (code != true && PR only)
-#   2. clippy-required job exists with always() and needs both
-#   3. cargo-test-stub job exists with correct condition
-#   4. cargo-test-required job exists with always() and needs both
-#   5. fast-checks-stub job exists with correct condition
-#   6. fast-checks-required job exists with always() and needs both
-#   7. audit-stub job exists with correct condition
-#   8. audit-required job exists with always() and needs both
-#   9. Each -required rollup uses exit 1 on failure (not just echo)
-#  10. INFRA-1143 marker present in ci.yml
-#  11. Migration path documented in scripts/coord/README.md
+#   1. Stub jobs are absent from ci.yml (no clippy-stub, cargo-test-stub, etc.)
+#   2. Each *-required job exists with if: always()
+#   3. Each *-required job needs only the real job (not a stub)
+#   4. Each *-required job maps skipped → exit 0 (SKIPPED-as-pass)
+#   5. Each *-required job uses exit 1 on genuine failure
+#   6. META-261 marker present in ci.yml
+#   7. Migration path documented in scripts/coord/README.md
 
 set -uo pipefail
 
@@ -28,7 +28,7 @@ FAIL=0
 ok()   { printf 'PASS: %s\n' "$*"; PASS=$((PASS+1)); }
 fail() { printf 'FAIL: %s\n' "$*"; FAIL=$((FAIL+1)); }
 
-echo "=== INFRA-1143 synthetic-green stub pattern test ==="
+echo "=== META-261 collapsed stub/required pattern test ==="
 echo
 
 # ── YAML validity ──────────────────────────────────────────────────────────────
@@ -38,71 +38,76 @@ else
     fail "ci.yml YAML parse error"
 fi
 
-# ── Helper: check stub job exists with proper condition ───────────────────────
-check_stub() {
-    local stub_job="$1"
-    local real_job="$2"
-    # Stub must exist
+# ── Test 1: Stub jobs must be absent ──────────────────────────────────────────
+for stub_job in clippy-stub cargo-test-stub fast-checks-stub audit-stub; do
     if grep -q "^  ${stub_job}:" "$CI_YML"; then
-        ok "${stub_job}: job defined"
+        fail "${stub_job}: still present — META-261 requires this stub to be deleted"
     else
-        fail "${stub_job}: job missing"
-        return
+        ok "${stub_job}: absent (correctly deleted)"
     fi
-    # Stub condition must include code != true
-    if grep -A5 "^  ${stub_job}:" "$CI_YML" | grep -q "code.*!=.*true\|!= 'true'"; then
-        ok "${stub_job}: condition excludes code-change paths"
-    else
-        fail "${stub_job}: missing 'code != true' condition"
-    fi
-    # Corresponding -required job must exist
+done
+
+# ── Helper: check *-required aggregator uses new native SKIPPED-as-pass ───────
+check_required() {
+    local real_job="$1"
     local req_job="${real_job}-required"
-    if grep -q "^  ${req_job}:" "$CI_YML"; then
-        ok "${req_job}: rollup job defined"
-    else
-        fail "${req_job}: rollup job missing"
+
+    # Must exist
+    if ! grep -q "^  ${req_job}:" "$CI_YML"; then
+        fail "${req_job}: job missing"
         return
     fi
-    # Rollup must have always()
+    ok "${req_job}: job defined"
+
+    # Must have always()
     if grep -A3 "^  ${req_job}:" "$CI_YML" | grep -q "always()"; then
         ok "${req_job}: uses if: always()"
     else
         fail "${req_job}: missing if: always()"
     fi
-    # Rollup must need both real and stub
-    if grep -A5 "^  ${req_job}:" "$CI_YML" | grep -q "${real_job}" && \
-       grep -A5 "^  ${req_job}:" "$CI_YML" | grep -q "${stub_job}"; then
-        ok "${req_job}: needs both ${real_job} and ${stub_job}"
+
+    # Must need only the real job (no stub in needs)
+    local needs_line
+    needs_line="$(grep -A5 "^  ${req_job}:" "$CI_YML" | grep "needs:")"
+    if echo "$needs_line" | grep -q "${real_job}" && \
+       ! echo "$needs_line" | grep -q "${real_job}-stub"; then
+        ok "${req_job}: needs only ${real_job} (no stub dependency)"
     else
-        fail "${req_job}: missing needs on ${real_job} or ${stub_job}"
+        fail "${req_job}: needs line wrong — expected '${real_job}' only, got: $needs_line"
+    fi
+
+    # Must map skipped → success (SKIPPED-as-pass via exit 0)
+    if grep -A20 "^  ${req_job}:" "$CI_YML" | grep -q "skipped"; then
+        ok "${req_job}: skipped result maps to PASS"
+    else
+        fail "${req_job}: missing skipped → PASS mapping"
+    fi
+
+    # Must use exit 1 on failure
+    if grep -A20 "^  ${req_job}:" "$CI_YML" | grep -q "exit 1"; then
+        ok "${req_job}: uses exit 1 on failure"
+    else
+        fail "${req_job}: missing exit 1 on failure"
     fi
 }
 
-check_stub "clippy-stub"      "clippy"
-check_stub "cargo-test-stub"  "cargo-test"
-check_stub "fast-checks-stub" "fast-checks"
-check_stub "audit-stub"       "audit"
+check_required "clippy"
+check_required "cargo-test"
+check_required "fast-checks"
+check_required "audit"
 
-# ── Test 9: -required rollups use exit 1 on failure ───────────────────────────
-ROLLUP_FAIL_COUNT=$(grep -c "exit 1" "$CI_YML" || echo 0)
-if [[ "$ROLLUP_FAIL_COUNT" -ge 4 ]]; then
-    ok "at least 4 'exit 1' entries in rollup jobs (one per required check)"
+# ── Test 6: META-261 marker in ci.yml ─────────────────────────────────────────
+if grep -q "META-261" "$CI_YML"; then
+    ok "META-261 marker present in ci.yml"
 else
-    fail "expected ≥4 'exit 1' in rollup jobs, got $ROLLUP_FAIL_COUNT"
+    fail "META-261 marker missing from ci.yml"
 fi
 
-# ── Test 10: INFRA-1143 marker in ci.yml ─────────────────────────────────────
-if grep -q "INFRA-1143" "$CI_YML"; then
-    ok "INFRA-1143 marker present in ci.yml"
-else
-    fail "INFRA-1143 marker missing from ci.yml"
-fi
-
-# ── Test 11: Migration path documented in README ──────────────────────────────
+# ── Test 7: Migration path documented in README ───────────────────────────────
 if [[ -r "$README" ]] && grep -q "INFRA-1143\|Required-check stub\|-required" "$README"; then
-    ok "scripts/coord/README.md documents the synthetic-green stub migration path"
+    ok "scripts/coord/README.md documents the required-check aggregator pattern"
 else
-    fail "scripts/coord/README.md missing INFRA-1143 / Required-check stub documentation"
+    fail "scripts/coord/README.md missing INFRA-1143 / required-check documentation"
 fi
 
 echo
