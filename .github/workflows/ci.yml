@@ -1016,22 +1016,22 @@ jobs:
         # which unjams ~26 PRs queue-wide without hiding the underlying race.
         if: needs.changes.outputs.gap_reserve == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
         run: |
-          export PATH="$(pwd)/target/debug:$PATH"
+          export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
 
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: |
-          export PATH="$(pwd)/target/debug:$PATH"
+          export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           bash scripts/ci/test-gap-reserve-padding.sh
 
       - name: gap-ID cross-session collision prevention (CREDIBLE-052)
         run: |
-          export PATH="$(pwd)/target/debug:$PATH"
+          export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-cross-session.sh
 
       - name: gap-ID lease uniqueness gate — duplicate-PR race prevention (INFRA-1970)
         run: |
-          export PATH="$(pwd)/target/debug:$PATH"
+          export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-id-lease-uniqueness.sh
 
       - name: bot-merge auto-close handshake (INFRA-154)
