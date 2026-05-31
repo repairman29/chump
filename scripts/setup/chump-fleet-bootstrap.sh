@@ -52,6 +52,11 @@ REQUIRED_DAEMONS=(
     # Without this, silently failing curators go undetected (32-hour incident
     # 2026-05-30). Runs every 300s via StartInterval launchd, not KeepAlive.
     "com.chump.curator-supervisor|scripts/setup/install-curator-supervisor.sh"
+    # INFRA-2324: Trunk Health Sentinel — 60s daemon that detects main ci.yml RED
+    # and autonomously triggers fix-class actions (gap-file at 5m, Sonnet dispatch
+    # at 15m, operator-recall at 60m). Without this, a red trunk blinds the
+    # fleet to its own queue-burn and bot-merge stalls every PR BEHIND it.
+    "com.chump.trunk-sentinel|scripts/setup/install-trunk-sentinel.sh"
 )
 UID_VAL="$(id -u)"
 

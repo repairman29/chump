@@ -1,0 +1,14 @@
+- id: INFRA-2326
+  domain: INFRA
+  title: fix-trunk priority-lane dispatcher — pre-empt picker when trunk red
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/dispatch/fix-trunk-dispatcher.sh exists, chmod +x, bash -n clean
+    - Emits ambient kinds fix_trunk_dispatched / fix_trunk_no_candidate / fix_trunk_skipped, registered in docs/observability/EVENT_REGISTRY.yaml with scanner-anchors
+    - Trunk-red gate uses 30-min ambient lookback; silent no-op when trunk is green
+    - Parallelism cap = 1 via .chump-locks/fix-trunk-dispatcher.lock singleton; emits fix_trunk_skipped on prior-active
+    - CHUMP_FIX_TRUNK_DISPATCH=0 kill-switch exits 0 immediately
+    - launchd plist launchd/com.chump.fix-trunk-dispatcher.plist with StartInterval=30 and ThrottleInterval=30; plutil -lint clean
+    - "Smoke test: CHUMP_FIX_TRUNK_DRY_RUN=1 + seeded trunk_red ambient event emits fix_trunk_dispatched with dry_run=true"
