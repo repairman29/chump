@@ -18,13 +18,22 @@ name: ACP Real-Client Integration Tests
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
+    paths:
+      - 'src/acp.rs'
+      - 'src/acp_server.rs'
+      - 'src/tool_middleware.rs'
+      - 'crates/chump-tool-macro/**'
+      - 'scripts/ci/test-acp-real-clients.sh'
+      - 'tests/fixtures/acp/real-clients/**'
+      - '.github/workflows/acp-real-clients.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'src/acp.rs'
       - 'src/acp_server.rs'
       - 'src/tool_middleware.rs'
+      - 'crates/chump-tool-macro/**'
       - 'scripts/ci/test-acp-real-clients.sh'
       - 'tests/fixtures/acp/real-clients/**'
       - '.github/workflows/acp-real-clients.yml'
