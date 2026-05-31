@@ -18,8 +18,9 @@
 name: no-anthropic-smoke
 
 on:
-  pull_request:
-  merge_group:
+  schedule:
+    - cron: '0 6 * * *'  # META-260: nightly 06:00 UTC (moved from per-PR pull_request/merge_group)
+  workflow_dispatch:
 
 permissions:
   contents: read
