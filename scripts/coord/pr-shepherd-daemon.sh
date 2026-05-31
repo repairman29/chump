@@ -125,6 +125,43 @@ sys.exit(1)
 " 2>/dev/null
 }
 
+# _get_trunk_state — returns GREEN|RED|UNKNOWN by tailing the latest kind=trunk_state_change
+# event from ambient.jsonl. Emitted by trunk-sentinel (not yet shipped); when no such
+# events exist, returns UNKNOWN and the cascade gate defaults to current behavior.
+# Echoes the state to stdout on a single line.
+_get_trunk_state() {
+  if [[ ! -f "$AMBIENT" ]]; then
+    echo "UNKNOWN"
+    return 0
+  fi
+  # Parse ambient via python3 JSON — find latest trunk_state_change event and read its state.
+  # Default to UNKNOWN if no such event exists OR if the event has no state field.
+  local state
+  state=$(tail -500 "$AMBIENT" 2>/dev/null | python3 -c "
+import json, sys
+latest_state = None
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        ev = json.loads(line)
+        if ev.get('kind') == 'trunk_state_change':
+            s = ev.get('state', '')
+            if s in ('TRUNK_RED', 'TRUNK_GREEN'):
+                latest_state = s
+    except Exception:
+        pass
+if latest_state == 'TRUNK_RED':
+    print('RED')
+elif latest_state == 'TRUNK_GREEN':
+    print('GREEN')
+else:
+    print('UNKNOWN')
+" 2>/dev/null || echo "UNKNOWN")
+  echo "$state"
+}
+
 # _pr_has_active_claim — returns 0 (true/skip) if gap_id matches any active claim lease
 # Args: $1=gap_id (e.g. META-184, INFRA-1234)
 _pr_has_active_claim() {
@@ -343,6 +380,18 @@ for p in prs:
     echo "[pr-shepherd-daemon] trunk_red detected in last 30m — safe-mode, no rebases" >&2
   fi
 
+  # Cascade Gate: read latest kind=trunk_state_change from ambient.jsonl.
+  # When TRUNK_RED is the latest state, hold the rebase queue — every PR
+  # rebased onto a broken main inherits the failure → wastes runners. Wait
+  # for trunk-sentinel to emit TRUNK_GREEN before resuming rebases.
+  # Classification + ARMED handling continue unchanged; only rebase action holds.
+  local trunk_state cascade_held=0
+  trunk_state=$(_get_trunk_state)
+  if [ "$trunk_state" = "RED" ]; then
+    cascade_held=1
+    echo "[pr-shepherd-daemon] cascade held — trunk red" >&2
+  fi
+
   local rebase_count=0
   local arm_count=0
   local gap_file_count=0
@@ -360,6 +409,12 @@ for p in prs:
 
       # META-184: action phase — only for BEHIND PRs
       if [ "$c" = "BEHIND" ]; then
+        # Guard 0: cascade gate — trunk-sentinel says main is red, hold the queue
+        if [ "$cascade_held" -eq 1 ]; then
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "cascade_held" "$gap_id"
+          continue
+        fi
+
         # Guard 1: trunk-red safe-mode
         if [ "$trunk_red_active" -eq 1 ]; then
           _emit_pr_action_taken "$pr_num" "rebase_skipped" "trunk_red" "$gap_id"
