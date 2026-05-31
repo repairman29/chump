@@ -49,6 +49,7 @@ install-overnight-research-launchd.sh
 install-pid-invariant-launchd.sh
 install-pr-auto-rebase-launchd.sh
 install-pr-blocked-watch-launchd.sh
+install-pr-shepherd-daemon.sh
 install-pr-watch-shepherd-launchd.sh
 install-prune-worktrees-launchd.sh
 install-queue-driver-launchd.sh
