@@ -338,4 +338,4 @@ check-gaps-integrity.py    # reason: gap-status-guard.yml gaps-integrity job run
 
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
-# (tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path are in INFRA_JOBS skip list)
+# (tauri-cowork-e2e, e2e are in INFRA_JOBS skip list — e2e is the matrixed job from META-267)
