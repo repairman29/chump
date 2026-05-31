@@ -1307,7 +1307,10 @@ jobs:
     # INFRA-1342: push trigger removed (same rollup-FAILURE trap as tauri).
     # pwa suite: runs when e2e files change or merge_group.
     # battle-sim / golden-path: RESILIENT-016 disabled (enabled=false → job skipped).
-    if: matrix.enabled == true && (needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group')
+    # INFRA-2320: matrix context not allowed in job-level if (GHA expression rule).
+    # The matrix.enabled gating moved to step-level — disabled suites still spawn
+    # but skip all real work; continue-on-error keeps them non-blocking.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
     continue-on-error: true
     runs-on: ${{ matrix.runs-on-expr }}
     timeout-minutes: ${{ matrix.timeout }}
