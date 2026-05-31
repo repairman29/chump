@@ -117,6 +117,20 @@ Confirm the paths exist before grep: `git ls-tree origin/main --name-only -r | g
 
 ---
 
+## PR rescue procedure (META-246, 2026-05-31)
+
+When the Quartermaster's daemons detect "queue is stuck" (15+ BLOCKED PRs, 4+ hours stalled, repeat fingerprints on same failure surface), the canonical playbook is:
+
+**[`docs/process/PR_RESCUE_PROCEDURE.md`](../../docs/process/PR_RESCUE_PROCEDURE.md)** — triage → fix-at-source → propagate → cascade.
+
+Key invariants for Quartermaster lane:
+- §3 Systemic rot is fixed AT SOURCE, not per-PR (one allowlist edit, then rebase wave)
+- §6 Cascade impact tables tell you exactly what to expect after each fix-class
+- §8 Admin-merge gates: infrastructure-class failures may be admin-merged with fix-class title; feat-class never
+- §10 Collision-prone file watch list — hot files like `raw-gh-allowlist.txt`, `event-registry-reserved.txt`, `optional-installers-allowlist.txt` — use append-only discipline + Off-Rails-Bypass when editing outside claim paths
+
+When 5+ PRs share a fingerprint, the daemon-activator + ghost-pr-closer + main-worktree-drift-detector trio handles propagation. Operator does not need to touch.
+
 ## Auto-fixers (META-225)
 
 Three daemons that eliminate the three manual unwedging classes the operator

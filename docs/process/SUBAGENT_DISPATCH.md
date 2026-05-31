@@ -215,6 +215,16 @@ integration-cycle ambient events before the rest of the briefing. Dispatch
 prompts for META-124 sub-gaps no longer need a "read META-124 first" instruction
 — the briefing injects it automatically.
 
+### Rescue-class dispatches MUST cite the procedure (META-246, 2026-05-31)
+
+When dispatching a Sonnet on a **rescue-class gap** (titles starting with "trunk-red rescue", "queue stuck", "fix(... allowlist", "rescue ...", "unblock ...", or any gap filed by the PR-shepherd daemon's `pr_action_taken action=file_followup_gap`), the brief **MUST**:
+
+1. Cite the relevant §5 failure-surface pattern from [`docs/process/PR_RESCUE_PROCEDURE.md`](./PR_RESCUE_PROCEDURE.md): "Match §5.X pattern — fix in `<canonical-file>` per that section's prescription."
+2. Cite the relevant §6 cascade-impact row: "After this lands, expect §6.X cascade — trigger rebase wave / rerun wave / wait-for-CI per that row."
+3. Reject scope expansion explicitly: "Do NOT also fix sibling §5.Y patterns; one rescue per PR."
+
+This prevents the Sonnet from inventing a new rescue approach for a pattern we've already solved. Every Sonnet brief for rescue work needs explicit §5 + §6 citations.
+
 The shipping epilogue is the LAST section of the prompt. Structure in order:
 
 1. **No-clarifying-questions directive** (above) — verbatim, first thing.
