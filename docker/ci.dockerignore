@@ -1,0 +1,58 @@
+# docker/ci.dockerignore — META-262
+#
+# Build context exclusions for docker/Dockerfile.ci.
+# Keeps the build context lean: only Cargo manifests + source needed for
+# cargo-chef planner/builder stages. Excludes large directories that are
+# irrelevant to the dep-fingerprint layer (docs, web assets, scripts, etc.).
+#
+# Usage: passed via --file docker/Dockerfile.ci; Docker looks for
+# <Dockerfile>.dockerignore alongside the Dockerfile automatically.
+# Also referenced as the top-level .dockerignore when building from repo root.
+
+# Large directories not needed for Rust compilation
+docs/
+web/
+ChumpMenu/
+e2e/
+e2e-tauri/
+experiments/
+extensions/
+book/
+.claude/
+.chump/
+.chump-locks/
+.chump-nightly/
+target/
+desktop/src-tauri/target/
+
+# VCS and editor state
+.git/
+.gitignore
+.gitmodules
+*.swp
+*.swo
+.DS_Store
+
+# Secrets / local config
+.env
+.env.*
+*.local
+*.secret
+
+# CI / deployment configs not needed inside the image
+.github/
+launchd/
+scripts/
+config/
+infra/
+
+# Test fixtures and large blobs
+tests/fixtures/
+*.db
+*.jsonl
+
+# Build artifacts
+**/*.o
+**/*.a
+**/*.so
+**/target/

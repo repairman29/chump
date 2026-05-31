@@ -1,21 +1,25 @@
-# Dockerfile.ci — INFRA-2241
+# Dockerfile.ci — INFRA-2241 / META-262
 #
 # Prebuilt CI image for chump: Rust 1.82 + sccache + cargo-nextest + cargo-deny
-# + clippy + jq preinstalled. Pushed weekly to ghcr.io/repairman29/chump-ci.
+# + clippy + jq + webkit2gtk (chump-desktop workspace member) preinstalled.
+# Pushed weekly to ghcr.io/repairman29/chump-ci.
 #
 # Multi-stage with cargo-chef (AC #8) for 10x dep-layer cache hit on rebuild.
 #
 # Operational notes:
-#   - Final stage is lean: only the toolchain + tools, no source tree, no recipe.
+#   - Final stage is lean: only the toolchain + tools + sys-deps, no source tree.
 #   - Source/recipe are baked into the intermediate `builder` stage so cargo's
 #     dep graph is warm in /usr/local/cargo for the cargo-test job.
+#   - webkit2gtk-4.1 + libgtk-3-dev etc. are pre-baked so `cargo clippy
+#     --workspace --all-targets` (which includes chump-desktop) works without
+#     an extra apt-get step at CI job start.
 #   - Bump Rust version by editing the `FROM rust:X.Y-bookworm` lines below;
 #     the weekly build-ci-image.yml cron will push a new :latest the following
 #     Sunday. Rollback: pin a specific :{sha} tag in ci.yml.
 #
-# Usage (in ci.yml — deferred to follow-up INFRA-2241B):
+# Usage (in ci.yml — pilot: clippy, deferred: cargo-test + audit per META-262):
 #   jobs:
-#     cargo-test:
+#     clippy:
 #       container: ghcr.io/repairman29/chump-ci:latest
 #
 # See: docs/process/CI_DOCKER_IMAGE.md for full operator surface.
@@ -44,9 +48,16 @@ COPY --from=chef /usr/local/cargo/bin/sccache /usr/local/bin/sccache
 COPY --from=chef /usr/local/cargo/bin/cargo-nextest /usr/local/bin/cargo-nextest
 COPY --from=chef /usr/local/cargo/bin/cargo-deny /usr/local/bin/cargo-deny
 
-# Runtime utilities expected by CI scripts.
+# Runtime utilities expected by CI scripts + chump-desktop (Tauri) workspace
+# member build dependencies. Pre-baking webkit2gtk here eliminates the
+# apt-get step in the clippy / cargo-test CI jobs (saves ~60-90s per run).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl jq sqlite3 ca-certificates \
+        build-essential pkg-config libssl-dev \
+        webkit2gtk-4.1 libwebkit2gtk-4.1-dev \
+        libayatana-appindicator3-dev \
+        libgtk-3-dev librsvg2-dev util-linux \
+        mold \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure clippy + rustfmt components are present (rustup ships them but make sure).
