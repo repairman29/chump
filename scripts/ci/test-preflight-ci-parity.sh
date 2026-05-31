@@ -168,7 +168,7 @@ CI_YML_INFRA_JOBS = {
     "clippy-required", "cargo-test-required", "fast-checks-required",
     "audit-required", "clippy-stub", "cargo-test-stub",
     "fast-checks-stub", "audit-stub",
-    "tauri-cowork-e2e", "e2e-pwa", "e2e-battle-sim", "e2e-golden-path",
+    "tauri-cowork-e2e", "e2e",  # META-267: matrixed pwa/battle-sim/golden-path into single job
 }
 
 # Sibling workflow jobs that are purely infrastructure/release/cloud — not
@@ -195,7 +195,7 @@ SIBLING_INFRA_JOBS = {
     # release-plz test job (cargo test + audit in cloud release context)
     "test",
     # nightly / advisory / e2e (cloud-only)
-    "tauri-cowork-e2e", "e2e-battle-sim", "e2e-golden-path",
+    "tauri-cowork-e2e", "e2e",  # META-267: e2e matrixes pwa/battle-sim/golden-path
     "nightly-e2e-status", "dogfood-matrix", "e2e-pwa-flakes",
     # CI infrastructure
     "build", "rerun", "drift", "arm",
