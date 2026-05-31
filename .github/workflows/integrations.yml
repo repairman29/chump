@@ -1,0 +1,548 @@
+name: integrations
+# META-266: Consolidation of 5 advisory/integration workflows into a single file.
+# Replaces: acp-real-clients.yml, editor-integration.yml, e2e-pwa-advisory.yml,
+#           pwa-visual-diff.yml, voice-lint.yml
+#
+# Required check preserved: "ACP protocol smoke test (Zed / JetBrains compatible)"
+# (branch-protection context — DO NOT rename that job).
+#
+# All jobs that were advisory remain advisory (continue-on-error: true).
+# The voice-lint job is NOT advisory — it enforces the ban-list (no continue-on-error).
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  merge_group:
+  schedule:
+    # 04:17 UTC daily — off-peak (inherited from e2e-pwa-advisory, INFRA-1332).
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      gate_mode:
+        description: 'ACP gate mode: per-pr or nightly'
+        required: false
+        default: 'per-pr'
+
+env:
+  CARGO_TERM_COLOR: always
+
+# ---------------------------------------------------------------------------
+# Job 1: ACP protocol smoke test (required check — DO NOT rename)
+# Source: editor-integration.yml (ACP-003)
+# ---------------------------------------------------------------------------
+jobs:
+  acp-smoke:
+    name: ACP protocol smoke test (Zed / JetBrains compatible)
+    # INFRA-1535 stage 3: self-hosted routing (M4 has chromedriver + Chrome + node installed)
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_ACP != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'merge_group' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          # INFRA-2126: per-run unique key prevents concurrent PRs from fighting over
+          # the same cache slot; only main writes the shared cache.
+          key-suffix: ${{ github.run_id }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+
+      - name: Build debug binary
+        # INFRA-1600: self-hosted runner launchctl PATH lacks $HOME/.cargo/bin.
+        run: |
+          source scripts/ci/lib/ensure-cargo-on-path.sh
+          cargo build 2>&1
+
+      - name: Run ACP smoke test
+        env:
+          # No model needed for initialize/session/new
+          OPENAI_API_BASE: http://localhost:11434/v1
+          OPENAI_API_KEY: smoke-test
+          OPENAI_MODEL: smoke-model
+        # INFRA-1600: honor $CARGO_TARGET_DIR (shared cache redirects build output).
+        run: |
+          source scripts/ci/lib/ensure-cargo-on-path.sh
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
+          bash scripts/ci/test-acp-smoke.sh
+
+      - name: Verify snapshot fixtures were written
+        run: |
+          test -f tests/fixtures/acp/initialize_shape.json
+          test -f tests/fixtures/acp/session_new_shape.json
+          echo "Snapshots:"
+          cat tests/fixtures/acp/initialize_shape.json
+          cat tests/fixtures/acp/session_new_shape.json
+
+      - name: Check snapshot shape has expected keys
+        run: |
+          INIT_KEYS=$(jq -r '.result_keys[]' tests/fixtures/acp/initialize_shape.json | sort | tr '\n' ',')
+          echo "initialize result keys: $INIT_KEYS"
+          echo "$INIT_KEYS" | grep -qi "capabilities"
+          echo "$INIT_KEYS" | grep -q "protocolVersion"
+
+          SN_KEYS=$(jq -r '.result_keys[]' tests/fixtures/acp/session_new_shape.json | sort | tr '\n' ',')
+          echo "session/new result keys: $SN_KEYS"
+          echo "$SN_KEYS" | grep -q "sessionId"
+
+      - name: Upload ACP snapshot artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: acp-snapshots
+          path: tests/fixtures/acp/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Job 2: ACP real-client integration tests (matrix)
+  # Source: acp-real-clients.yml (CREDIBLE-057)
+  # Path-gated: only runs when ACP source files change.
+  # ---------------------------------------------------------------------------
+  acp-real-clients:
+    name: ACP real-client — ${{ matrix.client.display }}
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.changed_files, 'src/acp.rs') ||
+        contains(github.event.pull_request.changed_files, 'src/acp_server.rs') ||
+        contains(github.event.pull_request.changed_files, 'src/tool_middleware.rs') ||
+        contains(github.event.pull_request.changed_files, 'scripts/ci/test-acp-real-clients.sh') ||
+        contains(github.event.pull_request.changed_files, 'tests/fixtures/acp/real-clients/')
+      ))
+    env:
+      CHUMP_ACP_REAL_CLIENT_GATE: ${{ vars.CHUMP_ACP_REAL_CLIENT_GATE || inputs.gate_mode || 'per-pr' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        client:
+          - name: zed-stable
+            fixture_dir: zed-stable
+            display: Zed stable (0.169.x)
+          - name: zed-preview
+            fixture_dir: zed-preview
+            display: Zed preview (0.170.x-pre)
+          - name: jetbrains-community
+            fixture_dir: jetbrains
+            display: JetBrains IDEA Community 2025.1
+          - name: jetbrains-ultimate
+            fixture_dir: jetbrains
+            display: JetBrains IDEA Ultimate 2025.1
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+
+      - name: Build debug binary
+        run: cargo build 2>&1
+
+      - name: Check gate mode
+        run: |
+          echo "Gate mode: $CHUMP_ACP_REAL_CLIENT_GATE"
+          echo "Client: ${{ matrix.client.display }}"
+
+      - name: Run ACP real-client integration tests — ${{ matrix.client.display }}
+        env:
+          CHUMP_BIN: ./target/debug/chump
+          OPENAI_API_BASE: http://localhost:11434/v1
+          OPENAI_API_KEY: fixture-replay
+          OPENAI_MODEL: fixture-model
+          CHUMP_ACP_CLIENT_FIXTURE: ${{ matrix.client.fixture_dir }}
+          CHUMP_ACP_ARTIFACT_DIR: ${{ github.workspace }}/tests/fixtures/acp/real-clients
+        run: |
+          bash scripts/ci/test-acp-real-clients.sh
+
+      - name: Upload ACP protocol diffs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acp-protocol-diffs-${{ matrix.client.name }}
+          path: tests/fixtures/acp/real-clients/protocol-diffs.txt
+          retention-days: 14
+
+      - name: Post protocol diff summary to step summary
+        if: always()
+        run: |
+          DIFF_FILE="tests/fixtures/acp/real-clients/protocol-diffs.txt"
+          echo "## ACP Protocol Diff — ${{ matrix.client.display }}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f "$DIFF_FILE" ]]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$DIFF_FILE" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "_No diff file generated._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 3: ACP force-fire fixture (CREDIBLE-057)
+  # Source: acp-real-clients.yml
+  # Path-gated same as acp-real-clients.
+  # ---------------------------------------------------------------------------
+  acp-force-fire:
+    name: ACP force-fire fixture (CREDIBLE-057)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.changed_files, 'src/acp.rs') ||
+        contains(github.event.pull_request.changed_files, 'src/acp_server.rs') ||
+        contains(github.event.pull_request.changed_files, 'src/tool_middleware.rs') ||
+        contains(github.event.pull_request.changed_files, 'scripts/ci/test-acp-real-clients.sh') ||
+        contains(github.event.pull_request.changed_files, 'tests/fixtures/acp/real-clients/')
+      ))
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+
+      - name: Build debug binary
+        run: cargo build 2>&1
+
+      - name: Verify force-fire fixture detects snake_case protocol violation
+        env:
+          CHUMP_BIN: ./target/debug/chump
+          CHUMP_ACP_REAL_CLIENT_GATE: per-pr
+          CHUMP_ACP_ARTIFACT_DIR: ${{ github.workspace }}/tests/fixtures/acp/real-clients
+        run: |
+          bash scripts/ci/test-acp-real-clients.sh
+
+      - name: Confirm force-fire fixture file exists
+        run: |
+          test -f tests/fixtures/acp/real-clients/force-fire-broken.json || {
+            echo "FAIL: force-fire fixture missing" >&2
+            exit 1
+          }
+          echo "PASS: force-fire fixture present"
+          jq '.violation' tests/fixtures/acp/real-clients/force-fire-broken.json
+
+  # ---------------------------------------------------------------------------
+  # Job 4: PWA flake advisory (non-blocking)
+  # Source: e2e-pwa-advisory.yml (INFRA-1332)
+  # Path-gated: web/**, e2e/**, src/web_server.rs, src/routes/**
+  # Also runs on the nightly schedule (inherited schedule trigger above).
+  # ---------------------------------------------------------------------------
+  e2e-pwa-flakes:
+    name: PWA flake advisory (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 25
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.changed_files, 'web/') ||
+        contains(github.event.pull_request.changed_files, 'e2e/') ||
+        contains(github.event.pull_request.changed_files, 'src/web_server.rs') ||
+        contains(github.event.pull_request.changed_files, 'src/routes/')
+      ))
+    env:
+      CHUMP_E2E_INCLUDE_FLAKES: "1"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache Ollama models
+        uses: actions/cache@v5
+        with:
+          path: ~/.ollama
+          key: ollama-models-${{ runner.os }}-v1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Build chump binary
+        run: cargo build --bin chump
+
+      - name: Setup Ollama for advisory run
+        run: bash scripts/ci/ci-setup-ollama-e2e.sh
+
+      - name: Install Playwright + browsers
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run quarantined PWA flakes (advisory)
+        working-directory: e2e
+        run: |
+          npx playwright test --grep "PWA shell|PWA mobile viewport|Chat /task" \
+            --reporter=github,json --reporter-output=advisory-results.json \
+            || echo "::warning::quarantined flakes failed (informational only, INFRA-1335)"
+
+      - name: Upload advisory results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-advisory-results
+          path: e2e/advisory-results.json
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 5: PWA visual diff (advisory, design-review surface)
+  # Source: pwa-visual-diff.yml (INFRA-1605)
+  # Path-gated: web/**, desktop/src-tauri/**, e2e/tests/pwa-visual**
+  # ---------------------------------------------------------------------------
+  visual-diff:
+    name: PWA visual diff (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.changed_files, 'web/') ||
+        contains(github.event.pull_request.changed_files, 'desktop/src-tauri/') ||
+        contains(github.event.pull_request.changed_files, 'e2e/tests/pwa-visual') ||
+        contains(github.event.pull_request.changed_files, 'e2e/playwright.config.ts')
+      ))
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BOT_MARKER: "<!-- chump-visual-diff-bot:INFRA-1605 -->"
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Detect INFRA-1591 snapshot suite
+        id: detect
+        run: |
+          set -euo pipefail
+          if find e2e/tests -maxdepth 2 \( -name 'pwa-visual*.spec.ts' -o -name 'pwa-visual*.spec.js' \) 2>/dev/null | grep -q .; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 visual snapshot suite detected — running diff."
+          elif [ -d e2e/tests/pwa-visual ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 visual snapshot directory detected — running diff."
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::INFRA-1591 snapshot suite not yet wired — bot will no-op with comment."
+          fi
+
+      - name: Setup Node (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright + chromium (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build chump binary (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build chump (only if wired)
+        if: steps.detect.outputs.wired == 'true'
+        run: cargo build --bin chump
+
+      - name: Run visual snapshot suite (only if wired)
+        id: snapshot
+        if: steps.detect.outputs.wired == 'true'
+        working-directory: e2e
+        continue-on-error: true
+        env:
+          CHUMP_E2E_VISUAL_MODE: 'diff-only'
+        run: |
+          set -uo pipefail
+          mkdir -p test-results
+          npx playwright test --grep "@visual|pwa-visual" \
+            --reporter=json --output=test-results \
+            > test-results/playwright.json 2>&1 \
+            || echo "::warning::visual snapshot suite reported diffs (this is informational)"
+
+      - name: Collect diff manifest (only if wired)
+        id: manifest
+        if: steps.detect.outputs.wired == 'true'
+        run: |
+          set -euo pipefail
+          if [ -f e2e/test-results/visual-diffs.json ]; then
+            DIFF_COUNT=$(python3 -c "import json,sys; d=json.load(open('e2e/test-results/visual-diffs.json')); print(len(d.get('diffs',[])))" 2>/dev/null || echo "0")
+            echo "diff_count=$DIFF_COUNT" >> "$GITHUB_OUTPUT"
+            echo "has_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "diff_count=0" >> "$GITHUB_OUTPUT"
+            echo "has_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload diff artifacts (only if wired and diffs present)
+        id: upload
+        if: >-
+          steps.detect.outputs.wired == 'true' &&
+          steps.manifest.outputs.has_manifest == 'true' &&
+          steps.manifest.outputs.diff_count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-visual-diffs-pr-${{ github.event.pull_request.number }}
+          path: e2e/test-results/
+          retention-days: 14
+
+      - name: Build PR comment body
+        id: body
+        run: |
+          set -euo pipefail
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts"
+          BODY_FILE="$RUNNER_TEMP/visual-diff-comment.md"
+
+          if [ "${{ steps.detect.outputs.wired }}" != "true" ]; then
+            cat > "$BODY_FILE" <<EOF
+          ${BOT_MARKER}
+          ### Visual diff bot — waiting on INFRA-1591
+
+          The PWA visual snapshot suite (INFRA-1591) has not landed yet. Once
+          it ships, this bot will post a side-by-side baseline/diff table on
+          every PR that touches \`web/**\` so design collaborators can review
+          visual changes inline without checking out the branch.
+
+          *Bot is INFRA-1605. This message is a no-op pending the snapshot suite.*
+          EOF
+          elif [ "${{ steps.manifest.outputs.diff_count }}" = "0" ]; then
+            cat > "$BODY_FILE" <<EOF
+          ${BOT_MARKER}
+          ### Visual diff — no changes detected
+
+          The INFRA-1591 snapshot suite ran against this PR and found no
+          pixel-level diffs against the committed baselines.
+
+          - Re-baseline locally if you intended a visual change:
+            \`(cd e2e && npx playwright test --grep "@visual|pwa-visual" --update-snapshots)\`
+
+          *Bot is INFRA-1605.*
+          EOF
+          else
+            DIFF_COUNT='${{ steps.manifest.outputs.diff_count }}'
+            {
+              echo "${BOT_MARKER}"
+              echo "### Visual diff — ${DIFF_COUNT} view(s) changed"
+              echo ""
+              echo "| View | Viewport | Pixel delta | Diff |"
+              echo "|---|---|---|---|"
+              python3 <<PYEOF
+          import json
+          d = json.load(open('e2e/test-results/visual-diffs.json'))
+          run_url = "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          for row in d.get('diffs', []):
+              view     = row.get('view', '?')
+              viewport = row.get('viewport', '?')
+              pct      = row.get('pixel_delta_pct', '?')
+              diff_rel = row.get('diff_path', '')
+              link = f"[{diff_rel.split('/')[-1]}]({run_url}#artifacts)"
+              print(f"| {view} | {viewport} | {pct} | {link} |")
+          PYEOF
+              echo ""
+              echo "**Artifact bundle:** [Download diff PNGs](${ARTIFACT_URL})"
+              echo ""
+              echo "**Re-baseline locally** if these changes are intentional:"
+              echo "\`(cd e2e && npx playwright test --grep \"@visual|pwa-visual\" --update-snapshots)\`"
+              echo ""
+              echo "*Bot is INFRA-1605. External design reviewers (Marcus, ultrareview operators) see the diff inline.*"
+            } > "$BODY_FILE"
+          fi
+
+          echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert PR comment (find-and-replace, never spam)
+        env:
+          BODY_FILE: ${{ steps.body.outputs.body_file }}
+        run: |
+          set -euo pipefail
+          EXISTING_ID=$(gh api "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --jq "[.[] | select(.body | contains(\"${BOT_MARKER}\"))] | .[0].id // empty" \
+              2>/dev/null || true)
+
+          if [ -n "${EXISTING_ID}" ]; then
+            echo "::notice::Updating existing visual-diff comment ${EXISTING_ID}"
+            gh api -X PATCH "/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
+              -F body=@"${BODY_FILE}" > /dev/null
+          else
+            echo "::notice::Posting new visual-diff comment"
+            gh pr comment "${PR_NUMBER}" --body-file "${BODY_FILE}"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Voice ban-list lint (INFRA-1728)
+  # Source: voice-lint.yml
+  # NOT advisory — enforces the ban-list on all PRs touching docs/.
+  # Runs on all PRs + merge_group (inherited from top-level on: trigger).
+  # ---------------------------------------------------------------------------
+  voice-lint:
+    name: Voice ban-list lint
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'merge_group'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for banned words in changed docs
+        run: |
+          bash scripts/ci/test-voice-banlist.sh \
+            --base=origin/${{ github.base_ref || 'main' }} \
+            --pr=${{ github.event.pull_request.number || '' }}
+        env:
+          CHUMP_VOICE_LINT_DISABLE: ${{ vars.CHUMP_VOICE_LINT_DISABLE || '0' }}
