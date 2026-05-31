@@ -227,28 +227,30 @@ if [[ $claim_rc -ne 0 ]]; then
   exit 0
 fi
 
-# Resolve the worktree path that `chump claim` allocated. Convention:
-# .chump-locks/claim-*.json contains the most recent lease for this session;
-# we read the freshest lease whose gap_id matches.
-worktree="$(python3 -c "
-import json, os, glob
-lock_dir = '$LOCK_DIR'
-matches = []
-for p in glob.glob(os.path.join(lock_dir, 'claim-*.json')):
-    try:
-        d = json.load(open(p))
-        if d.get('gap_id') == '$candidate_id':
-            matches.append((os.path.getmtime(p), d))
-    except Exception:
-        pass
-matches.sort(reverse=True)
-if matches:
-    print(matches[0][1].get('worktree', ''))
-" 2>/dev/null)"
+# Resolve the worktree path that `chump claim` allocated.
+# INFRA-2337: The lease JSON written by src/atomic_claim.rs does NOT carry a
+# `worktree` field — schema is {session_id, paths, taken_at, expires_at,
+# heartbeat_at, purpose, gap_id} (write_basic_lease, lines 1680-1708). The
+# worktree path is *deterministic* per atomic_claim.rs:682:
+#   worktree_base = CHUMP_WORKTREE_BASE or /tmp
+#   worktree_path = $worktree_base/chump-<gap-lower>
+# We mirror that derivation here, then verify the dir exists on disk.
+gap_lower="$(printf '%s' "$candidate_id" | tr '[:upper:]' '[:lower:]')"
+worktree_base="${CHUMP_WORKTREE_BASE:-/tmp}"
+worktree="$worktree_base/chump-$gap_lower"
 
-if [[ -z "$worktree" || ! -d "$worktree" ]]; then
-  log "claim succeeded but worktree path not resolved for $candidate_id; exiting"
-  exit 0
+if [[ ! -d "$worktree" ]]; then
+  # Fallback path: parse `chump claim` stdout for the "worktree :" line. Some
+  # operator-test scenarios use a stub or non-default CHUMP_WORKTREE_BASE; if
+  # the deterministic guess misses, prefer the source of truth.
+  parsed_wt="$(printf '%s\n' "$claim_out" | sed -n 's/.*worktree[[:space:]]*:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)"
+  if [[ -n "$parsed_wt" && -d "$parsed_wt" ]]; then
+    worktree="$parsed_wt"
+  else
+    log "claim succeeded but worktree path not resolved for $candidate_id (guessed=$worktree, parsed=$parsed_wt); exiting"
+    emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"error\":\"worktree_unresolved\",\"dispatched\":false"
+    exit 0
+  fi
 fi
 
 log "claimed $candidate_id at worktree=$worktree; dispatching $MODEL"
@@ -266,7 +268,7 @@ selected ABOVE normal P0 priority because resolving trunk-red unblocks every
 other in-flight PR on the fleet.
 
 Working directory: $worktree
-Branch: chump/${candidate_id,,}-claim (already checked out by chump claim).
+Branch: chump/$gap_lower-claim (already checked out by chump claim).
 
 Mandatory pre-flight (every session, before any work):
   1. Read the gap: chump gap show $candidate_id
