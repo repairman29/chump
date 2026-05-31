@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.fix-trunk-dispatcher — RESILIENT Fix-Trunk Priority Lane (INFRA-2326).
+
+  Runs scripts/dispatch/fix-trunk-dispatcher.sh every 30 seconds. When the
+  most recent ambient `trunk_red` event is within the last 30 min, the
+  script claims the highest-priority open gap whose skills_required
+  contains `fix_trunk` and dispatches a Sonnet sub-agent — pre-empting
+  normal picker priority. When trunk is GREEN, the script is a no-op and
+  fix_trunk gaps flow through the normal picker.
+
+  Parallelism cap: 1 (singleton lockfile at
+  .chump-locks/fix-trunk-dispatcher.lock prevents double-dispatch on the
+  same incident even if launchd over-fires).
+
+  Disable kill-switch: set CHUMP_FIX_TRUNK_DISPATCH=0 in EnvironmentVariables.
+
+  INSTALLATION:
+    1. Substitute REPO_ROOT and HOME placeholders with absolute paths.
+    2. cp launchd/com.chump.fix-trunk-dispatcher.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.fix-trunk-dispatcher.plist
+    4. Verify: launchctl list | grep chump.fix-trunk-dispatcher
+    5. Manual run: launchctl start com.chump.fix-trunk-dispatcher
+       Logs: tail REPO_ROOT/.chump-locks/fix-trunk-dispatcher.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.fix-trunk-dispatcher.plist
+    rm ~/Library/LaunchAgents/com.chump.fix-trunk-dispatcher.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.fix-trunk-dispatcher</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPO_ROOT/scripts/dispatch/fix-trunk-dispatcher.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT</string>
+
+    <!-- 30s cadence: trunk-red is a high-urgency signal; every other in-flight
+         PR is wedged until it clears. The singleton lockfile prevents a runaway. -->
+    <key>StartInterval</key>
+    <integer>30</integer>
+
+    <!-- ThrottleInterval must be >= StartInterval; 30s matches the cadence and
+         launchd will not over-fire. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Don't start at load — wait for the first tick. First run on launchd reload
+         is just "check trunk right now" which is fine to defer 30s. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>REPO_ROOT/.chump-locks/fix-trunk-dispatcher.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>REPO_ROOT/.chump-locks/fix-trunk-dispatcher.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin</string>
+        <key>CHUMP_AMBIENT_PATH</key>
+        <string>REPO_ROOT/.chump-locks/ambient.jsonl</string>
+        <!-- Kill-switch — set to "0" to disable without unloading the agent. -->
+        <key>CHUMP_FIX_TRUNK_DISPATCH</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>
