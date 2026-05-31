@@ -331,6 +331,11 @@ Detect R2 secret presence                    # reason: INFRA-2093 secret-presenc
 sccache --show-stats                         # reason: INFRA-2093 observability emit at end of cargo-test (only runs when R2 configured). Pure runtime stats reporting, no source code dependency; not preflight-shaped.
 nextest via INFRA-764                        # reason: INFRA-2094 step-name fragment for `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script reads only first line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content.
 
+# ── META-268: sibling workflow steps not using scripts/ci/*.sh paths ─────────
+# These are caught by the widened scan (META-268) but use non-scripts/ci/ paths.
+# The mirror-detection only matches scripts/ci/*.sh; these need explicit entries.
+check-gaps-integrity.py    # reason: gap-status-guard.yml gaps-integrity job runs python scripts/coord/check-gaps-integrity.py directly; same script IS mirrored in preflight.rs (INFRA-1831) but via scripts/coord/ not scripts/ci/ path — mirror detector misses it; functionally covered
+
 # ── Deprecated/disabled steps (if: false) ────────────────────────────────────
 # These jobs have `if: false` and never run — parity is moot.
 # (tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path are in INFRA_JOBS skip list)
