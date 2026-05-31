@@ -6431,3 +6431,86 @@ events:
     expected_volume: "low; target <10% of total merges once enforce mode is active"
     status: stable
     # payload: {pr: number, corr_id: string, reason: string, operator_session_id: string, mode: string, gap_id: string, ts: string}
+
+  # ── INFRA-2324: Trunk health sentinel ───────────────────────────────────────
+  - kind: trunk_sentinel_tick
+    effect_metric: self
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_sentinel_tick"
+    trigger: >
+      Emitted on every tick of the trunk-health-sentinel daemon (60s cadence
+      via launchd com.chump.trunk-sentinel). Records the current derived
+      trunk state (TRUNK_GREEN/AMBER/RED/UNKNOWN), the prev state, the
+      observed run_id/head_sha/conclusion, and the failing-job fingerprint.
+      Pure observability — no follow-up action.
+    consumers: [fleet-brief, observability]
+    fields_required: [ts, kind, state, prev_state, run_id, head_sha, conclusion, fingerprint]
+    expected_volume: "high; one per minute while installed"
+    status: stable
+
+  - kind: trunk_state_change
+    effect_metric: self
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_state_change"
+    trigger: >
+      Emitted once when the trunk state transitions (GREEN→RED, RED→GREEN,
+      UNKNOWN→GREEN, etc.). Records `from` + `to` + run_id + head_sha so
+      a downstream consumer can detect "trunk just turned red at HH:MM" with
+      no polling.
+    consumers: [fleet-brief, observability, pwa-trunk-banner]
+    fields_required: [ts, kind, from, to, conclusion, run_id, head_sha]
+    expected_volume: "low; only on actual state flip"
+    status: stable
+
+  - kind: trunk_red_persistent
+    effect_metric: trunk_recovered_within_60min
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_red_persistent"
+    trigger: >
+      Emitted once per failing-job fingerprint when trunk has been RED for
+      >=5 min. Also files a P0 RESILIENT fix-trunk gap with the failing-job
+      fingerprint embedded for dedup. Subsequent ticks with the SAME
+      fingerprint do NOT re-emit.
+    consumers: [pwa-trunk-banner, ops-audit]
+    fields_required: [ts, kind, red_minutes, fingerprint, failing_jobs, run_id, head_sha]
+    expected_volume: "very low; only when trunk is RED past 5min"
+    status: stable
+
+  - kind: trunk_red_dispatch
+    effect_metric: trunk_recovered_within_60min
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_red_dispatch"
+    trigger: >
+      Emitted when trunk has been RED for >=15 min. Writes a CodeFixContract
+      brief to .chump/trunk-sentinel-briefs/<fp>.md and shells out to
+      `claude -p` for autonomous diff drafting. Dedupe is per fingerprint.
+    consumers: [pwa-trunk-banner, ops-audit]
+    fields_required: [ts, kind, fingerprint, run_id, head_sha, gap_id, brief_path, dispatched]
+    expected_volume: "very low; only when trunk RED past 15min"
+    status: stable
+
+  - kind: trunk_red_operator_recall
+    effect_metric: operator_response_within_60min
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_red_operator_recall"
+    trigger: >
+      Emitted when trunk has been RED for >=60 min (T4 halt-class).
+      Also calls scripts/dispatch/operator-recall.sh with condition CI_BROKEN
+      so the operator-recall surface pages the operator.
+    consumers: [pwa-trunk-banner, ops-audit, operator-recall]
+    fields_required: [ts, kind, fingerprint, run_id, head_sha, red_minutes, failing_jobs]
+    expected_volume: "very low; should be zero in a healthy week"
+    status: stable
+
+  - kind: trunk_recovered
+    effect_metric: self
+    emitter: scripts/coord/trunk-sentinel-daemon.sh (INFRA-2324)
+    # scanner-anchor: "kind":"trunk_recovered"
+    trigger: >
+      Emitted on RED→GREEN transition. The daemon also walks the fix-trunk
+      gaps it filed during the RED window and closes each via
+      `chump gap set --status done`. Records how many gaps closed.
+    consumers: [pwa-trunk-banner, ops-audit, fleet-brief]
+    fields_required: [ts, kind, closed_gaps_count]
+    expected_volume: "very low; one per recovery"
+    status: stable
