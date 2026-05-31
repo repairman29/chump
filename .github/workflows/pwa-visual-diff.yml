@@ -32,7 +32,15 @@ on:
   pull_request:
     branches: [main, master]
     paths:
-      - 'web/**'
+      - 'web/v2/**'
+      - 'desktop/src-tauri/**'
+      - 'e2e/tests/pwa-visual**'
+      - 'e2e/playwright.config.ts'
+      - '.github/workflows/pwa-visual-diff.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/v2/**'
       - 'desktop/src-tauri/**'
       - 'e2e/tests/pwa-visual**'
       - 'e2e/playwright.config.ts'

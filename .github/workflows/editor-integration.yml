@@ -8,9 +8,19 @@ name: Editor Integration (ACP)
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
+    paths:
+      - 'src/acp.rs'
+      - 'src/acp_server.rs'
+      - 'crates/chump-tool-macro/**'
+      - '.github/workflows/editor-integration.yml'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'src/acp.rs'
+      - 'src/acp_server.rs'
+      - 'crates/chump-tool-macro/**'
+      - '.github/workflows/editor-integration.yml'
   merge_group:
 
 concurrency:
