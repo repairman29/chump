@@ -7,6 +7,7 @@
 
 # Coordination scripts (scripts/coord/)
 scripts/coord/auto-merge-armer.sh         # migration gap: INFRA-1249
+scripts/coord/auto-merge-rearm-daemon.sh  # INFRA-2309: needs mergeStateStatus + autoMergeRequest fields cache_query_open_prs doesn't expose; criticality=background tagged; migration: INFRA-1249
 scripts/coord/bot-merge.sh                # migration gap: INFRA-1249
 scripts/coord/bot-shipped-audit.sh        # migration gap: INFRA-1249
 scripts/coord/branch-reaper.sh            # migration gap: INFRA-1249
@@ -36,6 +37,7 @@ scripts/ops/stale-pr-reaper.sh            # migration gap: INFRA-1249
 # Runner migration pipeline and management (scripts/coord/)
 scripts/coord/chump-runner-migration-pipeline.sh  # INFRA-1535: gh pr merge is critical-path ship operation; new script
 scripts/coord/chump-runner-autoscale.sh  # INFRA-1535: GitHub Actions runner API not covered by cache abstraction; new script
+scripts/coord/chump-pr-ready-to-ship.sh   # INFRA-2309: needs mergeStateStatus + autoMergeRequest for CLEAN-state detection; cache wrapper doesn't expose those fields; migration: INFRA-1249
 scripts/coord/chump-pr-triage.sh          # operator-facing advisory tool; uses gh for read-only PR listing; migration: INFRA-1249
 scripts/coord/pr-rescue-false-close.sh    # INFRA-1406: write ops (comment+merge) in PR recovery path; migration: INFRA-1249
 
