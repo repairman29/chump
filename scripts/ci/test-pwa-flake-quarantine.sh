@@ -23,7 +23,9 @@ echo "=== INFRA-1332 PWA flake quarantine tests ==="
 
 SPEC="$REPO_ROOT/e2e/tests/api-and-pwa.spec.ts"
 CATALOG="$REPO_ROOT/docs/process/KNOWN_FLAKES.yaml"
-WORKFLOW="$REPO_ROOT/.github/workflows/e2e-pwa-advisory.yml"
+# META-266 (2026-05-31, PR #2904): e2e-pwa-advisory.yml was collapsed into
+# integrations.yml as the e2e-pwa-flakes job. Point at the new home.
+WORKFLOW="$REPO_ROOT/.github/workflows/integrations.yml"
 
 [[ -f "$SPEC" ]] || { fail "spec file missing"; exit 1; }
 ok "spec file present"
