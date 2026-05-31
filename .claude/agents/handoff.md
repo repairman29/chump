@@ -79,6 +79,7 @@ Skipping any of (1)/(2)/(3) is what produces register-without-emit drift. The 20
 
 ## Cross-references
 
+- [`docs/process/PR_RESCUE_PROCEDURE.md`](../../docs/process/PR_RESCUE_PROCEDURE.md) — META-246 canonical playbook for queue rescue: triage → fix-at-source → propagate → cascade. When dispatching a Sonnet for rescue work, the brief MUST cite the §5 surface pattern and §6 cascade expectation
 - [`scripts/coord/handoff-loop.sh`](../../scripts/coord/handoff-loop.sh) — the canonical CLI; all subcommands invoke here
 - [`crates/chump-handoff/src/contracts.rs`](../../crates/chump-handoff/src/contracts.rs) — typed handoff contracts (INFRA-1720)
 - [`docs/architecture/TEAM_OF_AGENTS.md`](../../docs/architecture/TEAM_OF_AGENTS.md) — team hierarchy
