@@ -37,6 +37,11 @@
         <string>/path/to/home</string>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- CHUMP_AMBIENT_PATH: explicit absolute path to ambient.jsonl so the daemon
+             doesn't have to compute it from SCRIPT_DIR (which can resolve to a stale
+             /tmp worktree when launchd executes the plist — META-248 keystone fix). -->
+        <key>CHUMP_AMBIENT_PATH</key>
+        <string>/path/to/Chump/.chump-locks/ambient.jsonl</string>
     </dict>
 </dict>
 </plist>

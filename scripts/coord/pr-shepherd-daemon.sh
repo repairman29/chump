@@ -30,7 +30,12 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
+# META-248: honor CHUMP_AMBIENT_PATH env var (set explicitly by launchd plist via
+# install-pr-shepherd-daemon.sh) so the daemon writes to the MAIN worktree's
+# ambient.jsonl even when SCRIPT_DIR resolves to a stale /tmp worktree.
+# Defense-in-depth: if the env var is absent (manual invocation), fall back to
+# the computed path as before.
+AMBIENT="${CHUMP_AMBIENT_PATH:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
 MAX_REBASES="${CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK:-3}"
 MAX_ARMS="${CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK:-5}"
