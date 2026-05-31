@@ -553,6 +553,123 @@ else
   exit 1
 fi
 
+# ── (j) cascade gate — TRUNK_RED via trunk_state_change holds rebase queue ────
+# Inject a synthetic kind=trunk_state_change event with state=TRUNK_RED into a
+# scratch ambient file, run the cascade-gate logic against 2 BEHIND PRs, and
+# verify both get rebase_skipped reason=cascade_held instead of rebase.
+CASCADE_AMBIENT="$WORK_DIR/ambient-cascade.jsonl"
+CASCADE_DEBOUNCE="$WORK_DIR/debounce-cascade.jsonl"
+: > "$CASCADE_DEBOUNCE"
+# Inject TRUNK_RED via trunk_state_change
+python3 -c "
+import json
+from datetime import datetime, timezone
+print(json.dumps({'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'kind': 'trunk_state_change', 'state': 'TRUNK_RED', 'reason': 'cascade-gate-test'}))
+" > "$CASCADE_AMBIENT"
+
+CASCADE_HARNESS="$WORK_DIR/cascade-test.sh"
+cat > "$CASCADE_HARNESS" << CASCADE_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$CASCADE_AMBIENT"
+DRY_RUN=1
+MAX_REBASES=3
+REBASE_DEBOUNCE_FILE="$CASCADE_DEBOUNCE"
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+_emit_pr_classified() {
+  local n="\$1" c="\$2" g="\$3" a="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_classified","pr":%d,"classification":"%s","gap_id":"%s","age_minutes":%d,"dry_run":true}\n' "\$ts" "\$n" "\$c" "\$g" "\$a" >> "\$AMBIENT"
+}
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+
+# Source the _get_trunk_state function from the daemon. Use awk to extract
+# the function body between the function header and the matching closing brace.
+eval "\$(awk '/^_get_trunk_state\(\) \{/,/^\}/' "\$REPO_ROOT/scripts/coord/pr-shepherd-daemon.sh")"
+
+trunk_state=\$(_get_trunk_state)
+cascade_held=0
+if [ "\$trunk_state" = "RED" ]; then
+  cascade_held=1
+fi
+
+# 2 BEHIND PRs — both should be cascade_held when trunk is RED
+prs_json='[{"number":201,"title":"feat(INFRA-201): cascade1","mergeStateStatus":"BEHIND","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","headRefOid":"c1"},{"number":202,"title":"feat(INFRA-202): cascade2","mergeStateStatus":"BEHIND","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","headRefOid":"c2"}]'
+
+classified=\$(printf '%s' "\$prs_json" | python3 -c "
+import json, sys, re
+prs = json.load(sys.stdin)
+for p in prs:
+    ms = p.get('mergeStateStatus')
+    c = 'BEHIND' if ms == 'BEHIND' else 'UNKNOWN'
+    title = p.get('title', '')
+    m = re.search(r'(INFRA|META)-\\d+', title)
+    gap_id = m.group(0) if m else ''
+    head_sha = p.get('headRefOid', '')
+    print(json.dumps({'pr': p['number'], 'classification': c, 'gap_id': gap_id, 'age_minutes': 10, 'head_sha': head_sha}))
+" 2>/dev/null)
+
+while IFS= read -r line; do
+  pr_num=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  c=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  gap_id=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gap_id"])')
+  age=\$(printf '%s' "\$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["age_minutes"])')
+  _emit_pr_classified "\$pr_num" "\$c" "\$gap_id" "\$age"
+  if [ "\$c" = "BEHIND" ]; then
+    if [ "\$cascade_held" -eq 1 ]; then
+      _emit_pr_action_taken "\$pr_num" "rebase_skipped" "cascade_held" "\$gap_id"
+      continue
+    fi
+    _emit_pr_action_taken "\$pr_num" "rebase" "" "\$gap_id"
+  fi
+done <<< "\$classified"
+CASCADE_EOF
+chmod +x "$CASCADE_HARNESS"
+
+bash "$CASCADE_HARNESS" 2>/dev/null || { echo "[test] FAIL: cascade harness non-zero"; exit 1; }
+
+cascade_skipped=$(python3 -c "
+import sys
+count = 0
+try:
+    with open('$CASCADE_AMBIENT') as f:
+        for line in f:
+            if '\"kind\":\"pr_action_taken\"' in line and '\"reason\":\"cascade_held\"' in line:
+                count += 1
+except: pass
+print(count)
+" 2>/dev/null || echo 0)
+rebase_done=$(python3 -c "
+import json, sys
+count = 0
+try:
+    with open('$CASCADE_AMBIENT') as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                ev = json.loads(line)
+                if ev.get('kind') == 'pr_action_taken' and ev.get('action') == 'rebase' and ev.get('reason','') == '':
+                    count += 1
+            except: pass
+except: pass
+print(count)
+" 2>/dev/null || echo 0)
+
+if [[ "$cascade_skipped" -ge 2 && "$rebase_done" -eq 0 ]]; then
+  echo "[test] (j) cascade gate: OK (${cascade_skipped} PRs cascade_held, 0 rebases)"
+else
+  echo "[test] FAIL: cascade gate — expected 2 cascade_held + 0 rebase, got cascade_held=${cascade_skipped} rebase=${rebase_done}"
+  exit 1
+fi
+
 # ── META-184: pr_action_taken event shape ─────────────────────────────────────
 if [[ -n "$action_events" ]]; then
   first_action=$(echo "$action_events" | head -1)
