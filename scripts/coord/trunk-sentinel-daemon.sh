@@ -119,7 +119,7 @@ _failing_fingerprint() {
         | tr ',' '\n' \
         | sort \
         | tr '\n' ',' \
-        | sha256sum \
+        | shasum -a 256 \
         | cut -c1-12
 }
 
