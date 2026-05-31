@@ -154,3 +154,11 @@ installers:
     install: bash scripts/setup/install-main-worktree-drift-detector.sh
     check: launchctl list 2>/dev/null | grep -q com.chump.main-worktree-drift-detector
     adds: ~/Library/LaunchAgents/com.chump.main-worktree-drift-detector.plist + 30-min run
+
+  - id: pr-shepherd-daemon-launchd
+    why: META-192 — 60s relentless PR-shepherd that classifies all open PRs into 8 states, auto-rebases BEHIND PRs, arms auto-merge on BLOCKED_GREEN, and files follow-up gaps on BLOCKED_REAL_FAIL. Completes the autonomous PR-management activation path begun in META-180 through META-184.
+    priority: P1
+    install: bash scripts/setup/install-pr-shepherd-daemon.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.pr-shepherd
+    depends_on: [chump-binary, github-liaison-launchd]
+    adds: ~/Library/LaunchAgents/com.chump.pr-shepherd.plist + 60s run
