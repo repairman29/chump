@@ -4,6 +4,8 @@
 **Parent epic:** [META-070](../gaps/META-070.yaml) — quality firewall completion.
 **Purpose:** enumerate every CI gate in `.github/workflows/*.yml` against the local mirror in [`src/preflight.rs`](../../src/preflight.rs), so the next round of "discovered only on remote CI" cascades can be pre-empted by filing the missing preflight mirrors.
 
+**Scan scope (updated META-268, 2026-05-31):** `test-preflight-ci-parity.sh` now scans ALL `.github/workflows/*.yml` files — not just `ci.yml`. The `experimental/` subdirectory is excluded. Sibling workflow jobs that are cloud-daemon, release-pipeline, nightly/advisory, real-client, or CI-meta are classified via `SIBLING_INFRA_JOBS` in the script and skipped (not expected to have local preflight mirrors). Any sibling workflow step that references a `scripts/ci/*.sh` path and is NOT skipped must be either mirrored in `src/preflight.rs`, listed as Tier-D in `docs/process/CI_GATES_INVENTORY.md`, or explicitly allowlisted in `scripts/ci/preflight-ci-parity-exceptions.txt`. This ensures future drift in sibling workflows is caught automatically, not discovered only on remote CI.
+
 Today's cascade (2026-05-23) layered three distinct CI-only failure modes that surfaced one-by-one only after each fix landed — YAML integrity, `events.rs` Debug bug in tests, and pre-existing fmt drift in 7 `chump-coord` files — each consuming a ~15 min CI round-trip. The pattern repeats because the operator-facing "what does `chump preflight` actually catch" surface has never been written down.
 
 ## Legend
@@ -94,7 +96,13 @@ These were created by this audit. Each is P1 (per META-070 ownership rule: any u
 ## Verify locally
 
 ```bash
+# Full parity check — scans ci.yml (primary) + all sibling workflows (META-268)
+bash scripts/ci/test-preflight-ci-parity.sh
+
+# Meta-071 doc completeness check
 bash scripts/ci/test-meta-071-parity-doc.sh
 ```
 
-Asserts: doc exists, parses as markdown, table contains every workflow `job name:` found by grep.
+`test-preflight-ci-parity.sh` asserts: every `run:` step in every `.github/workflows/*.yml` file (excluding `experimental/`) is either mirrored in `src/preflight.rs`, listed as Tier-D, or explicitly allowlisted. Sibling workflow jobs classified as cloud-only (release pipeline, nightly, real-client, etc.) are skipped via the `SIBLING_INFRA_JOBS` set in the script.
+
+`test-meta-071-parity-doc.sh` asserts: this doc exists, parses as markdown, table contains every workflow `job name:` found by grep.
