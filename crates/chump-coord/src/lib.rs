@@ -64,6 +64,10 @@ pub mod events;
 pub mod help_request;
 pub mod mesh;
 pub mod mission;
+/// INFRA-2266: Layer 1a slice 3/4 — NATS-primary JetStream durable consumer.
+/// Public surface re-exports `events` types + exposes durable_consumer_name,
+/// max_ack_pending, and layer_enabled helpers.
+pub mod nats_primary;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;
