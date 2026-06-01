@@ -313,6 +313,25 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, branch, actions]
 
+  - kind: force_recover_wip_loss
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_force_recover_wip_loss (INFRA-2235)
+    trigger: chump claim --force-recover detected uncommitted changes in the target
+      worktree and REFUSED to wipe it (--discard-wip not passed). No data was lost;
+      the operator must commit+push or re-run with --discard-wip. files_lost_count
+      and first_paths name the dirty files that would have been destroyed.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, files_lost_count, first_paths]
+
+  - kind: force_recover_wip_discarded
+    effect_metric: self
+    emitter: src/atomic_claim.rs emit_force_recover_wip_discarded (INFRA-2235)
+    trigger: chump claim --force-recover --discard-wip intentionally wiped a worktree
+      that had uncommitted changes. This is the explicit-consent path; files_lost_count
+      and first_paths document what was destroyed for retro audit.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, files_lost_count, first_paths]
+
   - kind: claim_aborted_pr_in_flight
     effect_metric: waste_prevented
     emitter: src/atomic_claim.rs emit_claim_aborted_pr_in_flight_event (INFRA-1503)
