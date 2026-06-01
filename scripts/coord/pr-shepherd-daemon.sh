@@ -40,8 +40,22 @@ DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
 MAX_REBASES="${CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK:-3}"
 MAX_ARMS="${CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK:-5}"
 MAX_GAPS="${CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK:-2}"
+# INFRA-2346: CLEAN_GREEN admin-merge tier — hard-cap per tick. The cap is
+# non-negotiable: even with a long queue we trickle merges so a bad cascade
+# (e.g. green-but-broken integration test) shows up over 1-2 ticks, not 20.
+MAX_ADMIN_MERGES="${CHUMP_PR_SHEPHERD_MAX_ADMIN_MERGES_PER_TICK:-3}"
+# INFRA-2346: BLOCKED_FLAKE rerun tier — cap reruns per PR.
+MAX_FLAKE_RERUNS_PER_PR="${CHUMP_PR_SHEPHERD_MAX_FLAKE_RERUNS_PER_PR:-2}"
+# INFRA-2346: Trust-list for auto-admin-merge. Comma-separated GH login names.
+# Conservative default; expand only via explicit env override.
+TRUST_AUTHORS="${TRUST_AUTHORS:-fleet-bot,dependabot[bot],claude-bot,repairman29}"
+# INFRA-2346: KNOWN_FLAKES.yaml path (for check_flakes section).
+KNOWN_FLAKES_FILE="${CHUMP_KNOWN_FLAKES_FILE:-$REPO_ROOT/docs/process/KNOWN_FLAKES.yaml}"
 REBASE_DEBOUNCE_FILE="$REPO_ROOT/.chump/pr-shepherd-rebase-skipped.jsonl"
 FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
+# INFRA-2346: persistent per-PR state for flake-rerun cap and wedged-DM debounce.
+FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
+WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
 
 # Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
 # cache_query_open_prs instead of burning raw GraphQL quota.
@@ -263,6 +277,201 @@ _record_rebase_debounce() {
     "$ts" "$pr_num" "$head_sha" "$gap_id" >> "$REBASE_DEBOUNCE_FILE"
 }
 
+# ─── INFRA-2346: pr-queue auto-processor helpers ──────────────────────────────
+#
+# Three new tiers added on top of the META-183/META-186 classifier:
+#   1. CLEAN_GREEN  → auto-admin-merge (trusted authors only, hard-capped)
+#   2. BLOCKED_FLAKE → gh run rerun --failed (capped per PR)
+#   3. WEDGED_24H   → emit pr_wedged + DM the author (one-shot per 24h)
+#
+# Risk discipline:
+#   - CLEAN_GREEN is hard-capped at MAX_ADMIN_MERGES per tick (default 3).
+#   - The trunk-red gate ALSO covers admin-merge (admin-merging into broken
+#     main propagates the brokenness).
+#   - Trust-list defaults to bot/fleet accounts; humans never auto-admin-merge.
+#   - Every action emits pr_queue_auto_action to ambient — operator can
+#     reconstruct every merge by grepping ambient.
+
+# _emit_pr_queue_auto_action — emit auto-processor action event
+# Args: $1=pr_num $2=action $3=reason $4=author $5=merge_state
+# scanner-anchor: kind=pr_queue_auto_action (INFRA-2346)
+_emit_pr_queue_auto_action() {
+  local pr_num="$1" action="$2" reason="$3" author="$4" merge_state="$5"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_queue_auto_action","pr":%d,"action":"%s","reason":"%s","author":"%s","mergeStateStatus":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$action" "$reason" "$author" "$merge_state" "$dry" >> "$AMBIENT"
+}
+
+# _emit_pr_queue_skipped_trunk_red — single-event sentinel emitted once per
+# tick when the trunk-red gate fires during the CLEAN_GREEN scan. Keeps a
+# clean signal for operators to grep without N copies of pr_queue_auto_action.
+# scanner-anchor: kind=pr_queue_skipped_trunk_red (INFRA-2346)
+_emit_pr_queue_skipped_trunk_red() {
+  local skipped="$1"  # count of PRs skipped
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_queue_skipped_trunk_red","skipped_count":%d,"dry_run":%s}\n' \
+    "$ts" "$skipped" "$dry" >> "$AMBIENT"
+}
+
+# _emit_pr_wedged — emit wedged-PR signal
+# Args: $1=pr_num $2=author $3=age_hours
+# scanner-anchor: kind=pr_wedged (INFRA-2346)
+_emit_pr_wedged() {
+  local pr_num="$1" author="$2" age_hours="$3"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_wedged","pr":%d,"author":"%s","age_hours":%d,"dry_run":%s}\n' \
+    "$ts" "$pr_num" "$author" "$age_hours" "$dry" >> "$AMBIENT"
+}
+
+# _is_trusted_author — returns 0 if author appears in TRUST_AUTHORS list.
+# Args: $1=author (gh login string)
+_is_trusted_author() {
+  local author="$1"
+  [[ -z "$author" ]] && return 1
+  # Comma-split TRUST_AUTHORS and exact-match. bash 3.2 compatible.
+  local IFS=',' a
+  for a in $TRUST_AUTHORS; do
+    # Trim whitespace
+    a="${a# }"; a="${a% }"
+    [[ "$a" == "$author" ]] && return 0
+  done
+  return 1
+}
+
+# _load_check_flakes — emit one check_name per line from KNOWN_FLAKES.yaml
+# Reads the `check_flakes:` section. Returns empty if file missing or no entries.
+_load_check_flakes() {
+  [[ -f "$KNOWN_FLAKES_FILE" ]] || return 0
+  python3 - "$KNOWN_FLAKES_FILE" << 'PYEOF' 2>/dev/null || true
+import sys, re
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        content = f.read()
+except Exception:
+    sys.exit(0)
+# Find the check_flakes: section (top-level key).
+# Stop at next top-level key or EOF.
+m = re.search(r'^check_flakes:\s*(.*?)(?=\n[A-Za-z_]+:|\Z)', content, re.DOTALL | re.MULTILINE)
+if not m:
+    sys.exit(0)
+section = m.group(1)
+# Match either inline form `check_flakes: []` (empty) or list-of-dicts entries.
+if section.strip().startswith('[]'):
+    sys.exit(0)
+# Extract check_name values, including lines commented out (lines starting #).
+for line in section.split('\n'):
+    line = line.strip()
+    if not line or line.startswith('#'):
+        continue
+    m2 = re.match(r'-?\s*check_name:\s*["\']?([^"\']+)["\']?\s*$', line)
+    if m2:
+        print(m2.group(1).strip())
+PYEOF
+}
+
+# _is_blocked_flake — returns 0 if every FAILURE check name is in check_flakes
+# Args: $1=fail_check_names_csv  (e.g. "ci.yml / fast-checks,gap-status-check")
+_is_blocked_flake() {
+  local fail_names="$1"
+  [[ -z "$fail_names" ]] && return 1
+  local known_flakes
+  known_flakes=$(_load_check_flakes)
+  [[ -z "$known_flakes" ]] && return 1
+  # Every name in fail_names must be in known_flakes.
+  local IFS=','
+  local name
+  for name in $fail_names; do
+    name="${name# }"; name="${name% }"
+    [[ -z "$name" ]] && continue
+    if ! echo "$known_flakes" | grep -Fxq "$name"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+# _flake_rerun_count — get/inc per-PR rerun counter
+# Args: $1=pr_num [$2=inc|read]  — default read
+# Outputs: integer count to stdout. Initializes file on first use.
+_flake_rerun_count() {
+  local pr_num="$1" mode="${2:-read}"
+  mkdir -p "$(dirname "$FLAKE_RERUN_FILE")"
+  [[ -f "$FLAKE_RERUN_FILE" ]] || echo '{}' > "$FLAKE_RERUN_FILE"
+  python3 - "$FLAKE_RERUN_FILE" "$pr_num" "$mode" << 'PYEOF'
+import json, sys
+path, pr_num, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+count = int(data.get(pr_num, 0))
+if mode == 'inc':
+    count += 1
+    data[pr_num] = count
+    with open(path, 'w') as f:
+        json.dump(data, f)
+print(count)
+PYEOF
+}
+
+# _wedged_signaled_recently — returns 0 if a wedged signal was emitted for this
+# PR in the last 24h (debounce). Initializes file on first use.
+# Args: $1=pr_num
+_wedged_signaled_recently() {
+  local pr_num="$1"
+  [[ -f "$WEDGED_SIGNAL_FILE" ]] || return 1
+  python3 - "$WEDGED_SIGNAL_FILE" "$pr_num" << 'PYEOF'
+import json, sys
+from datetime import datetime, timezone, timedelta
+path, pr_num = sys.argv[1], sys.argv[2]
+cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+ts_str = data.get(pr_num)
+if not ts_str:
+    sys.exit(1)
+try:
+    ev_ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+    if ev_ts >= cutoff:
+        sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PYEOF
+}
+
+# _record_wedged_signal — mark this PR as signaled now
+# Args: $1=pr_num
+_record_wedged_signal() {
+  local pr_num="$1"
+  mkdir -p "$(dirname "$WEDGED_SIGNAL_FILE")"
+  [[ -f "$WEDGED_SIGNAL_FILE" ]] || echo '{}' > "$WEDGED_SIGNAL_FILE"
+  python3 - "$WEDGED_SIGNAL_FILE" "$pr_num" << 'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+path, pr_num = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data[pr_num] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+with open(path, 'w') as f:
+    json.dump(data, f)
+PYEOF
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
@@ -270,9 +479,12 @@ cmd_tick() {
   # Cache-first (INFRA-1081) + background criticality (INFRA-1080):
   # Falls back to direct gh pr list when cache miss — background criticality
   # yields the GH API bucket to ship-blocking writes when quota is tight.
+  # INFRA-2346: include author, baseRefName, updatedAt for new tiers (CLEAN_GREEN
+  # admin-merge needs author for trust check + baseRefName for base=main guard;
+  # WEDGED_24H needs updatedAt to detect 12h-no-commit staleness).
   local prs_json
   prs_json=$(CHUMP_GH_CALL_CRITICALITY=background gh pr list --state open --limit 200 \
-    --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid,statusCheckRollup 2>/dev/null || echo "[]")
+    --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid,statusCheckRollup,author,baseRefName,headRefName,updatedAt 2>/dev/null || echo "[]")
 
   local count
   count=$(printf '%s' "$prs_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
@@ -354,22 +566,62 @@ for p in prs:
     # Extract first FAILURE check info for BLOCKED_REAL_FAIL gap filing (META-186)
     fail_job = ''
     fail_sig = ''
+    fail_check_names = []
     if c == 'BLOCKED_REAL_FAIL':
         for ch in checks:
             if (ch.get('conclusion') or '').upper() == 'FAILURE':
-                fail_job = ch.get('name') or ch.get('context') or 'unknown-job'
-                details_url = ch.get('detailsUrl') or ch.get('targetUrl') or ''
-                fail_sig = details_url[:80] if details_url else fail_job
-                break
+                name = ch.get('name') or ch.get('context') or 'unknown-job'
+                fail_check_names.append(name)
+                if not fail_job:
+                    fail_job = name
+                    details_url = ch.get('detailsUrl') or ch.get('targetUrl') or ''
+                    fail_sig = details_url[:80] if details_url else fail_job
+
+    # INFRA-2346: extra fields for the new tiers.
+    # author          — login string; used for trust-list check (CLEAN_GREEN).
+    # base_ref        — must be 'main' for admin-merge.
+    # head_ref        — branch name (for run-id lookup on flake rerun).
+    # updated_at      — for WEDGED_24H staleness (no commit in last 12h).
+    # has_automerge   — exported so the action loop doesn't re-arm an
+    #                   already-armed PR.
+    author_obj = p.get('author') or {}
+    author = author_obj.get('login', '') if isinstance(author_obj, dict) else ''
+    base_ref = p.get('baseRefName', '')
+    head_ref = p.get('headRefName', '')
+    updated_at = p.get('updatedAt', '')
+    # Derive CLEAN_GREEN: the classification stays as 'BLOCKED_GREEN' / 'MERGEABLE' /
+    # 'ARMED' etc — we surface a SEPARATE flag because admin-merge is the
+    # decision, not the classification. A PR can be MERGEABLE (CLEAN+no-arm) OR
+    # BLOCKED_GREEN (BLOCKED+all-checks-pass) and BOTH are CLEAN_GREEN candidates.
+    is_clean_green = c in ('MERGEABLE', 'BLOCKED_GREEN')
+
+    # Hours since last update (WEDGED_24H signal).
+    # For wedging we care about no-commits-in-last-12h — gh updatedAt
+    # changes on commits, comments, label edits etc. Over-conservative
+    # signal direction is harmless: a false-positive emits a wedged signal
+    # for a chatty PR; a false-negative would silently lose a real wedge.
+    try:
+        hours_since_update = int((now - datetime.fromisoformat(updated_at.replace('Z','+00:00'))).total_seconds() / 3600)
+    except Exception:
+        hours_since_update = 0
+    age_hours = age // 60
 
     print(json.dumps({
         'pr': p['number'],
         'classification': c,
         'gap_id': gap_id,
         'age_minutes': age,
+        'age_hours': age_hours,
         'head_sha': head_sha,
         'fail_job': fail_job,
         'fail_sig': fail_sig,
+        'fail_check_names': ','.join(fail_check_names),
+        'author': author,
+        'base_ref': base_ref,
+        'head_ref': head_ref,
+        'has_automerge': has_automerge,
+        'is_clean_green': is_clean_green,
+        'hours_since_update': hours_since_update,
     }))
 " 2>/dev/null || true)
 
@@ -395,9 +647,15 @@ for p in prs:
   local rebase_count=0
   local arm_count=0
   local gap_file_count=0
+  # INFRA-2346: counters for the new tiers.
+  local admin_merge_count=0
+  local flake_rerun_count=0
+  local wedged_signal_count=0
+  local admin_merge_skipped_trunk_red=0
   if [ -n "$classified" ]; then
     while IFS= read -r line; do
       local pr_num c gap_id age head_sha fail_job fail_sig
+      local author base_ref head_ref has_automerge is_clean_green hours_since_update age_hours fail_check_names
       pr_num=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['pr'])")
       c=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['classification'])")
       gap_id=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['gap_id'])")
@@ -405,7 +663,120 @@ for p in prs:
       head_sha=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('head_sha',''))" 2>/dev/null || echo "")
       fail_job=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_job',''))" 2>/dev/null || echo "")
       fail_sig=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_sig',''))" 2>/dev/null || echo "")
+      # INFRA-2346: extra fields for new tiers
+      author=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('author',''))" 2>/dev/null || echo "")
+      base_ref=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base_ref',''))" 2>/dev/null || echo "")
+      head_ref=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('head_ref',''))" 2>/dev/null || echo "")
+      has_automerge=$(printf '%s' "$line" | python3 -c "import json,sys; print('1' if json.load(sys.stdin).get('has_automerge') else '0')" 2>/dev/null || echo "0")
+      is_clean_green=$(printf '%s' "$line" | python3 -c "import json,sys; print('1' if json.load(sys.stdin).get('is_clean_green') else '0')" 2>/dev/null || echo "0")
+      hours_since_update=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('hours_since_update',0))" 2>/dev/null || echo "0")
+      age_hours=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('age_hours',0))" 2>/dev/null || echo "0")
+      fail_check_names=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_check_names',''))" 2>/dev/null || echo "")
       _emit_pr_classified "$pr_num" "$c" "$gap_id" "$age"
+
+      # ─── INFRA-2346 tier A: CLEAN_GREEN → auto-admin-merge ──────────────────
+      # Independent of META-184/186 paths: a PR can be MERGEABLE or BLOCKED_GREEN
+      # AND also be a trusted-author admin-merge target. Run this BEFORE the
+      # existing tiers so the merge happens before any rebase/rearm work.
+      if [ "$is_clean_green" = "1" ] && _is_trusted_author "$author" && [ "$base_ref" = "main" ] && [ "$has_automerge" = "0" ]; then
+        # Trunk-red gate (non-negotiable per gap spec)
+        if [ "$trunk_red_active" -eq 1 ] || [ "$cascade_held" -eq 1 ]; then
+          admin_merge_skipped_trunk_red=$((admin_merge_skipped_trunk_red + 1))
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "trunk_red" "$author" "$c"
+          continue
+        fi
+        # Per-tick hard-cap
+        if [ "$admin_merge_count" -ge "$MAX_ADMIN_MERGES" ]; then
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "capped" "$author" "$c"
+          continue
+        fi
+        if [ -n "$DRY_RUN" ]; then
+          echo "[pr-shepherd-daemon] DRY_RUN: would admin-merge PR #${pr_num} (author=${author}, ${c})" >&2
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
+          admin_merge_count=$((admin_merge_count + 1))
+        else
+          echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} (author=${author}, ${c})" >&2
+          local merge_exit=0
+          gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
+          if [ "$merge_exit" -eq 0 ]; then
+            _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
+            admin_merge_count=$((admin_merge_count + 1))
+            echo "[pr-shepherd-daemon] admin-merge OK: PR #${pr_num}" >&2
+          else
+            # transient or permanent — log and skip; next tick may retry transient
+            _emit_pr_queue_auto_action "$pr_num" "admin_merge_failed" "gh_exit_${merge_exit}" "$author" "$c"
+            echo "[pr-shepherd-daemon] admin-merge FAILED PR #${pr_num} (exit ${merge_exit})" >&2
+          fi
+        fi
+        # Don't run further actions for this PR this tick — it was merged (or attempted).
+        continue
+      fi
+
+      # ─── INFRA-2346 tier B: WEDGED_24H signal ─────────────────────────────
+      # Independent of merge state: any PR open > 24h with no recent commits
+      # gets a one-shot DM. The signal serves the human stewards (an operator
+      # or the PR author), not the automation — so we emit it regardless of
+      # classification, before the rebase/arm/file paths.
+      if [ "$age_hours" -gt 24 ] && [ "$hours_since_update" -gt 12 ] && [ "$has_automerge" = "0" ]; then
+        if ! _wedged_signaled_recently "$pr_num"; then
+          _emit_pr_wedged "$pr_num" "$author" "$age_hours"
+          _record_wedged_signal "$pr_num"
+          wedged_signal_count=$((wedged_signal_count + 1))
+          # Best-effort DM to author via broadcast.sh (the chump A2A protocol).
+          # Author may not have a session-id (most don't), so we use --to <author>
+          # and let broadcast.sh handle delivery — failure is non-fatal.
+          if [ -z "$DRY_RUN" ] && [ -n "$author" ]; then
+            local broadcast_msg="PR #${pr_num} (age ${age_hours}h, no commits in ${hours_since_update}h) appears wedged. Rebase, comment, or close?"
+            bash "$REPO_ROOT/scripts/coord/broadcast.sh" --to "$author" WARN "$broadcast_msg" >/dev/null 2>&1 || true
+          fi
+          echo "[pr-shepherd-daemon] signaled wedged PR #${pr_num} (age=${age_hours}h, updated=${hours_since_update}h ago)" >&2
+        fi
+      fi
+
+      # ─── INFRA-2346 tier C: BLOCKED_FLAKE retrigger ───────────────────────
+      # Runs only on BLOCKED_REAL_FAIL PRs where every failing check is
+      # known-flake-classified. Intercepts BEFORE the META-186 gap-filing
+      # path so flake reruns don't generate noise gaps.
+      if [ "$c" = "BLOCKED_REAL_FAIL" ] && _is_blocked_flake "$fail_check_names"; then
+        if [ "$trunk_red_active" -eq 1 ] || [ "$cascade_held" -eq 1 ]; then
+          _emit_pr_queue_auto_action "$pr_num" "flake_rerun_skipped" "trunk_red" "$author" "$c"
+          continue
+        fi
+        local cur_count
+        cur_count=$(_flake_rerun_count "$pr_num" read)
+        if [ "$cur_count" -ge "$MAX_FLAKE_RERUNS_PER_PR" ]; then
+          _emit_pr_queue_auto_action "$pr_num" "flake_rerun_skipped" "capped" "$author" "$c"
+          # Fall through to gap-filing path below (don't continue).
+        else
+          if [ -n "$DRY_RUN" ]; then
+            echo "[pr-shepherd-daemon] DRY_RUN: would rerun flake checks PR #${pr_num} (count=${cur_count})" >&2
+            _flake_rerun_count "$pr_num" inc >/dev/null
+            _emit_pr_queue_auto_action "$pr_num" "flake_rerun" "known_flake" "$author" "$c"
+            flake_rerun_count=$((flake_rerun_count + 1))
+            continue
+          else
+            # Look up the latest run-id for this PR's head branch.
+            # gh run list --branch <head_ref> --limit 1 --json databaseId
+            local run_id rerun_exit=0
+            run_id=$(gh run list --branch "$head_ref" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+            if [ -n "$run_id" ]; then
+              gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
+              if [ "$rerun_exit" -eq 0 ]; then
+                _flake_rerun_count "$pr_num" inc >/dev/null
+                _emit_pr_queue_auto_action "$pr_num" "flake_rerun" "known_flake" "$author" "$c"
+                flake_rerun_count=$((flake_rerun_count + 1))
+                echo "[pr-shepherd-daemon] flake-rerun fired for PR #${pr_num} run=${run_id}" >&2
+                continue
+              else
+                _emit_pr_queue_auto_action "$pr_num" "flake_rerun_failed" "gh_exit_${rerun_exit}" "$author" "$c"
+              fi
+            else
+              _emit_pr_queue_auto_action "$pr_num" "flake_rerun_skipped" "no_run_id" "$author" "$c"
+            fi
+          fi
+        fi
+      fi
+
 
       # META-184: action phase — only for BEHIND PRs
       if [ "$c" = "BEHIND" ]; then
@@ -565,7 +936,12 @@ print(m.group(0) if m else '')
     done <<< "$classified"
   fi
 
-  echo "[pr-shepherd-daemon] tick — classified $count PRs, rebase_count=${rebase_count}, arm_count=${arm_count}, gap_file_count=${gap_file_count}, dry_run: ${DRY_RUN:-false}" >&2
+  # INFRA-2346: single trunk-red rollup event when admin-merges were blocked.
+  if [ "$admin_merge_skipped_trunk_red" -gt 0 ]; then
+    _emit_pr_queue_skipped_trunk_red "$admin_merge_skipped_trunk_red"
+  fi
+
+  echo "[pr-shepherd-daemon] tick — classified $count PRs, rebase=${rebase_count}, arm=${arm_count}, gap=${gap_file_count}, admin_merge=${admin_merge_count}, flake_rerun=${flake_rerun_count}, wedged=${wedged_signal_count}, dry_run: ${DRY_RUN:-false}" >&2
 }
 
 case "${1:-}" in
