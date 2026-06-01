@@ -1395,7 +1395,76 @@ fn detect_dead_rust_mods(conn: &Connection, root: &Path) -> Result<usize> {
 
 /// Detector 4: stale-plist — launchd plist whose ProgramArguments[0] path
 /// doesn't exist on disk.
+///
+/// False-positive suppression (INFRA-2378): plists that are template/source
+/// files with a sibling installer script are skipped — they intentionally
+/// contain placeholder binary paths that are substituted at install time.
+/// Specifically, a plist is skipped when BOTH conditions hold:
+///   (a) its repo-relative path starts with a known source directory:
+///       `launchd/`, `scripts/setup/launchd-templates/`, `scripts/setup/`
+///       (covers nested `scripts/setup/launchd/`), or `crates/*/launchd-fixtures/`
+///   (b) a sibling installer script exists matching the plist's basename stem:
+///       `scripts/setup/install-<stem>.sh`, `scripts/setup/install-<stem>-launchd.sh`,
+///       or `scripts/coord/<stem>-install.sh`
+///
+/// Plists installed at runtime (e.g. `~/Library/LaunchAgents/`) are NOT in
+/// `artifact_index` (they're outside root), so AC-2 is satisfied by the
+/// existing path-exists check only triggering on indexed entries.
 fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
+    /// Known source-directory prefixes for template plists (repo-relative).
+    /// These dirs contain plist sources that are installed by a sibling script,
+    /// not runtime artifacts.
+    const SOURCE_DIR_PREFIXES: &[&str] = &[
+        "launchd/",
+        "scripts/setup/launchd-templates/",
+        "scripts/setup/launchd/",
+        "scripts/setup/",
+    ];
+
+    /// Returns true when `path` looks like a crates launchd-fixtures source.
+    fn is_crates_launchd_fixture(path: &str) -> bool {
+        // Pattern: crates/<anything>/launchd-fixtures/...
+        let mut parts = path.splitn(4, '/');
+        matches!(
+            (parts.next(), parts.next(), parts.next()),
+            (Some("crates"), Some(_), Some("launchd-fixtures"))
+        )
+    }
+
+    /// Extract the "stem" from a plist filename for installer lookup.
+    /// Strips known reverse-DNS prefixes (e.g. "com.chump.") and ".plist".
+    /// `com.chump.api-cost-digest.plist` → `api-cost-digest`
+    /// `foo.plist` → `foo`
+    fn plist_stem(filename: &str) -> &str {
+        let base = filename.strip_suffix(".plist").unwrap_or(filename);
+        // Strip common reverse-DNS prefix components (com.chump. etc.)
+        // by finding the last dot-separated segment that looks like a label.
+        // Simple heuristic: strip everything up to and including "chump."
+        if let Some(idx) = base.find("chump.") {
+            return &base[idx + "chump.".len()..];
+        }
+        // Fallback: use the whole basename
+        base
+    }
+
+    /// True when a sibling installer script exists for the given stem.
+    fn has_installer_script(root: &Path, stem: &str) -> bool {
+        // Candidates under scripts/setup/
+        let setup = root.join("scripts/setup");
+        if setup.join(format!("install-{stem}.sh")).exists() {
+            return true;
+        }
+        if setup.join(format!("install-{stem}-launchd.sh")).exists() {
+            return true;
+        }
+        // Candidates under scripts/coord/
+        let coord = root.join("scripts/coord");
+        if coord.join(format!("{stem}-install.sh")).exists() {
+            return true;
+        }
+        false
+    }
+
     let mut plists: Vec<String> = Vec::new();
     {
         let mut stmt = conn.prepare("SELECT path FROM artifact_index WHERE class = 'plist'")?;
@@ -1406,6 +1475,27 @@ fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
     }
     let mut n = 0usize;
     for path in plists {
+        // --- False-positive suppression: skip source plists with a sibling installer ---
+        let is_source_dir = SOURCE_DIR_PREFIXES.iter().any(|pfx| path.starts_with(pfx))
+            || is_crates_launchd_fixture(&path);
+        if is_source_dir {
+            // Extract the basename stem and check for an installer script.
+            let filename = Path::new(&path)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("");
+            let stem = plist_stem(filename);
+            if !stem.is_empty() && has_installer_script(root, stem) {
+                // This is a template plist managed by an installer — skip it.
+                tracing::debug!(
+                    plist = %path,
+                    stem = %stem,
+                    "stale-plist suppressed: source dir plist has sibling installer"
+                );
+                continue;
+            }
+        }
+        // --- Original staleness check: ProgramArguments[0] must exist on disk ---
         let full = root.join(&path);
         let content = match fs::read_to_string(&full) {
             Ok(c) => c,
