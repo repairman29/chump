@@ -1,21 +1,30 @@
 #!/usr/bin/env bash
-# scripts/ci/test-trunk-loop-e2e.sh — INFRA-2337
+# scripts/ci/test-trunk-loop-e2e.sh — INFRA-2337 + INFRA-2341
 #
 # End-to-end smoke test for the trunk-health autonomous loop:
-#   trunk-sentinel-daemon → fix-trunk-dispatcher → claude -p
+#   trunk-sentinel-daemon → fix-trunk-dispatcher → {signal|subprocess}
 #
-# Exercises the full contract:
+# Exercises the full contract for BOTH dispatch modes (INFRA-2341):
 #   1. Sentinel detects RED, files a gap with skills_required=fix_trunk
 #      backfilled via `chump gap set` (INFRA-2337: --skills-required is
 #      silently dropped by `gap reserve`).
 #   2. Sentinel emits trunk_red_persistent into ambient.
-#   3. Dispatcher picks up trunk_red_persistent (regex match against the
-#      grep pre-filter), finds the gap via SQL (skills_required LIKE
-#      '%fix_trunk%'), claims it via stub `chump`, derives worktree
-#      deterministically (INFRA-2337: lease JSON has no `worktree` field
-#      per src/atomic_claim.rs:1680-1708), and spawns stub `claude -p`.
-#   4. Dispatcher emits fix_trunk_dispatched with the claimed gap_id.
-#   5. Recovery: GREEN fixture triggers trunk_recovered + closes the
+#   3. Dispatcher (signal mode, default):
+#      - finds the gap, claims it via stub `chump`, derives worktree
+#        deterministically (INFRA-2337: lease JSON has no `worktree`
+#        field per src/atomic_claim.rs:1680-1708)
+#      - writes a CRIT entry with kind=fix_trunk_priority_signal into the
+#        URGENT-INBOX
+#      - emits ambient kind=fix_trunk_priority_signal
+#      - DOES NOT spawn claude -p
+#      - inbox-check-urgent.sh surfaces the signal as a system-reminder
+#        and emits kind=fix_trunk_session_acknowledged on cursor advance.
+#   4. Dispatcher (subprocess mode, opt-in CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess):
+#      - same claim + worktree resolution
+#      - spawns stub `claude -p` with the gap_id in the prompt body
+#      - emits ambient kind=fix_trunk_dispatched
+#   5. Idempotency lockfile works in both modes.
+#   6. Recovery: GREEN fixture triggers trunk_recovered + closes the
 #      filed gap via `chump gap set --status done`.
 #
 # All external dependencies (chump, claude, gh) are stubbed via PATH
@@ -47,6 +56,11 @@ STUB_CHUMP_LOG="$WORK_DIR/chump.log"
 STUB_CLAUDE_LOG="$WORK_DIR/claude.log"
 FAKE_WORKTREE="$WORK_DIR/fake-wt"
 DISPATCHER_LOCK="$LOCK_DIR/fix-trunk-dispatcher.lock"
+# INFRA-2341 — signal-mode fixtures (URGENT-INBOX + cursor + inbox-check-urgent)
+URGENT_INBOX="$LOCK_DIR/URGENT-INBOX.jsonl"
+URGENT_INBOX_CURSOR="$LOCK_DIR/URGENT-INBOX.cursor"
+INBOX_CHECK="$REPO_ROOT/scripts/coord/inbox-check-urgent.sh"
+[[ -x "$INBOX_CHECK" ]] || { echo "[e2e] FAIL: inbox-check-urgent.sh not executable"; exit 1; }
 
 mkdir -p "$STUB_BIN" "$LOCK_DIR" "$FAKE_WORKTREE"
 : > "$AMBIENT"
@@ -230,56 +244,68 @@ grep -q '"kind":"trunk_red_persistent"' "$AMBIENT" \
     || { echo "[e2e] FAIL: no trunk_red_persistent emitted"; cat "$AMBIENT"; exit 1; }
 echo "[e2e] (1) sentinel emitted trunk_red_persistent: OK"
 
-# ── Phase 2: Dispatcher tick — pick up the trunk_red signal, claim, dispatch ─
-echo "[e2e] Phase 2: dispatcher tick"
+# ── Phase 2: Dispatcher tick (signal mode, INFRA-2341 default) ────────────────
+echo "[e2e] Phase 2: dispatcher tick (signal mode = INFRA-2341 default)"
+# INFRA-2341: with no CHUMP_FIX_TRUNK_DISPATCH_MODE set, the dispatcher
+# defaults to signal mode — it should NOT spawn claude -p, but it MUST
+# write a CRIT entry to URGENT-INBOX.jsonl + emit fix_trunk_priority_signal.
 CHUMP_FIX_TRUNK_AMBIENT_FILE="$AMBIENT" \
 CHUMP_FIX_TRUNK_LOCK_FILE="$DISPATCHER_LOCK" \
 CHUMP_FIX_TRUNK_STATE_DB="$STATE_DB" \
 CHUMP_FIX_TRUNK_MODEL="sonnet" \
 CHUMP_FIX_TRUNK_TRUNK_RED_LOOKBACK_M=30 \
+CHUMP_FIX_TRUNK_URGENT_INBOX="$URGENT_INBOX" \
 CHUMP_WORKTREE_BASE="$WORK_DIR" \
     PATH="$STUB_BIN:$PATH" \
     "$DISPATCHER" 2>"$WORK_DIR/dispatcher.err" \
-    || { echo "[e2e] FAIL: dispatcher non-zero"; cat "$WORK_DIR/dispatcher.err"; exit 1; }
+    || { echo "[e2e] FAIL: dispatcher (signal) non-zero"; cat "$WORK_DIR/dispatcher.err"; exit 1; }
 
-# Assert: dispatcher emitted fix_trunk_dispatched.
-grep -q '"kind":"fix_trunk_dispatched"' "$AMBIENT" \
-    || { echo "[e2e] FAIL: no fix_trunk_dispatched emitted"; \
+# Assert: dispatcher emitted fix_trunk_priority_signal (signal mode).
+grep -q '"kind":"fix_trunk_priority_signal"' "$AMBIENT" \
+    || { echo "[e2e] FAIL: no fix_trunk_priority_signal emitted"; \
          echo "--- ambient.jsonl ---"; cat "$AMBIENT"; \
          echo "--- dispatcher.err ---"; cat "$WORK_DIR/dispatcher.err"; \
-         echo "--- chump.log ---"; cat "$STUB_CHUMP_LOG"; \
          exit 1; }
-echo "[e2e] (2) dispatcher emitted fix_trunk_dispatched: OK"
+echo "[e2e] (2) dispatcher emitted fix_trunk_priority_signal (signal mode): OK"
 
-# Assert: stub chump was called with `claim INFRA-9999`.
+# Assert: stub chump was called with `claim INFRA-9999` — claim still happens
+# in signal mode; the gap is atomically reserved before signaling the IDE.
 grep -q "claim INFRA-9999" "$STUB_CHUMP_LOG" \
     || { echo "[e2e] FAIL: chump claim INFRA-9999 not invoked"; cat "$STUB_CHUMP_LOG"; exit 1; }
-echo "[e2e] (3) stub chump invoked with claim INFRA-9999: OK"
+echo "[e2e] (3) stub chump invoked with claim INFRA-9999 (signal mode still claims): OK"
 
-# The dispatcher backgrounds `claude -p` via `(...)&` so the test must wait for
-# the subshell to write the stub claude log before asserting. Bounded polling
-# avoids race flakes: 5s should be plenty for a stub that exits immediately.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if grep -q "INFRA-9999" "$STUB_CLAUDE_LOG" 2>/dev/null; then
-        break
-    fi
-    sleep 0.5
-done
-
-# Assert: stub claude was invoked with the gap id in the prompt body.
-grep -q "INFRA-9999" "$STUB_CLAUDE_LOG" \
-    || { echo "[e2e] FAIL: stub claude not invoked with INFRA-9999 in prompt"; \
-         echo "--- claude.log ---"; cat "$STUB_CLAUDE_LOG"; \
+# Assert: URGENT-INBOX.jsonl received the signal entry with kind+gap_id.
+# python3 json.dumps emits ", " separators by default — match with or without spaces.
+[[ -f "$URGENT_INBOX" ]] \
+    || { echo "[e2e] FAIL: URGENT-INBOX.jsonl not written by signal mode"; \
+         echo "--- dispatcher.err ---"; cat "$WORK_DIR/dispatcher.err"; \
          exit 1; }
-echo "[e2e] (4) stub claude invoked with INFRA-9999 in prompt: OK"
+grep -Eq '"kind":[[:space:]]*"fix_trunk_priority_signal"' "$URGENT_INBOX" \
+    || { echo "[e2e] FAIL: URGENT-INBOX entry missing kind=fix_trunk_priority_signal"; \
+         cat "$URGENT_INBOX"; exit 1; }
+grep -Eq '"gap_id":[[:space:]]*"INFRA-9999"' "$URGENT_INBOX" \
+    || { echo "[e2e] FAIL: URGENT-INBOX entry missing gap_id=INFRA-9999"; \
+         cat "$URGENT_INBOX"; exit 1; }
+echo "[e2e] (4) URGENT-INBOX.jsonl received fix_trunk_priority_signal for INFRA-9999: OK"
 
-# Assert: dispatcher lockfile was written with PID + gap_id.
+# Assert: stub claude was NOT invoked in signal mode (the whole point of INFRA-2341).
+if [[ -s "$STUB_CLAUDE_LOG" ]]; then
+    echo "[e2e] FAIL: signal mode spawned claude -p — should be no-op"
+    echo "--- claude.log ---"; cat "$STUB_CLAUDE_LOG"
+    exit 1
+fi
+echo "[e2e] (5) signal mode did NOT spawn claude -p: OK"
+
+# Assert: dispatcher lockfile was written with mode=signal + gap_id.
 [[ -f "$DISPATCHER_LOCK" ]] \
     || { echo "[e2e] FAIL: dispatcher lockfile not written"; exit 1; }
 lock_gap="$(python3 -c "import json; print(json.load(open('$DISPATCHER_LOCK'))['gap_id'])")"
+lock_mode="$(python3 -c "import json; print(json.load(open('$DISPATCHER_LOCK')).get('dispatch_mode',''))")"
 [[ "$lock_gap" == "INFRA-9999" ]] \
     || { echo "[e2e] FAIL: dispatcher lockfile has wrong gap_id ($lock_gap)"; exit 1; }
-echo "[e2e] (5) dispatcher lockfile records gap_id=INFRA-9999: OK"
+[[ "$lock_mode" == "signal" ]] \
+    || { echo "[e2e] FAIL: dispatcher lockfile dispatch_mode=$lock_mode, expected 'signal'"; exit 1; }
+echo "[e2e] (6) dispatcher lockfile records gap_id=INFRA-9999 mode=signal: OK"
 
 # Assert: dispatcher resolved worktree (no "worktree path not resolved" error).
 if grep -q "worktree path not resolved" "$WORK_DIR/dispatcher.err"; then
@@ -287,7 +313,95 @@ if grep -q "worktree path not resolved" "$WORK_DIR/dispatcher.err"; then
     cat "$WORK_DIR/dispatcher.err"
     exit 1
 fi
-echo "[e2e] (6) dispatcher resolved worktree: OK"
+echo "[e2e] (7) dispatcher resolved worktree (signal mode): OK"
+
+# ── Phase 2b: inbox-check-urgent.sh surfaces signal + emits acknowledged ──────
+echo "[e2e] Phase 2b: inbox-check-urgent.sh handshake"
+prev_lines=$(wc -l < "$AMBIENT")
+CHUMP_URGENT_INBOX="$URGENT_INBOX" \
+CHUMP_URGENT_INBOX_CURSOR="$URGENT_INBOX_CURSOR" \
+CHUMP_AMBIENT_LOG="$AMBIENT" \
+    "$INBOX_CHECK" > "$WORK_DIR/inbox-out.txt" 2>"$WORK_DIR/inbox-check.err" \
+    || { echo "[e2e] FAIL: inbox-check-urgent non-zero"; cat "$WORK_DIR/inbox-check.err"; exit 1; }
+
+# Assert: system-reminder block surfaced with the fix-trunk priority banner.
+grep -q "FIX-TRUNK PRIORITY SIGNAL (INFRA-2341)" "$WORK_DIR/inbox-out.txt" \
+    || { echo "[e2e] FAIL: inbox-check-urgent did not surface FIX-TRUNK banner"; \
+         cat "$WORK_DIR/inbox-out.txt"; exit 1; }
+grep -q "INFRA-9999" "$WORK_DIR/inbox-out.txt" \
+    || { echo "[e2e] FAIL: inbox-check-urgent did not include gap_id in surface"; \
+         cat "$WORK_DIR/inbox-out.txt"; exit 1; }
+echo "[e2e] (8) inbox-check-urgent.sh surfaced FIX-TRUNK banner with INFRA-9999: OK"
+
+# Assert: ambient gained kind=fix_trunk_session_acknowledged on cursor advance.
+new_lines=$(tail -n +"$((prev_lines + 1))" "$AMBIENT")
+echo "$new_lines" | grep -q '"kind":"fix_trunk_session_acknowledged"' \
+    || { echo "[e2e] FAIL: no fix_trunk_session_acknowledged emitted by inbox-check-urgent"; \
+         echo "--- new ambient ---"; echo "$new_lines"; exit 1; }
+echo "$new_lines" | grep -q '"gap_id":"INFRA-9999"' \
+    || { echo "[e2e] FAIL: ack event missing gap_id=INFRA-9999"; \
+         echo "--- new ambient ---"; echo "$new_lines"; exit 1; }
+echo "[e2e] (9) inbox-check-urgent.sh emitted fix_trunk_session_acknowledged: OK"
+
+# Assert: cursor advanced — second invocation must produce zero output (no re-surface).
+prev_lines=$(wc -l < "$AMBIENT")
+CHUMP_URGENT_INBOX="$URGENT_INBOX" \
+CHUMP_URGENT_INBOX_CURSOR="$URGENT_INBOX_CURSOR" \
+CHUMP_AMBIENT_LOG="$AMBIENT" \
+    "$INBOX_CHECK" > "$WORK_DIR/inbox-out2.txt" 2>/dev/null
+[[ ! -s "$WORK_DIR/inbox-out2.txt" ]] \
+    || { echo "[e2e] FAIL: second inbox-check invocation re-surfaced signal (cursor not advanced)"; \
+         cat "$WORK_DIR/inbox-out2.txt"; exit 1; }
+new_lines=$(tail -n +"$((prev_lines + 1))" "$AMBIENT")
+echo "$new_lines" | grep -q '"kind":"fix_trunk_session_acknowledged"' && {
+    echo "[e2e] FAIL: ack event re-emitted on second pass"
+    echo "--- new ambient ---"; echo "$new_lines"; exit 1; } || true
+echo "[e2e] (10) cursor advanced — no re-surface, no re-ack: OK"
+
+# ── Phase 2c: Dispatcher tick (subprocess mode, INFRA-2341 opt-in) ────────────
+echo "[e2e] Phase 2c: dispatcher tick (subprocess mode = legacy headless path)"
+# Reset state: clear the previous lock so subprocess mode can re-claim.
+rm -f "$DISPATCHER_LOCK"
+: > "$STUB_CLAUDE_LOG"   # ensure clean ledger for the subprocess assertion
+CHUMP_FIX_TRUNK_DISPATCH_MODE="subprocess" \
+CHUMP_FIX_TRUNK_AMBIENT_FILE="$AMBIENT" \
+CHUMP_FIX_TRUNK_LOCK_FILE="$DISPATCHER_LOCK" \
+CHUMP_FIX_TRUNK_STATE_DB="$STATE_DB" \
+CHUMP_FIX_TRUNK_MODEL="sonnet" \
+CHUMP_FIX_TRUNK_TRUNK_RED_LOOKBACK_M=30 \
+CHUMP_FIX_TRUNK_URGENT_INBOX="$URGENT_INBOX" \
+CHUMP_WORKTREE_BASE="$WORK_DIR" \
+    PATH="$STUB_BIN:$PATH" \
+    "$DISPATCHER" 2>"$WORK_DIR/dispatcher-sub.err" \
+    || { echo "[e2e] FAIL: dispatcher (subprocess) non-zero"; cat "$WORK_DIR/dispatcher-sub.err"; exit 1; }
+
+# Assert: subprocess mode emitted fix_trunk_dispatched (legacy event).
+grep -q '"kind":"fix_trunk_dispatched"' "$AMBIENT" \
+    || { echo "[e2e] FAIL: subprocess mode did not emit fix_trunk_dispatched"; \
+         echo "--- ambient.jsonl ---"; cat "$AMBIENT"; \
+         echo "--- dispatcher-sub.err ---"; cat "$WORK_DIR/dispatcher-sub.err"; \
+         exit 1; }
+echo "[e2e] (11) subprocess mode emitted fix_trunk_dispatched: OK"
+
+# Assert: stub claude was invoked (in background) — bounded polling for the
+# subshell to write the stub log.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if grep -q "INFRA-9999" "$STUB_CLAUDE_LOG" 2>/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+grep -q "INFRA-9999" "$STUB_CLAUDE_LOG" \
+    || { echo "[e2e] FAIL: subprocess mode did not spawn claude -p with INFRA-9999"; \
+         echo "--- claude.log ---"; cat "$STUB_CLAUDE_LOG"; \
+         exit 1; }
+echo "[e2e] (12) subprocess mode spawned claude -p with INFRA-9999 in prompt: OK"
+
+# Assert: subprocess lockfile records dispatch_mode=subprocess.
+sub_lock_mode="$(python3 -c "import json; print(json.load(open('$DISPATCHER_LOCK')).get('dispatch_mode',''))")"
+[[ "$sub_lock_mode" == "subprocess" ]] \
+    || { echo "[e2e] FAIL: subprocess lockfile dispatch_mode=$sub_lock_mode, expected 'subprocess'"; exit 1; }
+echo "[e2e] (13) subprocess lockfile records dispatch_mode=subprocess: OK"
 
 # ── Phase 3: Idempotency — re-run dispatcher tick should skip (parallelism cap) ─
 echo "[e2e] Phase 3: dispatcher re-tick should skip via lockfile"
@@ -296,12 +410,13 @@ echo "[e2e] Phase 3: dispatcher re-tick should skip via lockfile"
 # is still 'open' (stub claude didn't ship), so it WILL re-claim and re-dispatch.
 # To test the parallelism cap we need a live PID. Easiest path: write a fake
 # lockfile pointing at the test runner's own PID (always alive).
-echo "{\"pid\":$$,\"gap_id\":\"INFRA-9999\",\"started_at\":\"2026-05-31T23:00:00Z\"}" > "$DISPATCHER_LOCK"
+echo "{\"pid\":$$,\"gap_id\":\"INFRA-9999\",\"started_at\":\"2026-05-31T23:00:00Z\",\"dispatch_mode\":\"signal\"}" > "$DISPATCHER_LOCK"
 prev_lines=$(wc -l < "$AMBIENT")
 CHUMP_FIX_TRUNK_AMBIENT_FILE="$AMBIENT" \
 CHUMP_FIX_TRUNK_LOCK_FILE="$DISPATCHER_LOCK" \
 CHUMP_FIX_TRUNK_STATE_DB="$STATE_DB" \
 CHUMP_FIX_TRUNK_TRUNK_RED_LOOKBACK_M=30 \
+CHUMP_FIX_TRUNK_URGENT_INBOX="$URGENT_INBOX" \
 CHUMP_WORKTREE_BASE="$WORK_DIR" \
     PATH="$STUB_BIN:$PATH" \
     "$DISPATCHER" 2>/dev/null \
@@ -310,7 +425,7 @@ new_lines=$(tail -n +"$((prev_lines + 1))" "$AMBIENT")
 echo "$new_lines" | grep -q '"kind":"fix_trunk_skipped"' \
     || { echo "[e2e] FAIL: dispatcher did not emit fix_trunk_skipped on re-tick with live prior"; \
          echo "--- new lines ---"; echo "$new_lines"; exit 1; }
-echo "[e2e] (7) dispatcher skipped due to live prior PID: OK"
+echo "[e2e] (14) dispatcher skipped due to live prior PID: OK"
 
 # Clear the lockfile so phase-4 recovery can run cleanly.
 rm -f "$DISPATCHER_LOCK"
@@ -343,19 +458,19 @@ echo "$new_lines" | grep -q '"kind":"trunk_recovered"' \
     || { echo "[e2e] FAIL: no trunk_recovered emitted on RED→GREEN"; \
          echo "--- new lines ---"; echo "$new_lines"; \
          exit 1; }
-echo "[e2e] (8) sentinel emitted trunk_recovered: OK"
+echo "[e2e] (15) sentinel emitted trunk_recovered: OK"
 
 # Assert: stub chump gap set was called to close INFRA-9999.
 grep -q "gap set INFRA-9999 --status done" "$STUB_CHUMP_LOG" \
     || { echo "[e2e] FAIL: chump gap set INFRA-9999 --status done not invoked"; \
          echo "--- chump.log ---"; cat "$STUB_CHUMP_LOG"; \
          exit 1; }
-echo "[e2e] (9) chump gap set INFRA-9999 --status done invoked: OK"
+echo "[e2e] (16) chump gap set INFRA-9999 --status done invoked: OK"
 
 # Assert: gap row now status=done in STATE_DB.
 row_status="$(sqlite3 "$STATE_DB" "SELECT status FROM gaps WHERE id='INFRA-9999';")"
 [[ "$row_status" == "done" ]] \
     || { echo "[e2e] FAIL: INFRA-9999 status=$row_status, expected 'done'"; exit 1; }
-echo "[e2e] (10) INFRA-9999 row updated to status=done: OK"
+echo "[e2e] (17) INFRA-9999 row updated to status=done: OK"
 
 echo "[test-trunk-loop-e2e] PASS"
