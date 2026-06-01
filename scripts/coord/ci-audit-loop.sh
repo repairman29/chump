@@ -280,7 +280,11 @@ case "$cmd" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
         "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble ci-audit 2>/dev/null || true
-        _cmd_tick "$@"
+        _TICK_RC=0
+        _cmd_tick "$@" || _TICK_RC=$?
+        # CREDIBLE-084: emit tick_outcome for no-idle audit + observability.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-outcome ci-audit "$_TICK_RC" 2>/dev/null || true
+        exit "$_TICK_RC"
         ;;
     audit)      _cmd_audit "$@" ;;
     heartbeat)  _cmd_heartbeat "$@" ;;

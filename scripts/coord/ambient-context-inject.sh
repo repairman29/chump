@@ -89,6 +89,45 @@ for e in out[-5:]:
     exit 0
 fi
 
+# ── CREDIBLE-084: --tick-outcome mode — emit tick_outcome at end of curator tick
+# Wired into each productized loop's tick case AFTER its main command. The
+# outcome lets observability + the no-idle-policy audit measure whether
+# each tick actually produced something or just heart-beat through.
+#
+# Usage:  scripts/coord/ambient-context-inject.sh --tick-outcome <role> [exit_code]
+# Outcome classification (from env or exit_code):
+#   - CHUMP_TICK_OUTCOME=shipped|dispatched_sub|picked_nextbest|none (if set)
+#   - exit_code != 0 → blocked_defensible
+#   - else → CHUMP_TICK_OUTCOME (default "none")
+# Optional CHUMP_TICK_GAP_ID env var attaches a gap_id to the event.
+# Exit always 0 so the calling loop doesn't crash on a write failure.
+if [[ "${1:-}" == "--tick-outcome" ]]; then
+    ROLE="${2:-}"
+    EXIT_CODE="${3:-0}"
+    if [[ -z "$ROLE" ]]; then
+        exit 0
+    fi
+    if [[ "$EXIT_CODE" -ne 0 ]] 2>/dev/null; then
+        OUTCOME="blocked_defensible"
+    else
+        OUTCOME="${CHUMP_TICK_OUTCOME:-none}"
+    fi
+    GAP_ID="${CHUMP_TICK_GAP_ID:-}"
+    SESSION="${CHUMP_SESSION_ID:-curator-opus-${ROLE}-$(date -u +%Y-%m-%d)}"
+    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    mkdir -p "$_LOCK_DIR_PROBE" 2>/dev/null || true
+    if [[ -n "$GAP_ID" ]]; then
+        printf '{"ts":"%s","kind":"tick_outcome","role":"%s","session":"%s","outcome":"%s","exit_code":%d,"gap_id":"%s"}\n' \
+            "$TS" "$ROLE" "$SESSION" "$OUTCOME" "$EXIT_CODE" "$GAP_ID" \
+            >> "$_AMBIENT_PROBE" 2>/dev/null || true
+    else
+        printf '{"ts":"%s","kind":"tick_outcome","role":"%s","session":"%s","outcome":"%s","exit_code":%d}\n' \
+            "$TS" "$ROLE" "$SESSION" "$OUTCOME" "$EXIT_CODE" \
+            >> "$_AMBIENT_PROBE" 2>/dev/null || true
+    fi
+    exit 0
+fi
+
 
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then
