@@ -1,4 +1,4 @@
-//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2370 / INFRA-2375-2385 — Fleet Inventory + Tech-Debt Audit DB.
+//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2370 — Fleet Inventory + Tech-Debt Audit DB.
 //!
 //! **REVIEW-ONLY tier 0 default.** Every detector lands findings at tier=0
 //! (surface-only). No gap-filing, no removal, no auto-action in this PR's
@@ -10,17 +10,16 @@
 //! Storage: `.chump/inventory.db` (separate from canonical state.db so
 //! schema churn doesn't risk the canonical fleet DB).
 //!
-//! Detectors (10 classes, all tier=0 by default):
-//!   1. orphan-artifact           — artifact has zero inbound references (now scans docs/ + plugin-glob patterns, INFRA-2375)
-//!   2. dormant-script            — shell script with ≤1 inbound text-grep reference across docs+scripts+src+.claude (INFRA-2376)
+//! Detectors (9 classes, all tier=0 by default):
+//!   1. orphan-artifact           — artifact has zero inbound references in the repo
+//!   2. dormant-script            — shell script not invoked from any script/plist/Rust/docs
 //!   3. dead-rust-mod             — Rust module declared in mod.rs/lib.rs but never reachable from a binary
-//!   4. stale-plist               — launchd plist whose binary doesn't exist (skips template files with sibling installers, INFRA-2378)
+//!   4. stale-plist               — launchd plist whose target binary path doesn't exist
 //!   5. doc-only-feature          — gap shipped a doc but no code change touched the named subsystem
 //!   6. unreferenced-gap          — gap shipped >30d ago but its artifacts are orphans
-//!   7. long-undormant-substrate  — substrate idle ≥CHUMP_INVENTORY_DORMANT_DAYS (default 30, INFRA-2383)
-//!   8. shadow-duplicate          — pair sharing prefix AND high content-jaccard, allowlisted siblings excluded (INFRA-2377)
-//!   9. event-kind-zero-emit      — EVENT_REGISTRY kind with zero source emit-sites (INFRA-2379)
-//!  10. ghost-gap-reference       — PR title references gap_id with no docs/gaps/<X>.yaml on disk (INFRA-2382)
+//!   7. long-undormant-substrate  — substrate PR merged >90d, no inbound reference growth since
+//!   8. shadow-duplicate          — two artifacts implement near-identical shell of a primitive
+//!   9. event-kind-zero-emit      — EVENT_REGISTRY kind has zero ambient occurrences in 30d
 //!
 //! Every detector emits `kind=tech_debt_finding` to ambient.jsonl AND inserts
 //! into `tech_debt_findings`. NEVER files a gap.
@@ -43,8 +42,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-/// The 10 detector class names. Used for seeding finding_class_tiers and
-/// validating operator input. INFRA-2382 added `ghost-gap-reference`.
+/// The 9 detector class names. Used for seeding finding_class_tiers and
+/// validating operator input.
 pub const DETECTOR_CLASSES: &[&str] = &[
     "orphan-artifact",
     "dormant-script",
@@ -55,40 +54,6 @@ pub const DETECTOR_CLASSES: &[&str] = &[
     "long-undormant-substrate",
     "shadow-duplicate",
     "event-kind-zero-emit",
-    "ghost-gap-reference",
-];
-
-/// INFRA-2383: long-undormant cutoff (days). Default 30 (was 90 — the
-/// active repo refreshes substrate often enough that 90d catches almost
-/// nothing). Env-tunable for cadence variants.
-fn dormant_days_threshold() -> i64 {
-    std::env::var("CHUMP_INVENTORY_DORMANT_DAYS")
-        .ok()
-        .and_then(|s| s.parse::<i64>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(30)
-}
-
-/// INFRA-2377: allowlist of intentional sibling-naming patterns that
-/// share basename prefixes by design (version variants, role-stamped
-/// variants). Pairs whose paths match any of these patterns are NOT
-/// flagged as shadow-duplicate even when prefixes collide.
-const SHADOW_DUPLICATE_SIBLING_PATTERNS: &[&str] = &[
-    // Version variants: pr-rescue-v1.sh / pr-rescue-v2.sh
-    "-v1.",
-    "-v2.",
-    "-v3.",
-    // Role-stamped: worker.sh / worker-haiku.sh
-    "-haiku.",
-    "-sonnet.",
-    "-opus.",
-    // Install/uninstall pairs
-    "install-",
-    "uninstall-",
-    // Test-fixture suffixes
-    "-test.",
-    "-fixture.",
-    "-dry-run.",
 ];
 
 /// Promotion gates from tier 0 → tier 2 (mandatory; promote rejects below).
@@ -848,50 +813,33 @@ pub struct ProvenanceBackfillResult {
     /// Artifacts whose first-add commit pre-dates the oldest pr_index entry
     /// or could not be linked to a MERGED PR (truly unfindable).
     pub unlinkable_provenance: usize,
-    /// INFRA-2385: how many artifacts were attributed via the merge-graph
-    /// path (high-precision; handles admin-merge ordering correctly).
-    pub graph_resolved_count: usize,
-    /// INFRA-2385: how many artifacts fell through to the time-based bisect
-    /// (legacy path; lower precision, but still better than nothing).
-    pub bisect_fallback_count: usize,
 }
 
-/// INFRA-2384/INFRA-2385: backfill `introducing_pr` + `introducing_gap` for
-/// every artifact_index row that doesn't already have it set.
+/// INFRA-2384: backfill `introducing_pr` + `introducing_gap` for every
+/// artifact_index row that doesn't already have it set.
 ///
-/// Algorithm v2 (INFRA-2385 BUG-1 fix — merge-graph traversal):
+/// Algorithm:
 ///   1. Single `git log --diff-filter=A --pretty=format:COMMIT:%H:%at --name-only`
-///      pass — records the oldest-add (commit, sha, timestamp) for every path.
-///   2. Build a `commit_sha → pr_number` map by walking `git log --merges`
-///      on main and parsing the PR number from merge-commit subjects
-///      (`Merge pull request #N` OR squash-style `(#N)` token). For every
-///      ancestor commit of that merge, the merging PR is the one that
-///      brought it onto main. This is the `git log --ancestry-path` substitute
-///      that handles admin-merge ordering correctly: the merge commit's SHA
-///      is what we look up, not its timestamp.
-///   3. Load `(pr_number, gap_id, merged_at)` rows from pr_index for the
-///      time-based FALLBACK path (used when the graph lookup misses).
-///   4. For each artifact: prefer the graph map; fall back to the bisect.
-///      On fallback, emit `kind=provenance_fallback` to ambient.jsonl.
-///   5. UPDATE artifact_index in a single transaction.
+///      pass — records the oldest-add (commit, timestamp) for every path.
+///   2. Load `(pr_number, gap_id, merged_at)` rows where state='MERGED',
+///      sorted ascending by merged_at, into an in-memory vector.
+///   3. For each artifact: bisect the PR vector for the smallest merged_at
+///      >= adding_commit_ts → that's the introducing PR.
+///   4. UPDATE artifact_index in a single transaction.
 ///
-/// Cost: O(repo_commits) for the git-log passes + O(artifacts) for the
-/// HashMap lookup, with O(log prs) fallback bisect. Target: <90s on
-/// 4500-artifact / 3000-PR repo. Never blocks detector flow.
+/// Cost: O(repo_commits) for the git-log pass + O(artifacts * log(prs)) for
+/// the bisect. Target: <60s on 4500-artifact / 3000-PR repo. Never blocks
+/// detector flow — failure returns Ok(default) so subsequent steps proceed.
 pub fn backfill_artifact_provenance(
     conn: &Connection,
     root: &Path,
 ) -> Result<ProvenanceBackfillResult> {
-    // ─── step 1: oldest-add (sha, ts) per path ─────────────────────────────
-    let adding_commits = build_adding_commits_map_v2(root);
+    // ─── step 1: oldest-add commit per path ─────────────────────────────────
+    let adding_commits = build_adding_commits_map(root);
 
-    // ─── step 2: commit_sha → pr_number via merge-graph walk (INFRA-2385) ──
-    let commit_to_pr = build_commit_to_pr_map(root);
-
-    // ─── step 3: load merged-PR vector sorted by merged_at (fallback) ──────
+    // ─── step 2: load merged-PR vector sorted by merged_at ──────────────────
     type PrEntry = (i64, i64, Option<String>); // (merged_at, pr_number, gap_id)
-    let mut prs_by_time: Vec<PrEntry> = Vec::new();
-    let mut pr_meta: HashMap<i64, Option<String>> = HashMap::new(); // pr_number -> gap_id
+    let mut prs: Vec<PrEntry> = Vec::new();
     {
         let mut stmt = conn.prepare(
             "SELECT merged_at, pr_number, gap_id FROM pr_index
@@ -906,26 +854,11 @@ pub fn backfill_artifact_provenance(
             ))
         })?;
         for r in mapped {
-            let (mt, num, gap) = r?;
-            pr_meta.insert(num, gap.clone());
-            prs_by_time.push((mt, num, gap));
-        }
-    }
-    // Also include open/unmerged PRs in the meta map so graph-resolved hits
-    // can still attach a gap_id even if merged_at is NULL.
-    {
-        let mut stmt =
-            conn.prepare("SELECT pr_number, gap_id FROM pr_index WHERE merged_at IS NULL")?;
-        let mapped = stmt.query_map([], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?))
-        })?;
-        for r in mapped {
-            let (num, gap) = r?;
-            pr_meta.entry(num).or_insert(gap);
+            prs.push(r?);
         }
     }
 
-    // ─── step 4: load artifacts needing backfill ───────────────────────────
+    // ─── step 3: load artifacts needing backfill ────────────────────────────
     let mut artifact_rows: Vec<String> = Vec::new();
     {
         let mut stmt = conn.prepare(
@@ -943,52 +876,36 @@ pub fn backfill_artifact_provenance(
         ..Default::default()
     };
 
-    // ─── step 5: lookup + UPDATE in a transaction ──────────────────────────
+    // ─── step 4: bisect + UPDATE in a transaction ───────────────────────────
     let tx = conn.unchecked_transaction()?;
     for path in &artifact_rows {
-        let (adding_sha, adding_ts) = match adding_commits.get(path) {
-            Some(v) => {
+        let adding_ts = match adding_commits.get(path) {
+            Some(&ts) => {
                 result.adding_commits_found += 1;
-                v.clone()
+                ts
             }
             None => continue,
         };
 
-        // Primary: merge-graph lookup (handles admin-merge ordering).
-        let (pr_number, gap_id, used_fallback) =
-            if let Some(&pr_num) = commit_to_pr.get(&adding_sha) {
-                let gap = pr_meta.get(&pr_num).cloned().flatten();
-                (Some(pr_num), gap, false)
-            } else {
-                // Fallback: time-based partition_point. Emit a transient
-                // provenance_fallback ambient event so the operator can
-                // see the cohort that needs merge-commit auth.
-                let idx = prs_by_time.partition_point(|(merged_at, _, _)| *merged_at < adding_ts);
-                if idx >= prs_by_time.len() {
-                    emit_provenance_fallback(path, "no_pr_after_adding_ts");
-                    result.unlinkable_provenance += 1;
-                    continue;
-                }
-                let (_mt, pr_num, gap) = &prs_by_time[idx];
-                emit_provenance_fallback(path, "merge_graph_miss");
-                result.bisect_fallback_count += 1;
-                (Some(*pr_num), gap.clone(), true)
-            };
+        // Find first PR whose merged_at >= adding_ts. The merging PR (the
+        // one that landed the adding commit on main) must have merged at or
+        // after the commit was authored.
+        let idx = prs.partition_point(|(merged_at, _, _)| *merged_at < adding_ts);
+        if idx >= prs.len() {
+            result.unlinkable_provenance += 1;
+            continue;
+        }
+        let (_merged_at, pr_number, gap_id) = &prs[idx];
 
-        if let Some(pr_num) = pr_number {
-            tx.execute(
-                "UPDATE artifact_index
-                 SET introducing_pr = ?1, introducing_gap = ?2
-                 WHERE path = ?3 AND introducing_pr IS NULL",
-                params![pr_num, gap_id, path],
-            )?;
-            result.introducing_pr_linked += 1;
-            if gap_id.is_some() {
-                result.introducing_gap_linked += 1;
-            }
-            if !used_fallback {
-                result.graph_resolved_count += 1;
-            }
+        tx.execute(
+            "UPDATE artifact_index
+             SET introducing_pr = ?1, introducing_gap = ?2
+             WHERE path = ?3 AND introducing_pr IS NULL",
+            params![pr_number, gap_id, path],
+        )?;
+        result.introducing_pr_linked += 1;
+        if gap_id.is_some() {
+            result.introducing_gap_linked += 1;
         }
     }
     tx.commit()?;
@@ -999,140 +916,17 @@ pub fn backfill_artifact_provenance(
     Ok(result)
 }
 
-/// INFRA-2385: emit `kind=provenance_fallback` to ambient.jsonl. Used when
-/// the merge-graph lookup misses and we fall back to the bisect. Lets the
-/// operator see how many artifacts are still on the legacy attribution path.
-fn emit_provenance_fallback(path: &str, reason: &str) {
-    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let json = format!(
-        r#"{{"ts":"{}","kind":"provenance_fallback","path":"{}","reason":"{}"}}"#,
-        ts,
-        json_escape(path),
-        json_escape(reason),
-    );
-    let log = ambient_log_path();
-    if let Some(parent) = log.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log) {
-        let _ = writeln!(f, "{}", json);
-    }
-}
-
-/// INFRA-2385: walk `git log --merges --first-parent main` AND `git log --first-parent main`
-/// (covers both true-merge and squash-merge histories). For each first-parent
-/// commit whose subject contains a PR number (either `Merge pull request #N`
-/// or `(#N)` at end of subject), enumerate every ancestor commit reachable
-/// from that commit but NOT from its parent on first-parent — that commit
-/// belongs to that PR.
+/// Walk `git log --diff-filter=A` over all history once and record the
+/// oldest commit timestamp that ADDED each path. A path that has been
+/// deleted-then-readded shows multiple A events; we keep the earliest
+/// (the original introduction), since rebuild rotation usually wants
+/// the first-shipped provenance.
 ///
-/// Returns `commit_sha → pr_number`. Handles admin-merge ordering correctly
-/// because the lookup is by SHA, not by timestamp.
-fn build_commit_to_pr_map(root: &Path) -> HashMap<String, i64> {
+/// Format: alternating header lines `COMMIT:<sha>:<unix_ts>` followed by
+/// the file paths added by that commit (one per line). The single-quote
+/// pretty format avoids any whitespace ambiguity.
+fn build_adding_commits_map(root: &Path) -> HashMap<String, i64> {
     let mut map: HashMap<String, i64> = HashMap::new();
-
-    // Walk first-parent commits on main; parse subjects for PR numbers.
-    // Format: <sha>\t<parent_count>\t<subject>
-    let out = Command::new("git")
-        .args([
-            "log",
-            "--first-parent",
-            "origin/main",
-            "--pretty=format:%H\t%P\t%s",
-        ])
-        .current_dir(root)
-        .output();
-    let stdout = match out {
-        Ok(o) if o.status.success() => o.stdout,
-        _ => return map,
-    };
-    let s = String::from_utf8_lossy(&stdout);
-
-    for line in s.lines() {
-        let mut parts = line.splitn(3, '\t');
-        let sha = match parts.next() {
-            Some(x) if !x.is_empty() => x,
-            _ => continue,
-        };
-        let parents = parts.next().unwrap_or("");
-        let subject = parts.next().unwrap_or("");
-        let pr_num = match extract_pr_number_from_subject(subject) {
-            Some(n) => n,
-            None => continue,
-        };
-
-        // Every first-parent commit IS attributed to its PR (squash merges
-        // leave only one commit per PR, so that single commit IS the file-
-        // add commit). Insert the first-parent commit itself.
-        map.insert(sha.to_string(), pr_num);
-
-        // For true-merge commits (≥2 parents), enumerate the side-branch:
-        // commits reachable from <sha>^2 but not <sha>^1.
-        let parent_list: Vec<&str> = parents.split_whitespace().collect();
-        if parent_list.len() >= 2 {
-            let arg = format!("{}^2", sha);
-            let exclude = format!("^{}^1", sha);
-            let out2 = Command::new("git")
-                .args(["rev-list", &arg, &exclude])
-                .current_dir(root)
-                .output();
-            if let Ok(o) = out2 {
-                if o.status.success() {
-                    for c in String::from_utf8_lossy(&o.stdout).lines() {
-                        let c = c.trim();
-                        if !c.is_empty() {
-                            map.entry(c.to_string()).or_insert(pr_num);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    map
-}
-
-/// Extract a PR number from a merge-commit / squash subject. Handles:
-///   * "Merge pull request #1234 from foo"
-///   * "feat(INFRA-2367): foo (#1234)"
-///   * "fix(...): bar (#1234)"
-///
-/// Returns None when no `#NNN` pattern is found.
-fn extract_pr_number_from_subject(subject: &str) -> Option<i64> {
-    // Prefer the trailing `(#NNN)` token (squash-merge default).
-    if let Some(start) = subject.rfind("(#") {
-        let tail = &subject[start + 2..];
-        if let Some(end) = tail.find(')') {
-            if let Ok(n) = tail[..end].parse::<i64>() {
-                return Some(n);
-            }
-        }
-    }
-    // Fall back to "Merge pull request #NNN".
-    if let Some(idx) = subject.find("pull request #") {
-        let tail = &subject[idx + "pull request #".len()..];
-        let mut end = 0;
-        for (i, c) in tail.char_indices() {
-            if c.is_ascii_digit() {
-                end = i + c.len_utf8();
-            } else {
-                break;
-            }
-        }
-        if end > 0 {
-            if let Ok(n) = tail[..end].parse::<i64>() {
-                return Some(n);
-            }
-        }
-    }
-    None
-}
-
-/// INFRA-2385: walk `git log --diff-filter=A` and return BOTH the adding
-/// commit SHA and timestamp for each path. The SHA is the load-bearing
-/// field for the merge-graph lookup (commit_to_pr map); the timestamp is
-/// retained for the bisect fallback.
-fn build_adding_commits_map_v2(root: &Path) -> HashMap<String, (String, i64)> {
-    let mut map: HashMap<String, (String, i64)> = HashMap::new();
     let out = match Command::new("git")
         .args([
             "log",
@@ -1149,7 +943,6 @@ fn build_adding_commits_map_v2(root: &Path) -> HashMap<String, (String, i64)> {
     };
     let s = String::from_utf8_lossy(&out);
 
-    let mut current_sha = String::new();
     let mut current_ts: i64 = 0;
     for line in s.lines() {
         let line = line.trim();
@@ -1158,33 +951,29 @@ fn build_adding_commits_map_v2(root: &Path) -> HashMap<String, (String, i64)> {
         }
         if let Some(rest) = line.strip_prefix("COMMIT:") {
             // COMMIT:<sha>:<unix_ts>
-            if let Some((sha, ts_str)) = rest.rsplit_once(':') {
+            if let Some((_sha, ts_str)) = rest.rsplit_once(':') {
                 if let Ok(ts) = ts_str.parse::<i64>() {
-                    current_sha = sha.to_string();
                     current_ts = ts;
                 }
             }
             continue;
         }
-        if current_ts == 0 || current_sha.is_empty() {
+        if current_ts == 0 {
             continue;
         }
         // Keep the EARLIEST adding commit per path.
-        let new_sha = current_sha.clone();
-        let new_ts = current_ts;
         map.entry(line.to_string())
-            .and_modify(|(sha, ts)| {
-                if new_ts < *ts {
-                    *sha = new_sha.clone();
-                    *ts = new_ts;
+            .and_modify(|first| {
+                if current_ts < *first {
+                    *first = current_ts;
                 }
             })
-            .or_insert((new_sha, new_ts));
+            .or_insert(current_ts);
     }
     map
 }
 
-/// INFRA-2384/INFRA-2385: recompute `activation_state` + `reference_count` +
+/// INFRA-2384: recompute `activation_state` + `reference_count` +
 /// `referenced_from` for every artifact_index row using PR provenance.
 ///
 /// Rules:
@@ -1193,16 +982,9 @@ fn build_adding_commits_map_v2(root: &Path) -> HashMap<String, (String, i64)> {
 ///   * If introducing_pr is set AND artifact has 0 inbound references → `orphan`
 ///   * If introducing_pr IS NULL (truly unfindable) → `unknown`
 ///
-/// INFRA-2385 BUG-3 fix: reference detection now also catches:
-///   * Rust `mod X;` / `pub mod X;` declarations naming the file stem in
-///     main.rs/lib.rs/mod.rs (Rust submodule wiring)
-///   * Rust `include_str!("path/to/file.sql")` literals and embedded
-///     `.sql` filename references
-///   * Shell `source <path>` / `./lib/<stem>.sh` / `bash <stem>.sh`
-///     invocations within sibling scripts
-///   * Docs grep (INFRA-2375): scans docs/**/*.md too, not just code
-///   * Plugin-glob aware (INFRA-2375): tolerates `scripts/<group>/*.sh`
-///     and `crates/*/src/<name>.rs` style references
+/// References are computed via `git grep -l -F` on the basename for files
+/// under `scripts/`, `src/`, `launchd/`, and `migrations/`. Bounded to
+/// substrate paths to avoid scanning vendored deps + node_modules.
 ///
 /// Returns the number of rows whose activation_state was updated.
 pub fn recompute_activation_with_provenance(conn: &Connection, root: &Path) -> Result<usize> {
@@ -1245,7 +1027,28 @@ pub fn recompute_activation_with_provenance(conn: &Connection, root: &Path) -> R
             continue;
         }
 
-        let referrers = collect_referrers_v2(root, path);
+        let basename = match Path::new(path).file_name() {
+            Some(b) => b.to_string_lossy().to_string(),
+            None => continue,
+        };
+
+        let exit = Command::new("git")
+            .args([
+                "grep", "-l", "-F", "--", &basename, "*.rs", "*.sh", "*.md", "*.yaml", "*.yml",
+                "*.plist", "*.toml",
+            ])
+            .current_dir(root)
+            .output();
+
+        let referrers: Vec<String> = match exit {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| !l.is_empty() && *l != path)
+                .map(|l| l.to_string())
+                .collect(),
+            _ => Vec::new(),
+        };
+
         let count = referrers.len();
         let activation = if count == 0 {
             "orphan"
@@ -1265,183 +1068,6 @@ pub fn recompute_activation_with_provenance(conn: &Connection, root: &Path) -> R
     }
     tx.commit()?;
     Ok(updated)
-}
-
-/// INFRA-2385 BUG-3 / INFRA-2375 / INFRA-2376: collect inbound referrers for
-/// an artifact, including:
-///   * basename grep (legacy) across .rs/.sh/.md/.yaml/.yml/.plist/.toml
-///   * docs/ markdown grep (INFRA-2375)
-///   * .claude/ agent docs grep (INFRA-2376)
-///   * Rust `mod X;` / `pub mod X;` declarations naming the file stem
-///   * SQL `include_str!("...")` literals matching artifact path
-///   * Shell `source <path>` / `./lib/<stem>` / `bash <stem>.sh` patterns
-///   * Plugin-glob: a referrer file containing `scripts/<group>/*.sh` or
-///     `crates/*/src/<name>.rs` patterns that match the artifact path
-///
-/// Self-references are excluded. Each path appears at most once in the
-/// returned vector.
-fn collect_referrers_v2(root: &Path, path: &str) -> Vec<String> {
-    use std::collections::HashSet;
-    let mut set: HashSet<String> = HashSet::new();
-
-    let basename = match Path::new(path).file_name() {
-        Some(b) => b.to_string_lossy().to_string(),
-        None => return Vec::new(),
-    };
-    let stem = Path::new(path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    // Pass 1: basename grep across code + docs + .claude (INFRA-2375/2376).
-    // Note: leaving `--` so `git grep` treats subsequent items as pathspecs.
-    let exit = Command::new("git")
-        .args([
-            "grep", "-l", "-F", "--", &basename, "*.rs", "*.sh", "*.md", "*.yaml", "*.yml",
-            "*.plist", "*.toml", "*.sql",
-        ])
-        .current_dir(root)
-        .output();
-    if let Ok(o) = exit {
-        if o.status.success() {
-            for r in String::from_utf8_lossy(&o.stdout).lines() {
-                if !r.is_empty() && r != path {
-                    set.insert(r.to_string());
-                }
-            }
-        }
-    }
-
-    // Pass 2: Rust `mod X;` / `pub mod X;` declarations for Rust artifacts.
-    if path.ends_with(".rs") && !stem.is_empty() && stem != "mod" && stem != "lib" && stem != "main"
-    {
-        let pat = format!("mod {};", stem);
-        let exit = Command::new("git")
-            .args(["grep", "-l", "-F", "--", &pat, "*.rs"])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = exit {
-            if o.status.success() {
-                for r in String::from_utf8_lossy(&o.stdout).lines() {
-                    if !r.is_empty() && r != path {
-                        set.insert(r.to_string());
-                    }
-                }
-            }
-        }
-        let pat_pub = format!("pub mod {};", stem);
-        let exit2 = Command::new("git")
-            .args(["grep", "-l", "-F", "--", &pat_pub, "*.rs"])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = exit2 {
-            if o.status.success() {
-                for r in String::from_utf8_lossy(&o.stdout).lines() {
-                    if !r.is_empty() && r != path {
-                        set.insert(r.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // Pass 3: Rust `include_str!("<path>")` literals for any artifact.
-    let inc_pat = format!("include_str!(\"{}\"", path);
-    let exit3 = Command::new("git")
-        .args(["grep", "-l", "-F", "--", &inc_pat, "*.rs"])
-        .current_dir(root)
-        .output();
-    if let Ok(o) = exit3 {
-        if o.status.success() {
-            for r in String::from_utf8_lossy(&o.stdout).lines() {
-                if !r.is_empty() && r != path {
-                    set.insert(r.to_string());
-                }
-            }
-        }
-    }
-    // Also: include_str!("relative/path") — match by basename token in any .rs.
-    if path.ends_with(".sql") || path.ends_with(".yaml") || path.ends_with(".md") {
-        let inc_basename = format!("include_str!(\"{}", basename);
-        let exit4 = Command::new("git")
-            .args(["grep", "-l", "-F", "--", &inc_basename, "*.rs"])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = exit4 {
-            if o.status.success() {
-                for r in String::from_utf8_lossy(&o.stdout).lines() {
-                    if !r.is_empty() && r != path {
-                        set.insert(r.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // Pass 4: sibling shell `source <path>` / `./<basename>` / `bash <basename>`.
-    if path.ends_with(".sh") || path.ends_with(".bash") {
-        for pat in &[
-            format!("source {}", path),
-            format!("./{}", path),
-            format!("bash {}", path),
-        ] {
-            let exit = Command::new("git")
-                .args(["grep", "-l", "-F", "--", pat, "*.sh", "*.bash"])
-                .current_dir(root)
-                .output();
-            if let Ok(o) = exit {
-                if o.status.success() {
-                    for r in String::from_utf8_lossy(&o.stdout).lines() {
-                        if !r.is_empty() && r != path {
-                            set.insert(r.to_string());
-                        }
-                    }
-                }
-            }
-        }
-        // Also catch `lib/<basename>` style for shared helpers.
-        let lib_pat = format!("lib/{}", basename);
-        let exit_lib = Command::new("git")
-            .args(["grep", "-l", "-F", "--", &lib_pat, "*.sh", "*.bash"])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = exit_lib {
-            if o.status.success() {
-                for r in String::from_utf8_lossy(&o.stdout).lines() {
-                    if !r.is_empty() && r != path {
-                        set.insert(r.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // Pass 5: plugin-glob references (INFRA-2375). A file containing
-    // `scripts/<group>/*.sh` is considered a referrer for every script
-    // under that group.
-    let parent = Path::new(path).parent().and_then(|p| p.to_str());
-    if let Some(parent_dir) = parent {
-        let glob_pat = format!("{}/*", parent_dir);
-        let exit = Command::new("git")
-            .args([
-                "grep", "-l", "-F", "--", &glob_pat, "*.rs", "*.sh", "*.md", "*.yaml", "*.yml",
-            ])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = exit {
-            if o.status.success() {
-                for r in String::from_utf8_lossy(&o.stdout).lines() {
-                    if !r.is_empty() && r != path {
-                        set.insert(r.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    let mut out: Vec<String> = set.into_iter().collect();
-    out.sort();
-    out
 }
 
 /// Best-effort: one `git log --name-only --format=%at` pass over HEAD's
@@ -1542,9 +1168,6 @@ pub fn run_detectors_v2(conn: &Connection, root: &Path, prs_available: bool) -> 
     }
     total += detect_shadow_duplicates(conn, root)?;
     total += detect_event_kind_zero_emits(conn, root)?;
-    // INFRA-2382: ghost-gap-reference. Reads pr_index (not gh-auth-gated)
-    // and the docs/gaps/ slice of artifact_index.
-    total += detect_ghost_gap_references(conn, root)?;
     Ok(total)
 }
 
@@ -1602,10 +1225,9 @@ fn emit_detector_disabled_event(finding_class: &str, reason: &str) {
 }
 
 /// Detector 1: orphan-artifact — artifact has zero inbound references.
-///
-/// INFRA-2375 calibration: reference detection now widens the grep to docs/
-/// markdown, .claude/ agent docs, Rust mod declarations, SQL include_str
-/// literals, plugin-glob patterns. RP target: ≥30% (was 0% across 20 samples).
+/// Approximate: pick scripts/* and src/* artifacts not in the executable
+/// closure (not main.rs, not in Cargo.toml [[bin]] paths, no other
+/// file grep-references the file's basename without extension).
 fn detect_orphan_artifacts(conn: &Connection, root: &Path) -> Result<usize> {
     // Heuristic: a script under scripts/ that is NEVER referenced from any
     // other tracked file is an orphan candidate.
@@ -1624,7 +1246,28 @@ fn detect_orphan_artifacts(conn: &Connection, root: &Path) -> Result<usize> {
 
     let mut n = 0usize;
     for (path, _class) in rows {
-        let referrers = collect_referrers_v2(root, &path);
+        let basename = match Path::new(&path).file_name() {
+            Some(b) => b.to_string_lossy().to_string(),
+            None => continue,
+        };
+        // grep -rl "<basename>" -- exclude self.
+        // To bound cost, restrict to .rs/.sh/.md/.yaml/.plist files.
+        let exit = Command::new("git")
+            .args([
+                "grep", "-l", "-F", "--", &basename, "*.rs", "*.sh", "*.md", "*.yaml", "*.yml",
+                "*.plist", "*.toml",
+            ])
+            .current_dir(root)
+            .output();
+
+        let referrers = match exit {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| !l.is_empty() && *l != path)
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
 
         // Update activation_state on the artifact row.
         let activation = if referrers.is_empty() {
@@ -1659,16 +1302,8 @@ fn detect_orphan_artifacts(conn: &Connection, root: &Path) -> Result<usize> {
     Ok(n)
 }
 
-/// Detector 2: dormant-script — shell script with ≤1 inbound reference
-/// after widening the grep set to docs/ + .claude/ + Rust mod / SQL include /
-/// sibling shell patterns (INFRA-2376). Limited to scripts/coord/ and
-/// scripts/dispatch/.
-///
-/// The `activation_state` filter uses the value populated by
-/// `recompute_activation_with_provenance` which now invokes the v2
-/// reference collector (`collect_referrers_v2`) — so artifacts referenced
-/// only from a .claude/agents/*.md are correctly classified as `dormant`
-/// or `referenced` and not flagged here.
+/// Detector 2: dormant-script — shell script invoked from no script/plist/Rust/doc.
+/// Strictly: a subset of orphan-artifact but limited to scripts/coord/, scripts/dispatch/.
 fn detect_dormant_scripts(conn: &Connection, root: &Path) -> Result<usize> {
     let mut rows: Vec<String> = Vec::new();
     {
@@ -1760,12 +1395,6 @@ fn detect_dead_rust_mods(conn: &Connection, root: &Path) -> Result<usize> {
 
 /// Detector 4: stale-plist — launchd plist whose ProgramArguments[0] path
 /// doesn't exist on disk.
-///
-/// INFRA-2378 calibration: skip plists that sit in known template/source
-/// directories AND have a sibling installer script — those are intentional
-/// templates, not stale-installed daemons. Runtime plists under
-/// `~/Library/LaunchAgents/` (which we wouldn't normally have indexed) are
-/// still flagged via direct path check.
 fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
     let mut plists: Vec<String> = Vec::new();
     {
@@ -1777,11 +1406,6 @@ fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
     }
     let mut n = 0usize;
     for path in plists {
-        // INFRA-2378: skip template-source plists with a sibling installer.
-        if is_template_plist_with_installer(root, &path) {
-            continue;
-        }
-
         let full = root.join(&path);
         let content = match fs::read_to_string(&full) {
             Ok(c) => c,
@@ -1819,38 +1443,6 @@ fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
         }
     }
     Ok(n)
-}
-
-/// INFRA-2378: returns true when a plist lives in a known template/source
-/// directory AND has a sibling installer script named `install-<stem>.sh`
-/// (or `<stem>-install.sh`) somewhere under scripts/setup/ or scripts/coord/.
-fn is_template_plist_with_installer(root: &Path, plist_path: &str) -> bool {
-    let is_template_dir = plist_path.starts_with("launchd/")
-        || plist_path.starts_with("scripts/setup/launchd-templates/")
-        || plist_path.contains("/launchd-fixtures/");
-    if !is_template_dir {
-        return false;
-    }
-    let stem = Path::new(plist_path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-    if stem.is_empty() {
-        return false;
-    }
-    // Check for sibling installer candidates.
-    let candidates = [
-        format!("scripts/setup/install-{}.sh", stem),
-        format!("scripts/coord/{}-install.sh", stem),
-        format!("scripts/setup/{}-install.sh", stem),
-        format!("scripts/coord/install-{}.sh", stem),
-    ];
-    for c in &candidates {
-        if root.join(c).exists() {
-            return true;
-        }
-    }
-    false
 }
 
 /// Detector 5: doc-only-feature — gap shipped with a `feat:` title but no
@@ -2062,17 +1654,18 @@ fn detect_unreferenced_gaps(conn: &Connection, root: &Path) -> Result<usize> {
 }
 
 /// Detector 7: long-undormant-substrate — artifact whose
-/// `last_modified_at` is > N days ago AND not already classified as
+/// `last_modified_at` is > 90d ago AND not already classified as
 /// removed/superseded in `tech_debt_findings`.
 ///
-/// INFRA-2383 calibration: threshold defaults to 30d (was 90d — which
-/// caught 0 artifacts in an active repo). Env-tunable via
-/// `CHUMP_INVENTORY_DORMANT_DAYS` for cadence variants. Bounded to
-/// substrate paths (src/, scripts/coord/, scripts/dispatch/) to avoid
-/// flooding on docs/yaml drift.
+/// Per INFRA-2368 spec: "artifacts whose `last_pr_touched` is > 90 days
+/// ago AND not in `tech_debt_findings` as removed/superseded". We use
+/// `last_modified_at` from artifact_index (populated by git-log walk in
+/// `collect_artifacts`) as the "last PR touched" proxy.
+///
+/// Bounded to substrate paths (src/, scripts/coord/, scripts/dispatch/)
+/// to avoid flooding on docs/yaml drift.
 fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<usize> {
-    let days = dormant_days_threshold();
-    let cutoff = now_secs() - days * 86400;
+    let cutoff = now_secs() - 90 * 86400;
 
     let mut rows: Vec<(String, String, i64)> = Vec::new();
     {
@@ -2126,8 +1719,9 @@ fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<us
         n += 1;
     }
 
-    // Legacy signal: merged PRs older than the same cutoff with substrate
-    // or infra titles (kept for the existing CLI surfacing pattern).
+    // Legacy signal: merged PRs >90d with substrate/infra titles (kept
+    // for the existing CLI surfacing pattern; cheaper than the artifact
+    // scan when pr_index is heavily populated).
     let mut pr_rows: Vec<(i64, String, String)> = Vec::new();
     {
         let mut stmt = conn.prepare(
@@ -2156,7 +1750,7 @@ fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<us
             pr_number: Some(pr_number),
             gap_id: if gap_id.is_empty() { None } else { Some(gap_id) },
             detail: format!(
-                "Substrate PR #{pr_number} merged >{days}d ago — review whether it accreted any users: {title}"
+                "Substrate PR #{pr_number} merged >90d ago — review whether it accreted any users: {title}"
             ),
             evidence_json: None,
         };
@@ -2167,18 +1761,9 @@ fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<us
     Ok(n)
 }
 
-/// Detector 8: shadow-duplicate — pairs of artifacts that share a basename
-/// prefix AND have ≥70% line-set Jaccard similarity.
-///
-/// INFRA-2377 calibration: prior bucket-by-8-char-prefix surfaced 1205
-/// findings with 0% RP across 20 samples because legitimate sibling
-/// families (worker.sh/worker-haiku.sh, pr-rescue-v1.sh/pr-rescue-v2.sh)
-/// hit the same bucket. The new detector:
-///   1. Buckets by 8-char basename prefix (cheap funnel)
-///   2. Skips pairs matching `SHADOW_DUPLICATE_SIBLING_PATTERNS` allowlist
-///   3. Computes line-set Jaccard for surviving pairs; flags only ≥0.70
-///   4. Names both artifacts explicitly so the operator can compare quickly
-fn detect_shadow_duplicates(conn: &Connection, root: &Path) -> Result<usize> {
+/// Detector 8: shadow-duplicate — two artifacts with near-identical first
+/// 40 bytes of basename (heuristic for "is-this-a-duplicate-of-existing").
+fn detect_shadow_duplicates(conn: &Connection, _root: &Path) -> Result<usize> {
     let mut paths: Vec<(String, String)> = Vec::new();
     {
         let mut stmt = conn.prepare(
@@ -2206,87 +1791,32 @@ fn detect_shadow_duplicates(conn: &Connection, root: &Path) -> Result<usize> {
     }
 
     let mut n = 0usize;
-    for (_key, group) in buckets {
+    for (key, group) in buckets {
         if group.len() < 2 {
             continue;
         }
-        // Compute content fingerprints once per file in this bucket.
-        let mut fps: Vec<(String, std::collections::HashSet<String>)> = Vec::new();
-        for p in &group {
-            let full = root.join(p);
-            let lines = match fs::read_to_string(&full) {
-                Ok(s) => s
-                    .lines()
-                    .map(|l| l.trim().to_string())
-                    .filter(|l| !l.is_empty() && !l.starts_with('#'))
-                    .collect::<std::collections::HashSet<String>>(),
-                Err(_) => std::collections::HashSet::new(),
-            };
-            fps.push((p.clone(), lines));
-        }
-        // Evaluate every unordered pair.
-        for i in 0..fps.len() {
-            for j in (i + 1)..fps.len() {
-                let (p1, ls1) = &fps[i];
-                let (p2, ls2) = &fps[j];
-                // INFRA-2377 allowlist: skip sibling patterns.
-                if is_sibling_pair(p1, p2) {
-                    continue;
-                }
-                let inter: usize = ls1.intersection(ls2).count();
-                let uni: usize = ls1.union(ls2).count();
-                if uni == 0 {
-                    continue;
-                }
-                let jaccard = inter as f64 / uni as f64;
-                if jaccard < 0.70 {
-                    continue;
-                }
-                let pair = vec![p1.clone(), p2.clone()];
-                let f = Finding {
-                    finding_class: "shadow-duplicate".to_string(),
-                    severity: "med".to_string(),
-                    artifact_path: Some(p1.clone()),
-                    pr_number: None,
-                    gap_id: None,
-                    detail: format!(
-                        "shadow-duplicate pair (jaccard={:.2}): {} <-> {}",
-                        jaccard, p1, p2
-                    ),
-                    evidence_json: Some(serde_json::to_string(&pair).unwrap_or_default()),
-                };
-                insert_finding(conn, &f)?;
-                n += 1;
-            }
-        }
+        let f = Finding {
+            finding_class: "shadow-duplicate".to_string(),
+            severity: "med".to_string(),
+            artifact_path: Some(group[0].clone()),
+            pr_number: None,
+            gap_id: None,
+            detail: format!(
+                "{} artifacts share basename prefix '{}' — possible shadow duplicates: {}",
+                group.len(),
+                key,
+                group.join(", ")
+            ),
+            evidence_json: Some(serde_json::to_string(&group).unwrap_or_default()),
+        };
+        insert_finding(conn, &f)?;
+        n += 1;
     }
     Ok(n)
 }
 
-/// INFRA-2377: returns true if (p1, p2) matches a known intentional sibling
-/// pattern that should NOT be flagged as shadow-duplicate.
-fn is_sibling_pair(p1: &str, p2: &str) -> bool {
-    for pat in SHADOW_DUPLICATE_SIBLING_PATTERNS {
-        if (p1.contains(pat) && !p2.contains(pat)) || (p2.contains(pat) && !p1.contains(pat)) {
-            return true;
-        }
-    }
-    false
-}
-
 /// Detector 9: event-kind-zero-emit — EVENT_REGISTRY kind has zero
 /// occurrences in ambient.jsonl in the last 30d.
-///
-/// INFRA-2379 calibration: pre-check source has zero emit-sites BEFORE
-/// flagging. The prior detector surfaced lots of "kind X is in registry
-/// but not in ambient" findings even when source code does emit them — the
-/// ambient log just happened to be a fresh window. The new flow:
-///   1. For each registry kind, scan source for `"kind":"X"` literals.
-///   2. If ≥1 source emit-site exists AND ambient shows zero events,
-///      downgrade severity to `info` with `observability_silent` reason
-///      (the registry is fine; the log window is empty).
-///   3. If zero source emit-sites AND zero ambient events, surface at
-///      `low` severity — that's the calibration target (genuine orphan kind).
 fn detect_event_kind_zero_emits(conn: &Connection, root: &Path) -> Result<usize> {
     let registry_path = root.join("docs/observability/EVENT_REGISTRY.yaml");
     let content = match fs::read_to_string(&registry_path) {
@@ -2309,136 +1839,25 @@ fn detect_event_kind_zero_emits(conn: &Connection, root: &Path) -> Result<usize>
 
     let ambient = ambient_log_path();
     let ambient_content = fs::read_to_string(&ambient).unwrap_or_default();
+    // Cheap: substring scan. Don't need to be exact — surface candidates.
     let mut n = 0usize;
     for kind in kinds {
         let needle = format!("\"kind\":\"{}\"", kind);
-        if ambient_content.contains(&needle) {
-            continue;
-        }
-        // INFRA-2379: pre-check source for emit-sites BEFORE flagging.
-        let source_has_emit = source_emit_site_exists(root, &kind);
-        let (severity, detail) = if source_has_emit {
-            (
-                "info".to_string(),
-                format!(
-                    "observability_silent: kind={kind} has source emit-sites but ambient.jsonl shows zero occurrences (log window may be empty)"
+        if !ambient_content.contains(&needle) {
+            let f = Finding {
+                finding_class: "event-kind-zero-emit".to_string(),
+                severity: "info".to_string(),
+                artifact_path: Some("docs/observability/EVENT_REGISTRY.yaml".to_string()),
+                pr_number: None,
+                gap_id: None,
+                detail: format!(
+                    "EVENT_REGISTRY declares kind={kind} but ambient.jsonl shows zero occurrences"
                 ),
-            )
-        } else {
-            (
-                "low".to_string(),
-                format!(
-                    "EVENT_REGISTRY declares kind={kind} but neither source nor ambient.jsonl show any emit"
-                ),
-            )
-        };
-        let f = Finding {
-            finding_class: "event-kind-zero-emit".to_string(),
-            severity,
-            artifact_path: Some("docs/observability/EVENT_REGISTRY.yaml".to_string()),
-            pr_number: None,
-            gap_id: None,
-            detail,
-            evidence_json: None,
-        };
-        insert_finding(conn, &f)?;
-        n += 1;
-    }
-    Ok(n)
-}
-
-/// INFRA-2379: scan src/, scripts/, crates/ for at least one literal
-/// `"kind":"<kind>"` emit-site. Returns true if found, false otherwise.
-///
-/// Robust to missing pathspec dirs (fixture repos may not have all three) —
-/// queries each existing dir independently and ORs the results.
-fn source_emit_site_exists(root: &Path, kind: &str) -> bool {
-    let needle = format!("\"kind\":\"{}\"", kind);
-    for dir in &["src/", "scripts/", "crates/"] {
-        if !root.join(dir).exists() {
-            continue;
+                evidence_json: None,
+            };
+            insert_finding(conn, &f)?;
+            n += 1;
         }
-        let out = Command::new("git")
-            .args(["grep", "-l", "-F", "--", &needle, dir])
-            .current_dir(root)
-            .output();
-        if let Ok(o) = out {
-            if o.status.success() && !o.stdout.is_empty() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Detector 10 (INFRA-2382): ghost-gap-reference — PR title references a
-/// gap_id but no docs/gaps/<X>.yaml exists in the repo.
-///
-/// Surfaces the ~541 cases where a PR shipped a now-deleted gap; the gap
-/// registry may have been pruned but the PR's link is dangling. The
-/// operator can either resurrect the YAML (if the gap was valid) or
-/// confirm the PR's commit message can stand alone.
-///
-/// Bounded to 500 findings per run to avoid flooding the table on a
-/// freshly-pruned registry.
-fn detect_ghost_gap_references(conn: &Connection, _root: &Path) -> Result<usize> {
-    // Query: gap_ids referenced by ≥1 PR title but missing from artifact_index
-    // as a docs/gaps/<X>.yaml row.
-    let mut rows: Vec<(String, i64, Option<String>)> = Vec::new();
-    {
-        // SUBSTR is 1-indexed in SQLite. 'docs/gaps/' is 10 chars, so the
-        // gap_id begins at position 11. REPLACE then strips '.yaml'.
-        let mut stmt = conn.prepare(
-            "SELECT gap_id, COUNT(*) AS pr_count,
-                    (SELECT GROUP_CONCAT(pr_number) FROM pr_index p2
-                     WHERE p2.gap_id = p1.gap_id) AS pr_numbers
-             FROM pr_index p1
-             WHERE gap_id IS NOT NULL
-               AND gap_id NOT IN (
-                   SELECT REPLACE(SUBSTR(path, 11), '.yaml', '')
-                   FROM artifact_index
-                   WHERE path LIKE 'docs/gaps/%.yaml'
-               )
-             GROUP BY gap_id
-             ORDER BY pr_count DESC
-             LIMIT 500",
-        )?;
-        let mapped = stmt.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, i64>(1)?,
-                r.get::<_, Option<String>>(2)?,
-            ))
-        })?;
-        for r in mapped {
-            rows.push(r?);
-        }
-    }
-    let mut n = 0usize;
-    for (gap_id, pr_count, pr_numbers) in rows {
-        // evidence_json holds a JSON array of pr_number ints.
-        let pr_list: Vec<i64> = pr_numbers
-            .as_deref()
-            .map(|s| {
-                s.split(',')
-                    .filter_map(|x| x.trim().parse::<i64>().ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let evidence = serde_json::to_string(&pr_list).unwrap_or_else(|_| "[]".to_string());
-        let f = Finding {
-            finding_class: "ghost-gap-reference".to_string(),
-            severity: "med".to_string(),
-            artifact_path: None,
-            pr_number: pr_list.first().copied(),
-            gap_id: Some(gap_id.clone()),
-            detail: format!(
-                "gap_id {gap_id} appears in {pr_count} PR title(s) but no docs/gaps/{gap_id}.yaml exists on disk"
-            ),
-            evidence_json: Some(evidence),
-        };
-        insert_finding(conn, &f)?;
-        n += 1;
     }
     Ok(n)
 }
@@ -2996,158 +2415,5 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
-    }
-
-    /// INFRA-2385: PR-number extraction must handle both squash-merge
-    /// (`(#NNN)` token) and merge-commit (`Merge pull request #NNN`) shapes.
-    #[test]
-    #[serial]
-    fn extract_pr_number_from_subject_handles_both_shapes() {
-        assert_eq!(
-            extract_pr_number_from_subject("feat(INFRA-2367): foo (#1234)"),
-            Some(1234)
-        );
-        assert_eq!(
-            extract_pr_number_from_subject("Merge pull request #5678 from foo/bar"),
-            Some(5678)
-        );
-        // Prefers trailing token when both are present.
-        assert_eq!(
-            extract_pr_number_from_subject("Merge pull request #1 from foo (#99)"),
-            Some(99)
-        );
-        assert_eq!(extract_pr_number_from_subject("plain commit no pr"), None);
-    }
-
-    /// INFRA-2377: sibling-pair detection must skip well-known intentional
-    /// sibling families that share prefixes by design.
-    #[test]
-    #[serial]
-    fn shadow_duplicate_sibling_pair_skipped() {
-        // Versioned variants.
-        assert!(is_sibling_pair(
-            "scripts/coord/pr-rescue-v1.sh",
-            "scripts/coord/pr-rescue-v2.sh"
-        ));
-        // Role-stamped variants.
-        assert!(is_sibling_pair(
-            "scripts/dispatch/worker.sh",
-            "scripts/dispatch/worker-haiku.sh"
-        ));
-        // Install/uninstall pair.
-        assert!(is_sibling_pair(
-            "scripts/setup/install-fleet.sh",
-            "scripts/setup/uninstall-fleet.sh"
-        ));
-        // True duplicates (no sibling-marker on either side) → NOT siblings.
-        assert!(!is_sibling_pair(
-            "scripts/coord/foo-loop.sh",
-            "scripts/coord/foo-loop-copy.sh"
-        ));
-    }
-
-    /// INFRA-2383: env-var override for dormant cutoff.
-    #[test]
-    #[serial]
-    fn dormant_days_threshold_reads_env_var() {
-        std::env::set_var("CHUMP_INVENTORY_DORMANT_DAYS", "60");
-        assert_eq!(dormant_days_threshold(), 60);
-        std::env::set_var("CHUMP_INVENTORY_DORMANT_DAYS", "0");
-        // Zero or invalid falls back to default 30.
-        assert_eq!(dormant_days_threshold(), 30);
-        std::env::remove_var("CHUMP_INVENTORY_DORMANT_DAYS");
-        assert_eq!(dormant_days_threshold(), 30);
-    }
-
-    /// INFRA-2382: ghost-gap-reference must surface PRs whose gap_id has
-    /// no docs/gaps/<X>.yaml row in artifact_index.
-    #[test]
-    #[serial]
-    fn ghost_gap_reference_detector_surfaces_missing_yaml() {
-        let (_tmp, conn) = setup_test_db();
-        // Seed pr_index with 2 PRs referencing INFRA-9999 (no YAML).
-        conn.execute(
-            "INSERT INTO pr_index (pr_number, title, state, created_at, gap_id, last_synced_at)
-             VALUES (1001, 'feat(INFRA-9999): ghost', 'MERGED', 0, 'INFRA-9999', 0)",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO pr_index (pr_number, title, state, created_at, gap_id, last_synced_at)
-             VALUES (1002, 'feat(INFRA-9999): ghost again', 'MERGED', 0, 'INFRA-9999', 0)",
-            [],
-        )
-        .unwrap();
-        // Seed an unrelated PR with gap_id whose YAML DOES exist.
-        conn.execute(
-            "INSERT INTO pr_index (pr_number, title, state, created_at, gap_id, last_synced_at)
-             VALUES (1003, 'feat(INFRA-1000): real', 'MERGED', 0, 'INFRA-1000', 0)",
-            [],
-        )
-        .unwrap();
-        // Insert the matching artifact row for INFRA-1000 (real gap on disk).
-        conn.execute(
-            "INSERT INTO artifact_index (path, class, size_bytes, first_seen_at,
-                                          last_modified_at, activation_state, last_synced_at)
-             VALUES ('docs/gaps/INFRA-1000.yaml', 'yaml', 0, 0, 0, 'referenced', 0)",
-            [],
-        )
-        .unwrap();
-
-        let n = detect_ghost_gap_references(&conn, &PathBuf::from(".")).unwrap();
-        assert_eq!(n, 1, "exactly 1 ghost-gap finding (INFRA-9999)");
-        let row: (String, i64) = conn
-            .query_row(
-                "SELECT gap_id, pr_number FROM tech_debt_findings
-                 WHERE finding_class='ghost-gap-reference'",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(row.0, "INFRA-9999");
-        // pr_number is the first in the comma-joined list (ordered by SQL).
-        assert!(row.1 == 1001 || row.1 == 1002);
-    }
-
-    /// INFRA-2382: ghost-gap-reference must skip PRs whose gap_id has a
-    /// matching docs/gaps/<X>.yaml row in artifact_index.
-    #[test]
-    #[serial]
-    fn ghost_gap_reference_detector_skips_resolved_gaps() {
-        let (_tmp, conn) = setup_test_db();
-        conn.execute(
-            "INSERT INTO pr_index (pr_number, title, state, created_at, gap_id, last_synced_at)
-             VALUES (1, 'feat(INFRA-1): ok', 'MERGED', 0, 'INFRA-1', 0)",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO artifact_index (path, class, size_bytes, first_seen_at,
-                                          last_modified_at, activation_state, last_synced_at)
-             VALUES ('docs/gaps/INFRA-1.yaml', 'yaml', 0, 0, 0, 'referenced', 0)",
-            [],
-        )
-        .unwrap();
-        let n = detect_ghost_gap_references(&conn, &PathBuf::from(".")).unwrap();
-        assert_eq!(n, 0);
-    }
-
-    /// Migration must seed the 10th detector class for ghost-gap-reference.
-    #[test]
-    #[serial]
-    fn migration_seeds_ten_detector_classes() {
-        let (_tmp, conn) = setup_test_db();
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM finding_class_tiers", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(count, 10);
-        let exists: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM finding_class_tiers WHERE finding_class='ghost-gap-reference'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(exists, 1);
     }
 }

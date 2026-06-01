@@ -106,8 +106,7 @@ CREATE TABLE IF NOT EXISTS finding_class_tiers (
     real_positive_count INTEGER NOT NULL DEFAULT 0
 );
 
--- Seed the 10 detector classes at tier=0 (review-only). INFRA-2382 added
--- ghost-gap-reference (PR title references a now-deleted docs/gaps/ YAML).
+-- Seed the 9 detector classes at tier=0 (review-only).
 INSERT OR IGNORE INTO finding_class_tiers (finding_class, current_tier) VALUES
     ('orphan-artifact',            0),  -- artifact has zero inbound references in the repo
     ('dormant-script',             0),  -- shell script not invoked from any other script/plist/Rust/docs
@@ -115,10 +114,9 @@ INSERT OR IGNORE INTO finding_class_tiers (finding_class, current_tier) VALUES
     ('stale-plist',                0),  -- launchd plist whose target binary does not exist
     ('doc-only-feature',           0),  -- gap shipped a doc but no code change touched the named subsystem
     ('unreferenced-gap',           0),  -- gap shipped >30d ago but artifacts it produced are orphans
-    ('long-undormant-substrate',   0),  -- substrate PR merged >CHUMP_INVENTORY_DORMANT_DAYS (default 30) but no inbound reference growth
+    ('long-undormant-substrate',   0),  -- substrate PR merged >90d but no inbound reference growth
     ('shadow-duplicate',           0),  -- two artifacts implement near-identical shell of a primitive (META-063 sibling)
-    ('event-kind-zero-emit',       0),  -- EVENT_REGISTRY kind has zero ambient occurrences in 30d
-    ('ghost-gap-reference',        0);  -- PR title references gap_id but docs/gaps/<X>.yaml is missing (INFRA-2382)
+    ('event-kind-zero-emit',       0);  -- EVENT_REGISTRY kind has zero ambient occurrences in 30d
 
 -- ─── inventory_meta ──────────────────────────────────────────────────────────
 -- Single-row table tracking the last rebuild + schema version.
