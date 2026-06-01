@@ -6533,3 +6533,82 @@ events:
     fields_required: [ts, kind, closed_gaps_count]
     expected_volume: "very low; one per recovery"
     status: stable
+
+  - kind: fix_trunk_priority_signal
+    effect_metric: trunk_recovered_within_60min
+    emitter: scripts/dispatch/fix-trunk-dispatcher.sh (INFRA-2341)
+    # scanner-anchor: "kind":"fix_trunk_priority_signal"
+    trigger: >
+      Emitted by the fix-trunk-dispatcher (default mode=signal) after it
+      atomically claims a fix-trunk gap during trunk_red. Replaces the
+      legacy `claude -p` headless dispatch path (INFRA-2340 era) with a
+      SessionStart-hook signal that the operator's running Claude Code IDE
+      picks up via inbox-check-urgent.sh — respecting Max subscription
+      billing instead of forcing console.anthropic.com API balance. The
+      dispatcher also writes a paired CRIT entry to .chump-locks/URGENT-INBOX.jsonl
+      with kind=fix_trunk_priority_signal so the next PostToolUse / SessionStart
+      hook surfaces a "FIX-TRUNK PRIORITY SIGNAL" system-reminder banner.
+    consumers: [inbox-check-urgent, pwa-trunk-banner, ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, priority, worktree, filing_session, dispatch_mode]
+    expected_volume: "very low; only when trunk RED past 5min AND mode=signal"
+    status: stable
+
+  - kind: fix_trunk_session_acknowledged
+    effect_metric: trunk_recovered_within_60min
+    emitter: scripts/coord/inbox-check-urgent.sh (INFRA-2341)
+    # scanner-anchor: "kind":"fix_trunk_session_acknowledged"
+    trigger: >
+      Emitted by inbox-check-urgent.sh when it surfaces a
+      fix_trunk_priority_signal entry to the running IDE session for the
+      first time (cursor advance is the "this has been delivered" boundary).
+      One event per distinct gap_id surfaced in that tick — closes the
+      handshake loop with fix_trunk_priority_signal so the 60-min
+      operator-recall watchdog (sentinel) knows the signal was delivered,
+      not silently dead-lettered.
+    consumers: [ops-audit, fleet-brief, trunk-sentinel-daemon]
+    fields_required: [ts, kind, gap_id, priority, worktree]
+    expected_volume: "very low; mirrors fix_trunk_priority_signal volume"
+    status: stable
+
+  - kind: fix_trunk_dispatched
+    effect_metric: trunk_recovered_within_60min
+    emitter: scripts/dispatch/fix-trunk-dispatcher.sh (INFRA-2324, INFRA-2341)
+    # scanner-anchor: "kind":"fix_trunk_dispatched"
+    trigger: >
+      Emitted by the fix-trunk-dispatcher when it claims a fix-trunk gap
+      AND spawns a headless `claude -p` sub-agent against the legacy
+      subprocess path (CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess, opt-in
+      post-INFRA-2341). This event remains for users who explicitly want
+      ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN headless billing without
+      an interactive IDE session open.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, model, pid, worktree, dispatch_mode]
+    expected_volume: "very low; only when trunk RED AND mode=subprocess (opt-in)"
+    status: stable
+
+  - kind: fix_trunk_no_candidate
+    effect_metric: self
+    emitter: scripts/dispatch/fix-trunk-dispatcher.sh (INFRA-2324)
+    # scanner-anchor: "kind":"fix_trunk_no_candidate"
+    trigger: >
+      Emitted when trunk is RED (within the lookback window) but the gap
+      registry contains no open gap matching the configured skill tag
+      (default fix_trunk). Signal to file a remediation gap or audit the
+      sentinel's gap-filing path.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, lookback_minutes, skill_tag]
+    expected_volume: "very low; only on misconfigured fleets"
+    status: stable
+
+  - kind: fix_trunk_skipped
+    effect_metric: self
+    emitter: scripts/dispatch/fix-trunk-dispatcher.sh (INFRA-2324)
+    # scanner-anchor: "kind":"fix_trunk_skipped"
+    trigger: >
+      Emitted when a prior dispatch (signal or subprocess) is still
+      reflected in the dispatcher lockfile and the PID is alive — the
+      parallelism cap of 1 holds for the current trunk-red incident.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, reason, prior_pid, prior_gap_id]
+    expected_volume: "low; one per skipped tick while incident is open"
+    status: stable
