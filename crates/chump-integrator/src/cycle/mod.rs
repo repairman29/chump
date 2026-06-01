@@ -30,6 +30,11 @@ pub struct GapCandidate {
     pub branch: String,
     /// Original author (for Co-Authored-By trailer).
     pub author: Option<String>,
+    /// Comma-separated tags from gap notes (e.g. "do-not-batch,external_repo:acme/foo").
+    /// Mirrors `WorkBoardEntry.tags`; consumed by daemon safety rails such as
+    /// `has_do_not_batch_label`.
+    #[serde(default)]
+    pub tags: String,
 }
 
 impl GapCandidate {

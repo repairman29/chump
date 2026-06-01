@@ -121,6 +121,7 @@ pub fn select_candidates(
             estimated_loc: loc,
             branch: entry.branch,
             author: entry.author,
+            tags: entry.tags,
         });
     }
 
@@ -302,6 +303,16 @@ mod tests {
         let board = MockBoard(vec![]);
         let result = select_candidates(&board, 10, 10_000);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_tags_propagate_into_gap_candidate() {
+        // Regression: tags string on WorkBoardEntry must reach the resulting
+        // GapCandidate so daemon safety rails (has_do_not_batch_label) can read it.
+        let board = MockBoard(vec![entry("INFRA-001", "P1", 100, 100, "do-not-batch,foo")]);
+        let result = select_candidates(&board, 10, 10_000);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].tags, "do-not-batch,foo");
     }
 
     #[test]

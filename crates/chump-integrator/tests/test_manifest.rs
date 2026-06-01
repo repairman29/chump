@@ -12,6 +12,7 @@ fn make_candidate(gap_id: &str) -> GapCandidate {
         estimated_loc: 100,
         branch: format!("chump/{}", gap_id.to_lowercase()),
         author: None,
+        tags: String::new(),
     }
 }
 
