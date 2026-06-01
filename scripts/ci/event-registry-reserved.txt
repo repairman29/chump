@@ -651,3 +651,24 @@ meta_118_daemon_started           # reason: INFRA-2280; emitted by scripts/setup
 meta_118_daemon_tick              # reason: INFRA-2280; emitted at the start of each scheduled run by scripts/coord/novel-wedge-classifier.sh (15-min) and scripts/coord/cascade-unblock-detector.sh (5-min). Carries daemon name. Scanner-anchor: both daemon scripts.
 reaper_holding_for_trunk_red    # reason: RESILIENT-050; emitted by scripts/ops/stale-pr-reaper.sh when trunk-RED state is detected (last_failed_sha != null within 60min window) before the INFRA-1410 auto-respawn loop. Carries would_bounce_count (PRs spared), reason, window_s. Prevents the 2026-05-30T15:46Z class of incident where 28 in-flight PRs were destroyed because trunk was RED. Scanner-anchor present in stale-pr-reaper.sh.
 reaper_stuck_class_skipped      # reason: RESILIENT-050; emitted by scripts/ops/stale-pr-reaper.sh when a BLOCKED PR's failure class is shared by >= CHUMP_REAPER_SHARED_CLASS_THRESHOLD (default 3) other PRs — indicating a queue-wide blocker rather than an individual stuck PR. These PRs receive a STUCK broadcast instead of being bounced. Carries pr, shared_count, failure_class.
+
+# ── INFRA-2396 batch: 16 orphan kinds shipped without EVENT_REGISTRY.yaml entries ──
+# Each was added by a recent PR without DOC-026/INFRA-1237 follow-up. Reserved here
+# rather than registered so the unwedge ships small; full registration deferred to
+# follow-up gap "INFRA-NEW: backfill EVENT_REGISTRY entries for INFRA-2396 cohort".
+daemon_activator_failed         # reason: INFRA-2396; emitted by scripts/coord/daemon-activator.sh on failure; registration pending follow-up gap.
+daemon_auto_activated           # reason: INFRA-2396; emitted by scripts/coord/daemon-activator.sh after successful activation; registration pending.
+daemon_silence_monitor_tick     # reason: INFRA-2396; emitted by scripts/coord/daemon-silence-monitor.sh per tick (heartbeat class); registration pending.
+detector_disabled               # reason: INFRA-2396; emitted by various detector daemons when explicitly disabled via env var; registration pending.
+ghost_pr_closed                 # reason: INFRA-2396; emitted by scripts/coord/ghost-pr-closer.sh when a phantom PR is closed; registration pending.
+handoff_contract_vote           # reason: INFRA-2396; emitted by handoff curator when voting on typed contract acceptance; registration pending.
+handoff_reactor_cooldown_skip   # reason: INFRA-2396; emitted when handoff reactor skips candidate due to cooldown; registration pending.
+investigate_dispatch_failed     # reason: INFRA-2396; emitted by investigate-class daemon when sub-agent dispatch fails; registration pending.
+investigate_dispatched          # reason: INFRA-2396; emitted on successful investigate dispatch; registration pending.
+investigate_dryrun              # reason: INFRA-2396; emitted in dry-run mode of investigate daemon; registration pending.
+investigate_pending             # reason: INFRA-2396; emitted when an investigate candidate is queued but not dispatched; registration pending.
+main_worktree_drift_detected    # reason: INFRA-2396; emitted by main-worktree-drift-detector.sh when local main is N commits behind origin; registration pending.
+quartermaster_heartbeat         # reason: INFRA-2396; emitted by quartermaster curator role per heartbeat cycle; registration pending.
+shelfware_audit_run             # reason: INFRA-2396; emitted by quartermaster-shelfware-audit.sh per audit run; registration pending.
+shelfware_detected              # reason: INFRA-2396; emitted by shelfware audit per detected artifact; registration pending.
+wedge_class_detected            # reason: INFRA-2396; emitted by novel-wedge-classifier.sh when a new wedge class is identified; registration pending.
