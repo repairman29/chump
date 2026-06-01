@@ -1,0 +1,11 @@
+- id: INFRA-2378
+  domain: INFRA
+  title: "inventory detector: stale-plist — skip source files with sibling installer scripts (current: 0% RP)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "detect_stale_plists skips a plist file when EITHER (a) the plist sits under a known template/source directory (`launchd/`, `scripts/setup/launchd-templates/`, `crates/*/launchd-fixtures/`) AND (b) a sibling installer script with the same basename stem exists under scripts/setup/ or scripts/coord/ (pattern: `scripts/setup/install-<stem>.sh` or `scripts/coord/<stem>-install.sh`)"
+    - "Detector still flags plists installed under ~/Library/LaunchAgents/ via direct path check (those are runtime artifacts; mismatch is genuinely stale)"
+    - "Detector RP target: ≥30% on next 20 sampled findings (current baseline 0/20)"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: synthetic launchd/foo.plist + scripts/setup/install-foo.sh sibling must NOT surface stale"

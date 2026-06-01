@@ -1,0 +1,11 @@
+- id: INFRA-2376
+  domain: INFRA
+  title: "inventory detector: dormant-script — text-grep refs across docs+scripts+src+.claude, not bash-invocation only (current: 0% RP)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "detect_dormant_scripts uses git grep across docs/**/*.md + scripts/**/*.sh + src/**/*.rs + .claude/**/*.md (and crates/) for basename references — current logic only inspects activation_state from artifact_index which itself was computed from a narrower grep set"
+    - "A script is considered dormant only when the union of (a) shell-invocation, (b) doc-mention, (c) Rust string-literal reference, (d) .claude agent-doc mention is ≤1 inbound reference (was: ≤1 from the narrow grep set)"
+    - "Detector RP target: ≥30% on next 20 sampled findings (current baseline 0/20 = 0%)"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: synthetic repo with 1 script mentioned only in a .claude/agents/*.md must NOT surface as dormant"

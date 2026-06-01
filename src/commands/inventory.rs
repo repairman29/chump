@@ -129,10 +129,12 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
 
     let prs_available = pr_result.auth_source.is_available() && pr_result.indexed > 0;
 
-    // INFRA-2384: backfill artifact → PR provenance once pr_index is populated.
+    // INFRA-2384/INFRA-2385: backfill artifact → PR provenance once pr_index
+    // is populated. INFRA-2385 added merge-graph traversal for correct
+    // admin-merge attribution.
     if prs_available {
         println!(
-            "[inventory rebuild] backfilling artifact provenance (git-log A walk + PR bisect)..."
+            "[inventory rebuild] backfilling artifact provenance (git-log A walk + merge-graph)..."
         );
         match backfill_artifact_provenance(&conn, &root) {
             Ok(r) => {
@@ -148,6 +150,14 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
                     linked_pct,
                     r.introducing_gap_linked,
                     r.unlinkable_provenance,
+                );
+                // INFRA-2385: surface graph vs bisect breakdown — high
+                // graph-resolved % means admin-merge ordering is being handled
+                // correctly; high bisect-fallback % means many artifacts are
+                // still on the legacy attribution path.
+                println!(
+                    "[inventory rebuild] attribution path: {} via merge-graph (high-precision), {} via time-bisect fallback (legacy)",
+                    r.graph_resolved_count, r.bisect_fallback_count,
                 );
             }
             Err(e) => eprintln!("[inventory rebuild] backfill warn: {e}"),
@@ -435,6 +445,104 @@ fn format_ts_iso(ts: i64) -> String {
         .unwrap_or_else(|| ts.to_string())
 }
 
+/// INFRA-2385 BUG-2: secondary lookup for `chump inventory pr <N>`. Finds
+/// the merge commit on origin/main whose subject contains `(#N)` or
+/// `pull request #N`, then enumerates files it added via
+/// `git show --name-only`. Re-classifies each path by querying
+/// `artifact_index` for activation_state. Returns rows not already in
+/// `seen_paths` (de-dup against the primary `introducing_pr` lookup).
+fn secondary_pr_artifacts(
+    conn: &rusqlite::Connection,
+    n: i64,
+    seen_paths: &std::collections::HashSet<String>,
+) -> Vec<(String, String, String, i64)> {
+    let root = inventory::repo_root();
+    let merge_sha = find_merge_commit_for_pr(&root, n);
+    let merge_sha = match merge_sha {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    // Get files added by the merge commit. For squash merges the merge SHA
+    // is itself the file-add commit; for true merges we want all files
+    // brought onto main between the merge's first-parent and second-parent.
+    let out = std::process::Command::new("git")
+        .args([
+            "show",
+            "--diff-filter=A",
+            "--name-only",
+            "--pretty=format:",
+            &merge_sha,
+        ])
+        .current_dir(&root)
+        .output();
+    let files: Vec<String> = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect(),
+        _ => return Vec::new(),
+    };
+    let mut out_rows: Vec<(String, String, String, i64)> = Vec::new();
+    for path in files {
+        if seen_paths.contains(&path) {
+            continue;
+        }
+        // Look up artifact_index for class + activation + refs.
+        let row = conn
+            .query_row(
+                "SELECT class, activation_state, reference_count
+                 FROM artifact_index WHERE path=?1",
+                rusqlite::params![path],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .ok();
+        if let Some((class, state, refs)) = row {
+            out_rows.push((path, class, state, refs));
+        }
+    }
+    out_rows
+}
+
+/// INFRA-2385 BUG-2 helper: find the first-parent commit on origin/main
+/// whose subject contains `(#N)` or `pull request #N`. Returns the
+/// commit SHA. Cheap: bounded to the most-recent 8000 first-parent commits.
+fn find_merge_commit_for_pr(root: &std::path::Path, n: i64) -> Option<String> {
+    let needle1 = format!("(#{n})");
+    let needle2 = format!("pull request #{n}");
+    let out = std::process::Command::new("git")
+        .args([
+            "log",
+            "--first-parent",
+            "origin/main",
+            "-n",
+            "8000",
+            "--pretty=format:%H\t%s",
+        ])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    for line in s.lines() {
+        let mut parts = line.splitn(2, '\t');
+        let sha = parts.next()?;
+        let subj = parts.next().unwrap_or("");
+        if subj.contains(&needle1) || subj.contains(&needle2) {
+            return Some(sha.to_string());
+        }
+    }
+    None
+}
+
 // ─── pr <N> ─────────────────────────────────────────────────────────────────
 
 fn cmd_pr(args: &[String]) -> i32 {
@@ -490,9 +598,10 @@ fn cmd_pr(args: &[String]) -> i32 {
         }
     };
 
-    // Load every artifact this PR introduced.
+    // Load every artifact this PR introduced (primary: introducing_pr column).
     type ArtifactRow = (String, String, String, i64);
     let mut artifacts: Vec<ArtifactRow> = Vec::new();
+    let mut seen_paths = std::collections::HashSet::<String>::new();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT path, class, activation_state, reference_count
          FROM artifact_index WHERE introducing_pr=?1
@@ -507,10 +616,23 @@ fn cmd_pr(args: &[String]) -> i32 {
             ))
         }) {
             for r in mapped.flatten() {
+                seen_paths.insert(r.0.clone());
                 artifacts.push(r);
             }
         }
     }
+
+    // INFRA-2385 BUG-2: walk the PR's merge commit's file-add list as a
+    // SECONDARY source — surfaces artifacts whose introducing_pr backfill
+    // missed (admin-merge or PR squashed onto a different SHA). De-dup
+    // against the primary list by path.
+    let secondary = secondary_pr_artifacts(&conn, n, &seen_paths);
+    for row in secondary {
+        if seen_paths.insert(row.0.clone()) {
+            artifacts.push(row);
+        }
+    }
+    artifacts.sort_by(|a, b| a.0.cmp(&b.0));
 
     // Activation health roll-up.
     let mut counts = std::collections::HashMap::<String, usize>::new();
