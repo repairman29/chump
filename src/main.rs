@@ -1274,6 +1274,15 @@ async fn main() -> Result<()> {
         std::process::exit(commands::vote::run(&sub_args));
     }
 
+    // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
+    // file a Voice-of-Agent (VOA) report: writes docs/gaps/VOA-NNNN.yaml +
+    // docs/voice/VOA-NNNN-FULL.yaml and emits kind=voice_of_agent_filed.
+    // Optional --ship to open a PR against repairman29/chump.
+    if args.get(1).map(String::as_str) == Some("voice") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::voice::run(&sub_args));
+    }
+
     // `chump consensus-tally [--corr-id X | --all] [--since <dur>]` (META-159) —
     // aggregate FEEDBACK kind=vote events from ambient.jsonl per corr_id
     // and compute a verdict. Always runs regardless of feature flag (read-only).

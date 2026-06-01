@@ -6746,3 +6746,19 @@ events:
     expected_volume: "0-5 per curator session (rare; only on verified misfires)"
     status: stable
     # payload: {role: string, original_confidence: "high"|"med"|"low", new_confidence: "high"|"med"|"low", reason: string, ts: string}
+  # ── INFRA-2258: chump voice — Voice-of-Agent VOA filing ──────────────────────
+  - kind: voice_of_agent_filed
+    effect_metric: effective
+    emitter: src/commands/voice.rs (INFRA-2258 — chump voice subcommand)
+    trigger: >
+      Emitted by `chump voice` after successfully writing both
+      docs/gaps/VOA-NNNN.yaml and docs/voice/VOA-NNNN-FULL.yaml.
+      Carries voa_id, wedge_class, minutes_lost, fix_shape, and
+      target_repo (always anonymized — "anonymous", "opt-in:slug", or
+      "opt-in:full" — never the raw repo slug unless user has explicitly
+      consented via ~/.chump/voice-opt-in.toml AND the --target-repo flag
+      uses the opt-in: prefix). session field is the filing agent's
+      CHUMP_SESSION_ID.
+    consumers: [ops-audit, kpi-report, fleet-brief]
+    fields_required: [ts, kind, voa_id, wedge_class, minutes_lost, fix_shape, target_repo, session]
+    # payload: {voa_id: str, wedge_class: str, minutes_lost: int, fix_shape: str, target_repo: str, session: str}
