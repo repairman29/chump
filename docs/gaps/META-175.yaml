@@ -1,0 +1,18 @@
+- id: META-175
+  domain: META
+  title: "META-167-i: chump-coord JetStream durable consumer per role + PWA cockpit observability panel"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-slice i of META-167. JetStream durable consumer per role + PWA cockpit observability panel for delivery latency.
+  acceptance_criteria:
+    - "crates/chump-coord/src/jetstream_consumer.rs new module — wraps async-nats jetstream::consumer::Config with durable_name=chump-fleet-<role>, ack_policy=Explicit, deliver_policy=All on first consumer-create then ByStartSequence on restart"
+    - "Per-role API: chump_coord::jetstream_consumer::subscribe_for_role(role) -> Stream<Item=Message>; explicit ack via Message::ack() after reactor processes"
+    - "Curator loops gain optional NATS path: if CHUMP_FLEET_WIRE_V1=1 AND CHUMP_NATS_URL set, use JetStream consumer; else fall back to file-inbox tick-preamble (INFRA-2262) — both paths process the same kinds, with NATS being faster"
+    - "Replay-on-restart proof: integration test in crates/chump-coord/tests/jetstream_replay.rs — publish 3 events to chump_events stream, start consumer, ack 2, restart consumer, assert 1 unacked event is replayed"
+    - PWA cockpit gains panel /cockpit/fleet-wire-health showing per-role consumer lag (deliveredSeq - ackSeq), delivery latency p50/p99 from kind=feedback_fanout_delivered timestamps
+    - web/cockpit/fleet-wire-panel.js + matching backend endpoint /api/fleet-wire/health
+    - "Smoke test scripts/ci/test-jetstream-consumer-roundtrip.sh: starts ephemeral NATS, publishes 5 events, consumer drains + acks, asserts no replay on clean ack"
+    - Feature flag CHUMP_FLEET_WIRE_V1=1 + CHUMP_NATS_URL set gates JetStream path; without both, file-inbox fallback is the only path
+
