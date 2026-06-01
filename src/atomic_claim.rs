@@ -65,6 +65,11 @@ pub struct ClaimArgs {
     pub check_only: bool,
     /// Output JSON format (used with --check-only).
     pub json: bool,
+    /// INFRA-2235: when set alongside --force-recover, bypasses the WIP-loss
+    /// safety guard and allows wiping a worktree that has uncommitted changes.
+    /// Emits `force_recover_wip_discarded` instead of `force_recover_wip_loss`.
+    /// Use only when the uncommitted state is intentionally abandoned.
+    pub discard_wip: bool,
 }
 
 impl ClaimArgs {
@@ -82,6 +87,7 @@ impl ClaimArgs {
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
+                       --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
@@ -110,6 +116,7 @@ impl ClaimArgs {
         let mut force_duplicate = false;
         let mut check_only = false;
         let mut json = false;
+        let mut discard_wip = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -166,6 +173,10 @@ impl ClaimArgs {
                     json = true;
                     i += 1;
                 }
+                "--discard-wip" => {
+                    discard_wip = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -193,6 +204,7 @@ impl ClaimArgs {
             force_duplicate,
             check_only,
             json,
+            discard_wip,
         })
     }
 }
@@ -695,13 +707,84 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // BEFORE the stomp-check or worktree-add, so the claim can proceed
     // idempotently when a prior session left orphaned state.
     //
-    // Actions taken (in order):
+    // INFRA-2235: WIP safety guard — before wiping the worktree, check for
+    // uncommitted changes via `git status --porcelain`. If WIP is detected:
+    //   - Default: REFUSE with an operator message listing the dirty files and
+    //     3 recovery paths. Emits kind=force_recover_wip_loss for audit.
+    //   - With --discard-wip: proceed with the wipe and emit
+    //     kind=force_recover_wip_discarded instead.
+    //
+    // Actions taken after WIP check (in order):
     //   (a) git worktree remove --force <path>  if the dir exists
     //   (b) rm -rf <path>                       if (a) failed or dir still present
     //   (c) git branch -D <branch>              if branch exists locally
     // Emits chump_claim_force_recover to ambient.jsonl with the actions taken.
     if args.force_recover {
         let mut recovery_actions: Vec<String> = Vec::new();
+
+        // INFRA-2235: WIP safety check — refuse to wipe if there are uncommitted changes
+        // unless the operator explicitly passed --discard-wip.
+        if worktree_path.exists() {
+            let porcelain_out = std::process::Command::new("git")
+                .args(["-C", worktree_path_str, "status", "--porcelain"])
+                .output();
+            if let Ok(out) = porcelain_out {
+                let porcelain = String::from_utf8_lossy(&out.stdout);
+                let dirty_lines: Vec<&str> =
+                    porcelain.lines().filter(|l| !l.trim().is_empty()).collect();
+                if !dirty_lines.is_empty() {
+                    let files_lost_count = dirty_lines.len();
+                    // First 5 paths for the operator message and audit event.
+                    let first_five: Vec<&str> = dirty_lines.iter().take(5).copied().collect();
+                    let first_five_str = first_five.join(", ");
+
+                    // Emit audit event before deciding to refuse or discard.
+                    if args.discard_wip {
+                        emit_force_recover_wip_discarded(
+                            &args.repo_root,
+                            &args.gap_id,
+                            files_lost_count,
+                            &first_five_str,
+                        );
+                        eprintln!(
+                            "[claim --force-recover --discard-wip] WARNING: discarding {} uncommitted file(s) in {}: {}",
+                            files_lost_count,
+                            worktree_path.display(),
+                            first_five_str
+                        );
+                    } else {
+                        // Emit the wip-loss event (signals the *risk*, not an actual loss —
+                        // we're about to refuse).
+                        emit_force_recover_wip_loss(
+                            &args.repo_root,
+                            &args.gap_id,
+                            files_lost_count,
+                            &first_five_str,
+                        );
+                        bail!(
+                            "--force-recover refused: worktree {} has {} uncommitted file(s):\n  {}\n\n\
+                             Recovery options:\n\
+                             (a) Commit + push the WIP first:\n\
+                             \tcd {}\n\
+                             \tgit add -A && git commit -m \"wip: save before handoff\"\n\
+                             \tgit push -u origin {}\n\
+                             (b) Intentionally discard the WIP (data loss!):\n\
+                             \tchump claim {} --force-recover --discard-wip\n\
+                             (c) Take over the same session by editing the lease file directly:\n\
+                             \t# Edit .chump-locks/<session>.json to set session_id to your own",
+                            worktree_path.display(),
+                            files_lost_count,
+                            first_five_str,
+                            worktree_path.display(),
+                            branch,
+                            args.gap_id,
+                        );
+                    }
+                }
+            }
+            // If git status fails (e.g. not a git worktree yet), fall through
+            // and proceed with the wipe — that's the pre-INFRA-2235 behavior.
+        }
 
         // (a) git worktree remove --force
         if worktree_path.exists() {
@@ -1445,6 +1528,74 @@ fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, action
         json_escape(gap_id),
         json_escape(branch),
         json_escape(actions),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-2235: emit kind=force_recover_wip_loss to ambient.jsonl.
+/// Fired when --force-recover is used on a worktree with uncommitted changes
+/// and --discard-wip was NOT passed — signals the refusal (not an actual loss).
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_force_recover_wip_loss(
+    repo_root: &Path,
+    gap_id: &str,
+    files_lost_count: usize,
+    first_five_paths: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"force_recover_wip_loss\",\
+         \"gap_id\":\"{}\",\"files_lost_count\":{},\"first_paths\":\"{}\"}}\n",
+        json_escape(gap_id),
+        files_lost_count,
+        json_escape(first_five_paths),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-2235: emit kind=force_recover_wip_discarded to ambient.jsonl.
+/// Fired when --force-recover --discard-wip is used on a worktree with
+/// uncommitted changes — signals intentional data loss for retro audit.
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_force_recover_wip_discarded(
+    repo_root: &Path,
+    gap_id: &str,
+    files_lost_count: usize,
+    first_five_paths: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"force_recover_wip_discarded\",\
+         \"gap_id\":\"{}\",\"files_lost_count\":{},\"first_paths\":\"{}\"}}\n",
+        json_escape(gap_id),
+        files_lost_count,
+        json_escape(first_five_paths),
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)
