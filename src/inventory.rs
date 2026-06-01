@@ -305,10 +305,279 @@ fn domain_from_gap(gap_id: &str) -> String {
     gap_id.split('-').next().unwrap_or("").to_string()
 }
 
-/// Collect PRs from `gh pr list` (state:all, limit 1000). Best-effort —
-/// if `gh` isn't available, returns 0 PRs (other layers can populate later).
+// ─── auth resolution (INFRA-2368) ────────────────────────────────────────────
+
+/// Where the GitHub auth token came from. Surfaced to the CLI so the
+/// operator can tell why PR collection succeeded or was skipped — the
+/// silent-skip behavior on the META-271 first launchd run (pr_index 0/2934)
+/// is the regression this enum guards against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthSource {
+    /// $GH_TOKEN was set + non-empty.
+    EnvGhToken,
+    /// $GITHUB_TOKEN was set + non-empty (some CI runners use this name).
+    EnvGithubToken,
+    /// `gh auth token` returned a token (keyring / config file).
+    GhCliKeyring,
+    /// No usable auth path. PR collection will skip.
+    Missing,
+}
+
+impl AuthSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            AuthSource::EnvGhToken => "env(GH_TOKEN)",
+            AuthSource::EnvGithubToken => "env(GITHUB_TOKEN)",
+            AuthSource::GhCliKeyring => "keyring",
+            AuthSource::Missing => "missing",
+        }
+    }
+    pub fn is_available(&self) -> bool {
+        !matches!(self, AuthSource::Missing)
+    }
+}
+
+/// Resolve a GitHub auth token via the documented priority chain:
+///   1. `$GH_TOKEN` env var (non-empty)
+///   2. `$GITHUB_TOKEN` env var (non-empty)
+///   3. `gh auth token` (CLI keyring / config)
+///   4. Missing — caller skips with a clear warning.
+///
+/// Returns (token, source). When source is Missing, token is None.
+pub fn resolve_gh_auth(root: &Path) -> (Option<String>, AuthSource) {
+    if let Ok(t) = std::env::var("GH_TOKEN") {
+        let t = t.trim();
+        if !t.is_empty() {
+            return (Some(t.to_string()), AuthSource::EnvGhToken);
+        }
+    }
+    if let Ok(t) = std::env::var("GITHUB_TOKEN") {
+        let t = t.trim();
+        if !t.is_empty() {
+            return (Some(t.to_string()), AuthSource::EnvGithubToken);
+        }
+    }
+    // Fall back to `gh auth token` — uses the same keyring/config the user
+    // already authenticated through. Non-interactive: no prompts.
+    let out = Command::new("gh")
+        .args(["auth", "token"])
+        .current_dir(root)
+        .output();
+    if let Ok(o) = out {
+        if o.status.success() {
+            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !t.is_empty() {
+                return (Some(t), AuthSource::GhCliKeyring);
+            }
+        }
+    }
+    (None, AuthSource::Missing)
+}
+
+/// Resolve `OWNER/REPO` from `git remote get-url origin`. Returns
+/// `("repairman29", "chump")` for the chump repo. Falls back to the
+/// CHUMP_INVENTORY_REPO env var (form: "owner/repo") for tests.
+pub fn resolve_repo_slug(root: &Path) -> Option<(String, String)> {
+    if let Ok(slug) = std::env::var("CHUMP_INVENTORY_REPO") {
+        let parts: Vec<&str> = slug.split('/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    let out = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // Parse https://github.com/<owner>/<repo>.git and git@github.com:<owner>/<repo>.git
+    let stripped = url
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string();
+    let tail = if let Some(idx) = stripped.find("github.com") {
+        let after = &stripped[idx + "github.com".len()..];
+        after.trim_start_matches(':').trim_start_matches('/')
+    } else {
+        return None;
+    };
+    let parts: Vec<&str> = tail.split('/').collect();
+    if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
+/// Result of `collect_prs` — surfaces the auth source + index size so the
+/// CLI can print "pr_index: N indexed from gh (auth=keyring|env|missing)".
+#[derive(Debug, Clone)]
+pub struct PrCollectionResult {
+    pub indexed: usize,
+    pub auth_source: AuthSource,
+    pub used_path: PrCollectionPath,
+    pub fallback_to_cli: bool,
+}
+
+/// Which transport was used: direct REST via curl, or shell-out to `gh pr list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrCollectionPath {
+    /// Used `curl` against the REST API with the resolved token.
+    RestCurl,
+    /// Used `gh pr list` (CLI path).
+    GhCli,
+    /// No auth available, did nothing.
+    Skipped,
+}
+
+/// Collect PRs from GitHub. Auth-resilient (INFRA-2368):
+///   * Resolves token via env → keyring → skip-with-warning.
+///   * Prefers direct REST via `curl` when an env-var token is present
+///     (faster: no `gh` subprocess fork per page).
+///   * Falls back to `gh pr list` when only keyring auth is available
+///     (avoids leaking the keyring token into a curl command line).
+///   * On total failure, returns `PrCollectionPath::Skipped` so callers
+///     can disable downstream detectors instead of silently reporting
+///     0 findings as if no debt existed.
+///
+/// Legacy compatibility: this still returns `Result<usize>` via the
+/// `indexed` field of `PrCollectionResult`, so the v1 caller signature
+/// (`collect_prs(&conn, &root)?`) keeps working via the thin wrapper
+/// `collect_prs_legacy`.
+pub fn collect_prs_v2(conn: &Connection, root: &Path) -> Result<PrCollectionResult> {
+    let (token, auth_source) = resolve_gh_auth(root);
+
+    if token.is_none() {
+        eprintln!(
+            "[inventory] gh auth missing — set GH_TOKEN, GITHUB_TOKEN, or run `gh auth login` (skipping PR backfill; 3 dependent detectors will be disabled)"
+        );
+        return Ok(PrCollectionResult {
+            indexed: 0,
+            auth_source,
+            used_path: PrCollectionPath::Skipped,
+            fallback_to_cli: false,
+        });
+    }
+
+    let token = token.expect("checked above");
+    let env_token = matches!(
+        auth_source,
+        AuthSource::EnvGhToken | AuthSource::EnvGithubToken
+    );
+
+    let mut fallback_to_cli = false;
+    let mut path_used = if env_token {
+        PrCollectionPath::RestCurl
+    } else {
+        PrCollectionPath::GhCli
+    };
+
+    // Try REST when we have an env token (cheaper, no fork-per-page).
+    let prs_json = if env_token {
+        match fetch_prs_via_rest(root, &token) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!(
+                    "[inventory] REST fetch failed ({e}); falling back to `gh pr list` CLI path"
+                );
+                fallback_to_cli = true;
+                path_used = PrCollectionPath::GhCli;
+                fetch_prs_via_gh_cli(root)
+            }
+        }
+    } else {
+        fetch_prs_via_gh_cli(root)
+    };
+
+    // Index whatever we got.
+    let indexed = ingest_prs(conn, &prs_json)?;
+    Ok(PrCollectionResult {
+        indexed,
+        auth_source,
+        used_path: path_used,
+        fallback_to_cli,
+    })
+}
+
+/// Backward-compatible wrapper preserving the v1 `collect_prs(...) -> Result<usize>` API.
 pub fn collect_prs(conn: &Connection, root: &Path) -> Result<usize> {
-    // Use gh pr list with JSON. Limit 1000 is the cap for `gh pr list`.
+    Ok(collect_prs_v2(conn, root)?.indexed)
+}
+
+/// REST path: paginate `GET /repos/{owner}/{repo}/pulls?state=all&per_page=100`
+/// via `curl`. Returns the concatenated array of PR objects. Bounded:
+/// CHUMP_INVENTORY_PR_MAX_PAGES (default 35 — covers ~3500 PRs).
+fn fetch_prs_via_rest(root: &Path, token: &str) -> Result<Vec<serde_json::Value>> {
+    let (owner, repo) = resolve_repo_slug(root)
+        .ok_or_else(|| anyhow!("could not resolve owner/repo from git remote"))?;
+    let max_pages: usize = std::env::var("CHUMP_INVENTORY_PR_MAX_PAGES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(35);
+    let per_page: usize = std::env::var("CHUMP_INVENTORY_PR_PER_PAGE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
+    let timeout_secs: u64 = std::env::var("CHUMP_INVENTORY_REST_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
+
+    let mut all: Vec<serde_json::Value> = Vec::new();
+    for page in 1..=max_pages {
+        let url = format!(
+            "https://api.github.com/repos/{owner}/{repo}/pulls?state=all&per_page={per_page}&page={page}&sort=created&direction=desc"
+        );
+        let out = Command::new("curl")
+            .args([
+                "-sS",
+                "--fail",
+                "--max-time",
+                &timeout_secs.to_string(),
+                "-H",
+                &format!("Authorization: Bearer {token}"),
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "X-GitHub-Api-Version: 2022-11-28",
+                "-H",
+                "User-Agent: chump-inventory",
+                &url,
+            ])
+            .current_dir(root)
+            .output()
+            .with_context(|| format!("invoking curl for REST page {page}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(anyhow!("curl failed on page {page}: {stderr}"));
+        }
+        let body = String::from_utf8_lossy(&out.stdout).to_string();
+        let parsed: serde_json::Value = serde_json::from_str(&body)
+            .with_context(|| format!("parsing REST body for page {page}"))?;
+        let arr = match parsed.as_array() {
+            Some(a) => a.clone(),
+            None => {
+                return Err(anyhow!(
+                    "REST page {page} body is not an array: {}",
+                    body.chars().take(200).collect::<String>()
+                ));
+            }
+        };
+        let n = arr.len();
+        all.extend(arr);
+        if n < per_page {
+            break; // last page
+        }
+    }
+    Ok(all)
+}
+
+/// CLI path: `gh pr list --json …` — used when only keyring auth is
+/// available, or as a fallback when REST fails.
+fn fetch_prs_via_gh_cli(root: &Path) -> Vec<serde_json::Value> {
     let args = [
         "pr",
         "list",
@@ -321,22 +590,26 @@ pub fn collect_prs(conn: &Connection, root: &Path) -> Result<usize> {
     ];
     let out = match Command::new("gh").args(args).current_dir(root).output() {
         Ok(o) if o.status.success() => o.stdout,
-        _ => return Ok(0),
+        _ => return vec![],
     };
     let s = String::from_utf8_lossy(&out);
-    let value: serde_json::Value = match serde_json::from_str(&s) {
-        Ok(v) => v,
-        Err(_) => return Ok(0),
-    };
-    let arr = match value.as_array() {
-        Some(a) => a,
-        None => return Ok(0),
-    };
+    match serde_json::from_str::<serde_json::Value>(&s) {
+        Ok(serde_json::Value::Array(a)) => a,
+        _ => vec![],
+    }
+}
 
+/// Ingest a Vec of PR JSON objects (either REST shape `merged_at`/`head.ref`
+/// or gh-CLI shape `mergedAt`/`headRefName`) into `pr_index`. Idempotent
+/// upsert on `pr_number`.
+fn ingest_prs(conn: &Connection, prs: &[serde_json::Value]) -> Result<usize> {
+    if prs.is_empty() {
+        return Ok(0);
+    }
     let tx = conn.unchecked_transaction()?;
     let ts = now_secs();
     let mut n = 0usize;
-    for pr in arr {
+    for pr in prs {
         let number = pr.get("number").and_then(|v| v.as_i64()).unwrap_or(0);
         if number == 0 {
             continue;
@@ -346,40 +619,79 @@ pub fn collect_prs(conn: &Connection, root: &Path) -> Result<usize> {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let state = pr
+        // REST returns lowercase ("open"/"closed"); gh-CLI returns
+        // uppercase ("OPEN"/"CLOSED"/"MERGED"). Normalize to uppercase +
+        // promote closed-with-merged_at to MERGED so downstream detectors
+        // can filter on state='MERGED' regardless of source.
+        let state_raw = pr
             .get("state")
             .and_then(|v| v.as_str())
             .unwrap_or("UNKNOWN")
-            .to_string();
+            .to_uppercase();
+        // REST shape uses head.ref / base.ref / user.login; gh-CLI uses
+        // headRefName / baseRefName / author.login.
         let head_ref = pr
             .get("headRefName")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(|s| s.to_string())
+            .or_else(|| {
+                pr.get("head")
+                    .and_then(|v| v.get("ref"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
         let base_ref = pr
             .get("baseRefName")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(|s| s.to_string())
+            .or_else(|| {
+                pr.get("base")
+                    .and_then(|v| v.get("ref"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
         let author = pr
             .get("author")
             .and_then(|v| v.get("login"))
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(|s| s.to_string())
+            .or_else(|| {
+                pr.get("user")
+                    .and_then(|v| v.get("login"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
         let created_at = pr
             .get("createdAt")
+            .or_else(|| pr.get("created_at"))
             .and_then(|v| v.as_str())
             .and_then(parse_rfc3339_to_secs)
             .unwrap_or(0);
         let closed_at = pr
             .get("closedAt")
+            .or_else(|| pr.get("closed_at"))
             .and_then(|v| v.as_str())
             .and_then(parse_rfc3339_to_secs);
         let merged_at = pr
             .get("mergedAt")
+            .or_else(|| pr.get("merged_at"))
             .and_then(|v| v.as_str())
             .and_then(parse_rfc3339_to_secs);
+        // Promote CLOSED-with-merged-at to MERGED for REST shape, which
+        // returns state="closed" for merged PRs.
+        let state = if merged_at.is_some() && state_raw == "CLOSED" {
+            "MERGED".to_string()
+        } else {
+            state_raw
+        };
         let additions = pr.get("additions").and_then(|v| v.as_i64()).unwrap_or(0);
         let deletions = pr.get("deletions").and_then(|v| v.as_i64()).unwrap_or(0);
-        let changed_files = pr.get("changedFiles").and_then(|v| v.as_i64()).unwrap_or(0);
+        // REST list endpoint doesn't return file count; gh-CLI does.
+        let changed_files = pr
+            .get("changedFiles")
+            .or_else(|| pr.get("changed_files"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         let gap_id = extract_gap_id(&title);
         let domain = gap_id.as_ref().map(|g| domain_from_gap(g));
 
@@ -537,18 +849,111 @@ fn build_path_timestamps(root: &Path) -> HashMap<String, (i64, i64)> {
 
 /// Run all 9 detectors. Returns total number of findings inserted.
 /// All findings land at tier=0; auto_fix_filed_gap_id never populated.
+///
+/// Compatibility wrapper: callers that don't know PR-collection state
+/// proceed as before; pr_index is queried and the 3 dependent detectors
+/// are auto-skipped when empty (INFRA-2368).
 pub fn run_detectors(conn: &Connection, root: &Path) -> Result<usize> {
+    let pr_count = pr_index_count(conn).unwrap_or(0);
+    run_detectors_v2(conn, root, pr_count > 0)
+}
+
+/// Returns the count of rows in `pr_index`. Used by `run_detectors_v2`
+/// to skip the 3 PR-dependent detectors when the index is empty
+/// (INFRA-2368: prevents silent zero-findings when gh auth missing).
+pub fn pr_index_count(conn: &Connection) -> Result<i64> {
+    conn.query_row("SELECT COUNT(*) FROM pr_index", [], |r| r.get::<_, i64>(0))
+        .with_context(|| "counting pr_index rows")
+}
+
+/// Detector classes that depend on `pr_index` being populated. When PR
+/// collection skipped (gh auth missing), these are disabled — we explicitly
+/// mark them as such in the class-stats output instead of silently
+/// reporting zero findings.
+pub const PR_DEPENDENT_DETECTORS: &[&str] = &[
+    "doc-only-feature",
+    "unreferenced-gap",
+    "long-undormant-substrate",
+];
+
+/// v2 entry point: takes an explicit `prs_available` flag from the
+/// PR-collection step. When false, the 3 PR-dependent detectors are
+/// skipped (with a single ambient `kind=detector_disabled` per-class
+/// event) and a class-level note is written to `finding_class_tiers`.
+pub fn run_detectors_v2(conn: &Connection, root: &Path, prs_available: bool) -> Result<usize> {
     let mut total = 0;
     total += detect_orphan_artifacts(conn, root)?;
     total += detect_dormant_scripts(conn, root)?;
     total += detect_dead_rust_mods(conn, root)?;
     total += detect_stale_plists(conn, root)?;
-    total += detect_doc_only_features(conn, root)?;
-    total += detect_unreferenced_gaps(conn, root)?;
-    total += detect_long_undormant_substrate(conn, root)?;
+    if prs_available {
+        total += detect_doc_only_features(conn, root)?;
+        total += detect_unreferenced_gaps(conn, root)?;
+        total += detect_long_undormant_substrate(conn, root)?;
+        // Clear any prior "disabled" marker if PRs are now flowing again.
+        clear_pr_dependent_disabled_marker(conn);
+    } else {
+        record_pr_dependent_disabled_marker(conn);
+        for class in PR_DEPENDENT_DETECTORS {
+            emit_detector_disabled_event(class, "pr_index empty (gh auth missing)");
+        }
+    }
     total += detect_shadow_duplicates(conn, root)?;
     total += detect_event_kind_zero_emits(conn, root)?;
     Ok(total)
+}
+
+/// Record a per-class marker in `inventory_meta` indicating that the
+/// PR-dependent detectors were skipped on the last rebuild. CLI surfaces
+/// this in `class-stats` output as `(disabled — gh auth missing)`.
+fn record_pr_dependent_disabled_marker(conn: &Connection) {
+    let _ = conn.execute(
+        "INSERT INTO inventory_meta (key, value) VALUES ('pr_dependent_detectors_disabled', '1')
+         ON CONFLICT(key) DO UPDATE SET value='1'",
+        [],
+    );
+}
+
+/// Clear the disabled marker (PR collection succeeded on this rebuild).
+fn clear_pr_dependent_disabled_marker(conn: &Connection) {
+    let _ = conn.execute(
+        "INSERT INTO inventory_meta (key, value) VALUES ('pr_dependent_detectors_disabled', '0')
+         ON CONFLICT(key) DO UPDATE SET value='0'",
+        [],
+    );
+}
+
+/// Public read for the CLI: is the disabled marker currently set?
+pub fn pr_dependent_detectors_disabled(conn: &Connection) -> bool {
+    let v: Option<String> = conn
+        .query_row(
+            "SELECT value FROM inventory_meta WHERE key='pr_dependent_detectors_disabled'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    matches!(v.as_deref(), Some("1"))
+}
+
+/// Emit a kind=detector_disabled event so the observability lane can see
+/// the cohort. Best-effort — failure to write doesn't block detectors.
+fn emit_detector_disabled_event(finding_class: &str, reason: &str) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let json = format!(
+        r#"{{"ts":"{}","kind":"detector_disabled","finding_class":"{}","reason":"{}"}}"#,
+        ts,
+        json_escape(finding_class),
+        json_escape(reason),
+    );
+    let path = ambient_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", json);
+    }
 }
 
 /// Detector 1: orphan-artifact — artifact has zero inbound references.
@@ -772,42 +1177,82 @@ fn detect_stale_plists(conn: &Connection, root: &Path) -> Result<usize> {
     Ok(n)
 }
 
-/// Detector 5: doc-only-feature — gap shipped a doc but no code change.
-/// Heuristic: a merged PR whose changed-file list (best-effort, from
-/// pr_index.files_changed=1 + title-extracted gap) is exactly 1
-/// AND the only artifact is a .md/.yaml under docs/.
+/// Detector 5: doc-only-feature — gap shipped with a `feat:` title but no
+/// code artifact in `artifact_index` references the PR number in its
+/// provenance (introducing_pr). Surfaces "we said we shipped a feature but
+/// only the docs landed" cases.
+///
+/// Heuristic (INFRA-2368):
+///   1. Find merged PRs whose title starts with `feat(` or `feat:`.
+///   2. For each, count artifacts where introducing_pr = this PR.
+///   3. If count > 0 AND all introducing artifacts are class='doc', flag.
+///   4. If count == 0 AND files_changed available AND files_changed == 1
+///      AND the PR's domain is CREDIBLE/EFFECTIVE (high-signal subset),
+///      also flag — covers the gh-CLI path that has files_changed.
 fn detect_doc_only_features(conn: &Connection, _root: &Path) -> Result<usize> {
-    // Bounded: only inspect PRs marked CREDIBLE/EFFECTIVE-domain gaps where
-    // we'd expect code. For now flag any merged PR with files_changed == 1.
-    let mut rows: Vec<(i64, String, String)> = Vec::new();
+    type FeatPrRow = (i64, String, Option<String>, i64, Option<String>);
+    let mut feat_prs: Vec<FeatPrRow> = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT pr_number, title, gap_id FROM pr_index
-             WHERE state = 'MERGED' AND files_changed = 1
-               AND gap_id IS NOT NULL
-               AND (domain = 'CREDIBLE' OR domain = 'EFFECTIVE')
-             LIMIT 200",
+            "SELECT pr_number, title, gap_id, files_changed, domain FROM pr_index
+             WHERE state = 'MERGED'
+               AND (LOWER(title) LIKE 'feat(%' OR LOWER(title) LIKE 'feat:%')
+             ORDER BY merged_at DESC NULLS LAST
+             LIMIT 500",
         )?;
         let mapped = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, Option<String>>(4)?,
             ))
         })?;
         for r in mapped {
-            rows.push(r?);
+            feat_prs.push(r?);
         }
     }
     let mut n = 0usize;
-    for (pr_number, title, gap_id) in rows {
+    for (pr_number, title, gap_id, files_changed, domain) in feat_prs {
+        // Count introducing artifacts whose class differs from 'doc'.
+        let non_doc: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_index
+                 WHERE introducing_pr = ?1 AND class != 'doc'",
+                params![pr_number],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        let any_intro: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_index WHERE introducing_pr = ?1",
+                params![pr_number],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        // Signal 1: artifact_index records this PR as the introducer of
+        // ≥1 artifact AND none of those artifacts are code.
+        let signal_artifact = any_intro > 0 && non_doc == 0;
+        // Signal 2: gh-CLI path provided files_changed=1 and the PR's
+        // domain is in the high-signal subset where we'd expect code.
+        let signal_files =
+            files_changed == 1 && matches!(domain.as_deref(), Some("CREDIBLE") | Some("EFFECTIVE"));
+        if !(signal_artifact || signal_files) {
+            continue;
+        }
+        let reason = if signal_artifact {
+            "all introduced artifacts are docs"
+        } else {
+            "files_changed=1 in code-expected domain"
+        };
         let f = Finding {
             finding_class: "doc-only-feature".to_string(),
             severity: "info".to_string(),
             artifact_path: None,
             pr_number: Some(pr_number),
-            gap_id: Some(gap_id),
-            detail: format!("PR #{pr_number} shipped one file under CREDIBLE/EFFECTIVE domain — likely doc-only: {title}"),
+            gap_id,
+            detail: format!("feat PR #{pr_number} looks doc-only ({reason}): {title}"),
             evidence_json: None,
         };
         insert_finding(conn, &f)?;
@@ -816,10 +1261,89 @@ fn detect_doc_only_features(conn: &Connection, _root: &Path) -> Result<usize> {
     Ok(n)
 }
 
-/// Detector 6: unreferenced-gap — gap shipped >30d ago but artifacts orphaned.
-fn detect_unreferenced_gaps(conn: &Connection, _root: &Path) -> Result<usize> {
+/// Detector 6: unreferenced-gap — gap exists in the gap registry but no
+/// PR in `pr_index` has a title containing it.
+///
+/// Per INFRA-2368 spec: "gap_id from gap registry with no PR in pr_index
+/// whose title contains it". Strengthens the prior heuristic (which also
+/// produced findings for gaps with *some* PRs whose artifacts went orphan
+/// — that signal is preserved as a secondary case).
+///
+/// Two emission paths:
+///   * Primary: gap_id present in `docs/gaps/*.yaml` (cheap glob count)
+///     with zero matching pr_index row.
+///   * Secondary (legacy): merged gap whose introducing_gap artifacts
+///     are all orphan now — kept for backward compatibility with
+///     existing test fixtures.
+fn detect_unreferenced_gaps(conn: &Connection, root: &Path) -> Result<usize> {
+    let mut n = 0usize;
+
+    // ─── Primary signal: scan gap registry yaml glob ────────────────────────
+    let gaps_dir = root.join("docs/gaps");
+    let registered: Vec<String> = match fs::read_dir(&gaps_dir) {
+        Ok(it) => it
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let p = e.path();
+                if p.extension().and_then(|s| s.to_str()) != Some("yaml") {
+                    return None;
+                }
+                p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .filter(|stem| extract_gap_id(stem).is_some())
+            .take(5000)
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    let cutoff_age = now_secs() - 30 * 86400; // skip very-new gaps
+    for gap_id in &registered {
+        // Count PRs whose title contains the gap id.
+        let pr_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pr_index WHERE title LIKE ?1",
+                params![format!("%{}%", gap_id)],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        if pr_count > 0 {
+            continue;
+        }
+        // Skip gaps without an age signal (yaml mtime as a stand-in;
+        // brand-new gaps shouldn't surface as unreferenced).
+        let yaml_path = gaps_dir.join(format!("{}.yaml", gap_id));
+        if let Ok(meta) = fs::metadata(&yaml_path) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(d) = modified.duration_since(UNIX_EPOCH) {
+                    if (d.as_secs() as i64) > cutoff_age {
+                        continue; // gap filed in last 30d, skip
+                    }
+                }
+            }
+        }
+        let f = Finding {
+            finding_class: "unreferenced-gap".to_string(),
+            severity: "low".to_string(),
+            artifact_path: None,
+            pr_number: None,
+            gap_id: Some(gap_id.clone()),
+            detail: format!(
+                "Gap {gap_id} is registered in docs/gaps but no PR title references it"
+            ),
+            evidence_json: None,
+        };
+        insert_finding(conn, &f)?;
+        n += 1;
+        if n >= 500 {
+            break; // bound emission
+        }
+    }
+
+    // ─── Secondary signal: merged gap whose introducing artifacts orphaned ─
     let cutoff = now_secs() - 30 * 86400;
-    let mut rows: Vec<(String, i64)> = Vec::new();
+    let mut legacy_rows: Vec<(String, i64)> = Vec::new();
     {
         let mut stmt = conn.prepare(
             "SELECT pr_index.gap_id, pr_index.pr_number FROM pr_index
@@ -832,12 +1356,10 @@ fn detect_unreferenced_gaps(conn: &Connection, _root: &Path) -> Result<usize> {
             Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
         })?;
         for r in mapped {
-            rows.push(r?);
+            legacy_rows.push(r?);
         }
     }
-    let mut n = 0usize;
-    for (gap_id, pr_number) in rows {
-        // Count orphan artifacts whose introducing_gap = this gap.
+    for (gap_id, pr_number) in legacy_rows {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM artifact_index
@@ -863,20 +1385,83 @@ fn detect_unreferenced_gaps(conn: &Connection, _root: &Path) -> Result<usize> {
     Ok(n)
 }
 
-/// Detector 7: long-undormant-substrate — substrate PR merged >90d, no
-/// reference growth since. Heuristic: a merged PR's title contains
-/// "substrate" or "infra" and its merged_at < 90d ago and inserted
-/// artifacts are orphans/dormant.
+/// Detector 7: long-undormant-substrate — artifact whose
+/// `last_modified_at` is > 90d ago AND not already classified as
+/// removed/superseded in `tech_debt_findings`.
+///
+/// Per INFRA-2368 spec: "artifacts whose `last_pr_touched` is > 90 days
+/// ago AND not in `tech_debt_findings` as removed/superseded". We use
+/// `last_modified_at` from artifact_index (populated by git-log walk in
+/// `collect_artifacts`) as the "last PR touched" proxy.
+///
+/// Bounded to substrate paths (src/, scripts/coord/, scripts/dispatch/)
+/// to avoid flooding on docs/yaml drift.
 fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<usize> {
     let cutoff = now_secs() - 90 * 86400;
-    let mut rows: Vec<(i64, String, String)> = Vec::new();
+
+    let mut rows: Vec<(String, String, i64)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT a.path, a.class, a.last_modified_at
+             FROM artifact_index a
+             WHERE a.last_modified_at < ?1
+               AND a.last_modified_at > 0
+               AND (a.path LIKE 'src/%'
+                    OR a.path LIKE 'scripts/coord/%'
+                    OR a.path LIKE 'scripts/dispatch/%')
+               AND NOT EXISTS (
+                   SELECT 1 FROM tech_debt_findings tdf
+                   WHERE tdf.artifact_path = a.path
+                     AND tdf.operator_classification = 'REAL_POSITIVE'
+                     AND (tdf.operator_note LIKE '%removed%'
+                          OR tdf.operator_note LIKE '%superseded%')
+               )
+             ORDER BY a.last_modified_at ASC
+             LIMIT 200",
+        )?;
+        let mapped = stmt.query_map([cutoff], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?;
+        for r in mapped {
+            rows.push(r?);
+        }
+    }
+
+    let mut n = 0usize;
+    let now = now_secs();
+    for (path, class, last_modified_at) in rows {
+        let days_ago = (now - last_modified_at) / 86400;
+        let f = Finding {
+            finding_class: "long-undormant-substrate".to_string(),
+            severity: "info".to_string(),
+            artifact_path: Some(path.clone()),
+            pr_number: None,
+            gap_id: None,
+            detail: format!(
+                "{} ({}) last touched {}d ago — review whether substrate accreted users",
+                path, class, days_ago
+            ),
+            evidence_json: None,
+        };
+        insert_finding(conn, &f)?;
+        n += 1;
+    }
+
+    // Legacy signal: merged PRs >90d with substrate/infra titles (kept
+    // for the existing CLI surfacing pattern; cheaper than the artifact
+    // scan when pr_index is heavily populated).
+    let mut pr_rows: Vec<(i64, String, String)> = Vec::new();
     {
         let mut stmt = conn.prepare(
             "SELECT pr_number, title, COALESCE(gap_id, '') FROM pr_index
              WHERE state = 'MERGED'
                AND merged_at < ?1
                AND (LOWER(title) LIKE '%substrate%' OR LOWER(title) LIKE '%infra-%')
-             LIMIT 200",
+             LIMIT 100",
         )?;
         let mapped = stmt.query_map([cutoff], |r| {
             Ok((
@@ -886,11 +1471,10 @@ fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<us
             ))
         })?;
         for r in mapped {
-            rows.push(r?);
+            pr_rows.push(r?);
         }
     }
-    let mut n = 0usize;
-    for (pr_number, title, gap_id) in rows {
+    for (pr_number, title, gap_id) in pr_rows {
         let f = Finding {
             finding_class: "long-undormant-substrate".to_string(),
             severity: "info".to_string(),
@@ -905,6 +1489,7 @@ fn detect_long_undormant_substrate(conn: &Connection, _root: &Path) -> Result<us
         insert_finding(conn, &f)?;
         n += 1;
     }
+
     Ok(n)
 }
 
