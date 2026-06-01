@@ -403,6 +403,9 @@ BYPASS:
                              Add 'Preflight-Skip-Reason: <why>' to commit body.
     CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
     CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
+    CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
+    CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
+    CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
 
 GATES (in order):
     1. cargo fmt --check               (scope: rust)
@@ -971,6 +974,83 @@ pub fn run(argv: &[String]) -> i32 {
             steps.push(step(
                 "pr-hygiene",
                 &["bash", "scripts/ci/check-pr-hygiene.sh"],
+                GateKind::Scripts,
+            ));
+        }
+
+        // INFRA-2350 (META-269 sub-1): mirror three CI gates that today's
+        // session demonstrated are NOT caught locally — pipefail-race-sweep
+        // (INFRA-1658), path-filter-coverage (INFRA-682), and install-mapping
+        // (INFRA-1810). Each fires in <1s and runs whenever Scripts scope is
+        // active. Skip via the gate-specific bypass env with audit-trail emit.
+
+        // INFRA-1658: bash subshell pipefail-race sweep. Catches a class of
+        // races where `cmd | other-cmd` inside a `set -e`-d script swallows
+        // failure because bash's pipefail isn't set. Detecting locally avoids
+        // a CI round-trip on the install/uninstall path.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_PIPEFAIL").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping pipefail-race-sweep (CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_pipefail_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "pipefail-race-sweep",
+                &["bash", "scripts/ci/test-pipefail-race-sweep.sh"],
+                GateKind::Scripts,
+            ));
+        }
+
+        // INFRA-682: path-filter allowlist structural coverage. Detects when
+        // a contributor adds new code paths but forgets to add them to the
+        // ci.yml `code:` paths-filter. Previously runtime-detected via the
+        // `if: filter.code == 'false'` warning; this gate catches the
+        // structural drift earlier.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_PATHFILTER").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping path-filter-coverage (CHUMP_PREFLIGHT_SKIP_PATHFILTER=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_pathfilter_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_PATHFILTER=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "path-filter-coverage",
+                &["bash", "scripts/ci/check-path-filter-coverage.sh"],
+                GateKind::Scripts,
+            ));
+        }
+
+        // INFRA-1810: install-script manifest gate. Verifies every
+        // scripts/setup/install-*.sh is mapped to REQUIRED_DAEMONS,
+        // optional-installers-allowlist.txt, or deprecated-installers-allowlist.txt.
+        // Prevents the "ship but never install" class — productization layer
+        // sits dormant because the daemon was never wired into the installer.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_INSTALLMAP").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping install-manifest (CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1)");
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "preflight_installmap_bypassed".to_string(),
+                source: Some("chump-preflight".to_string()),
+                fields: vec![(
+                    "reason".to_string(),
+                    "CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1".to_string(),
+                )],
+                ..Default::default()
+            });
+        } else {
+            steps.push(step(
+                "install-manifest",
+                &["bash", "scripts/ci/test-install-script-manifest.sh"],
                 GateKind::Scripts,
             ));
         }

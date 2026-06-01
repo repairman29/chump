@@ -1,0 +1,12 @@
+- id: INFRA-2357
+  domain: INFRA
+  title: "META-269 sub-8: investigate-and-report Sonnet template — investigate-only dispatch path"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    META-269 sub-8: investigate-and-report Sonnet template. Standardized investigate-only Sonnet brief format that DOES NOT ship code — only investigates + reports.
+  acceptance_criteria:
+    - "- Template doc docs/process/INVESTIGATE_AGENT_TEMPLATE.md with sections SCOPE/DURATION/OUTPUT/CONSTRAINTS\n- Dispatch script scripts/dispatch/investigate-agent.sh <topic> [output-path]\n- Constraint env: CHUMP_INVESTIGATE_NO_WRITE=1 — script enforces no file edits, no gap claims, no push\n- Sets up output markdown report at docs/investigations/<topic>-<timestamp>.md\n- Smoke test: dispatches synthetic 'auto-processor silent' investigation"
+  skills_required: bash,docs
+

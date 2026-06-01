@@ -1,0 +1,12 @@
+- id: INFRA-2355
+  domain: INFRA
+  title: "META-269 sub-6: pattern-fix dispatcher — known-failure-pattern automated fixer"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    META-269 sub-6: pattern-fix dispatcher. Matches known-failure-patterns (e.g. heavy_jobs out-of-date) and dispatches automated fix without Sonnet hop.
+  acceptance_criteria:
+    - "- New script scripts/coord/pattern-fix-dispatcher.sh\n- Reads scripts/coord/known-failure-patterns.yaml (failure-regex -> fix-script)\n- When CI failure matches a known pattern, runs the fix-script directly + opens PR\n- Integration test validates one synthetic known-pattern triggers the auto-fix path"
+  skills_required: fix_trunk
+

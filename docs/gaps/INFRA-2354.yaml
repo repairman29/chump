@@ -1,0 +1,12 @@
+- id: INFRA-2354
+  domain: INFRA
+  title: "META-269 sub-5: subprocess-auth smoke — verify claude -p auth before subprocess"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    META-269 sub-5: subprocess-auth smoke. Verifies claude -p subprocess auth path before dispatching fix-trunk Sonnet.
+  acceptance_criteria:
+    - "- New script scripts/coord/subprocess-auth-smoke.sh runs hello-world claude -p with timeout\n- Emits kind=subprocess_auth_ok / kind=subprocess_auth_dead with claude_p_exit_code\n- Wired into fix-trunk-dispatcher pre-check\n- Smoke test passes when local claude auth works, gracefully degrades otherwise"
+  skills_required: fix_trunk
+
