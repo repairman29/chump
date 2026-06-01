@@ -81,6 +81,8 @@ Documented for completeness; do **not** file follow-ups.
 | `ftue-clean-machine-2026.yml` | Requires a fresh VM |
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |
 | `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
+| `actionlint — workflow syntax gate` (META-199) | Uses `rhysd/actionlint` GitHub Action; requires the actionlint binary not in standard preflight env |
+| `coverage-nightly.yml` (META-200) | Nightly cron only; llvm-cov instrument pass is too slow for per-PR preflight |
 
 ## Promotion criteria for Tier C → Tier A
 
