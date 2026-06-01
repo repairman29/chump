@@ -1,0 +1,12 @@
+- id: INFRA-2375
+  domain: INFRA
+  title: "inventory detector: orphan-artifact — grep docs/ + plugin-glob aware (current: 0% RP across 20 samples)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "detect_orphan_artifacts widens its grep includes to scan docs/**/*.md in addition to *.rs *.sh *.yaml *.toml *.plist (current omission caused 20 doc-referenced scripts to be flagged orphan)"
+    - "When matching, also tolerate plugin-style glob references like `scripts/<group>/*.sh` and `crates/*/src/<name>.rs` — a referrer file that contains a glob pattern matching the artifact's path is considered a reference (regex: `scripts/[a-z]+/\\*\\.sh` style)"
+    - "When an artifact's basename collides with a common word (`run.sh`, `lib.rs`), also require the path prefix to match — `lib.rs` in src/foo/ is referenced only if the referrer cites `foo::lib` or `foo/lib.rs`, not bare `lib`"
+    - "Detector RP target: ≥30% on next 20 sampled findings (current baseline 0/20 = 0%; calibration goal documented in detect_orphan_artifacts doc comment)"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: synthetic repo with 1 script referenced only from a .md doc must NOT surface as orphan"

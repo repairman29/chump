@@ -1,0 +1,11 @@
+- id: INFRA-2379
+  domain: INFRA
+  title: "inventory detector: event-kind-zero-emit — pre-check source has zero emit-sites before flagging (current: 15% RP)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "detect_event_kind_zero_emits pre-checks each candidate kind via `git grep -F '\"kind\":\"<kind>\"'` across src/**/*.rs + scripts/**/*.sh + crates/**/*.rs and skips emission when ≥1 source emit-site exists (current behavior surfaces zero-emit even when source has emitters but ambient.jsonl is a fresh log)"
+    - "When source has emit-sites but ambient shows zero events, downgrade finding severity from 'info' to a new 'observability_silent' note (still tier 0; clearly distinguishes 'kind never emitted' from 'kind never observed in this log window')"
+    - "Detector RP target: lift from 15% baseline to ≥30% on next 20 sampled findings"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: synthetic EVENT_REGISTRY with kind=foo and src/lib.rs containing the literal `\"kind\":\"foo\"` must NOT surface as zero-emit"
