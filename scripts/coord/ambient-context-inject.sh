@@ -320,6 +320,141 @@ out_file.write_text('\n'.join(lines))
     fi
 fi
 
+# ── INFRA-2278: ship-assist context inject (SessionStart only) ───────────────
+# Surfaces the top-3 wedge classes from the last 7d VOA reports and a filing
+# prompt so every session sees the current friction heatmap without manual
+# inspection of docs/process/SHIP_ASSIST_PLAYBOOK.md.
+#
+# Bypass: CHUMP_SHIP_ASSIST_HOOK=0 (quiet/hermetic sessions)
+# Data source: docs/voice/VOA-*.yaml + docs/gaps/VOA-*.yaml
+# If < 3 VOAs exist, shows fallback seed classes from VOA-001.
+_SHIP_ASSIST_INJECT_FILE=""
+if [[ "$HOOK_EVENT" == "SessionStart" ]] \
+        && [[ "${CHUMP_SHIP_ASSIST_HOOK:-1}" != "0" ]]; then
+    _SA_REPO="${CHUMP_SHIP_ASSIST_REPO:-$MAIN_REPO}"
+    _SA_TMP="$(mktemp 2>/dev/null || echo "")"
+    if [[ -n "$_SA_TMP" ]]; then
+        python3 - "$_SA_TMP" "$_SA_REPO" << 'SA_PY' 2>/dev/null || true
+import json, os, sys, time
+from pathlib import Path
+from datetime import datetime, timezone
+
+out_path = Path(sys.argv[1])
+repo_root = Path(sys.argv[2])
+
+now_ts = time.time()
+cutoff = now_ts - 7 * 24 * 3600  # last 7 days
+
+# Load yaml lazily (best-effort; fall back to no VOA data on import error)
+try:
+    import yaml
+    _yaml_ok = True
+except ImportError:
+    _yaml_ok = False
+
+agg = {}  # wedge_class -> {count, minutes_lost}
+voa_count = 0
+
+if _yaml_ok:
+    # Scan both docs/voice/VOA-*.yaml and docs/gaps/VOA-*.yaml
+    for search_dir in [repo_root / "docs" / "voice", repo_root / "docs" / "gaps"]:
+        if not search_dir.is_dir():
+            continue
+        for p in sorted(search_dir.glob("VOA-*.yaml")):
+            try:
+                doc = yaml.safe_load(p.read_text())
+                if not isinstance(doc, dict):
+                    continue
+                # Check filed_at vs cutoff
+                filed_at = doc.get("filed_at", "")
+                try:
+                    fa_ts = datetime.fromisoformat(str(filed_at).replace("Z", "+00:00")).timestamp()
+                    if fa_ts < cutoff:
+                        continue
+                except Exception:
+                    pass  # no date = include anyway
+                voa_count += 1
+                for obs in doc.get("wedge_observations", []):
+                    wc = obs.get("wedge_class", "")
+                    ml = int(obs.get("minutes_lost", 0) or 0)
+                    if not wc:
+                        continue
+                    if wc not in agg:
+                        agg[wc] = {"count": 0, "minutes_lost": 0}
+                    agg[wc]["count"] += 1
+                    agg[wc]["minutes_lost"] += ml
+            except Exception:
+                continue
+
+# Rank by count × minutes_lost
+ranked = sorted(agg.items(), key=lambda kv: kv[1]["count"] * kv[1]["minutes_lost"], reverse=True)
+top3 = ranked[:3]
+
+lines = ["═══ Ship-assist context (from docs/process/SHIP_ASSIST_PLAYBOOK.md) ═══"]
+
+if top3:
+    lines.append("Top-3 wedge classes (last 7 d, ranked by count × minutes_lost):")
+    for i, (wc, stats) in enumerate(top3, 1):
+        lines.append(f"  {i}. {wc}  (count={stats['count']}, total_minutes_lost={stats['minutes_lost']})")
+else:
+    # Fallback: seed classes from VOA-001 (the 7 dogfood session wedge classes)
+    lines.append("No real VOAs yet — 7 seed classes from VOA-001 (today's dogfood session):")
+    seed_classes = [
+        "fmt-drift-queue-wide",
+        "raw-gh-allowlist-miss",
+        "sccache-R2-pair-mismatch",
+        "bot-merge-silent-wedge",
+        "sonnet-mid-task-stall",
+        "claim-force-recover-wip-loss",
+        "gap-status-auto-flip-silent-noop",
+    ]
+    for wc in seed_classes:
+        lines.append(f"  - {wc}")
+
+lines.append("")
+lines.append("File a wedge when you hit friction:")
+lines.append("  chump voice --wedge-class <id> --minutes-lost <N> --workaround \"<text>\" --fix-shape <tooling|doc|gate>")
+lines.append("Full taxonomy + tooling inventory + decision flow: docs/process/SHIP_ASSIST_PLAYBOOK.md")
+
+out_path.write_text("\n".join(lines))
+SA_PY
+        if [[ -s "$_SA_TMP" ]]; then
+            _SHIP_ASSIST_INJECT_FILE="$_SA_TMP"
+            # Emit kind=ship_assist_context_surfaced (INFRA-2278)
+            # scanner-anchor: "kind":"ship_assist_context_surfaced"
+            _SA_VOA_COUNT=$(python3 -c "
+import sys; lines=open(sys.argv[1]).readlines()
+for l in lines:
+    if l.startswith('  ') and l.strip().startswith(tuple('123456789')):
+        pass
+" "$_SA_TMP" 2>/dev/null || echo 0) || true
+            _SA_VOA_COUNT="$(python3 -c "
+from pathlib import Path
+import time
+cutoff = time.time() - 7*24*3600
+count = 0
+for d in [Path('${_SA_REPO}/docs/voice'), Path('${_SA_REPO}/docs/gaps')]:
+    if d.is_dir():
+        for p in d.glob('VOA-*.yaml'):
+            count += 1
+print(count)
+" 2>/dev/null || echo 0)"
+            _SA_TOP_COUNT=$(python3 -c "
+from pathlib import Path
+content = Path('${_SA_TMP}').read_text()
+import re
+m = re.search(r'count=(\d+)', content)
+print(m.group(1) if m else 0)
+" 2>/dev/null || echo 0)
+            _TS="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+            printf '{"ts":"%s","kind":"ship_assist_context_surfaced","voa_count_last_7d":%s,"top_class_count":%s}\n' \
+                "$_TS" "${_SA_VOA_COUNT:-0}" "${_SA_TOP_COUNT:-0}" >> "$AMBIENT_LOG" 2>/dev/null || true
+        else
+            rm -f "$_SA_TMP" 2>/dev/null || true
+        fi
+    fi
+fi
+
 # ── Build the digest in Python (proper JSON parsing + escaping) ───────────────
 # Write digest script to a temp file; bash 3.2 on macOS misparses single-quoted
 # heredoc bodies inside $() when they contain apostrophes (e.g. "isn't").
@@ -604,6 +739,19 @@ lines_out.append(
     "If you need to act on shared state, re-check this digest before commit/ship."
 )
 
+# INFRA-2278: ship-assist context block (additive, bottom of digest).
+# Pre-computed by the shell section above; just inject here.
+_ship_assist_file = os.environ.get("SHIP_ASSIST_INJECT_FILE", "")
+if _ship_assist_file:
+    try:
+        _sa_block = Path(_ship_assist_file).read_text().strip()
+        Path(_ship_assist_file).unlink(missing_ok=True)
+        if _sa_block:
+            lines_out.append("")
+            lines_out.append(_sa_block)
+    except Exception:
+        pass
+
 context = "\n".join(lines_out)
 out = {
     "hookSpecificOutput": {
@@ -623,6 +771,7 @@ CONTEXT="$(
     REPO_ROOT="$MAIN_REPO" \
     ROADMAP_INJECT_FILE="$_ROADMAP_INJECT_FILE" \
     INBOX_INJECT_FILE="$_INBOX_INJECT_FILE" \
+    SHIP_ASSIST_INJECT_FILE="$_SHIP_ASSIST_INJECT_FILE" \
     python3 "$_DIGEST_PY"
 )"
 rm -f "$_DIGEST_PY"
