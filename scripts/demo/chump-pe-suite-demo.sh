@@ -181,38 +181,45 @@ CMD
 # ─────────────────────────────────────────────────────────────────────────────
 
 beat4_replies() {
-  declare -A ROLES=( [ci-audit]=1 [target]=2 [infra-watcher]=3 [harvester]=4 [policy]=5 )
-  declare -A POSITIONS=(
-    [ci-audit]="per-PR"
-    [target]="per-PR"
-    [infra-watcher]="per-PR (conditional)"
-    [harvester]="per-PR"
-    [policy]="per-PR"
-  )
-  declare -A CONFIDENCE=( [ci-audit]=85 [target]=72 [infra-watcher]=60 [harvester]=90 [policy]=78 )
-  declare -A RATIONALE=(
-    [ci-audit]="Per-PR shipping gives CI a clean signal per change. Batch cycles mean one green build masks multiple root causes. For this repo, where test coverage is sparse, we want per-PR isolation so regressions are attributable. A weekly batch would hide 3-5 failure classes simultaneously on a bad week."
-    [target]="Gap targeting assumes per-PR atomicity. Batch cycles break the intent-atomic principle: a gap's acceptance criteria spans exactly one PR. Batching would require either multi-gap PRs (hard to review) or re-filing gaps at batch time (wasted filing overhead). Per-PR keeps the gap-to-PR mapping clean."
-    [infra-watcher]="Per-PR is correct if the merge queue handles throughput. If this repo ships >20 PRs/day and the queue becomes a bottleneck, a daily-batch window (not weekly) is a reasonable middle path. I am flagging this at 60% because throughput data for this repo is not yet available. Recommend revisiting after 2 weeks of observed ship rate."
-    [harvester]="Cross-repo harvesting requires stable commit SHAs as anchor points for cross-pollination briefs (CP-NNN). Weekly batches produce jumbo commits that are hard to pin. Per-PR gives the harvester clean primitives to extract and port. Arsenal catalog accuracy degrades with batch merges."
-    [policy]="Auto-merge trust is calibrated per-PR via the trust-cliff knob (INFRA-1489). Batch cycles would require a new trust model: trust across a bundle, not per change. The per-op / per-repo override mechanism in policy assumes per-PR granularity. Switching to batch would need a policy rework not scoped in the current suite."
-  )
-  declare -A CROSSREF=(
-    [ci-audit]="INFRA-2209 (consensus discipline), fleet CI failure taxonomy."
-    [target]="AGENTS.md §\"PRs are intent-atomic\"."
-    [infra-watcher]="INFRA-2228 §4 substrate dependencies."
-    [harvester]="docs/arsenal/GLOBAL_ARSENAL.md, CP-brief format."
-    [policy]="INFRA-1489 (Marcus M-E trust-cliff)."
+  # INFRA-2282: parallel indexed arrays — works on macOS bash 3.2 (no assoc-array support).
+  # Indices are role-position-aligned across all 5 arrays.
+  local ROLE_ORDER=(ci-audit target infra-watcher harvester policy)
+
+  local POSITIONS=(
+    "per-PR"
+    "per-PR"
+    "per-PR (conditional)"
+    "per-PR"
+    "per-PR"
   )
 
-  local ordered=(ci-audit target infra-watcher harvester policy)
-  for role in "${ordered[@]}"; do
+  local CONFIDENCE=(85 72 60 90 78)
+
+  local RATIONALE=(
+    "Per-PR shipping gives CI a clean signal per change. Batch cycles mean one green build masks multiple root causes. For this repo, where test coverage is sparse, we want per-PR isolation so regressions are attributable. A weekly batch would hide 3-5 failure classes simultaneously on a bad week."
+    "Gap targeting assumes per-PR atomicity. Batch cycles break the intent-atomic principle: a gap's acceptance criteria spans exactly one PR. Batching would require either multi-gap PRs (hard to review) or re-filing gaps at batch time (wasted filing overhead). Per-PR keeps the gap-to-PR mapping clean."
+    "Per-PR is correct if the merge queue handles throughput. If this repo ships >20 PRs/day and the queue becomes a bottleneck, a daily-batch window (not weekly) is a reasonable middle path. I am flagging this at 60% because throughput data for this repo is not yet available. Recommend revisiting after 2 weeks of observed ship rate."
+    "Cross-repo harvesting requires stable commit SHAs as anchor points for cross-pollination briefs (CP-NNN). Weekly batches produce jumbo commits that are hard to pin. Per-PR gives the harvester clean primitives to extract and port. Arsenal catalog accuracy degrades with batch merges."
+    "Auto-merge trust is calibrated per-PR via the trust-cliff knob (INFRA-1489). Batch cycles would require a new trust model: trust across a bundle, not per change. The per-op / per-repo override mechanism in policy assumes per-PR granularity. Switching to batch would need a policy rework not scoped in the current suite."
+  )
+
+  local CROSSREF=(
+    "INFRA-2209 (consensus discipline), fleet CI failure taxonomy."
+    "AGENTS.md §\"PRs are intent-atomic\"."
+    "INFRA-2228 §4 substrate dependencies."
+    "docs/arsenal/GLOBAL_ARSENAL.md, CP-brief format."
+    "INFRA-1489 (Marcus M-E trust-cliff)."
+  )
+
+  local i role
+  for i in "${!ROLE_ORDER[@]}"; do
     pause 4
+    role="${ROLE_ORDER[$i]}"
     printf '\n─── FEEDBACK from curator-opus-%s %s\n' "$role" "$(printf '─%.0s' {1..40})"
-    printf 'Position:   %s\n' "${POSITIONS[$role]}"
-    printf 'Confidence: %d%%\n' "${CONFIDENCE[$role]}"
-    printf 'Rationale:  %s\n' "${RATIONALE[$role]}" | fold -s -w 68 | sed '2,$s/^/            /'
-    printf 'Cross-ref:  %s\n' "${CROSSREF[$role]}"
+    printf 'Position:   %s\n' "${POSITIONS[$i]}"
+    printf 'Confidence: %d%%\n' "${CONFIDENCE[$i]}"
+    printf 'Rationale:  %s\n' "${RATIONALE[$i]}" | fold -s -w 68 | sed '2,$s/^/            /'
+    printf 'Cross-ref:  %s\n' "${CROSSREF[$i]}"
   done
 }
 
