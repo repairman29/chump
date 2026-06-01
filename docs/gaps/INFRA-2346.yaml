@@ -1,0 +1,17 @@
+- id: INFRA-2346
+  domain: INFRA
+  title: pr-queue auto-processor — state-machine sweep over all open PRs every 60s, with auto-admin-merge for trusted/bot-authored
+  status: open
+  priority: P0
+  effort: m
+  skills_required: [bash, fleet]
+  acceptance_criteria:
+    - "pr-shepherd-daemon.sh extended with CLEAN_GREEN tier — for trusted-author PRs with no failing checks and base=main, daemon executes admin-merge; hard-cap 3 admin-merges per tick"
+    - "Trunk-red gate: when latest trunk_state_change in ambient shows TRUNK_RED within 30 min, ALL admin-merge actions are skipped and pr_queue_skipped_trunk_red is emitted"
+    - "Trust-list configurable via TRUST_AUTHORS env (default: fleet-bot, dependabot bot, claude-bot, repairman29)"
+    - "BLOCKED_FLAKE retrigger tier: when PR failures match only known-flake check names from docs/process/KNOWN_FLAKES.yaml check_flakes section, daemon runs gh run rerun --failed; cap 2 reruns per PR"
+    - "WEDGED_24H signal tier: PR open more than 24h AND no commits in last 12h AND not armed — emit kind=pr_wedged and broadcast WARN DM to PR author; signal once per PR per 24h"
+    - "Three new event kinds registered: pr_queue_auto_action, pr_wedged, pr_queue_skipped_trunk_red"
+    - "Integration test scripts/ci/test-pr-queue-processor.sh asserts trusted+green admin-merges, trunk_red skips, known-flake reruns, cap exceeded blocks. Test passes under bash 3.2."
+    - "All actions audit-logged to ambient.jsonl via pr_queue_auto_action so operator can reconstruct every auto-merge"
+    - "Failure classes: transient (rate-limit) retried next tick; permanent (branch protection) skipped without retry; cap-exceeded emits action with reason=capped"
