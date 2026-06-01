@@ -792,3 +792,6 @@ CHUMP_REAPER_HOLD_TRUNK_RED
 # detected in: (standard input)
 CHUMP_REAPER_TRUNK_RED_WINDOW_S
 CHUMP_PREFLIGHT_SKIP_
+# ── INFRA-2366: inventory-agent-sync overrides ────────────────────────────────
+CHUMP_AGENT_SYNC_INVENTORY_DB
+CHUMP_AGENT_SYNC_AMBIENT_LOG
