@@ -3,8 +3,11 @@
 #
 # Pre-empts normal picker selection when trunk is RED. Walks the gap registry
 # for open gaps whose `skills_required` contains the `fix_trunk` skill tag,
-# claims the highest-priority candidate, and dispatches a Sonnet sub-agent
-# (claude -p) on it immediately — independent of FLEET worker.sh pickers.
+# atomically claims the highest-priority candidate (creating its worktree),
+# and then EITHER broadcasts a SessionStart-hook signal so the operator's
+# running Claude Code IDE picks it up (default mode=signal, respects the
+# Max subscription billing) OR spawns a headless `claude -p` sub-agent
+# against the console.anthropic.com API balance (opt-in mode=subprocess).
 #
 # When trunk is GREEN, this script is a no-op; fix_trunk gaps then follow
 # the normal picker priority path. The pre-emption is gated on a recent
@@ -21,24 +24,45 @@
 #
 # Disable kill-switch: CHUMP_FIX_TRUNK_DISPATCH=0 exits 0 immediately.
 #
+# Dispatch mode (INFRA-2341):
+#   CHUMP_FIX_TRUNK_DISPATCH_MODE      "signal" (default) | "subprocess"
+#     - signal     — claim atomically, then emit a fix_trunk_priority_signal
+#                    ambient event AND write to .chump-locks/URGENT-INBOX.jsonl
+#                    so inbox-check-urgent.sh surfaces it to the running IDE
+#                    on the next PostToolUse / SessionStart hook fire. No
+#                    headless `claude -p` is spawned — the operator's
+#                    subscription session does the work.
+#     - subprocess — legacy path: claim + spawn `claude -p --model $MODEL`
+#                    in the worktree. Useful for users who explicitly want
+#                    headless billing against ANTHROPIC_API_KEY or
+#                    CLAUDE_CODE_OAUTH_TOKEN without an interactive IDE
+#                    session open.
+#
 # Env overrides:
 #   CHUMP_FIX_TRUNK_DISPATCH            "0" to disable entirely (default: enabled)
+#   CHUMP_FIX_TRUNK_DISPATCH_MODE       "signal" (default) | "subprocess" (INFRA-2341)
 #   CHUMP_FIX_TRUNK_TRUNK_RED_LOOKBACK_M   minutes to consider trunk_red fresh (default: 30)
-#   CHUMP_FIX_TRUNK_MODEL               model to dispatch (default: sonnet)
+#   CHUMP_FIX_TRUNK_MODEL               model to dispatch (default: sonnet) — subprocess mode only
 #   CHUMP_FIX_TRUNK_SKILL_TAG           skill tag substring to match (default: fix_trunk)
 #   CHUMP_FIX_TRUNK_STATE_DB            override path to state.db (default: $REPO_ROOT/.chump/state.db)
 #   CHUMP_FIX_TRUNK_AMBIENT_FILE        override ambient.jsonl path (used in tests)
 #   CHUMP_FIX_TRUNK_LOCK_FILE           override lock-file path (used in tests)
+#   CHUMP_FIX_TRUNK_URGENT_INBOX        override URGENT-INBOX.jsonl path (used in tests, signal mode)
 #   CHUMP_FIX_TRUNK_DRY_RUN             "1" → log + emit ambient but do not claim or dispatch
 #
 # Emits:
-#   kind=fix_trunk_dispatched   when a gap is claimed and a Sonnet is launched
-#   kind=fix_trunk_no_candidate when trunk is RED but no fix_trunk gap is open
-#   kind=fix_trunk_skipped      when a prior dispatch is still alive (parallelism cap)
+#   kind=fix_trunk_priority_signal  signal mode — claimed + signaled the IDE
+#   kind=fix_trunk_dispatched       subprocess mode — claimed + spawned claude -p
+#   kind=fix_trunk_no_candidate     trunk is RED but no fix_trunk gap is open
+#   kind=fix_trunk_skipped          a prior dispatch is still alive (parallelism cap)
 #
 # Pillar: RESILIENT. Sibling of pr-shepherd-daemon (rescues stuck PRs),
 # wizard-daemon (classifies cascading CI failures), trunk-red-detector
 # (raises the trunk_red signal in the first place).
+#
+# Sentinel keeps its 60-min operator-recall path independent of this script:
+# if no IDE picks up the signal within 60 min of trunk_red_persistent, the
+# sentinel still calls operator-recall (CI_BROKEN) so a human gets paged.
 
 set -uo pipefail
 
@@ -58,13 +82,24 @@ mkdir -p "$LOCK_DIR"
 
 # ── Configuration ────────────────────────────────────────────────────────────
 DISPATCH_ENABLED="${CHUMP_FIX_TRUNK_DISPATCH:-1}"
+DISPATCH_MODE="${CHUMP_FIX_TRUNK_DISPATCH_MODE:-signal}"  # INFRA-2341: default = signal
 LOOKBACK_M="${CHUMP_FIX_TRUNK_TRUNK_RED_LOOKBACK_M:-30}"
 MODEL="${CHUMP_FIX_TRUNK_MODEL:-sonnet}"
 SKILL_TAG="${CHUMP_FIX_TRUNK_SKILL_TAG:-fix_trunk}"
 STATE_DB="${CHUMP_FIX_TRUNK_STATE_DB:-$MAIN_REPO/.chump/state.db}"
 AMBIENT="${CHUMP_FIX_TRUNK_AMBIENT_FILE:-$LOCK_DIR/ambient.jsonl}"
 LOCK_FILE="${CHUMP_FIX_TRUNK_LOCK_FILE:-$LOCK_DIR/fix-trunk-dispatcher.lock}"
+URGENT_INBOX="${CHUMP_FIX_TRUNK_URGENT_INBOX:-$LOCK_DIR/URGENT-INBOX.jsonl}"
 DRY_RUN="${CHUMP_FIX_TRUNK_DRY_RUN:-0}"
+
+# Validate mode early — typos here should fail loud, not silently fall through.
+case "$DISPATCH_MODE" in
+  signal|subprocess) : ;;
+  *)
+    printf '[fix-trunk-dispatcher] ERROR: CHUMP_FIX_TRUNK_DISPATCH_MODE=%q is invalid; expected signal|subprocess\n' "$DISPATCH_MODE" >&2
+    exit 0
+    ;;
+esac
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -86,6 +121,7 @@ fi
 # scanner-anchor: kind=fix_trunk_dispatched
 # scanner-anchor: kind=fix_trunk_no_candidate
 # scanner-anchor: kind=fix_trunk_skipped
+# scanner-anchor: kind=fix_trunk_priority_signal
 emit_ambient() {
   local kind="$1" extra="${2:-}"
   local line
@@ -204,8 +240,12 @@ log "candidate gap: $candidate_id"
 
 # ── Dry-run short-circuit ────────────────────────────────────────────────────
 if [[ "$DRY_RUN" == "1" ]]; then
-  log "DRY_RUN=1; would claim+dispatch $candidate_id but exiting"
-  emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"dry_run\":true"
+  log "DRY_RUN=1 mode=$DISPATCH_MODE; would claim+dispatch $candidate_id but exiting"
+  if [[ "$DISPATCH_MODE" == "signal" ]]; then
+    emit_ambient "fix_trunk_priority_signal" "\"gap_id\":\"$candidate_id\",\"dispatch_mode\":\"signal\",\"dry_run\":true"
+  else
+    emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"dispatch_mode\":\"subprocess\",\"dry_run\":true"
+  fi
   exit 0
 fi
 
@@ -253,7 +293,82 @@ if [[ ! -d "$worktree" ]]; then
   fi
 fi
 
-log "claimed $candidate_id at worktree=$worktree; dispatching $MODEL"
+log "claimed $candidate_id at worktree=$worktree; dispatch_mode=$DISPATCH_MODE"
+
+# ── INFRA-2341: dispatch mode branch ─────────────────────────────────────────
+# Two paths from the same claim:
+#   signal     — broadcast a SessionStart-hook signal to the running IDE
+#                (default; respects Max subscription billing)
+#   subprocess — spawn claude -p (legacy; opt-in headless API-key billing)
+if [[ "$DISPATCH_MODE" == "signal" ]]; then
+  # ── Signal path (INFRA-2341, default) ──────────────────────────────────────
+  # The operator's running Claude Code IDE has a PostToolUse + SessionStart
+  # hook chain that calls scripts/coord/inbox-check-urgent.sh. That helper
+  # reads .chump-locks/URGENT-INBOX.jsonl and surfaces unread CRIT-class
+  # entries as a <system-reminder> block on the next tool call. We write
+  # there directly (no Sonnet, no second claude process, no second billing
+  # surface) and emit the ambient event so the sentinel + observers see
+  # the dispatch happened. The IDE then picks up the gap at its convenience.
+  #
+  # Mailbox payload schema (matches broadcast.sh CRIT format —
+  # inbox-check-urgent.sh parses these fields):
+  #   ts        — ISO-8601 UTC
+  #   urgency   — "CRIT"
+  #   from      — "fix-trunk-dispatcher"
+  #   to        — "fleet-wide" (any IDE that reads the global inbox picks up)
+  #   kind      — "fix_trunk_priority_signal" (for typed consumers)
+  #   gap_id    — claimed gap id
+  #   priority  — pulled from state.db (P0 typically)
+  #   worktree  — absolute path to the pre-created worktree
+  #   body      — human-readable instructions surfaced in the system-reminder
+  filing_session="claim-${gap_lower}"
+  # Pull priority for richer ambient + payload context (fall back gracefully).
+  candidate_priority="$(sqlite3 "$STATE_DB" "SELECT priority FROM gaps WHERE id='$candidate_id';" 2>/dev/null || echo "P0")"
+  candidate_priority="${candidate_priority:-P0}"
+
+  signal_body="Trunk (main ci.yml) is RED. Gap $candidate_id ($candidate_priority) is claimed and ready at worktree=$worktree (branch chump/${gap_lower}-claim). Switch to that worktree (cd $worktree), read the failing CI gate (gh run list --branch main --workflow ci.yml --limit 5), and ship the surgical fix via scripts/coord/bot-merge.sh --gap $candidate_id --auto-merge. Mission: clear trunk red so the rest of the fleet can ship. See docs/process/PR_RESCUE_PROCEDURE.md for the canonical doctrine."
+
+  # Write to global URGENT-INBOX so inbox-check-urgent.sh surfaces it. The
+  # python3 here keeps JSON-escaping safe even if the body grows multi-line
+  # or contains quotes in future iterations.
+  python3 -c "
+import json, sys
+entry = {
+    'ts': sys.argv[1],
+    'urgency': 'CRIT',
+    'from': 'fix-trunk-dispatcher',
+    'to': 'fleet-wide',
+    'kind': 'fix_trunk_priority_signal',
+    'gap_id': sys.argv[2],
+    'priority': sys.argv[3],
+    'worktree': sys.argv[4],
+    'filing_session': sys.argv[5],
+    'body': sys.argv[6],
+}
+print(json.dumps(entry))
+" "$TS" "$candidate_id" "$candidate_priority" "$worktree" "$filing_session" "$signal_body" \
+    >> "$URGENT_INBOX" 2>/dev/null || log "WARN: failed to write URGENT-INBOX entry"
+
+  # Record a singleton lock so a second tick doesn't re-signal the same gap
+  # while the first signal is still unread. The lock holds *this* dispatcher
+  # process's PID — kill -0 only succeeds while the launchd-spawned ticker
+  # is alive (which it isn't, post-exit), so the next tick reclaims it
+  # quickly. But the IDE-acknowledge event (fix_trunk_session_acknowledged
+  # written by inbox-check-urgent.sh) is what actually retires the work;
+  # we record claim_owner here so a curious operator can `cat` the lock to
+  # see who's holding the gap.
+  printf '{"pid":%d,"gap_id":"%s","started_at":"%s","dispatch_mode":"signal","worktree":"%s","filing_session":"%s"}\n' \
+    "$$" "$candidate_id" "$TS" "$worktree" "$filing_session" \
+    > "$LOCK_FILE"
+
+  emit_ambient "fix_trunk_priority_signal" "\"gap_id\":\"$candidate_id\",\"priority\":\"$candidate_priority\",\"worktree\":\"$worktree\",\"filing_session\":\"$filing_session\",\"dispatch_mode\":\"signal\""
+
+  log "signaled $candidate_id to running IDE via URGENT-INBOX (mode=signal); priority=$candidate_priority worktree=$worktree"
+  exit 0
+fi
+
+# ── Subprocess path (legacy, opt-in via CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess) ──
+log "dispatch_mode=subprocess; spawning $MODEL headless"
 
 # ── INFRA-2340: OAUTH defensive read ─────────────────────────────────────────
 # launchd plists historically didn't pass CLAUDE_CODE_OAUTH_TOKEN through to
@@ -333,11 +448,11 @@ sub_log="/tmp/chump-fix-trunk-${candidate_id}.log"
 sub_pid=$!
 
 # ── Record the singleton lock ────────────────────────────────────────────────
-printf '{"pid":%d,"gap_id":"%s","started_at":"%s","model":"%s","worktree":"%s","log":"%s"}\n' \
+printf '{"pid":%d,"gap_id":"%s","started_at":"%s","dispatch_mode":"subprocess","model":"%s","worktree":"%s","log":"%s"}\n' \
   "$sub_pid" "$candidate_id" "$TS" "$MODEL" "$worktree" "$sub_log" \
   > "$LOCK_FILE"
 
-emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"pid\":$sub_pid,\"worktree\":\"$worktree\""
+emit_ambient "fix_trunk_dispatched" "\"gap_id\":\"$candidate_id\",\"model\":\"$MODEL\",\"pid\":$sub_pid,\"worktree\":\"$worktree\",\"dispatch_mode\":\"subprocess\""
 
-log "dispatched $MODEL pid=$sub_pid on $candidate_id; log=$sub_log"
+log "dispatched $MODEL pid=$sub_pid on $candidate_id (mode=subprocess); log=$sub_log"
 exit 0

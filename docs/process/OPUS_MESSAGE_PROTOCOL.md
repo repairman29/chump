@@ -58,6 +58,16 @@ For each unread message (canonical INFRA-1115 wire shape:
    - `STUCK`: peer is blocked — see if you can unblock.
    - `DONE`: peer finished — no reply usually needed.
    - `ALERT`: something is broken in the fleet — investigate.
+   - `kind=fix_trunk_priority_signal` (INFRA-2341): the fix-trunk-dispatcher
+     has claimed a fix-trunk gap because trunk (main ci.yml) is RED and
+     wants THIS session to drive it to merge. Surfaced by
+     `inbox-check-urgent.sh` as a `<system-reminder>` banner above any
+     normal CRIT/EMERGENCY messages. **Pivot away from current work**, cd
+     to the worktree path embedded in the signal, and ship the surgical
+     fix via `scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge`.
+     Acknowledged automatically (`kind=fix_trunk_session_acknowledged` is
+     emitted by inbox-check-urgent on cursor advance) — no manual reply
+     needed.
 4. **Cursor auto-advances** when `chump-inbox.sh read` runs. To leave a
    message "unread" while inspecting, use `--no-advance`.
 5. **If a reply is warranted**, send one with the original event's
@@ -157,6 +167,9 @@ compat.
 ## Related
 
 - **INFRA-1115** — broadcast.sh + chump-inbox.sh (the canonical mechanism)
+- **INFRA-2016** — inbox-check-urgent.sh (global URGENT-INBOX, PostToolUse-surfaced CRIT/EMERGENCY)
+- **INFRA-2341** — fix-trunk-dispatcher signal mode (Max-subscription-safe trunk-loop dispatch)
+- **INFRA-2324** — trunk-sentinel-daemon (raises trunk_red/trunk_red_persistent + 60-min operator-recall fallback)
 - [INFRA-1797](../gaps/INFRA-1797.yaml) — SessionStart auto-surface hook
 - [INFRA-1758](../gaps/INFRA-1758.yaml) — A2A Layer 1a pub/sub foundation
 - [INFRA-1759](../gaps/INFRA-1759.yaml) — A2A Layer 2b RPC (v1 sync successor)

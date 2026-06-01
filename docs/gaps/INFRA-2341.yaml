@@ -1,0 +1,15 @@
+- id: INFRA-2341
+  domain: INFRA
+  title: "trunk-loop architecture pivot: notify-running-IDE instead of spawning claude -p subprocess (respect subscription billing)"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - fix-trunk-dispatcher emits kind=fix_trunk_priority_signal (gap_id, priority, filing_session, ts) instead of spawning claude -p when CHUMP_FIX_TRUNK_DISPATCH_MODE=signal (default)
+    - inbox-check-urgent.sh surfaces fix_trunk_priority_signal as a SessionStart/PostToolUse system-reminder block and emits kind=fix_trunk_session_acknowledged so the same signal is not re-surfaced
+    - CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess retains the legacy claude -p spawn path for opt-in headless API-key billing
+    - scripts/ci/test-trunk-loop-e2e.sh covers both modes with two new assertions and continues to pass for the legacy subprocess assertions
+    - fix_trunk_priority_signal and fix_trunk_session_acknowledged registered in docs/observability/EVENT_REGISTRY.yaml with consumers and fields_required
+    - docs/process/PR_RESCUE_PROCEDURE.md and docs/process/OPUS_MESSAGE_PROTOCOL.md document the new flow + the IDE-must-be-running trade-off
+  skills_required: bash,rust,fleet
+
