@@ -2,7 +2,9 @@
 //! META-154: sibling_status — per-active-lease progress matrix.
 //! INFRA-2258: voice — Voice-of-Agent VOA filing subcommand.
 //! META-271: inventory — fleet inventory + tech-debt review-only audit CLI.
+//! INFRA-2371: config — runtime cascade/privacy/MCP snapshot subcommand.
 
+pub mod config;
 pub mod consensus_tally;
 pub mod inventory;
 pub mod sibling_status;
