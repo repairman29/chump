@@ -435,6 +435,28 @@ CHUMP_PREFLIGHT_SKIP_ENVVARS
 # INFRA-2396: skip the pipefail-race-sweep step in chump preflight (INFRA-1658)
 CHUMP_PREFLIGHT_SKIP_PIPEFAIL
 
+# INFRA-2396 batch: 15 internal vars accumulated on main without coverage entries
+# (operator-paged trunk-red unwedge; each was added by a recent PR without DOC-026 follow-up).
+# Inventory subsystem (META-271):
+CHUMP_INVENTORY_DB                 # path override for .chump/inventory.db
+CHUMP_INVENTORY_MIGRATION          # path override for migrations/inventory_v1.sql
+CHUMP_INVENTORY_REPO               # repo override for backfill (default repairman29/chump)
+CHUMP_INVENTORY_REST_TIMEOUT_S     # REST per-call timeout for backfill
+CHUMP_INVENTORY_PR_MAX_PAGES       # cap on pages walked during PR backfill
+CHUMP_INVENTORY_PR_PER_PAGE        # PRs per page for REST PR backfill
+# Preflight skips (companion to CHUMP_PREFLIGHT_SKIP_PIPEFAIL above):
+CHUMP_PREFLIGHT_SKIP_INSTALLMAP    # skip install-script-manifest gate
+CHUMP_PREFLIGHT_SKIP_PATHFILTER    # skip path-filter-coverage gate
+# Role + session identifiers (curator + agent harness):
+CHUMP_AGENT_ROLE                   # role name when chump is invoked as a sub-agent
+CHUMP_SESSION_ROLE                 # session-scoped role label for telemetry
+CHUMP_OPERATOR                     # operator identifier for audit-trail rows
+# Cascade + consensus tuning:
+CHUMP_CASCADE_PRECHECK             # gates cascade dispatcher's precheck loop
+CHUMP_CONSENSUS_REACT_WEIGHT       # weight tuning for consensus reaction
+# Test fixtures:
+CHUMP_VOICE_TEST_ID                # voice test-id override for telemetry assertions
+
 # INFRA-1789: skip subcommand-help regression gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
