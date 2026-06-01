@@ -20,9 +20,9 @@
 //! All read subcommands support --json.
 
 use crate::inventory::{
-    self, class_stats, collect_artifacts, collect_prs, demote_class, list_findings, meta_counts,
-    promote_class, repo_root, review_finding, run_detectors, write_rebuild_meta, FindingRow,
-    DETECTOR_CLASSES,
+    self, class_stats, collect_artifacts, collect_prs_v2, demote_class, list_findings, meta_counts,
+    pr_dependent_detectors_disabled, promote_class, repo_root, review_finding, run_detectors_v2,
+    write_rebuild_meta, FindingRow, PrCollectionPath, DETECTOR_CLASSES, PR_DEPENDENT_DETECTORS,
 };
 
 fn print_help() {
@@ -90,11 +90,32 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
         }
     };
     println!("[inventory rebuild] collecting PRs...");
-    let prs = collect_prs(&conn, &root).unwrap_or_else(|e| {
+    let pr_result = collect_prs_v2(&conn, &root).unwrap_or_else(|e| {
         eprintln!("[inventory rebuild] collect_prs warn: {e}");
-        0
+        inventory::PrCollectionResult {
+            indexed: 0,
+            auth_source: inventory::AuthSource::Missing,
+            used_path: PrCollectionPath::Skipped,
+            fallback_to_cli: false,
+        }
     });
-    println!("[inventory rebuild] indexed {prs} PRs");
+    let path_label = match pr_result.used_path {
+        PrCollectionPath::RestCurl => "rest",
+        PrCollectionPath::GhCli => "gh-cli",
+        PrCollectionPath::Skipped => "skipped",
+    };
+    let fallback_tag = if pr_result.fallback_to_cli {
+        " (rest→cli fallback)"
+    } else {
+        ""
+    };
+    println!(
+        "[inventory rebuild] pr_index: {} indexed from {} (auth={}){}",
+        pr_result.indexed,
+        path_label,
+        pr_result.auth_source.label(),
+        fallback_tag,
+    );
 
     println!("[inventory rebuild] collecting artifacts...");
     let artifacts = collect_artifacts(&conn, &root).unwrap_or_else(|e| {
@@ -103,14 +124,22 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
     });
     println!("[inventory rebuild] indexed {artifacts} artifacts");
 
-    println!("[inventory rebuild] running 9 detectors (tier=0 surface-only)...");
-    let n = run_detectors(&conn, &root).unwrap_or_else(|e| {
+    let prs_available = pr_result.auth_source.is_available() && pr_result.indexed > 0;
+    if !prs_available {
+        println!(
+            "[inventory rebuild] WARN: PR backfill unavailable — disabling {} PR-dependent detector(s): {}",
+            PR_DEPENDENT_DETECTORS.len(),
+            PR_DEPENDENT_DETECTORS.join(", "),
+        );
+    }
+    println!("[inventory rebuild] running detectors (tier=0 surface-only)...");
+    let n = run_detectors_v2(&conn, &root, prs_available).unwrap_or_else(|e| {
         eprintln!("[inventory rebuild] detectors warn: {e}");
         0
     });
     println!("[inventory rebuild] {n} findings recorded at tier=0");
 
-    if let Err(e) = write_rebuild_meta(&conn, prs as i64, artifacts as i64) {
+    if let Err(e) = write_rebuild_meta(&conn, pr_result.indexed as i64, artifacts as i64) {
         eprintln!("[inventory rebuild] meta-write warn: {e}");
     }
 
@@ -462,23 +491,41 @@ fn cmd_class_stats(args: &[String]) -> i32 {
         }
         return 0;
     }
+    let disabled = pr_dependent_detectors_disabled(&conn);
     println!(
-        "{:<28}  {:<5}  {:<7}  {:<9}  {:<5}  eligible",
+        "{:<28}  {:<5}  {:<10}  {:<9}  {:<5}  eligible",
         "class", "tier", "total", "reviewed", "RP%"
     );
     for s in &stats {
+        let is_disabled = disabled && PR_DEPENDENT_DETECTORS.contains(&s.finding_class.as_str());
+        let total_col = if is_disabled {
+            "DISABLED".to_string()
+        } else {
+            s.total_findings.to_string()
+        };
+        let eligible = if is_disabled {
+            "n/a (gh auth missing)".to_string()
+        } else if s.eligible_for_promotion {
+            "yes".to_string()
+        } else {
+            "no".to_string()
+        };
         println!(
-            "{:<28}  {:<5}  {:<7}  {:<9}  {:<5.0}  {}",
+            "{:<28}  {:<5}  {:<10}  {:<9}  {:<5.0}  {}",
             s.finding_class,
             s.current_tier,
-            s.total_findings,
+            total_col,
             s.reviewed_count,
             s.real_positive_ratio * 100.0,
-            if s.eligible_for_promotion {
-                "yes"
-            } else {
-                "no"
-            },
+            eligible,
+        );
+    }
+    if disabled {
+        println!();
+        println!(
+            "note: {} detector(s) DISABLED — gh auth missing on last rebuild. \
+             Set GH_TOKEN or run `gh auth login` then `chump inventory rebuild`.",
+            PR_DEPENDENT_DETECTORS.len(),
         );
     }
     0
