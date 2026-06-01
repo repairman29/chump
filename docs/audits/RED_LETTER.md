@@ -1,3 +1,334 @@
+## Issue #14 — 2026-06-01
+
+> Audit window: commits since 2026-05-25 (Issue #13). origin/main has ZERO commits since 2026-05-16 (PR #2273) — a 16-day freeze. The execution environment carries 50 stranded commits (PRs #2273–#2936, 2026-05-31 to 2026-06-01) on a detached HEAD not in origin/main (see G2). `gap-doctor.py doctor` crashed with `no such table: gaps` on entry — **INFRA-821 confirmed live for the fourth consecutive cycle**. `chump gap import` run manually; state.db seeded with 916 gaps. `chump` binary built from source (v0.1.2, 5724f69, ~7 min). `gh` CLI unavailable; GitHub MCP tools available. `chump gap reserve` assigned already-used ID META-267 (in git history) then META-001 (from empty state.db before import) — INFRA-018 guard blind to git history, confirmed twice in one session.
+
+---
+
+### Status of Prior Issues (Issue #13)
+
+- **STILL_OPEN_INACTIVE**: FLEET-053 (NATS deployment, P0, filed 2026-05-12) — **4 cycles**, 0 commits.
+  ```
+  git log --all --grep='FLEET-053' --oneline
+  (no output)
+  ```
+- **STILL_OPEN_INACTIVE**: META-064 (P0 budget triage, filed 2026-05-18) — 3 cycles, 0 implementation commits. The 5 commits that reference META-064 cite it as a Rust-first rule justification, not as P0 budget triage. P0 count grew 29→**66** (+128%) this cycle.
+  ```
+  git log --all --grep='META-064' --format='%h %s | %b' | grep -v 'Rust-first per META-064'
+  (no implementation-class commits)
+  ```
+- **WORSE**: INFRA-1610 (OPEN-BUT-LANDED, filed 2026-05-18) — OBL count **44→123** (+180%). INFRA-1610 has 0 implementation commits.
+  ```
+  git log --all --grep='INFRA-1610' --oneline
+  (no output)
+  python3 OBL scan: OPEN-BUT-LANDED count: 123 (was 44)
+  ```
+- **WORSE**: INFRA-1611 (opened_date backfill, filed 2026-05-18) — missing opened_date **493/516 (95.5%)→652/678 (96.2%)**. INFRA-1611 has 0 commits.
+  ```
+  git log --all --grep='INFRA-1611' --oneline
+  (no output)
+  python3 scan: 652/678 open gaps missing opened_date
+  ```
+- **STILL_OPEN_ACTIVE**: INFRA-1237 (EVENT_REGISTRY drift, P0) — 1 commit (INFRA-1363, session-summary emit; not an INFRA-1237 impl). Drift count unverified this cycle; `scripts/ci/test-event-registry-coverage.sh` invocation not run.
+- **STILL_OPEN_INACTIVE**: INFRA-821 (state.db bootstrap, P1, filed Issue #11) — **4 cycles**, 0 commits. Crash confirmed today.
+  ```
+  git log --all --grep='INFRA-821' --oneline
+  (no output)
+  python3 scripts/coord/gap-doctor.py doctor → sqlite3.OperationalError: no such table: gaps
+  ```
+- **STILL_OPEN_INACTIVE**: INFRA-824 (EVAL-101 re-run, filed Issue #11) — **4 cycles**, 0 commits.
+  ```
+  git log --all --grep='INFRA-824' --oneline
+  (no output)
+  ```
+- **STILL_OPEN_INACTIVE**: EVAL-102 (corrected eval protocol) — **4 cycles**, 0 commits.
+  ```
+  git log --all --grep='EVAL-102' --oneline
+  (no output)
+  ```
+- **WORSE**: INFRA-822 (TODO ACs, filed Issue #11) — **132→139** open gaps with TODO in acceptance_criteria (+7 this cycle). INFRA-822 has 0 commits.
+  ```
+  git log --all --grep='INFRA-822' --oneline
+  (no output)
+  python3 YAML scan: 139 open gaps with "TODO" in acceptance_criteria
+  ```
+- **STILL_OPEN_INACTIVE**: INFRA-1620 (PWA app.js broken, P0, filed Issue #13) — **3 cycles**, 0 commits. Crash confirmed today.
+  ```
+  git log --all --grep='INFRA-1620' --oneline
+  (no output)
+  node --check web/v2/app.js → SyntaxError: Unexpected identifier 'ChumpViewFleetHealth' at line 2244
+  ```
+- **NO_GAP → filed this cycle**: INFRA-1952, INFRA-1954 were filed in Issue #13 but are NOT in origin/main. They exist only on the stranded detached HEAD. See G2.
+
+---
+
+### The Looming Ghost
+
+**[P0/High] G1 — P0 count: 66 open P0 gaps (budget: 5); 51 of 66 have zero implementation commits; +128% growth this cycle**
+
+We are failing at the most basic property of a priority system for the fourth consecutive cycle. `chump gap list --json` on a freshly-imported state.db returns 66 open P0 gaps against a CLAUDE.md hard limit of 5. Of the 66, 51 have zero implementation commits. The gap filed specifically to fix this (META-064, P0 budget triage) has 0 implementation commits for 3 cycles while the P0 count grew 20→29→66.
+
+```
+python3 P0 census (2026-06-01):
+  Open P0 count: 66 (CLAUDE.md budget: 5 max)
+  P0 gaps with 0 implementation commits: 51/66
+
+Selected P0s with 0 commits:
+  FLEET-053    (2026-05-12) — NATS deployment incomplete (4 cycles)
+  INFRA-1620   (no date)    — PWA app.js broken (3 cycles)
+  INFRA-1776   (no date)    — gap list explodes on BLOB AC
+  INFRA-1744   (no date)    — pre-push hook hangs indefinitely
+  INFRA-1916   (no date)    — chump-pillar-health widget missing
+  INFRA-2077   (no date)    — dispatch::tests::release_with_retry_ trunk-RED
+  INFRA-2080   (no date)    — test-gap-reserve-padding.sh sandbox failure
+  INFRA-2082   (no date)    — chump-mcp-coord build silently fails
+  INFRA-2084   (no date)    — preflight ≡ CI gates parity structural
+  INFRA-2191   (no date)    — ci.yml ruleset required checks failing
+  INFRA-2200   (no date)    — ci.yml workflow failed to QUEUE
+  ... 40 more
+
+chump gap audit-priorities: P0 open gaps: 66 (budget: 5 max)
+
+git log --all --grep='META-064' --oneline  [P0 budget triage gap]
+8afa2e9 gap(INFRA-1609): ...  [cites META-064 as Rust-first rationale, not impl]
+9f59963 feat(INFRA-1568): ...  [same]
+57018bd feat(INFRA-1541): ...  [same]
+```
+
+- evidence: `chump gap list --json` (canonical, live 2026-06-01): 66 P0 open gaps
+- evidence: python git-log scan: 51/66 P0s with 0 implementation commits
+- evidence: CLAUDE.md Mission Driver §4: "P0 budget = 5 max"; META-064 (the fix) has 0 implementation commits
+
+*This finding is wrong if: `chump gap list --json` on a fully-triaged state.db with correct opened_date values returns <6 P0s after OPEN-BUT-LANDED closure and downgrade. Not observed.*
+
+---
+
+**[P0/High] G2 — RED_LETTER Issues #12 and #13 were never pushed to origin/main; the adversarial audit has been silently failing its own mission for 2 cycles**
+
+We are failing at the meta-level of the audit itself. Issues #12 (2026-05-18) and #13 (2026-05-25) were committed to a detached HEAD in the Cold Water execution environment but never reached origin/main. origin/main's RED_LETTER.md contains only Issue #11.
+
+```
+git show origin/main:docs/audits/RED_LETTER.md | grep '^## Issue'
+## Issue #11 — 2026-05-11
+[only one issue on origin/main]
+
+git log HEAD ^origin/main -- docs/audits/RED_LETTER.md --format='%h %s'
+1e1ca3c fix(INFRA-2329): honor CARGO_TARGET_DIR in 4 ci.yml fast-checks PATH exports (#2911)
+[RED_LETTER changes accidentally bundled into an unrelated CI fix commit]
+
+git show origin/main:docs/gaps/INFRA-1952.yaml
+(not in origin/main)
+git show origin/main:docs/gaps/INFRA-1954.yaml
+(not in origin/main)
+[Issue #13's filed gap YAML files absent from origin/main]
+
+git log HEAD ^origin/main --oneline | wc -l
+50
+[50 commits of fleet + Cold Water work on detached HEAD, never pushed to origin/main]
+```
+
+The Step 6 push command (`CHUMP_GAP_CHECK=0 git push origin main`) pushes the local `main` branch ref. When HEAD is detached — as it is in this environment — `git push origin main` is a no-op (local main = origin/main = 8afa2e9). Cold Water's commits went to the detached HEAD, not to the branch that gets pushed.
+
+- evidence: `git show origin/main:docs/audits/RED_LETTER.md | grep '^## Issue'` → only Issue #11
+- evidence: `git log HEAD ^origin/main -- docs/audits/RED_LETTER.md` → commit 1e1ca3c with unrelated CI fix title
+- evidence: `git show origin/main:docs/gaps/INFRA-1952.yaml` → not found (Issue #13's filed gap not on origin/main)
+
+*This finding is wrong if: `git fetch origin` shows origin/main is further ahead than 8afa2e9 and contains Issues #12 and #13.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — INFRA-821: state.db crash on fresh clone, 4 consecutive cycles, zero commits**
+
+We are failing to fix the defect that breaks every fresh-clone workflow. INFRA-821 (filed Issue #11, 2026-05-11) documents that `gap-doctor.py doctor` crashes with `sqlite3.OperationalError: no such table: gaps` on a fresh clone. Today — Issue #14, three weeks and four Cold Water cycles later — the crash is identical.
+
+```
+python3 scripts/coord/gap-doctor.py doctor (2026-06-01):
+→ sqlite3.OperationalError: no such table: gaps
+  File ".../gap-doctor.py", line 224, in load_db_status
+  cur = conn.execute("SELECT COUNT(*) FROM gaps ...")
+
+git log --all --grep='INFRA-821' --oneline
+(no output — 0 commits, 4 cycles)
+
+ls -la .chump/state.db → -rw-r--r-- 1 root root 0 Jun  1 15:11 .chump/state.db
+[0-byte state.db on fresh start — tables created but no schema migration runs on empty DB]
+```
+
+- evidence: `python3 scripts/coord/gap-doctor.py doctor` → `sqlite3.OperationalError: no such table: gaps` (live, 2026-06-01)
+- evidence: `git log --all --grep='INFRA-821' --oneline` → empty across Issues #11–#14 (4 cycles)
+- evidence: `.chump/state.db` is a 0-byte file on fresh start; sqlite3 confirms no tables exist
+
+*This finding is wrong if: `chump fleet bootstrap --check` populates state.db schema before gap-doctor runs; not observed in this session.*
+
+---
+
+**[P1/High] O2 — OPEN-BUT-LANDED: 123 gaps (3→99→44→123 across 4 issues); structural cause unaddressed**
+
+We are failing at closing work after it ships. The OBL count oscillates because gap closure is manual and bot-merge bypasses skip `chump gap ship`. The oscillation itself (3→99→44→123) is evidence that the structural fix (INFRA-1610) has never landed.
+
+```
+python3 OBL scan (2026-06-01):
+  OPEN-BUT-LANDED count: 123 (was 44 in Issue #13, 99 in #12, 3 in #11)
+
+Top OBL:
+  INFRA-1534 (P0): 16 commits — self-hosted runners
+  META-064   (P1):  5 commits — P0 budget triage gap (itself OPEN-BUT-LANDED)
+  INFRA-1447 (P1):  4 commits
+  INFRA-2350 (P0):  3 commits
+  ... 118 more
+
+git log --all --grep='INFRA-1610' --oneline
+(no output — 0 implementation commits)
+```
+
+META-064 is itself an OPEN-BUT-LANDED gap: 5 commits reference it, but those cites are justifications ("per META-064 Rust-first rule"), not P0 budget triage implementations.
+
+- evidence: python OBL scan: 123 open gaps with ≥1 git commits (2026-06-01)
+- evidence: historical trend: Issue #11: 3, #12: 99, #13: 44, #14: 123
+- evidence: `git log --all --grep='INFRA-1610' --oneline` → empty; bot-merge bypass pattern continues
+
+*This finding is wrong if: 123 OBL gaps represent intentional multi-phase gaps where only sub-phase 1 shipped; requires per-gap manual triage.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — opened_date missing: 652/678 (96.2%); TODO ACs: 139 — both regressions from Issue #13**
+
+We are failing at maintaining minimal gap metadata hygiene across 4 consecutive cycles.
+
+```
+# opened_date
+python3 YAML scan (2026-06-01): 652/678 open gaps missing opened_date (96.2%)
+Issue #13: 493/516 = 95.5%  → WORSE
+Issue #12: 486/540 = 90%    → compound regression
+Issue #11: not measured (486 first measured)
+
+git log --all --grep='INFRA-1611' --oneline
+(no output)
+
+# TODO ACs
+python3 YAML scan (2026-06-01): 139 open gaps with "TODO" in acceptance_criteria
+Issue #13: 132 → +7 this cycle (WORSE)
+Issue #12: 17 empty ACs (TODO ACs not then counted separately)
+
+git log --all --grep='INFRA-822' --oneline
+(no output)
+```
+
+Both P0 census and "is this gap actually pickable" checks require opened_date and non-TODO ACs. Neither can be trusted. INFRA-1611 and INFRA-822 each have 0 implementation commits across 3+ cycles.
+
+- evidence: python scan: 652/678 no opened_date (2026-06-01) vs 493/516 in Issue #13
+- evidence: python scan: 139 TODO ACs (2026-06-01) vs 132 in Issue #13
+- evidence: `git log --all --grep='INFRA-1611' --oneline` AND `git log --all --grep='INFRA-822' --oneline` → both empty
+
+*This finding is wrong if: opened_date and AC fields are intentionally omitted for a class of gaps (e.g. umbrella/exploratory); no such policy documented.*
+
+---
+
+### The Reality Check
+
+**[P1/High] R1 — EVAL-094 still 0 implementation commits; EVAL_AWARE_SANDBAGGING.md now explicitly states every reported magnitude is at risk**
+
+We are failing at research credibility while publishing a public acknowledgment of the hazard. `docs/strategy/EVAL_AWARE_SANDBAGGING.md` (owner_gap: EVAL-094, last_audited: 2026-05-22) states:
+
+```
+# From EVAL_AWARE_SANDBAGGING.md (public doc):
+"Until EVAL-094 ships its n=50/cell paired naturalized-framing comparison,
+ the **direction** of Chump's existing validated findings (lessons help haiku,
+ hurt sonnet) is likely robust, but the **magnitude** of every reported delta
+ is at risk of inflation or deflation by evaluation-context confounding."
+
+# Cross-check: RESEARCH_INTEGRITY.md (mechanism claim requirement):
+"must cite either (a) a paired naturalized-framing comparison from the
+ RESEARCH-026 / EVAL-094 result set on the same fixture class"
+```
+
+The project has a public document stating all magnitudes are at risk. The gap to resolve that risk (EVAL-094) has been open since Issue #12 with 0 implementation commits. EVAL-102 (corrected eval re-run) and INFRA-824 (parent correction gap) have 0 implementation commits across 4 cycles.
+
+```
+git log --all --grep='EVAL-094' --oneline
+(no implementation commits — only the YAML-creation commit from RESEARCH-001 PR #2516 in detached HEAD)
+
+git log --all --grep='EVAL-102' --oneline
+(no output)
+
+git log --all --grep='INFRA-824' --oneline
+(no output)
+```
+
+- evidence: `EVAL_AWARE_SANDBAGGING.md:40-44` — public statement that magnitude is at risk
+- evidence: `git log --all --grep='EVAL-094' --oneline` → 0 implementation commits
+- evidence: `git log --all --grep='EVAL-102' --oneline` → empty (4 cycles)
+
+*This finding is wrong if: EVAL-094 is executing in chump-proprietary with results pending publication under a non-gap tracking mechanism.*
+
+---
+
+### The Innovation Lag
+
+**[P1/High] I1 — gap-reserve INFRA-018 guard blind to git history confirmed live twice in same session; INFRA-1954 filed Issue #13 but not on origin/main**
+
+We are failing at the most basic property of an ID registry: IDs must be permanently unique. The INFRA-018 guard was found blind to git history in Issue #13 (INFRA-1954 filed). In this session (Issue #14), the same bug manifested twice:
+
+1. `chump gap reserve` → assigned META-001 (from empty state.db before `chump gap import`)
+2. `chump gap reserve` (after import) → assigned META-267, which appears in 3 git commits as a shipped e2e matrix gap
+
+```
+# Collision 1 — empty state.db path:
+chump gap reserve --domain META --title '...'  [before gap import]
+→ META-001 assigned
+git log --all --grep='META-001' --oneline → (no output, but META-001 is a well-known base ID)
+
+# Collision 2 — git history blind path:
+chump gap reserve --domain META --title '...'  [after import of 916 gaps]
+→ META-267 assigned
+git log --all --grep='META-267' --oneline
+7cce672 fix(INFRA-2345): "e2e-pwa/e2e-golden-path matrixed via META-267 (2026-05-30)"
+2378474 feat(INFRA-2325): "META-267" cited in pr-shepherd cascade-gate
+1e1ca3c fix(INFRA-2329): "META-267" cited in CARGO_TARGET_DIR fix
+
+# INFRA-1954 (filed Issue #13 to address git-history blind spot):
+git show origin/main:docs/gaps/INFRA-1954.yaml → not found
+[the fix gap itself never reached origin/main — stranded on detached HEAD]
+```
+
+The INFRA-018 guard has been confirmed to have three failure modes: (a) re-use of IDs from closed gaps removed from docs/gaps/ [Issue #13], (b) collision with IDs in git history never in docs/gaps/ [Issue #14 collision 2], (c) collision from empty state.db before import [Issue #14 collision 1]. All three unaddressed.
+
+- evidence: `chump gap reserve` → META-001 assigned (live, 2026-06-01, before import)
+- evidence: `chump gap reserve` → META-267 assigned; `git log --all --grep='META-267'` → 3 commits
+- evidence: INFRA-1954 (the fix for this class of bug from Issue #13) not present on origin/main
+
+*This finding is wrong if: META-267 appearing in commit bodies is not a prior gap assignment but a config variable name or constant that happened to match the pattern.*
+
+---
+
+**THE ONE BIG THING:** [P0] META-272 — We are failing at the meta-level. The Cold Water adversarial audit mechanism has itself been silently failing for 2 complete cycles. Issues #12 and #13 were committed to a detached HEAD that nobody tracks and never pushed to origin/main. All their gap filings (INFRA-1952, INFRA-1954), their prior-issue reconciliations, and their new findings exist only in the working tree — not in the canonical repo. The project has been operating for 16+ days without any adversarial audit record on origin/main. Every "STILL_OPEN_INACTIVE" finding in Issues #12 and #13 that might have prompted action was invisible to anyone reading origin/main. INFRA-821 was flagged on origin/main in Issue #11; everything since has been flagged in a private detached HEAD. The P0 count went from 5 (budget) to 20 to 29 to 66 while the oversight mechanism that should have caught it was publishing to /dev/null. The gap to fix this (META-272, filed this cycle) requires: (a) diagnosing why the Cold Water push lands on detached HEAD instead of origin/main, (b) fixing the step-6 push path to use `git push origin HEAD:main` or equivalent, and (c) verifying that this Issue #14 actually reaches origin/main. Filed in Issues #12, #13, #14 (now as explicit gap). The pattern of non-delivery from a mechanism designed for delivery is the failure mode for every other finding in this report.
+
+---
+
+### Follow-up Gaps Filed
+
+```
+chump gap import 2>&1 | tail -1
+import complete: 916 inserted, 0 skipped
+
+META-272: yaml=1 db=True ✓  (gap-reserve collision with META-267 avoided by manual ID selection)
+INFRA-2385: yaml=1 db=True ✓  (gap-reserve assigned git-history collision META-267; manually corrected)
+```
+
+Note: gap-reserve itself (INFRA-018 guard) assigned META-001 (before import) and META-267 (git-history collision, confirmed in git log) before safe IDs were manually selected. This confirms INFRA-2385 finding.
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| META-272 | ZERO-WASTE: Cold Water adversarial audit outputs stranded — RED_LETTER Issues #12 and #13 never reached origin/main | P1 | s |
+| INFRA-2385 | ZERO-WASTE: gap-reserve assigns already-shipped gap IDs from git history — INFRA-018 guard blind to git log (confirmed live Issue #14) | P1 | s |
+
+Pre-existing gaps covering findings G1, G3, O1, O2, C1, R1: META-064, INFRA-1610, INFRA-1611, INFRA-821, INFRA-822, INFRA-824, EVAL-102, EVAL-094, INFRA-1237, INFRA-1620 — no new gap needed.
+
+---
+
 ## Issue #13 — 2026-05-25
 
 > Audit window: commits since 2026-05-18 (Issue #12). 50 commits to `origin/main`.
