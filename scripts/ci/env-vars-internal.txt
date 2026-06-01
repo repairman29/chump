@@ -432,6 +432,9 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 # INFRA-1787: skip env-vars-internal-coverage gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ENVVARS
 
+# INFRA-2396: skip the pipefail-race-sweep step in chump preflight (INFRA-1658)
+CHUMP_PREFLIGHT_SKIP_PIPEFAIL
+
 # INFRA-1789: skip subcommand-help regression gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 
