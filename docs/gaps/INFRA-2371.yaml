@@ -1,0 +1,13 @@
+- id: INFRA-2371
+  domain: INFRA
+  title: chump config subcommand — add explicit dispatch arm + cascade/privacy/MCP snapshot view (currently falls through to broken LLM gen path)
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "src/commands/config.rs: pub fn run(args: &[String]) -> i32 prints structured snapshot of cascade slots (name, enabled, base URL, privacy tier, RPD limit, calls today, key length-only), active CHUMP_ROUND_PRIVACY tier and slots skipped because of it, MCP server registry + tools/list health, ~/.chump/config.toml existence + suggested chump init if absent, ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN presence (lengths only — never values)."
+    - "src/main.rs: dispatch arm `Some(\"config\")` near other Some(\"foo\") arms; supports --json flag for machine output."
+    - "src/commands/mod.rs: `pub mod config;` registered."
+    - "scripts/ci/test-chump-config.sh: smoke test that `chump config` prints expected sections in expected order; runs in <5s; exits 0 on success."
+    - "bare `chump config` produces useful diagnostic output (no Gemini 400, no LLM call)."
+

@@ -664,7 +664,31 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
     args
 }
 
+/// INFRA-2373: prepend a one-line `chump init` hint to help output when
+/// the user has not yet scaffolded `~/.chump/config.toml`. Returns the
+/// banner string (incl. trailing blank line) or empty string when:
+///   * HOME env is unset (no panic path), or
+///   * `~/.chump/config.toml` already exists.
+///
+/// Tested via `print_help` integration — the standalone helper exists so
+/// the same hint can be reused from `chump config show` (see
+/// `commands::config::Snapshot::print_human`).
+fn chump_init_nudge_if_missing() -> String {
+    let home = match std::env::var("HOME") {
+        Ok(h) if !h.is_empty() => h,
+        _ => return String::new(),
+    };
+    let cfg = std::path::PathBuf::from(home)
+        .join(".chump")
+        .join("config.toml");
+    if cfg.exists() {
+        return String::new();
+    }
+    "tip: run 'chump init' to scaffold ~/.chump/config.toml (one-time setup)\n\n".to_string()
+}
+
 fn print_help() {
+    print!("{}", chump_init_nudge_if_missing());
     let ver = version::chump_version();
     println!("chump — gap orchestration tool  (v{ver})");
     println!();
@@ -1282,6 +1306,16 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("voice") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::voice::run(&sub_args));
+    }
+
+    // `chump config [show] [--json]` (INFRA-2371) — runtime cascade /
+    // privacy / MCP snapshot. Pure read; never invokes an LLM, so it's
+    // safe to run when the cascade is wedged. Solves the daily-friction
+    // case where bare `chump config` previously fell through to the LLM
+    // gen path and 400'd from Gemini.
+    if args.get(1).map(String::as_str) == Some("config") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::config::run(&sub_args));
     }
 
     // `chump consensus-tally [--corr-id X | --all] [--since <dur>]` (META-159) —

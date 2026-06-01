@@ -465,6 +465,41 @@ impl ProviderCascade {
         let local_only = std::env::var("CHUMP_LOCAL_ONLY")
             .map(|v| v.trim() == "1")
             .unwrap_or(false);
+
+        // INFRA-2372: opt-in CHUMP_CASCADE_PRECHECK=1 prints a one-line
+        // warning per cloud slot at startup so the operator can spot a
+        // missing API key or a known-malformed endpoint *before* a real
+        // call 400s mid-cascade. Disabled by default — the runtime
+        // should_cascade_on_error_string predicate handles per-call
+        // recovery whether or not this fires. Never aborts; never
+        // removes slots; never makes a network call (would block sync
+        // from_env). Network-based probe lives in `precheck_slots` and
+        // is the operator's call to invoke at fleet boot.
+        if std::env::var("CHUMP_CASCADE_PRECHECK")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false)
+        {
+            for (idx, slot) in slots.iter().enumerate() {
+                if slot.tier != ProviderTier::Cloud {
+                    continue;
+                }
+                let key_env = if idx == 0 {
+                    "OPENAI_API_KEY".to_string()
+                } else {
+                    format!("CHUMP_PROVIDER_{}_KEY", idx)
+                };
+                let has_key = std::env::var(&key_env)
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false);
+                if !has_key {
+                    eprintln!(
+                        "[cascade-precheck] slot {} ({}): {} unset — slot will be skipped on auth-class errors",
+                        idx, slot.name, key_env
+                    );
+                }
+            }
+        }
+
         Self {
             slots,
             _strategy: strategy,
@@ -771,6 +806,20 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || lower.contains("does not support tool")
         || lower.contains("tools are not supported")
         || lower.contains("model does not support tools");
+    // INFRA-2372: Gemini returns 400 "Function calling config is set
+    // without function_declarations" when the cascade calls it with the
+    // tool-calling shape but the slot's openai-shim doesn't synthesize
+    // function_declarations. Same class as the INFRA-313 capability
+    // errors above — a different slot will handle the payload fine.
+    // Also catches the related "function_declaration" / "tools[0]" /
+    // "tool_config.function_calling_config" 400 surface that Gemini
+    // emits when malformed tools are passed.
+    let is_gemini_tool_config_failure = lower.contains("function calling config is set without")
+        || lower.contains("function_declarations")
+        || lower.contains("function_declaration is required")
+        || (lower.contains("tool_config")
+            && (lower.contains("function_calling_config") || lower.contains("invalid")))
+        || (lower.contains("400") && lower.contains("tools") && lower.contains("malformed"));
     // INFRA-348 / INFRA-347: transport-level errors wrapped by LocalOpenAIProvider.
     // `LocalOpenAIProvider::complete` appends an educational hint string
     // (e.g. "— model HTTP unreachable (daemon down, crashed, or still
@@ -786,6 +835,7 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || is_billing_exhausted_error_string(e_str)
         || is_tool_format_failure
         || is_tool_capability_failure
+        || is_gemini_tool_config_failure
         || is_transport_unreachable_error_string(e_str)
 }
 
@@ -3128,5 +3178,40 @@ mod tests {
         );
 
         std::env::remove_var("CHUMP_AMBIENT_LOG");
+    }
+
+    /// INFRA-2372: a malformed Gemini function-calling config 400 must
+    /// be classified as cascade-able so a single bad slot doesn't abort
+    /// the whole request. Operator daily-friction case: bare `chump`
+    /// invocation was 400'ing because the Gemini cascade slot had
+    /// function_calling enabled but no function_declarations were
+    /// supplied at the call site.
+    #[test]
+    fn should_cascade_on_gemini_function_calling_config_400() {
+        let err = "400 Bad Request: Function calling config is set without function_declarations";
+        assert!(
+            should_cascade_on_error_string(err),
+            "Gemini malformed function-calling 400 must cascade to next slot"
+        );
+    }
+
+    #[test]
+    fn should_cascade_on_gemini_function_declarations_missing() {
+        let err = "GoogleAI: function_declarations is required when tool_config.function_calling_config is set";
+        assert!(
+            should_cascade_on_error_string(err),
+            "Gemini function_declarations missing must cascade"
+        );
+    }
+
+    /// Sanity: a regular Bad Request that is NOT the Gemini tool-config
+    /// class must still NOT cascade (would mask real programming bugs).
+    #[test]
+    fn should_not_cascade_on_generic_bad_request() {
+        let err = "400 Bad Request: invalid value for field 'model'";
+        assert!(
+            !should_cascade_on_error_string(err),
+            "generic 400 (not the Gemini tool-config class) must not cascade"
+        );
     }
 }
