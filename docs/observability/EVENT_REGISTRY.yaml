@@ -123,16 +123,6 @@ events:
       Emitted when a target reaches its error_threshold consecutive failures.
       The circuit breaker will now fail fast (reject calls) for this target.
 
-  - kind: circuit_breaker_closed
-    effect_metric: self
-    emitter: src/circuit_breaker.rs (RESILIENT-011)
-    trigger: circuit breaker for a target transitions from Half-Open to Closed (target recovered)
-    consumers: [fleet_health, operator_dashboard]
-    fields_required: [ts, kind, target, reason]
-    docs: |
-      Emitted when a target has successfully recorded success_threshold consecutive
-      successes while in Half-Open state, indicating the target is healthy again.
-
   - kind: circuit_breaker_state_change
     effect_metric: self
     emitter: src/circuit_breaker.rs (RESILIENT-011)
