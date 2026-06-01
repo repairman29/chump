@@ -71,7 +71,9 @@ test-preflight-ci-parity.sh       # reason: this script itself; self-reference v
 test-observability-coverage.sh    # reason: diff-aware PR gate (BASE_REF=origin/main); Tier-D
 test-obs-coverage-guard.sh        # reason: CI meta — audits new src/ files for tracing hooks; CI-structural
 test-infra-257-doc-only-guards.sh # reason: CI meta — checks doc-only CI paths; CI-structural
-check-path-filter-coverage.sh     # reason: already in preflight --with-tests whitelist (optional); not required
+# INFRA-2350: check-path-filter-coverage.sh now mirrored as Scripts-scope
+# always-on gate ("path-filter-coverage" in preflight.rs). Removed from
+# allowlist; mirror exists.
 
 # ── Tier-C (mirrorable — follow-up gaps filed, Tier-C in CI_GATES_INVENTORY) ─
 # These are the gates that produce the most CI failures. Each has a filed gap.
@@ -186,7 +188,9 @@ test-per-worktree-target-guard.sh
 test-pick-and-claim-lockdir.sh
 test-picker-priority.sh
 test-pillar-balance.sh
-test-pipefail-race-sweep.sh
+# INFRA-2350: test-pipefail-race-sweep.sh now mirrored as Scripts-scope
+# always-on gate ("pipefail-race-sweep" in preflight.rs).
+# (entry removed)
 test-pr-auto-rebase.sh
 test-pr-blocked-watch.sh
 test-pr-explain-block.sh
@@ -312,7 +316,10 @@ INFRA-1318 Phase 2 end-to-end smoke      # reason: INFRA-1877 — spins up pytho
 # infrastructure smokes (not relevant for local preflight) or specialized
 # integration tests; a proper preflight mirror would add value but is not
 # blocking. Audit owner: each gap below. INFRA-2099 sweep will revisit.
-scripts/ci/test-install-script-manifest.sh   # reason: INFRA-1810 install-script manifest is a setup-time gate, not relevant to per-PR preflight; long-running brew-install dry-run; CI-only by design
+# INFRA-2350: scripts/ci/test-install-script-manifest.sh now mirrored as
+# Scripts-scope always-on gate ("install-manifest" in preflight.rs). Removed
+# from allowlist; mirror exists. Runs in <1s, so the "long-running" concern
+# is moot when the gate is wired correctly.
 scripts/ci/test-pr-terminal-state.sh         # reason: INFRA-1981 helper needs gh API + PR context; not exposed to local preflight
 scripts/ci/test-subagent-budget-kill.sh      # reason: INFRA-1972 parent-enforced kill is a runtime supervisor test; spawns + kills child processes; not preflight-shaped
 scripts/ci/test-docs-delta-commit-msg.sh     # reason: INFRA-1969 commit-msg gate runs as a git hook, not as preflight; mirror would duplicate hook logic
