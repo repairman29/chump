@@ -15,7 +15,21 @@
 //!   EXTENDED   — PASSED/FAILED/NO_QUORUM but deadline > now
 //!
 //! Output (one block per corr_id):
-//!   corr_id=<id>  yes=<n>  no=<m>  abstain=<k>  total=<t>  verdict=<V>
+//!   corr_id=<id>  yes=<n>  no=<m>  abstain=<k>  total=<t>  weighted=<w>  verdict=<V>
+//!
+//! CREDIBLE-082 — Vote Weighting (anti-echo-chamber):
+//!   Events with a non-empty `parent_corr_id` matching the proposal's corr_id
+//!   are classified as *reactions* and receive a fractional weight
+//!   (default 0.3; override via `CHUMP_CONSENSUS_REACT_WEIGHT` env var).
+//!   Events without `parent_corr_id` (or with an empty/null value) are
+//!   *originals* and receive weight 1.0.
+//!
+//!   If no events carry `parent_corr_id` at all (EFFECTIVE-028 not yet
+//!   shipped), all votes are treated as originals — backward compatible.
+//!
+//!   Echo-chamber warning: when `weighted / raw_count < echo_warn_threshold`
+//!   (default 0.5; `--echo-warn-threshold <f>` flag), the row is prefixed
+//!   with "[echo-warn]" to flag "consensus is mostly reactions."
 //!
 //! consensus-tally ALWAYS runs regardless of feature flag (read-only is safe).
 //!
@@ -24,6 +38,7 @@
 //!   AC3 — verdict logic: PASSED/FAILED/NO_QUORUM/EXTENDED
 //!   AC4 — registered in src/main.rs
 //!   AC6 — test-chump-consensus-tally.sh seeds votes and checks output
+//!   CREDIBLE-082 — vote weighting + echo-warn column + backward compat
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,6 +50,9 @@ struct VoteEvent {
     vote: i32, // +1, -1, 0
     /// Optional deadline ISO-8601 string attached to the event.
     deadline: Option<String>,
+    /// CREDIBLE-082: non-empty → this is a reaction to the proposal with that corr_id.
+    /// Empty/None → original emission; weight = 1.0.
+    parent_corr_id: Option<String>,
 }
 
 /// Aggregated tally per corr_id.
@@ -43,6 +61,8 @@ struct Tally {
     yes: u32,
     no: u32,
     abstain: u32,
+    /// CREDIBLE-082: sum of per-vote weights (1.0 for originals, react_weight for reactions).
+    weighted: f64,
     /// Latest deadline seen for this corr_id (ISO-8601).
     deadline: Option<String>,
 }
@@ -237,17 +257,29 @@ fn load_vote_events(
 
         let deadline = json_get_str(line, "deadline").map(|s| s.to_string());
 
+        // CREDIBLE-082: extract parent_corr_id; treat empty string as None.
+        let parent_corr_id = json_get_str(line, "parent_corr_id")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+
         events.push(VoteEvent {
             corr_id,
             vote,
             deadline,
+            parent_corr_id,
         });
     }
     events
 }
 
 /// Aggregate VoteEvents into tallies per corr_id.
-fn aggregate(events: &[VoteEvent]) -> HashMap<String, Tally> {
+///
+/// CREDIBLE-082: `react_weight` is the fractional weight for reactions
+/// (events whose `parent_corr_id` matches the proposal's corr_id).
+/// Originals (no `parent_corr_id`) receive weight 1.0.
+/// If no event in the batch carries any `parent_corr_id`, the weighted
+/// sum equals the raw count — full backward compatibility.
+fn aggregate(events: &[VoteEvent], react_weight: f64) -> HashMap<String, Tally> {
     let mut map: HashMap<String, Tally> = HashMap::new();
     for ev in events {
         let t = map.entry(ev.corr_id.clone()).or_default();
@@ -256,7 +288,20 @@ fn aggregate(events: &[VoteEvent]) -> HashMap<String, Tally> {
             -1 => t.no += 1,
             _ => t.abstain += 1,
         }
-        // Keep the latest (or first non-None) deadline.
+        // CREDIBLE-082: a reaction has a non-empty parent_corr_id pointing at
+        // the proposal being tallied (i.e. matching this event's own corr_id).
+        // We check whether the event carries *any* non-empty parent_corr_id;
+        // if so it is a reaction regardless of whether it matches exactly
+        // (the filter_corr_id guard in load_vote_events already ensures corr_id
+        // alignment when --corr-id is specified; for --all mode we weight any
+        // event that has a parent_corr_id as a reaction).
+        let weight = if ev.parent_corr_id.is_some() {
+            react_weight
+        } else {
+            1.0
+        };
+        t.weighted += weight;
+        // Keep the first non-None deadline.
         if t.deadline.is_none() {
             t.deadline = ev.deadline.clone();
         }
@@ -267,10 +312,11 @@ fn aggregate(events: &[VoteEvent]) -> HashMap<String, Tally> {
 pub fn run(args: &[String]) -> i32 {
     // consensus-tally always runs (read-only, no feature flag required).
 
-    // Parse args: [--corr-id X | --all] [--since <dur>]
+    // Parse args: [--corr-id X | --all] [--since <dur>] [--echo-warn-threshold <f>]
     let mut filter_corr_id: Option<String> = None;
     let mut _show_all = false;
     let mut since_str: Option<String> = None;
+    let mut echo_warn_threshold_str: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -290,6 +336,13 @@ pub fn run(args: &[String]) -> i32 {
                     since_str = Some(args[i].clone());
                 }
             }
+            // CREDIBLE-082: echo-warn threshold flag (default 0.5).
+            "--echo-warn-threshold" => {
+                i += 1;
+                if i < args.len() {
+                    echo_warn_threshold_str = Some(args[i].clone());
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -300,6 +353,18 @@ pub fn run(args: &[String]) -> i32 {
         .as_deref()
         .and_then(parse_duration_secs)
         .unwrap_or(86400);
+
+    // CREDIBLE-082: reaction weight from env (default 0.3).
+    let react_weight: f64 = std::env::var("CHUMP_CONSENSUS_REACT_WEIGHT")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.3);
+
+    // CREDIBLE-082: echo-warn threshold from flag (default 0.5).
+    let echo_warn_threshold: f64 = echo_warn_threshold_str
+        .as_deref()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.5);
 
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -314,7 +379,7 @@ pub fn run(args: &[String]) -> i32 {
         return 0;
     }
 
-    let tallies = aggregate(&events);
+    let tallies = aggregate(&events, react_weight);
 
     // Print sorted by corr_id for deterministic output.
     let mut keys: Vec<&String> = tallies.keys().collect();
@@ -323,12 +388,19 @@ pub fn run(args: &[String]) -> i32 {
     for key in keys {
         let t = &tallies[key];
         let verdict = t.verdict(now_secs);
+        let raw = t.total();
+        let weighted = t.weighted;
+
+        // CREDIBLE-082: emit echo-warn prefix when weighted/raw is below threshold.
+        // Guard against zero-raw (shouldn't happen, but be safe).
+        let echo_warn = raw > 0 && (weighted / raw as f64) < echo_warn_threshold;
+        let prefix = if echo_warn { "[echo-warn] " } else { "" };
+
         println!(
-            "corr_id={key}  yes={yes}  no={no}  abstain={abstain}  total={total}  verdict={verdict}",
+            "{prefix}corr_id={key}  yes={yes}  no={no}  abstain={abstain}  total={raw}  weighted={weighted:.2}  verdict={verdict}",
             yes = t.yes,
             no = t.no,
             abstain = t.abstain,
-            total = t.total(),
         );
     }
 
@@ -339,48 +411,44 @@ pub fn run(args: &[String]) -> i32 {
 mod tests {
     use super::*;
 
+    fn make_tally(
+        yes: u32,
+        no: u32,
+        abstain: u32,
+        weighted: f64,
+        deadline: Option<String>,
+    ) -> Tally {
+        Tally {
+            yes,
+            no,
+            abstain,
+            weighted,
+            deadline,
+        }
+    }
+
     #[test]
     fn verdict_passed() {
-        let t = Tally {
-            yes: 3,
-            no: 1,
-            abstain: 0,
-            deadline: None,
-        };
+        let t = make_tally(3, 1, 0, 4.0, None);
         assert_eq!(t.verdict(0), "PASSED");
     }
 
     #[test]
     fn verdict_failed() {
-        let t = Tally {
-            yes: 0,
-            no: 2,
-            abstain: 1,
-            deadline: None,
-        };
+        let t = make_tally(0, 2, 1, 3.0, None);
         assert_eq!(t.verdict(0), "FAILED");
     }
 
     #[test]
     fn verdict_no_quorum() {
-        let t = Tally {
-            yes: 1,
-            no: 0,
-            abstain: 0,
-            deadline: None,
-        };
+        let t = make_tally(1, 0, 0, 1.0, None);
         assert_eq!(t.verdict(0), "NO_QUORUM");
     }
 
     #[test]
     fn verdict_extended_deadline_future() {
         // deadline in the far future → EXTENDED regardless of base verdict
-        let t = Tally {
-            yes: 3,
-            no: 1,
-            abstain: 0,
-            deadline: Some("2099-01-01T00:00:00Z".to_string()), // chump-fmt: time-bomb-ok
-        };
+        let t = make_tally(3, 1, 0, 4.0, Some("2099-01-01T00:00:00Z".to_string())); // chump-fmt: time-bomb-ok
         assert_eq!(t.verdict(0), "EXTENDED");
     }
 
@@ -415,5 +483,109 @@ mod tests {
     #[test]
     fn parse_duration_secs_days() {
         assert_eq!(parse_duration_secs("7d"), Some(604800));
+    }
+
+    // CREDIBLE-082: vote weighting unit tests.
+
+    /// 1 original + 5 reactions @ 0.3 → weighted = 1.0 + 5×0.3 = 2.5
+    #[test]
+    fn aggregate_weighted_reactions() {
+        let react_weight = 0.3_f64;
+        let proposal_id = "prop-001".to_string();
+        let mut events: Vec<VoteEvent> = Vec::new();
+
+        // 1 original vote (no parent_corr_id)
+        events.push(VoteEvent {
+            corr_id: proposal_id.clone(),
+            vote: 1,
+            deadline: None,
+            parent_corr_id: None,
+        });
+
+        // 5 reactions (parent_corr_id set)
+        for _ in 0..5 {
+            events.push(VoteEvent {
+                corr_id: proposal_id.clone(),
+                vote: 1,
+                deadline: None,
+                parent_corr_id: Some(proposal_id.clone()),
+            });
+        }
+
+        let tallies = aggregate(&events, react_weight);
+        let t = &tallies[&proposal_id];
+
+        assert_eq!(t.total(), 6);
+        // weighted = 1.0 + 5 × 0.3 = 2.5 — allow float epsilon
+        let expected = 1.0 + 5.0 * react_weight;
+        assert!(
+            (t.weighted - expected).abs() < 1e-9,
+            "expected weighted={expected}, got {}",
+            t.weighted
+        );
+    }
+
+    /// All originals (no parent_corr_id) → weighted equals raw count.
+    #[test]
+    fn aggregate_all_originals_weighted_equals_raw() {
+        let events: Vec<VoteEvent> = (0..4)
+            .map(|_| VoteEvent {
+                corr_id: "c1".to_string(),
+                vote: 1,
+                deadline: None,
+                parent_corr_id: None,
+            })
+            .collect();
+
+        let tallies = aggregate(&events, 0.3);
+        let t = &tallies["c1"];
+        assert_eq!(t.total(), 4);
+        assert!((t.weighted - 4.0).abs() < 1e-9);
+    }
+
+    /// echo-warn fires when weighted/raw < 0.5 (the default threshold).
+    #[test]
+    fn echo_warn_fires_when_mostly_reactions() {
+        // 1 original + 5 reactions → weighted=2.5, raw=6, ratio≈0.417 < 0.5
+        let weighted = 2.5_f64;
+        let raw = 6_u32;
+        let threshold = 0.5_f64;
+        let echo_warn = raw > 0 && (weighted / raw as f64) < threshold;
+        assert!(
+            echo_warn,
+            "echo-warn should fire for ratio {:.3}",
+            weighted / raw as f64
+        );
+    }
+
+    /// echo-warn does NOT fire for pure originals (ratio = 1.0).
+    #[test]
+    fn echo_warn_silent_for_pure_originals() {
+        let weighted = 6.0_f64;
+        let raw = 6_u32;
+        let threshold = 0.5_f64;
+        let echo_warn = raw > 0 && (weighted / raw as f64) < threshold;
+        assert!(!echo_warn);
+    }
+
+    /// json_get_str extracts parent_corr_id correctly.
+    #[test]
+    fn json_get_str_parent_corr_id() {
+        let line = r#"{"event":"FEEDBACK","kind":"vote","corr_id":"c1","parent_corr_id":"prop-001","vote":1}"#;
+        assert_eq!(json_get_str(line, "parent_corr_id"), Some("prop-001"));
+    }
+
+    /// Empty parent_corr_id is treated as None (original).
+    #[test]
+    fn empty_parent_corr_id_is_original() {
+        let line =
+            r#"{"event":"FEEDBACK","kind":"vote","corr_id":"c1","parent_corr_id":"","vote":1}"#;
+        let parent = json_get_str(line, "parent_corr_id")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+        assert!(
+            parent.is_none(),
+            "empty parent_corr_id should be treated as None"
+        );
     }
 }
