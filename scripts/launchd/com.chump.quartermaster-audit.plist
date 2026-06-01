@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.quartermaster-audit</string>
+
+  <!-- META-205: curator-opus-quartermaster shelfware-audit daemon.
+       Runs every 5 min. The tick subcommand checks the trigger condition
+       (ships_since_last_audit >= 5 OR age >= 30min WITH ships >= 1) and
+       exits 0 silently on HOLD. On FIRE, runs the full audit: scans merged
+       commits, greps role docs, files wiring gaps (max 5/run), emits
+       kind=shelfware_audit_run to ambient.
+
+       Checkpoint: .chump/quartermaster-checkpoint.json
+       Deferred queue: .chump/quartermaster-deferred.jsonl -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/coord/quartermaster-audit-loop.sh heartbeat &amp;&amp; bash scripts/coord/quartermaster-audit-loop.sh tick</string>
+  </array>
+
+  <!-- Every 5 minutes -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-quartermaster-audit.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-quartermaster-audit.err</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>CHUMP_SESSION_ID</key>
+    <string>curator-opus-quartermaster-cron</string>
+    <key>CHUMP_QUARTERMASTER_NO_BROADCAST</key>
+    <string>0</string>
+  </dict>
+</dict>
+</plist>
