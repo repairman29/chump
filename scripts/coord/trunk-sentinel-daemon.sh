@@ -418,6 +418,24 @@ BRIEF
     # The sub-agent runs to completion in its own process; we just record
     # that we triggered it. The brief file is the audit trail.
     if command -v claude >/dev/null 2>&1; then
+        # INFRA-2340: OAUTH defensive read — see fix-trunk-dispatcher.sh
+        # for full rationale. launchd may not pass CLAUDE_CODE_OAUTH_TOKEN
+        # through; we read from ~/.chump/oauth-token.json (refreshed every
+        # 5 min, mode 0600) if neither auth env var is set. Token length
+        # is the only thing ever logged.
+        if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            if [[ -r "$HOME/.chump/oauth-token.json" ]]; then
+                local _tok
+                _tok=$(python3 -c "import json; print(json.load(open('$HOME/.chump/oauth-token.json')).get('token',''))" 2>/dev/null)
+                if [[ -n "$_tok" ]]; then
+                    export CLAUDE_CODE_OAUTH_TOKEN="$_tok"
+                    log "loaded CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json (len=${#_tok})"
+                fi
+                unset _tok
+            else
+                log "WARN: no CLAUDE_CODE_OAUTH_TOKEN, no ANTHROPIC_API_KEY, no readable ~/.chump/oauth-token.json — Sonnet may 401"
+            fi
+        fi
         (
             # 15-minute hard timeout via gtimeout if available; otherwise
             # rely on claude -p's own internal timeout.
