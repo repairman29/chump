@@ -717,6 +717,582 @@ Rules:
     }
 }
 
+// ── (f) RoadmapFromVisionContract ────────────────────────────────────────────
+//
+// INFRA-2267 Phase 1: typed contract ONLY.
+// Phase 2 (CLI wiring, LLM pipeline, ambient event registration) is gated on
+// operator/consensus review of this contract shape.
+
+/// How to group the emitted gaps in the roadmap.
+///
+/// The grouping strategy the LLM should use when clustering proposed gaps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupBy {
+    /// Group by product line / theme (default — good for vision docs).
+    ProductLine,
+    /// Group by Chump pillar (Credible / Effective / Resilient / Zero-Waste).
+    Pillar,
+    /// Group by effort band (xs/s together, m alone, l/xl together).
+    Effort,
+}
+
+/// Priority tier for a proposed gap (mirrors `chump gap reserve` vocabulary).
+///
+/// Defined locally to keep `chump-handoff` free of cross-crate coupling to
+/// `chump-planner`. Values must serialize to the same lowercase strings that
+/// `state.db` expects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RoadmapPriority {
+    /// Blocker / critical path.
+    P0,
+    /// High — should be picked next.
+    P1,
+    /// Medium — normal queue.
+    P2,
+    /// Low — nice to have.
+    P3,
+}
+
+/// Effort sizing for a proposed gap (mirrors `chump gap reserve` vocabulary).
+///
+/// Defined locally — same rationale as [`RoadmapPriority`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RoadmapEffort {
+    /// Extra-small — 1-2 hour task.
+    Xs,
+    /// Small — half-day task.
+    S,
+    /// Medium — 1-2 day task.
+    M,
+    /// Large — multi-day task.
+    L,
+    /// Extra-large — week-plus; consider splitting.
+    Xl,
+}
+
+/// A single gap proposed by the roadmap generator.
+///
+/// Shape mirrors a `chump gap reserve` call so consumers can batch-insert
+/// these into `state.db` without translation (Phase 2 work).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GapDraft {
+    /// Short, imperative title (< 100 chars). No TODO placeholders.
+    pub title: String,
+    /// One-paragraph description suitable for the gap's `description` field.
+    pub description: String,
+    /// Suggested priority tier.
+    pub priority: RoadmapPriority,
+    /// Suggested effort size.
+    pub effort: RoadmapEffort,
+    /// Concrete acceptance criteria — the LLM must emit at least one non-empty,
+    /// non-TODO criterion. Mirrors the AC rules in `CLAUDE.md`.
+    pub acceptance_criteria: Vec<String>,
+    /// Ordered list of prerequisite titles (intra-roadmap) or filed gap IDs
+    /// matching `<DOMAIN>-<NUM>` (e.g. `INFRA-1720`). Empty means no deps.
+    pub depends_on: Vec<String>,
+}
+
+/// A named cluster of related [`GapDraft`]s.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RoadmapGroup {
+    /// Short theme label (e.g. "Authentication", "Credible" pillar, "Small wins").
+    pub name: String,
+    /// 1-2 sentence rationale for why these gaps belong together.
+    pub rationale: String,
+    /// Gaps in this group, ordered by suggested pick order within the group.
+    pub gaps: Vec<GapDraft>,
+}
+
+/// Full roadmap emitted by the LLM.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Roadmap {
+    /// Ordered groups — consumers display/file them in this order.
+    pub groups: Vec<RoadmapGroup>,
+    /// 2-4 sentence narrative summarising the overall roadmap arc.
+    pub narrative: String,
+    /// LLM self-assessed confidence in the plan [0.0, 1.0]. Lower means the
+    /// intent doc was ambiguous and operator review is especially important.
+    pub confidence: f64,
+}
+
+/// Regex pattern for a filed gap ID — `<DOMAIN>-<NUM>` where DOMAIN is
+/// uppercase letters and NUM is one or more digits. Used in `Validate`.
+fn is_filed_gap_id(s: &str) -> bool {
+    let mut parts = s.splitn(2, '-');
+    let domain = parts.next().unwrap_or("");
+    let num = parts.next().unwrap_or("");
+    !domain.is_empty()
+        && domain.chars().all(|c| c.is_ascii_uppercase())
+        && !num.is_empty()
+        && num.chars().all(|c| c.is_ascii_digit())
+}
+
+impl Validate for Roadmap {
+    fn validate(&self) -> Result<(), ValidationError> {
+        // 1. Must have at least one group.
+        if self.groups.is_empty() {
+            return Err(ValidationError::new(
+                "roadmap must contain at least one group",
+            ));
+        }
+
+        // 2. Confidence must be in [0.0, 1.0].
+        if !(0.0..=1.0).contains(&self.confidence) {
+            return Err(ValidationError::new(format!(
+                "confidence {:.3} is outside [0.0, 1.0]",
+                self.confidence
+            )));
+        }
+
+        // 3. Collect all intra-roadmap titles for depends_on resolution.
+        let all_titles: std::collections::HashSet<&str> = self
+            .groups
+            .iter()
+            .flat_map(|g| g.gaps.iter().map(|d| d.title.as_str()))
+            .collect();
+
+        // 4. Per-group, per-gap validation.
+        for (gi, group) in self.groups.iter().enumerate() {
+            for (di, draft) in group.gaps.iter().enumerate() {
+                let loc = format!("groups[{gi}].gaps[{di}]");
+
+                if draft.title.trim().is_empty() {
+                    return Err(ValidationError::new(format!("{loc}.title cannot be empty")));
+                }
+
+                if draft.acceptance_criteria.is_empty() {
+                    return Err(ValidationError::new(format!(
+                        "{loc}.acceptance_criteria cannot be empty"
+                    )));
+                }
+                for (ai, ac) in draft.acceptance_criteria.iter().enumerate() {
+                    let ac_lower = ac.to_lowercase();
+                    if ac.trim().is_empty()
+                        || ac_lower.contains("todo")
+                        || ac_lower.contains("tbd")
+                        || ac_lower.contains("<fill in>")
+                    {
+                        return Err(ValidationError::new(format!(
+                            "{loc}.acceptance_criteria[{ai}] is empty or placeholder"
+                        )));
+                    }
+                }
+
+                // 5. depends_on: each entry must be an intra-roadmap title OR a filed gap ID.
+                for dep in &draft.depends_on {
+                    if !all_titles.contains(dep.as_str()) && !is_filed_gap_id(dep) {
+                        return Err(ValidationError::new(format!(
+                            "{loc}.depends_on entry {dep:?} is neither an intra-roadmap title \
+                             nor a filed gap ID (<DOMAIN>-<NUM>)"
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Input to the roadmap-from-vision subagent.
+#[derive(Debug, Clone, Serialize)]
+pub struct RoadmapFromVisionInput {
+    /// Full text of the intent / vision document. The LLM reads this to extract
+    /// themes and propose gaps. Do NOT pre-summarise — send the raw doc so the
+    /// LLM can apply its own judgement about what matters.
+    pub intent_doc: String,
+    /// Domain prefix for the proposed gaps (e.g. `INFRA`, `PRODUCT`, `META`).
+    pub domain: String,
+    /// Upper bound on total gap count across all groups. The LLM must not emit
+    /// more than this many [`GapDraft`]s in total.
+    pub max_gaps: u32,
+    /// Grouping strategy the LLM should use when clustering gaps.
+    pub group_by: GroupBy,
+    /// Optional additional context lines (e.g. "existing P0s to avoid
+    /// duplicating", "roadmap horizon is 60 days"). Joined with newlines.
+    pub context: Vec<String>,
+    /// If set, a human-readable target directory hint the LLM can surface in
+    /// gap descriptions (e.g. `crates/chump-foo/`). Not a filesystem path the
+    /// LLM traverses — purely informational.
+    pub target_dir: Option<std::path::PathBuf>,
+}
+
+/// Subagent reads a vision/intent document and emits a structured product roadmap
+/// as N grouped [`GapDraft`]s that consumers can batch-insert into `state.db`.
+///
+/// Use case: `chump roadmap-from-vision <intent-doc>` (CLI wired in Phase 2,
+/// INFRA-2267). Also called by `chump bootstrap --with-roadmap` (INFRA-2265)
+/// after architecture-decision to generate the initial gap backlog. This is the
+/// substrate primitive — consumer surfaces own the founder-facing UX.
+///
+/// **Phase 1 scope:** contract types + Validate + prompt() ONLY.
+/// Phase 2 (CLI handler, LLM pipeline, ambient event registration) is gated on
+/// operator/consensus review via PR consensus vote.
+pub struct RoadmapFromVisionContract;
+
+impl HandoffContract for RoadmapFromVisionContract {
+    type Input = RoadmapFromVisionInput;
+    type Output = Roadmap;
+
+    fn name() -> &'static str {
+        "RoadmapFromVisionContract"
+    }
+
+    fn prompt(input: &Self::Input) -> String {
+        let group_by_str = match input.group_by {
+            GroupBy::ProductLine => "product line / theme",
+            GroupBy::Pillar => "Chump pillar (Credible / Effective / Resilient / Zero-Waste)",
+            GroupBy::Effort => "effort band (xs+s / m / l+xl)",
+        };
+        let context_str = if input.context.is_empty() {
+            "(none)".to_string()
+        } else {
+            input.context.join("\n")
+        };
+        let target_dir_str = match &input.target_dir {
+            Some(p) => format!("`{}`", p.display()),
+            None => "(not specified)".to_string(),
+        };
+        format!(
+            r#"You are the Chump roadmap generator. Read the intent document below and
+propose a structured product roadmap as typed JSON.
+
+Domain            : {domain}
+Max gaps (hard cap): {max_gaps}  — you must not emit more gaps in total
+Group by          : {group_by}
+Target directory  : {target_dir}
+Additional context:
+{context}
+
+════════════════════════ INTENT DOCUMENT ════════════════════════
+{intent_doc}
+═════════════════════════════════════════════════════════════════
+
+Instructions:
+1. Read the intent document carefully. Identify the key product themes / pillars
+   / effort bands (depending on "Group by" above).
+2. Propose up to {max_gaps} gaps total, clustered into groups. Fewer is fine if
+   the document doesn't justify more.
+3. For each gap:
+   - Write a concrete, imperative `title` (< 100 chars, no TODO placeholders).
+   - Write a one-paragraph `description` that a Chump worker can act on cold.
+   - Choose `priority` (P0 | P1 | P2 | P3). Reserve P0 for genuine unblockers.
+   - Choose `effort` (xs | s | m | l | xl).
+   - Write at least one concrete, non-placeholder `acceptance_criteria` entry.
+     Each criterion must be a full sentence describing a verifiable outcome.
+     Do NOT write "TODO", "TBD", or "<fill in>" — these will be rejected.
+   - List `depends_on` as intra-roadmap titles OR filed gap IDs (<DOMAIN>-<NUM>).
+     Use an empty list if there are no prerequisites.
+4. Write a 2-4 sentence `narrative` summarising the overall roadmap arc.
+5. Set `confidence` in [0.0, 1.0]: 1.0 means the intent doc was unambiguous;
+   0.0 means you are guessing — prefer low confidence + a good narrative over
+   hallucinating a confident plan.
+
+Emit a SINGLE fenced JSON block (no other JSON, no commentary outside the block):
+
+```json
+{{
+  "groups": [
+    {{
+      "name": "<theme / pillar / effort band>",
+      "rationale": "<why these gaps belong together>",
+      "gaps": [
+        {{
+          "title": "<imperative, < 100 chars>",
+          "description": "<one paragraph>",
+          "priority": "P0" | "P1" | "P2" | "P3",
+          "effort": "xs" | "s" | "m" | "l" | "xl",
+          "acceptance_criteria": ["<concrete AC>", ...],
+          "depends_on": ["<intra-roadmap title or DOMAIN-NUM>", ...]
+        }},
+        ...
+      ]
+    }},
+    ...
+  ],
+  "narrative": "<2-4 sentences>",
+  "confidence": 0.0
+}}
+```
+
+Hard constraints (enforced by Validate — violations will be rejected):
+- `groups` must be non-empty.
+- Every `title` must be non-empty.
+- Every `acceptance_criteria` must be non-empty and contain no TODO/TBD placeholders.
+- Total gaps across all groups must not exceed {max_gaps}.
+- Each `depends_on` entry must be an intra-roadmap title that appears in this
+  output, OR a filed gap ID matching `<UPPERCASE_LETTERS>-<DIGITS>`.
+- `confidence` must be in [0.0, 1.0].
+"#,
+            domain = input.domain,
+            max_gaps = input.max_gaps,
+            group_by = group_by_str,
+            target_dir = target_dir_str,
+            context = context_str,
+            intent_doc = input.intent_doc,
+        )
+    }
+
+    fn model_tier() -> ModelTier {
+        // Vision-to-structured-plan is the highest cognitive-load task in the
+        // handoff taxonomy: the LLM must synthesise an ambiguous narrative into
+        // a prioritised, AC-complete gap list. Sonnet has been shown to
+        // hallucinate ACs and underweight depends_on on even moderately complex
+        // intent docs. Opus is the correct tier; consumers can override via a
+        // wrapper if budget is a concern.
+        ModelTier::Opus
+    }
+}
+
+#[cfg(test)]
+mod tests_roadmap_from_vision {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    fn good_draft() -> GapDraft {
+        GapDraft {
+            title: "Add retry logic to fetch pipeline".into(),
+            description: "Implement exponential backoff in the fetch layer.".into(),
+            priority: RoadmapPriority::P1,
+            effort: RoadmapEffort::S,
+            acceptance_criteria: vec![
+                "cargo test -p chump-fetch fetch_retry passes with zero network calls on first attempt mocked".into(),
+            ],
+            depends_on: vec![],
+        }
+    }
+
+    fn good_roadmap() -> Roadmap {
+        Roadmap {
+            groups: vec![RoadmapGroup {
+                name: "Resilience".into(),
+                rationale: "These gaps harden the fetch pipeline against transient failures."
+                    .into(),
+                gaps: vec![good_draft()],
+            }],
+            narrative: "This roadmap focuses on making the fetch pipeline resilient. \
+                        The single P1 gap is small and can be picked immediately."
+                .into(),
+            confidence: 0.9,
+        }
+    }
+
+    // ── Validate: accept ──────────────────────────────────────────────────────
+
+    #[test]
+    fn accepts_well_formed_roadmap() {
+        assert!(good_roadmap().validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_intra_roadmap_depends_on() {
+        let mut r = good_roadmap();
+        let dep_title = "Bootstrap auth module".to_string();
+        // Add the dep gap as a peer so the title resolves.
+        r.groups[0].gaps.push(GapDraft {
+            title: dep_title.clone(),
+            description: "Scaffold auth".into(),
+            priority: RoadmapPriority::P1,
+            effort: RoadmapEffort::Xs,
+            acceptance_criteria: vec!["Auth module compiles".into()],
+            depends_on: vec![],
+        });
+        r.groups[0].gaps[0].depends_on = vec![dep_title];
+        assert!(r.validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_filed_gap_id_depends_on() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].depends_on = vec!["INFRA-1720".into()];
+        assert!(r.validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_zero_confidence() {
+        let mut r = good_roadmap();
+        r.confidence = 0.0;
+        assert!(r.validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_full_confidence() {
+        let mut r = good_roadmap();
+        r.confidence = 1.0;
+        assert!(r.validate().is_ok());
+    }
+
+    // ── Validate: reject — empty groups ──────────────────────────────────────
+
+    #[test]
+    fn rejects_empty_groups() {
+        let r = Roadmap {
+            groups: vec![],
+            narrative: "nothing here".into(),
+            confidence: 0.5,
+        };
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("at least one group"));
+    }
+
+    // ── Validate: reject — missing AC ─────────────────────────────────────────
+
+    #[test]
+    fn rejects_empty_acceptance_criteria() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].acceptance_criteria = vec![];
+        let err = r.validate().unwrap_err();
+        assert!(err
+            .message()
+            .contains("acceptance_criteria cannot be empty"));
+    }
+
+    #[test]
+    fn rejects_todo_acceptance_criteria() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].acceptance_criteria = vec!["TODO: fill this in".into()];
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("empty or placeholder"));
+    }
+
+    #[test]
+    fn rejects_tbd_acceptance_criteria() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].acceptance_criteria = vec!["TBD".into()];
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("empty or placeholder"));
+    }
+
+    // ── Validate: reject — empty gap title ────────────────────────────────────
+
+    #[test]
+    fn rejects_empty_gap_title() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].title = "   ".into();
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("title cannot be empty"));
+    }
+
+    // ── Validate: reject — bad depends_on ─────────────────────────────────────
+
+    #[test]
+    fn rejects_unresolvable_depends_on() {
+        let mut r = good_roadmap();
+        // "some-random-thing" is neither an intra-roadmap title nor a gap ID.
+        r.groups[0].gaps[0].depends_on = vec!["some-random-thing".into()];
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("depends_on entry"));
+        assert!(err.message().contains("some-random-thing"));
+    }
+
+    #[test]
+    fn rejects_lowercase_domain_in_gap_id() {
+        let mut r = good_roadmap();
+        // "infra-1720" has lowercase domain — should be rejected.
+        r.groups[0].gaps[0].depends_on = vec!["infra-1720".into()];
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("depends_on entry"));
+    }
+
+    #[test]
+    fn rejects_gap_id_with_no_number() {
+        let mut r = good_roadmap();
+        r.groups[0].gaps[0].depends_on = vec!["INFRA-".into()];
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("depends_on entry"));
+    }
+
+    // ── Validate: reject — confidence out of range ────────────────────────────
+
+    #[test]
+    fn rejects_confidence_above_one() {
+        let mut r = good_roadmap();
+        r.confidence = 1.001;
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("outside [0.0, 1.0]"));
+    }
+
+    #[test]
+    fn rejects_confidence_below_zero() {
+        let mut r = good_roadmap();
+        r.confidence = -0.1;
+        let err = r.validate().unwrap_err();
+        assert!(err.message().contains("outside [0.0, 1.0]"));
+    }
+
+    // ── serde roundtrip ───────────────────────────────────────────────────────
+
+    #[test]
+    fn serde_roundtrip() {
+        let original = good_roadmap();
+        let json = serde_json::to_string(&original).expect("serialize");
+        let decoded: Roadmap = serde_json::from_str(&json).expect("deserialize");
+        // Re-validate after roundtrip.
+        assert!(decoded.validate().is_ok());
+        // Key field spot-check.
+        assert_eq!(decoded.groups[0].name, original.groups[0].name);
+        assert_eq!(
+            decoded.groups[0].gaps[0].title,
+            original.groups[0].gaps[0].title
+        );
+    }
+
+    // ── prompt(): all 6 interpolation points present ──────────────────────────
+
+    #[test]
+    fn prompt_contains_all_interpolation_points() {
+        let input = RoadmapFromVisionInput {
+            intent_doc: "UNIQUE_INTENT_DOC_MARKER".into(),
+            domain: "INFRA".into(),
+            max_gaps: 12,
+            group_by: GroupBy::ProductLine,
+            context: vec!["UNIQUE_CONTEXT_LINE".into()],
+            target_dir: Some(PathBuf::from("crates/chump-foo/")),
+        };
+        let p = RoadmapFromVisionContract::prompt(&input);
+
+        assert!(
+            p.contains("UNIQUE_INTENT_DOC_MARKER"),
+            "missing {{intent_doc}}"
+        );
+        assert!(p.contains("INFRA"), "missing {{domain}}");
+        assert!(p.contains("12"), "missing {{max_gaps}}");
+        assert!(p.contains("product line"), "missing {{group_by}} rendering");
+        assert!(p.contains("UNIQUE_CONTEXT_LINE"), "missing {{context}}");
+        assert!(p.contains("chump-foo"), "missing {{target_dir}}");
+    }
+
+    #[test]
+    fn prompt_renders_without_optional_target_dir() {
+        let input = RoadmapFromVisionInput {
+            intent_doc: "some vision".into(),
+            domain: "PRODUCT".into(),
+            max_gaps: 5,
+            group_by: GroupBy::Pillar,
+            context: vec![],
+            target_dir: None,
+        };
+        // Must not panic and must still include key fields.
+        let p = RoadmapFromVisionContract::prompt(&input);
+        assert!(p.contains("PRODUCT"));
+        // GroupBy::Pillar renders as "Chump pillar (Credible / Effective / ...)"
+        assert!(p.contains("pillar"));
+        assert!(p.contains("(not specified)"));
+    }
+
+    // ── model tier ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn model_tier_is_opus() {
+        assert_eq!(RoadmapFromVisionContract::model_tier(), ModelTier::Opus);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
