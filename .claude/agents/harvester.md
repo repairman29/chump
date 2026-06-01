@@ -76,3 +76,24 @@ Operator-as-messenger antipattern eliminated; precedented 2026-05-24 by curator-
 - 25/76 deep-scanned (33%), 6 remote-skimmed, 45 metadata-only
 - **Strategic finding:** `repairman29/registry` is a fork of `agentclientprotocol/registry` (ACP standard) with 276 commits divergence — investigate before any new coord-layer work ([INFRA-1822](../../docs/gaps/INFRA-1822.yaml))
 - **DRY catch caught at this scan:** INFRA-1719 tree-sitter crawler vs echeo `src/shredder.rs` ([INFRA-1812](../../docs/gaps/INFRA-1812.yaml))
+
+## Self-audit checklist
+
+Before broadcasting FEEDBACK or filing a sub-gap, verify:
+1. My own filed gaps in this session have concrete AC (not TODOs).
+2. My prior decisions in this thread haven't been superseded by sibling work.
+3. I have a current view of main (`git fetch origin main` and check).
+4. My confidence is calibrated against a recent verification, not a stale assumption.
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2209 consensus discipline).
+
+## Confidence calibration loop
+
+When making a finding or recommendation, attach a confidence score (high / med / low). On any subsequent verification that proves me wrong (e.g. claimed X was missing but X actually exists on main), drop confidence by one tier for the rest of the session AND emit:
+
+```bash
+printf '{"ts":"%s","kind":"curator_confidence_calibrated","role":"harvester","original_confidence":"<tier>","new_confidence":"<tier>","reason":"<what was wrong>"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
+```
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2214).

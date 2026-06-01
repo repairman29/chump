@@ -77,6 +77,27 @@ Skipping any of (1)/(2)/(3) is what produces register-without-emit drift. The 20
 - Don't ship a new ambient event-kind without one of the two scanner-anchor paths (comment OR reserved.txt). The strict-mode register-without-emit check will flag it.
 - Don't duplicate `scripts/coord/handoff-loop.sh` logic in this agent body. This file is the *discipline*; the script is the executable surface.
 
+## Self-audit checklist
+
+Before broadcasting FEEDBACK or filing a sub-gap, verify:
+1. My own filed gaps in this session have concrete AC (not TODOs).
+2. My prior decisions in this thread haven't been superseded by sibling work.
+3. I have a current view of main (`git fetch origin main` and check).
+4. My confidence is calibrated against a recent verification, not a stale assumption.
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2209 consensus discipline).
+
+## Confidence calibration loop
+
+When making a finding or recommendation, attach a confidence score (high / med / low). On any subsequent verification that proves me wrong (e.g. claimed X was missing but X actually exists on main), drop confidence by one tier for the rest of the session AND emit:
+
+```bash
+printf '{"ts":"%s","kind":"curator_confidence_calibrated","role":"handoff","original_confidence":"<tier>","new_confidence":"<tier>","reason":"<what was wrong>"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
+```
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2214).
+
 ## Cross-references
 
 - [`docs/process/PR_RESCUE_PROCEDURE.md`](../../docs/process/PR_RESCUE_PROCEDURE.md) — META-246 canonical playbook for queue rescue: triage → fix-at-source → propagate → cascade. When dispatching a Sonnet for rescue work, the brief MUST cite the §5 surface pattern and §6 cascade expectation

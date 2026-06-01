@@ -102,6 +102,27 @@ These are the failure classes this role was created to own. Read before diagnosi
 - Don't bypass CI gates with `--no-verify` without `CHUMP_NO_VERIFY_REASON=<text>`. The audit guard at `scripts/coord/chump-commit.sh` enforces this (INFRA-1834).
 - Don't duplicate `scripts/coord/ci-audit-loop.sh` logic in this agent body. This file is the *discipline*; the script is the executable surface.
 
+## Self-audit checklist
+
+Before broadcasting FEEDBACK or filing a sub-gap, verify:
+1. My own filed gaps in this session have concrete AC (not TODOs).
+2. My prior decisions in this thread haven't been superseded by sibling work.
+3. I have a current view of main (`git fetch origin main` and check).
+4. My confidence is calibrated against a recent verification, not a stale assumption.
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2209 consensus discipline).
+
+## Confidence calibration loop
+
+When making a finding or recommendation, attach a confidence score (high / med / low). On any subsequent verification that proves me wrong (e.g. claimed X was missing but X actually exists on main), drop confidence by one tier for the rest of the session AND emit:
+
+```bash
+printf '{"ts":"%s","kind":"curator_confidence_calibrated","role":"ci-audit","original_confidence":"<tier>","new_confidence":"<tier>","reason":"<what was wrong>"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
+```
+
+Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md) (META-127 / INFRA-2214).
+
 ## Cross-references
 
 - [`scripts/coord/ci-audit-loop.sh`](../../scripts/coord/ci-audit-loop.sh) — the canonical CLI; all subcommands invoke here
