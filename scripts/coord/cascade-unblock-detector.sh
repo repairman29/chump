@@ -82,8 +82,12 @@ fi
 _CACHE_AVAILABLE=0
 if [[ -f "$LIB_CACHE" ]]; then
     # shellcheck source=scripts/coord/lib/github_cache.sh
+    # shellcheck disable=SC1091  # path is dynamic (env-overridable); source-directive above is the hint
     source "$LIB_CACHE" 2>/dev/null && _CACHE_AVAILABLE=1 || true
 fi
+
+# ── Daemon tick emit (INFRA-2280 META-118 scheduling activation) ─────────────
+emit_ambient "meta_118_daemon_tick" "\"daemon\":\"cascade-unblock-detector\""
 
 # ── Step 1: Find recently-merged wedge_auto_fix PRs ──────────────────────────
 #
@@ -116,6 +120,7 @@ find_fix_prs() {
 
     # Try cache first
     if [[ "$_CACHE_AVAILABLE" == "1" ]]; then
+        # shellcheck disable=SC2034  # pr_list populated for cache warm-up; gh path below is primary
         pr_list="$(cache_query_open_prs_by_title "wedge_auto_fix" 2>/dev/null || true)"
     fi
 

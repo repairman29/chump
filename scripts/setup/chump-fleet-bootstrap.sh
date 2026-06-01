@@ -57,6 +57,11 @@ REQUIRED_DAEMONS=(
     # at 15m, operator-recall at 60m). Without this, a red trunk blinds the
     # fleet to its own queue-burn and bot-merge stalls every PR BEHIND it.
     "com.chump.trunk-sentinel|scripts/setup/install-trunk-sentinel.sh"
+    # INFRA-2280: META-118 scheduling activation — novel-wedge-classifier (15-min)
+    # and cascade-unblock-detector (5-min). Without these, the META-118 chain
+    # (INFRA-2067..2071) is plumbed but executes zero times.
+    "com.chump.novel-wedge-classifier|scripts/setup/install-meta-118-daemons.sh"
+    "com.chump.cascade-unblock-detector|scripts/setup/install-meta-118-daemons.sh"
 )
 UID_VAL="$(id -u)"
 

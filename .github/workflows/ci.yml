@@ -553,6 +553,12 @@ jobs:
       - name: Install manifest gate
         run: bash scripts/ci/test-install-script-manifest.sh
 
+      # INFRA-2280: META-118 daemon install smoke test — validates plist shape
+      # (StartInterval, Label, ProgramArguments, log paths) without calling
+      # launchctl. Dry-run mode only; safe in CI / Linux environments.
+      - name: META-118 daemon install smoke (INFRA-2280)
+        run: bash scripts/ci/test-meta-118-daemon-install.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off

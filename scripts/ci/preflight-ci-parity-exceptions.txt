@@ -349,3 +349,4 @@ check-gaps-integrity.py    # reason: gap-status-guard.yml gaps-integrity job run
 # (tauri-cowork-e2e, e2e are in INFRA_JOBS skip list — e2e is the matrixed job from META-267)
 
 actionlint — workflow syntax gate    # reason: META-199 actionlint step uses rhysd/actionlint GitHub Action; requires the actionlint binary not present in standard preflight env; Tier-D per CI_GATES_INVENTORY.md
+scripts/ci/test-meta-118-daemon-install.sh   # reason: INFRA-2280 plist install smoke uses dry-run mode; validates plist XML shape without launchctl; safe in CI but not meaningful in preflight (no launchd available in worktree context)
