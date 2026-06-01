@@ -322,6 +322,9 @@ When `pr-shepherd-daemon` classifies a PR as `BLOCKED_GREEN` AND fix-class allow
 |---|---|---|
 | `pr-shepherd-daemon` (META-180/181/182/183/184/185/186) | Classify, rebase BEHIND, arm BLOCKED_GREEN, file gaps on BLOCKED_REAL_FAIL | DIRTY → operator-attention queue; trunk-red → safe-mode |
 | `auto-merge-rearm-daemon` (INFRA-2309) | Arm `gh pr merge --auto --squash` on CLEAN PRs matching fix-class allowlist | Throws to PR-shepherd if PR is BEHIND not CLEAN |
+| `trunk-sentinel-daemon` (INFRA-2324) | Watches main ci.yml; emits trunk_red/trunk_red_persistent on RED past 5min; files a P0 fix-trunk gap; calls operator-recall on RED >60min | fix-trunk-dispatcher (claim path) |
+| `fix-trunk-dispatcher` (INFRA-2324 / INFRA-2341) | Pre-empts picker when trunk RED. Claims highest-priority fix_trunk gap, then **(default mode=signal)** emits `fix_trunk_priority_signal` + writes URGENT-INBOX entry so the operator's running IDE picks up the work (respects Max subscription billing). **(opt-in mode=subprocess)** spawns headless `claude -p` — for ANTHROPIC_API_KEY billing without an interactive IDE | inbox-check-urgent (signal mode) / claude -p subshell (subprocess mode) |
+| `inbox-check-urgent.sh` (INFRA-2016 / INFRA-2341) | PostToolUse + SessionStart helper: reads `.chump-locks/URGENT-INBOX.jsonl`, surfaces CRIT entries as `<system-reminder>` to the IDE; elevates `kind=fix_trunk_priority_signal` with a banner; emits `fix_trunk_session_acknowledged` on cursor advance | Running IDE session (the operator) |
 | `daemon-activator` (META-225) | Auto-install new `install-*.sh` scripts after they merge to main | Nothing — terminal |
 | `ghost-pr-closer` (META-225) | Close stale PRs where `gap.status=done AND mergeStateStatus IN (DIRTY,CONFLICTING)` | Nothing |
 | `main-worktree-drift-detector` (META-225) | Alert on accumulated drift; file cleanup gap when threshold breached | File gap, no action |
@@ -330,7 +333,26 @@ When `pr-shepherd-daemon` classifies a PR as `BLOCKED_GREEN` AND fix-class allow
 **Coordination invariants:**
 - PR-shepherd does NOT also rearm what auto-merge-rearm handles (double-duty); their fix-class allowlists agree
 - Trunk-red guard in PR-shepherd halts ALL action paths simultaneously
-- All 5 daemons emit ambient events; observability roll-up at `chump observability tick`
+- All daemons emit ambient events; observability roll-up at `chump observability tick`
+
+**Trunk-loop dispatch mode trade-off (INFRA-2341):**
+
+The fix-trunk-dispatcher defaults to **signal** mode — it claims the fix-trunk
+gap atomically (reserving the worktree), then signals the operator's running
+Claude Code IDE via `.chump-locks/URGENT-INBOX.jsonl` instead of spawning a
+headless `claude -p`. This respects the operator's Max subscription billing
+(no separate console.anthropic.com balance burn). **Caveat:** if NO Claude
+Code IDE session is open when the signal lands, the URGENT-INBOX entry sits
+waiting until the next session opens. The trunk-sentinel-daemon's 60-min
+operator-recall path is the fallback — when no `fix_trunk_session_acknowledged`
+event arrives within 60 min of `trunk_red_persistent`, the sentinel calls
+`scripts/dispatch/operator-recall.sh` with condition CI_BROKEN so a human
+gets paged.
+
+For users who want headless billing (CI fleets, after-hours autonomous
+operation), set `CHUMP_FIX_TRUNK_DISPATCH_MODE=subprocess` in the dispatcher's
+launchd plist environment — the legacy `claude -p` path is preserved and
+emits the existing `fix_trunk_dispatched` event for downstream consumers.
 
 ---
 
