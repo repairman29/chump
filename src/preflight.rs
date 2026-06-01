@@ -8,7 +8,7 @@
 //!
 //!   1. `cargo fmt --all -- --check`              (fmt drift)
 //!   2. `cargo clippy --workspace --all-targets -- -D warnings`
-//!   3. `cargo check --workspace`
+//!   3. `cargo check --workspace --all-targets`
 //!   4. (optional, `--with-tests`) selected `scripts/ci/test-*.sh`
 //!
 //! Each step prints its name + duration + status. Exits non-zero on the
@@ -410,7 +410,7 @@ BYPASS:
 GATES (in order):
     1. cargo fmt --check               (scope: rust)
     2. cargo clippy -- -D warnings     (scope: rust)
-    3. cargo check                     (scope: rust)
+    3. cargo check --all-targets        (scope: rust)
     4. event-registry-audit            (scope: rust, INFRA-1731)
     5. docs-delta-trailer              (--pre-commit only, INFRA-1788)
     6. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
@@ -649,9 +649,15 @@ pub fn run(argv: &[String]) -> i32 {
             ],
             GateKind::Rust,
         ));
+        // META-178 / META-177 lane D: use --all-targets so that test code,
+        // bench targets, and integration-test initializers are checked.
+        // Without this, a struct field added to a shared crate (e.g. GapRow)
+        // passes cargo check in the defining crate but misses dependent crates
+        // whose test initializers (in #[cfg(test)] blocks) reference the old
+        // struct layout — exactly the INFRA-2134 trunk-RED root cause.
         steps.push(step(
             "cargo check",
-            &["cargo", "check", "--workspace"],
+            &["cargo", "check", "--workspace", "--all-targets"],
             GateKind::Rust,
         ));
         // INFRA-1731: event-registry-audit local gate. Catches
