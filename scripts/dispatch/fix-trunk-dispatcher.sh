@@ -255,6 +255,32 @@ fi
 
 log "claimed $candidate_id at worktree=$worktree; dispatching $MODEL"
 
+# ── INFRA-2340: OAUTH defensive read ─────────────────────────────────────────
+# launchd plists historically didn't pass CLAUDE_CODE_OAUTH_TOKEN through to
+# the dispatched claude -p subshell, causing 401 auth errors that killed the
+# Sonnet within seconds (operator observed twice on 2026-05-31). The OAUTH
+# token is refreshed every 5 min to ~/.chump/oauth-token.json (mode 0600);
+# the daemon runs as the operator's user so we can read it directly. Only
+# applied if neither auth env var is already set (env wins for explicit
+# overrides / api-key mode).
+#
+# Security: only the token's string length is ever logged; the token itself
+# never appears in any log path.
+if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  if [[ -r "$HOME/.chump/oauth-token.json" ]]; then
+    _token=$(python3 -c "import json; print(json.load(open('$HOME/.chump/oauth-token.json')).get('token',''))" 2>/dev/null)
+    if [[ -n "$_token" ]]; then
+      export CLAUDE_CODE_OAUTH_TOKEN="$_token"
+      log "loaded CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json (len=${#_token})"
+    else
+      log "WARN: ~/.chump/oauth-token.json present but token key empty"
+    fi
+    unset _token
+  else
+    log "WARN: no CLAUDE_CODE_OAUTH_TOKEN, no ANTHROPIC_API_KEY, no readable ~/.chump/oauth-token.json — dispatched Sonnet will likely 401"
+  fi
+fi
+
 # ── Dispatch Sonnet sub-agent via claude -p ──────────────────────────────────
 # Run in background so this script exits quickly (launchd ThrottleInterval=60
 # tolerates 30s cadence, but we want the next tick to find this PID in the
