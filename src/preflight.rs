@@ -1013,7 +1013,9 @@ pub fn run(argv: &[String]) -> i32 {
         // `if: filter.code == 'false'` warning; this gate catches the
         // structural drift earlier.
         if std::env::var("CHUMP_PREFLIGHT_SKIP_PATHFILTER").as_deref() == Ok("1") {
-            eprintln!("[preflight] skipping path-filter-coverage (CHUMP_PREFLIGHT_SKIP_PATHFILTER=1)");
+            eprintln!(
+                "[preflight] skipping path-filter-coverage (CHUMP_PREFLIGHT_SKIP_PATHFILTER=1)"
+            );
             let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
                 kind: "preflight_pathfilter_bypassed".to_string(),
                 source: Some("chump-preflight".to_string()),

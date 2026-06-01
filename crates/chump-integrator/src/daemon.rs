@@ -60,6 +60,7 @@ use crate::cycle::merge_branch::build_integration_branch;
 use crate::cycle::select::{select_candidates, StateDbWorkBoard};
 use crate::cycle::CycleManifest;
 use crate::policy::{evaluate, PolicyDecision};
+use crate::pr_body::{generate_pr_body, generate_pr_title, IntegrationPrInput};
 use crate::sampling::sampling_decision;
 
 use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
@@ -135,7 +136,10 @@ impl IntegratorDaemon {
     /// skipped; only hard errors (NATS unavailable and state.db unreadable)
     /// propagate as Err.
     pub async fn run_cycle(&self) -> Result<()> {
-        let cycle_id = short_uuid();
+        // Cycle name uses datetime format per INFRA-2135 AC.
+        // e.g. "integration-2026-05-29-1430"
+        let cycle_name = datetime_cycle_name();
+        let cycle_id = cycle_name.clone();
 
         // ── Step 0: LIVE-mode safety rails ────────────────────────────────
         // Determine whether this cycle runs LIVE before claiming the slot.
@@ -168,6 +172,9 @@ impl IntegratorDaemon {
         let _slot_guard = IntegrationSlotGuard {
             coord: self.coord.clone(),
         };
+
+        let started_at = Utc::now().to_rfc3339();
+        let preflight_start = std::time::Instant::now();
 
         emit_event("integration_cycle_started", &[("cycle_id", &cycle_id)]);
 
@@ -244,7 +251,8 @@ impl IntegratorDaemon {
         let manifest = CycleManifest::new(cycle_id.clone(), candidates.clone());
 
         // ── Step 4: MERGE ─────────────────────────────────────────────────
-        let integration_branch = format!("chump/integration-{}", &cycle_id);
+        // Integration branch named after the cycle for traceability.
+        let integration_branch = format!("chump/{}", &cycle_name);
         let merge_outcome = match self.run_merge(&candidates, &integration_branch).await {
             Ok(outcome) => outcome,
             Err(e) => {
@@ -417,7 +425,22 @@ impl IntegratorDaemon {
             }
         }
 
+        // Capture elapsed time for PR body (INFRA-2135).
+        let preflight_duration = format!("{}s", preflight_start.elapsed().as_secs());
+
         // ── Step 6: DECISION ─────────────────────────────────────────────
+        // Step 6a: generate PR body from template (INFRA-2135).
+        let pr_input = IntegrationPrInput::from_cycle(
+            &cycle_name,
+            "volume_threshold reached",
+            &started_at,
+            &preflight_duration,
+            &candidates,
+            &merge_outcome,
+        );
+        let pr_title = generate_pr_title(&pr_input);
+        let pr_body = generate_pr_body(&pr_input, &self.repo_root);
+
         let gap_ids = manifest
             .candidates
             .iter()
@@ -431,6 +454,10 @@ impl IntegratorDaemon {
                 "[integrator] LIVE SHIP cycle={cycle_id} gaps=[{gap_ids}] loc={}",
                 manifest.total_loc,
             );
+            eprintln!("[integrator] PR title ready: {pr_title}");
+
+            // Persist PR body preview alongside dry-run output for inspection.
+            let _ = self.write_pr_body_preview(&cycle_name, &pr_body);
 
             match self
                 .ship_integration_branch(&integration_branch, &cycle_id, &manifest)
@@ -482,15 +509,27 @@ impl IntegratorDaemon {
             // DRY-RUN: log manifest + emit dry-run completed event.
             let summary = manifest.dry_run_summary();
             eprintln!("[integrator] DRY-RUN: {summary}");
+            eprintln!("[integrator] PR title: {pr_title}");
             self.write_dry_run_log(&manifest)
                 .with_context(|| "writing dry-run log")?;
+            self.write_pr_body_preview(&cycle_name, &pr_body)
+                .with_context(|| "writing PR body preview")?;
             emit_event(
                 "integration_cycle_dry_run_completed",
                 &[
                     ("cycle_id", &cycle_id),
                     ("gap_count", &manifest.candidates.len().to_string()),
                     ("total_loc", &manifest.total_loc.to_string()),
-                    ("gap_ids", &gap_ids),
+                    (
+                        "gap_ids",
+                        &manifest
+                            .candidates
+                            .iter()
+                            .map(|c| c.gap_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    ),
+                    ("pr_title", &pr_title),
                 ],
             );
         }
@@ -774,6 +813,20 @@ impl IntegratorDaemon {
         }
     }
 
+    fn write_pr_body_preview(&self, cycle_name: &str, pr_body: &str) -> Result<()> {
+        if let Some(parent) = self.dry_run_log.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let path = self
+            .dry_run_log
+            .parent()
+            .unwrap_or(std::path::Path::new("/tmp"))
+            .join(format!("{cycle_name}-pr-body.md"));
+        std::fs::write(&path, pr_body)?;
+        eprintln!("[integrator] PR body preview written to {}", path.display());
+        Ok(())
+    }
+
     fn write_dry_run_log(&self, manifest: &CycleManifest) -> Result<()> {
         // Ensure ~/.chump/ exists.
         if let Some(parent) = self.dry_run_log.parent() {
@@ -820,6 +873,14 @@ impl Drop for IntegrationSlotGuard {
 
 // ── utility functions ─────────────────────────────────────────────────────────
 
+/// Generate a cycle name in `integration-YYYY-MM-DD-HHMM` format.
+///
+/// Used as both the cycle ID and the `Batched-Under:` trailer value per INFRA-2135 AC.
+fn datetime_cycle_name() -> String {
+    Utc::now().format("integration-%Y-%m-%d-%H%M").to_string()
+}
+
+#[allow(dead_code)]
 fn short_uuid() -> String {
     let u = Uuid::new_v4();
     u.simple().to_string()[..8].to_string()
