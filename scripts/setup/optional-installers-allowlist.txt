@@ -21,6 +21,7 @@ install-claude-tmp-cleanup-launchd.sh
 install-curator-jit-scheduler-launchd.sh
 install-curator-launchd.sh
 install-daemon-activator.sh
+install-daemon-silence-monitor-launchd.sh
 install-decomposition-tracker-launchd.sh
 install-disk-health-monitor-launchd.sh
 install-disk-pressure-reaper-launchd.sh
