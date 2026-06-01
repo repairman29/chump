@@ -449,7 +449,11 @@ case "$cmd" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
         "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble handoff 2>/dev/null || true
-        _cmd_scan_handoffs "$@"  # INFRA-2238: fleet-autopilot.sh canonical entry point
+        _TICK_RC=0
+        _cmd_scan_handoffs "$@" || _TICK_RC=$?  # INFRA-2238: fleet-autopilot.sh canonical entry point
+        # CREDIBLE-084: emit tick_outcome for no-idle audit + observability.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-outcome handoff "$_TICK_RC" 2>/dev/null || true
+        exit "$_TICK_RC"
         ;;
     help|-h|--help) _cmd_help; exit 0 ;;
     *)
