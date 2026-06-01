@@ -252,7 +252,11 @@ case "$SUBCMD" in
     tick)
         # INFRA-2262: read fleet wire before doing tick work.
         "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble md-links 2>/dev/null || true
-        cmd_tick "$@"
+        _TICK_RC=0
+        cmd_tick "$@" || _TICK_RC=$?
+        # CREDIBLE-084: emit tick_outcome for no-idle audit + observability.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-outcome md-links "$_TICK_RC" 2>/dev/null || true
+        exit "$_TICK_RC"
         ;;
     scan)        cmd_scan "$@" ;;
     heartbeat)   cmd_heartbeat "$@" ;;
