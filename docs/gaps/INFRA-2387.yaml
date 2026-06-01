@@ -1,0 +1,35 @@
+- id: INFRA-2387
+  domain: INFRA
+  title: "RESILIENT: trunk red — main ci.yml failing on [audit,audit-required,fast-checks,fast-checks-required,pr-hygiene,test] (fp=84b8b4b8c435)"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    Trunk-sentinel detected main ci.yml has been RED for 5m.
+    
+      - Run ID: 26759566227
+      - Head SHA: 5724f69758a890c5c93ad9c8d5f128446030a917
+      - Failing jobs: audit,audit-required,fast-checks,fast-checks-required,pr-hygiene,test
+      - Fingerprint: 84b8b4b8c435
+    
+    This gap was auto-filed by scripts/coord/trunk-sentinel-daemon.sh. The
+    fingerprint above is sha256(sorted failing-job names) so a second tick with
+    the same failure set will NOT re-file. A different failure pattern (a new
+    failing job appears) WILL file a new gap.
+    
+    Recommended workflow:
+      1. Inspect the run: gh run view 26759566227
+      2. Identify the root commit (gh log origin/main --oneline -5).
+      3. Either revert the offending commit OR file a forward fix.
+      4. When main is green again the sentinel will emit trunk_recovered and
+         close this gap.
+    
+    This is a fleet-halt-class wedge: every other PR currently in flight will
+    land BEHIND a red trunk; bot-merge will refuse to arm new ones until green.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  skills_required: fix_trunk,ci_repair
+

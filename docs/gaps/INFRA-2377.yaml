@@ -1,0 +1,12 @@
+- id: INFRA-2377
+  domain: INFRA
+  title: "inventory detector: shadow-duplicate — replace basename-prefix bucket with content-similarity (current: 0% RP across 20 samples on coherent naming patterns)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "detect_shadow_duplicates replaces 8-char basename-prefix bucketing with a content-similarity check — for any two artifacts whose paths share a prefix, compute a cheap fingerprint (sorted line-set jaccard, or first-N-bytes after normalizing whitespace) and only flag the pair when jaccard ≥ 0.70"
+    - "Detector skips well-known intentional sibling patterns (numbered variants like `pr-rescue-v1.sh` / `pr-rescue-v2.sh`, role-stamped variants like `worker.sh` / `worker-haiku.sh`); these match a small allowlist defined in src/inventory.rs"
+    - "Detector flags pairs not bucket centroids — the finding mentions both paths explicitly so the operator can compare without further investigation"
+    - "Detector RP target: ≥30% on next 20 sampled findings (current baseline 0/20)"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: synthetic repo with `foo-v1.sh` and `foo-v2.sh` of completely different content must NOT surface; same-content pair MUST surface"

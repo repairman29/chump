@@ -1,0 +1,12 @@
+- id: INFRA-2383
+  domain: INFRA
+  title: "inventory tune: long-undormant-substrate threshold — 90d catches 0 in active repo; env-configurable CHUMP_INVENTORY_DORMANT_DAYS default 30"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "detect_long_undormant_substrate reads `CHUMP_INVENTORY_DORMANT_DAYS` env var (default 30 not 90) for the artifact-age cutoff and the PR-merged-age cutoff"
+    - "Default threshold change from 90 to 30 days exposes a ~3x larger dormancy surface in active repos where 90d catches almost nothing"
+    - "Per-detector doc comment in src/inventory.rs is updated to reflect that the 30d default is intentional and surfaces 'recently-orphaned' substrate as well as long-undormant"
+    - "Detector RP target: ≥30% on next 20 sampled findings (current baseline 0 findings because 90d catches 0)"
+    - "Smoke test in scripts/ci/test-inventory-v2-calibration.sh: with CHUMP_INVENTORY_DORMANT_DAYS=30, a synthetic artifact last-modified 31d ago must surface; with =60 it must not"

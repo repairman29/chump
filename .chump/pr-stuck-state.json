@@ -1,0 +1,10 @@
+{
+  "2937": {
+    "first_alert_ts": 1780332735,
+    "line": "#2937 DIRTY auto=SQUASH age=90m chore(cold-water): Red Letter issue #14 \u2014 2026-06-01"
+  },
+  "2924": {
+    "first_alert_ts": 1780332735,
+    "line": "#2924 DIRTY auto=off age=223m fix(INFRA-2343): replace 3 pipefail-race printf|grep patterns in trunk-sentinel-"
+  }
+}

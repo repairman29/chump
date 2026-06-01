@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE: EVENT_REGISTRY.yaml drift — 22 emit-without-register kinds + 88 register-without-emit orphans; pre-commit guard only checks staged diff"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   description: |
     Source: 2026-05-14 resilience+observability+UX audit, Part 2 finding #7 — top signal.
