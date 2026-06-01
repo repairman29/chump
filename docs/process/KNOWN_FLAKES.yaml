@@ -167,3 +167,30 @@ playwright_flakes:
     last_observed: "2026-05-20"
     max_reruns: 1
 
+# INFRA-2346: GitHub Actions CHECK-NAME flakes (distinct from cargo test
+# names above). The PR-shepherd-daemon BLOCKED_FLAKE tier consults this list:
+# when a PR's failing checks are ALL named entries in check_flakes, the
+# daemon runs `gh run rerun --failed`. Cap 2 reruns per PR tracked in
+# .chump-locks/flake-rerun-count.json. Beyond cap, fall through to the
+# normal BLOCKED_REAL_FAIL gap-filing path.
+#
+# Schema (per entry):
+#   - check_name:     exact name of the GH Actions job / check-run that flakes
+#     reason:         one-sentence root-cause hypothesis
+#     tracking_gap:   ID of the open gap that will fix the root cause
+#     added:          YYYY-MM-DD added
+#     last_observed:  YYYY-MM-DD most recently seen flaking
+#     max_reruns:     (optional) per-PR rerun budget (default 2)
+#
+# Same discipline as `flakes:` above — never add without a tracking gap;
+# remove after 10 consecutive green runs.
+
+check_flakes: []
+# Example (uncomment to add):
+#   - check_name: "ci.yml / fast-checks"
+#     reason: "race in cargo cache restore under high runner load"
+#     tracking_gap: INFRA-XXXX
+#     added: "2026-05-31"
+#     last_observed: "2026-05-31"
+#     max_reruns: 2
+
