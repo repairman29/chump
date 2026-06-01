@@ -117,6 +117,7 @@ mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect sur
 mod intent_parser;
 mod interrupt_notify;
 mod introspect_tool;
+mod inventory; // META-271: fleet inventory + tech-debt review-only audit DB
 mod job_log;
 mod kpi_report;
 mod lesson_action;
@@ -1297,6 +1298,17 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("sibling-status") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::sibling_status::run(&sub_args));
+    }
+
+    // `chump inventory <rebuild|show|debt-report|...>` (META-271) —
+    // fleet inventory + tech-debt review-only audit. ALL detector findings
+    // land at tier=0 (surface-only) — never auto-files a gap, never removes
+    // code. Operator runs `chump inventory review` to classify findings, then
+    // `chump inventory promote <class>` after ≥10 reviewed + ≥70% RP ratio.
+    // Tier-2 auto-file machinery deferred to INFRA-2374.
+    if args.get(1).map(String::as_str) == Some("inventory") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::inventory::run(&sub_args));
     }
 
     // `chump inspect <gap-id>` (INFRA-1456) — eject-and-inspect surface.

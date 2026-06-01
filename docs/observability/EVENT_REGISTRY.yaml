@@ -6795,3 +6795,19 @@ events:
     consumers: [ops-audit, kpi-report, fleet-brief]
     fields_required: [ts, kind, voa_id, wedge_class, minutes_lost, fix_shape, target_repo, session]
     # payload: {voa_id: str, wedge_class: str, minutes_lost: int, fix_shape: str, target_repo: str, session: str}
+
+  - kind: tech_debt_finding
+    effect_metric: zero_waste
+    emitter: src/inventory.rs insert_finding (META-271 / INFRA-2368 — inventory detectors)
+    trigger: >
+      Emitted by every inventory detector at the moment a finding is
+      INSERTed into tech_debt_findings. ALWAYS lands at tier=0 in this
+      PR's scope — never files a gap, never removes code. The operator
+      promotes a finding_class from tier 0 → 2 via
+      `chump inventory promote <class>` only after calibration via
+      `chump inventory review` (≥10 reviewed AND ≥70% REAL_POSITIVE).
+      Tier-2 auto-file machinery is deferred to INFRA-2374.
+    consumers: [ops-audit, fleet-brief, inventory-cli]
+    fields_required: [ts, kind, finding_id, finding_class, severity, tier, detail]
+    # payload: {finding_id: int, finding_class: str, severity: str, tier: int (0|1|2),
+    #           detail: str, artifact_path?: str, pr_number?: int, gap_id?: str}
