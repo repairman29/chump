@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.daemon-silence-monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/coord/daemon-silence-monitor.sh</string>
+  </array>
+  <!-- INFRA-2352: every 5 min. monitor:
+       - reads scripts/coord/daemon-expectations.yaml
+       - counts expected ambient kinds per daemon in last hour
+       - emits kind=daemon_silent for any LOADED + 0-emissions + eligible daemon
+       Closes the META-269 detection-on-track gap: when a daemon sits idle,
+       we now know within 5-10 min instead of 24h. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-daemon-silence-monitor.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-daemon-silence-monitor.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
