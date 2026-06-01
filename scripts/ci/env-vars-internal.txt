@@ -736,3 +736,23 @@ CHUMP_OPERATOR_CONSENSUS_BYPASS
 CHUMP_AMBIENT_PATH
 # detected in: (standard input)
 CHUMP_FIX_TRUNK_DISPATCH
+
+# INFRA-2348: vars introduced by INFRA-2324/2326/2341/2346 substrate (curator-supervisor,
+# disk-aware fleet, fix-trunk dispatcher) and prior META-128 / paramedic work.
+# detected in: scripts/coord/curator-supervisor.sh, scripts/coord/disk-aware-fleet.sh,
+#              scripts/coord/fix-trunk-dispatcher.sh, scripts/dispatch/paramedic.sh,
+#              src/policy_engine_suite_*.rs
+CHUMP_CURATOR_SUPERVISOR_AUTORESTART
+CHUMP_CURATOR_SUPERVISOR_MODE
+CHUMP_DEBUG
+CHUMP_DISK_COST_MODEL_PATH
+CHUMP_DISK_FLOOR_GB
+CHUMP_DISK_INVENTORY_PATH
+CHUMP_FLEET_ACCEPT_WAIT
+CHUMP_FLEET_SCALE_HIGH_GB
+CHUMP_FLEET_SCALE_LOW_GB
+CHUMP_GEN_SKIP_VERIFY
+CHUMP_PARAMEDIC_CI_RESCUE_QUIET_MIN
+CHUMP_PE_SUITE_AMBIENT_PATH
+CHUMP_PE_SUITE_LOCKS_DIR
+CHUMP_PE_SUITE_NOW_SECS
