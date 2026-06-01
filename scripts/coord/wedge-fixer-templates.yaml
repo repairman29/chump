@@ -1,0 +1,176 @@
+# wedge-fixer-templates.yaml — INFRA-2069
+#
+# Declarative template library for the wedge-fixer auto-dispatch system.
+# Each template describes a well-characterized CI failure class that
+# can be resolved by dispatching a Sonnet subagent with a standard prompt.
+#
+# Schema:
+#   template_name:      (required) short identifier used in --template flag
+#   signature_pattern:  (required) regex matched against CI failure text / PR title / ambient event fields
+#   prompt_template:    (required) prompt rendered and sent to the Sonnet agent.
+#                       Placeholders use {{UPPER_CASE}} syntax. All placeholders
+#                       must be resolved before dispatch — dispatcher errors on
+#                       unresolved {{...}} tokens.
+#   max_loc:            (required) maximum lines-of-code the fix is expected to touch.
+#                       If the agent's diff exceeds this, bot-merge.sh will reject
+#                       (safety guard for "scope creep" detection).
+#   smoke_test:         (required) shell command the dispatcher runs to verify the
+#                       template is well-formed (no placeholder residuals, renders
+#                       without error).
+#
+# Adding a new template:
+#   See scripts/coord/wedge-fixer-templates.md for the full authoring guide.
+#
+# Status: AC #1 / INFRA-2069. AC #2-4 (auto-dispatch, rate-limit, safety guards)
+# defer to follow-up PR once INFRA-2068 lands.
+#
+# Note: auto-dispatch consumer (kind=wedge_class_detected → auto-render-and-dispatch)
+# is deferred — see INFRA-2069 follow-up gap filed after this PR ships.
+
+schema_version: 1
+
+templates:
+
+  # ── fmt-drift ──────────────────────────────────────────────────────────────
+  #
+  # Matches CI failures from the "cargo fmt --check" gate.
+  # The fix is mechanical: run cargo fmt, commit the diff, push.
+  # No logic changes, pure formatting normalization.
+
+  - template_name: fmt-drift
+    signature_pattern: "cargo fmt.*--check|running `cargo fmt`|error\\[format\\]|Diff in .*\\.rs"
+    prompt_template: |
+      You are a Sonnet subagent dispatched by the wedge-fixer auto-dispatch system (INFRA-2069).
+
+      Gap: {{GAP_ID}}
+      Worktree: {{WORKTREE_PATH}}
+
+      ## Mission
+      Fix a cargo fmt drift failure. This is a pure formatting change — NO logic edits.
+
+      ## Steps
+      1. cd {{WORKTREE_PATH}}
+      2. Run: PATH=$HOME/.cargo/bin:$PATH cargo fmt --all
+      3. Verify the diff is formatting-only (no logic changes):
+         git diff --stat
+      4. If diff touches > 50 files or any non-.rs files, STOP and report — something unexpected is happening.
+      5. Commit: scripts/coord/chump-commit.sh <all changed .rs files> -m "style({{GAP_ID}}): cargo fmt --all"
+      6. Push: git push -u origin $(git branch --show-current) --force-with-lease
+      7. Run: scripts/coord/bot-merge.sh --gap {{GAP_ID}} --auto-merge
+
+      ## Out of scope
+      Do NOT modify any .rs file beyond what `cargo fmt` produces.
+      Do NOT change Cargo.toml, Cargo.lock, or any non-Rust file.
+      Do NOT attempt to fix clippy warnings — that is a different template.
+
+      ## Done when
+      PR is merged or bot-merge.sh reports auto-merge armed.
+    max_loc: 500
+    smoke_test: "echo 'fmt-drift template renders OK'"
+
+  # ── orphan-event ───────────────────────────────────────────────────────────
+  #
+  # Matches CI failures from the event-registry coverage gate.
+  # Scripts emit kind=X but X is not registered in EVENT_REGISTRY.yaml.
+  # The fix: add the missing entry to EVENT_REGISTRY.yaml AND to
+  # event-registry-reserved.txt (if it cannot be emitted in CI yet).
+
+  - template_name: orphan-event
+    signature_pattern: "event registry violation|kind=\\S+ not registered|unregistered kind|emit-without-register|orphan kind"
+    prompt_template: |
+      You are a Sonnet subagent dispatched by the wedge-fixer auto-dispatch system (INFRA-2069).
+
+      Gap: {{GAP_ID}}
+      Worktree: {{WORKTREE_PATH}}
+      Orphan kind: {{EVENT_KIND}}
+
+      ## Mission
+      Register the orphan event kind "{{EVENT_KIND}}" that is emitted but not in EVENT_REGISTRY.yaml.
+
+      ## Steps
+      1. cd {{WORKTREE_PATH}}
+      2. Find the emit site:
+         grep -rn '"kind":"{{EVENT_KIND}}"\|kind={{EVENT_KIND}}' scripts/ src/ --include="*.sh" --include="*.rs" --include="*.py" | head -20
+      3. Understand what the event carries (fields, trigger, consumers).
+      4. Add an entry to docs/observability/EVENT_REGISTRY.yaml following the schema:
+         - kind: {{EVENT_KIND}}
+           effect_metric: <choose: credible|effective|resilient|zero-waste|self>
+           emitter: <script or crate that emits it>
+           trigger: >
+             <one-paragraph description of when the event fires and what it signals>
+           consumers: [<list of downstream consumers>]
+           fields_required: [ts, kind, <any additional required fields>]
+      5. If the event cannot yet be emitted in CI (emitter not yet shipped), also add
+         to scripts/ci/event-registry-reserved.txt:
+         {{EVENT_KIND}}   # reason: INFRA-2069; emitter <name> not yet shipped; deferred until <gap-id> lands.
+      6. Run: python3 -c "import yaml; yaml.safe_load(open('docs/observability/EVENT_REGISTRY.yaml'))" && echo "YAML OK"
+      7. Run: bash scripts/ci/test-event-registry-coverage.sh (if it exists and is runnable)
+      8. Commit and push:
+         scripts/coord/chump-commit.sh docs/observability/EVENT_REGISTRY.yaml scripts/ci/event-registry-reserved.txt -m "obs({{GAP_ID}}): register orphan kind {{EVENT_KIND}}"
+         git push -u origin $(git branch --show-current) --force-with-lease
+      9. scripts/coord/bot-merge.sh --gap {{GAP_ID}} --auto-merge
+
+      ## Out of scope
+      Do NOT change the emitter code — only register the event.
+      Do NOT rename the event kind — match exactly what the emitter uses.
+
+      ## Done when
+      PR merged or auto-merge armed AND EVENT_REGISTRY.yaml contains the new entry.
+    max_loc: 30
+    smoke_test: "echo 'orphan-event template renders OK'"
+
+  # ── printf-grep ────────────────────────────────────────────────────────────
+  #
+  # Matches CI failures from RESILIENT-031 gate.
+  # Shell scripts use `printf ... | grep ...` which is a race-class pattern.
+  # The fix: convert to a `case` statement (or assign to a variable, then grep).
+
+  - template_name: printf-grep
+    signature_pattern: "printf.*\\|.*grep|RESILIENT-031|printf.*pipe.*grep|shell race.*printf"
+    prompt_template: |
+      You are a Sonnet subagent dispatched by the wedge-fixer auto-dispatch system (INFRA-2069).
+
+      Gap: {{GAP_ID}}
+      Worktree: {{WORKTREE_PATH}}
+      File with violation: {{VIOLATION_FILE}}
+
+      ## Mission
+      Fix a RESILIENT-031 violation: `printf | grep` is a process-substitution race.
+      Convert to a `case` statement or assign-then-check pattern.
+
+      ## Pattern to fix
+      BEFORE (racy):
+        if printf "%s" "$value" | grep -q "pattern"; then
+
+      AFTER (safe — case statement):
+        case "$value" in
+          *pattern*) ... ;;
+        esac
+
+      AFTER (safe — assign then grep):
+        _val="$value"
+        if echo "$_val" | grep -q "pattern"; then
+
+      Prefer the `case` form — it has no subprocess overhead.
+
+      ## Steps
+      1. cd {{WORKTREE_PATH}}
+      2. Find all RESILIENT-031 violations in the flagged file:
+         grep -n "printf.*|.*grep" {{VIOLATION_FILE}}
+      3. For each violation, apply the `case` pattern. If the grep uses complex
+         regex that cannot be expressed in a glob, use the assign-then-grep form.
+      4. Run: bash -n {{VIOLATION_FILE}} && echo "syntax OK"
+      5. Commit:
+         scripts/coord/chump-commit.sh {{VIOLATION_FILE}} -m "fix({{GAP_ID}}): RESILIENT-031 printf|grep → case in {{VIOLATION_FILE}}"
+      6. Push and arm:
+         git push -u origin $(git branch --show-current) --force-with-lease
+         scripts/coord/bot-merge.sh --gap {{GAP_ID}} --auto-merge
+
+      ## Out of scope
+      Do NOT refactor the script beyond fixing the printf|grep patterns.
+      Do NOT rename variables or restructure conditionals unless required for the fix.
+
+      ## Done when
+      PR merged or auto-merge armed AND no RESILIENT-031 violations remain in {{VIOLATION_FILE}}.
+    max_loc: 80
+    smoke_test: "echo 'printf-grep template renders OK'"

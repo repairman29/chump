@@ -63,6 +63,44 @@ pub mod validate;
 
 pub use validate::{Validate, ValidationError};
 
+// Contract type re-exports — consumers `use chump_handoff::contracts::*` for
+// the full set; these top-level re-exports cover the most-called types.
+pub use contracts::{
+    // (b) CodeFixContract
+    CodeFixContract,
+    CodeFixInput,
+    CodeFixOutput,
+    CycleStatus,
+    // (c) DecomposeContract
+    DecomposeContract,
+    DecomposeInput,
+    DecomposeOutput,
+    // (d) ExternalRepoContract
+    ExternalRepoContract,
+    ExternalRepoInput,
+    ExternalRepoOutput,
+    GapDraft,
+    // (a) GapReviewContract
+    GapReviewContract,
+    GapReviewInput,
+    GapReviewOutput,
+    GroupBy,
+    // (e) IntegrationCycleContract
+    IntegrationCycleContract,
+    IntegrationCycleInput,
+    IntegrationCycleOutput,
+    ManifestEntry,
+    Roadmap,
+    RoadmapEffort,
+    // (f) RoadmapFromVisionContract (INFRA-2267 Phase 1 — design-only)
+    RoadmapFromVisionContract,
+    RoadmapFromVisionInput,
+    RoadmapGroup,
+    RoadmapPriority,
+    SubGap,
+    TriggerReason,
+};
+
 /// Model tier hint for the dispatched subagent.
 ///
 /// Surfaced to the transport so the underlying spawn (Claude Code Agent tool,

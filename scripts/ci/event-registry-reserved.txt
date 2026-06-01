@@ -129,6 +129,8 @@ capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/s
 capability_heartbeat  # reason: INFRA-1120 — crates/chump-coord/src/capability.rs heartbeat_loop(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
+force_recover_wip_loss     # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_loss; same regex pattern miss as chump_claim_force_recover
+force_recover_wip_discarded  # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_discarded; same regex pattern miss as chump_claim_force_recover
 chump_gap_set_legacy_delim  # reason: INFRA-1799 emitted from src/main.rs `chump gap set --acceptance-criteria` legacy delimiter path; struct-init form `kind: "X".to_string()` not grep-scannable as `kind = "X"`
 ci_cascade_cancelled  # reason: INFRA-1870 emitted via _emit_ambient dict-payload in github-webhook-receiver.py workflow_run handler; dict-construction emit pattern not grep-scannable as "kind":"ci_cascade_cancelled" literal in PROD_PATHS
 ci_parity_drift            # reason: emitted by scripts/ci/test-preflight-ci-parity.sh (INFRA-1867); scripts/ci/ is outside PROD_PATHS grep scan
@@ -439,6 +441,9 @@ bisect_step_evaluated             # reason: INFRA-2168 / META-124 C18; registere
 fleet_scale_changed               # reason: INFRA-2198 (META-128/C7); disk-plan gate + fleet auto-scale emitter; fields: from, to, reason.
 external_repo_ship                # reason: INFRA-2169 / META-124 Mode D; registered in EVENT_REGISTRY.yaml; emitter scripts/coord/pr-rescue.sh (INFRA-2114 fork-aware path).
 
+# ── CREDIBLE-084: tick_outcome event for no-idle policy audit + observability ──
+tick_outcome                      # reason: CREDIBLE-084 emitted by scripts/coord/ambient-context-inject.sh --tick-outcome at end of each productized curator-loop tick. Carries role, session, outcome (shipped|dispatched_sub|blocked_defensible|picked_nextbest|none), exit_code, optional gap_id. Drives the no-idle-policy compliance audit (INFRA-2208) + fleet-wire emit/consumer-ack leaderboard (CREDIBLE-081). Scanner-anchor: scripts/coord/ambient-context-inject.sh.
+
 # ── INFRA-1118: A2A Layer 1a — file-fallback + degraded/recovered event kinds ──
 # Emit sites in crates/chump-coord/src/events.rs use Rust format! macro patterns
 # not grep-scannable as bare "kind":"<value>" literals in PROD_PATHS scanner.
@@ -634,3 +639,7 @@ pr_action_taken             # reason: META-184/186 emitted by scripts/coord/pr-s
 fix_trunk_dispatched        # reason: INFRA-2326 emitted by scripts/dispatch/fix-trunk-dispatcher.sh when a fix_trunk-tagged gap is claimed and a Sonnet sub-agent is launched via claude -p. Carries gap_id, model, pid, worktree (or dry_run=true in DRY_RUN mode). Scanner-anchor in script header. Off-Rails-Bypass: INFRA-2326 ships 3 new ambient kinds atomically; reserved.txt entry is part of same atomic unit; sibling INFRA-2324 holds EVENT_REGISTRY.yaml lease for trunk_red companion ship — full registry entry deferred to follow-up after both land.
 fix_trunk_no_candidate      # reason: INFRA-2326 emitted by scripts/dispatch/fix-trunk-dispatcher.sh when trunk_red is active but no open gap has skills_required containing fix_trunk — signals the operator that the auto-fix lane is armed but starved of candidates (file a fix_trunk-tagged gap). Carries lookback_minutes, skill_tag. Off-Rails-Bypass: INFRA-2326 ships 3 new ambient kinds atomically; reserved.txt entry is part of same atomic unit.
 fix_trunk_skipped           # reason: INFRA-2326 emitted by scripts/dispatch/fix-trunk-dispatcher.sh when a prior dispatch is still alive (singleton lockfile parallelism cap=1) — prevents launchd over-fire from burning N redundant Sonnets on the same incident. Carries reason=prior_active, prior_pid, prior_gap_id. Off-Rails-Bypass: INFRA-2326 ships 3 new ambient kinds atomically; reserved.txt entry is part of same atomic unit.
+# ── META-184: PR-shepherd daemon auto-rebase action ───────────────────────────
+pr_action_taken             # reason: META-184 emitted by scripts/coord/pr-shepherd-daemon.sh once per BEHIND PR per tick; action=rebase|rebase_failed|rebase_skipped; reason=trunk_red|claim|debounce|throttle|conflict when guard fires; carries pr_number, action, reason, gap_id, dry_run. Off-Rails-Bypass: META-184 ships new pr_action_taken ambient kind; reserved.txt entry is part of same atomic unit.
+# ── INFRA-2069: wedge-fixer template library ──────────────────────────────────
+wedge_fixer_template_rendered     # reason: INFRA-2069; emitted by scripts/coord/wedge-fixer-dispatch.sh (--execute mode only); registered in EVENT_REGISTRY.yaml; auto-dispatch consumer (INFRA-2068) not yet shipped so event fires only on operator-initiated manual dispatch; deferred full auto-dispatch until INFRA-2068 lands.

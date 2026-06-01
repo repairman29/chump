@@ -1,22 +1,27 @@
-// crates/chump-coord/src/scratchpad.rs — INFRA-1761
+// crates/chump-coord/src/scratchpad.rs — INFRA-1826
 //
-// A2A Layer 3d foundation slice (1/4) — shared KV scratchpad with seed
-// keys + conflict-policy schema.
+// A2A Layer 3d (2/4) — real file-backed get/set/cas for seed keys.
 //
-// This file ships ONLY: ConflictPolicy enum, SeedKey struct, the 5 seed
-// keys, bucket_name(), and stubbed get/set/cas returning NotImplemented.
-// Real NATS KV ops + prompt injection + bash wrapper land in subsequent
-// INFRA-1121 slices.
+// Backend: `.chump-locks/scratch/<key>.json` (dots in key become slashes for
+// path safety — reversed at read time via key extraction from JSON, not path).
+// Actually, we keep key as filename with dots replaced by underscores to stay
+// filesystem-safe; the JSON payload records the original key.
 //
-// Why stub-first: nails the seed-key set + conflict semantics so any agent
-// reading scratchpad values can use the documented contract today (e.g.
-// referenced from --briefing context generation in slice 3/4), while the
-// real CAS write logic catches up.
+// File envelope schema:
+//   { "key": "<key>", "value": <json>, "written_at": "<rfc3339>",
+//     "ttl_expires_at": "<rfc3339>" }
+//
+// CAS atomicity: tempfile + rename (POSIX atomic on same filesystem).
+//
+// INFRA-1121 slice 3/4 swaps the file backend for NATS KV `chump_scratch`
+// bucket; all call sites stay identical.
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// NATS KV bucket name. Real impl in slice 2/4 creates it on first publish
-/// with TTL = 86400s default and history = 1 (CAS-friendly).
+/// NATS KV bucket name (used when the real NATS backend ships in INFRA-1121 slice 3/4).
 pub fn bucket_name() -> &'static str {
     "chump_scratch"
 }
@@ -137,13 +142,15 @@ pub fn seed_keys() -> Vec<SeedKey> {
 /// Error type for scratchpad operations.
 #[derive(Debug)]
 pub enum ScratchError {
-    NotImplemented,
+    Io(std::io::Error),
+    Json(serde_json::Error),
     UnknownKey(String),
     CASConflict {
         key: String,
         expected: String,
         actual: String,
     },
+    CASRequiredOnBareSet(String),
     InfiniteTtlMissingReview {
         key: String,
     },
@@ -152,10 +159,8 @@ pub enum ScratchError {
 impl std::fmt::Display for ScratchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScratchError::NotImplemented => write!(
-                f,
-                "scratchpad stub — real NATS KV impl ships in INFRA-1121 slice 2/4"
-            ),
+            ScratchError::Io(e) => write!(f, "scratchpad I/O error: {e}"),
+            ScratchError::Json(e) => write!(f, "scratchpad JSON error: {e}"),
             ScratchError::UnknownKey(k) => write!(f, "unknown scratchpad key: {k}"),
             ScratchError::CASConflict {
                 key,
@@ -165,6 +170,9 @@ impl std::fmt::Display for ScratchError {
                 f,
                 "CAS conflict on '{key}': expected '{expected}', got '{actual}'"
             ),
+            ScratchError::CASRequiredOnBareSet(k) => {
+                write!(f, "key '{k}' is CASRequired — use cas() instead of set()")
+            }
             ScratchError::InfiniteTtlMissingReview { key } => write!(
                 f,
                 "key '{key}' marked ttl=infinite but lacks operator_reviewed_at timestamp"
@@ -175,45 +183,186 @@ impl std::fmt::Display for ScratchError {
 
 impl std::error::Error for ScratchError {}
 
+// ── File envelope ─────────────────────────────────────────────────────────────
+
+/// JSON file payload stored at `.chump-locks/scratch/<filename>.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Envelope {
+    /// Logical scratchpad key (e.g. "main.head.sha").
+    key: String,
+    /// The stored value.
+    value: serde_json::Value,
+    /// RFC3339 write timestamp.
+    written_at: String,
+    /// RFC3339 expiry timestamp. Empty string = no TTL (not used for v1 seed keys).
+    #[serde(default)]
+    ttl_expires_at: String,
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Return the directory where scratch files live, creating it if needed.
+///
+/// Resolves from `CHUMP_SCRATCH_DIR` env var (useful for tests), then from
+/// `git rev-parse --show-toplevel` → `.chump-locks/scratch/`, then falls back
+/// to `.chump-locks/scratch/` relative to cwd.
+fn scratch_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("CHUMP_SCRATCH_DIR") {
+        let p = PathBuf::from(dir);
+        let _ = std::fs::create_dir_all(&p);
+        return p;
+    }
+
+    let repo_root = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| PathBuf::from(s.trim()))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let dir = repo_root.join(".chump-locks").join("scratch");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// Convert a scratchpad key to a filesystem-safe filename stem.
+/// Dots → `__dot__`, slashes → `__slash__`.
+/// Exported for tests that need to construct expected file paths.
+pub fn key_to_filename(key: &str) -> String {
+    key.replace('.', "__dot__").replace('/', "__slash__")
+}
+
+/// Path for a given key's envelope file.
+fn key_path(dir: &Path, key: &str) -> PathBuf {
+    dir.join(format!("{}.json", key_to_filename(key)))
+}
+
+/// Read an envelope from disk. Returns `None` if the file doesn't exist.
+fn read_envelope(path: &Path) -> Result<Option<Envelope>, ScratchError> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => {
+            let env: Envelope = serde_json::from_str(&s).map_err(ScratchError::Json)?;
+            Ok(Some(env))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ScratchError::Io(e)),
+    }
+}
+
+/// Write an envelope atomically via tempfile + rename.
+fn write_envelope(dir: &Path, env: &Envelope) -> Result<(), ScratchError> {
+    let final_path = key_path(dir, &env.key);
+    // Write to a temp file in the same directory (guarantees same filesystem for rename).
+    let tmp_path = dir.join(format!(".__tmp_{}.json", key_to_filename(&env.key)));
+    let json = serde_json::to_string_pretty(env).map_err(ScratchError::Json)?;
+    std::fs::write(&tmp_path, json).map_err(ScratchError::Io)?;
+    std::fs::rename(&tmp_path, &final_path).map_err(ScratchError::Io)?;
+    Ok(())
+}
+
+/// Check if an envelope is expired. Returns true if expired.
+fn is_expired(env: &Envelope) -> bool {
+    if env.ttl_expires_at.is_empty() {
+        return false;
+    }
+    match env.ttl_expires_at.parse::<DateTime<Utc>>() {
+        Ok(expires) => Utc::now() > expires,
+        Err(_) => false, // malformed TTL → treat as not expired
+    }
+}
+
+/// Build a fresh envelope for a given key and value.
+fn make_envelope(key: &str, value: serde_json::Value, ttl_seconds: u32) -> Envelope {
+    let now = Utc::now();
+    let expires = now + chrono::Duration::seconds(ttl_seconds as i64);
+    Envelope {
+        key: key.to_string(),
+        value,
+        written_at: now.to_rfc3339(),
+        ttl_expires_at: expires.to_rfc3339(),
+    }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /// Look up a seed key's schema. Returns None for unknown keys.
 pub fn seed_key_lookup(key: &str) -> Option<SeedKey> {
     seed_keys().into_iter().find(|sk| sk.key == key)
 }
 
-/// Stub `get` — real impl in slice 2/4 reads NATS KV entry.
+/// Read the current value for `key`. Returns `None` if unset or expired.
+///
+/// Unknown keys return `Err(ScratchError::UnknownKey)`.
 pub async fn get(key: &str) -> Result<Option<serde_json::Value>, ScratchError> {
     if seed_key_lookup(key).is_none() {
         return Err(ScratchError::UnknownKey(key.to_string()));
     }
-    Err(ScratchError::NotImplemented)
+    let dir = scratch_dir();
+    let path = key_path(&dir, key);
+    match read_envelope(&path)? {
+        None => Ok(None),
+        Some(env) if is_expired(&env) => Ok(None),
+        Some(env) => Ok(Some(env.value)),
+    }
 }
 
-/// Stub `set` (LWW path) — real impl in slice 2/4 publishes to NATS KV.
+/// Write `value` for `key` using LastWriterWins semantics (overwrites).
+///
+/// CAS-required keys reject bare `set()` — use `cas()` instead.
 pub async fn set(key: &str, value: serde_json::Value) -> Result<(), ScratchError> {
     let sk = seed_key_lookup(key).ok_or_else(|| ScratchError::UnknownKey(key.to_string()))?;
     if matches!(sk.conflict_policy, ConflictPolicy::CASRequired) {
-        // CAS-required keys reject bare set() — caller must use cas().
-        // For the stub, surface as NotImplemented so callers see the
-        // distinction immediately.
-        let _ = value;
-        return Err(ScratchError::NotImplemented);
+        return Err(ScratchError::CASRequiredOnBareSet(key.to_string()));
     }
-    let _ = value;
-    Err(ScratchError::NotImplemented)
+    let dir = scratch_dir();
+    let env = make_envelope(key, value, sk.ttl_seconds);
+    write_envelope(&dir, &env)
 }
 
-/// Stub `cas` (compare-and-swap) — real impl in slice 2/4 reads NATS KV
-/// revision, attempts compare-and-write, returns CASConflict on contention.
+/// Compare-and-swap: reads current value, compares with `expected`, writes `new` on match.
+///
+/// Returns `Ok(())` on success. Returns `Err(ScratchError::CASConflict)` if the
+/// current value doesn't match `expected`. An absent/expired value is treated as
+/// `serde_json::Value::Null` for the comparison.
+///
+/// Atomicity note: we use tempfile+rename for the write, but the read→write
+/// window is not OS-level atomic. For file-backend v0 this is sufficient (single
+/// machine, no concurrent writers in production). INFRA-1121 slice 3/4 replaces
+/// with NATS KV CAS which is truly atomic.
 pub async fn cas(
     key: &str,
     expected: serde_json::Value,
     new: serde_json::Value,
 ) -> Result<(), ScratchError> {
-    if seed_key_lookup(key).is_none() {
-        return Err(ScratchError::UnknownKey(key.to_string()));
+    let sk = seed_key_lookup(key).ok_or_else(|| ScratchError::UnknownKey(key.to_string()))?;
+    let dir = scratch_dir();
+    let path = key_path(&dir, key);
+
+    // Read current value (absent/expired → Null).
+    let current = match read_envelope(&path)? {
+        None => serde_json::Value::Null,
+        Some(env) if is_expired(&env) => serde_json::Value::Null,
+        Some(env) => env.value,
+    };
+
+    if current != expected {
+        return Err(ScratchError::CASConflict {
+            key: key.to_string(),
+            expected: expected.to_string(),
+            actual: current.to_string(),
+        });
     }
-    let _ = (expected, new);
-    Err(ScratchError::NotImplemented)
+
+    let env = make_envelope(key, new, sk.ttl_seconds);
+    write_envelope(&dir, &env)
 }
 
 #[cfg(test)]
@@ -278,11 +427,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_returns_not_implemented_for_known_key() {
-        match get("fleet.size").await {
-            Err(ScratchError::NotImplemented) => {}
-            other => panic!("expected NotImplemented, got {:?}", other),
-        }
+    async fn get_returns_none_for_absent_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+        let result = get("fleet.size").await.unwrap();
+        assert!(result.is_none());
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 
     #[tokio::test]
@@ -291,5 +441,109 @@ mod tests {
             Err(ScratchError::UnknownKey(k)) => assert_eq!(k, "bogus"),
             other => panic!("expected UnknownKey, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn set_and_get_roundtrip_lww_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        set("fleet.size", serde_json::json!(3)).await.unwrap();
+        let val = get("fleet.size").await.unwrap();
+        assert_eq!(val, Some(serde_json::json!(3)));
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[tokio::test]
+    async fn set_rejects_cas_required_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        match set("main.head.sha", serde_json::json!("abc")).await {
+            Err(ScratchError::CASRequiredOnBareSet(k)) => assert_eq!(k, "main.head.sha"),
+            other => panic!("expected CASRequiredOnBareSet, got {:?}", other),
+        }
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[tokio::test]
+    async fn cas_from_null_to_value() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        // CAS from Null (not yet set) to "sha123"
+        cas(
+            "main.head.sha",
+            serde_json::Value::Null,
+            serde_json::json!("sha123"),
+        )
+        .await
+        .unwrap();
+
+        let val = get("main.head.sha").await.unwrap();
+        assert_eq!(val, Some(serde_json::json!("sha123")));
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[tokio::test]
+    async fn cas_conflict_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        // Set initial value
+        cas(
+            "main.head.sha",
+            serde_json::Value::Null,
+            serde_json::json!("sha_v1"),
+        )
+        .await
+        .unwrap();
+
+        // CAS with wrong expected → conflict
+        match cas(
+            "main.head.sha",
+            serde_json::json!("sha_wrong"),
+            serde_json::json!("sha_v2"),
+        )
+        .await
+        {
+            Err(ScratchError::CASConflict { key, .. }) => assert_eq!(key, "main.head.sha"),
+            other => panic!("expected CASConflict, got {:?}", other),
+        }
+
+        // Value should remain sha_v1
+        let val = get("main.head.sha").await.unwrap();
+        assert_eq!(val, Some(serde_json::json!("sha_v1")));
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[tokio::test]
+    async fn ttl_expiry_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        // Write an envelope with an already-expired TTL directly
+        let path = key_path(dir.path(), "fleet.size");
+        let expired_env = Envelope {
+            key: "fleet.size".to_string(),
+            value: serde_json::json!(99),
+            written_at: "2020-01-01T00:00:00Z".to_string(),
+            ttl_expires_at: "2020-01-01T00:00:01Z".to_string(), // in the past
+        };
+        let json = serde_json::to_string_pretty(&expired_env).unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        let result = get("fleet.size").await.unwrap();
+        assert!(
+            result.is_none(),
+            "expired entry should return None, got {:?}",
+            result
+        );
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 }

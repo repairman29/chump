@@ -8,19 +8,19 @@
 //! - `GET /api/segments?from=<ts_ms>&to=<ts_ms>`
 //! - `GET /api/sessions/active`
 //! - `GET /api/trace/pr/:n`
+//! - `GET /api/dashboard-summary` (INFRA-1883)
 //! - `WS  /api/live`
 //!
 //! ## Env vars
 //!
 //! - `CHUMP_FLEET_SERVER_PORT` (default `7070`) — port to bind (always 127.0.0.1).
 //! - `CHUMP_FLEET_DB` (optional) — override `.chump/fleet_events.db`.
+//! - `CHUMP_REPO_ROOT` (optional) — override the repo root for dashboard-summary reads.
 
 use std::process::ExitCode;
 use std::sync::Arc;
 
-mod db;
-mod routes;
-mod segmenter;
+use chump_fleet_server::{dashboard, db, routes, segmenter};
 
 fn resolve_repo_root() -> std::path::PathBuf {
     std::process::Command::new("git")
@@ -45,22 +45,6 @@ fn resolve_db_path() -> std::path::PathBuf {
         }
     }
     resolve_repo_root().join(".chump").join("fleet_events.db")
-}
-
-/// Resolve the directory the scrubber SPA lives in.
-///
-/// Order: `CHUMP_FLEET_SCRUBBER_DIR` env override → `<repo-root>/web/fleet-scrubber`.
-/// Returns `None` when the resolved directory does not exist on disk so the
-/// router silently skips the mount instead of 500-ing on startup. INFRA-2189.
-fn resolve_scrubber_dir() -> Option<std::path::PathBuf> {
-    if let Ok(p) = std::env::var("CHUMP_FLEET_SCRUBBER_DIR") {
-        if !p.is_empty() {
-            let pb = std::path::PathBuf::from(p);
-            return pb.is_dir().then_some(pb);
-        }
-    }
-    let candidate = resolve_repo_root().join("web").join("fleet-scrubber");
-    candidate.is_dir().then_some(candidate)
 }
 
 fn main() -> ExitCode {
@@ -131,9 +115,23 @@ async fn run(port_override: Option<u16>) -> anyhow::Result<()> {
         .unwrap_or(7070);
 
     let db_path = resolve_db_path();
+
+    // Repo root for dashboard-summary reads (ambient.jsonl, github_cache.db,
+    // .chump-locks/claim-*.json). `CHUMP_REPO_ROOT` overrides the git probe.
+    let repo_root = if let Ok(p) = std::env::var("CHUMP_REPO_ROOT") {
+        if !p.is_empty() {
+            std::path::PathBuf::from(p)
+        } else {
+            dashboard::repo_root()
+        }
+    } else {
+        dashboard::repo_root()
+    };
+
     tracing::info!(
         port,
         db = %db_path.display(),
+        repo_root = %repo_root.display(),
         "chump-fleet-server starting"
     );
 
@@ -145,13 +143,7 @@ async fn run(port_override: Option<u16>) -> anyhow::Result<()> {
         segmenter::run_segmenter_loop(seg_store).await;
     });
 
-    let scrubber_dir = resolve_scrubber_dir();
-    if let Some(ref d) = scrubber_dir {
-        tracing::info!(scrubber_dir = %d.display(), "scrubber SPA mounted at /scrubber");
-    } else {
-        tracing::warn!("scrubber dir not found — /scrubber will 404 (set CHUMP_FLEET_SCRUBBER_DIR to override)");
-    }
-    let router = routes::build_router(Arc::clone(&store), scrubber_dir);
+    let router = routes::build_router(Arc::clone(&store), repo_root);
 
     // Localhost only — do NOT bind 0.0.0.0 (security requirement).
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
