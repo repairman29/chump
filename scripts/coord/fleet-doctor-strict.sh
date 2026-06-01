@@ -491,6 +491,99 @@ check_silent_fleet_death() {
     fi
 }
 
+# ── Check 9: Required status checks non-empty (INFRA-2201) ─────────────────────
+#
+# admin-merge-cycle drops required_status_checks during merge; if the restore
+# step fails or is skipped, main is silently unprotected. No ambient emit
+# fires when this happens — only this check catches the bad state.
+#
+# Verifies BOTH branch-protection AND ruleset 15133729's
+# required_status_checks lists are non-empty. Either being empty is a
+# critical resilience breach: any operator with admin can merge unverified
+# code without realizing the gate is open.
+#
+# Bypass: CHUMP_FLEET_DOCTOR_SKIP_REQUIRED_CHECKS=1 (use only when
+# intentionally testing the empty-state pattern, e.g. CI for INFRA-2201).
+check_required_status_checks() {
+    if [[ "${CHUMP_FLEET_DOCTOR_SKIP_REQUIRED_CHECKS:-0}" == "1" ]]; then
+        register_check "required-checks" "skip" \
+            "CHUMP_FLEET_DOCTOR_SKIP_REQUIRED_CHECKS=1 bypass active" ""
+        return
+    fi
+    if ! command -v gh &>/dev/null; then
+        register_check "required-checks" "skip" "gh CLI not in PATH" ""
+        return
+    fi
+    local repo
+    repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
+    if [[ -z "$repo" ]]; then
+        register_check "required-checks" "skip" \
+            "could not resolve repo (no remote OR offline)" ""
+        return
+    fi
+
+    # Sub-check A: branch-protection required_status_checks
+    local bp_count
+    bp_count="$(gh api "repos/$repo/branches/main/protection" 2>/dev/null \
+        | python3 -c 'import json,sys
+try:
+    d=json.load(sys.stdin)
+    c=d.get("required_status_checks",{}).get("checks",[])
+    print(len(c))
+except Exception:
+    print(0)' || echo 0)"
+
+    # Sub-check B: ruleset required_status_checks (the rule may sit in any
+    # active ruleset; sum across all rulesets matching ~DEFAULT_BRANCH).
+    local rs_count=0
+    local rs_ids
+    rs_ids="$(gh api "repos/$repo/rulesets" 2>/dev/null \
+        | python3 -c 'import json,sys
+try:
+    rs=json.load(sys.stdin)
+    for r in rs:
+        if r.get("enforcement")=="active":
+            print(r.get("id",""))
+except Exception:
+    pass' || true)"
+    while IFS= read -r rid; do
+        [[ -z "$rid" ]] && continue
+        local n
+        n="$(gh api "repos/$repo/rulesets/$rid" 2>/dev/null \
+            | python3 -c 'import json,sys
+try:
+    r=json.load(sys.stdin)
+    for rule in r.get("rules",[]):
+        if rule.get("type")=="required_status_checks":
+            print(len(rule.get("parameters",{}).get("required_status_checks",[])))
+            break
+    else:
+        print(0)
+except Exception:
+    print(0)' || echo 0)"
+        rs_count=$(( rs_count + n ))
+    done <<< "$rs_ids"
+
+    # Resilience invariant: at least ONE of (branch-prot, ruleset) must
+    # have a non-empty required-checks list. Both empty = silent open.
+    local total=$(( bp_count + rs_count ))
+    if [[ "$total" -eq 0 ]]; then
+        # Emit ambient signal so peers / watchdogs see the open state even
+        # if fleet-doctor isn't tailed. scanner-anchor: "kind":"required_status_checks_empty" (INFRA-2201)
+        local _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        local _ts; _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","kind":"required_status_checks_empty","bp_count":%d,"ruleset_count":%d,"source":"fleet-doctor-strict"}\n' \
+            "$_ts" "$bp_count" "$rs_count" >> "$_amb_path" 2>/dev/null || true
+        register_check "required-checks" "fail" \
+            "BOTH branch-protection AND ruleset required_status_checks are EMPTY — main is silently UNPROTECTED" \
+            "Restore required checks: see scripts/ops/admin-merge-cycle.sh or docs/process/SHEPHERD_LOOP_PLAYBOOK.md Pattern 14"
+    else
+        register_check "required-checks" "pass" \
+            "branch-prot=$bp_count, ruleset=$rs_count (≥1 required for non-empty invariant)" \
+            ""
+    fi
+}
+
 # ── Run all checks ─────────────────────────────────────────────────────────────
 check_binary
 check_leases
@@ -500,6 +593,7 @@ check_gap_drift
 check_p0_budget
 check_pillar_coverage
 check_silent_fleet_death
+check_required_status_checks
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

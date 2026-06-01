@@ -6672,3 +6672,15 @@ events:
     expected_volume: "0-N per session (operator-initiated only until INFRA-2068 ships)"
     status: stable
     # payload: {template_name: "fmt-drift"|"orphan-event"|"printf-grep", gap_id: string, dry_run: boolean, ts: string}
+  - kind: required_status_checks_empty
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh check_required_status_checks (INFRA-2201)
+    trigger: >
+      Emitted when fleet-doctor's required_status_checks invariant fails —
+      both branch-protection AND ruleset 15133729 have empty
+      required_status_checks lists, meaning main is silently
+      unprotected. Catches the silent-open-gate class that bit the
+      shepherd 2026-05-29 22:30Z when admin-merge-cycle ran without
+      restoring required checks.
+    consumers: [fleet-doctor, ops-audit]
+    fields_required: [ts, kind, bp_count, ruleset_count, source]
