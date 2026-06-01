@@ -1,0 +1,12 @@
+- id: INFRA-2372
+  domain: INFRA
+  title: "Gemini cascade slot — handle malformed/missing function_declarations gracefully (current: 400 on every bare chump call)"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "src/provider_cascade.rs: should_cascade_on_error_string recognizes Gemini malformed-tool-config 400s (`function_declarations`, `function calling config is set without`, malformed `function_declaration`) and cascades to next slot rather than aborting."
+    - "src/provider_cascade.rs: opt-in CHUMP_CASCADE_PRECHECK=1 environment flag runs a 1s-budget health check per cloud slot at startup (default OFF for performance); warnings emitted to stderr; malformed slots are NOT permanently removed but are skipped on first call until next process boot."
+    - "scripts/ci/test-cascade-graceful-skip.sh: unit test that simulates the function_declarations 400 string via should_cascade_on_error_string() and asserts it returns true; runs in <5s."
+    - "bare `chump <text>` invocation: no longer hard-aborts on a single malformed slot — falls through to next slot or returns a useful error rather than 400-from-Gemini."
+
