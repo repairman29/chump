@@ -994,6 +994,50 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, open_pr_count, dry_run]
 
+  - kind: pr_queue_auto_action
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)
+    purpose: >
+      Audit trail for the pr-queue auto-processor tiers. Every CLEAN_GREEN
+      admin-merge, BLOCKED_FLAKE rerun, and their skip/failure variants
+      emit one of these. Operator can grep ambient and reconstruct every
+      autonomous merge action the fleet took.
+    trigger: |
+      emitted once per CLEAN_GREEN / BLOCKED_FLAKE action attempt; action enum:
+        admin_merge              — CLEAN_GREEN PR squash-admin-merged
+        admin_merge_skipped      — skipped; reason=trunk_red|capped
+        admin_merge_failed       — gh exit non-zero; reason=gh_exit_<N>
+        flake_rerun              — gh run rerun --failed fired; reason=known_flake
+        flake_rerun_skipped      — skipped; reason=trunk_red|capped|no_run_id
+        flake_rerun_failed       — gh exit non-zero; reason=gh_exit_<N>
+    consumers: [fleet-brief, waste-tally, kpi-report, operator-audit]
+    fields_required: [ts, kind, pr, action, reason, author, mergeStateStatus, dry_run]
+    volume_estimate: "~10-30/h during active queue catch-up; ~0-5/h steady-state"
+
+  - kind: pr_wedged
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)
+    purpose: >
+      Signal that a PR is open >24h with no commits in the last 12h and no
+      auto-merge armed — a human steward decision is needed. Debounced to
+      once per PR per 24h via .chump-locks/pr-wedged-signaled.json.
+    trigger: emitted when PR meets WEDGED_24H criteria and not signaled within last 24h
+    consumers: [fleet-brief, operator-recall, pr-author-DM]
+    fields_required: [ts, kind, pr, author, age_hours, dry_run]
+    volume_estimate: "~0-3/h; debounced per PR per 24h"
+
+  - kind: pr_queue_skipped_trunk_red
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)
+    purpose: >
+      Single-line rollup emitted at end of tick when one or more CLEAN_GREEN
+      admin-merges were blocked by the trunk-red gate. Operator can grep this
+      to confirm the safety gate is firing as intended during incidents.
+    trigger: emitted once per tick when admin_merge_skipped_trunk_red > 0
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, skipped_count, dry_run]
+    volume_estimate: "~0-1/tick during trunk-red incidents; 0 otherwise"
+
   - kind: pr_action_taken
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (META-184/META-186)
