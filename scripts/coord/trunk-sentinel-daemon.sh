@@ -646,7 +646,8 @@ print(','.join(s.get('recalled_fingerprints', [])))
     local new_recalled_fps="$prev_recalled_fps"
 
     if [[ "$red_age_s" -ge "$RED_FILE_S" ]]; then
-        if ! printf ',%s,' "$prev_filed_fps" | grep -q ",$fingerprint,"; then
+        # INFRA-2343: bash-native substring match avoids printf|grep pipefail race
+        if [[ ",$prev_filed_fps," != *",$fingerprint,"* ]]; then
             emit "trunk_red_persistent" \
                 "\"red_minutes\":$red_minutes,\"fingerprint\":\"$fingerprint\",\"failing_jobs\":\"$failing_csv\",\"run_id\":$run_id,\"head_sha\":\"$head_sha\""
             local gap_id
@@ -658,7 +659,8 @@ print(','.join(s.get('recalled_fingerprints', [])))
 
     # ── Bucket 3: RED >=15min — dispatch Sonnet (idempotent per fingerprint) ──
     if [[ "$red_age_s" -ge "$RED_DISPATCH_S" ]]; then
-        if ! printf ',%s,' "$prev_dispatched_fps" | grep -q ",$fingerprint,"; then
+        # INFRA-2343: bash-native substring match avoids printf|grep pipefail race
+        if [[ ",$prev_dispatched_fps," != *",$fingerprint,"* ]]; then
             # Find the gap id for this fingerprint (it should be the last one
             # filed if it's a fresh fingerprint, but we lookup by position).
             local gap_for_fp
@@ -681,7 +683,8 @@ else:
 
     # ── Bucket 4: RED >=60min — operator-recall (idempotent per fingerprint) ──
     if [[ "$red_age_s" -ge "$RED_RECALL_S" ]]; then
-        if ! printf ',%s,' "$prev_recalled_fps" | grep -q ",$fingerprint,"; then
+        # INFRA-2343: bash-native substring match avoids printf|grep pipefail race
+        if [[ ",$prev_recalled_fps," != *",$fingerprint,"* ]]; then
             _operator_recall_trunk "$fingerprint" "$run_id" "$head_sha" "$failing_csv" "$red_minutes"
             if [[ -n "$new_recalled_fps" ]]; then new_recalled_fps="$new_recalled_fps,$fingerprint"; else new_recalled_fps="$fingerprint"; fi
         fi
