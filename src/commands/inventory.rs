@@ -20,8 +20,9 @@
 //! All read subcommands support --json.
 
 use crate::inventory::{
-    self, class_stats, collect_artifacts, collect_prs_v2, demote_class, list_findings, meta_counts,
-    pr_dependent_detectors_disabled, promote_class, repo_root, review_finding, run_detectors_v2,
+    self, backfill_artifact_provenance, class_stats, collect_artifacts, collect_prs_v2,
+    demote_class, list_findings, meta_counts, pr_dependent_detectors_disabled, promote_class,
+    recompute_activation_with_provenance, repo_root, review_finding, run_detectors_v2,
     write_rebuild_meta, FindingRow, PrCollectionPath, DETECTOR_CLASSES, PR_DEPENDENT_DETECTORS,
 };
 
@@ -32,7 +33,8 @@ fn print_help() {
     println!();
     println!("Subcommands:");
     println!("  rebuild                                       full repopulate of inventory DB");
-    println!("  show <pr-number|gap-id|path>                  artifact/PR detail");
+    println!("  show <pr-number|gap-id|path> [--json]         artifact/PR detail (full profile incl. introducing PR)");
+    println!("  pr <pr-number> [--json]                       PR + every artifact it shipped + activation health (INFRA-2384)");
     println!("  debt-report [--tier N] [--class C] [--json]   list findings (all tiers default)");
     println!(
         "  dead-code [--json]                            findings: dead-rust-mod + orphan-artifact"
@@ -58,6 +60,7 @@ pub fn run(args: &[String]) -> i32 {
     match args[0].as_str() {
         "rebuild" => cmd_rebuild(&args[1..]),
         "show" => cmd_show(&args[1..]),
+        "pr" => cmd_pr(&args[1..]),
         "debt-report" => cmd_debt_report(&args[1..]),
         "dead-code" => cmd_dead_code(&args[1..]),
         "orphans" => cmd_orphans(&args[1..]),
@@ -125,6 +128,37 @@ fn cmd_rebuild(_args: &[String]) -> i32 {
     println!("[inventory rebuild] indexed {artifacts} artifacts");
 
     let prs_available = pr_result.auth_source.is_available() && pr_result.indexed > 0;
+
+    // INFRA-2384: backfill artifact → PR provenance once pr_index is populated.
+    if prs_available {
+        println!(
+            "[inventory rebuild] backfilling artifact provenance (git-log A walk + PR bisect)..."
+        );
+        match backfill_artifact_provenance(&conn, &root) {
+            Ok(r) => {
+                let linked_pct = if r.artifacts_total == 0 {
+                    0.0
+                } else {
+                    100.0 * (r.introducing_pr_linked as f64) / (r.artifacts_total as f64)
+                };
+                println!(
+                    "[inventory rebuild] provenance: {}/{} linked ({:.1}%), {} with gap_id, {} unlinkable",
+                    r.introducing_pr_linked,
+                    r.artifacts_total,
+                    linked_pct,
+                    r.introducing_gap_linked,
+                    r.unlinkable_provenance,
+                );
+            }
+            Err(e) => eprintln!("[inventory rebuild] backfill warn: {e}"),
+        }
+        println!("[inventory rebuild] recomputing activation_state with PR provenance...");
+        match recompute_activation_with_provenance(&conn, &root) {
+            Ok(n) => println!("[inventory rebuild] activation recomputed for {n} artifact(s)"),
+            Err(e) => eprintln!("[inventory rebuild] recompute warn: {e}"),
+        }
+    }
+
     if !prs_available {
         println!(
             "[inventory rebuild] WARN: PR backfill unavailable — disabling {} PR-dependent detector(s): {}",
@@ -237,36 +271,342 @@ fn cmd_show(args: &[String]) -> i32 {
         }
         return 0;
     }
-    // Try as path.
-    let row = conn.query_row(
-        "SELECT path, class, size_bytes, activation_state, reference_count, introducing_gap
-         FROM artifact_index WHERE path=?1",
-        rusqlite::params![target],
-        |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, i64>(4)?,
-                r.get::<_, Option<String>>(5)?,
-            ))
-        },
-    );
-    if let Ok((p, class, size, state, refs, intro)) = row {
-        println!("artifact: {p}");
-        println!("  class:            {class}");
-        println!("  size_bytes:       {size}");
-        println!("  activation:       {state}");
-        println!("  reference_count:  {refs}");
-        println!(
-            "  introducing_gap:  {}",
-            intro.unwrap_or_else(|| "-".to_string())
-        );
-        return 0;
+    // Try as path — full INFRA-2384 profile w/ introducing PR.
+    let json = has_flag(args, "--json");
+    if let Some(rc) = show_artifact_path(&conn, target, json) {
+        return rc;
     }
     eprintln!("inventory show: '{target}' not found as PR number, gap ID, or path");
     1
+}
+
+/// INFRA-2384: print the full artifact profile (class, size, activation,
+/// introducing PR row, last-modified ts, referenced_from sample).
+/// Returns Some(rc) if the path was found in artifact_index; None otherwise.
+fn show_artifact_path(conn: &rusqlite::Connection, target: &str, json: bool) -> Option<i32> {
+    type ArtRow = (
+        String,
+        String,
+        i64,
+        String,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+        i64,
+    );
+    let row: ArtRow = conn
+        .query_row(
+            "SELECT path, class, size_bytes, activation_state, reference_count,
+                    referenced_from, introducing_gap, introducing_pr, notes,
+                    last_modified_at
+             FROM artifact_index WHERE path=?1",
+            rusqlite::params![target],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                    r.get::<_, Option<i64>>(7)?,
+                    r.get::<_, Option<String>>(8)?,
+                    r.get::<_, i64>(9)?,
+                ))
+            },
+        )
+        .ok()?;
+    let (
+        path,
+        class,
+        size,
+        state,
+        refs,
+        referenced_from,
+        intro_gap,
+        intro_pr,
+        notes,
+        last_modified_at,
+    ) = row;
+
+    // Resolve the introducing PR row if any.
+    type PrRow = (String, String, Option<i64>, Option<String>);
+    let pr_row: Option<PrRow> = intro_pr.and_then(|pr| {
+        conn.query_row(
+            "SELECT title, state, merged_at, author FROM pr_index WHERE pr_number=?1",
+            rusqlite::params![pr],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                ))
+            },
+        )
+        .ok()
+    });
+
+    let referrers: Vec<String> = referenced_from
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+        .unwrap_or_default();
+
+    if json {
+        let obj = serde_json::json!({
+            "path": path,
+            "class": class,
+            "size_bytes": size,
+            "activation_state": state,
+            "reference_count": refs,
+            "referenced_from": referrers,
+            "introducing_pr": intro_pr,
+            "introducing_gap": intro_gap,
+            "introducing_pr_title": pr_row.as_ref().map(|r| &r.0),
+            "introducing_pr_state": pr_row.as_ref().map(|r| &r.1),
+            "introducing_pr_merged_at": pr_row.as_ref().and_then(|r| r.2),
+            "introducing_pr_author": pr_row.as_ref().and_then(|r| r.3.clone()),
+            "last_modified_at": last_modified_at,
+            "notes": notes,
+        });
+        match serde_json::to_string_pretty(&obj) {
+            Ok(s) => println!("{s}"),
+            Err(_) => println!("{{}}"),
+        }
+        return Some(0);
+    }
+
+    println!("Artifact: {path}");
+    println!("  Class:           {class}");
+    println!("  Size:            {size} bytes");
+    println!("  Activation:      {state} ({} callers)", refs);
+    println!();
+    println!("Introduced by:");
+    if let (Some(pr_n), Some((title, pr_state, merged_at, author))) = (intro_pr, pr_row) {
+        let gap = intro_gap.as_deref().unwrap_or("-");
+        println!("  PR #{pr_n} ({gap}) \"{title}\"");
+        println!("  State:           {pr_state}");
+        if let Some(m) = merged_at {
+            println!("  Merged:          {}", format_ts_iso(m));
+        }
+        println!(
+            "  Author:          {}",
+            author.unwrap_or_else(|| "-".to_string())
+        );
+    } else if let Some(pr_n) = intro_pr {
+        println!("  PR #{pr_n} (details not in pr_index)");
+    } else {
+        println!("  (provenance backfill couldn't link — pr_index may be empty or this artifact pre-dates the oldest indexed PR)");
+    }
+
+    println!();
+    println!("Recent activity:");
+    if last_modified_at > 0 {
+        println!("  Last modified:   {}", format_ts_iso(last_modified_at));
+    } else {
+        println!("  Last modified:   (no git history recorded)");
+    }
+    if !referrers.is_empty() {
+        let preview = referrers.iter().take(5).cloned().collect::<Vec<_>>();
+        println!("  Referenced from: {} files", referrers.len());
+        for r in preview {
+            println!("    - {r}");
+        }
+        if referrers.len() > 5 {
+            println!("    (+{} more)", referrers.len() - 5);
+        }
+    } else {
+        println!("  Referenced from: (no callers found)");
+    }
+    if let Some(n) = notes {
+        if !n.is_empty() {
+            println!("  Notes:           {n}");
+        }
+    }
+    Some(0)
+}
+
+fn format_ts_iso(ts: i64) -> String {
+    chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
+        .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+        .unwrap_or_else(|| ts.to_string())
+}
+
+// ─── pr <N> ─────────────────────────────────────────────────────────────────
+
+fn cmd_pr(args: &[String]) -> i32 {
+    if args.is_empty() {
+        eprintln!("Usage: chump inventory pr <pr-number> [--json]");
+        return 2;
+    }
+    let n: i64 = match args[0].parse() {
+        Ok(n) => n,
+        Err(_) => {
+            eprintln!("error: pr number must be integer (got '{}')", args[0]);
+            return 2;
+        }
+    };
+    let json = has_flag(args, "--json");
+    let conn = match inventory::open_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("open_db failed: {e}");
+            return 1;
+        }
+    };
+    type PrRow = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+    );
+    let pr_row: Option<PrRow> = conn
+        .query_row(
+            "SELECT title, state, gap_id, domain, merged_at, author
+             FROM pr_index WHERE pr_number=?1",
+            rusqlite::params![n],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<i64>>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                ))
+            },
+        )
+        .ok();
+    let (title, state, gap_id, _domain, merged_at, author) = match pr_row {
+        Some(r) => r,
+        None => {
+            eprintln!("inventory pr: PR #{n} not found in pr_index");
+            return 1;
+        }
+    };
+
+    // Load every artifact this PR introduced.
+    type ArtifactRow = (String, String, String, i64);
+    let mut artifacts: Vec<ArtifactRow> = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT path, class, activation_state, reference_count
+         FROM artifact_index WHERE introducing_pr=?1
+         ORDER BY path",
+    ) {
+        if let Ok(mapped) = stmt.query_map(rusqlite::params![n], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        }) {
+            for r in mapped.flatten() {
+                artifacts.push(r);
+            }
+        }
+    }
+
+    // Activation health roll-up.
+    let mut counts = std::collections::HashMap::<String, usize>::new();
+    for (_p, _c, state, _refs) in &artifacts {
+        *counts.entry(state.clone()).or_insert(0) += 1;
+    }
+    let total = artifacts.len();
+    let referenced = *counts.get("referenced").unwrap_or(&0);
+    let dormant = *counts.get("dormant").unwrap_or(&0);
+    let orphan = *counts.get("orphan").unwrap_or(&0);
+    let unknown = *counts.get("unknown").unwrap_or(&0);
+
+    if json {
+        let arr: Vec<serde_json::Value> = artifacts
+            .iter()
+            .map(|(p, c, s, r)| {
+                serde_json::json!({
+                    "path": p,
+                    "class": c,
+                    "activation_state": s,
+                    "reference_count": r,
+                })
+            })
+            .collect();
+        let obj = serde_json::json!({
+            "pr_number": n,
+            "title": title,
+            "state": state,
+            "gap_id": gap_id,
+            "merged_at": merged_at,
+            "author": author,
+            "artifacts_total": total,
+            "activation_health": {
+                "referenced": referenced,
+                "dormant": dormant,
+                "orphan": orphan,
+                "unknown": unknown,
+            },
+            "artifacts": arr,
+        });
+        match serde_json::to_string_pretty(&obj) {
+            Ok(s) => println!("{s}"),
+            Err(_) => println!("{{}}"),
+        }
+        return 0;
+    }
+
+    let merged_label = merged_at
+        .map(|t| {
+            chrono::DateTime::<chrono::Utc>::from_timestamp(t, 0)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| t.to_string())
+        })
+        .unwrap_or_else(|| "-".to_string());
+    println!("PR #{n} ({state} {merged_label})");
+    println!("  Title:  {title}");
+    println!(
+        "  Gap:    {} [{}]",
+        gap_id.as_deref().unwrap_or("-"),
+        gap_id
+            .as_deref()
+            .and_then(|g| g.split('-').next())
+            .unwrap_or("-")
+    );
+    println!("  Author: {}", author.unwrap_or_else(|| "-".to_string()));
+    println!();
+    if total == 0 {
+        println!("No artifacts linked to this PR.");
+        println!("(Either the backfill couldn't link any rows yet, or this PR landed only deletions / modifications.)");
+        return 0;
+    }
+    println!(
+        "Shipped {total} artifact{}:",
+        if total == 1 { "" } else { "s" }
+    );
+    for (path, _class, st, refs) in &artifacts {
+        let mark = match st.as_str() {
+            "referenced" => "ok ",
+            "dormant" => "?  ",
+            "orphan" => "x  ",
+            _ => "?  ",
+        };
+        let trailing = match st.as_str() {
+            "referenced" => format!("({} callers)", refs),
+            "dormant" => format!("({} caller{})", refs, if *refs == 1 { "" } else { "s" }),
+            "orphan" => "(0 callers)".to_string(),
+            _ => "(provenance backfill couldn't link)".to_string(),
+        };
+        println!("  {mark} {:<10} {path} {trailing}", st);
+    }
+    println!();
+    println!(
+        "Activation health: {}/{total} referenced, {}/{total} dormant, {}/{total} orphan, {}/{total} unknown",
+        referenced, dormant, orphan, unknown
+    );
+    0
 }
 
 // ─── debt-report / dead-code / orphans / review-queue ───────────────────────

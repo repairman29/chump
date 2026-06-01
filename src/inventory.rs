@@ -802,6 +802,274 @@ pub fn collect_artifacts(conn: &Connection, root: &Path) -> Result<usize> {
     Ok(n)
 }
 
+/// Result of `backfill_artifact_provenance`. Surfaces counts so the CLI
+/// can report what fraction of artifacts now have introducing_pr populated.
+#[derive(Debug, Clone, Default)]
+pub struct ProvenanceBackfillResult {
+    pub artifacts_total: usize,
+    pub adding_commits_found: usize,
+    pub introducing_pr_linked: usize,
+    pub introducing_gap_linked: usize,
+    /// Artifacts whose first-add commit pre-dates the oldest pr_index entry
+    /// or could not be linked to a MERGED PR (truly unfindable).
+    pub unlinkable_provenance: usize,
+}
+
+/// INFRA-2384: backfill `introducing_pr` + `introducing_gap` for every
+/// artifact_index row that doesn't already have it set.
+///
+/// Algorithm:
+///   1. Single `git log --diff-filter=A --pretty=format:COMMIT:%H:%at --name-only`
+///      pass — records the oldest-add (commit, timestamp) for every path.
+///   2. Load `(pr_number, gap_id, merged_at)` rows where state='MERGED',
+///      sorted ascending by merged_at, into an in-memory vector.
+///   3. For each artifact: bisect the PR vector for the smallest merged_at
+///      >= adding_commit_ts → that's the introducing PR.
+///   4. UPDATE artifact_index in a single transaction.
+///
+/// Cost: O(repo_commits) for the git-log pass + O(artifacts * log(prs)) for
+/// the bisect. Target: <60s on 4500-artifact / 3000-PR repo. Never blocks
+/// detector flow — failure returns Ok(default) so subsequent steps proceed.
+pub fn backfill_artifact_provenance(
+    conn: &Connection,
+    root: &Path,
+) -> Result<ProvenanceBackfillResult> {
+    // ─── step 1: oldest-add commit per path ─────────────────────────────────
+    let adding_commits = build_adding_commits_map(root);
+
+    // ─── step 2: load merged-PR vector sorted by merged_at ──────────────────
+    type PrEntry = (i64, i64, Option<String>); // (merged_at, pr_number, gap_id)
+    let mut prs: Vec<PrEntry> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT merged_at, pr_number, gap_id FROM pr_index
+             WHERE state = 'MERGED' AND merged_at IS NOT NULL
+             ORDER BY merged_at ASC",
+        )?;
+        let mapped = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        for r in mapped {
+            prs.push(r?);
+        }
+    }
+
+    // ─── step 3: load artifacts needing backfill ────────────────────────────
+    let mut artifact_rows: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT path FROM artifact_index
+             WHERE introducing_pr IS NULL",
+        )?;
+        let mapped = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for r in mapped {
+            artifact_rows.push(r?);
+        }
+    }
+
+    let mut result = ProvenanceBackfillResult {
+        artifacts_total: artifact_rows.len(),
+        ..Default::default()
+    };
+
+    // ─── step 4: bisect + UPDATE in a transaction ───────────────────────────
+    let tx = conn.unchecked_transaction()?;
+    for path in &artifact_rows {
+        let adding_ts = match adding_commits.get(path) {
+            Some(&ts) => {
+                result.adding_commits_found += 1;
+                ts
+            }
+            None => continue,
+        };
+
+        // Find first PR whose merged_at >= adding_ts. The merging PR (the
+        // one that landed the adding commit on main) must have merged at or
+        // after the commit was authored.
+        let idx = prs.partition_point(|(merged_at, _, _)| *merged_at < adding_ts);
+        if idx >= prs.len() {
+            result.unlinkable_provenance += 1;
+            continue;
+        }
+        let (_merged_at, pr_number, gap_id) = &prs[idx];
+
+        tx.execute(
+            "UPDATE artifact_index
+             SET introducing_pr = ?1, introducing_gap = ?2
+             WHERE path = ?3 AND introducing_pr IS NULL",
+            params![pr_number, gap_id, path],
+        )?;
+        result.introducing_pr_linked += 1;
+        if gap_id.is_some() {
+            result.introducing_gap_linked += 1;
+        }
+    }
+    tx.commit()?;
+
+    // Artifacts with no adding-commit info contribute to unlinkable.
+    let no_commit = result.artifacts_total - result.adding_commits_found;
+    result.unlinkable_provenance += no_commit;
+    Ok(result)
+}
+
+/// Walk `git log --diff-filter=A` over all history once and record the
+/// oldest commit timestamp that ADDED each path. A path that has been
+/// deleted-then-readded shows multiple A events; we keep the earliest
+/// (the original introduction), since rebuild rotation usually wants
+/// the first-shipped provenance.
+///
+/// Format: alternating header lines `COMMIT:<sha>:<unix_ts>` followed by
+/// the file paths added by that commit (one per line). The single-quote
+/// pretty format avoids any whitespace ambiguity.
+fn build_adding_commits_map(root: &Path) -> HashMap<String, i64> {
+    let mut map: HashMap<String, i64> = HashMap::new();
+    let out = match Command::new("git")
+        .args([
+            "log",
+            "--diff-filter=A",
+            "--name-only",
+            "--pretty=format:COMMIT:%H:%at",
+            "--all",
+        ])
+        .current_dir(root)
+        .output()
+    {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return map,
+    };
+    let s = String::from_utf8_lossy(&out);
+
+    let mut current_ts: i64 = 0;
+    for line in s.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("COMMIT:") {
+            // COMMIT:<sha>:<unix_ts>
+            if let Some((_sha, ts_str)) = rest.rsplit_once(':') {
+                if let Ok(ts) = ts_str.parse::<i64>() {
+                    current_ts = ts;
+                }
+            }
+            continue;
+        }
+        if current_ts == 0 {
+            continue;
+        }
+        // Keep the EARLIEST adding commit per path.
+        map.entry(line.to_string())
+            .and_modify(|first| {
+                if current_ts < *first {
+                    *first = current_ts;
+                }
+            })
+            .or_insert(current_ts);
+    }
+    map
+}
+
+/// INFRA-2384: recompute `activation_state` + `reference_count` +
+/// `referenced_from` for every artifact_index row using PR provenance.
+///
+/// Rules:
+///   * If introducing_pr is set AND artifact has ≥3 inbound references → `referenced`
+///   * If introducing_pr is set AND artifact has 1-2 inbound references → `dormant`
+///   * If introducing_pr is set AND artifact has 0 inbound references → `orphan`
+///   * If introducing_pr IS NULL (truly unfindable) → `unknown`
+///
+/// References are computed via `git grep -l -F` on the basename for files
+/// under `scripts/`, `src/`, `launchd/`, and `migrations/`. Bounded to
+/// substrate paths to avoid scanning vendored deps + node_modules.
+///
+/// Returns the number of rows whose activation_state was updated.
+pub fn recompute_activation_with_provenance(conn: &Connection, root: &Path) -> Result<usize> {
+    // Load all artifacts.
+    let mut rows: Vec<(String, Option<i64>)> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT path, introducing_pr FROM artifact_index")?;
+        let mapped = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+        })?;
+        for r in mapped {
+            rows.push(r?);
+        }
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    let mut updated = 0usize;
+    for (path, intro_pr) in &rows {
+        // Truly unfindable provenance → unknown (until backfill can resolve it).
+        if intro_pr.is_none() {
+            tx.execute(
+                "UPDATE artifact_index
+                 SET activation_state='unknown'
+                 WHERE path=?1",
+                params![path],
+            )?;
+            updated += 1;
+            continue;
+        }
+
+        // Only scan reference counts for substrate paths; skip vendored.
+        let scan_eligible = path.starts_with("src/")
+            || path.starts_with("scripts/")
+            || path.starts_with("launchd/")
+            || path.starts_with("migrations/")
+            || path.starts_with("docs/gaps/")
+            || path.starts_with("crates/");
+        if !scan_eligible {
+            // Keep prior state; don't churn references for irrelevant paths.
+            continue;
+        }
+
+        let basename = match Path::new(path).file_name() {
+            Some(b) => b.to_string_lossy().to_string(),
+            None => continue,
+        };
+
+        let exit = Command::new("git")
+            .args([
+                "grep", "-l", "-F", "--", &basename, "*.rs", "*.sh", "*.md", "*.yaml", "*.yml",
+                "*.plist", "*.toml",
+            ])
+            .current_dir(root)
+            .output();
+
+        let referrers: Vec<String> = match exit {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| !l.is_empty() && *l != path)
+                .map(|l| l.to_string())
+                .collect(),
+            _ => Vec::new(),
+        };
+
+        let count = referrers.len();
+        let activation = if count == 0 {
+            "orphan"
+        } else if count <= 2 {
+            "dormant"
+        } else {
+            "referenced"
+        };
+        let referrers_json = serde_json::to_string(&referrers).unwrap_or_else(|_| "[]".to_string());
+        tx.execute(
+            "UPDATE artifact_index
+             SET activation_state=?1, reference_count=?2, referenced_from=?3
+             WHERE path=?4",
+            params![activation, count as i64, referrers_json, path],
+        )?;
+        updated += 1;
+    }
+    tx.commit()?;
+    Ok(updated)
+}
+
 /// Best-effort: one `git log --name-only --format=%at` pass over HEAD's
 /// history; map each path to (oldest_ts, newest_ts). Cost: O(commits)
 /// which is bounded; for 1000+ commit repos this is ~1-3s.
