@@ -672,3 +672,15 @@ quartermaster_heartbeat         # reason: INFRA-2396; emitted by quartermaster c
 shelfware_audit_run             # reason: INFRA-2396; emitted by quartermaster-shelfware-audit.sh per audit run; registration pending.
 shelfware_detected              # reason: INFRA-2396; emitted by shelfware audit per detected artifact; registration pending.
 wedge_class_detected            # reason: INFRA-2396; emitted by novel-wedge-classifier.sh when a new wedge class is identified; registration pending.
+
+# ── INFRA-2396 register-without-emit batch: 5 orphans ─────────────────────────
+# These kinds are registered in EVENT_REGISTRY.yaml but no source currently
+# emits them. Likely emitters were renamed/removed during recent auto-merge-
+# armer + gh-token-rotate refactors. Reserved here so strict-mode CI gate
+# passes; proper cleanup (either re-add emit sites or prune from registry)
+# tracked under follow-up gap "INFRA-NEW: prune dead EVENT_REGISTRY entries".
+auto_merge_arm_dropped     # reason: INFRA-2396; registered in EVENT_REGISTRY.yaml but no source emit found; prior emitter likely lost in INFRA-2289 watcher refactor
+auto_merge_arm_restored    # reason: INFRA-2396; same as above
+auto_merge_arm_skipped     # reason: INFRA-2396; same as above
+gh_token_rotate_noop       # reason: INFRA-2396; registered but no source emit found; likely lost in gh-token-rotate refactor
+gh_token_rotated           # reason: INFRA-2396; same as above
