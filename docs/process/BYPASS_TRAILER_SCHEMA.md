@@ -23,7 +23,7 @@ Enum: one of `T0`, `T1`, `T2`, `T3`, `T4`
 | Tier | Name | Meaning | Acceptable use | Anti-pattern signal |
 |---|---|---|---|---|
 | **T0** | Always-OK | Operator-broadcast explicitly authorized this class in ambient.jsonl within 24h | Trunk-red rescue, operator-directed recovery | Used more than once per outage without fresh broadcast |
-| **T1** | Audit-OK | Stale state or clock drift forced a one-time workaround; semantically valid | `CHUMP_BYPASS_PROOF_OF_MERGE=1` on stale merge-state, clock drift bypass | Used without any trailer; used routinely |
+| **T1** | Audit-OK | Stale state or clock drift forced a one-time workaround; semantically valid | clock drift bypass | Used without any trailer; used routinely |
 | **T2** | Suspect | Pre-existing trunk-red rescue; legitimate but needs follow-up | `CHUMP_PREFLIGHT_SKIP=1` when main was already red before your branch | Used with no follow-up gap; used after trunk is green |
 | **T3** | Bad | Tooling bug workaround; never acceptable as default practice | `--no-verify` forced by a broken hook; emergency CI infra failure | Any regular use; used without operator awareness |
 | **T4** | Banned | Admin-merge / `--no-verify` without operator authorization; operator-only | `gh pr merge --admin` authorized by operator in ambient.jsonl | Anyone using this without explicit operator broadcast |
@@ -35,7 +35,6 @@ Free-form string. Canonical examples:
 | Class | What it bypasses |
 |---|---|
 | `preflight-skip` | `chump preflight` / `CHUMP_PREFLIGHT_SKIP=1` |
-| `proof-of-merge` | `CHUMP_BYPASS_PROOF_OF_MERGE=1` (merge-state check) |
 | `obs-budget` | `CHUMP_OBS_BUDGET_BYPASS=1` (observability budget gate) |
 | `test-gate` | `CHUMP_TEST_GATE=0` / `Test-Gate-Bypass:` trailer path |
 | `install-manifest-bypass` | `CHUMP_INSTALL_MANIFEST_SKIP=1` |

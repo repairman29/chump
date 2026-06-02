@@ -181,18 +181,21 @@ the lease blocks other curators from picking up overlapping work.
 
 ## Pattern 8 — When PROOF-OF-MERGE blocks a status-flip
 
-For gaps already merged on remote but failing local PROOF-OF-MERGE checks
-(local main hasn't pulled the merge commit yet), the override stack is:
+For gaps already merged on remote but failing local PROOF-OF-MERGE checks,
+`chump gap ship` now auto-fetches `origin/main` before the check (INFRA-2423).
+No bypass env var is needed. The minimal override stack is:
 
 ```bash
 CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-CHUMP_BYPASS_PROOF_OF_MERGE=1 \
 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
 chump gap ship <gap-id> --closed-pr <N> --update-yaml
 ```
 
-This 3-env stack is annoying. **Filed as META-085 FIX 3**: `chump gap ship-orphan`
-subcommand that bundles this without the bypass-stacking ceremony.
+(`CHUMP_BYPASS_PROOF_OF_MERGE` is deleted per INFRA-2423. Auto-fetch handles
+the "local main is stale" case automatically.)
+
+This 2-env stack is an improvement. **Filed as META-085 FIX 3**: `chump gap ship-orphan`
+subcommand that bundles this without the override ceremony.
 
 ## Pattern 12 — Verify-at-source via freshness preamble (META-115)
 

@@ -15,10 +15,17 @@ echo "=== INFRA-1392 status PROOF-OF-MERGE tests ==="
 for sym in \
     "pub fn verify_proof_of_merge" \
     "INFRA-1392 PROOF-OF-MERGE" \
-    "CHUMP_BYPASS_PROOF_OF_MERGE" \
     "no commit on local main carries this gap ID"; do
     if grep -q "$sym" "$SRC"; then ok "gap_store contains $sym"; else fail "missing $sym"; fi
 done
+# INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE is deleted; chump gap ship now
+# auto-fetches origin/main before the proof-of-merge check. Verify the bypass
+# var is gone from source.
+if grep -q "CHUMP_BYPASS_PROOF_OF_MERGE" "$SRC"; then
+    fail "CHUMP_BYPASS_PROOF_OF_MERGE still present in $SRC (should be deleted per INFRA-2423)"
+else
+    ok "CHUMP_BYPASS_PROOF_OF_MERGE is absent from gap_store (INFRA-2423)"
+fi
 
 if command -v cargo >/dev/null 2>&1 && [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
     echo ""

@@ -68,7 +68,7 @@ Today's evidence: 3 occurrences (cycle 5, 6, 13 of today's loop). Trailer `Bot-M
 ### Class 7 — gap-status auto-flip silently no-ops
 **Symptom.** A PR merges to main with `INFRA-XXXX` in its subject line. The expected auto-flip via INFRA-2121 (auto-flip-on-merge action) doesn't fire. Gap stays `status: open` in state.db even though the work shipped.
 **Detection.** `chump gap show INFRA-XXXX | grep status` — shows `open` despite verified merge. Today's evidence: 6 gaps in this state across cycles 7+10 (INFRA-2202, 2200, 2151, 2184, DOC-058, 2208).
-**Fix (per-occurrence).** Manual flip: `CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 chump gap ship INFRA-XXXX --closed-pr <N> --update-yaml`.
+**Fix (per-occurrence).** Manual flip: `CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 chump gap ship INFRA-XXXX --closed-pr <N> --update-yaml`. (INFRA-2423: `CHUMP_BYPASS_PROOF_OF_MERGE` is deleted — `chump gap ship` now auto-fetches `origin/main` before the proof-of-merge check, so no bypass is needed.)
 **Fix (root cause).** INFRA-2230 (filed 2026-05-29): diagnose why INFRA-2121 silently misses certain PR/gap pairs. Add `kind=auto_flip_skipped` ambient with reason field (regex_miss / workflow_skip / state_db_error). Either fix the trigger OR add nightly catch-up scan.
 
 ### Class 8 — Shelfware (operationalization gap)
@@ -166,7 +166,8 @@ Sonnet sub-agent stalled (600s no progress)
   → re-dispatch with recovery notes documenting the stall point
 
 gap status:open after merge to main
-  → manual flip: CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 chump gap ship X --closed-pr N --update-yaml
+  → manual flip: CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 chump gap ship X --closed-pr N --update-yaml
+  → (INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE deleted; auto-fetch runs at ship time)
   → batch-sweep recent merges weekly (until INFRA-2230 ships)
 ```
 
