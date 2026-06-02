@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # test-bot-merge-graphql-wedge.sh — INFRA-1939 smoke test.
 #
-# Verifies bot-merge.sh exits 144 with a WEDGE message within 60s when ambient
-# shows a recent kind=graphql_exhausted event. Pre-INFRA-1939 the script would
-# silently poll forever burning 144K+ subagent tokens.
+# Verifies bot-merge.sh exits non-zero fast with a WEDGE message within 60s when
+# ambient shows a recent kind=graphql_exhausted event. Pre-INFRA-1939 the script
+# would silently poll forever burning 144K+ subagent tokens.
+#
+# INFRA-2426 update: exit code changed from 144 to 4 (documented misc-abort code).
+# The test now accepts exit 4 as the correct fast-abort code for the wedge guard.
+# Exit 144 was undocumented and caused confusion with pipefail signal arithmetic.
 
 set -uo pipefail
 
@@ -19,7 +23,7 @@ BOT_MERGE="$SCRIPT_DIR/../coord/bot-merge.sh"
 
 echo "=== INFRA-1939 bot-merge.sh graphql_exhausted wedge guard ==="
 
-# --- Test 1: recent graphql_exhausted → bot-merge exits 144 fast ---
+# --- Test 1: recent graphql_exhausted → bot-merge exits 4 fast (INFRA-2426) ---
 TMP1="$(mktemp -d)"
 trap 'rm -rf "$TMP1"' EXIT
 
@@ -37,14 +41,19 @@ CHUMP_AMBIENT_LOG="$TMP1/.chump-locks/ambient.jsonl" \
 rc=$?
 ELAPSED=$SECONDS
 
-if [ "$rc" = "144" ]; then
+# INFRA-2426: exit code changed from 144 to 4. Accept 4 (correct) or reject 144 (broken).
+if [ "$rc" = "4" ]; then
     if [ "$ELAPSED" -lt 30 ]; then
-        ok "exits 144 fast on recent graphql_exhausted (${ELAPSED}s)"
+        ok "exits 4 fast on recent graphql_exhausted (${ELAPSED}s) [INFRA-2426: was 144]"
     else
-        fail "exit 144 correct but took ${ELAPSED}s (expected <30s — should fail-fast)"
+        fail "exit 4 correct but took ${ELAPSED}s (expected <30s — should fail-fast)"
     fi
+elif [ "$rc" = "144" ]; then
+    fail "exits 144 — INFRA-2426 fix did not apply (should now exit 4)"
+    echo "  ---last 5 lines of stderr---" >&2
+    tail -5 /tmp/wedge-test-out >&2 || true
 else
-    fail "expected exit 144 on graphql_exhausted, got $rc (elapsed ${ELAPSED}s)"
+    fail "expected exit 4 on graphql_exhausted, got $rc (elapsed ${ELAPSED}s)"
     echo "  ---last 5 lines of stderr---" >&2
     tail -5 /tmp/wedge-test-out >&2 || true
 fi
