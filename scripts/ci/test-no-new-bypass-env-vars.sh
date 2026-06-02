@@ -94,6 +94,33 @@ if [[ "${1:-}" == "--self-test" ]]; then
     '+CHUMP_LOG_LEVEL=debug' \
     0
 
+  # ── INFRA-2438: comment-context cases ────────────────────────────────────
+  # These cases exercise the comment-only-line filter added by INFRA-2438
+  # (this script was over-matching: any + line mentioning the var name was
+  # flagged, including PRs whose entire purpose was DOCUMENTING the deletion).
+  # The lint must distinguish actual env::var() / shell-dereference / bare-
+  # env-vars-internal-line introductions from comments mentioning the var.
+
+  # Case 5: + line in a shell comment → NOT flagged (exit 0)
+  run_case "shell comment mentioning bypass var name → exit 0" \
+    '+# CHUMP_OBS_BUDGET_BYPASS is deleted (INFRA-2425) — guard is warn-only.' \
+    0
+
+  # Case 6: + line in a Rust comment → NOT flagged (exit 0)
+  run_case "Rust // comment mentioning bypass var name → exit 0" \
+    '+// CHUMP_CLAIM_IGNORE_MAIN_HEALTH is removed (INFRA-2428).' \
+    0
+
+  # Case 7: + line as block-comment body → NOT flagged (exit 0)
+  run_case "block-comment body line mentioning bypass var → exit 0" \
+    '+ * CHUMP_PREFLIGHT_SKIP_PIPEFAIL removed per INFRA-2427.' \
+    0
+
+  # Case 8: + line as actual shell dereference → IS flagged (exit 1, unless allowlisted)
+  run_case "actual shell dereference of bypass var → exit 1" \
+    '+    if [[ -n "${CHUMP_BRAND_NEW_BYPASS:-}" ]]; then' \
+    1
+
   echo ""
   if [[ $FAIL -gt 0 ]]; then
     echo "[bypass-lint self-test] FAIL: $FAIL/$((PASS+FAIL)) cases failed"
@@ -205,6 +232,33 @@ extract_bypass_varnames() {
   added_file="$(mktemp)"
   printf '%s\n' "$added_lines" > "$added_file"
 
+  # INFRA-2438: filter out comment-only lines before pattern-matching. A `+`
+  # diff line whose body (after stripping leading whitespace) begins with `#`
+  # (shell/yaml/toml), `//` (Rust/JS), `*` (block-comment body), or `>` (md
+  # quote) is documentation/explanation of a deletion — NOT an introduction.
+  # Without this filter, deletion-PRs that document what they removed (e.g.
+  # "# CHUMP_X_BYPASS is deleted") self-flag and the lint blocks the very
+  # change it's meant to encourage.
+  local code_only_file
+  code_only_file="$(mktemp)"
+  awk '
+    {
+      # Strip the leading "+" prefix.
+      line = substr($0, 2)
+      # Trim leading whitespace.
+      stripped = line
+      sub(/^[ \t]+/, "", stripped)
+      # Skip comment-only lines.
+      if (stripped ~ /^#/)  next
+      if (stripped ~ /^\/\//) next
+      if (stripped ~ /^\*/) next
+      if (stripped ~ /^>/) next
+      # Keep the original "+"-prefixed line.
+      print $0
+    }
+  ' "$added_file" > "$code_only_file"
+  rm -f "$added_file"
+
   # Extract var names matching the bypass patterns.
   # Strategy: grep for the CHUMP_*_BYPASS|SKIP|IGNORE_* substrings using -o.
   # CHUMP_IGNORE_ requires at least one trailing [A-Z0-9] to avoid matching
@@ -212,8 +266,8 @@ extract_bypass_varnames() {
   # Then filter out _DISABLED (Category B exempt).
   local raw_hits
   raw_hits="$(grep -oE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP)|CHUMP_IGNORE_[A-Z0-9][A-Z0-9_]*' \
-    "$added_file" 2>/dev/null || true)"
-  rm -f "$added_file"
+    "$code_only_file" 2>/dev/null || true)"
+  rm -f "$code_only_file"
 
   if [[ -z "$raw_hits" ]]; then
     return
