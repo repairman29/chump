@@ -15,7 +15,6 @@
 # ── Category A quality-gate bypasses — targeted deletion gaps filed ───────────
 CHUMP_PREFLIGHT_SKIP                # Bypass-Justification: top-level preflight skip; deletion target  gap: INFRA-2422
 CHUMP_BYPASS_PROOF_OF_MERGE        # Bypass-Justification: proof-of-merge gate bypass; deletion target  gap: INFRA-2423
-CHUMP_IGNORE_WASTE_PAUSE           # Bypass-Justification: waste-pause gate ignore; deletion target  gap: INFRA-2424
 CHUMP_OBS_BUDGET_BYPASS            # Bypass-Justification: obs-budget gate bypass; deletion target  gap: INFRA-2425
 CHUMP_PREFLIGHT_SKIP_PIPEFAIL      # Bypass-Justification: pipefail-sweep gate skip; deletion target  gap: INFRA-2427
 CHUMP_CLAIM_IGNORE_MAIN_HEALTH     # Bypass-Justification: main-health gate ignore during claim; deletion target  gap: INFRA-2428

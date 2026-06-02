@@ -17,7 +17,6 @@
 #   CHUMP_AMBIENT_LOG              — path to ambient.jsonl (default .chump-locks/ambient.jsonl)
 #   CHUMP_FLEET_PAUSE_FILE         — path to fleet-paused flag file (default .chump/fleet-paused)
 #   CHUMP_WASTE_CONSEC_FILE        — path to consecutive-below-threshold counter (default /tmp/chump-waste-recovery-count)
-#   CHUMP_IGNORE_WASTE_PAUSE=1    — worker bypass (skip all checks, log to ambient)
 #
 # Emits to ambient.jsonl:
 #   kind=waste_spike_detected    — when rate exceeds spike threshold
@@ -52,12 +51,6 @@ _emit() {
     printf '{"ts":"%s","kind":"%s"%s}\n' "$ts" "$kind" "${extra:+,$extra}" \
         >> "$AMBIENT" 2>/dev/null || true
 }
-
-# ── CHUMP_IGNORE_WASTE_PAUSE bypass (for operator emergencies) ────────────────
-if [[ "${CHUMP_IGNORE_WASTE_PAUSE:-0}" == "1" ]]; then
-    _emit "worker_paused_waste_spike_bypass" '"session":"'"${CHUMP_SESSION_ID:-manual}"'","note":"CHUMP_IGNORE_WASTE_PAUSE=1 override"'
-    exit 0
-fi
 
 # ── Read waste tally ───────────────────────────────────────────────────────────
 tally_json=$(CHUMP_AMBIENT_LOG="$AMBIENT" \

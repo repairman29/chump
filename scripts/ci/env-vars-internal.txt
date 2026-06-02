@@ -659,8 +659,6 @@ CHUMP_CLAIM_ALLOW_DUPLICATE_PR
 CHUMP_DISABLE_JIT_BINARY_REFRESH
 # Override GH repo identity (used by tests + tools when not under git)
 CHUMP_GH_REPO
-# Bypass fleet waste-pause gate during gap reserve/claim (operator recovery)
-CHUMP_IGNORE_WASTE_PAUSE
 # Per-gate skip flags for `chump preflight` (INFRA-1670)
 CHUMP_PREFLIGHT_SKIP_ACPSMOKE
 CHUMP_PREFLIGHT_SKIP_CARGOTEST
@@ -829,3 +827,18 @@ CHUMP_LOG_LEVEL
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_IGNORE_
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALLOW_MAIN_WORKTREE
+# detected in: (standard input)
+CHUMP_FLEET_PAUSE_FILE
+# detected in: (standard input)
+CHUMP_GAP_RESERVE_SKIP_PR
+# detected in: (standard input)
+CHUMP_IGNORE_WASTE_PAUSE
+# detected in: (standard input)
+CHUMP_PILLAR_BALANCE_DISABLE
+# detected in: (standard input)
+CHUMP_WASTE_SPIKE_THRESHOLD

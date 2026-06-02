@@ -203,7 +203,7 @@ Investigation steps:
 
     local out exit_code gap_id
     exit_code=0
-    out="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 FLEET_029_AMBIENT_GLANCE_SKIP=1 \
+    out="$(CHUMP_GAP_RESERVE_NO_SIMILARITY=1 FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         "$CHUMP_BIN" gap reserve \
         --domain INFRA \
         --priority P0 \
