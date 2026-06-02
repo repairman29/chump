@@ -47,31 +47,73 @@ else
     _fail "validation: missing input file did NOT produce expected error"
 fi
 
-# ── Test 5: wrong-length ACCESS_KEY_ID refused ──────────────────────────────
+# ── Test 5: garbage (too-short) ACCESS_KEY_ID still refused (RESILIENT-055) ──
 TMP="$(mktemp -t r2-test-XXXX.txt)"
 cat > "$TMP" <<EOF
 ACCESS_KEY_ID=tooshort
 SECRET_ACCESS_KEY=6256b35f54f24751a1c7d0e7ff43e1b7ab12764cea7597ffa3fdfae9f3561abf
 EOF
 out="$(bash "$ROT" --input-file "$TMP" 2>&1 || true)"
-if echo "$out" | grep -q "ACCESS_KEY_ID length.*expected 32"; then
-    _pass "validation: wrong-length ACCESS_KEY_ID refused"
+if echo "$out" | grep -qiE "ACCESS_KEY_ID.*(paste error|absurd|whitespace|charset)"; then
+    _pass "validation: garbage (8-char) ACCESS_KEY_ID still refused"
 else
-    _fail "validation: wrong-length ACCESS_KEY_ID NOT refused"
+    _fail "validation: garbage ACCESS_KEY_ID NOT refused"
 fi
 rm -f "$TMP"
 
-# ── Test 6: wrong-length SECRET_ACCESS_KEY refused ──────────────────────────
+# ── Test 6: garbage (too-short) SECRET_ACCESS_KEY still refused (RESILIENT-055) ──
 TMP="$(mktemp -t r2-test-XXXX.txt)"
 cat > "$TMP" <<EOF
 ACCESS_KEY_ID=6b7d5de8c91c4d7e9f1e10ccec056c81
 SECRET_ACCESS_KEY=tooshort
 EOF
 out="$(bash "$ROT" --input-file "$TMP" 2>&1 || true)"
-if echo "$out" | grep -q "SECRET_ACCESS_KEY length.*expected 64"; then
-    _pass "validation: wrong-length SECRET_ACCESS_KEY refused"
+if echo "$out" | grep -qiE "SECRET_ACCESS_KEY.*(paste error|absurd|whitespace|charset)"; then
+    _pass "validation: garbage (8-char) SECRET_ACCESS_KEY still refused"
 else
-    _fail "validation: wrong-length SECRET_ACCESS_KEY NOT refused"
+    _fail "validation: garbage SECRET_ACCESS_KEY NOT refused"
+fi
+rm -f "$TMP"
+
+# ── Test 6b: RESILIENT-055 — a 40-char access key is ACCEPTED (was wrongly rejected) ──
+TMP="$(mktemp -t r2-test-XXXX.txt)"
+cat > "$TMP" <<EOF
+ACCESS_KEY_ID=0123456789abcdef0123456789abcdef01234567
+SECRET_ACCESS_KEY=6256b35f54f24751a1c7d0e7ff43e1b7ab12764cea7597ffa3fdfae9f3561abf
+EOF
+out="$(bash "$ROT" --input-file "$TMP" 2>&1 || true)"
+if echo "$out" | grep -q "dry-run complete"; then
+    _pass "RESILIENT-055: 40-char access key ACCEPTED (no longer hard-rejected for len!=32)"
+else
+    _fail "RESILIENT-055: 40-char access key was rejected (regression)"; echo "$out" | head -5 >&2
+fi
+rm -f "$TMP"
+
+# ── Test 6c: RESILIENT-055 — a 53-char access key is ACCEPTED (operator's real key) ──
+TMP="$(mktemp -t r2-test-XXXX.txt)"
+cat > "$TMP" <<EOF
+ACCESS_KEY_ID=0123456789abcdef0123456789abcdef0123456789abcdef01234
+SECRET_ACCESS_KEY=6256b35f54f24751a1c7d0e7ff43e1b7ab12764cea7597ffa3fdfae9f3561abf
+EOF
+out="$(bash "$ROT" --input-file "$TMP" 2>&1 || true)"
+if echo "$out" | grep -q "dry-run complete"; then
+    _pass "RESILIENT-055: 53-char access key ACCEPTED"
+else
+    _fail "RESILIENT-055: 53-char access key was rejected (regression)"
+fi
+rm -f "$TMP"
+
+# ── Test 6d: whitespace in access key still HARD-rejected (genuine paste error) ──
+TMP="$(mktemp -t r2-test-XXXX.txt)"
+cat > "$TMP" <<EOF
+ACCESS_KEY_ID=0123456789abcdef 0123456789abcdef
+SECRET_ACCESS_KEY=6256b35f54f24751a1c7d0e7ff43e1b7ab12764cea7597ffa3fdfae9f3561abf
+EOF
+out="$(bash "$ROT" --input-file "$TMP" 2>&1 || true)"
+if echo "$out" | grep -qiE "ACCESS_KEY_ID.*(paste error|whitespace|charset)"; then
+    _pass "validation: whitespace-containing access key still hard-rejected"
+else
+    _fail "validation: whitespace access key NOT rejected"
 fi
 rm -f "$TMP"
 
