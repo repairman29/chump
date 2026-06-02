@@ -5929,6 +5929,19 @@ events:
     fields_required: [ts, kind, last_graphql_exhausted, lookback_s]
     docs: scripts/coord/bot-merge.sh (INFRA-1939 wedge-guard comment block at top)
 
+  - kind: bot_merge_graphql_wedge_cleared
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-2426 recovery path)
+    trigger: |
+      bot-merge.sh detected a recent graphql_exhausted AND a subsequent
+      graphql_recovered event AFTER the exhaustion timestamp. Bypasses the
+      INFRA-1939 wedge guard and proceeds with the ship, since the GraphQL
+      surface has demonstrably recovered. Recovery-bypass closes the
+      previously-undocumented exit-144 silent-fail path (INFRA-2426).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, last_graphql_exhausted, last_graphql_recovered]
+    docs: scripts/coord/bot-merge.sh (INFRA-2426 recovery-bypass comment block)
+
   # ── RESILIENT-trunk-RED guard (INFRA-2096): test SKIP because runner-side ──
   # capability missing (cargo, binary build, etc.). Audit-only; SKIPs are
   # transient unblocks while the underlying runner-side issue (INFRA-2086

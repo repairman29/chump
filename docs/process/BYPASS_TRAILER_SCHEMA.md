@@ -102,9 +102,27 @@ This bypass is itself audited: the hook emits a warning to stderr. Use only when
 
 ---
 
+## Retirement Schedule
+
+Classes below are scheduled for removal from `scripts/ci/legacy-bypass-trailer-allowlist.txt`
+after achieving 7 consecutive days of zero new uses. Watch the ambient stream for
+`kind=bot_merge_bypassed` events to track progress.
+
+| Class | Root-cause fix | Retire date (if zero new uses) |
+|---|---|---|
+| `bot-merge-bypass` | INFRA-2426: fixed exit-144 silent hang (graphql_exhausted wedge guard now exits 4 + emits structured event; budget watchdog now reads correct env var `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S`; SIGTERM now emits `kind=bot_merge_timeout` before exit) | **2026-06-09** (7 days after INFRA-2426 merges on 2026-06-02) |
+
+Retirement procedure (after 7d zero-use streak confirmed):
+1. Remove the class from `scripts/ci/legacy-bypass-trailer-allowlist.txt`.
+2. File a cleanup gap to `grep -r 'Bot-Merge-Bypass' docs/ scripts/` and remove all references.
+3. Broadcast `kind=bypass_class_retired class=bot-merge-bypass` to ambient.jsonl.
+
+---
+
 ## Related
 
 - Strategy: `docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md`
 - Threat model + per-class thresholds: same doc §3 Layer 1
 - SLA enforcement daemon: same doc §3 Layer 2
 - Gap: INFRA-2407
+- Root-cause fix: INFRA-2426 (bot-merge exit-144 + SIGTERM-silent + budget-var-mismatch)

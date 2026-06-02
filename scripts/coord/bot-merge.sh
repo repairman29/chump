@@ -269,7 +269,29 @@ _bm_cleanup() {
     fi
 }
 trap '_bm_cleanup' EXIT
-trap '_bm_cleanup; exit 1' TERM INT
+# INFRA-2426: on SIGTERM from the budget watchdog, emit kind=bot_merge_timeout
+# BEFORE calling _bm_cleanup so the event reaches ambient.jsonl regardless of
+# whether the cleanup itself fails. The prior silent `exit 1` left no trace in
+# ambient.jsonl, making the budget-kill indistinguishable from a crash.
+# scanner-anchor: "kind":"bot_merge_timeout"
+_bm_sigterm_handler() {
+    local _ts _step _elapsed _ambient _gap_label
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _step="$(cat "${_BM_STEP_FILE:-/dev/null}" 2>/dev/null || echo unknown)"
+    _gap_label="${GAP_IDS[*]:-${GAP_ID:-unknown}}"
+    _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    _elapsed=$(( $(date +%s) - $(date -d "${_BM_STARTED_AT:-$_ts}" +%s 2>/dev/null || date +%s) ))
+    printf '{"ts":"%s","kind":"bot_merge_timeout","gap":"%s","phase":"%s","elapsed_s":%d,"budget_s":%s,"note":"INFRA-2426: SIGTERM from budget watchdog; was silent exit 1 before this fix"}\n' \
+        "$_ts" "$_gap_label" "$_step" "$_elapsed" \
+        "${CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S:-${CHUMP_BOT_MERGE_BUDGET_SECS:-900}}" \
+        >> "$_ambient" 2>/dev/null || true
+    printf '\033[0;31m[bot-merge] TIMEOUT (INFRA-2426): SIGTERM received at phase="%s" elapsed=%ds — kind=bot_merge_timeout emitted to ambient.\033[0m\n' \
+        "$_step" "$_elapsed" >&2 || true
+    _bm_cleanup
+    exit 1
+}
+trap '_bm_sigterm_handler' TERM
+trap '_bm_cleanup; exit 1' INT
 
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
@@ -631,18 +653,45 @@ for line in sys.stdin:
         sys.exit(0)
 " 2>/dev/null)
             if [ -n "$_wedge_hit" ]; then
-                echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
-                echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
-                echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
-                echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
-                # Emit ambient event for audit trail
-                _ambient_dir=$(dirname "$_wedge_ambient")
-                if [ -w "$_ambient_dir" ]; then
-                    printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_aborted","last_graphql_exhausted":"%s","lookback_s":%d}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_lookback_s" \
+                # INFRA-2426: also look for a newer graphql_recovered (or rate_limit reset)
+                # event that supersedes the exhausted event. If found, clear the wedge.
+                # This prevents stale graphql_exhausted events from blocking future invocations
+                # after the rate limit has actually recovered.
+                _wedge_recovered=$(tail -200 "$_wedge_ambient" 2>/dev/null | python3 -c "
+import json, sys
+cutoff_ts = '''$_wedge_hit'''
+for line in sys.stdin:
+    try:
+        o = json.loads(line.strip())
+    except Exception:
+        continue
+    if isinstance(o, dict) and o.get('kind') in ('graphql_recovered', 'rate_limit_reset') \
+            and o.get('ts', '') > cutoff_ts:
+        print(o.get('ts', '?'))
+        sys.exit(0)
+" 2>/dev/null)
+                if [ -n "$_wedge_recovered" ]; then
+                    # Rate limit recovered after the exhausted event — clear the wedge.
+                    printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_cleared","last_exhausted":"%s","recovered_at":"%s","note":"INFRA-2426: rate-limit recovery event found; wedge cleared"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_recovered" \
                         >> "$_wedge_ambient" 2>/dev/null || true
+                else
+                    echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
+                    echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
+                    echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
+                    echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
+                    # INFRA-2426: emit structured kind=bot_merge_timeout (not silent exit 144).
+                    # Exit code changed from 144 (undocumented, confusing) to 4 (documented
+                    # misc-abort code) so automated callers can classify the failure.
+                    # scanner-anchor: "kind":"bot_merge_graphql_wedge_aborted"
+                    _ambient_dir=$(dirname "$_wedge_ambient")
+                    if [ -w "$_ambient_dir" ]; then
+                        printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_aborted","last_graphql_exhausted":"%s","lookback_s":%d,"exit_code":4,"note":"INFRA-2426: graphql wedge guard now exits 4 with structured event; phase=graphql_wedge_guard"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_lookback_s" \
+                            >> "$_wedge_ambient" 2>/dev/null || true
+                    fi
+                    exit 4
                 fi
-                exit 144
             fi
         fi
     fi
@@ -1127,7 +1176,12 @@ _bm_health_init() {
     _BM_HEALTH_PID=$!
 
     # Budget watchdog: SIGTERM + ambient ALERT if total runtime exceeds budget
-    local budget="${CHUMP_BOT_MERGE_BUDGET_SECS:-600}"
+    # INFRA-2426: accept both variable names — CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S is
+    # the name documented in CLAUDE.md + SUBAGENT_DISPATCH.md (900s default);
+    # CHUMP_BOT_MERGE_BUDGET_SECS is the legacy name (600s default). Prefer the
+    # subagent name when set so subagent dispatches are not killed at 600s when
+    # the fleet has granted them a 900s budget.
+    local budget="${CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S:-${CHUMP_BOT_MERGE_BUDGET_SECS:-900}}"
     if [[ "$budget" -gt 0 ]]; then
         local ppid="$_BM_PID" ambient="${lock_dir}/ambient.jsonl"
         (
