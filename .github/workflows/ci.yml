@@ -560,6 +560,15 @@ jobs:
       - name: META-118 daemon install smoke (INFRA-2280)
         run: bash scripts/ci/test-meta-118-daemon-install.sh
 
+      # INFRA-2419: plist-no-tmp-paths gate — verifies no plist template bakes
+      # an ephemeral temp path (/tmp/, /private/tmp/, /var/folders/, $TMPDIR)
+      # into ProgramArguments or WorkingDirectory. Root cause of the 145-crash
+      # integrator-daemon crash-loop (2026-06-01): cd /private/tmp/chump-install
+      # was baked in; dir was reaped post-install. Pure static lint; fast, safe
+      # in Linux CI (no launchd required). Also mirrored in chump preflight.
+      - name: Plist no-tmp-paths gate (INFRA-2419)
+        run: bash scripts/ci/test-plist-no-tmp-paths.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off

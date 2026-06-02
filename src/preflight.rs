@@ -1064,6 +1064,19 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Scripts,
             ));
         }
+
+        // INFRA-2419: plist-no-tmp-paths gate. Verifies no checked-in plist
+        // template or installer-generated plist bakes an ephemeral temp path
+        // (/tmp/, /private/tmp/, /var/folders/, $TMPDIR) into ProgramArguments
+        // or WorkingDirectory. Root cause: com.chump.integrator-daemon crashed
+        // 145 times (37h) because the plist had `cd /private/tmp/chump-install`
+        // baked in — the dir was reaped after install. Pure static file lint;
+        // safe and fast (<1s) in local preflight with no launchd dependency.
+        steps.push(step(
+            "plist-no-tmp-paths",
+            &["bash", "scripts/ci/test-plist-no-tmp-paths.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {

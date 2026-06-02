@@ -143,6 +143,7 @@ run_test_script 1 "$SCRIPTS_CI/test-gap-integrity.sh"
 run_test_script 1 "$SCRIPTS_CI/test-gap-audit-ac.sh"
 run_test_script 1 "$SCRIPTS_CI/test-gap-preflight-ac-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-hardcoded-date-guard.sh"
+run_test_script 1 "$SCRIPTS_CI/test-plist-no-tmp-paths.sh"  # INFRA-2419: plist temp-path lint
 
 # Hook / commit hygiene gates
 run_test_script 1 "$SCRIPTS_CI/test-hook-silent-noop.sh"
