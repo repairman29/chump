@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# stale-gap-lock-reaper.sh — INFRA-676
+# stale-gap-lock-reaper.sh — INFRA-676 INFRA-2447
 #
 # Sweeps .chump-locks/.gap-*.lock files whose owning session lease is gone.
 # Companion to the in-process self-clean in try_claim_gap(): this catches
@@ -282,12 +282,111 @@ except Exception:
         fi
     fi
 
+    # INFRA-2447: active bot-merge guard. Before reaping by PID-dead or TTL,
+    # check whether bot-merge.sh is actively running for this gap. The PID in
+    # session_id is the short-lived `chump claim` bash subshell (exits in <1s),
+    # NOT the bot-merge process — so a dead claim PID does NOT mean bot-merge
+    # is done. Two detection signals (either is sufficient to skip):
+    #
+    #   A) pgrep: a bot-merge.sh process whose command line contains --gap $gap_id
+    #      is running right now.
+    #   B) health file: a .chump-locks/bot-merge-*.health file exists whose
+    #      gap_ids field contains $gap_id AND whose owning PID is still alive.
+    #
+    # When either fires, emit kind=reaper_skipped_active_bot_merge and continue.
+    if [[ -n "$gap_id" ]]; then
+        _bm_pid=""
+        _bm_health_file=""
+
+        # Signal A: pgrep for live bot-merge process referencing this gap_id.
+        # INFRA-1658: no `printf | grep -q` — use process substitution.
+        _bm_pgrep_out="$(pgrep -fl "bot-merge.*--gap.*${gap_id}" 2>/dev/null || true)"
+        if [[ -n "$_bm_pgrep_out" ]]; then
+            _bm_pid="$(echo "$_bm_pgrep_out" | awk '{print $1}' | head -1)"
+        fi
+
+        # Signal B: health file whose gap_ids contains gap_id and PID is alive.
+        if [[ -z "$_bm_pid" ]]; then
+            for _hf in "$LOCK_DIR"/bot-merge-*.health; do
+                [[ -e "$_hf" ]] || continue
+                _hf_gap_ids="$(python3 -c "
+import json
+try:
+    d = json.load(open('$_hf'))
+    print(d.get('gap_ids', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+                # gap_ids is space-separated: "INFRA-2447 INFRA-2448"
+                for _hf_gid in $_hf_gap_ids; do
+                    if [[ "$_hf_gid" == "$gap_id" ]]; then
+                        _hf_pid="$(python3 -c "
+import json
+try:
+    d = json.load(open('$_hf'))
+    print(d.get('pid', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+                        if [[ -n "$_hf_pid" ]] && ps -p "$_hf_pid" >/dev/null 2>&1; then
+                            _bm_pid="$_hf_pid"
+                            _bm_health_file="$(basename "$_hf")"
+                            break 2
+                        fi
+                    fi
+                done
+            done
+        fi
+
+        if [[ -n "$_bm_pid" ]]; then
+            _bm_age_secs=""
+            if [[ -n "$_bm_health_file" ]]; then
+                # Approximate age from health file last-modified time.
+                _hf_mtime="$(python3 -c "import os,time; print(int(time.time() - os.path.getmtime('$LOCK_DIR/$_bm_health_file')))" 2>/dev/null || echo "")"
+                _bm_age_secs="${_hf_mtime:-}"
+            fi
+            echo "  SKIP claim (active bot-merge pid=$_bm_pid for gap=$gap_id): $(basename "$claim_file")"
+            printf '{"ts":"%s","kind":"reaper_skipped_active_bot_merge","lock":"%s","session":"%s","gap":"%s","bot_merge_pid":%s,"age_secs":%s}\n' \
+                "$NOW_ISO" \
+                "$(basename "$claim_file")" \
+                "$session_id" "$gap_id" "$_bm_pid" "${_bm_age_secs:-0}" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            SKIPPED=$((SKIPPED+1))
+            continue
+        fi
+    fi
+
+    # INFRA-2447: heartbeat-TTL guard (AC step 3). If heartbeat_at is within
+    # CHUMP_REAPER_LIVE_HEARTBEAT_S seconds (default 600 = 10min), treat as
+    # live even when the claim PID is dead. This is complementary to INFRA-1236's
+    # heartbeat_at check (which uses CHUMP_LEASE_HEARTBEAT_TTL_S) — both protect
+    # against over-reaping; CHUMP_REAPER_LIVE_HEARTBEAT_S is the explicit AC knob.
+    _reaper_hb_ttl="${CHUMP_REAPER_LIVE_HEARTBEAT_S:-600}"
+    if [[ -n "$heartbeat_at" ]]; then
+        _reaper_hb_epoch="$(python3 -c "
+import datetime
+try:
+    dt = datetime.datetime.fromisoformat('$heartbeat_at'.replace('Z', '+00:00'))
+    print(int(dt.timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo "0")"
+        if [[ "$_reaper_hb_epoch" -gt 0 ]]; then
+            _reaper_hb_age=$((NOW_EPOCH_CLAIM - _reaper_hb_epoch))
+            if [[ "$_reaper_hb_age" -lt "$_reaper_hb_ttl" ]]; then
+                echo "  SKIP claim (reaper heartbeat guard: ${_reaper_hb_age}s < ${_reaper_hb_ttl}s): $(basename "$claim_file") [gap=$gap_id]"
+                SKIPPED=$((SKIPPED+1))
+                continue
+            fi
+        fi
+    fi
+
     # INFRA-1208: PID-liveness check BEFORE TTL check. Sessions write 8h TTL
     # leases, but if a session crashes 30 min in, the existing TTL check
     # leaves the lease sitting for 7.5h+ — overnight accumulation of 14
     # dead leases observed 2026-05-14. session_id format is
     # claim-<gap>-<PID>-<EPOCH>. If PID is dead AND heartbeat is stale/missing
-    # (gated above by INFRA-1236), reap.
+    # (gated above by INFRA-1236 + INFRA-2447), reap.
     claim_pid="$(printf '%s' "$session_id" | grep -oE '[0-9]+-[0-9]+$' | cut -d- -f1 2>/dev/null || echo "")"
     if [[ -n "$claim_pid" ]] && ! ps -p "$claim_pid" >/dev/null 2>&1; then
         if [[ "$DRY_RUN" == "true" ]]; then

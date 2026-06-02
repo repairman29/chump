@@ -4315,6 +4315,20 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, gap, prs, lock]
 
+  - kind: reaper_skipped_active_bot_merge
+    effect_metric: self
+    emitter: scripts/ops/stale-gap-lock-reaper.sh (INFRA-2447)
+    trigger: >
+      reaper found a claim file whose claim PID is dead and heartbeat is stale,
+      but detected an active bot-merge.sh process for the same gap (via pgrep or
+      a live bot-merge-*.health file). Skips the reap to avoid invalidating the
+      lease mid-ship. Operators: if this fires repeatedly for the same gap without
+      a merged PR appearing, the bot-merge process may be wedged — check
+      .chump-locks/bot-merge-<pid>.health.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, lock, session, gap, bot_merge_pid, age_secs]
+    docs: docs/gaps/INFRA-2447.yaml
+
   - kind: timeout_rescue
     effect_metric: self
     emitter: scripts/dispatch/worker.sh
