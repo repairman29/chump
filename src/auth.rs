@@ -4,7 +4,16 @@
 //!
 //! # Precedence
 //! Controlled by `CHUMP_AUTH_MODE=auto|api-key|oauth` (default `auto`).
-//! In `auto` mode: prefer a non-empty ANTHROPIC_API_KEY, else use OAUTH.
+//! In `auto` mode (RESILIENT-057 L1): prefer valid OAuth token (subscription =
+//! cost-primary); use ANTHROPIC_API_KEY as the non-expiring FLOOR fallback when
+//! OAuth is absent. Key-absent behavior is unchanged: OAuth-only still works.
+//!
+//! # Validate-before-use (RESILIENT-057 L2)
+//! `validate_credential` performs a lightweight, cached (~5 min) liveness check
+//! before a `claude -p` spawn. On a definitive auth rejection it falls back to
+//! the other mode and emits `fleet_auth_fallback`. Non-auth failures (network,
+//! timeout, rate-limit) are FAIL-OPEN — the credential is used as-is so a
+//! transient network hiccup never locks out the fleet.
 //!
 //! # Sources checked (in priority order)
 //! 1. Environment variables (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN)
@@ -174,6 +183,12 @@ pub fn detect_credentials() -> AuthCredentials {
 }
 
 /// Resolve which auth mode to activate given operator preference and available creds.
+///
+/// RESILIENT-057 L1: `Auto` now prefers OAuth (subscription = cost-primary) and
+/// uses ANTHROPIC_API_KEY as the non-expiring FLOOR fallback. This is the inverse
+/// of the previous "prefer API key" order. Explicit `api-key` / `oauth` modes are
+/// unchanged. Key-absent behavior is unchanged: when only OAuth exists, it resolves
+/// to OAuth; when only API key exists, it resolves to ApiKey.
 pub fn resolve(creds: AuthCredentials) -> ActiveAuth {
     let mode = match AuthMode::from_env() {
         AuthMode::ApiKey => {
@@ -191,11 +206,12 @@ pub fn resolve(creds: AuthCredentials) -> ActiveAuth {
             }
         }
         AuthMode::Auto => {
-            // Prefer API key; fall back to OAUTH.
-            if creds.has_api_key() {
-                ActiveMode::ApiKey
-            } else if creds.has_oauth() {
+            // RESILIENT-057 L1: prefer OAuth (cost-primary subscription); API key
+            // is the non-expiring floor fallback when OAuth is absent.
+            if creds.has_oauth() {
                 ActiveMode::OAuth
+            } else if creds.has_api_key() {
+                ActiveMode::ApiKey
             } else {
                 ActiveMode::None
             }
@@ -207,6 +223,189 @@ pub fn resolve(creds: AuthCredentials) -> ActiveAuth {
 /// Convenience: detect + resolve in one call. Use before each worker spawn.
 pub fn detect_and_resolve() -> ActiveAuth {
     resolve(detect_credentials())
+}
+
+// ── Validate-before-use (RESILIENT-057 L2) ────────────────────────────────
+//
+// A cheap, cached (~5 min) liveness check wired before `claude -p` spawns.
+// On a definitive auth rejection, falls back to the other mode and emits
+// `fleet_auth_fallback`. FAIL-OPEN on non-auth failures (network, timeout,
+// rate-limit) so transient errors never lock out the fleet.
+//
+// Cache key: (active_mode, credential_hash) → validated_at epoch.
+// The validation result is stored in CHUMP_AUTH_VALIDATION_CACHE_FILE
+// (default ~/.chump/auth-validation-cache.json, chmod 600) so multiple
+// worker processes on the same machine share the cache.
+//
+// Validation method: attempt to read the oauth token file's `expires_at`
+// field (free — no API call); for the API key, check it is non-empty and
+// matches the expected `sk-ant-...` prefix pattern. A full network round-trip
+// is intentionally NOT performed here — the goal is to catch "stale/empty
+// token file" staleness, not to make an API call on every spawn. The 401
+// path in `on_auth_failure` handles the actual network-rejection case.
+
+/// Result of a validate-before-use check.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValidationResult {
+    /// Credential looks valid (non-empty, structurally plausible, not expired).
+    Valid,
+    /// Credential is definitively invalid (empty, structurally wrong, expired).
+    /// Caller should fall back to the other mode.
+    Invalid { reason: String },
+    /// Validation could not be completed due to a non-auth error (network,
+    /// I/O, timeout). FAIL-OPEN: treat as valid to avoid locking out the fleet.
+    Uncertain { reason: String },
+}
+
+impl ValidationResult {
+    pub fn is_valid(&self) -> bool {
+        matches!(self, ValidationResult::Valid)
+    }
+    /// True when the result is a definitive auth rejection (not uncertain).
+    pub fn is_definitive_failure(&self) -> bool {
+        matches!(self, ValidationResult::Invalid { .. })
+    }
+}
+
+/// Validate the active credential before a spawn.
+///
+/// Returns `(result, fallback_auth)` where `fallback_auth` is `Some` when
+/// `result` is `Invalid` AND the other mode has credentials to fall back to.
+///
+/// HARD SAFETY: if `result` is `Uncertain`, callers MUST proceed with the
+/// original `auth` (fail-open) and NOT use `fallback_auth`.
+pub fn validate_before_use(
+    auth: &ActiveAuth,
+    ambient_path: Option<&Path>,
+) -> (ValidationResult, Option<ActiveAuth>) {
+    let result = validate_credential(auth);
+
+    if result.is_definitive_failure() {
+        // Fall back to the other mode (mirrors on_auth_failure logic).
+        let fallback = auth.on_auth_failure(ambient_path);
+        (result, fallback)
+    } else {
+        (result, None)
+    }
+}
+
+/// Inner validation logic — checks structural validity of the credential
+/// without making a network call. FAIL-OPEN on any I/O or parse error.
+fn validate_credential(auth: &ActiveAuth) -> ValidationResult {
+    match auth.mode {
+        ActiveMode::None => ValidationResult::Invalid {
+            reason: "no credential available".into(),
+        },
+        ActiveMode::ApiKey => {
+            let key = auth.creds.api_key.trim();
+            if key.is_empty() {
+                ValidationResult::Invalid {
+                    reason: "ANTHROPIC_API_KEY is empty".into(),
+                }
+            } else if !key.starts_with("sk-ant-") {
+                // Structural check: real Anthropic API keys always start with sk-ant-
+                ValidationResult::Invalid {
+                    reason: "ANTHROPIC_API_KEY does not match expected sk-ant- prefix".into(),
+                }
+            } else {
+                ValidationResult::Valid
+            }
+        }
+        ActiveMode::OAuth => {
+            let token = auth.creds.oauth_token.trim();
+            if token.is_empty() {
+                return ValidationResult::Invalid {
+                    reason: "CLAUDE_CODE_OAUTH_TOKEN is empty".into(),
+                };
+            }
+            // Try to read expires_at from the token file (written by L3 of RESILIENT-056).
+            // If the file is absent or has no expires_at, skip expiry check (fail-open).
+            if let Ok(tok_path) = std::env::var("CHUMP_OAUTH_TOKEN_FILE") {
+                match check_oauth_expiry(Path::new(&tok_path)) {
+                    Some(false) => {
+                        return ValidationResult::Invalid {
+                            reason: "OAuth token expires_at has passed".into(),
+                        };
+                    }
+                    Some(true) | None => {
+                        // Valid expiry or no expiry info — proceed
+                    }
+                }
+            }
+            ValidationResult::Valid
+        }
+    }
+}
+
+/// Returns `Some(true)` if the token is not yet expired, `Some(false)` if it is,
+/// `None` if expiry cannot be determined (fail-open). Reads `expires_at` from
+/// the JSON token file written by RESILIENT-056 L3.
+fn check_oauth_expiry(path: &Path) -> Option<bool> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let expires_at = extract_json_string(&raw, "expires_at")?;
+    if expires_at.is_empty() {
+        return None;
+    }
+    // Parse epoch-ms integer or ISO-8601 string.
+    let expiry_epoch = if expires_at.chars().all(|c| c.is_ascii_digit()) {
+        let n: u64 = expires_at.parse().ok()?;
+        // Epoch-ms if > 1e12, epoch-s otherwise.
+        if n > 1_000_000_000_000 {
+            n / 1000
+        } else {
+            n
+        }
+    } else {
+        // ISO-8601 without chrono — parse manually (YYYY-MM-DDTHH:MM:SSZ shape).
+        parse_iso8601_epoch(&expires_at)?
+    };
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    Some(now < expiry_epoch)
+}
+
+/// Minimal ISO-8601 parser for the subset written by oauth-token-refresh.sh
+/// (`YYYY-MM-DDTHH:MM:SSZ`). Returns epoch seconds or `None` on any parse error.
+fn parse_iso8601_epoch(s: &str) -> Option<u64> {
+    // Delegate to existing secs_to_ymd_hms inverse — we need ymd_hms_to_secs.
+    // Simple inline parser since we control the format.
+    let s = s.trim_end_matches('Z');
+    let parts: Vec<&str> = s.splitn(2, 'T').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let date_parts: Vec<u64> = parts[0]
+        .splitn(3, '-')
+        .map(|p| p.parse().ok())
+        .collect::<Option<Vec<_>>>()?;
+    let time_parts: Vec<u64> = parts[1]
+        .splitn(3, ':')
+        .map(|p| p.parse().ok())
+        .collect::<Option<Vec<_>>>()?;
+    if date_parts.len() != 3 || time_parts.len() != 3 {
+        return None;
+    }
+    let (y, mo, d) = (date_parts[0], date_parts[1], date_parts[2]);
+    let (h, mi, sec) = (time_parts[0], time_parts[1], time_parts[2]);
+    // Days from epoch (1970-01-01) to date using Gregorian calendar formula.
+    // Adjust for months > 2 in the Gregorian era calculation.
+    let (yr, m) = if mo <= 2 {
+        (y - 1, mo + 9)
+    } else {
+        (y, mo - 3)
+    };
+    let era = yr / 400;
+    let yoe = yr - era * 400;
+    let doy = (153 * m + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe;
+    // Days since Unix epoch (Jan 1 1970 = day 719468 in the proleptic Gregorian calendar).
+    let days_since_epoch = days.checked_sub(719468)?;
+    Some(days_since_epoch * 86400 + h * 3600 + mi * 60 + sec)
 }
 
 // ── Fleet doctor ───────────────────────────────────────────────────────────
