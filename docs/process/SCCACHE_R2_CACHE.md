@@ -216,17 +216,70 @@ bash scripts/ci/test-sccache-wired.sh --require-rustc-wrapper
 bash scripts/ci/test-sccache-wired.sh --require-reachable
 ```
 
-## Cost
+## Cost model + eviction (INFRA-2450)
 
-Cloudflare R2 pricing for chump-scale (rough estimates):
+> ⚠️ An earlier version of this section estimated a 5-10 GB bounded cache at
+> ~$1.50/mo. **That was wrong by ~50×.** Measured 2026-06-02: the
+> `chump-sccache` bucket holds **522 GB across 471k objects and climbing** —
+> sccache has no server-side eviction, so on R2 the cache grows without bound.
+> Below is the live pricing model + what the dashboard actually shows + the
+> policy that caps it.
 
-- Storage: ~$0.015/GB/mo. Compiled artifact cache might grow to ~5-10 GB → ~$0.10/mo.
-- Class A operations (writes): $4.50/M. ~50 writes per CI run × ~100 runs/day = ~5k writes/day = 150k/mo → ~$0.70/mo.
-- Class B operations (reads): $0.36/M. ~500 reads per CI run × ~100 runs/day = ~50k reads/day = 1.5M/mo → ~$0.55/mo.
-- Egress: **free** (R2's killer feature vs. S3).
+R2 bills on three levers, and **egress is free** — the entire reason R2 beats
+S3 for a CI cache (runners pull cached artifacts at $0):
 
-**Total estimated:** ~$1.50-2/mo. Well under the $5/mo budget called out
-in `docs/strategy/CI_SCALING_REFERENCE.md` for Wave 1.
+| Lever | Rate | Free tier / mo | What drives it (sccache) |
+|---|---|---|---|
+| Standard storage | $0.015 / GB-month | 10 GB | the cache sitting in the bucket |
+| Class A (writes) | $4.50 / million | 1 M | each `PutObject` on a compile-miss |
+| Class B (reads) | $0.36 / million | 10 M | each `GetObject`/`HeadObject` on a hit |
+| Egress | **$0** | ∞ | runners pulling the cache — free |
+
+**Measured cost — 2026-06-02 dashboard (`chump-sccache`):**
+
+| Lever | Observed | Monthly cost |
+|---|---|---|
+| Storage | 522 GB / 471k objects | **~$7.68** (`(522−10) × 0.015`) — dominant, and growing every build |
+| Class A | 141.5k month-to-date | $0 so far (< 1M free); ~$5 if it extrapolates to ~2M/mo |
+| Class B | 155k month-to-date | $0 (nowhere near the 10M free tier) |
+| Egress | — | $0 |
+
+Net today ≈ **$8-13/mo**, almost entirely storage — and storage climbs every
+build because nothing evicts. Left alone this is a slow-burn cost leak: $7.68/mo
+now → $30-60/mo as the cache balloons to multi-TB of 99%-stale objects.
+
+### Eviction policy (caps the growth)
+
+An R2 **lifecycle rule** expires stale objects so storage reaches a steady
+state instead of climbing forever. sccache regenerates anything it still
+needs, and egress is free, so eviction is pure savings.
+
+Apply it (idempotent; needs `wrangler login` — **no** Cloudflare API token):
+
+```bash
+wrangler login                                  # one-time browser OAuth
+bash scripts/ops/r2-sccache-lifecycle.sh        # 30d expiry → both buckets
+# tighter:  EXPIRE_DAYS=14 bash scripts/ops/r2-sccache-lifecycle.sh
+```
+
+The script applies, to both `chump-sccache` and `chump-sccache-ci`:
+- **object expiry** after `EXPIRE_DAYS` (default 30) — deletes stale cache;
+- **incomplete-multipart-abort** after 1 day — reclaims orphaned partial
+  uploads, which otherwise accrue as invisible (un-listed) storage.
+
+Verify: `wrangler r2 bucket lifecycle list chump-sccache`.
+
+**Why expire (delete) rather than transition to Infrequent-Access storage:**
+IA storage is cheaper to hold ($0.01/GB) but **charges per read**, and a
+compile cache is read-heavy on every hit — IA would convert today's free
+Class B reads into billed ones. For a regenerable cache, delete-on-age is
+strictly cheaper.
+
+**Re-check quarterly** via the R2 dashboard object count. If storage still
+climbs past a comfortable steady state, lower `EXPIRE_DAYS` and re-run.
+
+CI gate: `scripts/ci/test-r2-sccache-lifecycle.sh` asserts the policy script
++ this section stay wired.
 
 ## Wave 1 cohort
 
