@@ -807,3 +807,6 @@ CHUMP_CLAIM_IGNORE_MAIN_HEALTH
 # ── INFRA-2417: daemon-exit-loop-watcher ─────────────────────────────────────
 CHUMP_DAEMON_EXIT_LOOP_DISABLED
 CHUMP_DAEMON_EXIT_LOOP_THRESHOLD
+# ── INFRA-2418: integrator stale-queue SLA fallback ───────────────────────────
+CHUMP_INTEGRATOR_STALE_SLA_HOURS
+CHUMP_INTEGRATOR_NO_STALE_SLA

@@ -64,6 +64,16 @@ pub struct IntegratorConfig {
     ///
     /// Env: `CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL`.
     pub do_not_batch_label: String,
+    /// Hours a candidate must have been waiting before the stale-SLA fallback
+    /// fires when candidate count is below `volume_threshold`. Default: 6.
+    ///
+    /// Env: `CHUMP_INTEGRATOR_STALE_SLA_HOURS`.
+    pub stale_sla_hours: u64,
+    /// When true, the stale-SLA fallback is disabled and the original strict
+    /// volume-threshold behavior is preserved. Default: false.
+    ///
+    /// Env: `CHUMP_INTEGRATOR_NO_STALE_SLA=1`.
+    pub no_stale_sla: bool,
 }
 
 impl Default for IntegratorConfig {
@@ -79,6 +89,8 @@ impl Default for IntegratorConfig {
             sampling_pct: 100,
             batch_max_live: 5,
             do_not_batch_label: "do-not-batch".to_string(),
+            stale_sla_hours: 6,
+            no_stale_sla: false,
         }
     }
 }
@@ -100,6 +112,8 @@ impl IntegratorConfig {
         let batch_max_live = env_usize("CHUMP_INTEGRATOR_BATCH_MAX", 5);
         let do_not_batch_label = std::env::var("CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL")
             .unwrap_or_else(|_| "do-not-batch".to_string());
+        let stale_sla_hours = env_u64("CHUMP_INTEGRATOR_STALE_SLA_HOURS", 6);
+        let no_stale_sla = env_bool("CHUMP_INTEGRATOR_NO_STALE_SLA", false);
 
         // CHUMP_INTEGRATOR_DRY_RUN is authoritative. When absent, check the
         // CHUMP_INTEGRATOR_LIVE alias. Default is always dry_run=true.
@@ -121,6 +135,8 @@ impl IntegratorConfig {
             sampling_pct,
             batch_max_live,
             do_not_batch_label,
+            stale_sla_hours,
+            no_stale_sla,
         }
     }
 }
