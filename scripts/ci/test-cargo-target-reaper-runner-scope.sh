@@ -192,6 +192,22 @@ else
     fail "5d-old fingerprint not identified under aggressive mode"
 fi
 
+# INFRA-2188: assert cargo_reaper_aggressive_mode_engaged event was emitted to ambient.
+echo "--- Test 4b: cargo_reaper_aggressive_mode_engaged ambient event emitted ---"
+if [[ -f "${TMPBASE}/.chump-locks/ambient.jsonl" ]]; then
+    if grep -q '"kind":"cargo_reaper_aggressive_mode_engaged"' "${TMPBASE}/.chump-locks/ambient.jsonl"; then
+        if grep -q '"fingerprint_age_d":1' "${TMPBASE}/.chump-locks/ambient.jsonl"; then
+            pass "cargo_reaper_aggressive_mode_engaged emitted with fingerprint_age_d=1"
+        else
+            fail "cargo_reaper_aggressive_mode_engaged emitted but missing fingerprint_age_d:1"
+        fi
+    else
+        fail "cargo_reaper_aggressive_mode_engaged NOT found in ambient.jsonl after aggressive-mode run"
+    fi
+else
+    fail "ambient.jsonl not written — cannot verify aggressive_mode_engaged event"
+fi
+
 # ── Test 5: summary event includes new counters ─────────────────────────────
 echo "--- Test 5: summary event includes runner_scope_count + aggressive_mode ---"
 grep -q '"runner_scope_count"' "$REAPER" \
