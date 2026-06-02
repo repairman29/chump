@@ -230,6 +230,26 @@ impl IntegratorDaemon {
                 return Ok(());
             }
             PolicyDecision::Proceed => {}
+            PolicyDecision::StaleSla { oldest_stale_hours } => {
+                // Stale-SLA fallback (INFRA-2418): below volume threshold but at
+                // least one candidate has aged past the SLA. Proceed with what
+                // we have and emit the ambient signal so operators can observe.
+                eprintln!(
+                    "[integrator] stale-SLA fired: {} candidate(s) aged {}h >= SLA {}h — proceeding",
+                    candidates.len(),
+                    oldest_stale_hours,
+                    self.config.stale_sla_hours,
+                );
+                emit_event(
+                    "integrator_stale_sla_fired",
+                    &[
+                        ("cycle_id", &cycle_id),
+                        ("candidates_shipped", &candidates.len().to_string()),
+                        ("oldest_stale_hours", &oldest_stale_hours.to_string()),
+                        ("threshold", &self.config.volume_threshold.to_string()),
+                    ],
+                );
+            }
         }
 
         emit_event(
