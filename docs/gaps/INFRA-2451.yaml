@@ -1,7 +1,7 @@
 - id: INFRA-2451
   domain: INFRA
   title: "CREDIBLE: integration-test-pipeline-1780430245-82368"
-  status: open
+  status: ready_to_ship
   priority: P3
   effort: xs
   acceptance_criteria:
