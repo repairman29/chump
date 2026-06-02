@@ -235,6 +235,31 @@ if [[ -z "$NEW_ACCESS_KEY_ID" || -z "$NEW_SECRET_ACCESS_KEY" || -z "$NEW_TOKEN_I
     exit 4
 fi
 
+# ── INFRA-2127: correct + validate the R2→S3 access key BEFORE setting secrets ──
+# Cloudflare R2's S3 access_key_id is 32-hex (it equals the token id); the
+# secret is 64-hex. Bug fixed: this CF-API path shipped a malformed (len-53)
+# value into the R2_ACCESS_KEY_ID GH secret with NO length check, producing
+# S3Error Unauthorized on every Rust CI job (0% sccache hits → cold builds
+# fleet-wide). The gh-only path (INFRA-2240) already validates len==32 —
+# mirror that guard here so neither rotation path can ever ship a bad key.
+if ! printf '%s' "$NEW_ACCESS_KEY_ID" | grep -qE '^[0-9a-fA-F]{32}$'; then
+    # The R2 S3 access_key_id IS the token id — fall back to it.
+    if printf '%s' "$NEW_TOKEN_ID" | grep -qE '^[0-9a-fA-F]{32}$'; then
+        echo "[rotate-sccache-r2] note: .result.access_key_id (len ${#NEW_ACCESS_KEY_ID}) is not 32-hex; using .result.id (the R2 S3 access key id)" >&2
+        NEW_ACCESS_KEY_ID="$NEW_TOKEN_ID"
+    fi
+fi
+if ! printf '%s' "$NEW_ACCESS_KEY_ID" | grep -qE '^[0-9a-fA-F]{32}$'; then
+    echo "[rotate-sccache-r2] ABORT (INFRA-2127): R2_ACCESS_KEY_ID is len ${#NEW_ACCESS_KEY_ID}, expected 32-hex. Refusing to set a malformed secret — inspect CF response .result.{access_key_id,id}." >&2
+    _emit "sccache_r2_token_rotation_failed" "\"step\":\"validate_access_key_id\"" "\"len\":${#NEW_ACCESS_KEY_ID}"
+    exit 4
+fi
+if ! printf '%s' "$NEW_SECRET_ACCESS_KEY" | grep -qE '^[0-9a-fA-F]{64}$'; then
+    echo "[rotate-sccache-r2] ABORT (INFRA-2127): R2_SECRET_ACCESS_KEY is len ${#NEW_SECRET_ACCESS_KEY}, expected 64-hex. Refusing to set a malformed secret." >&2
+    _emit "sccache_r2_token_rotation_failed" "\"step\":\"validate_secret_access_key\"" "\"len\":${#NEW_SECRET_ACCESS_KEY}"
+    exit 4
+fi
+
 echo "  PASS new token id=$NEW_TOKEN_ID access_key_id=$(_finger "$NEW_ACCESS_KEY_ID")"
 
 # Trap: if anything below fails, attempt to delete the new token so we don't leak.

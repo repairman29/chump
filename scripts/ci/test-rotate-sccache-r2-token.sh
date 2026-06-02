@@ -99,6 +99,23 @@ else
     _fail "doc: INFRA-2237 attribution missing"
 fi
 
+# ── Test 11: INFRA-2127 — refuses to ship a malformed (non-32hex) access key ──
+if grep -q 'INFRA-2127' "$ROT" \
+   && grep -q '0-9a-fA-F]{32}' "$ROT" \
+   && grep -q 'Refusing to set a malformed secret' "$ROT"; then
+    _pass "validate: aborts on non-32-hex R2_ACCESS_KEY_ID before writing the GH secret (INFRA-2127)"
+else
+    _fail "validate: missing 32-hex access-key guard (INFRA-2127) — malformed keys could ship"
+fi
+
+# ── Test 12: INFRA-2127 — 64-hex secret guard + token-id fallback ───────────
+if grep -q '0-9a-fA-F]{64}' "$ROT" \
+   && grep -q 'using .result.id' "$ROT"; then
+    _pass "validate: 64-hex secret guard + .result.id fallback present (INFRA-2127)"
+else
+    _fail "validate: missing 64-hex secret guard or .result.id fallback (INFRA-2127)"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ $FAIL -eq 0 ]] || exit 1
