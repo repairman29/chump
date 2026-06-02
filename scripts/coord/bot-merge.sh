@@ -1157,20 +1157,44 @@ _bm_health_init() {
         "$_BM_STARTED_AT" "$_BM_PID" > "$_BM_STEPS_FILE" 2>/dev/null || true
     _bm_health_write
 
-    # Background heartbeat: rewrite health file every 30s
+    # Background heartbeat: rewrite the health file AND (INFRA-2455) print a
+    # live stderr liveness line every CHUMP_BOT_MERGE_HEARTBEAT_S (default 30s).
+    #
+    # Why the stderr line: the health file alone is invisible on the terminal,
+    # so a slow-but-working run (e.g. a multi-minute cold preflight) looked
+    # hung. The first operator-visible stderr signal used to be the 50%-budget
+    # warn (~450s on the 900s default) — which trained a manual-bypass reflex
+    # (VOA-002, 2026-06-02: bot-merge was killed at 420s as "stalled" when it
+    # was mid-preflight, before any signal). This surfaces "alive + which step
+    # + how long" within the first interval. Reuses the existing step file +
+    # the existing per-step gtimeout (300s) / budget-warn for *stall* detection
+    # — no new event kind (avoids META-063 duplication).
+    #
+    # NOTE: piping bot-merge through `tail` buffers stderr until exit and hides
+    # this — watch it directly, or `… 2>&1 | tee`, or tail the health file.
     local hf="$_BM_HEALTH_FILE" sf="$_BM_STEP_FILE"
     local pid="$_BM_PID" sa="$_BM_STARTED_AT"
     # INFRA-1315: capture gap_ids for watchdog identification.
     local gap_str="${GAP_IDS[*]:-}"
+    local _hb_interval="${CHUMP_BOT_MERGE_HEARTBEAT_S:-30}"
+    [[ "$_hb_interval" -lt 5 ]] 2>/dev/null && _hb_interval=5  # floor: don't spam
     (
+        local _hb_elapsed=0
+        # Immediate first line so life is visible before the first sleep.
+        printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (0s; heartbeat every %ss)\033[0m\n' \
+            "$(date +%H:%M:%S)" "$(cat "$sf" 2>/dev/null || echo init)" "$_hb_interval" >&2
         while true; do
-            sleep 30
+            sleep "$_hb_interval"
+            _hb_elapsed=$(( _hb_elapsed + _hb_interval ))
             local step now
             step="$(cat "$sf" 2>/dev/null || echo unknown)"
             now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
                 "$pid" "$sa" "$step" "$now" "$gap_str" \
                 > "${hf}.tmp" && mv "${hf}.tmp" "$hf" || true
+            # INFRA-2455: same liveness, surfaced to stderr so it's visible live.
+            printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (~%ds elapsed)\033[0m\n' \
+                "$(date +%H:%M:%S)" "$step" "$_hb_elapsed" >&2
         done
     ) &
     _BM_HEALTH_PID=$!
