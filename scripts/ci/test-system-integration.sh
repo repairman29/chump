@@ -248,15 +248,25 @@ echo "--- Assertion 4: gap ship marks status done ---"
         # auto-fetches origin/main before the proof-of-merge check. For integration
         # tests we satisfy proof-of-merge by setting up an isolated repo whose
         # main branch has a commit mentioning the gap ID — no bypass env var needed.
+        # INFRA-2451: also set up a bare-mirror origin so `git fetch origin main`
+        # succeeds and `git log origin/main --grep=<gap-id>` finds the marker.
+        # Without an origin remote, the auto-fetch is silently no-op and the
+        # proof-of-merge cannot locate the marker even though it's on local main.
         SHIP_REPO="$TMP/ship-repo-$$"
+        SHIP_BARE="$TMP/ship-origin-$$.git"
         mkdir -p "$SHIP_REPO"
-        git -C "$SHIP_REPO" init -q
+        git -C "$SHIP_REPO" init -q -b main
         git -C "$SHIP_REPO" config user.email "test@integration.local"
         git -C "$SHIP_REPO" config user.name "Integration Test"
         # Commit that carries the gap ID so verify_proof_of_merge passes.
         echo "ship test" > "$SHIP_REPO/marker.txt"
         git -C "$SHIP_REPO" add marker.txt
         git -C "$SHIP_REPO" commit -q -m "feat(${GAP_ID}): integration-test ship marker"
+        # Bare-mirror origin so the auto-fetch finds the marker commit.
+        git clone --bare -q "$SHIP_REPO" "$SHIP_BARE"
+        git -C "$SHIP_REPO" remote add origin "$SHIP_BARE"
+        git -C "$SHIP_REPO" fetch -q origin main 2>/dev/null || true
+        git -C "$SHIP_REPO" branch --set-upstream-to=origin/main main 2>/dev/null || true
         # Copy the real state.db so the gap exists in the isolated store.
         mkdir -p "$SHIP_REPO/.chump"
         cp "$REPO_ROOT/.chump/state.db" "$SHIP_REPO/.chump/state.db"
