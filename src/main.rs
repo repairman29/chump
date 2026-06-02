@@ -7250,6 +7250,10 @@ async fn main() -> Result<()> {
                 let json_out = args.iter().any(|a| a == "--json");
                 let why = args.iter().any(|a| a == "--why");
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
+                // INFRA-881: --finding bypasses the sub-agent reserve guard below.
+                // Use when a dispatched sub-agent spots a genuinely new bug/issue
+                // and must file it immediately (AGENTS.md load-bearing reflex).
+                let finding = args.iter().any(|a| a == "--finding");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
 
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
@@ -7270,6 +7274,81 @@ async fn main() -> Result<()> {
                     }
                     _ => "[]".into(),
                 };
+
+                // ── INFRA-881: sub-agent reserve guard ───────────────────────────────
+                // Dispatched sub-agents must CLAIM pre-existing gaps; only the
+                // orchestrator/operator should RESERVE new work-gaps. This prevents
+                // duplicate-gap churn from parallel sub-agents independently filing
+                // the same work.
+                //
+                // Detection mirrors scripts/git-hooks/pre-commit _chump_is_subagent_session():
+                //   session_id prefix chump-anon-* or subagent-*
+                //
+                // Bypass: pass --finding to indicate a genuinely new bug/observation
+                // spotted during implementation (AGENTS.md load-bearing reflex).
+                // --finding reserves still run the INFRA-1149 similarity check.
+                //
+                // Operator / non-sub-agent sessions: unaffected — reserve freely.
+                //
+                // Disable entirely: CHUMP_SUBAGENT_RESERVE_CHECK=0.
+                let subagent_check_disabled =
+                    std::env::var("CHUMP_SUBAGENT_RESERVE_CHECK").as_deref() == Ok("0");
+                if !subagent_check_disabled && !finding && !force {
+                    // Resolve session id (same priority as pre-commit hook).
+                    let sid: String = crate::ambient_stream::env_session_id()
+                        .or_else(|| {
+                            // Fall back to ~/.chump/session_id (mirrors pre-commit hook)
+                            let home = std::env::var("HOME").ok()?;
+                            let p = std::path::PathBuf::from(home)
+                                .join(".chump")
+                                .join("session_id");
+                            let s = std::fs::read_to_string(p).ok()?;
+                            let s = s.trim().to_string();
+                            if s.is_empty() {
+                                None
+                            } else {
+                                Some(s)
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    let is_subagent =
+                        sid.starts_with("chump-anon-") || sid.starts_with("subagent-");
+
+                    if is_subagent {
+                        // Emit ambient event so orchestrators can audit the pattern.
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let ts_now = unix_ts();
+                        let safe_sid = sid.replace(['"', '\\'], "");
+                        let safe_domain = domain.replace(['"', '\\'], "");
+                        let safe_title = title.replace(['"', '\\'], "");
+                        if let Some(parent) = ambient_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                            .and_then(|mut f| {
+                                use std::io::Write;
+                                writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts_now}","kind":"gap_reserve_subagent_blocked","session":"{safe_sid}","domain":"{safe_domain}","title":"{safe_title}"}}"#
+                                )
+                            });
+
+                        eprintln!(
+                            "chump gap reserve: dispatched sub-agents claim pre-existing gaps; \
+                             the orchestrator creates work-gaps."
+                        );
+                        eprintln!(
+                            "  If this is a newly-spotted bug/finding, pass --finding to proceed."
+                        );
+                        eprintln!("  Disable check: CHUMP_SUBAGENT_RESERVE_CHECK=0");
+                        std::process::exit(1);
+                    }
+                }
+                // ── end INFRA-881 ────────────────────────────────────────────────────
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
@@ -12098,6 +12177,12 @@ async fn main() -> Result<()> {
                 eprintln!("  reserve          --domain D --title T [--priority P1] [--effort s]");
                 eprintln!(
                     "                     (positional) D title…  — same as --domain / --title"
+                );
+                eprintln!(
+                    "                     --finding              sub-agent spotting a new bug may pass"
+                );
+                eprintln!(
+                    "                                            --finding to bypass the sub-agent guard"
                 );
                 eprintln!(
                     "  claim            <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]"

@@ -344,6 +344,8 @@ CHUMP_BOT_MERGE_REST_DIRECT
 CHUMP_BOT_MERGE_STALE_THRESHOLD
 # ── INFRA-1418: reserve-time offline-compliance lint ─────────────────────────
 CHUMP_DISABLE_OFFLINE_CHECK
+# ── INFRA-881: sub-agent reserve guard ───────────────────────────────────────
+CHUMP_SUBAGENT_RESERVE_CHECK
 # ── INFRA-1149: reserve-time title similarity check ──────────────────────────
 CHUMP_GAP_RESERVE_NO_SIMILARITY
 CHUMP_GAP_RESERVE_SIMILARITY_WARN

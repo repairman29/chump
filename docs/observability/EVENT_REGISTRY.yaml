@@ -944,6 +944,25 @@ events:
       pause_reason is the "reason" field from the fleet-paused JSON payload
       (e.g. pipeline_jam, slo_breach). Bypass: set CHUMP_IGNORE_WASTE_PAUSE=1.
 
+  - kind: gap_reserve_subagent_blocked
+    effect_metric: self
+    emitter: src/main.rs — chump gap reserve (INFRA-881)
+    # scanner-anchor: "kind":"gap_reserve_subagent_blocked"
+    trigger: >
+      chump gap reserve was called from a dispatched sub-agent session
+      (CHUMP_SESSION_ID prefix chump-anon-* or subagent-*) without the
+      --finding flag. Sub-agents must CLAIM pre-existing gaps; only the
+      orchestrator/operator should RESERVE new work-gaps. The reserve is
+      refused before any state.db write.
+    consumers: [audit-log, ci-audit]
+    fields_required: [ts, kind, session, domain, title]
+    docs: |
+      Bypass: pass --finding to indicate a genuinely new bug spotted
+      during implementation (AGENTS.md load-bearing reflex). --finding
+      still runs the INFRA-1149 similarity check.
+      Disable check entirely: CHUMP_SUBAGENT_RESERVE_CHECK=0.
+    status: stable
+
   - kind: gap_cooldown_cleared
     effect_metric: self
     emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)
