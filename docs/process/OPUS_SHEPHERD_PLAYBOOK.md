@@ -127,7 +127,9 @@ gets skipped.
 
 **Reconciliation** (for any of the above):
 ```bash
-CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 \
+# INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE is deleted. chump gap ship now
+# auto-fetches origin/main before the proof-of-merge check — no bypass needed.
+CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
     chump gap ship <GID> --closed-pr <N> --update-yaml
 ```
 

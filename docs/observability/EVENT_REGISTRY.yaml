@@ -6304,6 +6304,32 @@ events:
     expected_volume: "1 per gap shipped via any path"
     status: stable
     # payload: {gap_id: string, shape: "integration"|"per_pr", ts: string}
+  - kind: ship_autofetch_pulled
+    effect_metric: resilient
+    emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)
+    trigger: >
+      Emitted when chump gap ship auto-fetches origin/main, detects local main
+      is N commits behind, finds a clean working tree, and successfully pulls
+      with --ff-only. Indicates the stale-local-main case was recovered
+      automatically without operator intervention.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, behind]
+    expected_volume: "occasional; spikes indicate workers falling behind main"
+    status: stable
+    # payload: {gap_id: string, behind: u64, ts: string}
+  - kind: ship_autofetch_blocked_dirty
+    effect_metric: resilient
+    emitter: crates/chump-gap-store/src/lib.rs GapStore::ship() (INFRA-2423)
+    trigger: >
+      Emitted when chump gap ship auto-fetches origin/main, detects local main
+      is N commits behind, but finds the working tree is dirty (staged or
+      unstaged changes). Ship is blocked; the caller must stash or commit
+      before retrying. This is a friction signal for fleet health dashboards.
+    consumers: [fleet-brief, ops-audit, fleet-doctor]
+    fields_required: [ts, kind, gap_id, behind]
+    expected_volume: "rare; should be near-zero in healthy fleet operation"
+    status: stable
+    # payload: {gap_id: string, behind: u64, ts: string}
   - kind: per_gap_branch_pruned
     effect_metric: zero-waste
     emitter: scripts/ops/chump-post-integration-prune.sh (INFRA-2138)

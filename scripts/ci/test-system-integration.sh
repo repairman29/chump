@@ -244,13 +244,34 @@ echo "--- Assertion 4: gap ship marks status done ---"
     if [[ -z "${GAP_ID:-}" ]]; then
         skip "Assertion 4: no gap ID (gap reserve failed)"
     else
+        # INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE is deleted; chump gap ship now
+        # auto-fetches origin/main before the proof-of-merge check. For integration
+        # tests we satisfy proof-of-merge by setting up an isolated repo whose
+        # main branch has a commit mentioning the gap ID — no bypass env var needed.
+        SHIP_REPO="$TMP/ship-repo-$$"
+        mkdir -p "$SHIP_REPO"
+        git -C "$SHIP_REPO" init -q
+        git -C "$SHIP_REPO" config user.email "test@integration.local"
+        git -C "$SHIP_REPO" config user.name "Integration Test"
+        # Commit that carries the gap ID so verify_proof_of_merge passes.
+        echo "ship test" > "$SHIP_REPO/marker.txt"
+        git -C "$SHIP_REPO" add marker.txt
+        git -C "$SHIP_REPO" commit -q -m "feat(${GAP_ID}): integration-test ship marker"
+        # Copy the real state.db so the gap exists in the isolated store.
+        mkdir -p "$SHIP_REPO/.chump"
+        cp "$REPO_ROOT/.chump/state.db" "$SHIP_REPO/.chump/state.db"
+        # Provide docs/gaps/ so --update-yaml has a target directory.
+        mkdir -p "$SHIP_REPO/docs/gaps"
+        if [[ -f "$REPO_ROOT/docs/gaps/${GAP_ID}.yaml" ]]; then
+            cp "$REPO_ROOT/docs/gaps/${GAP_ID}.yaml" "$SHIP_REPO/docs/gaps/${GAP_ID}.yaml"
+        fi
+
         SHIP_OUT=$(
-            CHUMP_REPO="$REPO_ROOT" \
+            CHUMP_REPO="$SHIP_REPO" \
             CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
             CHUMP_SHIP_NO_AUTOSTAGE=1 \
             CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
             CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-            CHUMP_BYPASS_PROOF_OF_MERGE=1 \
             "$CHUMP" gap ship "$GAP_ID" --update-yaml --closed-pr 9999 2>&1
         ) || SHIP_RC=$?
         SHIP_RC="${SHIP_RC:-0}"
@@ -258,17 +279,17 @@ echo "--- Assertion 4: gap ship marks status done ---"
         if [[ $SHIP_RC -ne 0 ]]; then
             fail "Assertion 4: gap ship exited $SHIP_RC; output: ${SHIP_OUT:0:200}"
         else
-            # Verify via gap show
+            # Verify via gap show against the isolated repo's state.db.
             SHOW_OUT=$(
-                CHUMP_REPO="$REPO_ROOT" \
+                CHUMP_REPO="$SHIP_REPO" \
                 "$CHUMP" gap show "$GAP_ID" 2>&1
             ) || true
 
             if echo "$SHOW_OUT" | grep -qi "done\|shipped\|closed"; then
                 ok "Assertion 4: gap ship set status to done"
             else
-                # Also check YAML directly
-                YAML_PATH="$REPO_ROOT/docs/gaps/${GAP_ID}.yaml"
+                # Also check YAML directly in the isolated repo.
+                YAML_PATH="$SHIP_REPO/docs/gaps/${GAP_ID}.yaml"
                 if [[ -f "$YAML_PATH" ]] && grep -q "status: done" "$YAML_PATH"; then
                     ok "Assertion 4: gap ship set status to done (verified via YAML)"
                 else

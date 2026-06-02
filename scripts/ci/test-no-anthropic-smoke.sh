@@ -86,14 +86,28 @@ pass "gap show works without Anthropic creds"
 
 # ── Test 4: chump gap ship works without creds ─────────────────────────────
 echo "--- Test 4: gap ship ---"
+# INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE deleted; ship auto-fetches origin/main.
+# Satisfy proof-of-merge by pointing CHUMP_REPO at an isolated git repo whose
+# main branch has a commit mentioning $gap_id. The state.db is still read from
+# CHUMP_STATE_DB=$TMP/state.db so the gap record is found correctly.
+proof_repo="$TMP/proof-repo-$$"
+mkdir -p "$proof_repo"
+git -C "$proof_repo" init -q
+git -C "$proof_repo" config user.email "test@integration.local"
+git -C "$proof_repo" config user.name "Integration Test"
+echo "proof" > "$proof_repo/marker.txt"
+git -C "$proof_repo" add marker.txt
+git -C "$proof_repo" commit -q -m "feat(${gap_id}): no-anthropic smoke proof-of-merge marker"
+mkdir -p "$proof_repo/docs/gaps"
+cp "$yaml_path" "$proof_repo/docs/gaps/${gap_id}.yaml"
+CHUMP_REPO="$proof_repo" \
 CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
 CHUMP_SHIP_NO_AUTOSTAGE=1 \
 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
 CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-CHUMP_BYPASS_PROOF_OF_MERGE=1 \
 "$CHUMP_BIN" gap ship "$gap_id" --update-yaml --closed-pr 9999 \
     || fail "gap ship failed"
-grep -q "status: done" "$yaml_path" || fail "YAML status not 'done' after ship"
+grep -q "status: done" "$proof_repo/docs/gaps/${gap_id}.yaml" || fail "YAML status not 'done' after ship"
 pass "gap ship works without Anthropic creds"
 
 # ── Test 5: no Anthropic API calls in ambient log ──────────────────────────
