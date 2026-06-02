@@ -1,0 +1,34 @@
+# plist-lint-exempt.txt — INFRA-2419
+#
+# Allowlist for plist files or installers that are permitted to contain
+# temp paths in ProgramArguments or WorkingDirectory.
+#
+# This is the ONLY "bypass" for the plist-no-tmp-paths gate. If a plist
+# genuinely requires a temp path (rare), document it here with a reason.
+# Source-controlled; every exemption is auditable.
+#
+# Format (one entry per line):
+#   <basename> <key> <pattern>  # reason: <why this is acceptable>
+#
+#   <basename>  — filename only (no path), e.g. com.chump.foo.plist
+#               OR install-foo-launchd.sh
+#   <key>       — ProgramArguments OR WorkingDirectory
+#   <pattern>   — the exact forbidden string that appears, e.g. /tmp/
+#
+# Alternatively, a bare <basename> exempts ALL violations in that file.
+#
+# Matching in test-plist-no-tmp-paths.sh:
+#   Exact match on "<basename> <key> <pattern>" OR bare "<basename>" line.
+#
+# Examples:
+#   com.chump.foo.plist ProgramArguments /tmp/  # reason: uses /tmp for IPC socket; socket is recreated on each launch
+#   install-foo-launchd.sh WorkingDirectory /private/tmp/  # reason: ...
+#
+# ── Active exemptions ──────────────────────────────────────────────────────────
+#
+# (none — baseline is clean as of INFRA-2419, 2026-06-02)
+#
+# If you add an exemption, include:
+#   1. The basename, key, and pattern (precise)
+#   2. The reason why a temp path is genuinely required
+#   3. The gap ID or PR reference that approved it
