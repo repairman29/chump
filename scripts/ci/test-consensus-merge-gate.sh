@@ -203,6 +203,36 @@ fi
 assert_emit       "bypass-emit"      "$AMB4" "consensus_bypass_used"
 assert_no_emit    "bypass-no-block"  "$AMB4" "consensus_gate_blocked"
 
+# ── (v) INFRA-2421: fleet launcher propagates CHUMP_CONSENSUS_MERGE_GATE ─────
+# Assert that scripts/dispatch/run-fleet.sh worker_env contains the var so
+# the gate runs fleet-wide without requiring each operator to set it manually.
+echo "[test] (v) run-fleet.sh worker_env contains CHUMP_CONSENSUS_MERGE_GATE"
+RUN_FLEET="$REPO_ROOT/scripts/dispatch/run-fleet.sh"
+if [[ ! -f "$RUN_FLEET" ]]; then
+    echo "  FAIL [launcher-gate] run-fleet.sh not found at $RUN_FLEET"; FAIL=$((FAIL + 1))
+else
+    # The value must appear inside the worker_env=( ... ) block.
+    # We match the exact var name to avoid false positives from comments.
+    # Use /^\)/ (bare ) at line-start) to end the block so lines containing )
+    # inside the array body (e.g. ${VAR:+"..."}) don't prematurely stop extraction.
+    if awk '/^worker_env=\(/{in_block=1} in_block && /^\)/{in_block=0} in_block{print}' \
+            "$RUN_FLEET" | grep -q 'CHUMP_CONSENSUS_MERGE_GATE'; then
+        echo "  PASS [launcher-gate] worker_env contains CHUMP_CONSENSUS_MERGE_GATE"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL [launcher-gate] worker_env in run-fleet.sh missing CHUMP_CONSENSUS_MERGE_GATE"
+        echo "  (INFRA-2421: shadow mode must be activated in the fleet launcher)"
+        FAIL=$((FAIL + 1))
+    fi
+    # Also assert that the default value is not 0 or unset (i.e. shadow or enforce).
+    if awk '/^worker_env=\(/{in_block=1} in_block && /^\)/{in_block=0} in_block{print}' \
+            "$RUN_FLEET" | grep -q 'CHUMP_CONSENSUS_MERGE_GATE=.*:-[1e]'; then
+        echo "  PASS [launcher-gate-default] default is shadow (1) or enforce"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL [launcher-gate-default] CHUMP_CONSENSUS_MERGE_GATE default should be 1 (shadow) or enforce"
+        FAIL=$((FAIL + 1))
+    fi
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "[test-consensus-merge-gate] PASS=$PASS FAIL=$FAIL"

@@ -690,6 +690,13 @@ worker_env=(
     # re-read from the file (which the background refresher keeps current).
     ${_oauth_token_file:+"CHUMP_OAUTH_TOKEN_FILE=$_oauth_token_file"}
     ${_oauth_token_file:+"CLAUDE_CODE_OAUTH_TOKEN="}
+    # INFRA-2274 / INFRA-2421: consensus merge gate — SHADOW mode fleet-wide.
+    # =1   → shadow (log only): logs kind=consensus_gate_would_block when
+    #          verdict != PASSED, but does NOT block the merge. Safe to activate.
+    # =enforce → blocking (operator must explicitly flip after 7-day observation).
+    # Caller override: CHUMP_CONSENSUS_MERGE_GATE=enforce (or =0 to disable).
+    # Activated 2026-06-02. Observe would_block rate for 7 days, then decide.
+    "CHUMP_CONSENSUS_MERGE_GATE=${CHUMP_CONSENSUS_MERGE_GATE:-1}"
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 

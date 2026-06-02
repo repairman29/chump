@@ -540,6 +540,22 @@ This document closes META-061's first AC. The next AC is to file the six layer-g
 
 Each gap inherits this doc's principles and adds layer-specific design + AC. META-061 itself remains open until all six are at minimum Layer-Acceptance Gate v0 (filed + AC + dependency-graph linked back to this doc).
 
+## Consensus merge gate — shadow activation log (INFRA-2274 / INFRA-2421)
+
+**Shadow activated: 2026-06-02.** `CHUMP_CONSENSUS_MERGE_GATE=1` (shadow mode) was added to the `worker_env` array in `scripts/dispatch/run-fleet.sh` so every autonomous fleet worker now runs the gate on each `bot-merge.sh` invocation. In shadow mode the gate is **log-only**: when `chump consensus-tally` returns anything other than `PASSED`, the gate emits `kind=consensus_gate_would_block` to `ambient.jsonl` but does **not** block the merge or exit non-zero.
+
+**Observation window:** monitor `ambient.jsonl` for `consensus_gate_would_block` events over 7 days (until approximately 2026-06-09). Use:
+
+```bash
+grep '"kind":"consensus_gate_would_block"' .chump-locks/ambient.jsonl | wc -l   # total would-blocks
+grep '"kind":"consensus_gate_approved"'    .chump-locks/ambient.jsonl | wc -l   # total approved
+grep '"kind":"consensus_gate_would_block"' .chump-locks/ambient.jsonl | tail -5  # recent
+```
+
+**Operator decision point (~2026-06-09):** if `would_block` rate is < 10% of merges (gate is mostly quiet / votes are flowing), flip to enforce with `CHUMP_CONSENSUS_MERGE_GATE=enforce` in the launcher. If `would_block` rate is high (voting not yet established), tune vote-quorum or keep shadow longer. The gate logic is in `scripts/coord/bot-merge.sh` lines ~2922–3017.
+
+**To flip to enforce** (after observing the data): change the default in `scripts/dispatch/run-fleet.sh` worker_env from `:-1` to `:-enforce`, or set `CHUMP_CONSENSUS_MERGE_GATE=enforce` in the fleet `.env`.
+
 ## See also
 
 - [`AGENTS.md`](../../AGENTS.md) — coordination rules and pillar definitions

@@ -1,0 +1,14 @@
+- id: INFRA-2421
+  domain: INFRA
+  title: "EFFECTIVE: activate consensus merge gate SHADOW mode in fleet launcher — INFRA-2274 follow-up, 7-day observe-then-enforce"
+  status: open
+  priority: P1
+  effort: s
+  implements: INFRA-2274
+  acceptance_criteria:
+    - "CHUMP_CONSENSUS_MERGE_GATE=1 appears in worker_env array in scripts/dispatch/run-fleet.sh so it propagates to all fleet workers that invoke bot-merge.sh"
+    - "Shadow mode is log-only: re-read bot-merge.sh gate logic confirms =1 path only calls _ambient_write + yellow; never calls exit 1"
+    - "scripts/ci/test-consensus-merge-gate.sh test case (i) asserts shadow+non-PASSED exits 0 and emits consensus_gate_would_block — passes locally"
+    - "docs/design/A2A_ROADMAP.md or docs/process/ contains a note recording shadow activation date (2026-06-02), 7-day observation window, and operator trigger for enforce"
+    - "PR ships green CI"
+
