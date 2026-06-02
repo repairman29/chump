@@ -7113,4 +7113,30 @@ events:
     # payload: {writer_pr: str (path or PR#), reader_pr: str (path or PR#),
     #           missing_keys: str (comma-separated keys reader expects but writer omits),
     #           gap: "INFRA-2406"}
+  - kind: worktree_build_cache_provisioned
+    effect_metric: self
+    emitter: src/worktree_build_cache.rs emit_provisioned (INFRA-2183)
+    # scanner-anchor: "kind":"worktree_build_cache_provisioned"
+    trigger: >
+      Emitted by chump claim after successfully writing a per-worktree
+      .cargo/config.toml that wires sccache (rustc-wrapper) and sets an
+      isolated CARGO_TARGET_DIR so parallel Sonnet workers do not collide on
+      shared build artefacts.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, sccache_path, target_dir]
+    # payload: {gap_id: str, sccache_path: str, target_dir: str}
+    status: stable
+
+  - kind: worktree_build_cache_skip
+    effect_metric: self
+    emitter: src/worktree_build_cache.rs emit_skip (INFRA-2183)
+    # scanner-anchor: "kind":"worktree_build_cache_skip"
+    trigger: >
+      Emitted by chump claim when sccache wiring cannot be provisioned
+      (host .cargo/config.toml missing, sccache binary absent, I/O error,
+      or CHUMP_WORKTREE_BUILD_CACHE_SKIP=1 override). Claim continues — a
+      cold build is preferable to a failed claim.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap_id, reason]
+    # payload: {gap_id: str, reason: str}
     status: stable
