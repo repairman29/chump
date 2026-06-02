@@ -385,7 +385,7 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, gap_id, session_id]
 
-  # ── INFRA-2398: main-health-gate events ──────────────────────────────────────
+  # ── INFRA-2398/INFRA-2428: main-health-gate events ───────────────────────────
   - kind: claim_main_health_stale
     effect_metric: resilient
     emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2398)
@@ -396,10 +396,10 @@ events:
       Claim proceeds with a stderr warning. age_secs reflects how old the state
       file is at the moment of the claim attempt.
     consumers: [fleet-brief, audit-log, watchdog]
-    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs, trunk_fix_gap_id]
     expected_volume: "rare — only when watchdog daemon is stopped or crashed"
     status: stable
-    # payload: {gap_id: str, status: str, failing_gates: [str], age_secs: int}
+    # payload: {gap_id: str, status: str, failing_gates: [str], age_secs: int, trunk_fix_gap_id: str}
 
   - kind: claim_main_health_missing
     effect_metric: resilient
@@ -410,25 +410,41 @@ events:
       when the watchdog daemon (INFRA-2397) has not been installed yet. Claim
       proceeds without blocking.
     consumers: [fleet-brief, audit-log]
-    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs, trunk_fix_gap_id]
     expected_volume: "once per claim on fleets without the watchdog installed"
     status: stable
-    # payload: {gap_id: str, status: "" (empty), failing_gates: [], age_secs: 0}
+    # payload: {gap_id: str, status: "" (empty), failing_gates: [], age_secs: 0, trunk_fix_gap_id: ""}
 
   - kind: claim_main_health_bypass
     effect_metric: resilient
-    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2398)
+    emitter: deleted (INFRA-2428)
+    deprecated: true
     trigger: >
-      Emitted when CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 is set and `chump claim`
-      skips the main-health-gate check. Always emitted regardless of whether
-      main is red or green, so the audit log captures every bypass. The
-      failing_gates field contains the would-have-failed gates when status is
-      "red"; empty array when green or unknown.
-    consumers: [fleet-brief, audit-log, waste-tally]
+      DEPRECATED (INFRA-2428): CHUMP_CLAIM_IGNORE_MAIN_HEALTH env var and this
+      event kind have been deleted. The gate now redirects to the trunk-fix gap
+      instead of allowing bypass. Historical records may contain this kind.
+      Replaced by claim_main_health_redirect.
+    consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
-    expected_volume: "rare — operator escape hatch; frequent use warrants investigation"
+    expected_volume: "zero (deleted)"
+    status: deprecated
+
+  - kind: claim_main_health_redirect
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2428)
+    trigger: >
+      Emitted when `chump claim` is blocked because main is RED and the claimer
+      is routed to the trunk-fix gap filed by the watchdog daemon. Replaces the
+      deleted claim_main_health_bypass kind (INFRA-2428 zero-bypass).
+      failing_gates contains the gates that are red; trunk_fix_gap_id is the
+      most recent gap auto-filed by the preflight watchdog for this red window.
+      Setting CHUMP_CLAIM_IGNORE_MAIN_HEALTH has no effect — the gate always
+      redirects (bypass env var deleted).
+    consumers: [fleet-brief, audit-log, waste-tally]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs, trunk_fix_gap_id]
+    expected_volume: "once per claim attempt during a red-main window"
     status: stable
-    # payload: {gap_id: str, status: str, failing_gates: [str], age_secs: int}
+    # payload: {gap_id: str, status: "red", failing_gates: [str], age_secs: int, trunk_fix_gap_id: str}
 
   - kind: curator_paused
     effect_metric: self
