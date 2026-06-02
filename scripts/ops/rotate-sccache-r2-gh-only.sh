@@ -129,16 +129,27 @@ if [[ -z "$NEW_SECRET_ACCESS_KEY" ]]; then
     exit 4
 fi
 
-# R2 access key IDs are 32-char hex; secret access keys are 64-char hex.
+# RESILIENT-055: validate by SANITY (garbage-reject) + advisory length warning,
+# NOT a brittle exact-length assert. Cloudflare R2 access keys are commonly 32
+# hex, but the API token-id can be 40+ chars (per CF docs + the known "length 40"
+# S3 class), and the operator confirmed a non-32 key authenticates fine. A hard
+# len==32/64 reject wrongly BLOCKS valid keys — that was the recurring rotation
+# failure. Hard-reject only genuine paste errors (empty / whitespace / wrong
+# charset / absurd length); the GH-secret write + the next CI sccache auth is the
+# real validation.
+if [[ "$NEW_ACCESS_KEY_ID" =~ [[:space:]] ]] || ! [[ "$NEW_ACCESS_KEY_ID" =~ ^[A-Za-z0-9]{16,128}$ ]]; then
+    echo "[rotate-r2-gh-only] ERROR: ACCESS_KEY_ID empty / whitespace / wrong-charset / absurd-length (len ${#NEW_ACCESS_KEY_ID}). Likely paste error — re-check CF dashboard." >&2
+    exit 4
+fi
 if [[ ${#NEW_ACCESS_KEY_ID} -ne 32 ]]; then
-    echo "[rotate-r2-gh-only] ERROR: ACCESS_KEY_ID length ${#NEW_ACCESS_KEY_ID} (expected 32 — R2 standard)." >&2
-    echo "  Likely paste error. Re-check CF dashboard." >&2
+    echo "[rotate-r2-gh-only] WARN: ACCESS_KEY_ID length ${#NEW_ACCESS_KEY_ID} (R2 standard is 32; CF can issue longer token-id keys — proceeding; CI sccache auth is the real check)." >&2
+fi
+if [[ "$NEW_SECRET_ACCESS_KEY" =~ [[:space:]] ]] || ! [[ "$NEW_SECRET_ACCESS_KEY" =~ ^[A-Za-z0-9]{40,128}$ ]]; then
+    echo "[rotate-r2-gh-only] ERROR: SECRET_ACCESS_KEY empty / whitespace / wrong-charset / absurd-length (len ${#NEW_SECRET_ACCESS_KEY}). Likely paste error — re-check CF dashboard." >&2
     exit 4
 fi
 if [[ ${#NEW_SECRET_ACCESS_KEY} -ne 64 ]]; then
-    echo "[rotate-r2-gh-only] ERROR: SECRET_ACCESS_KEY length ${#NEW_SECRET_ACCESS_KEY} (expected 64 — R2 standard)." >&2
-    echo "  Likely paste error. Re-check CF dashboard." >&2
-    exit 4
+    echo "[rotate-r2-gh-only] WARN: SECRET_ACCESS_KEY length ${#NEW_SECRET_ACCESS_KEY} (R2 standard is 64 — proceeding)." >&2
 fi
 
 # Audit fingerprint helper — never echo full secrets.
@@ -166,8 +177,8 @@ _emit() {
 
 echo "[rotate-r2-gh-only] input file:      $INPUT_FILE"
 echo "[rotate-r2-gh-only] target repo:     $GH_REPO"
-echo "[rotate-r2-gh-only] access_key_id:   $(_finger "$NEW_ACCESS_KEY_ID") (len 32 ✓)"
-echo "[rotate-r2-gh-only] secret_access:   $(_finger "$NEW_SECRET_ACCESS_KEY") (len 64 ✓)"
+echo "[rotate-r2-gh-only] access_key_id:   $(_finger "$NEW_ACCESS_KEY_ID") (len ${#NEW_ACCESS_KEY_ID})"
+echo "[rotate-r2-gh-only] secret_access:   $(_finger "$NEW_SECRET_ACCESS_KEY") (len ${#NEW_SECRET_ACCESS_KEY})"
 echo ""
 
 if [[ $EXECUTE -eq 0 ]]; then
