@@ -6802,6 +6802,55 @@ events:
     # payload: {finding_id: int, finding_class: str, severity: str, tier: int (0|1|2),
     #           detail: str, artifact_path?: str, pr_number?: int, gap_id?: str}
 
+  # ── INFRA-2397: main-preflight-watchdog daemon ───────────────────────────────
+  - kind: main_preflight_red
+    effect_metric: main_preflight_recovered_within_60min
+    emitter: scripts/coord/main-preflight-watchdog-daemon.sh (INFRA-2397)
+    # scanner-anchor: "kind":"main_preflight_red"
+    trigger: >
+      Emitted on every tick where `chump preflight` exits non-zero against a
+      fresh origin/main worktree. Carries the sorted list of failing gate
+      names, a sha256 fingerprint of that set (for dedup), the filed P0 gap
+      ID (or UNFILED on reserve failure), and the current head SHA.
+      Fingerprint dedup prevents re-filing a gap for the same failure set on
+      subsequent ticks — a new gate appearing in the set produces a new
+      fingerprint and a new gap.
+    consumers: [fleet-brief, ops-audit, observability]
+    fields_required: [ts, kind, tick_id, failing_gates, fingerprint, gap_id, head_sha, dry_run]
+    expected_volume: "very low; should be zero in a healthy week"
+    status: stable
+
+  - kind: main_preflight_recovered
+    effect_metric: self
+    emitter: scripts/coord/main-preflight-watchdog-daemon.sh (INFRA-2397)
+    # scanner-anchor: "kind":"main_preflight_recovered"
+    trigger: >
+      Emitted on RED->GREEN transition when `chump preflight` exits 0 on
+      origin/main after a previous tick recorded RED state. The daemon walks
+      all P0 gaps it auto-filed during the RED window (tracked in
+      .chump/main-preflight-state.json) and closes each via
+      `chump gap set --status done`. Records the previous fingerprint and
+      list of closed gap IDs.
+    consumers: [fleet-brief, ops-audit, observability]
+    fields_required: [ts, kind, previous_fingerprint, head_sha, gaps_closed, closed_count, tick_id, dry_run]
+    expected_volume: "very low; one per recovery event"
+    status: stable
+
+  - kind: main_preflight_disabled
+    effect_metric: self
+    emitter: scripts/coord/main-preflight-watchdog-daemon.sh (INFRA-2397)
+    # scanner-anchor: "kind":"main_preflight_disabled"
+    trigger: >
+      Emitted at daemon startup when CHUMP_MAIN_PREFLIGHT_DISABLED is set to
+      a non-empty value. The daemon exits 0 immediately after emitting this
+      event — no preflight is run, no gaps are filed. Used for controlled
+      maintenance windows or environments where the worktree approach is
+      unavailable.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, dry_run]
+    expected_volume: "zero in normal operation; non-zero only when explicitly disabled"
+    status: stable
+
   # ── INFRA-2278: ship-assist context hook ─────────────────────────────────────
   - kind: ship_assist_context_surfaced
     effect_metric: effective

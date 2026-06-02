@@ -795,3 +795,8 @@ CHUMP_PREFLIGHT_SKIP_
 # ── INFRA-2366: inventory-agent-sync overrides ────────────────────────────────
 CHUMP_AGENT_SYNC_INVENTORY_DB
 CHUMP_AGENT_SYNC_AMBIENT_LOG
+# ── INFRA-2397: main-preflight-watchdog daemon ────────────────────────────────
+# Non-empty disables the daemon (exits 0, emits main_preflight_disabled).
+CHUMP_MAIN_PREFLIGHT_DISABLED
+# Seconds between daemon ticks when running in loop mode (default 600).
+CHUMP_MAIN_PREFLIGHT_INTERVAL_S
