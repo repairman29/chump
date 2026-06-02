@@ -20,6 +20,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// INFRA-2183: per-worktree sccache + CARGO_TARGET_DIR wiring.
+/// Declared here (not main.rs) so it lives entirely within the atomic_claim
+/// lease scope and is tested alongside the claim flow.
+#[path = "worktree_build_cache.rs"]
+pub mod worktree_build_cache;
+
 /// Args to atomic claim.
 #[derive(Debug, Clone)]
 pub struct ClaimArgs {
@@ -1011,6 +1017,17 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // the wrong repo root (INFRA-779). Repair is safe: git computes this
     // value deterministically as the canonicalized path of <worktree>/.git.
     verify_and_repair_gitdir(&args.repo_root, &branch, &worktree_path)?;
+
+    // 6c-pre. INFRA-2183: provision per-worktree sccache + CARGO_TARGET_DIR wiring.
+    // Fail-open: a Skipped outcome is logged but never blocks the claim.
+    // The worktree target-dir (<worktree>/target) is already reaped by the
+    // INFRA-1170 orphan-worktree pass in cargo-target-reaper.sh.
+    let _build_cache_outcome = worktree_build_cache::provision_worktree_build_cache(
+        &args.repo_root,
+        &worktree_path,
+        &args.gap_id,
+        &ambient_log,
+    );
 
     // Rollback helper: undo worktree + branch on failure.
     let rollback_wt = |extra: &str| {
