@@ -1,0 +1,66 @@
+# INFRA-2429: Grandfathered bypass env vars pending deletion via INFRA-2422–2428.
+#
+# NEW additions to this file require operator review. Each entry must include:
+#   - The exact env var name (no leading $, no quotes)
+#   - A Bypass-Justification: comment with the responsible deletion gap_id
+#
+# Removals happen automatically when each deletion gap ships and the var is
+# purged from the codebase.
+#
+# DO NOT add CHUMP_*_DISABLED vars here — those are Category B operator
+# emergency kill-switches that are intentionally exempt from this lint.
+#
+# Format: <VAR_NAME>  # Bypass-Justification: <why>  gap: <INFRA-NNNN>
+
+# ── Category A quality-gate bypasses — targeted deletion gaps filed ───────────
+CHUMP_PREFLIGHT_SKIP                # Bypass-Justification: top-level preflight skip; deletion target  gap: INFRA-2422
+CHUMP_BYPASS_PROOF_OF_MERGE        # Bypass-Justification: proof-of-merge gate bypass; deletion target  gap: INFRA-2423
+CHUMP_IGNORE_WASTE_PAUSE           # Bypass-Justification: waste-pause gate ignore; deletion target  gap: INFRA-2424
+CHUMP_OBS_BUDGET_BYPASS            # Bypass-Justification: obs-budget gate bypass; deletion target  gap: INFRA-2425
+CHUMP_PREFLIGHT_SKIP_PIPEFAIL      # Bypass-Justification: pipefail-sweep gate skip; deletion target  gap: INFRA-2427
+CHUMP_CLAIM_IGNORE_MAIN_HEALTH     # Bypass-Justification: main-health gate ignore during claim; deletion target  gap: INFRA-2428
+
+# ── Category A bypasses — deletion gap TBD ───────────────────────────────────
+CHUMP_AMBIENT_INSTALL_SKIP         # Bypass-Justification: ambient install hook skip; grandfathered  gap: TBD
+CHUMP_AUDIT_BYPASS                 # Bypass-Justification: audit gate bypass; grandfathered  gap: TBD
+CHUMP_AUTOARM_SKIP                 # Bypass-Justification: auto-arm step skip; grandfathered  gap: TBD
+CHUMP_AUTOPILOT_SKIP               # Bypass-Justification: autopilot scheduler skip; grandfathered  gap: TBD
+CHUMP_BOT_MERGE_AUTH_PROBE_SKIP    # Bypass-Justification: bot-merge auth probe skip; grandfathered  gap: TBD
+CHUMP_BYPASS                       # Bypass-Justification: top-level generic bypass; grandfathered  gap: TBD
+CHUMP_CLAIM_SKIP                   # Bypass-Justification: claim guard skip; grandfathered  gap: TBD
+CHUMP_CLUSTER_MESH_SKIP            # Bypass-Justification: cluster-mesh step skip; grandfathered  gap: TBD
+CHUMP_DOCTOR_SKIP                  # Bypass-Justification: fleet-doctor skip; grandfathered  gap: TBD
+CHUMP_DRIFT_SKIP                   # Bypass-Justification: drift-check skip; grandfathered  gap: TBD
+CHUMP_FLEET_DOCTOR_SKIP            # Bypass-Justification: fleet-doctor subprocess skip; grandfathered  gap: TBD
+CHUMP_GAP_SHIP_SKIP                # Bypass-Justification: gap-ship gate skip; grandfathered  gap: TBD
+CHUMP_GEN_SKIP                     # Bypass-Justification: code-gen step skip; grandfathered  gap: TBD
+CHUMP_GH_PROBE_SKIP                # Bypass-Justification: gh-probe skip; grandfathered  gap: TBD
+CHUMP_IGNORE_INBOX                 # Bypass-Justification: inbox check ignore; grandfathered  gap: TBD
+CHUMP_NO_BYPASS                    # Bypass-Justification: inverse-bypass sentinel; grandfathered  gap: TBD
+CHUMP_OPERATOR_CONSENSUS_BYPASS    # Bypass-Justification: operator-consensus gate bypass; grandfathered  gap: TBD
+CHUMP_POLICY_SKIP                  # Bypass-Justification: policy-check skip; grandfathered  gap: TBD
+CHUMP_PR_AUTO_REBASE_SKIP          # Bypass-Justification: PR auto-rebase skip; grandfathered  gap: TBD
+CHUMP_PR_DEDUP_BYPASS              # Bypass-Justification: PR dedup gate bypass; grandfathered  gap: TBD
+CHUMP_RL_GATE_SKIP                 # Bypass-Justification: rate-limit gate skip; grandfathered  gap: TBD
+CHUMP_SKIP                         # Bypass-Justification: generic skip sentinel; grandfathered  gap: TBD
+CHUMP_UNBLOCK_SKIP                 # Bypass-Justification: unblock-step skip; grandfathered  gap: TBD
+CHUMP_WEDGE_CLASSIFIER_SKIP        # Bypass-Justification: wedge-classifier skip; grandfathered  gap: TBD
+CHUMP_WEDGE_STATE_MACHINE_SKIP     # Bypass-Justification: wedge-state-machine skip; grandfathered  gap: TBD
+
+# ── preflight gate-specific skips (used by src/preflight.rs) — grandfathered ──
+# These are only triggered as CHUMP_PREFLIGHT_SKIP_<GATE>=1 and all have
+# individual deletion tracking under the INFRA-2422 umbrella.
+CHUMP_PREFLIGHT_SKIP_REGISTRY      # Bypass-Justification: event-registry gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_ENVVARS       # Bypass-Justification: env-var-coverage gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_SUBCMDHELP    # Bypass-Justification: subcommand-help gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_ACGATE        # Bypass-Justification: AC gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_GAPSINT       # Bypass-Justification: gaps-integrity gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_MDLINKS       # Bypass-Justification: md-links gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_CARGOTEST     # Bypass-Justification: cargo-test gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_INTEGRATION   # Bypass-Justification: integration-test gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_CHUMPFIRST    # Bypass-Justification: chump-first-contract gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_ACPSMOKE      # Bypass-Justification: acp-smoke gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_PRHYGIENE     # Bypass-Justification: pr-hygiene gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_PATHFILTER    # Bypass-Justification: path-filter-coverage gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_INSTALLMAP    # Bypass-Justification: install-manifest gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_DOCSDELTA     # Bypass-Justification: docs-delta-trailer gate skip; grandfathered  gap: INFRA-2422

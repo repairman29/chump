@@ -1077,6 +1077,18 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-plist-no-tmp-paths.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-2429: no-new-bypass-env-vars gate. Catches new CHUMP_*_BYPASS,
+        // CHUMP_*_SKIP, and CHUMP_IGNORE_* introductions before push, enforcing
+        // the operator zero-bypass thesis. Runs in the Scripts scope because it
+        // only needs `git diff` — no cargo binary required. Always-on: this gate
+        // intentionally has NO bypass env var of its own (the allowlist file is
+        // the only sanctioned escape hatch). Runs in <1s.
+        steps.push(step(
+            "no-new-bypass-env-vars",
+            &["bash", "scripts/ci/test-no-new-bypass-env-vars.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
