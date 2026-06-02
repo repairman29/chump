@@ -7050,3 +7050,25 @@ events:
     fields_required: [ts, kind]
     # payload: {}
     status: stable
+
+  # ── INFRA-2406: pre-merge cross-PR contract gate ───────────────────────────
+  - kind: cross_pr_contract_mismatch
+    effect_metric: cross_pr_contract_resolved_before_merge
+    emitter: scripts/ci/test-cross-pr-contract.sh (INFRA-2406)
+    # scanner-anchor: "kind":"cross_pr_contract_mismatch"
+    trigger: >
+      Emitted when chump contract-scan --in-flight detects a key mismatch
+      between a writer PR and a reader PR on a shared IPC surface (state file,
+      ambient event payload, or Rust struct serialized to disk). Root cause
+      (INFRA-2404): watchdog (INFRA-2397) wrote {state, updated_at, last_tick_id}
+      while claim-gate (INFRA-2398) read {last_status, last_tick_at, failing_gates}
+      — keys never matched; procedure layer shipped silently inert.
+      This event fires in the audit-shard CI gate; bot-merge.sh refuses to arm
+      auto-merge for any PR in the affected writer_pr/reader_pr pair until the
+      mismatch is resolved or added to cross-pr-allowlist.txt.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, writer_pr, reader_pr, missing_keys, gap]
+    # payload: {writer_pr: str (path or PR#), reader_pr: str (path or PR#),
+    #           missing_keys: str (comma-separated keys reader expects but writer omits),
+    #           gap: "INFRA-2406"}
+    status: stable

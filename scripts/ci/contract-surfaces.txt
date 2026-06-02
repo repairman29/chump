@@ -1,0 +1,32 @@
+# contract-surfaces.txt — INFRA-2406
+#
+# Manifest of known-safe IPC surfaces scanned for cross-PR contract verification.
+# Only paths listed here are included in the cross-PR contract gate scan.
+# This keeps scope bounded and prevents false-positives from unrelated files.
+#
+# Background: INFRA-2404 — watchdog (INFRA-2397) wrote {state, updated_at, last_tick_id},
+# claim-gate (INFRA-2398) read {last_status, last_tick_at, failing_gates}.
+# Keys never matched; procedure layer shipped silently inert.
+# chump contract-scan --in-flight (INFRA-2405) would have caught this.
+# This manifest defines which surfaces that scan covers.
+#
+# Format: relative path from repo root (no leading slash). One path per line.
+# Comments (#) and blank lines are ignored.
+#
+# Allowlist for cross-PR contract conflicts that are pre-approved:
+#   See scripts/ci/cross-pr-allowlist.txt
+#   Resolution: fix one of the two PRs, OR add a source-controlled allowlist entry.
+#   There is NO env-var bypass (INFRA-2406 operator zero-bypass thesis).
+
+# ── State/config files written by daemons and read by claim/gate logic ─────────
+.chump/main-preflight-state.json
+.chump/inventory.db
+
+# ── Trunk-sentinel state files ──────────────────────────────────────────────────
+.chump/trunk-sentinel-state.json
+.chump/pr-stuck-state.json
+.chump/fleet-paused
+
+# ── Scripts that write/read these state files ───────────────────────────────────
+scripts/coord/main-preflight-watchdog.sh
+scripts/coord/chump-health-gate.sh

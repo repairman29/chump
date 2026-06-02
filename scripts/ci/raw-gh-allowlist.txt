@@ -60,3 +60,8 @@ scripts/ops/break-trunk-cascade.sh           # INFRA-2087: branch-protection + r
 scripts/ops/chump-post-integration-prune.sh  # integration branch pruner: gh api -X DELETE (mutation) + gh pr view for merge-state verification; DELETE mutations are write-ops not covered by cache abstraction
 
 scripts/coord/auto-merge-arm-watcher.sh  # INFRA-2289: gh api graphql for PR-with-DROPPED-auto-merge listing + gh pr merge --auto/--squash arm operations; cache wrapper has no graphql or merge-arm API; migration: INFRA-1249
+
+# INFRA-2406: cross-PR contract gate — needs gh pr list to enumerate all open PRs
+# for contract-scan --in-flight; cache_query_open_prs doesn't expose the per-PR
+# file list (only number/title/head_ref). Raw gh is the correct path here.
+scripts/ci/test-cross-pr-contract.sh  # INFRA-2406: gh pr list --json number,files for in-flight contract scan; cache layer has no files-per-PR enumeration API

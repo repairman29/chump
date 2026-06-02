@@ -1867,6 +1867,19 @@ jobs:
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
       - name: no-new-bypass-env-vars — forbid new CHUMP_*_BYPASS/SKIP/IGNORE_* (INFRA-2429)
         run: bash scripts/ci/test-no-new-bypass-env-vars.sh
+      - name: cross-PR contract gate — refuse merge on cross-PR IPC schema mismatch (INFRA-2406)
+        # Requires GH_TOKEN for gh pr list (Tier-D — cannot mirror in local preflight).
+        # Calls chump contract-scan --in-flight against all open PRs.
+        # On mismatch: emits kind=cross_pr_contract_mismatch to ambient.jsonl, exits 1.
+        # Operator zero-bypass: NO env-var bypass. Exceptions go in cross-pr-allowlist.txt.
+        # See INFRA-2404 (root cause), INFRA-2405 (contract-scan subcommand).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
+          bash scripts/ci/test-cross-pr-contract.sh
       - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
         # INFRA-1287: flipped to strict mode — all 88 register-without-emit orphans
         # are now either pruned from the registry (3 dead) or listed in
