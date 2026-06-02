@@ -7696,6 +7696,123 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-2435: reserve-time PR-title similarity check ────────────────
+                // Catches the duplicate-work case that INFRA-1149 (gap-vs-gap) misses:
+                // two agents file different gap IDs for the same problem when one already
+                // has an open PR. Compares proposed title vs ALL currently-open PR titles
+                // via jaccard_words (same tokeniser as claim-time check).
+                //
+                // Warn  at >= CHUMP_GAP_RESERVE_PR_SIMILARITY_WARN  (default 0.65)
+                // Block at >= CHUMP_GAP_RESERVE_PR_SIMILARITY_BLOCK (default 0.85) — exit 4
+                //
+                // Bypass: --force-duplicate (already parsed above) → emits
+                //   kind=gap_reserve_pr_similarity_bypassed with {title, matched_prs}.
+                //
+                // Test-isolation bypass: CHUMP_GAP_RESERVE_SKIP_PR=1 skips the gh call
+                // entirely (CI smoke tests that don't have a live GitHub repo).
+                let pr_check_disabled =
+                    std::env::var("CHUMP_GAP_RESERVE_SKIP_PR").as_deref() == Ok("1");
+                if !pr_check_disabled {
+                    let pr_warn_threshold: f64 =
+                        std::env::var("CHUMP_GAP_RESERVE_PR_SIMILARITY_WARN")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0.65);
+                    let pr_block_threshold: f64 =
+                        std::env::var("CHUMP_GAP_RESERVE_PR_SIMILARITY_BLOCK")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0.85);
+                    // Use the lowest threshold so fuzzy_match_open_prs returns all
+                    // candidates of interest; we then split warn/block ourselves.
+                    let candidates = atomic_claim::fuzzy_match_open_prs(&title, pr_warn_threshold);
+                    if !candidates.is_empty() {
+                        let top = &candidates[0];
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let ts = {
+                            use std::time::{SystemTime, UNIX_EPOCH};
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0)
+                        };
+                        if top.score >= pr_block_threshold {
+                            // BLOCK path — exit 4 (distinct from existing 0/1/2/3)
+                            eprintln!();
+                            eprintln!(
+                                "[reserve] INFRA-2435: PR-title similarity BLOCK — proposed: \"{}\"",
+                                title
+                            );
+                            eprintln!(
+                                "  High-similarity open PRs (score >= {:.2}):",
+                                pr_block_threshold
+                            );
+                            for m in &candidates {
+                                if m.score >= pr_block_threshold {
+                                    eprintln!(
+                                        "    {:.2}  PR#{} — \"{}\"",
+                                        m.score, m.ref_id, m.title
+                                    );
+                                }
+                            }
+                            eprintln!();
+                            if force_duplicate {
+                                // Bypass: emit event and continue
+                                let matched_prs: Vec<&str> =
+                                    candidates.iter().map(|m| m.ref_id.as_str()).collect();
+                                let matched_str = matched_prs.join(",");
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_path)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        writeln!(f,
+                                            r#"{{"ts":"{ts}","kind":"gap_reserve_pr_similarity_bypassed","proposed_title":"{title}","matched_prs":"{matched_str}"}}"#
+                                        )
+                                    });
+                                eprintln!(
+                                    "[reserve] --force-duplicate passed — bypassing PR similarity block (PRs: {}).",
+                                    matched_str
+                                );
+                            } else {
+                                eprintln!(
+                                    "[reserve] Pass --force-duplicate to bypass (emits audit event)."
+                                );
+                                std::process::exit(4);
+                            }
+                        } else {
+                            // WARN path — continue, no exit
+                            eprintln!();
+                            eprintln!(
+                                "[reserve] INFRA-2435: PR-title similarity WARN — proposed: \"{}\"",
+                                title
+                            );
+                            eprintln!("  Similar open PRs (score >= {:.2}):", pr_warn_threshold);
+                            for m in &candidates {
+                                eprintln!("    {:.2}  PR#{} — \"{}\"", m.score, m.ref_id, m.title);
+                            }
+                            eprintln!(
+                                "[reserve] Continuing — block threshold is {:.2}.",
+                                pr_block_threshold
+                            );
+                            let _ = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                                .and_then(|mut f| {
+                                    use std::io::Write;
+                                    let top_id = &top.ref_id;
+                                    let top_score = top.score;
+                                    writeln!(f,
+                                        r#"{{"ts":"{ts}","kind":"gap_reserve_pr_similarity_warn","proposed_title":"{title}","top_pr_number":"{top_id}","top_pr_score":{top_score:.3}}}"#
+                                    )
+                                });
+                        }
+                    }
+                }
+                // ── end INFRA-2435 ──────────────────────────────────────────────────────
+
                 // ── INFRA-1152: pillar-balance guard ─────────────────────────────────
                 // Parse proposed pillar from title prefix, then check current
                 // open-pickable distribution and warn/block overweighted pillars.

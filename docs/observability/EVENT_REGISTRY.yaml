@@ -7752,4 +7752,33 @@ events:
     consumers: [ops-audit, fleet-brief, waste-tally]
     fields_required: [ts, kind, gap_id, prior_run_id, replayed_steps]
     # payload: {gap_id: str, prior_run_id: int, replayed_steps: int}
+  # ── INFRA-2435: reserve-time PR-title similarity gate ─────────────────────
+  - kind: gap_reserve_pr_similarity_warn
+    effect_metric: duplicate_pr_prevention_rate
+    emitter: src/main.rs — gap reserve arm (INFRA-2435)
+    # scanner-anchor: "kind":"gap_reserve_pr_similarity_warn"
+    trigger: >
+      Emitted when chump gap reserve detects a proposed gap title whose Jaccard
+      similarity to an open PR title meets or exceeds CHUMP_GAP_RESERVE_PR_SIMILARITY_WARN
+      (default 0.65) but is below the block threshold (0.85). Reserve continues —
+      this is a telemetry-only warning. High rate indicates agents are filing
+      gaps whose work is already in-flight via an open PR.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, proposed_title, top_pr_number, top_pr_score]
+    # payload: {proposed_title: str, top_pr_number: str, top_pr_score: float}
+    status: stable
+
+  - kind: gap_reserve_pr_similarity_bypassed
+    effect_metric: duplicate_pr_prevention_rate
+    emitter: src/main.rs — gap reserve arm (INFRA-2435)
+    # scanner-anchor: "kind":"gap_reserve_pr_similarity_bypassed"
+    trigger: >
+      Emitted when chump gap reserve detects a proposed gap title at or above
+      the block threshold (CHUMP_GAP_RESERVE_PR_SIMILARITY_BLOCK, default 0.85)
+      but the caller passed --force-duplicate to bypass the exit-4 block.
+      Reserve proceeds. High rate indicates agents are routinely overriding the
+      duplicate-PR guard, defeating its audit value.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, proposed_title, matched_prs]
+    # payload: {proposed_title: str, matched_prs: str (comma-separated PR numbers)}
     status: stable

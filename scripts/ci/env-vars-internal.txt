@@ -960,3 +960,8 @@ CHUMP_LAST_MILE_ORPHAN_WINDOW_S
 # CHUMP_DURABLE_AMBIENT_DISABLE silence ambient emits from durable-execution unit tests
 CHUMP_STATE_DB_PATH
 CHUMP_DURABLE_AMBIENT_DISABLE
+# ── INFRA-2435: reserve-time PR-title similarity gate ──────────────────────────
+# Warn threshold for Jaccard similarity between proposed gap title and open PR titles
+CHUMP_GAP_RESERVE_PR_SIMILARITY_WARN
+# Block threshold for Jaccard similarity; at or above this score, reserve exits 4
+CHUMP_GAP_RESERVE_PR_SIMILARITY_BLOCK

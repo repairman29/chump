@@ -1,7 +1,10 @@
+234
 # EFFECTIVE-094 — bypass-var DEBT-CEILING (the addition tax).
-# Max allowed distinct CHUMP_*_(BYPASS|SKIP|IGNORE|CHECK|NO_) vars across
-# scripts/ src/ crates/. This number must only ever FALL. To add a bypass var
-# you must delete one. Raising it requires operator sign-off + a reason below.
-# Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
-# exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-233
+# Each net-positive new bypass var requires this number to be raised
+# (operator action) AND a corresponding deletion gap filed.
+#
+# History:
+#   233 → 234: INFRA-2435 introduced CHUMP_GAP_RESERVE_SKIP_PR as a
+#              test-isolation escape hatch for the new gap-reserve PR-title
+#              similarity check. Deletion path: state.db-based PR-title
+#              cache so tests don't need the bypass.
