@@ -20,6 +20,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tracing::info;
 
 /// NATS KV bucket name (used when the real NATS backend ships in INFRA-1121 slice 3/4).
 pub fn bucket_name() -> &'static str {
@@ -93,7 +94,7 @@ impl std::fmt::Debug for SeedKey {
     }
 }
 
-/// The 5 v1 seed keys. Documented in docs/design/A2A_SCRATCHPAD_KEYS.md.
+/// The v1 seed keys. Documented in docs/design/A2A_SCRATCHPAD_KEYS.md.
 ///
 /// 1. `main.head.sha` — current canonical main HEAD SHA. CAS-required so
 ///    two parallel observers race-safely converge.
@@ -104,6 +105,11 @@ impl std::fmt::Debug for SeedKey {
 /// 4. `last_known_good.chump_binary` — most recent verified chump build
 ///    SHA. CAS-required (preserve linear history).
 /// 5. `red_letter.last_ts` — last ts the RED_LETTER.md was rewritten. LWW.
+/// 6. `ci.flake_classification` — CI-audit curator's latest JSON blob
+///    classifying current trunk failures as flake/logic-bug/missing-gate.
+///    CAS-required (writer reads existing blob, merges, CAS-writes back).
+///    Not prompt-injected into general briefings (CI-audit curator reads it
+///    directly); injected only when the briefing gap is CI-related.
 pub fn seed_keys() -> Vec<SeedKey> {
     vec![
         SeedKey {
@@ -135,6 +141,14 @@ pub fn seed_keys() -> Vec<SeedKey> {
             conflict_policy: ConflictPolicy::LastWriterWins,
             ttl_seconds: 86_400,
             prompt_inject: true,
+        },
+        SeedKey {
+            key: "ci.flake_classification",
+            conflict_policy: ConflictPolicy::CASRequired,
+            ttl_seconds: 3_600,
+            // Not injected into general briefings — CI-audit curator reads
+            // it directly to avoid bloating every agent's context.
+            prompt_inject: false,
         },
     ]
 }
@@ -324,7 +338,12 @@ pub async fn set(key: &str, value: serde_json::Value) -> Result<(), ScratchError
     }
     let dir = scratch_dir();
     let env = make_envelope(key, value, sk.ttl_seconds);
-    write_envelope(&dir, &env)
+    let result = write_envelope(&dir, &env);
+    if result.is_ok() {
+        // kind=scratchpad_set — registered in EVENT_REGISTRY.yaml (INFRA-1121)
+        info!(kind = "scratchpad_set", key = key, "scratchpad LWW set");
+    }
+    result
 }
 
 /// Compare-and-swap: reads current value, compares with `expected`, writes `new` on match.
@@ -354,6 +373,12 @@ pub async fn cas(
     };
 
     if current != expected {
+        // kind=scratchpad_cas_conflict — registered in EVENT_REGISTRY.yaml (INFRA-1121)
+        info!(
+            kind = "scratchpad_cas_conflict",
+            key = key,
+            "scratchpad CAS conflict: caller should retry"
+        );
         return Err(ScratchError::CASConflict {
             key: key.to_string(),
             expected: expected.to_string(),
@@ -365,9 +390,68 @@ pub async fn cas(
     write_envelope(&dir, &env)
 }
 
+/// Snapshot the top-N prompt-injectable seed keys for agent briefing injection.
+///
+/// Returns a Vec of `(key, value_string)` pairs for keys where `prompt_inject: true`
+/// and the current value is set (non-expired). Capped at `max_keys` entries
+/// (default 5 = all v1 seed keys). Total rendered length capped at ~500 tokens
+/// via character truncation at 2000 chars (≈500 tokens at 4 chars/token).
+///
+/// Designed for injection into `chump --briefing` output (INFRA-1121 slice 3/4).
+/// Called at session start; I/O is local file reads only (no NATS required).
+///
+/// Graceful: individual key errors are silently skipped (key may be unset).
+/// Returns empty vec when scratch dir is absent or all keys are expired/unset.
+pub async fn prompt_inject_snapshot(max_keys: usize) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let total_char_budget: usize = 2000; // ≈500 tokens at 4 chars/token
+    let mut used: usize = 0;
+
+    for sk in seed_keys() {
+        if !sk.prompt_inject {
+            continue;
+        }
+        if out.len() >= max_keys {
+            break;
+        }
+        match get(sk.key).await {
+            Ok(Some(v)) => {
+                let v_str = v.to_string();
+                // Truncate long values so a single key can't exhaust the budget.
+                let budget_remaining = total_char_budget.saturating_sub(used);
+                if budget_remaining == 0 {
+                    break;
+                }
+                let truncated = if v_str.len() > budget_remaining {
+                    format!("{}…", &v_str[..budget_remaining.saturating_sub(1)])
+                } else {
+                    v_str.clone()
+                };
+                used += truncated.len();
+                out.push((sk.key.to_string(), truncated));
+            }
+            Ok(None) => {} // absent or expired — skip silently
+            Err(_) => {}   // unknown key or I/O error — skip silently
+        }
+    }
+    if !out.is_empty() {
+        // kind=scratchpad_injected — registered in EVENT_REGISTRY.yaml (INFRA-1121)
+        info!(
+            kind = "scratchpad_injected",
+            key_count = out.len(),
+            "scratchpad context injected into briefing"
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // serial_test: env var CHUMP_SCRATCH_DIR is process-global; tokio runs
+    // async tests concurrently by default. #[serial] serialises all tests
+    // in this module that touch CHUMP_SCRATCH_DIR so they don't race.
+    use serial_test::serial;
 
     #[test]
     fn bucket_name_is_chump_scratch() {
@@ -375,9 +459,10 @@ mod tests {
     }
 
     #[test]
-    fn seed_keys_has_exactly_five() {
+    fn seed_keys_has_expected_count() {
+        // v1 = 5 original keys + ci.flake_classification (INFRA-1121)
         let keys = seed_keys();
-        assert_eq!(keys.len(), 5);
+        assert_eq!(keys.len(), 6);
     }
 
     #[test]
@@ -388,6 +473,7 @@ mod tests {
         assert!(names.contains(&"pillar.focus"));
         assert!(names.contains(&"last_known_good.chump_binary"));
         assert!(names.contains(&"red_letter.last_ts"));
+        assert!(names.contains(&"ci.flake_classification"));
     }
 
     #[test]
@@ -415,10 +501,28 @@ mod tests {
     }
 
     #[test]
-    fn all_seeds_prompt_inject_true() {
-        for sk in seed_keys() {
-            assert!(sk.prompt_inject, "{} should be prompt-injected", sk.key);
+    fn prompt_inject_flags_match_design_doc() {
+        // Original 5 seed keys are all prompt-injected.
+        for key in [
+            "main.head.sha",
+            "fleet.size",
+            "pillar.focus",
+            "last_known_good.chump_binary",
+            "red_letter.last_ts",
+        ] {
+            let sk = seed_key_lookup(key).unwrap();
+            assert!(
+                sk.prompt_inject,
+                "{key} should be prompt-injected per A2A_SCRATCHPAD_KEYS.md"
+            );
         }
+        // ci.flake_classification is intentionally NOT injected into general
+        // briefings (CI-audit curator reads it directly).
+        let ci_key = seed_key_lookup("ci.flake_classification").unwrap();
+        assert!(
+            !ci_key.prompt_inject,
+            "ci.flake_classification should NOT be prompt-injected into general briefings"
+        );
     }
 
     #[test]
@@ -426,6 +530,7 @@ mod tests {
         assert!(seed_key_lookup("totally-bogus-key").is_none());
     }
 
+    #[serial]
     #[tokio::test]
     async fn get_returns_none_for_absent_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -437,12 +542,14 @@ mod tests {
 
     #[tokio::test]
     async fn get_rejects_unknown_key_before_stub() {
+        // No env var needed — unknown-key path never touches CHUMP_SCRATCH_DIR.
         match get("bogus").await {
             Err(ScratchError::UnknownKey(k)) => assert_eq!(k, "bogus"),
             other => panic!("expected UnknownKey, got {:?}", other),
         }
     }
 
+    #[serial]
     #[tokio::test]
     async fn set_and_get_roundtrip_lww_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -455,6 +562,7 @@ mod tests {
         std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 
+    #[serial]
     #[tokio::test]
     async fn set_rejects_cas_required_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -468,6 +576,7 @@ mod tests {
         std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 
+    #[serial]
     #[tokio::test]
     async fn cas_from_null_to_value() {
         let dir = tempfile::tempdir().unwrap();
@@ -488,6 +597,7 @@ mod tests {
         std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 
+    #[serial]
     #[tokio::test]
     async fn cas_conflict_returns_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -521,6 +631,7 @@ mod tests {
         std::env::remove_var("CHUMP_SCRATCH_DIR");
     }
 
+    #[serial]
     #[tokio::test]
     async fn ttl_expiry_returns_none() {
         let dir = tempfile::tempdir().unwrap();
@@ -543,6 +654,107 @@ mod tests {
             "expired entry should return None, got {:?}",
             result
         );
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    // ── prompt_inject_snapshot tests ──────────────────────────────────────────
+
+    #[serial]
+    #[tokio::test]
+    async fn prompt_inject_snapshot_empty_when_no_keys_set() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        let snap = prompt_inject_snapshot(5).await;
+        assert!(
+            snap.is_empty(),
+            "should be empty when no keys written, got {:?}",
+            snap
+        );
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn prompt_inject_snapshot_returns_set_lww_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        set("fleet.size", serde_json::json!(4)).await.unwrap();
+        set("pillar.focus", serde_json::json!("EFFECTIVE"))
+            .await
+            .unwrap();
+
+        let snap = prompt_inject_snapshot(5).await;
+        let keys: Vec<&str> = snap.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains(&"fleet.size"), "fleet.size missing: {keys:?}");
+        assert!(
+            keys.contains(&"pillar.focus"),
+            "pillar.focus missing: {keys:?}"
+        );
+
+        // Values must be present
+        let fleet_val = snap
+            .iter()
+            .find(|(k, _)| k == "fleet.size")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(fleet_val, Some("4"));
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn prompt_inject_snapshot_respects_max_keys_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        // Write all LWW keys
+        set("fleet.size", serde_json::json!(2)).await.unwrap();
+        set("pillar.focus", serde_json::json!("CREDIBLE"))
+            .await
+            .unwrap();
+        set(
+            "red_letter.last_ts",
+            serde_json::json!("2026-06-01T00:00:00Z"),
+        )
+        .await
+        .unwrap();
+
+        // Cap at 2 — should only return 2 entries even though 3 are set.
+        let snap = prompt_inject_snapshot(2).await;
+        assert!(
+            snap.len() <= 2,
+            "expected ≤2 entries with max_keys=2, got {}",
+            snap.len()
+        );
+
+        std::env::remove_var("CHUMP_SCRATCH_DIR");
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn prompt_inject_snapshot_includes_cas_keys_after_write() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_SCRATCH_DIR", dir.path().to_str().unwrap());
+
+        cas(
+            "main.head.sha",
+            serde_json::Value::Null,
+            serde_json::json!("abc123"),
+        )
+        .await
+        .unwrap();
+
+        let snap = prompt_inject_snapshot(5).await;
+        let found = snap.iter().find(|(k, _)| k == "main.head.sha");
+        assert!(
+            found.is_some(),
+            "main.head.sha should appear after CAS write: {snap:?}"
+        );
+        assert_eq!(found.unwrap().1, "\"abc123\"");
 
         std::env::remove_var("CHUMP_SCRATCH_DIR");
     }

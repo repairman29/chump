@@ -1690,7 +1690,6 @@ events:
     fields_required: [ts, kind, failed_mode, fallback_mode]
 
   # ── INFRA-1118: A2A Layer 1a NATS-primary delivery ────────────────────────
-  # scanner-anchor: "kind":"fleet_a2a_degraded"
   - kind: fleet_a2a_degraded
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)
@@ -1702,7 +1701,6 @@ events:
     fields_required: [ts, kind, session_id, reason]
     docs: "Layer 1a fallback path — INFRA-1118 A2A ROADMAP §Layer 1a"
 
-  # scanner-anchor: "kind":"fleet_a2a_recovered"
   - kind: fleet_a2a_recovered
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)
@@ -1714,7 +1712,6 @@ events:
     fields_required: [ts, kind, session_id, durable_name, resume_sequence]
     docs: "Layer 1a recovery path — INFRA-1118 A2A ROADMAP §Layer 1a"
 
-  # scanner-anchor: "kind":"fleet_a2a_backpressure"
   - kind: fleet_a2a_backpressure
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)
@@ -7044,53 +7041,73 @@ events:
     # payload: {scanned_doc_count: int, window_days: int, total_artifacts: int, unmentioned_count: int}
     status: stable
 
-  # ── INFRA-2417: daemon-exit-loop-watcher ──────────────────────────────────
-  - kind: daemon_exit_loop_detected
-    effect_metric: daemon_exit_loop_recovered_within_45min
-    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
-    # scanner-anchor: "kind":"daemon_exit_loop_detected"
-    trigger: >
-      Emitted when a launchd daemon label has consecutive non-zero exits
-      >= CHUMP_DAEMON_EXIT_LOOP_THRESHOLD (default 3) as reported by
-      `launchctl print gui/<uid>/<label>`. Root cause: com.chump.integrator-daemon
-      crash-looped 145 times over 37+ hours (2026-06-02) with zero alerts.
-      This daemon closes that observation gap; worst-case detection latency is
-      3 × 15min = 45min. A P0 gap is auto-filed (idempotent via fingerprint =
-      sha256(label) first 12 chars). The `dedup` field is true on subsequent
-      ticks for the same label (no new gap filed).
-    consumers: [ops-audit, fleet-brief, operator-recall]
-    fields_required: [ts, kind, label, fingerprint, gap_id, runs, last_exit_code, threshold]
-    # payload: {label: str, fingerprint: str, gap_id: str, runs: int,
-    #           last_exit_code: int, threshold: int, tick_id: str, dedup?: bool}
-    status: stable
-
-  - kind: daemon_exit_loop_recovered
+  # ── INFRA-1121: A2A Layer 3d — shared KV scratchpad activation ──────────────
+  - kind: scratchpad_set
     effect_metric: self
-    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
-    # scanner-anchor: "kind":"daemon_exit_loop_recovered"
+    emitter: crates/chump-coord/src/scratchpad.rs (INFRA-1121)
+    # scanner-anchor: "kind":"scratchpad_set"
     trigger: >
-      Emitted when a daemon previously in LOOP_DETECTED state (last_exit_code != 0)
-      returns to last_exit_code = 0. The auto-filed P0 gap is closed automatically
-      via `chump gap set <id> --status done`. Signals operator that the daemon
-      is healthy again without manual gap management.
+      Emitted when a LastWriterWins seed key is successfully written via
+      scratchpad::set(). Not emitted for CAS writes (those emit
+      scratchpad_cas_conflict on failure; success is silent).
+      Allows ops-audit to track fleet.size and pillar.focus update frequency.
     consumers: [ops-audit, fleet-brief]
-    fields_required: [ts, kind, label, fingerprint, gap_id, runs, last_exit_code]
-    # payload: {label: str, fingerprint: str, gap_id: str, runs: int,
-    #           last_exit_code: int (=0), tick_id: str}
+    fields_required: [ts, kind, key, session_id]
     status: stable
 
-  - kind: daemon_exit_loop_disabled
+  - kind: scratchpad_cas_conflict
     effect_metric: self
-    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
-    # scanner-anchor: "kind":"daemon_exit_loop_disabled"
+    emitter: crates/chump-coord/src/scratchpad.rs (INFRA-1121)
+    # scanner-anchor: "kind":"scratchpad_cas_conflict"
     trigger: >
-      Emitted when CHUMP_DAEMON_EXIT_LOOP_DISABLED is set to a non-empty value.
-      The daemon exits 0 immediately without querying any labels or filing gaps.
-      Audit trail only — allows operator to temporarily suppress the watcher
-      without leaving a silent gap in observability history.
-    consumers: [ops-audit]
-    fields_required: [ts, kind]
-    # payload: {}
+      Emitted when a CAS write fails because the current value does not match
+      the expected value (ScratchError::CASConflict). Indicates a concurrent
+      writer race; caller should retry from a fresh read. High frequency on a
+      single key signals hot contention.
+    consumers: [ops-audit, watchdog]
+    fields_required: [ts, kind, key, session_id]
+    status: stable
+
+  - kind: scratchpad_injected
+    effect_metric: effective
+    emitter: src/briefing.rs collect_scratchpad_context (INFRA-1121)
+    # scanner-anchor: "kind":"scratchpad_injected"
+    trigger: >
+      Emitted at session start when collect_scratchpad_context() successfully
+      reads at least one prompt-injectable seed key and includes it in the
+      chump --briefing output. key_count reflects how many keys were set at
+      snapshot time. Measures adoption: once fleet workers write main.head.sha,
+      key_count should be >=1 on every briefing call.
+    consumers: [ops-audit, kpi-report]
+    fields_required: [ts, kind, key_count, session_id]
+    status: stable
+
+  - kind: scratch_cache_hit
+    effect_metric: effective
+    emitter: src/commands (future callers of chump_coord::scratchpad::get)
+    # scanner-anchor: "kind":"scratch_cache_hit"
+    trigger: >
+      Emitted when a caller retrieves a value from the scratchpad instead of
+      making an external call (e.g. git ls-remote for main.head.sha). Measures
+      AC #4: once this event rate exceeds the git-ls-remote call rate, the >80%
+      reduction target is met. key field identifies which seed key was served
+      from cache.
+    consumers: [ops-audit, kpi-report]
+    fields_required: [ts, kind, key, session_id]
+    status: stable
+
+  - kind: scratch_cache_miss
+    effect_metric: effective
+    emitter: src/commands (future callers of chump_coord::scratchpad::get)
+    # scanner-anchor: "kind":"scratch_cache_miss"
+    trigger: >
+      Emitted when a caller requests a scratchpad key that is absent or expired,
+      requiring a fallback to an external data source (e.g. git ls-remote).
+      Paired with scratch_cache_hit to compute hit-rate telemetry. High miss
+      rate for main.head.sha indicates the scratchpad writer has stopped
+      updating the key.
+    consumers: [ops-audit, kpi-report]
+    fields_required: [ts, kind, key, session_id]
     status: stable
 
   # ── INFRA-2406: pre-merge cross-PR contract gate ───────────────────────────

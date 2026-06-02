@@ -105,6 +105,12 @@ pub struct GapBriefing {
     /// umbrella gap. `None` when no META dependency exists or the parent
     /// lookup fails gracefully.
     pub umbrella_context: Option<UmbrellaContext>,
+    /// INFRA-1121 (A2A Layer 3d slice 3/4): snapshot of prompt-injectable
+    /// scratchpad seed keys at session start. Each entry is `(key, value)`.
+    /// Empty when no keys have been written to `.chump-locks/scratch/` yet,
+    /// or when `CHUMP_SCRATCHPAD_INJECT=0` is set. Capped at 5 keys / ~500
+    /// tokens total by `scratchpad::prompt_inject_snapshot`.
+    pub scratchpad_context: Vec<(String, String)>,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -183,6 +189,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             recent_path_edits: Vec::new(),
             gap_not_found: true,
             umbrella_context: None,
+            scratchpad_context: Vec::new(),
         };
     };
 
@@ -280,6 +287,12 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // Graceful: logs debug on miss, never blocks the rest of the briefing.
     let umbrella_context = build_umbrella_context(root, &parsed.depends_on, &ambient_path);
 
+    // INFRA-1121 (A2A Layer 3d slice 3/4): snapshot prompt-injectable
+    // scratchpad seed keys. Graceful: empty vec when no keys are set,
+    // inject is disabled (CHUMP_SCRATCHPAD_INJECT=0), or we're not
+    // inside a tokio runtime.
+    let scratchpad_context = collect_scratchpad_context();
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -298,6 +311,41 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         recent_path_edits,
         gap_not_found: false,
         umbrella_context,
+        scratchpad_context,
+    }
+}
+
+/// Collect prompt-injectable scratchpad keys synchronously.
+///
+/// Calls `chump_coord::scratchpad::prompt_inject_snapshot` via
+/// `tokio::runtime::Handle::try_current()` so it works whether the
+/// caller is inside a tokio runtime (most production paths) or a sync
+/// test. Returns empty vec when:
+/// - `CHUMP_SCRATCHPAD_INJECT=0` is set (opt-out)
+/// - no tokio runtime is running (sync test contexts without `#[tokio::test]`)
+/// - no scratchpad keys have been written yet
+fn collect_scratchpad_context() -> Vec<(String, String)> {
+    // Operator opt-out.
+    if std::env::var("CHUMP_SCRATCHPAD_INJECT")
+        .map(|v| v == "0")
+        .unwrap_or(false)
+    {
+        return Vec::new();
+    }
+
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            // We're inside a tokio runtime — block_in_place so we don't
+            // nest runtimes. block_in_place is a no-op on current_thread
+            // runtimes but works correctly on multi_thread (the normal case).
+            tokio::task::block_in_place(|| {
+                handle.block_on(chump_coord::scratchpad::prompt_inject_snapshot(5))
+            })
+        }
+        Err(_) => {
+            // No runtime — caller is a sync context; return empty gracefully.
+            Vec::new()
+        }
     }
 }
 
@@ -1000,6 +1048,17 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         out.push_str(&format!("- Depends on: {}\n", b.depends_on.join(", ")));
     }
     out.push('\n');
+
+    // INFRA-1121: scratchpad context — fleet state snapshot at session start.
+    // Only rendered when at least one key is set; hidden when empty to keep
+    // the briefing clean for agents working without the scratchpad populated.
+    if !b.scratchpad_context.is_empty() {
+        out.push_str("## Fleet Scratchpad (session-start snapshot)\n\n");
+        for (k, v) in &b.scratchpad_context {
+            out.push_str(&format!("- `{}` = {}\n", k, v));
+        }
+        out.push('\n');
+    }
 
     // Acceptance criteria
     out.push_str("## Acceptance Criteria\n\n");
