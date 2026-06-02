@@ -37,7 +37,11 @@ LOCAL_SHA="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" rev-parse HEAD 2>/de
 # recovery PRs); Test 2 verifies the no-trailer-blocked path, so it MUST use a
 # commit with no trailer. git commit-tree creates a detached commit object —
 # no ref updated, no working tree touch.
-LOCAL_SHA_NO_TRAILER="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" commit-tree 'HEAD^{tree}' -m 'fixture: no Bot-Merge-Bypass trailer' 2>/dev/null || echo "$LOCAL_SHA")"
+LOCAL_SHA_NO_TRAILER="$(GIT_WORK_TREE="$REPO_ROOT" \
+    GIT_AUTHOR_NAME="Test Fixture" GIT_AUTHOR_EMAIL="fixture@test.local" \
+    GIT_COMMITTER_NAME="Test Fixture" GIT_COMMITTER_EMAIL="fixture@test.local" \
+    git -C "$REPO_ROOT" commit-tree 'HEAD^{tree}' -m 'fixture: no-trailer commit for infra-1441 test' 2>/dev/null \
+    || echo "$LOCAL_SHA")"
 
 run_hook() {
     local env_line="$1"       # extra env vars (KEY=val space-separated)
@@ -53,6 +57,9 @@ run_hook() {
 
     # Run hook with custom env, remote = 'origin' (no live gh call needed for
     # new-branch pushes — guard fires before gh is touched).
+    # CHUMP_BYPASS_TRAILER_CHECK=0: this test exercises Guard 4 (bot-merge required)
+    # not the bypass-trailer validator (INFRA-2407). The fixture commit message must
+    # not trigger the bypass-trailer sub-hook as a false positive.
     set +e
     echo "$stdin_line" | env \
         CHUMP_GAP_CHECK=0 \
@@ -61,6 +68,7 @@ run_hook() {
         CHUMP_FORCE_LEASE_CHECK=0 \
         CHUMP_AUTOMERGE_OVERRIDE=1 \
         CHUMP_REBASE_DETECT=0 \
+        CHUMP_BYPASS_TRAILER_CHECK=0 \
         $env_cmd \
         bash "$HOOK" origin "git@github.com:example/repo.git" 2>/dev/null
     local rc=$?

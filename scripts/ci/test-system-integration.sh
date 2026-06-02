@@ -250,7 +250,10 @@ echo "--- Assertion 4: gap ship marks status done ---"
         # main branch has a commit mentioning the gap ID — no bypass env var needed.
         SHIP_REPO="$TMP/ship-repo-$$"
         mkdir -p "$SHIP_REPO"
-        git -C "$SHIP_REPO" init -q
+        # Use --initial-branch main so verify_proof_of_merge's `git log main` finds the commit.
+        # CI runners (git 2.x) default to 'master'; verify_proof_of_merge expects 'main'.
+        git -C "$SHIP_REPO" init -q --initial-branch main 2>/dev/null \
+            || { git -C "$SHIP_REPO" init -q && git -C "$SHIP_REPO" checkout -q -b main 2>/dev/null; }
         git -C "$SHIP_REPO" config user.email "test@integration.local"
         git -C "$SHIP_REPO" config user.name "Integration Test"
         # Commit that carries the gap ID so verify_proof_of_merge passes.
