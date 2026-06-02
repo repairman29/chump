@@ -185,4 +185,60 @@ for kind in main_preflight_red main_preflight_recovered main_preflight_disabled;
 done
 pass "all three new event kinds registered in EVENT_REGISTRY.yaml"
 
+# ── 8. INFRA-2404 round-trip: writer → reader contract ────────────────────────
+# Fresh-eyes review of PR #2943 + #2944 caught that the watchdog wrote
+# {state, updated_at, last_tick_id} but atomic_claim.rs reads
+# {last_status, last_tick_at, failing_gates}. Gate was silently inert.
+# This test asserts the state JSON now contains all reader-expected keys,
+# regardless of which path (GREEN or RED) wrote it.
+echo "--- 8: INFRA-2404 writer→reader key contract ---"
+
+# After the RECOVERY path above, state is GREEN — verify reader keys present.
+for k in last_status last_tick_at failing_gates; do
+    python3 -c "import json,sys; d=json.load(open('$TMP_STATE')); assert '$k' in d, '$k missing'" \
+        || fail "GREEN state missing reader-expected key: $k (json: $(cat "$TMP_STATE"))"
+done
+green_last_status="$(python3 -c "import json; print(json.load(open('$TMP_STATE'))['last_status'])")"
+green_last_tick_at="$(python3 -c "import json; print(json.load(open('$TMP_STATE'))['last_tick_at'])")"
+[[ "$green_last_status" == "green" ]] \
+    || fail "GREEN state last_status should be 'green' (lower); got: '$green_last_status'"
+[[ "$green_last_tick_at" -gt 0 ]] \
+    || fail "GREEN state last_tick_at should be > 0 (unix secs); got: '$green_last_tick_at'"
+pass "GREEN: last_status='green' + last_tick_at>0 + failing_gates=[] all present"
+
+# Force a RED state by running tick once with MOCK_FAIL set.
+TMP_AMB2="$(mktemp)"
+STUB_LOG2="$(mktemp)"
+CHUMP_BIN=/usr/bin/true \
+    CHUMP_AMBIENT_LOG="$TMP_AMB2" \
+    CHUMP_MAIN_PREFLIGHT_STATE_FILE="$TMP_STATE" \
+    CHUMP_MAIN_PREFLIGHT_MOCK_FAIL="alpha,beta" \
+    PATH="/tmp:$PATH" \
+    bash "$DAEMON" tick 2>&1 >/dev/null || true
+
+for k in last_status last_tick_at failing_gates; do
+    python3 -c "import json,sys; d=json.load(open('$TMP_STATE')); assert '$k' in d, '$k missing'" \
+        || fail "RED state missing reader-expected key: $k"
+done
+red_last_status="$(python3 -c "import json; print(json.load(open('$TMP_STATE'))['last_status'])")"
+red_gates="$(python3 -c "import json; print(','.join(sorted(json.load(open('$TMP_STATE'))['failing_gates'])))")"
+[[ "$red_last_status" == "red" ]] \
+    || fail "RED state last_status should be 'red' (lower); got: '$red_last_status'"
+[[ "$red_gates" == "alpha,beta" ]] \
+    || fail "RED state failing_gates should be ['alpha','beta']; got: '$red_gates'"
+pass "RED: last_status='red' + failing_gates=['alpha','beta'] all present"
+rm -f "$TMP_AMB2" "$STUB_LOG2"
+
+# ── 9. INFRA-2404 fingerprint stability (Bug 3 — tr '\n' '|' replaces no-op) ──
+echo "--- 9: INFRA-2404 fingerprint stability ---"
+# Source the helper directly to get the function
+fp1="$(bash -c "source $DAEMON 2>/dev/null; _gate_fingerprint 'alpha,beta,gamma'")"
+fp2="$(bash -c "source $DAEMON 2>/dev/null; _gate_fingerprint 'gamma,beta,alpha'")"
+[[ "$fp1" == "$fp2" ]] \
+    || fail "fingerprint should be order-independent (sort); got fp1='$fp1' fp2='$fp2'"
+fp3="$(bash -c "source $DAEMON 2>/dev/null; _gate_fingerprint 'alpha,beta'")"
+[[ "$fp1" != "$fp3" ]] \
+    || fail "different gate sets should produce different fingerprints; got '$fp1' for both"
+pass "fingerprint stable on sort + distinct on different gates"
+
 printf '\n=== test-main-preflight-watchdog.sh PASSED ===\n'
