@@ -685,3 +685,11 @@ auto_merge_arm_restored    # reason: INFRA-2396; same as above
 auto_merge_arm_skipped     # reason: INFRA-2396; same as above
 gh_token_rotate_noop       # reason: INFRA-2396; registered but no source emit found; likely lost in gh-token-rotate refactor
 gh_token_rotated           # reason: INFRA-2396; same as above
+
+# ── INFRA-2406: cross-PR contract gate ────────────────────────────────────────
+# Emitted by scripts/ci/test-cross-pr-contract.sh — a CI-gate script in
+# scripts/ci/ which is intentionally excluded from PROD_PATHS (CI gates can
+# legitimately mention "kind":"X" as test fixtures; including them would produce
+# false-positive emit-without-register hits). The kind IS registered in
+# EVENT_REGISTRY.yaml. Reserved here so strict-mode CI gate passes.
+cross_pr_contract_mismatch  # reason: INFRA-2406; emitted by scripts/ci/test-cross-pr-contract.sh (CI-gate script, excluded from PROD_PATHS scan); registered in EVENT_REGISTRY.yaml

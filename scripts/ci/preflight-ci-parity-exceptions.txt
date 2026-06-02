@@ -356,3 +356,7 @@ scripts/ci/verify-external-golden-path.sh  # reason: INFRA-2396 — e2e-golden-p
 scripts/ci/golden-path-timing.sh           # reason: INFRA-2396 — companion timing/JSONL artifact emit for the e2e-golden-path job; depends on a successful prior verify-external-golden-path run; ci-advisory.yml and ci-nightly.yml
 External golden path smoke           # reason: INFRA-2396 — step-name fragment for the verify-external-golden-path.sh step in e2e-golden-path job (ci-advisory.yml + ci-nightly.yml)
 Golden path timing                   # reason: INFRA-2396 — step-name fragment for the golden-path-timing.sh step in e2e-golden-path job (ci-advisory.yml + ci-nightly.yml)
+
+# ── INFRA-2406: cross-PR contract gate (Tier-D — requires gh pr list) ────────
+test-cross-pr-contract.sh           # reason: INFRA-2406 — calls gh pr list to enumerate open PRs; requires GH_TOKEN context; Tier-D (cannot mirror in local preflight)
+cross-PR contract gate              # reason: INFRA-2406 — step-name fragment for the multi-line run: block above (first line is cargo build, not the script); Tier-D

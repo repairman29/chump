@@ -1,0 +1,21 @@
+# cross-pr-allowlist.txt — INFRA-2406
+#
+# Pre-approved cross-PR contract conflicts for the cross-PR contract gate.
+# Each entry declares a writer/reader pair whose key mismatch is INTENTIONAL
+# and has been reviewed by the operator.
+#
+# OPERATOR ZERO-BYPASS THESIS (INFRA-2406):
+#   There is NO CHUMP_CROSS_PR_CONTRACT_BYPASS env var.
+#   If a legitimate cross-PR contract conflict needs to ship, add it here
+#   (with a documented reason) and get it reviewed in a PR.
+#   This file IS the bypass mechanism — source-controlled, audited, reviewable.
+#
+# Format: writer_path  reader_path  # reason: <one-line why this is safe>
+#
+# Matching rules: exact path match on both writer and reader.
+# Comments (#) and blank lines are ignored.
+#
+# Example (do not uncomment without a real gap citation):
+#   scripts/coord/main-preflight-watchdog.sh  scripts/coord/chump-health-gate.sh  # reason: INFRA-XXXX intentional schema migration in-flight; remove once INFRA-XXXX ships
+
+# (no entries yet — the gate starts with an empty allowlist)
