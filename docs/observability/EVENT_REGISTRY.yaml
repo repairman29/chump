@@ -6817,3 +6817,33 @@ events:
     expected_volume: "1 per SessionStart (when CHUMP_SHIP_ASSIST_HOOK != 0)"
     status: stable
     # payload: {voa_count_last_7d: int, top_class_count: int, ts: string}
+
+  # ── INFRA-2366: agent-awareness sync ─────────────────────────────────────────
+  - kind: inventory_agent_sync_finding
+    effect_metric: self
+    emitter: scripts/coord/inventory-agent-sync.sh (INFRA-2366)
+    # scanner-anchor: "kind":"inventory_agent_sync_finding"
+    trigger: >
+      Emitted once per shipped artifact (last N days, default 30) that has
+      introducing_pr set in artifact_index but whose path/basename/gap-ID
+      appears in zero scanned agent docs (.claude/agents/*.md, docs/process/*.md,
+      AGENTS.md, CLAUDE.md). Advisory only — does not gate CI.
+      Bypass: pass --dry-run to suppress emission.
+    consumers: [ops-audit, fleet-brief, quartermaster]
+    fields_required: [ts, kind, path, introducing_pr, introducing_gap, last_modified_at, scanned_doc_count]
+    # payload: {path: str, introducing_pr: str, introducing_gap: str,
+    #           last_modified_at: int (epoch), scanned_doc_count: int}
+    status: stable
+
+  - kind: inventory_agent_sync_run
+    effect_metric: self
+    emitter: scripts/coord/inventory-agent-sync.sh (INFRA-2366)
+    # scanner-anchor: "kind":"inventory_agent_sync_run"
+    trigger: >
+      Emitted once per invocation of inventory-agent-sync.sh (unless --dry-run).
+      Summarizes the scan: total docs scanned, window in days, total artifacts
+      examined, and count of unmentioned artifacts surfaced.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, scanned_doc_count, window_days, total_artifacts, unmentioned_count]
+    # payload: {scanned_doc_count: int, window_days: int, total_artifacts: int, unmentioned_count: int}
+    status: stable
