@@ -1,0 +1,1 @@
+{"state": "RED", "last_status": "red", "last_tick_at": 1780368540, "failing_gates": ["\u2014"], "fingerprint": "c8a79a0120f7", "filed_fingerprints": ["c8a79a0120f7"], "filed_gaps": ["INFRA-1152"], "last_head_sha": "0d1c38f8f3f18183aa92fc4c16944deeba4ef7d5", "updated_at": "2026-06-02T02:49:00Z", "last_tick_id": "tick-1780368418-30917"}
