@@ -356,10 +356,11 @@ while :; do
     cycle=$((cycle + 1))
 
     # FLEET-054: auto-pause when waste rate spikes. Workers check for the
-    # .chump/fleet-paused sentinel before each claim cycle. CHUMP_IGNORE_WASTE_PAUSE=1
-    # bypasses (operator override; logged to ambient).
+    # .chump/fleet-paused sentinel before each claim cycle. The sentinel blocks
+    # claim (work); it does NOT block gap reserve (filing is always allowed).
+    # See INFRA-2424 for the reserve/claim split rationale.
     _pause_file="${CHUMP_FLEET_PAUSE_FILE:-$REPO_ROOT/.chump/fleet-paused}"
-    if [[ -f "$_pause_file" && "${CHUMP_IGNORE_WASTE_PAUSE:-0}" != "1" ]]; then
+    if [[ -f "$_pause_file" ]]; then
         log "FLEET-054: fleet-paused sentinel present ($( cat "$_pause_file" | head -1 )) — waste spike in progress; sleeping ${IDLE_SLEEP_S}s before retry"
         _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
         printf '{"ts":"%s","kind":"worker_paused_waste_spike","agent_id":"%s","pause_file":"%s"}\n' \

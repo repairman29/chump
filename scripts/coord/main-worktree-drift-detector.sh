@@ -202,7 +202,7 @@ if (( ! SKIP_RESERVE )); then
     GAP_TITLE="main worktree cleanup — ${UNTRACKED_COUNT} untracked yaml + ${BEHIND_COUNT} commits behind"
     AC="Run: cd ${MAIN_WORKTREE} && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
     log "Reserving cleanup gap: $GAP_TITLE"
-    CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
+    CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
         "$CHUMP" gap reserve \
         --domain META \
         --priority P1 \

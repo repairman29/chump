@@ -374,7 +374,7 @@ print(json.dumps(s))
     fi
     local gap_id="UNFILED"
     if [[ "$DRY_RUN" != "1" ]]; then
-        gap_id="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
+        gap_id="$(CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
             chump gap reserve --domain META \
                 --title "$title" --priority P1 --effort s \
                 --force-duplicate 2>/dev/null | tail -1)"
