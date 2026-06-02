@@ -3,11 +3,11 @@
 # pre-commit guard (scripts/git-hooks/pre-commit-obs-budget.sh).
 #
 # Acceptance criteria verified:
-#   (1) under-threshold + no obs → ALLOWED
-#   (2) over-threshold + no obs → REJECTED
-#   (3) over-threshold + tracing::info!() → ALLOWED
-#   (4) over-threshold + CHUMP_OBS_BUDGET_BYPASS=1 → ALLOWED
-#   (5) over-threshold + ambient kind literal → ALLOWED
+#   (1) under-threshold + no obs → ALLOWED (silent)
+#   (2) over-threshold + no obs → WARNED (exit 0, stderr warning)
+#   (3) over-threshold + tracing::info!() → ALLOWED (silent)
+#   (4) over-threshold + no obs + CHUMP_OBS_BUDGET_STRICT=1 → BLOCKED (exit 1)
+#   (5) over-threshold + ambient kind literal → ALLOWED (silent)
 #   (6) tunable threshold via CHUMP_OBS_BUDGET_FEATURE_THRESHOLD
 #
 # Exits non-zero on any check failure.
@@ -83,16 +83,16 @@ fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 rm -f "$FAKE_REPO/src/feature.rs"
 
-# ── Test 2: over-threshold + no obs → REJECTED ──────────────────────────────
-echo "--- Test 2: 80 feature lines, no obs → rejected ---"
+# ── Test 2: over-threshold + no obs → WARNED (warn-only default) ─────────────
+echo "--- Test 2: 80 feature lines, no obs → warn exit 0 (INFRA-2425) ---"
 write_feature "$FAKE_REPO/src/feature.rs" 80 ""
 git -C "$FAKE_REPO" add src/feature.rs
 OUT=$(run_hook 2>&1)
 RC=$?
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qE "observability-budget|INFRA-755"; then
-    ok "over-threshold no-obs rejected"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -qE "WARNING|obs-budget|INFRA-755"; then
+    ok "over-threshold no-obs: warned, exit 0 (warn-only default)"
 else
-    fail "over-threshold no-obs should be rejected (rc=$RC, output: $OUT)"
+    fail "over-threshold no-obs should warn and exit 0 (rc=$RC, output: $OUT)"
 fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 
@@ -107,14 +107,14 @@ else
 fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 
-# ── Test 4: bypass env → ALLOWED ────────────────────────────────────────────
-echo "--- Test 4: 80 feature lines, no obs, BYPASS=1 → allowed ---"
+# ── Test 4: strict mode → BLOCKED (INFRA-2425 replaces old BYPASS test) ──────
+echo "--- Test 4: 80 feature lines, no obs, STRICT=1 → exit 1 ---"
 write_feature "$FAKE_REPO/src/feature.rs" 80 ""
 git -C "$FAKE_REPO" add src/feature.rs
-if CHUMP_OBS_BUDGET_BYPASS=1 run_hook >/dev/null 2>&1; then
-    ok "bypass env allows offending commit"
+if CHUMP_OBS_BUDGET_STRICT=1 run_hook >/dev/null 2>&1; then
+    fail "strict mode should block (exit 1)"
 else
-    fail "bypass env should allow"
+    ok "strict mode blocks offending commit"
 fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 
@@ -129,16 +129,29 @@ else
 fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 
-# ── Test 6: tunable threshold ───────────────────────────────────────────────
-echo "--- Test 6: 30 lines no obs, threshold=20 → rejected ---"
+# ── Test 6: tunable threshold + strict → blocks ─────────────────────────────
+echo "--- Test 6: 30 lines no obs, threshold=20, STRICT=1 → blocked ---"
+write_feature "$FAKE_REPO/src/feature.rs" 30 ""
+git -C "$FAKE_REPO" add src/feature.rs
+OUT=$(CHUMP_OBS_BUDGET_FEATURE_THRESHOLD=20 CHUMP_OBS_BUDGET_STRICT=1 run_hook 2>&1)
+RC=$?
+if [ "$RC" -ne 0 ]; then
+    ok "tunable threshold + strict blocks below default"
+else
+    fail "tunable threshold + strict should block (rc=$RC)"
+fi
+git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
+
+# ── Test 6b: tunable threshold, warn-only → warns but exits 0 ───────────────
+echo "--- Test 6b: 30 lines no obs, threshold=20, default mode → warn exit 0 ---"
 write_feature "$FAKE_REPO/src/feature.rs" 30 ""
 git -C "$FAKE_REPO" add src/feature.rs
 OUT=$(CHUMP_OBS_BUDGET_FEATURE_THRESHOLD=20 run_hook 2>&1)
 RC=$?
-if [ "$RC" -ne 0 ]; then
-    ok "tunable threshold rejects below default"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -qiE "WARNING|obs-budget|INFRA-755"; then
+    ok "tunable threshold warn-only: warns, exits 0"
 else
-    fail "tunable threshold should reject (rc=$RC)"
+    fail "tunable threshold warn-only should warn and exit 0 (rc=$RC, out: $OUT)"
 fi
 git -C "$FAKE_REPO" reset -q HEAD src/feature.rs
 rm -f "$FAKE_REPO/src/feature.rs"

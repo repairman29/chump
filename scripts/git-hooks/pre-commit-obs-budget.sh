@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# pre-commit-obs-budget.sh — INFRA-755
+# pre-commit-obs-budget.sh — INFRA-755 / INFRA-2425
 #
-# "Observability budget" guard. Refuses commits where the staged diff
-# adds substantial feature code (default >50 lines across .rs/.sh/.py)
-# but introduces ZERO new observability hooks.
+# "Observability budget" guard. Warns (default) or blocks (strict mode) when
+# the staged diff adds substantial feature code (default >50 lines across
+# .rs/.sh/.py) but introduces ZERO new observability hooks.
+#
+# INFRA-2425: Default changed from block-on-fail to warn-only.
+# Set CHUMP_OBS_BUDGET_STRICT=1 to restore blocking behaviour (e.g. in CI).
+# CHUMP_OBS_BUDGET_BYPASS is deleted — no longer consulted.
 #
 # Companion to INFRA-754 (event registry). Where INFRA-754 enforces that
 # every ambient.jsonl `kind=` value is documented, this guard nudges
@@ -26,21 +30,63 @@
 # Tunables:
 #   CHUMP_OBS_BUDGET_FEATURE_THRESHOLD  feature-line cap before guard fires
 #                                        (default: 50)
-#   CHUMP_OBS_BUDGET_BYPASS=1           skip guard entirely; commit body
-#                                        MUST include `Obs-Bypass-Reason:`
-#                                        trailer (the wrapper checks).
+#   CHUMP_OBS_BUDGET_STRICT=1           exit 1 on violation (opt-in strict
+#                                        mode; warn-only by default)
 #
-# Bypass discipline mirrors --no-verify: sparingly, with a documented
-# reason. The reason field is what the operator audits in retrospect.
+# Exempt commit classes (no warning printed):
+#   - Subject prefix docs: or chore:
+#   - Only allowlist/registry paths staged
+#     (scripts/ci/*-allowlist.txt, docs/observability/EVENT_REGISTRY.yaml)
+#   - New one-shot CLI tool additions (new src/commands/*.rs < 300 LOC)
 
 set -uo pipefail
 
-# Bypass switch (matches the --no-verify pattern used by other guards)
-if [[ "${CHUMP_OBS_BUDGET_BYPASS:-0}" == "1" ]]; then
+THRESHOLD="${CHUMP_OBS_BUDGET_FEATURE_THRESHOLD:-50}"
+STRICT="${CHUMP_OBS_BUDGET_STRICT:-0}"
+
+# ── Exempt class 1: docs:/chore: subject prefix ──────────────────────────────
+# Read the commit message from COMMIT_EDITMSG if available (interactive commit),
+# or fall back to the first staged diff file listing (no subject available yet
+# for --allow-empty). For non-interactive hooks the MSG_FILE arg is $1.
+_SUBJECT=""
+_MSG_FILE="${1:-}"
+if [[ -n "$_MSG_FILE" && -f "$_MSG_FILE" ]]; then
+    _SUBJECT=$(head -1 "$_MSG_FILE" || true)
+elif [[ -f "$(git rev-parse --git-dir 2>/dev/null)/COMMIT_EDITMSG" ]]; then
+    _SUBJECT=$(head -1 "$(git rev-parse --git-dir)/COMMIT_EDITMSG" || true)
+fi
+
+if [[ "$_SUBJECT" =~ ^(docs|chore): ]]; then
     exit 0
 fi
 
-THRESHOLD="${CHUMP_OBS_BUDGET_FEATURE_THRESHOLD:-50}"
+# ── Exempt class 2: only allowlist/registry paths staged ─────────────────────
+STAGED_PATHS=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+if [[ -n "$STAGED_PATHS" ]]; then
+    # Remove allowlist/registry paths; if nothing remains, exempt entirely.
+    NON_EXEMPT=$(printf '%s\n' "$STAGED_PATHS" \
+        | grep -vE '(scripts/ci/[^/]+-allowlist\.txt|docs/observability/EVENT_REGISTRY\.yaml)' \
+        || true)
+    if [[ -z "$NON_EXEMPT" ]]; then
+        exit 0
+    fi
+fi
+
+# ── Exempt class 3: new one-shot CLI tool (src/commands/*.rs, new, < 300 LOC) ─
+NEW_CLI_FILES=$(git diff --cached --name-only --diff-filter=A 2>/dev/null \
+    | grep -E '^src/commands/[^/]+\.rs$' || true)
+if [[ -n "$NEW_CLI_FILES" ]]; then
+    _ALL_NEW_LOC=$(git diff --cached --numstat --diff-filter=A -- $NEW_CLI_FILES 2>/dev/null \
+        | awk '$1 != "-" { sum += $1 } END { print sum+0 }')
+    # Count non-new staged files (anything other than these new CLI files).
+    OTHER_STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
+        | grep -vE '^src/commands/[^/]+\.rs$' \
+        | grep -vE '(scripts/ci/[^/]+-allowlist\.txt|docs/observability/EVENT_REGISTRY\.yaml)' \
+        || true)
+    if [[ -z "$OTHER_STAGED" && "${_ALL_NEW_LOC:-0}" -lt 300 ]]; then
+        exit 0
+    fi
+fi
 
 # numstat = added\tremoved\tpath ; we want only added across our code
 # extensions, ignoring the guard's own test fixtures and hook plumbing.
@@ -95,35 +141,38 @@ if [[ "$OBS_HITS" -gt 0 ]]; then
     exit 0
 fi
 
-# Block: feature-heavy commit with no observability hook.
-echo "──────────────────────────────────────────────────────────────────────" >&2
-echo "❌ INFRA-755 observability-budget guard blocked this commit." >&2
-echo "" >&2
-echo "Staged diff adds $FEATURE_ADDED lines of feature code (.rs/.sh/.py)" >&2
-echo "but contains 0 new observability hooks." >&2
-echo "" >&2
-echo "Threshold: > $THRESHOLD lines." >&2
-echo "" >&2
-echo "Why: every meaningful code path should be observable from" >&2
-echo ".chump-locks/ambient.jsonl, tracing logs, or chump_improvement_targets." >&2
-echo "Without it, consumers (fleet-brief, kpi-report, watchdogs) can't" >&2
-echo "tell whether the new path ran or wedged. See" >&2
-echo "docs/process/OBSERVABILITY_DOCTRINE.md." >&2
-echo "" >&2
-echo "Fix one of:" >&2
-echo "  1. Add at least one observability hook to the new code:" >&2
-echo "       - tracing::info!(... ) / warn!() / error!()" >&2
-echo "       - emit an ambient event with \"kind\":\"<name>\"" >&2
-echo "         (must also be registered per INFRA-754)" >&2
-echo "       - record a chump_improvement_targets lesson" >&2
-echo "" >&2
-echo "  2. Bypass once, with a reason in the commit body:" >&2
-echo "       CHUMP_OBS_BUDGET_BYPASS=1 git commit ..." >&2
-echo "     and add a trailer:" >&2
-echo "       Obs-Bypass-Reason: <one-sentence why>" >&2
-echo "" >&2
-echo "  3. Raise the threshold for this commit:" >&2
-echo "       CHUMP_OBS_BUDGET_FEATURE_THRESHOLD=<N> git commit ..." >&2
-echo "──────────────────────────────────────────────────────────────────────" >&2
-
-exit 1
+# No observability hooks found in feature-heavy commit.
+if [[ "$STRICT" == "1" ]]; then
+    echo "──────────────────────────────────────────────────────────────────────" >&2
+    echo "INFRA-755 observability-budget guard blocked this commit (strict mode)." >&2
+    echo "" >&2
+    echo "Staged diff adds $FEATURE_ADDED lines of feature code (.rs/.sh/.py)" >&2
+    echo "but contains 0 new observability hooks." >&2
+    echo "" >&2
+    echo "Threshold: > $THRESHOLD lines." >&2
+    echo "" >&2
+    echo "Why: every meaningful code path should be observable from" >&2
+    echo ".chump-locks/ambient.jsonl, tracing logs, or chump_improvement_targets." >&2
+    echo "Without it, consumers (fleet-brief, kpi-report, watchdogs) can't" >&2
+    echo "tell whether the new path ran or wedged. See" >&2
+    echo "docs/process/OBSERVABILITY_DOCTRINE.md." >&2
+    echo "" >&2
+    echo "Fix one of:" >&2
+    echo "  1. Add at least one observability hook to the new code:" >&2
+    echo "       - tracing::info!(... ) / warn!() / error!()" >&2
+    echo "       - emit an ambient event with \"kind\":\"<name>\"" >&2
+    echo "         (must also be registered per INFRA-754)" >&2
+    echo "       - record a chump_improvement_targets lesson" >&2
+    echo "" >&2
+    echo "  2. Unset CHUMP_OBS_BUDGET_STRICT to run in warn-only mode." >&2
+    echo "" >&2
+    echo "  3. Raise the threshold for this commit:" >&2
+    echo "       CHUMP_OBS_BUDGET_FEATURE_THRESHOLD=<N> git commit ..." >&2
+    echo "──────────────────────────────────────────────────────────────────────" >&2
+    exit 1
+else
+    echo "WARNING: INFRA-755 obs-budget: staged diff adds $FEATURE_ADDED lines (.rs/.sh/.py) with 0 observability hooks." >&2
+    echo "  Consider adding tracing macros, ambient events, or improvement_targets rows." >&2
+    echo "  (Set CHUMP_OBS_BUDGET_STRICT=1 to make this a hard block.)" >&2
+    exit 0
+fi

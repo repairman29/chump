@@ -81,7 +81,7 @@ git add -A >/dev/null 2>&1 || {
 # Run each available guard with its bypass FORCED OFF (default).
 declare -a GUARDS=(
     "scripts/git-hooks/pre-commit-event-registry.sh:CHUMP_EVENT_REGISTRY_CHECK"
-    "scripts/git-hooks/pre-commit-obs-budget.sh:CHUMP_OBS_BUDGET_BYPASS"
+    "scripts/git-hooks/pre-commit-obs-budget.sh:CHUMP_OBS_BUDGET_STRICT"
     "scripts/git-hooks/pre-commit-default-flip.sh:CHUMP_DEFAULT_FLIP_CHECK"
 )
 
@@ -97,11 +97,10 @@ for entry in "${GUARDS[@]}"; do
     fi
 
     echo "[precommit-strict] replaying $guard (bypass $bypass_var FORCED off)"
-    # Force the bypass var to its "active" sentinel. Different guards use
-    # different conventions: most have CHECK=1 on, =0 off; obs-budget uses
-    # BYPASS=1 to bypass. Force-setting both flavors covers either pattern.
+    # Force guards to their active/strict state. obs-budget uses STRICT=1 to
+    # enable blocking mode (INFRA-2425: BYPASS deleted, replaced by STRICT).
     if ! CHUMP_EVENT_REGISTRY_CHECK=1 \
-         CHUMP_OBS_BUDGET_BYPASS=0 \
+         CHUMP_OBS_BUDGET_STRICT=1 \
          CHUMP_DEFAULT_FLIP_CHECK=1 \
          "$guard_path"; then
         echo "[precommit-strict] ✗ $guard tripped under strict replay" >&2
