@@ -5903,6 +5903,61 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind]
 
+  - kind: fresh_eyes_heartbeat
+    effect_metric: credible
+    emitter: scripts/coord/fresh-eyes-loop.sh cmd_heartbeat (META-132)
+    trigger: >
+      Emitted on each cron-driven fresh-eyes-loop heartbeat to prove the
+      curator-opus-fresh-eyes (mirror) role is alive. Watched by the
+      daemon-silent meta-monitor (INFRA-2352) to detect a stalled
+      self-consistency auditor.
+    consumers: [heartbeat-shepherd, ops-audit]
+    fields_required: [ts, kind]
+
+  - kind: fresh_eyes_tick
+    effect_metric: credible
+    emitter: scripts/coord/fresh-eyes-loop.sh _run_cycle (META-132)
+    trigger: >
+      Emitted once per fresh-eyes cycle (tick/audit) regardless of outcome,
+      recording the comparator window. Distinguishes "ran and found nothing"
+      from "did not run" and tracks cycle cadence.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, window_min]
+
+  - kind: fresh_eyes_disagreement
+    effect_metric: credible
+    emitter: scripts/coord/fresh-eyes-loop.sh comparators 1/4/5 (META-132)
+    trigger: >
+      Emitted (rank-1, anti-noise) when a fleet self-report contradicts ground
+      truth: fleet-brief says healthy while the stream shows fire (comparator 1),
+      brief healthy while chump health --slo-check breaches (comparator 4), or the
+      ROADMAP bottleneck pillar is starved by the last-7d ship distribution
+      (comparator 5). comparator_id names which check fired.
+    consumers: [ops-audit, wizard-daemon, operator]
+    fields_required: [ts, kind, comparator_id, severity, detail]
+
+  - kind: fresh_eyes_coverage_gap
+    effect_metric: credible
+    emitter: scripts/coord/fresh-eyes-loop.sh comparator_2 (META-132)
+    trigger: >
+      Emitted when registered ambient event kinds have zero curator-loop
+      coverage (no scripts/coord/*-loop.sh greps or emits them) —
+      register-without-watch drift, the inverse of the emit-without-register
+      case the registry coverage gate already catches.
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, comparator_id, severity, detail]
+
+  - kind: fresh_eyes_silent_curator
+    effect_metric: resilient
+    emitter: scripts/coord/fresh-eyes-loop.sh comparator_3 (META-132)
+    trigger: >
+      Emitted when a curator session emitted heartbeats but zero actions
+      (sub_agent_dispatched / DONE / ship_landed) over the comparator window —
+      the silent_agent root cause (heartbeat-alive but doing-nothing) that the
+      existing heartbeat watchdogs miss because a heartbeat looks like life.
+    consumers: [ops-audit, heartbeat-shepherd]
+    fields_required: [ts, kind, comparator_id, severity, detail]
+
   - kind: worktree_reaped
     effect_metric: resilient
     emitter: scripts/ops/stale-worktree-reaper.sh (INFRA-2020)

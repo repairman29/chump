@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.fresh-eyes</string>
+
+  <!-- META-132: curator-opus-fresh-eyes (mirror) self-consistency audit + heartbeat.
+       Runs every 4h. `tick` runs all 5 comparators and emits the rank-1 finding
+       ONLY (anti-noise); it exits 1 on all-clear (the GOOD outcome) and 0 when a
+       disagreement is emitted — so the trailing `|| true` keeps the launchd job
+       log clean. Liveness is tracked via the kind=fresh_eyes_heartbeat /
+       fresh_eyes_tick ambient emits (watched by the daemon-silent meta-monitor,
+       INFRA-2352), NOT via this process's exit code.
+
+       Install: scripts/setup/chump-fleet-bootstrap.sh (or `cp` into
+       ~/Library/LaunchAgents/ && launchctl load). -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/coord/fresh-eyes-loop.sh heartbeat ; bash scripts/coord/fresh-eyes-loop.sh tick || true</string>
+  </array>
+
+  <!-- Every 4 hours -->
+  <key>StartInterval</key>
+  <integer>14400</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-fresh-eyes-loop.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-fresh-eyes-loop.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>CHUMP_SESSION_ID</key>
+    <string>curator-opus-fresh-eyes-cron</string>
+  </dict>
+</dict>
+</plist>
