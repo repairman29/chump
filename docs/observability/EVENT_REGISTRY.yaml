@@ -1674,6 +1674,7 @@ events:
     fields_required: [ts, kind, failed_mode, fallback_mode]
 
   # ── INFRA-1118: A2A Layer 1a NATS-primary delivery ────────────────────────
+  # scanner-anchor: "kind":"fleet_a2a_degraded"
   - kind: fleet_a2a_degraded
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)
@@ -1685,6 +1686,7 @@ events:
     fields_required: [ts, kind, session_id, reason]
     docs: "Layer 1a fallback path — INFRA-1118 A2A ROADMAP §Layer 1a"
 
+  # scanner-anchor: "kind":"fleet_a2a_recovered"
   - kind: fleet_a2a_recovered
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)
@@ -1696,6 +1698,7 @@ events:
     fields_required: [ts, kind, session_id, durable_name, resume_sequence]
     docs: "Layer 1a recovery path — INFRA-1118 A2A ROADMAP §Layer 1a"
 
+  # scanner-anchor: "kind":"fleet_a2a_backpressure"
   - kind: fleet_a2a_backpressure
     effect_metric: self
     emitter: crates/chump-coord/src/events.rs (INFRA-1118)

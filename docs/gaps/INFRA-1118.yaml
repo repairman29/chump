@@ -1,7 +1,7 @@
 - id: INFRA-1118
   domain: INFRA
   title: "EFFECTIVE: A2A Layer 1a — NATS-primary delivery, file-fallback secondary (META-061)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -16,4 +16,5 @@
   notes: |
     2026-05-23 curator update: INFRA-1822 ACP investigation returned verdict (c) — Chump coord and ACP solve different problems (N:M workers vs 1:1 editor-agent). Removed earlier-added depends_on; this gap proceeds independently. See docs/arsenal/cross-pollination/CP-007-acp-alignment.md for the analysis.
     [2026-05-30T04:21:07Z] [2026-05-29 offline-first classification] Public-side. Sliced into 4 sub-tasks for A2A Layer 1a; slice 1 (INFRA-1758) shipped 2026-05-29. Classified under INFRA-2246 offline-first roadmap Phase 2 (mission-layer interface lift).
+  closed_date: '2026-06-02'
 

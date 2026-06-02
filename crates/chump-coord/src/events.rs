@@ -558,6 +558,10 @@ async fn get_durable_last_sequence(js: &jetstream::Context, durable_name: &str) 
 }
 
 // ── Ambient emission helpers ─────────────────────────────────────────────────
+//
+// scanner-anchor: "kind":"fleet_a2a_degraded"
+// scanner-anchor: "kind":"fleet_a2a_recovered"
+// scanner-anchor: "kind":"fleet_a2a_backpressure"
 
 fn emit_a2a_degraded(session_id: &str, reason: &str) {
     let ts = chrono::Utc::now().to_rfc3339();
