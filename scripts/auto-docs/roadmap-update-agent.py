@@ -257,7 +257,7 @@ def open_pr(branch: str, diff_text: str, cost_info: dict, since_days: int) -> st
         f"Never auto-merged.\n"
     )
     env = os.environ.copy()
-    env["CHUMP_OBS_BUDGET_BYPASS"] = "1"
+    # INFRA-2425: CHUMP_OBS_BUDGET_BYPASS deleted; guard is warn-only by default.
     subprocess.run(
         ["git", "commit", "-m", msg], cwd=REPO_ROOT, env=env, check=True
     )

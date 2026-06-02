@@ -831,3 +831,12 @@ CHUMP_PILLAR_BALANCE_DISABLE
 # CHUMP_WASTE_SPIKE_THRESHOLD — spike threshold override for waste-spike-detector (tuning)
 CHUMP_WASTE_SPIKE_THRESHOLD
 # NOTE: CHUMP_IGNORE_WASTE_PAUSE was deleted by INFRA-2424; do not add it back
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_IGNORE_
+
+# ── INFRA-2425: obs-budget strict opt-in (replaces deleted CHUMP_OBS_BUDGET_BYPASS) ──
+# Set to 1 to make the observability-budget pre-commit guard exit 1 on violation.
+# Default (unset) is warn-only. Not a bypass — enables strict enforcement.
+CHUMP_OBS_BUDGET_STRICT

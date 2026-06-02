@@ -5,7 +5,6 @@
 # env vars are set:
 #   1. CHUMP_BYPASS_BOT_MERGE=1     → Bot-Merge-Bypass: trailer
 #   2. CHUMP_TEST_GATE=0            → Test-Gate-Bypass: trailer
-#   3. CHUMP_OBS_BUDGET_BYPASS=1    → Obs-Bypass-Reason: trailer
 #   4. CHUMP_RUST_FIRST_CHECK=0     → Rust-First-Bypass: trailer
 #   5. CHUMP_HARDCODED_DATE_CHECK=0 → Hardcoded-Date-Bypass: trailer
 #   6. Existing trailer is NOT duplicated (idempotent)
@@ -30,7 +29,6 @@ echo "=== INFRA-1467 chump-commit auto-trailer tests ==="
 # ── Static checks: trailer-name + env-var pairs are all wired ──────────────
 for pair in "CHUMP_BYPASS_BOT_MERGE:Bot-Merge-Bypass" \
             "CHUMP_TEST_GATE:Test-Gate-Bypass" \
-            "CHUMP_OBS_BUDGET_BYPASS:Obs-Bypass-Reason" \
             "CHUMP_RUST_FIRST_CHECK:Rust-First-Bypass" \
             "CHUMP_HARDCODED_DATE_CHECK:Hardcoded-Date-Bypass"; do
     var="${pair%%:*}"
@@ -97,7 +95,6 @@ test_inject() {
 
 test_inject "CHUMP_BYPASS_BOT_MERGE=1"      "Bot-Merge-Bypass"
 test_inject "CHUMP_TEST_GATE=0"             "Test-Gate-Bypass"
-test_inject "CHUMP_OBS_BUDGET_BYPASS=1"     "Obs-Bypass-Reason"
 test_inject "CHUMP_RUST_FIRST_CHECK=0"      "Rust-First-Bypass"
 test_inject "CHUMP_HARDCODED_DATE_CHECK=0"  "Hardcoded-Date-Bypass"
 

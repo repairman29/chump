@@ -570,7 +570,6 @@ fi
 # Mapping (env var → trailer):
 #   CHUMP_BYPASS_BOT_MERGE=1       → Bot-Merge-Bypass: <reason>
 #   CHUMP_TEST_GATE=0              → Test-Gate-Bypass: <reason>
-#   CHUMP_OBS_BUDGET_BYPASS=1      → Obs-Bypass-Reason: <reason>
 #   CHUMP_RUST_FIRST_CHECK=0       → Rust-First-Bypass: <reason>
 #   CHUMP_HARDCODED_DATE_CHECK=0   → Hardcoded-Date-Bypass: <reason>
 _bypass_reason="${CHUMP_BYPASS_REASON:-bypass env set in commit invocation}"
@@ -601,7 +600,6 @@ _inject_trailer() {
 }
 _inject_trailer "CHUMP_BYPASS_BOT_MERGE"      "Bot-Merge-Bypass"     "1"
 _inject_trailer "CHUMP_TEST_GATE"             "Test-Gate-Bypass"     "0"
-_inject_trailer "CHUMP_OBS_BUDGET_BYPASS"     "Obs-Bypass-Reason"    "1"
 _inject_trailer "CHUMP_RUST_FIRST_CHECK"      "Rust-First-Bypass"    "0"
 _inject_trailer "CHUMP_HARDCODED_DATE_CHECK"  "Hardcoded-Date-Bypass" "0"
 unset _bypass_reason

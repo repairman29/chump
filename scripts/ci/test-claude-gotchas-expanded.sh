@@ -44,13 +44,9 @@ grep -q 'EVENT_REGISTRY' "$DOC" \
     || fail "Section 'EVENT_REGISTRY' missing"
 pass "Section: EVENT_REGISTRY present"
 
-grep -q 'CHUMP_OBS_BUDGET_BYPASS' "$DOC" \
-    || fail "CHUMP_OBS_BUDGET_BYPASS not documented"
-pass "CHUMP_OBS_BUDGET_BYPASS documented"
-
-grep -q 'Obs-Bypass-Reason' "$DOC" \
-    || fail "Obs-Bypass-Reason trailer not documented"
-pass "Obs-Bypass-Reason trailer documented"
+grep -q 'CHUMP_OBS_BUDGET_STRICT' "$DOC" \
+    || fail "CHUMP_OBS_BUDGET_STRICT not documented (INFRA-2425: replaced BYPASS)"
+pass "CHUMP_OBS_BUDGET_STRICT documented"
 
 # ── Each section has at least one code block ─────────────────────────────────
 code_block_count=$(grep -c '^\`\`\`' "$DOC" || echo 0)

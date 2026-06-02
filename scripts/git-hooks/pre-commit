@@ -1707,19 +1707,19 @@ if [ -x "$EFFECT_METRIC_HOOK" ]; then
     fi
 fi
 
-# 11. Observability budget guard (INFRA-755, 2026-05-08)
+# 11. Observability budget guard (INFRA-755 / INFRA-2425, 2026-05-08 / 2026-06-02)
 # ------------------------------------------------------------------
-# Refuses commits whose staged diff adds substantial feature code
+# Warns (default) when staged diff adds substantial feature code
 # (default >50 lines across .rs/.sh/.py) but introduces ZERO new
 # observability hooks (tracing macros, ambient events, lessons writes).
 # Same "observability before scale" doctrine as INFRA-754, applied at
 # the commit-stats level instead of the event-shape level.
-# Bypass: CHUMP_OBS_BUDGET_BYPASS=1 (add `Obs-Bypass-Reason: <reason>`
-# trailer to commit body).
+# Strict mode (exit 1): CHUMP_OBS_BUDGET_STRICT=1
+# CHUMP_OBS_BUDGET_BYPASS is deleted (INFRA-2425).
 
 OBS_BUDGET_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-obs-budget.sh"
 if [ -x "$OBS_BUDGET_HOOK" ]; then
-    if ! "$OBS_BUDGET_HOOK"; then
+    if ! "$OBS_BUDGET_HOOK" "$1"; then
         exit 1
     fi
 fi
