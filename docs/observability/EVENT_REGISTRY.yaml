@@ -385,6 +385,51 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, gap_id, session_id]
 
+  # ── INFRA-2398: main-health-gate events ──────────────────────────────────────
+  - kind: claim_main_health_stale
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2398)
+    trigger: >
+      Emitted when `chump claim` detects that the main-preflight-watchdog state
+      file (.chump/main-preflight-state.json) is older than 30 minutes
+      (STALE_THRESHOLD_SECS=1800). Indicates the watchdog daemon may be down.
+      Claim proceeds with a stderr warning. age_secs reflects how old the state
+      file is at the moment of the claim attempt.
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    expected_volume: "rare — only when watchdog daemon is stopped or crashed"
+    status: stable
+    # payload: {gap_id: str, status: str, failing_gates: [str], age_secs: int}
+
+  - kind: claim_main_health_missing
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2398)
+    trigger: >
+      Emitted (debug-level, once per claim) when `chump claim` cannot find
+      .chump/main-preflight-state.json. This is expected on fresh installs or
+      when the watchdog daemon (INFRA-2397) has not been installed yet. Claim
+      proceeds without blocking.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    expected_volume: "once per claim on fleets without the watchdog installed"
+    status: stable
+    # payload: {gap_id: str, status: "" (empty), failing_gates: [], age_secs: 0}
+
+  - kind: claim_main_health_bypass
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2398)
+    trigger: >
+      Emitted when CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 is set and `chump claim`
+      skips the main-health-gate check. Always emitted regardless of whether
+      main is red or green, so the audit log captures every bypass. The
+      failing_gates field contains the would-have-failed gates when status is
+      "red"; empty array when green or unknown.
+    consumers: [fleet-brief, audit-log, waste-tally]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    expected_volume: "rare — operator escape hatch; frequent use warrants investigation"
+    status: stable
+    # payload: {gap_id: str, status: str, failing_gates: [str], age_secs: int}
+
   - kind: curator_paused
     effect_metric: self
     emitter: scripts/coord/opus-curator.sh (META-065)
