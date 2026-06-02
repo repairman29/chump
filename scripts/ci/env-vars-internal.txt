@@ -823,22 +823,15 @@ CHUMP_FLEET_DOCTOR_DISABLED
 # CHUMP_LOG_LEVEL — general log verbosity control used across fleet scripts
 CHUMP_LOG_LEVEL
 
-# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
-# Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
-CHUMP_IGNORE_
-
-# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
-# Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
+# INFRA-2424: fleet-pause-related env vars used in tests and daemons
+# CHUMP_ALLOW_MAIN_WORKTREE — allow chump commands to run in main worktree (test/debug only)
 CHUMP_ALLOW_MAIN_WORKTREE
-# detected in: (standard input)
+# CHUMP_FLEET_PAUSE_FILE — override path to fleet-paused sentinel (test isolation)
 CHUMP_FLEET_PAUSE_FILE
-# detected in: (standard input)
+# CHUMP_GAP_RESERVE_SKIP_PR — skip PR-existence check in reserve (test isolation)
 CHUMP_GAP_RESERVE_SKIP_PR
-# detected in: (standard input)
-CHUMP_IGNORE_WASTE_PAUSE
-# detected in: (standard input)
+# CHUMP_PILLAR_BALANCE_DISABLE — disable pillar balance check in reserve (test isolation)
 CHUMP_PILLAR_BALANCE_DISABLE
-# detected in: (standard input)
+# CHUMP_WASTE_SPIKE_THRESHOLD — spike threshold override for waste-spike-detector (tuning)
 CHUMP_WASTE_SPIKE_THRESHOLD
+# NOTE: CHUMP_IGNORE_WASTE_PAUSE was deleted by INFRA-2424; do not add it back
