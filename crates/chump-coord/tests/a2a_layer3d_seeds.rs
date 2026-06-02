@@ -23,9 +23,10 @@ fn bucket_name_pinned() {
 }
 
 #[test]
-fn exactly_five_seed_keys() {
+fn seed_key_count() {
     let keys = seed_keys();
-    assert_eq!(keys.len(), 5, "v1 schema has exactly 5 seed keys");
+    // v1 original 5 + ci.flake_classification (INFRA-1121 slice 3/4)
+    assert_eq!(keys.len(), 6, "schema has 6 seed keys after INFRA-1121");
 }
 
 #[test]
@@ -37,6 +38,7 @@ fn documented_keys_present() {
         "pillar.focus",
         "last_known_good.chump_binary",
         "red_letter.last_ts",
+        "ci.flake_classification",
     ];
     for k in &expected {
         assert!(
@@ -71,14 +73,28 @@ fn lww_keys_correct() {
 }
 
 #[test]
-fn all_seed_keys_prompt_inject() {
-    for sk in seed_keys() {
+fn prompt_inject_flags_match_design_doc() {
+    // Original 5 v1 keys are all prompt-injected into general briefings.
+    for key in [
+        "main.head.sha",
+        "fleet.size",
+        "pillar.focus",
+        "last_known_good.chump_binary",
+        "red_letter.last_ts",
+    ] {
+        let sk = seed_key_lookup(key).expect("key present");
         assert!(
             sk.prompt_inject,
-            "{} should be prompt-injected (v1 keys all are)",
-            sk.key
+            "{key} should be prompt-injected per A2A_SCRATCHPAD_KEYS.md"
         );
     }
+    // ci.flake_classification (INFRA-1121): intentionally NOT injected into
+    // general briefings — CI-audit curator reads it directly.
+    let ci_key = seed_key_lookup("ci.flake_classification").expect("key present");
+    assert!(
+        !ci_key.prompt_inject,
+        "ci.flake_classification must NOT be prompt-injected into general briefings"
+    );
 }
 
 #[test]
