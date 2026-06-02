@@ -1,7 +1,7 @@
 - id: INFRA-2188
   domain: INFRA
   title: "RESILIENT P0: disk-pressure structural fix — chump-runner/cargo-target grows unbounded (43G debug, 109M release); cargo-target-reaper INFRA-2125 doesn't cover ~/.cache/chump-runner path; will crash at scale"
-  status: open
+  status: ready_to_ship
   priority: P0
   effort: s
   acceptance_criteria:
