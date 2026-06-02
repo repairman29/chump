@@ -76,6 +76,8 @@ emit_ambient() {
 
 # ── Tier 1: target/ idle > 6h + git worktree prune ───────────────────────
 SCCACHE_REAPER="$REPO_ROOT/scripts/coord/sccache-reaper.sh"
+# INFRA-2188: cargo-target-reaper (ops) covers ~/.cache/chump-runner that target-dir-reaper misses.
+CARGO_TARGET_REAPER_OPS="$REPO_ROOT/scripts/ops/cargo-target-reaper.sh"
 
 if [[ "$tier" -ge 1 ]]; then
   info "tier $tier: delegate to target-dir-reaper (idle > 6h)"
@@ -105,33 +107,35 @@ if [[ "$tier" -ge 1 ]]; then
   fi
 fi
 
-# ── Tier 2+: tighter idle window for target/, whole-worktree if PR merged, sccache reap ──
+# ── Tier 2+: tighter idle window for target/, whole-worktree if PR merged ────
+# INFRA-2188: sccache reap moved to AFTER all build-target reaping (see bottom of
+# this tier block) so that the build accelerator is only touched when build-artifact
+# reaping alone cannot free enough space. The old ordering reaped sccache mid-tier
+# before whole-worktree reap, which caused cold-build cascades when disk recovered.
 if [[ "$tier" -ge 2 ]]; then
   info "tier $tier: target/ idle > 2h + whole-worktree if PR merged & branch deleted"
   if [[ -x "$TARGET_REAPER" ]]; then
-    CHUMP_TARGET_REAPER_IDLE_H=2 CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) \
-      "$TARGET_REAPER" $([[ "$DRY_RUN" -eq 1 ]] || echo --execute --force) 2>&1 | tail -5
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      CHUMP_TARGET_REAPER_IDLE_H=2 CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) \
+        "$TARGET_REAPER" 2>&1 | tail -5
+    else
+      CHUMP_TARGET_REAPER_IDLE_H=2 CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) \
+        "$TARGET_REAPER" --execute --force 2>&1 | tail -5
+    fi
   fi
 
-  # Invoke sccache-reaper if sccache dir >5GB. INFRA-2303.
-  SCCACHE_DIR="${SCCACHE_DIR:-$HOME/Library/Caches/Mozilla.sccache}"
-  if [[ -d "$SCCACHE_DIR" ]]; then
-    sccache_kb=$(du -sk "$SCCACHE_DIR" 2>/dev/null | awk '{print $1}')
-    sccache_threshold_kb=$(( 5 * 1024 * 1024 ))  # 5GB in KB
-    if [[ "$sccache_kb" -gt "$sccache_threshold_kb" ]]; then
-      info "tier 2: sccache dir is ${sccache_kb}KB (>5GB) — invoking sccache-reaper"
-      if [[ -x "$SCCACHE_REAPER" ]]; then
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --dry-run 2>&1 | tail -5
-        else
-          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --execute 2>&1 | tail -5
-        fi
-      else
-        warn "sccache-reaper not found at $SCCACHE_REAPER"
-      fi
+  # INFRA-2188: also invoke ops/cargo-target-reaper which covers
+  # ~/.cache/chump-runner/cargo-target (the 40-60GB runner path that
+  # target-dir-reaper misses entirely).
+  if [[ -x "$CARGO_TARGET_REAPER_OPS" ]]; then
+    info "tier $tier: invoking ops/cargo-target-reaper (covers ~/.cache/chump-runner)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      "$CARGO_TARGET_REAPER_OPS" 2>&1 | tail -5
     else
-      ok "sccache dir ${sccache_kb}KB (≤5GB) — skipping sccache reap at tier 2"
+      "$CARGO_TARGET_REAPER_OPS" --execute 2>&1 | tail -5
     fi
+  else
+    warn "ops/cargo-target-reaper not found at $CARGO_TARGET_REAPER_OPS"
   fi
 
   # Whole-worktree reap when its branch is gone from remote (merged-and-deleted).
@@ -160,6 +164,29 @@ if [[ "$tier" -ge 2 ]]; then
     fi
   done
   [[ "$reaped_wt" -gt 0 ]] && ok "tier 2 reaped $reaped_wt worktrees"
+
+  # INFRA-2188: sccache reap runs LAST within the tier — after all build-target
+  # artifacts are reaped — so the build accelerator is only pruned when disk
+  # pressure persists after cheaper reaping. Reaped only if >5GB.
+  SCCACHE_DIR="${SCCACHE_DIR:-$HOME/Library/Caches/Mozilla.sccache}"
+  if [[ -d "$SCCACHE_DIR" ]]; then
+    sccache_kb=$(du -sk "$SCCACHE_DIR" 2>/dev/null | awk '{print $1}')
+    sccache_threshold_kb=$(( 5 * 1024 * 1024 ))  # 5GB in KB
+    if [[ "$sccache_kb" -gt "$sccache_threshold_kb" ]]; then
+      info "tier 2 (last): sccache dir is ${sccache_kb}KB (>5GB) — invoking sccache-reaper (build-target reap done first)"
+      if [[ -x "$SCCACHE_REAPER" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --dry-run 2>&1 | tail -5
+        else
+          SCCACHE_DIR="$SCCACHE_DIR" "$SCCACHE_REAPER" --execute 2>&1 | tail -5
+        fi
+      else
+        warn "sccache-reaper not found at $SCCACHE_REAPER"
+      fi
+    else
+      ok "sccache dir ${sccache_kb}KB (≤5GB) — skipping sccache reap at tier 2"
+    fi
+  fi
 fi
 
 # ── Tier 3: aggressive — whole-worktree + target/debug/incremental reap ──
