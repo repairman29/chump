@@ -804,3 +804,6 @@ CHUMP_MAIN_PREFLIGHT_INTERVAL_S
 # Set to 1 to bypass the main-preflight-watchdog state check during chump claim.
 # Emits claim_main_health_bypass to ambient.jsonl for audit trail.
 CHUMP_CLAIM_IGNORE_MAIN_HEALTH
+# ── INFRA-2417: daemon-exit-loop-watcher ─────────────────────────────────────
+CHUMP_DAEMON_EXIT_LOOP_DISABLED
+CHUMP_DAEMON_EXIT_LOOP_THRESHOLD
