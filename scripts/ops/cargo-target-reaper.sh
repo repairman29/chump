@@ -170,6 +170,13 @@ if [[ "$DISK_CRITICAL_GB" -gt 0 ]]; then
         FINGERPRINT_AGE_D=1
         FLEET_AGE_D=2
         echo "[cargo-target-reaper] disk-critical: ${_home_free_gb}GB free on \$HOME (< ${DISK_CRITICAL_GB}GB threshold) — escalating: FINGERPRINT_AGE_D=${FINGERPRINT_AGE_D} FLEET_AGE_D=${FLEET_AGE_D}"
+        # INFRA-2188: emit ambient event so fleet observers can react.
+        # Use a temp path since AMBIENT_LOG is set just below.
+        _agg_log="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+        printf '{"ts":"%s","kind":"cargo_reaper_aggressive_mode_engaged","free_gb":%d,"disk_critical_gb":%d,"fingerprint_age_d":%d,"fleet_age_d":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_home_free_gb" "$DISK_CRITICAL_GB" \
+            "$FINGERPRINT_AGE_D" "$FLEET_AGE_D" \
+            >> "$_agg_log" 2>/dev/null || true
     fi
 fi
 
