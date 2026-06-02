@@ -7212,3 +7212,51 @@ events:
     fields_required: [ts, kind, gap_id, reason]
     # payload: {gap_id: str, reason: str}
     status: stable
+
+  # ── INFRA-2434: claim-time path-overlap-with-open-PR gate ─────────────────
+  - kind: claim_path_overlap_blocked
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_path_overlap_blocked (INFRA-2434)
+    # scanner-anchor: "kind":"claim_path_overlap_blocked"
+    trigger: >
+      Emitted when chump claim refuses because the declared --paths overlap
+      with files already changed by an open PR on a different gap.
+      Covers the duplicate-work-under-different-names class observed 3x in
+      one week: INFRA-2343 vs INFRA-2347, INFRA-2451 vs INFRA-2445, and
+      concurrent peer work on chump/infra-2425-claim. The claimer is shown
+      the blocking PR number, the gap it covers, and the overlapping paths,
+      plus 3 resolution options. Exits 3.
+      Override: --allow-overlap (emits claim_path_overlap_allowed) or
+      CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 (emits claim_path_overlap_operator_skip).
+    consumers: [fleet-brief, waste-tally, audit-log, ops-audit]
+    fields_required: [ts, kind, claimed_gap, blocking_pr, blocking_gap, overlapping_paths]
+    # payload: {claimed_gap: str, blocking_pr: int, blocking_gap: str,
+    #           overlapping_paths: [str]}
+
+  - kind: claim_path_overlap_allowed
+    effect_metric: waste_risk
+    emitter: src/atomic_claim.rs emit_claim_path_overlap_allowed (INFRA-2434)
+    # scanner-anchor: "kind":"claim_path_overlap_allowed"
+    trigger: >
+      Emitted when the operator used --allow-overlap to proceed with a claim
+      despite path overlap with an open PR. The overlap is recorded for audit
+      so rising allow-overlap rate can be surfaced as a fleet-discipline signal.
+      Paired with claim_path_overlap_blocked — same payload shape.
+    consumers: [fleet-brief, audit-log, waste-tally]
+    fields_required: [ts, kind, claimed_gap, blocking_pr, blocking_gap, overlapping_paths]
+    # payload: {claimed_gap: str, blocking_pr: int, blocking_gap: str,
+    #           overlapping_paths: [str]}
+
+  - kind: claim_path_overlap_operator_skip
+    effect_metric: waste_risk
+    emitter: src/atomic_claim.rs emit_claim_path_overlap_operator_skip (INFRA-2434)
+    # scanner-anchor: "kind":"claim_path_overlap_operator_skip"
+    trigger: >
+      Emitted when CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 is set, completely
+      skipping the path-overlap-with-open-PR gate. Operator-only escape hatch
+      for scenarios where deliberate parallel work on the same file is
+      intentional (e.g. cross-cutting refactor coordinated out-of-band).
+      Audit trail so operator-skip rate can be monitored.
+    consumers: [fleet-brief, audit-log, ops-audit]
+    fields_required: [ts, kind, claimed_gap, claimed_paths]
+    # payload: {claimed_gap: str, claimed_paths: str}

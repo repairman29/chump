@@ -813,6 +813,11 @@ CHUMP_A2A_MAX_ACK_PENDING
 # (default 5000). Set lower in tests to speed up the fallback path.
 CHUMP_NATS_TIMEOUT_MS
 
+# INFRA-2434: claim-time path-overlap-with-open-PR gate (operator-only skip).
+# Ends in _OPERATOR (not _BYPASS/_SKIP/_IGNORE) so INFRA-2429 bypass lint allows it.
+# Every use emits kind=claim_path_overlap_operator_skip to ambient.jsonl for audit.
+CHUMP_CLAIM_PATH_OVERLAP_OPERATOR
+
 # INFRA-2429: real env vars referenced in new bypass-lint infrastructure.
 # CHUMP_FLEET_DOCTOR_DISABLED — Category B kill-switch; used in self-test to verify _DISABLED exemption
 CHUMP_FLEET_DOCTOR_DISABLED
@@ -858,3 +863,10 @@ CHUMP_FRESH_EYES_SHIPS_CMD
 CHUMP_FRESH_EYES_SLO_CMD
 # detected in: (standard input)
 CHUMP_FRESH_EYES_WINDOW_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CLAIM_ALLOW_OVERLAP
+# detected in: (standard input)
+CHUMP_GH_STUB
