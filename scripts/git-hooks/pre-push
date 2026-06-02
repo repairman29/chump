@@ -1288,4 +1288,20 @@ if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
     fi
 fi
 
+# ── INFRA-2407: bypass-trailer pre-push validator ────────────────────────────
+# Scans all commits being pushed for bypass tokens and validates the 4
+# required trailers per docs/process/BYPASS_TRAILER_SCHEMA.md.
+# Delegates to pre-push-bypass-trailers.sh; passes _HOOK_STDIN so the
+# sub-script doesn't need to re-read stdin (it's already consumed above).
+_BPPT_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_BPPT_GUARD="${_BPPT_SELF}/pre-push-bypass-trailers.sh"
+if [[ -x "$_BPPT_GUARD" ]] && [[ "${CHUMP_BYPASS_TRAILER_CHECK:-1}" != "0" ]]; then
+    if ! _HOOK_STDIN="$_HOOK_STDIN" bash "$_BPPT_GUARD" "$REMOTE" "${2:-}" >&2; then
+        echo "[pre-push] bypass-trailer validation failed — push blocked (INFRA-2407)." >&2
+        echo "[pre-push] Bypass: CHUMP_BYPASS_TRAILER_CHECK=0 git push" >&2
+        exit 1
+    fi
+fi
+unset _BPPT_SELF _BPPT_GUARD
+
 exit 0

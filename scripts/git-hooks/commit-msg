@@ -65,4 +65,15 @@ elif [ "$TRAILER_VAL" -lt "$NET" ]; then
     exit 1
 fi
 # else: trailer >= NET → accepted silently (intentional declaration)
+
+# ── INFRA-2407: bypass-trailer schema validator ───────────────────────────────
+# Delegates to commit-msg-bypass-trailers.sh when present. This runs regardless
+# of the docs-delta check above — the two checks are independent.
+_BT_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_BT_VALIDATOR="$_BT_SELF/commit-msg-bypass-trailers.sh"
+if [ -x "$_BT_VALIDATOR" ]; then
+    bash "$_BT_VALIDATOR" "$MSG_FILE"
+fi
+unset _BT_SELF _BT_VALIDATOR
+
 exit 0
