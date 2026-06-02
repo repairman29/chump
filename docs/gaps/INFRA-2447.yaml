@@ -1,0 +1,9 @@
+- id: INFRA-2447
+  domain: INFRA
+  title: "RESILIENT P0: stale-gap-lock-reaper reaps live leases mid-bot-merge (zero-mtime-grace issue)"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "[\"scripts/coord/stale-gap-lock-reaper.sh (or wherever it lives — grep for reap_stale) deleted my INFRA-2438 lease while bot-merge.sh was actively running in the corresponding worktree\",\"Reaper must consult heartbeat_at OR detect an active bot-merge process on the same gap before reaping\",\"Smoke test: simulate bot-merge running on gap X; reaper should NOT delete claim-X.json even if mtime is older than threshold\",\"Cite trigger: INFRA-2438 ship 2026-06-02 — lease vanished during 10-min bot-merge stall (which itself is another substrate bug — bot-merge can stall this long means INFRA-2426 fix did not cover all root causes)\"]"
+
