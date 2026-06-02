@@ -3195,10 +3195,38 @@ events:
 
   - kind: a2a_rpc_send_failed
     effect_metric: self
-    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828)
-    trigger: broadcast.sh invocation rc != 0 when sending an RPC request
+    emitter: scripts/coord/rpc/_rpc_lib.sh (INFRA-1828); crates/chump-coord/src/rpc.rs (INFRA-1119)
+    trigger: broadcast.sh invocation rc != 0 when sending an RPC request; or NATS
+      publish failed in call_rpc_with_nats
     consumers: [audit-log]
     fields_required: [ts, kind, method, target, request_id]
+  # scanner-anchor: a2a_rpc_handler_crash
+  - kind: a2a_rpc_handler_crash  # scanner-anchor
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs::serve_rpc_with_nats (INFRA-1119)
+    trigger: >
+      Server-side RPC handler returned Err(...) or panicked. Emitted by the
+      serve_rpc background task before returning error="handler_crash: <reason>"
+      in the RpcResponse. Distinct from a2a_rpc_timeout (client-side deadline)
+      and a2a_rpc_send_failed (transport failure). Client detects the
+      "handler_crash:" prefix in the response error field and surfaces
+      RpcError::HandlerCrash.
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, method, session, request_id, reason]
+    docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 2b)"
+    status: stable
+  # scanner-anchor: a2a_rpc_registered
+  - kind: a2a_rpc_registered  # scanner-anchor
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs::serve_rpc_with_nats (INFRA-1119)
+    trigger: >
+      serve_rpc_with_nats successfully subscribed to chump.rpc.<session>.<method>
+      and spawned the background handler task. Emitted once per method at worker
+      startup. Signals that the session is ready to answer that RPC method.
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, method, session, subject]
+    docs: "docs/design/A2A_ROADMAP.md (META-061 Layer 2b)"
+    status: stable
   # ── INFRA-1758 / META-061: A2A Layer 1a subscribe_events stub ────────────
   - kind: a2a_subscribe_stub_invoked
     effect_metric: self
@@ -6225,24 +6253,6 @@ events:
     status: stable
     # payload: {cycle_id: string, roll: number, threshold: number, decision: "live"|"dry_run",
     #           dry_run_override: bool, cycle_is_live: bool, ts: string}
-
-  # INFRA-2418 — integrator stale-queue SLA fallback
-  - kind: integrator_stale_sla_fired
-    effect_metric: resilient
-    emitter: crates/chump-integrator/src/daemon.rs (INFRA-2418)
-    trigger: >
-      Emitted when the integrator stale-SLA fallback fires: candidate count is
-      below CHUMP_INTEGRATOR_VOLUME_THRESHOLD (default 5) but at least one
-      candidate has been waiting longer than CHUMP_INTEGRATOR_STALE_SLA_HOURS
-      (default 6h). The cycle proceeds with the available candidates rather than
-      skipping. candidates_shipped is the count of gaps actually in the batch;
-      oldest_stale_hours is the age of the oldest candidate rounded up to whole
-      hours; threshold is the configured volume_threshold that was not met.
-      Bypass: CHUMP_INTEGRATOR_NO_STALE_SLA=1 disables this path entirely.
-    consumers: [fleet-brief, ops-audit, kpi-report]
-    fields_required: [ts, kind, cycle_id, candidates_shipped, oldest_stale_hours, threshold]
-    expected_volume: "0-1 per cycle (only when below volume threshold and SLA exceeded)"
-    # payload: {cycle_id: string, candidates_shipped: number, oldest_stale_hours: number, threshold: number, ts: string}
 
   # META-127 C3c — curator-opus-velocity-tracker (INFRA-2221)
   - kind: velocity_tracker_tick
