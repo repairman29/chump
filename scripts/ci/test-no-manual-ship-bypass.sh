@@ -37,7 +37,17 @@ LOCAL_SHA="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" rev-parse HEAD 2>/de
 # recovery PRs); Test 2 verifies the no-trailer-blocked path, so it MUST use a
 # commit with no trailer. git commit-tree creates a detached commit object —
 # no ref updated, no working tree touch.
-LOCAL_SHA_NO_TRAILER="$(GIT_WORK_TREE="$REPO_ROOT" git -C "$REPO_ROOT" commit-tree 'HEAD^{tree}' -m 'fixture: no Bot-Merge-Bypass trailer' 2>/dev/null || echo "$LOCAL_SHA")"
+#
+# INFRA-2432: git commit-tree requires author/committer identity. In CI the
+# runner has no global git config, so commit-tree fails with "empty ident name"
+# (exit 128) and the `|| echo "$LOCAL_SHA"` fallback silently yields the real
+# HEAD SHA — which legitimately carries a Bot-Merge-Bypass trailer, causing
+# Test 2 to get exit 0 instead of exit 1. Fix: supply fixture identity via env.
+LOCAL_SHA_NO_TRAILER="$(GIT_WORK_TREE="$REPO_ROOT" \
+    GIT_AUTHOR_NAME="Test Fixture" GIT_AUTHOR_EMAIL="fixture@test.local" \
+    GIT_COMMITTER_NAME="Test Fixture" GIT_COMMITTER_EMAIL="fixture@test.local" \
+    git -C "$REPO_ROOT" commit-tree 'HEAD^{tree}' -m 'fixture: no Bot-Merge-Bypass trailer' 2>/dev/null \
+    || echo "$LOCAL_SHA")"
 
 run_hook() {
     local env_line="$1"       # extra env vars (KEY=val space-separated)
