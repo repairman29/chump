@@ -107,7 +107,11 @@ _save_state() {
     printf '%s\n' "$body" > "$STATE_FILE"
 }
 
-# Fingerprint = sha256(sorted failing-gate names, newline-joined), first 12 chars.
+# Fingerprint = sha256(sorted failing-gate names, pipe-joined), first 12 chars.
+# INFRA-2404 BUG-3 fix: prior `tr '\n' '\n'` was a no-op identity transform.
+# That left the shasum input with a trailing newline AND ambiguous boundary if
+# a gate name ever contained whitespace, risking false-dedup collisions.
+# Pipe-delimit instead — gate names cannot legitimately contain `|`.
 _gate_fingerprint() {
     local gates_csv="$1"
     if [[ -z "$gates_csv" ]]; then
@@ -117,7 +121,7 @@ _gate_fingerprint() {
     printf '%s' "$gates_csv" \
         | tr ',' '\n' \
         | sort \
-        | tr '\n' '\n' \
+        | tr '\n' '|' \
         | shasum -a 256 \
         | cut -c1-12
 }
@@ -193,10 +197,14 @@ _run_preflight() {
     log "running chump preflight in worktree: $wt_path (sha=${head_sha:0:12})"
 
     # Run preflight; capture stdout for FAIL: line parsing.
-    # We use REPO_ROOT override so preflight finds the right binary/config.
+    # INFRA-2404 BUG-2 fix: cd into the worktree AND set REPO_ROOT to it. The
+    # prior code set REPO_ROOT to the parent repo, so preflight actually ran
+    # against the developer's current branch — defeating the whole "watch
+    # origin/main" premise. Both `cd` and REPO_ROOT are needed: `cd` makes
+    # preflight's CWD-relative file lookups work; REPO_ROOT pins config lookup.
     local preflight_out=""
     local preflight_rc=0
-    preflight_out="$(REPO_ROOT="$REPO_ROOT" \
+    preflight_out="$(cd "$wt_path" && REPO_ROOT="$wt_path" \
         "$CHUMP_BIN" preflight 2>&1)" || preflight_rc=$?
 
     # Parse FAIL: lines into a sorted CSV of gate names.
@@ -407,11 +415,20 @@ print(json.dumps(ids))
         fi
 
         local _green_ts; _green_ts="$(_ts)"
-        _save_state "$(STATE=GREEN HEAD_SHA="$head_sha" TS="$_green_ts" TICK_ID="$tick_id" \
+        # INFRA-2404 BUG-1 fix: also emit reader-expected keys (last_status,
+        # last_tick_at, failing_gates). atomic_claim.rs parse_main_health_state
+        # reads exactly those three; without them the claim gate was silently
+        # inert. Keep the existing state/updated_at/last_tick_id fields for
+        # backward compat and richer debugging.
+        _save_state "$(STATE=GREEN HEAD_SHA="$head_sha" TS="$_green_ts" \
+            TS_SECS="$(date -u +%s)" TICK_ID="$tick_id" \
             python3 <<'PYEOF'
 import json, os
 print(json.dumps({
     'state': os.environ.get('STATE', 'GREEN'),
+    'last_status': os.environ.get('STATE', 'GREEN').lower(),
+    'last_tick_at': int(os.environ.get('TS_SECS', '0') or '0'),
+    'failing_gates': [],
     'fingerprint': '',
     'filed_fingerprints': [],
     'filed_gaps': [],
@@ -507,10 +524,16 @@ print(json.dumps(gates))
         HEAD_SHA="$head_sha" \
         TICK_ID="$tick_id" \
         UPDATED_AT="$(_ts)" \
+        UPDATED_AT_SECS="$(date -u +%s)" \
+        FAILING_GATES_CSV="$failing_csv" \
         python3 <<'PYEOF'
 import json, os
+state = os.environ.get('NEW_STATE', 'RED')
 print(json.dumps({
-    'state': os.environ.get('NEW_STATE', 'RED'),
+    'state': state,
+    'last_status': state.lower(),
+    'last_tick_at': int(os.environ.get('UPDATED_AT_SECS', '0') or '0'),
+    'failing_gates': [s for s in os.environ.get('FAILING_GATES_CSV', '').split(',') if s],
     'fingerprint': os.environ.get('FINGERPRINT', ''),
     'filed_fingerprints': [s for s in os.environ.get('FILED_FPS', '').split(',') if s],
     'filed_gaps': [s for s in os.environ.get('FILED_GAPS', '').split(',') if s],
