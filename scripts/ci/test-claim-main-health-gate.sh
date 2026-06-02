@@ -2,10 +2,10 @@
 # INFRA-2398: smoke test for chump claim main-health-gate.
 #
 # Tests four scenarios from the acceptance criteria:
-#   1. Red state  → exit 3 + stderr mentions failing gates
+#   1. Red state  → exit 3 + stderr mentions failing gates + routing message
 #   2. Green state → exit != 3
 #   3. Stale state (>30 min) → stderr warning + exit != 3
-#   4. CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 with red → exit != 3 + bypass event emitted
+#   4. CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 with red → exit 3 (bypass deleted, INFRA-2428)
 #
 # Usage: bash scripts/ci/test-claim-main-health-gate.sh
 #
@@ -119,10 +119,10 @@ else
     fail "stderr did not mention 'clippy'. stderr: $STDERR_CONTENT"
 fi
 
-if echo "$STDERR_CONTENT" | grep -qi "CHUMP_CLAIM_IGNORE_MAIN_HEALTH"; then
-    ok "stderr mentions bypass env var"
+if echo "$STDERR_CONTENT" | grep -qi "Routing you to the trunk-fix gap"; then
+    ok "stderr contains routing-to-trunk-fix message"
 else
-    fail "stderr did not mention bypass env var. stderr: $STDERR_CONTENT"
+    fail "stderr did not contain routing message. stderr: $STDERR_CONTENT"
 fi
 
 rm -f "$STDERR_OUT"
@@ -182,9 +182,9 @@ fi
 rm -f "$STDERR_OUT"
 teardown_state
 
-# ── Test 4: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 with red → exit != 3 + bypass event
-echo "--- Test 4: bypass env var with red state → exit != 3 + bypass event ---"
-RED_STATE="{\"last_tick_at\":${NOW_SECS},\"last_status\":\"red\",\"head_sha\":\"abc123\",\"failing_gates\":[\"cargo-fmt\"],\"fingerprint\":\"fp4\"}"
+# ── Test 4: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 with red → exit 3 (bypass deleted, INFRA-2428)
+echo "--- Test 4: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 with red → still exit 3 (bypass deleted) ---"
+RED_STATE="{\"last_tick_at\":${NOW_SECS},\"last_status\":\"red\",\"head_sha\":\"abc123\",\"failing_gates\":[\"cargo-fmt\"],\"filed_gaps\":[\"INFRA-9999\"],\"fingerprint\":\"fp4\"}"
 setup_state "$RED_STATE"
 
 AMBIENT_BEFORE="$(ambient_line_count)"
@@ -193,18 +193,19 @@ CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 \
     "$CHUMP_BIN" claim INFRA-NONEXISTENT-SMOKE-TEST --skip-doctor --skip-import 2>/dev/null \
     || EXIT_CODE=$?
 
-if [[ "$EXIT_CODE" -ne 3 ]]; then
-    ok "exit code is not 3 with CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 (got $EXIT_CODE)"
+# INFRA-2428: bypass env var deleted — setting it has no effect, gate still blocks.
+if [[ "$EXIT_CODE" -eq 3 ]]; then
+    ok "exit code is 3 with CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 (bypass deleted, gate enforced)"
 else
-    fail "exit code was 3 despite CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 — bypass did not work"
+    fail "expected exit 3 even with deleted bypass env var, got $EXIT_CODE"
 fi
 
-# Check that claim_main_health_bypass was emitted.
-BYPASS_EVENTS="$(ambient_count_since "claim_main_health_bypass" "$AMBIENT_BEFORE")"
-if [[ "$BYPASS_EVENTS" -ge 1 ]]; then
-    ok "claim_main_health_bypass event emitted to ambient.jsonl"
+# Check that claim_main_health_redirect was emitted (replaces bypass kind).
+REDIRECT_EVENTS="$(ambient_count_since "claim_main_health_redirect" "$AMBIENT_BEFORE")"
+if [[ "$REDIRECT_EVENTS" -ge 1 ]]; then
+    ok "claim_main_health_redirect event emitted to ambient.jsonl"
 else
-    fail "claim_main_health_bypass event NOT emitted to ambient.jsonl"
+    fail "claim_main_health_redirect event NOT emitted to ambient.jsonl"
 fi
 
 teardown_state

@@ -549,10 +549,10 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         run_doctor_probe(&args.repo_root)?;
     }
 
-    // INFRA-2398: main-health-gate — refuse claim when main is red.
-    // Reads .chump/main-preflight-state.json written by the watchdog daemon
-    // (INFRA-2397). Forces the next agent to fix-main-first instead of paying
-    // someone else's tax later. Bypass: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1.
+    // INFRA-2428: main-health-gate — refuse claim when main is red and route
+    // claimer to the trunk-fix gap. Reads .chump/main-preflight-state.json
+    // written by the watchdog daemon (INFRA-2397). Forces fix-main-first.
+    // CHUMP_CLAIM_IGNORE_MAIN_HEALTH bypass deleted (INFRA-2428).
     check_main_health_gate(&args.repo_root, &args.gap_id)?;
 
     // INFRA-1442: claim-time fuzzy-match against in-flight work BEFORE
@@ -5268,20 +5268,17 @@ mod rating_picker_demotion {
 /// Check the main-preflight-watchdog state file and refuse the claim if main
 /// is red. Called early in `run_claim`, before any worktree is created.
 ///
-/// Behaviour matrix:
+/// Behaviour matrix (INFRA-2428 — zero-bypass):
 ///   - File missing           → emit `claim_main_health_missing`, proceed.
-///   - `last_status == "red"` → emit nothing (claim refused), exit 3.
+///   - `last_status == "red"` → look up trunk-fix gap from `filed_gaps[]`,
+///                              print routing message, emit
+///                              `claim_main_health_redirect`, exit 3.
 ///   - `last_status == "green"`→ proceed.
 ///   - Stale (>30 min)        → emit `claim_main_health_stale`, warn, proceed.
 ///
-/// Bypass: `CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1` emits `claim_main_health_bypass`
-/// and proceeds regardless of status.
+/// CHUMP_CLAIM_IGNORE_MAIN_HEALTH has been deleted (INFRA-2428). Setting it
+/// has no effect — the gate still redirects to the trunk-fix gap.
 fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
-    // Bypass check first — fastest path when operator explicitly overrides.
-    let bypass = std::env::var("CHUMP_CLAIM_IGNORE_MAIN_HEALTH")
-        .map(|v| v.trim() == "1")
-        .unwrap_or(false);
-
     let state_path = repo_root.join(".chump/main-preflight-state.json");
     let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
 
@@ -5292,6 +5289,7 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
             &ambient_log,
             "claim_main_health_missing",
             gap_id,
+            &[],
             &[],
             0,
             "",
@@ -5305,7 +5303,7 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
         Err(_) => return Ok(()),
     };
 
-    let (last_status, last_tick_at, failing_gates) = parse_main_health_state(&raw);
+    let (last_status, last_tick_at, failing_gates, filed_gaps) = parse_main_health_state(&raw);
 
     // Compute age.
     let now_secs = SystemTime::now()
@@ -5317,28 +5315,6 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
     } else {
         0
     };
-
-    // Bypass path — emit audit event with would-have-failed gates, then proceed.
-    if bypass {
-        // scanner-anchor: "kind":"claim_main_health_bypass"
-        emit_main_health_event(
-            &ambient_log,
-            "claim_main_health_bypass",
-            gap_id,
-            &failing_gates,
-            age_secs,
-            &last_status,
-        );
-        if last_status == "red" {
-            eprintln!(
-                "[claim] WARN: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 — bypassing red main health gate \
-                 for {}. Failing gates: [{}]",
-                gap_id,
-                failing_gates.join(", ")
-            );
-        }
-        return Ok(());
-    }
 
     // Stale state (> 30 min) → warn and proceed.
     const STALE_THRESHOLD_SECS: u64 = 1800;
@@ -5354,35 +5330,50 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
             "claim_main_health_stale",
             gap_id,
             &failing_gates,
+            &filed_gaps,
             age_secs,
             &last_status,
         );
         return Ok(());
     }
 
-    // Red → refuse with exit code 3.
+    // Red → route claimer to the trunk-fix gap (INFRA-2428 zero-bypass).
     if last_status == "red" {
+        // Pick the most recently filed trunk-fix gap (last in the array).
+        let trunk_fix_gap = filed_gaps
+            .last()
+            .map(|s| s.as_str())
+            .unwrap_or("(none filed yet)");
+
         let age_str = if age_secs > 0 {
             format!(" (state is {} old)", format_duration_secs(age_secs))
         } else {
             String::new()
         };
         eprintln!();
-        eprintln!("[claim] BLOCKED: main is RED{}.", age_str);
         eprintln!(
-            "[claim]   Failing gates: [{}]",
-            if failing_gates.is_empty() {
-                "(unknown — check watchdog logs)".to_string()
-            } else {
-                failing_gates.join(", ")
-            }
+            "[claim] BLOCKED: main is RED{} on gates: [{}].",
+            age_str,
+            failing_gates.join(", ")
         );
-        eprintln!("[claim]   Fix main before claiming new work.");
         eprintln!(
-            "[claim]   Bypass (audit-logged): CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 chump claim {}",
-            gap_id
+            "[claim] Routing you to the trunk-fix gap: {}. Claim that instead, or wait for fix.",
+            trunk_fix_gap
         );
+        eprintln!("[claim] (run: chump claim {})", trunk_fix_gap);
         eprintln!();
+
+        // scanner-anchor: "kind":"claim_main_health_redirect"
+        emit_main_health_event(
+            &ambient_log,
+            "claim_main_health_redirect",
+            gap_id,
+            &failing_gates,
+            &filed_gaps,
+            age_secs,
+            &last_status,
+        );
+
         std::process::exit(3);
     }
 
@@ -5391,12 +5382,17 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
 }
 
 /// Parse the minimal fields from the watchdog state JSON without pulling in
-/// serde_json at this call site. Returns (last_status, last_tick_at, failing_gates).
-fn parse_main_health_state(raw: &str) -> (String, u64, Vec<String>) {
+/// serde_json at this call site. Returns (last_status, last_tick_at, failing_gates, filed_gaps).
+///
+/// `filed_gaps` is the array of trunk-fix gap IDs auto-filed by the watchdog
+/// daemon when main went RED. Used by check_main_health_gate (INFRA-2428) to
+/// route the claimer to the right fix gap.
+fn parse_main_health_state(raw: &str) -> (String, u64, Vec<String>, Vec<String>) {
     let last_status = extract_json_string(raw, "last_status").unwrap_or_default();
     let last_tick_at: u64 = extract_json_number(raw, "last_tick_at").unwrap_or(0);
     let failing_gates = extract_json_string_array(raw, "failing_gates");
-    (last_status, last_tick_at, failing_gates)
+    let filed_gaps = extract_json_string_array(raw, "filed_gaps");
+    (last_status, last_tick_at, failing_gates, filed_gaps)
 }
 
 /// Extract a quoted string value from a flat JSON object by key.
@@ -5483,12 +5479,16 @@ fn format_duration_secs(secs: u64) -> String {
 /// if the log isn't writable.
 ///
 /// `kind` is one of: `claim_main_health_missing`, `claim_main_health_stale`,
-/// `claim_main_health_bypass`.
+/// `claim_main_health_redirect` (INFRA-2428; replaces deleted bypass kind).
+///
+/// For `claim_main_health_redirect`, `filed_gaps` contains the trunk-fix gap
+/// IDs to which the claimer was routed; the last element is `trunk_fix_gap_id`.
 fn emit_main_health_event(
     ambient_log: &Path,
     kind: &str,
     gap_id: &str,
     failing_gates: &[String],
+    filed_gaps: &[String],
     age_secs: u64,
     status: &str,
 ) {
@@ -5505,16 +5505,20 @@ fn emit_main_health_event(
             .collect();
         format!("[{}]", parts.join(","))
     };
+    // trunk_fix_gap_id = last filed gap (most recent trunk-fix), or empty string.
+    let trunk_fix_gap_id = filed_gaps.last().map(|s| s.as_str()).unwrap_or("");
     let line = format!(
         "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
          \"gap_id\":\"{gap}\",\"status\":\"{status}\",\
-         \"failing_gates\":{gates},\"age_secs\":{age}}}\n",
+         \"failing_gates\":{gates},\"age_secs\":{age},\
+         \"trunk_fix_gap_id\":\"{trunk_fix}\"}}\n",
         ts = ts,
         kind = kind,
         gap = json_escape(gap_id),
         status = json_escape(status),
         gates = gates_json,
         age = age_secs,
+        trunk_fix = json_escape(trunk_fix_gap_id),
     );
     if let Some(parent) = ambient_log.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -5536,28 +5540,42 @@ mod main_health_gate_tests {
 
     #[test]
     fn parse_green_state() {
-        let raw = r#"{"last_tick_at":1000000,"last_status":"green","head_sha":"abc","failing_gates":[],"fingerprint":"xyz"}"#;
-        let (status, tick, gates) = parse_main_health_state(raw);
+        let raw = r#"{"last_tick_at":1000000,"last_status":"green","head_sha":"abc","failing_gates":[],"filed_gaps":[],"fingerprint":"xyz"}"#;
+        let (status, tick, gates, filed) = parse_main_health_state(raw);
         assert_eq!(status, "green");
         assert_eq!(tick, 1000000);
         assert!(gates.is_empty());
+        assert!(filed.is_empty());
     }
 
     #[test]
     fn parse_red_state() {
-        let raw = r#"{"last_tick_at":1000001,"last_status":"red","head_sha":"abc","failing_gates":["cargo-fmt","clippy"],"fingerprint":"xyz"}"#;
-        let (status, tick, gates) = parse_main_health_state(raw);
+        let raw = r#"{"last_tick_at":1000001,"last_status":"red","head_sha":"abc","failing_gates":["cargo-fmt","clippy"],"filed_gaps":["INFRA-9000"],"fingerprint":"xyz"}"#;
+        let (status, tick, gates, filed) = parse_main_health_state(raw);
         assert_eq!(status, "red");
         assert_eq!(tick, 1000001);
         assert_eq!(gates, vec!["cargo-fmt", "clippy"]);
+        assert_eq!(filed, vec!["INFRA-9000"]);
+    }
+
+    #[test]
+    fn parse_red_state_no_filed_gaps() {
+        // filed_gaps absent from state → empty vec (watchdog not yet filed anything)
+        let raw = r#"{"last_tick_at":1000001,"last_status":"red","head_sha":"abc","failing_gates":["cargo-fmt"],"fingerprint":"xyz"}"#;
+        let (status, tick, gates, filed) = parse_main_health_state(raw);
+        assert_eq!(status, "red");
+        assert_eq!(tick, 1000001);
+        assert_eq!(gates, vec!["cargo-fmt"]);
+        assert!(filed.is_empty(), "expected no filed_gaps, got {filed:?}");
     }
 
     #[test]
     fn parse_unknown_state_empty_string() {
-        let (status, tick, gates) = parse_main_health_state("");
+        let (status, tick, gates, filed) = parse_main_health_state("");
         assert!(status.is_empty());
         assert_eq!(tick, 0);
         assert!(gates.is_empty());
+        assert!(filed.is_empty());
     }
 
     #[test]
@@ -5594,6 +5612,7 @@ mod main_health_gate_tests {
             "claim_main_health_stale",
             "INFRA-2398",
             &["clippy".to_string()],
+            &[],
             2000,
             "red",
         );
@@ -5605,6 +5624,31 @@ mod main_health_gate_tests {
         assert!(content.contains("INFRA-2398"), "gap_id missing: {content}");
         assert!(content.contains("clippy"), "gate missing: {content}");
         assert!(content.contains("2000"), "age missing: {content}");
+    }
+
+    #[test]
+    fn emit_main_health_redirect_includes_trunk_fix_gap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("ambient.jsonl");
+        emit_main_health_event(
+            &log,
+            "claim_main_health_redirect",
+            "INFRA-1111",
+            &["cargo-fmt".to_string()],
+            &["INFRA-9999".to_string()],
+            0,
+            "red",
+        );
+        let content = std::fs::read_to_string(&log).expect("read");
+        assert!(
+            content.contains("claim_main_health_redirect"),
+            "kind missing: {content}"
+        );
+        assert!(
+            content.contains("INFRA-9999"),
+            "trunk_fix_gap_id missing: {content}"
+        );
+        assert!(content.contains("cargo-fmt"), "gate missing: {content}");
     }
 }
 

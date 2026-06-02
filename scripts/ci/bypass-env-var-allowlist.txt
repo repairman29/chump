@@ -18,7 +18,6 @@ CHUMP_BYPASS_PROOF_OF_MERGE        # Bypass-Justification: proof-of-merge gate b
 CHUMP_IGNORE_WASTE_PAUSE           # Bypass-Justification: waste-pause gate ignore; deletion target  gap: INFRA-2424
 CHUMP_OBS_BUDGET_BYPASS            # Bypass-Justification: obs-budget gate bypass; deletion target  gap: INFRA-2425
 CHUMP_PREFLIGHT_SKIP_PIPEFAIL      # Bypass-Justification: pipefail-sweep gate skip; deletion target  gap: INFRA-2427
-CHUMP_CLAIM_IGNORE_MAIN_HEALTH     # Bypass-Justification: main-health gate ignore during claim; deletion target  gap: INFRA-2428
 
 # ── Category A bypasses — deletion gap TBD ───────────────────────────────────
 CHUMP_AMBIENT_INSTALL_SKIP         # Bypass-Justification: ambient install hook skip; grandfathered  gap: TBD
