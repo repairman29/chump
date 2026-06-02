@@ -1,0 +1,12 @@
+- id: RESILIENT-052
+  domain: RESILIENT
+  title: "bot-merge exit-144-silent recurs post-#2169 — root-cause + loud-fail + regression test"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "WEDGE diagnostic lines printed to stdout (not stderr-only) so agents capturing stdout see the reason on exit 144"
+    - "SIGTERM handler prints which stage was killed before exiting so budget-watchdog kills are loud"
+    - "Regression test scripts/ci/test-bot-merge-exit-144.sh: inject a fake graphql_exhausted event into a temp ambient.jsonl and assert bot-merge stdout is non-empty on exit 144"
+    - "shellcheck passes on modified bot-merge.sh"
+    - "Existing bot-merge CI tests continue to pass"

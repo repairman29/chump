@@ -269,7 +269,11 @@ _bm_cleanup() {
     fi
 }
 trap '_bm_cleanup' EXIT
-trap '_bm_cleanup; exit 1' TERM INT
+# RESILIENT-052: SIGTERM/INT trap now prints a loud diagnostic before exiting
+# so budget-watchdog kills (stage_start subshell sends SIGTERM to parent) are
+# visible in stdout.  Prior behavior: silent exit 1 with no message — agents
+# capturing stdout saw nothing.
+trap '_bm_cleanup; printf "\033[0;31m[bot-merge] FATAL: received SIGTERM/SIGINT — killed at stage \"%s\" (likely budget-watchdog or operator ctrl-C). Exit 1.\033[0m\n" "${__STAGE_LABEL:-unknown}"; exit 1' TERM INT
 
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
@@ -631,10 +635,19 @@ for line in sys.stdin:
         sys.exit(0)
 " 2>/dev/null)
             if [ -n "$_wedge_hit" ]; then
-                echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
-                echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
-                echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
-                echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
+                # RESILIENT-052: print to stdout (not only stderr) so agents
+                # capturing stdout see the reason for exit 144.  Prior behavior
+                # printed only to >&2; because the tee exec-redirect (line ~1387)
+                # had not yet been set up at this point in the script, agents that
+                # captured stdout saw an empty log and had no way to distinguish
+                # graphql_exhausted from an OOM or signal kill.
+                printf '\033[0;31m[bot-merge] EXIT-144 WEDGE (RESILIENT-052): graphql_exhausted detected in ambient stream.\033[0m\n'
+                printf '[bot-merge] WEDGE: last graphql_exhausted event: %s\n' "$_wedge_hit"
+                printf '[bot-merge] WEDGE: bot-merge cannot proceed — fall through to manual INFRA-028 recovery path.\n'
+                printf '[bot-merge] WEDGE: see docs/process/SUBAGENT_DISPATCH.md "#bot-merge-graphql-wedge"\n'
+                printf '[bot-merge] WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)\n'
+                # Keep stderr copy too so it appears in any stderr-only log capture.
+                printf '\033[0;31m[bot-merge] EXIT-144 WEDGE: graphql_exhausted (last: %s) — exiting 144.\033[0m\n' "$_wedge_hit" >&2
                 # Emit ambient event for audit trail
                 _ambient_dir=$(dirname "$_wedge_ambient")
                 if [ -w "$_ambient_dir" ]; then
