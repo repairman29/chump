@@ -26,7 +26,7 @@
 //! - **Fail-open**: if provisioning fails (missing config, sccache absent, I/O
 //!   error), we emit a skip event and continue — a cold build is preferable to a
 //!   failed claim.
-//! - **CI-safe**: when `CHUMP_WORKTREE_BUILD_CACHE_SKIP=1` is set (e.g. CI
+//! - **CI-safe**: when `CHUMP_WORKTREE_BUILD_CACHE_DISABLED=1` is set (e.g. CI
 //!   runners without sccache) the function returns `Outcome::Skipped` without
 //!   writing anything.
 
@@ -62,11 +62,11 @@ pub fn provision_worktree_build_cache(
     ambient_log: &Path,
 ) -> Outcome {
     // CI-override escape hatch.
-    if std::env::var("CHUMP_WORKTREE_BUILD_CACHE_SKIP")
+    if std::env::var("CHUMP_WORKTREE_BUILD_CACHE_DISABLED")
         .map(|v| v.trim() == "1")
         .unwrap_or(false)
     {
-        let reason = "CHUMP_WORKTREE_BUILD_CACHE_SKIP=1".to_string();
+        let reason = "CHUMP_WORKTREE_BUILD_CACHE_DISABLED=1".to_string();
         emit_skip(ambient_log, gap_id, &reason);
         return Outcome::Skipped { reason };
     }
@@ -362,7 +362,7 @@ mod tests {
     use std::sync::Mutex;
     use tempfile::TempDir;
 
-    /// Shared mutex so tests that mutate CHUMP_WORKTREE_BUILD_CACHE_SKIP don't
+    /// Shared mutex so tests that mutate CHUMP_WORKTREE_BUILD_CACHE_DISABLED don't
     /// race with tests that must read it as unset.  Any test that calls
     /// set_var / remove_var on this key must hold `_env_guard` for the
     /// duration of the `provision_*` call.
@@ -386,7 +386,7 @@ mod tests {
         // Hold ENV_MUTEX so test_env_skip_override cannot set the env var
         // concurrently while this test reads it (Rust tests run in parallel).
         let _env_guard = ENV_MUTEX.lock().unwrap();
-        std::env::remove_var("CHUMP_WORKTREE_BUILD_CACHE_SKIP");
+        std::env::remove_var("CHUMP_WORKTREE_BUILD_CACHE_DISABLED");
 
         let repo_dir = TempDir::new().unwrap();
         let wt_dir = TempDir::new().unwrap();
@@ -519,7 +519,7 @@ mod tests {
         assert!(events.contains("worktree_build_cache_skip"));
     }
 
-    /// CHUMP_WORKTREE_BUILD_CACHE_SKIP=1 exits early without writing any files.
+    /// CHUMP_WORKTREE_BUILD_CACHE_DISABLED=1 exits early without writing any files.
     #[test]
     fn test_env_skip_override() {
         // Hold ENV_MUTEX for the duration so set_var + remove_var don't race
@@ -530,14 +530,14 @@ mod tests {
         let wt_dir = TempDir::new().unwrap();
         let ambient_log = repo_dir.path().join(".chump-locks/ambient.jsonl");
 
-        std::env::set_var("CHUMP_WORKTREE_BUILD_CACHE_SKIP", "1");
+        std::env::set_var("CHUMP_WORKTREE_BUILD_CACHE_DISABLED", "1");
         let outcome = provision_worktree_build_cache(
             repo_dir.path(),
             wt_dir.path(),
             "INFRA-2183",
             &ambient_log,
         );
-        std::env::remove_var("CHUMP_WORKTREE_BUILD_CACHE_SKIP");
+        std::env::remove_var("CHUMP_WORKTREE_BUILD_CACHE_DISABLED");
 
         assert!(matches!(outcome, Outcome::Skipped { reason } if reason.contains("SKIP=1")));
         assert!(

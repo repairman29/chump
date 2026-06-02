@@ -43,19 +43,11 @@ grep -q 'provision_worktree_build_cache' src/atomic_claim.rs 2>/dev/null \
 { grep -q 'kind: worktree_build_cache_provisioned' "$REG" && grep -q 'kind: worktree_build_cache_skip' "$REG"; } 2>/dev/null \
     && _p "registry: both event kinds registered in EVENT_REGISTRY.yaml" || _f "registry: event kind(s) NOT registered"
 
-# ── Faithful behavior: the Rust unit tests provision a temp worktree + assert ─
-# the written .cargo/config.toml. Skippable in cargo-less CI lanes via env.
-if [[ "${CHUMP_WTBC_SKIP_CARGO:-0}" == "1" ]]; then
-    echo "[SKIP] cargo unit tests (CHUMP_WTBC_SKIP_CARGO=1)"
-elif command -v cargo >/dev/null 2>&1; then
-    if PATH="$HOME/.cargo/bin:$PATH" cargo test worktree_build_cache 2>&1 | tail -25 | grep -qE 'test result: ok'; then
-        _p "rust: worktree_build_cache unit tests pass (provision + config.toml + unique target-dir)"
-    else
-        _f "rust: worktree_build_cache unit tests FAILED"
-    fi
-else
-    echo "[SKIP] cargo not on PATH — structural checks only"
-fi
+# ── Faithful behavior is covered by the #[cfg(test)] unit tests in
+# src/worktree_build_cache.rs (provision into a temp worktree + assert the
+# written .cargo/config.toml + unique CARGO_TARGET_DIR). Those run in the
+# normal `cargo test` / nextest shard, so this shell gate stays structural-only
+# (fast, no redundant cargo invocation, no bypass-class skip var needed).
 
 echo ""
 echo "=== $PASS passed, $FAIL failed ==="
