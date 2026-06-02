@@ -7151,7 +7151,7 @@ events:
     trigger: >
       Emitted by chump claim when sccache wiring cannot be provisioned
       (host .cargo/config.toml missing, sccache binary absent, I/O error,
-      or CHUMP_WORKTREE_BUILD_CACHE_SKIP=1 override). Claim continues — a
+      or CHUMP_WORKTREE_BUILD_CACHE_DISABLED=1 override). Claim continues — a
       cold build is preferable to a failed claim.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, gap_id, reason]
