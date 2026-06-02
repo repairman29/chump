@@ -332,6 +332,16 @@ Conflict policy per key:
 
 **Status:** not started. Today, overlapping claims either race (two agents both ship, one wins) or get human-resolved.
 
+**Consensus merge gate (INFRA-2274 / INFRA-2310) — SHADOW mode active as of 2026-06-02:**
+The consensus merge gate (built in `scripts/coord/bot-merge.sh`, ~line 2922) is now running in SHADOW mode (`CHUMP_CONSENSUS_MERGE_GATE=1`) across all fleet launcher surfaces: `launchd/com.chump.fleet-daemon.plist`, `launchd/com.chump.opus-curator.plist`, and `scripts/dispatch/run-fleet.sh` (propagated to all worker panes). In shadow mode the gate is **log-only and can never block a merge** — when `chump consensus-tally` returns non-PASSED it emits `kind=consensus_gate_would_block` to `ambient.jsonl` and proceeds normally. After ~7 days of observation, review the rate with:
+
+```bash
+grep consensus_gate_would_block .chump-locks/ambient.jsonl | wc -l
+grep consensus_gate_approved    .chump-locks/ambient.jsonl | wc -l
+```
+
+When the would_block rate is understood and acceptable, the operator sets `CHUMP_CONSENSUS_MERGE_GATE=enforce` in their shell rc (or the plist env) to activate the hard-blocking path (per INFRA-2274 / META-195). Do **not** set enforce without reviewing the ambient data first.
+
 **Frontier:** Structured "two agents on overlapping work decide together" protocol. Built on RPC (Layer 2b) + capability manifest (Layer 2c) + scratchpad (Layer 3d).
 
 **Decision flow** (when INTENT-overlap detected per INFRA-1116):
