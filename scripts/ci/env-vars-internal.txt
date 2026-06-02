@@ -810,3 +810,11 @@ CHUMP_DAEMON_EXIT_LOOP_THRESHOLD
 # ── INFRA-2418: integrator stale-queue SLA fallback ───────────────────────────
 CHUMP_INTEGRATOR_STALE_SLA_HOURS
 CHUMP_INTEGRATOR_NO_STALE_SLA
+
+# ── INFRA-1118: A2A Layer 1a NATS-primary subscribe ──────────────────────────
+# Maximum pending-ack count for the JetStream push consumer (default 512).
+# When filled slots reach this value, kind=fleet_a2a_backpressure is emitted.
+CHUMP_A2A_MAX_ACK_PENDING
+# Milliseconds to wait for NATS connect before falling back to file-poll
+# (default 5000). Set lower in tests to speed up the fallback path.
+CHUMP_NATS_TIMEOUT_MS
