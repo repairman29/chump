@@ -77,15 +77,20 @@ cmd_refresh_once() {
         fi
     fi
 
-    # 2. Parse JSON, pull claudeAiOauth.accessToken
-    local token
-    token="$(printf '%s' "$blob" | python3 -c '
+    # 2. Parse JSON, pull claudeAiOauth.accessToken AND claudeAiOauth.expiresAt (RESILIENT-056)
+    local token expires_at
+    # Output: <token_on_line_1>\n<expires_at_on_line_2_or_empty>
+    local _parsed
+    _parsed="$(printf '%s' "$blob" | python3 -c '
 import json, sys
 try:
     d = json.loads(sys.stdin.read())
-    t = d.get("claudeAiOauth", {}).get("accessToken", "")
+    oauth = d.get("claudeAiOauth", {})
+    t = oauth.get("accessToken", "")
+    exp = oauth.get("expiresAt", "")
     if t:
         print(t)
+        print(exp)
         sys.exit(0)
     sys.exit(2)
 except Exception:
@@ -97,6 +102,9 @@ except Exception:
         return 1
     }
 
+    token="$(printf '%s' "$_parsed" | head -1)"
+    expires_at="$(printf '%s' "$_parsed" | tail -1)"
+
     if [[ -z "$token" ]]; then
         _emit_ambient "oauth_token_refresh_failed" \
             ",\"reason\":\"empty_access_token\",\"prev_age_seconds\":${prev_age}"
@@ -104,18 +112,25 @@ except Exception:
         return 1
     fi
 
-    # 3. Atomic write to TOKEN_FILE
+    # 3. Atomic write to TOKEN_FILE — include expires_at when available (RESILIENT-056 L3)
     mkdir -p "$(dirname "$TOKEN_FILE")"
     chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
     local tmp="${TOKEN_FILE}.tmp.$$"
-    printf '{"token":"%s","written_at":"%s","source":"keychain"}\n' \
-        "$token" "$(_ts)" > "$tmp"
+    if [[ -n "$expires_at" ]]; then
+        printf '{"token":"%s","written_at":"%s","source":"keychain","expires_at":"%s"}\n' \
+            "$token" "$(_ts)" "$expires_at" > "$tmp"
+    else
+        printf '{"token":"%s","written_at":"%s","source":"keychain"}\n' \
+            "$token" "$(_ts)" > "$tmp"
+    fi
     chmod 600 "$tmp"
     mv "$tmp" "$TOKEN_FILE"
 
+    local exp_extra=""
+    [[ -n "$expires_at" ]] && exp_extra=",\"expires_at\":\"${expires_at}\""
     _emit_ambient "oauth_token_refreshed" \
-        ",\"source\":\"keychain\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
-    echo "[oauth-refresh] OK: wrote $TOKEN_FILE (prev_age=${prev_age}s, token_len=${#token})"
+        ",\"source\":\"keychain\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}${exp_extra}"
+    echo "[oauth-refresh] OK: wrote $TOKEN_FILE (prev_age=${prev_age}s, token_len=${#token}, expires_at=${expires_at:-<none>})"
 }
 
 cmd_loop() {

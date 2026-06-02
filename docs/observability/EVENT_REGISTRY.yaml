@@ -739,6 +739,26 @@ events:
       infra_watcher_finding shape (re-emitted through the same category/severity/detail
       contract for dashboard compatibility).
 
+  - kind: auth_token_stale
+    effect_metric: self
+    emitter: scripts/coord/infra-watcher-loop.sh check-auth-freshness (RESILIENT-056)
+    trigger: |
+      ANY of: (a) token file mtime > CHUMP_AUTH_STALE_MTIME_S (default 900s = 15 min);
+      (b) expires_at in token JSON within CHUMP_AUTH_EXPIRY_WARN_S (default 600s = 10 min);
+      (c) oauth_token_refresh_failed events >= CHUMP_AUTH_REFRESH_FAIL_THRESHOLD (default 3)
+      in last CHUMP_AUTH_REFRESH_FAIL_WINDOW_S (default 1800s = 30 min).
+      Fires independent of whether any worker tried to use the token.
+    consumers: [operator-recall, infra-watcher, audit-log]
+    fields_required: [ts, kind, reason, token_file]
+    fields_optional: [mtime_age_s, mtime_threshold_s, secs_until_expiry, expiry_warn_s, refresh_fail_count, refresh_fail_window_s]
+    docs: |
+      The canonical "auth is about to die or has already died" signal. Wires
+      into operator-recall AUTH_DEAD trigger (RESILIENT-056 L5) so the fleet
+      is paged within <=15min of token staleness — independent of worker_exit
+      storms that were the only previous detection path. `reason` field is a
+      '+'-joined list of triggered sub-conditions (e.g. "mtime_stale+expiry_imminent").
+      scanner-anchor: "kind":"auth_token_stale"
+
   - kind: credential_scrub_run
     effect_metric: self
     emitter: scripts/coord/scrub-credential-logs.sh (INFRA-871)

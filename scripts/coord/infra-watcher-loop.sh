@@ -19,7 +19,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Allow REPO_ROOT override for testing
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+# Allow CHUMP_AMBIENT_LOG override for testing (RESILIENT-056)
+AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -474,6 +475,157 @@ cmd_check_oauth_freshness() {
     fi
 }
 
+# ── check-auth-freshness ──────────────────────────────────────────────────────
+# RESILIENT-056 L4: comprehensive auth token freshness watchdog that fires
+# independent of whether any worker tried to use the token. Checks three
+# conditions and emits kind=auth_token_stale on any match:
+#   (a) mtime > CHUMP_AUTH_STALE_MTIME_S (default 900s = 15 min)
+#   (b) expires_at field in token JSON is within CHUMP_AUTH_EXPIRY_WARN_S (default 600s = 10 min)
+#   (c) oauth_token_refresh_failed events >= CHUMP_AUTH_REFRESH_FAIL_THRESHOLD (default 3)
+#       in last CHUMP_AUTH_REFRESH_FAIL_WINDOW_S (default 1800s = 30 min)
+#
+# Distinct from check-oauth-freshness (which only checks mtime+daemon presence):
+# this check also reads expires_at, scans ambient for repeated failures, and
+# uses the canonical kind=auth_token_stale event for downstream AUTH_DEAD wiring.
+#
+# scanner-anchor: "kind":"auth_token_stale"
+cmd_check_auth_freshness() {
+    _header "check-auth-freshness"
+    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
+    local stale_mtime_s="${CHUMP_AUTH_STALE_MTIME_S:-900}"
+    local expiry_warn_s="${CHUMP_AUTH_EXPIRY_WARN_S:-600}"
+    local refresh_fail_threshold="${CHUMP_AUTH_REFRESH_FAIL_THRESHOLD:-3}"
+    local refresh_fail_window="${CHUMP_AUTH_REFRESH_FAIL_WINDOW_S:-1800}"
+
+    local stale=0
+    local reason=""
+    local detail_extra=""
+
+    # ── (a) mtime check ─────────────────────────────────────────────────────
+    if [[ ! -f "$token_file" ]]; then
+        printf '[infra-watcher] check-auth-freshness: token file absent: %s — skipping mtime/expiry checks\n' "$token_file"
+    else
+        local now mtime age
+        now="$(date +%s)"
+        if stat -f %m "$token_file" >/dev/null 2>&1; then
+            mtime="$(stat -f %m "$token_file")"
+        else
+            mtime="$(stat -c %Y "$token_file")"
+        fi
+        age=$((now - mtime))
+        printf '[infra-watcher] check-auth-freshness: mtime_age=%ds (stale_threshold=%ds)\n' "$age" "$stale_mtime_s"
+
+        if (( age > stale_mtime_s )); then
+            stale=1
+            reason="mtime_stale"
+            detail_extra=",\"mtime_age_s\":${age},\"mtime_threshold_s\":${stale_mtime_s}"
+        fi
+
+        # ── (b) expires_at check (RESILIENT-056 L3 field) ───────────────────
+        local expires_at
+        expires_at="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('${token_file}', encoding='utf-8'))
+    print(d.get('expires_at', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+
+        if [[ -n "$expires_at" ]]; then
+            local expiry_epoch
+            expiry_epoch="$(python3 -c "
+from datetime import datetime, timezone
+try:
+    # expiresAt may be epoch-ms integer or ISO8601 string
+    raw = '${expires_at}'
+    if raw.isdigit() and len(raw) > 10:
+        # milliseconds epoch
+        print(int(raw) // 1000)
+    elif raw.isdigit():
+        print(int(raw))
+    else:
+        dt = datetime.fromisoformat(raw.rstrip('Z')).replace(tzinfo=timezone.utc)
+        print(int(dt.timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+
+            if [[ -n "$expiry_epoch" ]] && (( expiry_epoch > 0 )); then
+                local secs_until_expiry=$(( expiry_epoch - now ))
+                printf '[infra-watcher] check-auth-freshness: expires_at=%s secs_until_expiry=%d (warn_threshold=%ds)\n' \
+                    "$expires_at" "$secs_until_expiry" "$expiry_warn_s"
+                if (( secs_until_expiry < expiry_warn_s )); then
+                    stale=1
+                    reason="${reason:+${reason}+}expiry_imminent"
+                    detail_extra="${detail_extra},\"secs_until_expiry\":${secs_until_expiry},\"expiry_warn_s\":${expiry_warn_s}"
+                fi
+            fi
+        else
+            printf '[infra-watcher] check-auth-freshness: expires_at not in token file (L3 field absent — older token format)\n'
+        fi
+    fi
+
+    # ── (c) repeated refresh failures ───────────────────────────────────────
+    local fail_count=0
+    if [[ -f "$AMBIENT_LOG" ]]; then
+        local since=$(( $(date +%s) - refresh_fail_window ))
+        fail_count="$(python3 - "$AMBIENT_LOG" "$since" <<'PYEOF' 2>/dev/null
+import sys, json
+from datetime import datetime, timezone
+
+path, since = sys.argv[1], int(sys.argv[2])
+count = 0
+with open(path, "r", errors="replace") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        if obj.get("kind") != "oauth_token_refresh_failed":
+            continue
+        ts = obj.get("ts", "")
+        try:
+            epoch = int(datetime.fromisoformat(ts.rstrip("Z")).replace(tzinfo=timezone.utc).timestamp())
+        except Exception:
+            continue
+        if epoch >= since:
+            count += 1
+print(count)
+PYEOF
+)"
+        fail_count="${fail_count//[[:space:]]/}"
+        fail_count="${fail_count:-0}"
+        printf '[infra-watcher] check-auth-freshness: oauth_token_refresh_failed count=%s in last %ds (threshold=%s)\n' \
+            "$fail_count" "$refresh_fail_window" "$refresh_fail_threshold"
+
+        if (( fail_count >= refresh_fail_threshold )); then
+            stale=1
+            reason="${reason:+${reason}+}repeated_refresh_failures"
+            detail_extra="${detail_extra},\"refresh_fail_count\":${fail_count},\"refresh_fail_window_s\":${refresh_fail_window}"
+        fi
+    fi
+
+    # ── Emit auth_token_stale if any condition triggered ────────────────────
+    if (( stale )); then
+        local ts
+        ts="$(_ts)"
+        local safe_reason
+        safe_reason="$(printf '%s' "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"auth_token_stale","reason":"%s","token_file":"%s"%s}\n' \
+            "$ts" "$safe_reason" "$token_file" "$detail_extra" \
+            >> "$AMBIENT_LOG"
+        printf '[infra-watcher] CRITICAL check-auth-freshness: auth_token_stale reason=%s token_file=%s%s\n' \
+            "$reason" "$token_file" "$detail_extra" >&2
+    else
+        printf '[infra-watcher] check-auth-freshness: OK — token is fresh\n'
+    fi
+    return 0
+}
+
 # ── tick ──────────────────────────────────────────────────────────────────────
 # One full audit cycle: all subchecks in order.
 cmd_tick() {
@@ -486,6 +638,7 @@ cmd_tick() {
     cmd_check_procs
     cmd_check_repo_vars
     cmd_check_oauth_freshness
+    cmd_check_auth_freshness
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
 }
 
@@ -501,8 +654,9 @@ case "$CMD" in
     check-procs)             cmd_check_procs "$@" ;;
     check-repo-vars)         cmd_check_repo_vars "$@" ;;
     check-oauth-freshness)   cmd_check_oauth_freshness "$@" ;;
+    check-auth-freshness)    cmd_check_auth_freshness "$@" ;;
     *)
-        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars|check-oauth-freshness}\n' \
+        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars|check-oauth-freshness|check-auth-freshness}\n' \
             "$(basename "$0")" >&2
         exit 1
         ;;
