@@ -432,6 +432,35 @@ CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 # INFRA-1787: skip env-vars-internal-coverage gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_ENVVARS
 
+# INFRA-2396: skip the pipefail-race-sweep step in chump preflight (INFRA-1658)
+CHUMP_PREFLIGHT_SKIP_PIPEFAIL
+
+# INFRA-2396 batch: 16 internal vars + 1 OS var accumulated on main without
+# coverage entries. The audit (test-env-var-coverage.sh) treats whole-line as
+# var name — inline comments break matching, so all comments must be above.
+#
+# Inventory subsystem (META-271): path/repo overrides + REST tunables
+CHUMP_INVENTORY_DB
+CHUMP_INVENTORY_MIGRATION
+CHUMP_INVENTORY_REPO
+CHUMP_INVENTORY_REST_TIMEOUT_S
+CHUMP_INVENTORY_PR_MAX_PAGES
+CHUMP_INVENTORY_PR_PER_PAGE
+# Preflight skips (companion to CHUMP_PREFLIGHT_SKIP_PIPEFAIL above)
+CHUMP_PREFLIGHT_SKIP_INSTALLMAP
+CHUMP_PREFLIGHT_SKIP_PATHFILTER
+# Role + session identifiers (curator + agent harness)
+CHUMP_AGENT_ROLE
+CHUMP_SESSION_ROLE
+CHUMP_OPERATOR
+# Cascade + consensus tuning
+CHUMP_CASCADE_PRECHECK
+CHUMP_CONSENSUS_REACT_WEIGHT
+# Test fixture
+CHUMP_VOICE_TEST_ID
+# OS-set on Windows runners — Tier 3
+USERPROFILE
+
 # INFRA-1789: skip subcommand-help regression gate in chump preflight
 CHUMP_PREFLIGHT_SKIP_SUBCMDHELP
 

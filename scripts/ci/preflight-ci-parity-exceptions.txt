@@ -350,3 +350,9 @@ check-gaps-integrity.py    # reason: gap-status-guard.yml gaps-integrity job run
 
 actionlint — workflow syntax gate    # reason: META-199 actionlint step uses rhysd/actionlint GitHub Action; requires the actionlint binary not present in standard preflight env; Tier-D per CI_GATES_INVENTORY.md
 scripts/ci/test-meta-118-daemon-install.sh   # reason: INFRA-2280 plist install smoke uses dry-run mode; validates plist XML shape without launchctl; safe in CI but not meaningful in preflight (no launchd available in worktree context)
+scripts/ci/run-battle-sim-suite.sh   # reason: INFRA-2396 — e2e-battle-sim job runs full battle-simulation harness (no web/no LLM); ci-advisory.yml step; multi-process bash integration test, not preflight-shaped (~30s+ runtime; spawns worker fixtures); follow-up classification gap pending
+Battle sim suite                     # reason: INFRA-2396 — step-name fragment for the same multi-process integration suite above; covers ci-advisory.yml multi-line run: block
+scripts/ci/verify-external-golden-path.sh  # reason: INFRA-2396 — e2e-golden-path job validates the external-repo onboarding cycle end-to-end; needs gh + chump + fresh worktree fixture; ci-advisory.yml and ci-nightly.yml; not preflight-shaped
+scripts/ci/golden-path-timing.sh           # reason: INFRA-2396 — companion timing/JSONL artifact emit for the e2e-golden-path job; depends on a successful prior verify-external-golden-path run; ci-advisory.yml and ci-nightly.yml
+External golden path smoke           # reason: INFRA-2396 — step-name fragment for the verify-external-golden-path.sh step in e2e-golden-path job (ci-advisory.yml + ci-nightly.yml)
+Golden path timing                   # reason: INFRA-2396 — step-name fragment for the golden-path-timing.sh step in e2e-golden-path job (ci-advisory.yml + ci-nightly.yml)

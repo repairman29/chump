@@ -99,3 +99,6 @@ install-chump-integrator-launchd.sh
 install-post-integration-prune-launchd.sh
 install-auto-merge-rearm-daemon.sh
 install-do-droplet-runner.sh
+install-auto-merge-arm-watcher.sh
+install-disk-critical-reactor-launchd.sh
+install-sccache-reaper-launchd.sh

@@ -140,7 +140,7 @@ templates:
 
       ## Pattern to fix
       BEFORE (racy):
-        if printf "%s" "$value" | grep -q "pattern"; then
+        if printf "%s" "$value" | grep -q "pattern"; then  # pipefail-sweep-allowed (documentation example)
 
       AFTER (safe — case statement):
         case "$value" in

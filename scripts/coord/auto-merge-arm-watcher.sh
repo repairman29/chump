@@ -162,10 +162,14 @@ while IFS= read -r pr_json; do
     labels_json="$(printf '%s' "${pr_json}" | grep -o '"labels":\[[^]]*\]' | head -1)"
     [[ -z "${pr_num}" ]] && continue
 
-    if printf '%s' "${labels_json:-}" | grep -qi "CHUMP_HOLD"; then
-        emit "auto_merge_arm_skipped" "${pr_num}" '"reason":"chump_hold_label"'
-        continue
-    fi
+    # INFRA-2396: pipefail-race fix (INFRA-1658) — assign-then-check via lowercasing tr + case
+    labels_lower="$(printf '%s' "${labels_json:-}" | tr '[:upper:]' '[:lower:]')"
+    case "${labels_lower}" in
+        *chump_hold*)
+            emit "auto_merge_arm_skipped" "${pr_num}" '"reason":"chump_hold_label"'
+            continue
+            ;;
+    esac
 
     if ! _recent_auto_rebase "${head_sha}"; then
         log "PR #${pr_num}: no recent rebase event — skipping."
