@@ -819,19 +819,13 @@ CHUMP_A2A_MAX_ACK_PENDING
 # (default 5000). Set lower in tests to speed up the fallback path.
 CHUMP_NATS_TIMEOUT_MS
 
+# INFRA-2429: real env vars referenced in new bypass-lint infrastructure.
+# CHUMP_FLEET_DOCTOR_DISABLED — Category B kill-switch; used in self-test to verify _DISABLED exemption
+CHUMP_FLEET_DOCTOR_DISABLED
+# CHUMP_LOG_LEVEL — general log verbosity control used across fleet scripts
+CHUMP_LOG_LEVEL
+
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
-CHUMP_FLEET_DOCTOR_DISABLED
-# detected in: (standard input)
 CHUMP_IGNORE_
-# detected in: (standard input)
-CHUMP_IGNORE_XYZ
-# detected in: (standard input)
-CHUMP_LOG_LEVEL
-# detected in: (standard input)
-CHUMP_NEW_BYPASS
-# detected in: (standard input)
-CHUMP_XYZ_BYPASS
-# detected in: (standard input)
-CHUMP_XYZ_SKIP

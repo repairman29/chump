@@ -173,21 +173,45 @@ extract_bypass_varnames() {
   tmpfile="$(mktemp)"
   printf '%s\n' "$diff_text" > "$tmpfile"
 
+  # Strip diff hunks that belong to this lint script or the allowlist file —
+  # these legitimately contain bypass var names for documentation/self-test
+  # purposes and should not be flagged. The diff format uses
+  # "diff --git a/path b/path" headers; we blank out lines between matching
+  # headers and the next "diff --git" header.
+  # Strategy: pipe through awk to suppress lines from exempt files.
+  local filtered_file
+  filtered_file="$(mktemp)"
+  awk '
+    /^diff --git / {
+      # Exempt files that legitimately contain bypass var names:
+      #   - this lint script itself (self-test case strings)
+      #   - the allowlist file (grandfathered var documentation)
+      #   - env-vars-internal.txt (var documentation registry, not code)
+      suppress = ($0 ~ /scripts\/ci\/test-no-new-bypass-env-vars\.sh/ ||
+                  $0 ~ /scripts\/ci\/bypass-env-var-allowlist\.txt/ ||
+                  $0 ~ /scripts\/ci\/env-vars-internal\.txt/)
+    }
+    !suppress { print }
+  ' "$tmpfile" > "$filtered_file"
+  rm -f "$tmpfile"
+
   # Only look at added lines (+ prefix, not ++ which is the diff header).
   # Use grep -E; avoid pipe-to-grep-q (INFRA-1658).
   local added_lines
-  added_lines="$(grep -E '^\+[^+]' "$tmpfile" 2>/dev/null)" || added_lines=""
-  rm -f "$tmpfile"
+  added_lines="$(grep -E '^\+[^+]' "$filtered_file" 2>/dev/null)" || added_lines=""
+  rm -f "$filtered_file"
 
   local added_file
   added_file="$(mktemp)"
   printf '%s\n' "$added_lines" > "$added_file"
 
   # Extract var names matching the bypass patterns.
-  # Strategy: grep for the CHUMP_*_BYPASS|SKIP|IGNORE_* substrings using -o,
-  # then filter out _DISABLED.
+  # Strategy: grep for the CHUMP_*_BYPASS|SKIP|IGNORE_* substrings using -o.
+  # CHUMP_IGNORE_ requires at least one trailing [A-Z0-9] to avoid matching
+  # bare pattern-description text like "CHUMP_IGNORE_*" in comments.
+  # Then filter out _DISABLED (Category B exempt).
   local raw_hits
-  raw_hits="$(grep -oE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP)|CHUMP_IGNORE_[A-Z0-9_]*' \
+  raw_hits="$(grep -oE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP)|CHUMP_IGNORE_[A-Z0-9][A-Z0-9_]*' \
     "$added_file" 2>/dev/null || true)"
   rm -f "$added_file"
 
