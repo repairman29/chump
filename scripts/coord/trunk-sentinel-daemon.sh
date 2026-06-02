@@ -283,7 +283,7 @@ DESC
     # --skills-required are PARSED but SILENTLY DROPPED — the flags never reach
     # the gap row. Backfill via `chump gap set` after reserve.
     local out exit_code gap_id
-    out="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 FLEET_029_AMBIENT_GLANCE_SKIP=1 \
+    out="$(CHUMP_GAP_RESERVE_NO_SIMILARITY=1 FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         "$CHUMP_BIN" gap reserve \
         --domain INFRA \
         --priority P0 \

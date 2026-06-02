@@ -268,7 +268,7 @@ cmd_run() {
                     local gap_ac="1. Edit the role-doc for ${role_candidate} to reference ${artifact} (shipped in ${gap_id:-commit ${sha:0:12}}) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '${artifact}' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
                     local new_gap_id=""
                     if command -v chump >/dev/null 2>&1; then
-                        new_gap_id="$(CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
+                        new_gap_id="$(CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
                             chump gap reserve \
                             --domain EFFECTIVE \
                             --title "$gap_title" \
@@ -335,7 +335,7 @@ cmd_drain_deferred() {
             "\"gap_id\":\"$gap_id\",\"artifact\":\"$artifact\",\"role_candidate\":\"$role_candidate\",\"source\":\"deferred\""
 
         if command -v chump >/dev/null 2>&1; then
-            CHUMP_IGNORE_WASTE_PAUSE=1 CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
+            CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
                 chump gap reserve \
                 --domain EFFECTIVE \
                 --title "EFFECTIVE: Wire ${artifact} into role ${role_candidate}" \

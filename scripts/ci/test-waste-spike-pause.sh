@@ -12,8 +12,11 @@
 #   5. rate < 20% twice → fleet-paused removed
 #   6. rate < 20% twice → kind=fleet_resumed emitted
 #   7. re-spike after recovery → fleet-paused re-created
-#   8. CHUMP_IGNORE_WASTE_PAUSE=1 → fleet-paused not created + bypass event
+#   8. detector always runs (CHUMP_IGNORE_WASTE_PAUSE deleted by INFRA-2424)
+#      8b. waste-spike-detector.sh does not reference CHUMP_IGNORE_WASTE_PAUSE
 #   9. worker.sh references fleet-paused sentinel (structural check)
+#      9b. worker.sh references fleet-paused sentinel
+#      9c. worker.sh does not reference CHUMP_IGNORE_WASTE_PAUSE (INFRA-2424)
 
 set -euo pipefail
 
@@ -156,26 +159,27 @@ else
     fail "Test 7: fleet-paused not re-created on re-spike after recovery"
 fi
 
-# ── Test 8: CHUMP_IGNORE_WASTE_PAUSE=1 bypasses detection ─────────────────
+# ── Test 8: waste-spike-detector.sh always runs (CHUMP_IGNORE_WASTE_PAUSE deleted) ──
+# INFRA-2424: the bypass env var is gone. At 40% waste rate the detector should
+# still write fleet-paused (no skip path exists anymore).
 rm -f "$PAUSE_FILE"
 AMBIENT3="$TMP/ambient3.jsonl"; touch "$AMBIENT3"
-set_tally 100 40   # 40% waste rate — would normally pause
+set_tally 100 40   # 40% waste rate — above spike threshold
 
 env "${COMMON_ENV[@]}" \
-    CHUMP_IGNORE_WASTE_PAUSE=1 \
     CHUMP_AMBIENT_LOG="$AMBIENT3" \
     bash "$DETECTOR" 2>/dev/null || true
 
-if [[ ! -f "$PAUSE_FILE" ]]; then
-    ok "Test 8: CHUMP_IGNORE_WASTE_PAUSE=1 → fleet-paused not created"
+if [[ -f "$PAUSE_FILE" ]]; then
+    ok "Test 8: 40% waste rate → fleet-paused created (no bypass path; detector always runs)"
 else
-    fail "Test 8: fleet-paused created despite CHUMP_IGNORE_WASTE_PAUSE=1"
+    fail "Test 8: fleet-paused not created at 40% waste rate"
 fi
 
-if grep -q '"kind":"worker_paused_waste_spike_bypass"' "$AMBIENT3" 2>/dev/null; then
-    ok "Test 8b: CHUMP_IGNORE_WASTE_PAUSE=1 → worker_paused_waste_spike_bypass emitted"
+if grep -q "CHUMP_IGNORE_WASTE_PAUSE" "$DETECTOR" 2>/dev/null; then
+    fail "Test 8b: waste-spike-detector.sh still references CHUMP_IGNORE_WASTE_PAUSE — not cleaned up"
 else
-    fail "Test 8b: worker_paused_waste_spike_bypass event not emitted"
+    ok "Test 8b: waste-spike-detector.sh does not reference CHUMP_IGNORE_WASTE_PAUSE (INFRA-2424)"
 fi
 
 # ── Test 9: worker.sh fleet-pause check is wired ──────────────────────────
@@ -186,9 +190,15 @@ else
 fi
 
 if grep -q 'fleet-paused\|CHUMP_FLEET_PAUSE_FILE' "$WORKER" 2>/dev/null; then
-    ok "Test 9b: worker.sh references fleet-paused sentinel"
+    ok "Test 9b: worker.sh references fleet-paused sentinel (claim still blocks)"
 else
     fail "Test 9b: worker.sh does not reference fleet-paused sentinel"
+fi
+
+if grep -q 'CHUMP_IGNORE_WASTE_PAUSE' "$WORKER" 2>/dev/null; then
+    fail "Test 9c: worker.sh still references CHUMP_IGNORE_WASTE_PAUSE — bypass not deleted (INFRA-2424)"
+else
+    ok "Test 9c: worker.sh does not reference CHUMP_IGNORE_WASTE_PAUSE (INFRA-2424)"
 fi
 
 echo ""

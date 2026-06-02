@@ -659,8 +659,6 @@ CHUMP_CLAIM_ALLOW_DUPLICATE_PR
 CHUMP_DISABLE_JIT_BINARY_REFRESH
 # Override GH repo identity (used by tests + tools when not under git)
 CHUMP_GH_REPO
-# Bypass fleet waste-pause gate during gap reserve/claim (operator recovery)
-CHUMP_IGNORE_WASTE_PAUSE
 # Per-gate skip flags for `chump preflight` (INFRA-1670)
 CHUMP_PREFLIGHT_SKIP_ACPSMOKE
 CHUMP_PREFLIGHT_SKIP_CARGOTEST
@@ -821,7 +819,15 @@ CHUMP_FLEET_DOCTOR_DISABLED
 # CHUMP_LOG_LEVEL — general log verbosity control used across fleet scripts
 CHUMP_LOG_LEVEL
 
-# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
-# Replace the AUTO marker with a real description on the next commit.
-# detected in: (standard input)
-CHUMP_IGNORE_
+# INFRA-2424: fleet-pause-related env vars used in tests and daemons
+# CHUMP_ALLOW_MAIN_WORKTREE — allow chump commands to run in main worktree (test/debug only)
+CHUMP_ALLOW_MAIN_WORKTREE
+# CHUMP_FLEET_PAUSE_FILE — override path to fleet-paused sentinel (test isolation)
+CHUMP_FLEET_PAUSE_FILE
+# CHUMP_GAP_RESERVE_SKIP_PR — skip PR-existence check in reserve (test isolation)
+CHUMP_GAP_RESERVE_SKIP_PR
+# CHUMP_PILLAR_BALANCE_DISABLE — disable pillar balance check in reserve (test isolation)
+CHUMP_PILLAR_BALANCE_DISABLE
+# CHUMP_WASTE_SPIKE_THRESHOLD — spike threshold override for waste-spike-detector (tuning)
+CHUMP_WASTE_SPIKE_THRESHOLD
+# NOTE: CHUMP_IGNORE_WASTE_PAUSE was deleted by INFRA-2424; do not add it back

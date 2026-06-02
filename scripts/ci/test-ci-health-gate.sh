@@ -6,13 +6,13 @@
 #  1. ci-health-gate.sh script exists and is executable
 #  2. CHUMP_CI_HEALTH_GATE_DISABLE=1 causes noop exit
 #  3. ci-health-gate.sh writes fleet-paused when SLO check fails
-#  4. chump gap reserve refuses (exit 1) and prints the right message when fleet-paused exists
-#  5. CHUMP_IGNORE_WASTE_PAUSE=1 bypasses the gap reserve guard
+#  4. chump gap reserve SUCCEEDS even when fleet-paused exists (INFRA-2424: reserve never blocks)
+#  5. (removed — CHUMP_IGNORE_WASTE_PAUSE bypass deleted by INFRA-2424)
 #  6. launchd plist exists with StartInterval=300
 #  7. bootstrap-manifest.yaml has ci-health-gate-launchd entry
 #  8. EVENT_REGISTRY.yaml has pipeline_health_throttle + gap_reserve_blocked
 #  9. FLEET_SLOS.md has L4-SLO-1 entry
-# 10. worker.sh fleet-paused check is still intact (AC 8 regression guard)
+# 10. worker.sh fleet-paused check is still intact (INFRA-2424: claim still blocks)
 
 set -euo pipefail
 
@@ -88,11 +88,12 @@ else
     fail "SLO failure did not write fleet-paused (rc=$rc3)"
 fi
 
-# ── 4. chump gap reserve refuses when fleet-paused exists ─────────────────────
-# Build the chump binary if needed.
+# ── 4. chump gap reserve SUCCEEDS even when fleet-paused exists (INFRA-2424) ──
+# Reserve is unconditional — gaps are inert until claimed. The fleet-paused
+# sentinel must NOT block filing; it only blocks chump claim (work dispatch).
 CHUMP_BIN="$REPO_ROOT/target/debug/chump"
 if [[ ! -x "$CHUMP_BIN" ]]; then
-    echo "  [skip 4+5] chump binary not built — run: cargo build 2>/dev/null"
+    echo "  [skip 4] chump binary not built — run: cargo build 2>/dev/null"
     SKIP_BINARY=1
 else
     SKIP_BINARY=0
@@ -105,48 +106,35 @@ if [[ "${SKIP_BINARY:-0}" -eq 0 ]]; then
         > "$PAUSE_FILE_4"
 
     stderr_out="$TMPDIR_LOCAL/reserve-stderr-4.txt"
+    # reserve should succeed (exit 0) even with fleet-paused present
     CHUMP_FLEET_PAUSE_FILE="$PAUSE_FILE_4" \
         CHUMP_REPO="$REPO_ROOT" \
-        "$CHUMP_BIN" gap reserve --domain TEST --title "test gap for INFRA-1607" \
+        CHUMP_ALLOW_MAIN_WORKTREE=1 \
+        CHUMP_GAP_RESERVE_SKIP_PR=1 \
+        CHUMP_RESERVE_NO_AUTOSTAGE=1 \
+        CHUMP_PILLAR_BALANCE_DISABLE=1 \
+        CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
+        CHUMP_DISABLE_OFFLINE_CHECK=1 \
+        "$CHUMP_BIN" gap reserve --domain TEST --title "test gap INFRA-2424 reserve-unblocked" \
         --skip-obs-acs --quiet \
         2>"$stderr_out" && rc4=0 || rc4=$?
 
-    if [[ $rc4 -eq 1 ]]; then
-        ok "chump gap reserve exits 1 when fleet-paused exists"
+    if [[ $rc4 -eq 0 ]]; then
+        ok "chump gap reserve exits 0 even when fleet-paused exists (INFRA-2424)"
     else
-        fail "chump gap reserve returned rc=$rc4 (expected 1)"
+        fail "chump gap reserve returned rc=$rc4 with fleet-paused — should be 0 (INFRA-2424 regression)"
     fi
 
     if grep -q "fleet is paused" "$stderr_out" 2>/dev/null; then
-        ok "refusal message 'fleet is paused' appears on stderr"
+        fail "reserve emitted 'fleet is paused' — guard should have been removed (INFRA-2424)"
     else
-        fail "refusal message missing from stderr (got: $(cat "$stderr_out" 2>/dev/null | head -3))"
+        ok "reserve does not emit 'fleet is paused' with fleet-paused present (INFRA-2424)"
     fi
 
-    if grep -q "pipeline_jam" "$stderr_out" 2>/dev/null; then
-        ok "reason 'pipeline_jam' appears in refusal message"
-    else
-        fail "reason 'pipeline_jam' missing from refusal message"
-    fi
-
-    # ── 5. CHUMP_IGNORE_WASTE_PAUSE=1 bypasses the guard ─────────────────────
-    # We can't do a full reserve (would mutate state.db), but we verify that
-    # the guard code path is skipped by checking that the process does NOT emit
-    # exit 1 with the paused message when the bypass is set. We use a
-    # non-existent domain to force an early exit after the guard passes.
-    stderr_out5="$TMPDIR_LOCAL/reserve-stderr-5.txt"
-    CHUMP_FLEET_PAUSE_FILE="$PAUSE_FILE_4" \
-        CHUMP_REPO="$REPO_ROOT" \
-        CHUMP_IGNORE_WASTE_PAUSE=1 \
-        "$CHUMP_BIN" gap reserve --domain TEST --title "test gap for INFRA-1607" \
-        --skip-obs-acs --quiet \
-        2>"$stderr_out5" && true || true
-
-    if grep -q "fleet is paused" "$stderr_out5" 2>/dev/null; then
-        fail "CHUMP_IGNORE_WASTE_PAUSE=1 did NOT bypass the guard (paused message still appeared)"
-    else
-        ok "CHUMP_IGNORE_WASTE_PAUSE=1 bypasses the fleet-paused guard"
-    fi
+    # ── 5. (removed) CHUMP_IGNORE_WASTE_PAUSE deleted by INFRA-2424 ──────────
+    # The bypass var no longer exists. Reserve is unconditional; claim enforces
+    # the pause. No test needed here — test-slo-breach-gates.sh covers the
+    # claim-blocks / reserve-succeeds split exhaustively.
 fi
 
 # ── 6. launchd plist exists with StartInterval=300 ────────────────────────────
@@ -191,12 +179,19 @@ else
     fail "FLEET_SLOS.md missing L4-SLO-1"
 fi
 
-# ── 10. worker.sh fleet-paused check still intact (AC 8 regression) ──────────
+# ── 10. worker.sh fleet-paused check still intact for claim (INFRA-2424) ─────
+# INFRA-2424: worker claim cycle still respects fleet-paused (only reserve is
+# unconditional). The bypass env var is gone; the sentinel check remains.
 WORKER="$REPO_ROOT/scripts/dispatch/worker.sh"
-if grep -q "fleet-paused" "$WORKER" && grep -q "CHUMP_IGNORE_WASTE_PAUSE" "$WORKER"; then
-    ok "worker.sh fleet-paused check intact (AC 8 regression guard)"
+if grep -q "fleet-paused" "$WORKER"; then
+    ok "worker.sh fleet-paused sentinel check intact (claim still blocked)"
 else
-    fail "worker.sh fleet-paused / CHUMP_IGNORE_WASTE_PAUSE check appears broken"
+    fail "worker.sh fleet-paused sentinel check missing — claim guard regressed"
+fi
+if grep -q "CHUMP_IGNORE_WASTE_PAUSE" "$WORKER"; then
+    fail "worker.sh still references CHUMP_IGNORE_WASTE_PAUSE — bypass not deleted (INFRA-2424)"
+else
+    ok "worker.sh does not reference CHUMP_IGNORE_WASTE_PAUSE — bypass correctly removed"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
