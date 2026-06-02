@@ -102,3 +102,4 @@ install-do-droplet-runner.sh
 install-auto-merge-arm-watcher.sh
 install-disk-critical-reactor-launchd.sh
 install-sccache-reaper-launchd.sh
+install-main-preflight-watchdog-daemon-launchd.sh
