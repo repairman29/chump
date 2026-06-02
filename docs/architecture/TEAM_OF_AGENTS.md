@@ -180,28 +180,57 @@ The 5 self-contributed acceptance-criteria per role live at
   COMP-014's "fix the recording", we should periodically reconcile against
   Anthropic's actual billing to catch ledger drift.
 
-## Productized curator roles (META-097, ongoing 2026-05-24)
+## Canonical agent roster — single source of truth
 
-Named Opus curator roles are being productized from session-bound personas
-into harness-neutral `scripts/coord/<role>-loop.sh` CLIs + `.claude/agents/<role>.md`
-+ `.claude/skills/<role>/SKILL.md`. Pattern is non-negotiable per
-[`../../.claude/README.md`](../../.claude/README.md): capability in the script,
-adapter in `.claude/`. Any harness (Claude Code, opencode, codex, manual)
-invokes the loop the same way.
+**Last verified: 2026-06-01** (INFRA-1576). This table is the authoritative
+list of every agent defined in `.claude/agents/*.md`, plus `shepherd` (a role
+with loop scripts but no agent doc yet). It supersedes the two 2026-05-24
+snapshots above. Productization pattern (`.claude/README.md`): capability in
+`scripts/coord/<role>-loop.sh`, adapters in `.claude/`. Any harness invokes the
+loop the same way.
 
-| Role | Status | Agent | Skill | Script | AC source |
-|---|---|---|---|---|---|
-| target | shipped (INFRA-1918) | `.claude/agents/target.md` | `.claude/skills/target/SKILL.md` | `scripts/coord/target-loop.sh` (filed) | self-contributed |
-| shepherd | shipped (META-091/092/094) | filed | filed | `scripts/coord/opus-shepherd-triage.sh` + siblings | self-contributed |
-| handoff | filed (INFRA-1922) | filed | filed | filed | self-contributed |
-| ci-audit | **shipped (INFRA-1923)** | `.claude/agents/ci-audit.md` | `.claude/skills/ci-audit/SKILL.md` | `scripts/coord/ci-audit-loop.sh` | **INFERRED** |
-| **decompose** | **shipped (INFRA-1924)** | `.claude/agents/decompose.md` | `.claude/skills/decompose/SKILL.md` | `scripts/coord/decompose-loop.sh` | **INFERRED** |
-| md-links | **shipped (INFRA-1925)** | `.claude/agents/md-links.md` | `.claude/skills/md-links/SKILL.md` | `scripts/coord/md-links-loop.sh` | INFERRED |
+**Legend:** ✅ wired (agent doc + skill + loop CLI) · ◐ partial (some wiring;
+gaps remain) · ○ **doc-only** (a dispatchable subagent definition with *no*
+skill, loop, cron, or CLAUDE.md/AGENTS.md reference — i.e. shelfware risk).
 
-INFERRED AC sources are recorded in
-[`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md);
-when a contesting curator session wakes up, file a follow-up gap to refactor
-rather than blocking the productization PR.
+| Role | Status | Skill | Loop CLI | Notes |
+|---|---|---|---|---|
+| decompose | ✅ wired | ✅ | `decompose-loop.sh` | gap-slicing (INFRA-1924) |
+| target | ✅ wired | ✅ | `target-loop.sh` | demo-target lane (INFRA-1918) |
+| ci-audit | ✅ wired | ✅ | `ci-audit-loop.sh` | CI/test-gate (INFRA-1923) |
+| handoff | ✅ wired | ✅ | `handoff-loop.sh` | typed-handoff (INFRA-1922) |
+| md-links | ✅ wired | ✅ | `md-links-loop.sh` | docs link integrity (INFRA-1925) |
+| fresh-eyes | ◐ partial | ✅ | `fresh-eyes-loop.sh` | self-consistency mirror (META-132); roster/ci/bootstrap wiring follow-up |
+| external-collab | ◐ partial | ✅ | `external-collab-loop.sh` | not yet in CLAUDE.md/AGENTS.md roster |
+| infra-watcher | ◐ partial | ✅ | `infra-watcher-loop.sh` | substrate SRE; not in CLAUDE.md/AGENTS.md |
+| observability | ◐ partial | ✅ | `observability-loop.sh` | telemetry tuning; not in CLAUDE.md/TEAM |
+| deliberator | ◐ partial | ✅ | `deliberator-loop.sh` | vote tally; not in CLAUDE.md/TEAM |
+| harvester | ◐ partial | ✅ | (uses `scripts/arsenal/harvest.sh`) | fleet cartographer; no `*-loop.sh` |
+| shepherd | ◐ partial | filed | `opus-shepherd-triage.sh` + siblings | PR rescue; **no `.claude/agents/shepherd.md`** |
+| orchestrator | ◐ partial | — | (wizard role, inline) | in AGENTS.md; no skill/loop |
+| quartermaster | ○ **doc-only** | — | — | **anti-shelfware role — itself shelfware** (META-205) |
+| curator-opus-historian | ○ **doc-only** | — | — | lessons-learned curator (added 05-29) |
+| curator-opus-roadmap-keeper | ○ **doc-only** | — | — | roadmap-priority curator (05-29) |
+| curator-opus-scout | ○ **doc-only** | — | — | external-repo first-touch (05-29) |
+| curator-opus-context-keeper | ○ **doc-only** | — | — | external-repo persistent memory (05-29) |
+| curator-opus-architecture-coach | ○ **doc-only** | — | — | arch-fit rating (05-30) |
+| curator-opus-incident-commander | ○ **doc-only** | — | — | trunk-red incident coordination (05-30) |
+| curator-opus-velocity-tracker | ○ **doc-only** | — | — | velocity-metrics curator (05-30) |
+
+**Shelfware audit (2026-06-01):** 8 of 21 roles are `○ doc-only` — defined as
+dispatchable subagents but with no skill, loop, cron, or CLAUDE.md/AGENTS.md
+reference. Nothing tells an operator they exist or when to use them, and most
+have no executable behind them. Ironically `quartermaster` — the role whose
+literal job is to *prevent* shelfware — is one of them, which is why this drift
+went uncaught. Each needs a real-vs-speculative call: **wire** it (skill + loop
++ roster, the way `fresh-eyes` was done under META-132) or **prune** it.
+Tracked under META-127 (curator-suite umbrella).
+
+**Recurrence guard (filed follow-up):** a CI / pre-commit check that every
+`.claude/agents/*.md` appears in this roster — so shelfware-by-omission becomes
+mechanically impossible, the same closed-loop discipline as the event-registry
+coverage gate. INFERRED AC sources for the wired roles live in
+[`../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md).
 
 ## Anti-patterns (learned the hard way)
 
