@@ -142,10 +142,17 @@ _add_finding() {
 
 _brief_says_healthy() {
     # Returns 0 if the fleet-brief banner claims health ("No urgent" / "healthy").
+    # INFRA-1658: pipefail-race fix — `printf | grep -q` races and can silently
+    # false-negative. Assign then case-match instead.
     local txt
     txt="$(timeout 20 bash -c "$BRIEF_CMD" 2>/dev/null || true)"
     [[ -z "$txt" ]] && return 1
-    printf '%s' "$txt" | grep -qiE 'no urgent action|looks healthy|fleet looks healthy'
+    # "looks healthy" subsumes "fleet looks healthy" — keep patterns disjoint.
+    local lower="${txt,,}"
+    case "$lower" in
+        *"no urgent action"*|*"looks healthy"*) return 0 ;;
+    esac
+    return 1
 }
 
 comparator_1() {
