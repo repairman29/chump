@@ -549,6 +549,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         run_doctor_probe(&args.repo_root)?;
     }
 
+    // INFRA-2398: main-health-gate — refuse claim when main is red.
+    // Reads .chump/main-preflight-state.json written by the watchdog daemon
+    // (INFRA-2397). Forces the next agent to fix-main-first instead of paying
+    // someone else's tax later. Bypass: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1.
+    check_main_health_gate(&args.repo_root, &args.gap_id)?;
+
     // INFRA-1442: claim-time fuzzy-match against in-flight work BEFORE
     // worktree creation. Catches the 3-way duplicate-fix pattern observed
     // 2026-05-22 (INFRA-1341/1384/1396 all fixed test-cache-mergestatestatus.sh
@@ -5254,6 +5260,351 @@ mod rating_picker_demotion {
         assert_eq!(effective_priority_rank("P1", "FLEET-1", &map), 1);
         assert_eq!(effective_priority_rank("P2", "META-1", &map), 2);
         assert_eq!(effective_priority_rank("P3", "DOC-1", &map), 3);
+    }
+}
+
+// ── INFRA-2398: main-health-gate ─────────────────────────────────────────────
+
+/// Check the main-preflight-watchdog state file and refuse the claim if main
+/// is red. Called early in `run_claim`, before any worktree is created.
+///
+/// Behaviour matrix:
+///   - File missing           → emit `claim_main_health_missing`, proceed.
+///   - `last_status == "red"` → emit nothing (claim refused), exit 3.
+///   - `last_status == "green"`→ proceed.
+///   - Stale (>30 min)        → emit `claim_main_health_stale`, warn, proceed.
+///
+/// Bypass: `CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1` emits `claim_main_health_bypass`
+/// and proceeds regardless of status.
+fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
+    // Bypass check first — fastest path when operator explicitly overrides.
+    let bypass = std::env::var("CHUMP_CLAIM_IGNORE_MAIN_HEALTH")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false);
+
+    let state_path = repo_root.join(".chump/main-preflight-state.json");
+    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+
+    if !state_path.exists() {
+        // Watchdog not installed yet — proceed with a debug-level emit.
+        // scanner-anchor: "kind":"claim_main_health_missing"
+        emit_main_health_event(
+            &ambient_log,
+            "claim_main_health_missing",
+            gap_id,
+            &[],
+            0,
+            "",
+        );
+        return Ok(());
+    }
+
+    // Parse the state file. Any parse error → proceed (best-effort).
+    let raw = match std::fs::read_to_string(&state_path) {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+
+    let (last_status, last_tick_at, failing_gates) = parse_main_health_state(&raw);
+
+    // Compute age.
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let age_secs = if last_tick_at > 0 && now_secs >= last_tick_at {
+        now_secs - last_tick_at
+    } else {
+        0
+    };
+
+    // Bypass path — emit audit event with would-have-failed gates, then proceed.
+    if bypass {
+        // scanner-anchor: "kind":"claim_main_health_bypass"
+        emit_main_health_event(
+            &ambient_log,
+            "claim_main_health_bypass",
+            gap_id,
+            &failing_gates,
+            age_secs,
+            &last_status,
+        );
+        if last_status == "red" {
+            eprintln!(
+                "[claim] WARN: CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 — bypassing red main health gate \
+                 for {}. Failing gates: [{}]",
+                gap_id,
+                failing_gates.join(", ")
+            );
+        }
+        return Ok(());
+    }
+
+    // Stale state (> 30 min) → warn and proceed.
+    const STALE_THRESHOLD_SECS: u64 = 1800;
+    if age_secs > STALE_THRESHOLD_SECS {
+        let age_str = format_duration_secs(age_secs);
+        eprintln!(
+            "[claim] WARN: main-preflight-watchdog state is stale ({age_str} old) — \
+             watchdog may be down. Proceeding with claim."
+        );
+        // scanner-anchor: "kind":"claim_main_health_stale"
+        emit_main_health_event(
+            &ambient_log,
+            "claim_main_health_stale",
+            gap_id,
+            &failing_gates,
+            age_secs,
+            &last_status,
+        );
+        return Ok(());
+    }
+
+    // Red → refuse with exit code 3.
+    if last_status == "red" {
+        let age_str = if age_secs > 0 {
+            format!(" (state is {} old)", format_duration_secs(age_secs))
+        } else {
+            String::new()
+        };
+        eprintln!();
+        eprintln!("[claim] BLOCKED: main is RED{}.", age_str);
+        eprintln!(
+            "[claim]   Failing gates: [{}]",
+            if failing_gates.is_empty() {
+                "(unknown — check watchdog logs)".to_string()
+            } else {
+                failing_gates.join(", ")
+            }
+        );
+        eprintln!("[claim]   Fix main before claiming new work.");
+        eprintln!(
+            "[claim]   Bypass (audit-logged): CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1 chump claim {}",
+            gap_id
+        );
+        eprintln!();
+        std::process::exit(3);
+    }
+
+    // Green (or unknown) → proceed normally.
+    Ok(())
+}
+
+/// Parse the minimal fields from the watchdog state JSON without pulling in
+/// serde_json at this call site. Returns (last_status, last_tick_at, failing_gates).
+fn parse_main_health_state(raw: &str) -> (String, u64, Vec<String>) {
+    let last_status = extract_json_string(raw, "last_status").unwrap_or_default();
+    let last_tick_at: u64 = extract_json_number(raw, "last_tick_at").unwrap_or(0);
+    let failing_gates = extract_json_string_array(raw, "failing_gates");
+    (last_status, last_tick_at, failing_gates)
+}
+
+/// Extract a quoted string value from a flat JSON object by key.
+/// e.g. `{"last_status":"red",...}` → `"red"`.
+/// Handles only simple non-nested values; good enough for the watchdog payload.
+fn extract_json_string(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":", key);
+    let start = json.find(&needle)?;
+    let after_colon = json[start + needle.len()..].trim_start();
+    if !after_colon.starts_with('"') {
+        return None;
+    }
+    let inner = &after_colon[1..];
+    let end = inner.find('"')?;
+    Some(inner[..end].to_string())
+}
+
+/// Extract a numeric value from a flat JSON object by key.
+fn extract_json_number(json: &str, key: &str) -> Option<u64> {
+    let needle = format!("\"{}\":", key);
+    let start = json.find(&needle)?;
+    let after_colon = json[start + needle.len()..].trim_start();
+    let end = after_colon
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(after_colon.len());
+    after_colon[..end].parse().ok()
+}
+
+/// Extract a JSON array of strings by key.
+/// e.g. `{"failing_gates":["gate1","gate2"]}` → `vec!["gate1", "gate2"]`.
+fn extract_json_string_array(json: &str, key: &str) -> Vec<String> {
+    let needle = format!("\"{}\":", key);
+    let start = match json.find(&needle) {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let after_colon = json[start + needle.len()..].trim_start();
+    if !after_colon.starts_with('[') {
+        return vec![];
+    }
+    let close = match after_colon.find(']') {
+        Some(c) => c,
+        None => return vec![],
+    };
+    let inner = &after_colon[1..close];
+    inner
+        .split(',')
+        .filter_map(|item| {
+            let s = item.trim();
+            if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+                Some(s[1..s.len() - 1].to_string())
+            } else {
+                None
+            }
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Format a duration in seconds to a human-readable string like "5m 30s".
+fn format_duration_secs(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        let m = secs / 60;
+        let s = secs % 60;
+        if s == 0 {
+            format!("{m}m")
+        } else {
+            format!("{m}m {s}s")
+        }
+    } else {
+        let h = secs / 3600;
+        let m = (secs % 3600) / 60;
+        if m == 0 {
+            format!("{h}h")
+        } else {
+            format!("{h}h {m}m")
+        }
+    }
+}
+
+/// Emit a main-health event to ambient.jsonl. Best-effort — silently no-ops
+/// if the log isn't writable.
+///
+/// `kind` is one of: `claim_main_health_missing`, `claim_main_health_stale`,
+/// `claim_main_health_bypass`.
+fn emit_main_health_event(
+    ambient_log: &Path,
+    kind: &str,
+    gap_id: &str,
+    failing_gates: &[String],
+    age_secs: u64,
+    status: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let gates_json = {
+        let parts: Vec<String> = failing_gates
+            .iter()
+            .map(|g| format!("\"{}\"", json_escape(g)))
+            .collect();
+        format!("[{}]", parts.join(","))
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
+         \"gap_id\":\"{gap}\",\"status\":\"{status}\",\
+         \"failing_gates\":{gates},\"age_secs\":{age}}}\n",
+        ts = ts,
+        kind = kind,
+        gap = json_escape(gap_id),
+        status = json_escape(status),
+        gates = gates_json,
+        age = age_secs,
+    );
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── INFRA-2398: unit tests for main-health-gate helpers ──────────────────────
+#[cfg(test)]
+mod main_health_gate_tests {
+    use super::*;
+
+    #[test]
+    fn parse_green_state() {
+        let raw = r#"{"last_tick_at":1000000,"last_status":"green","head_sha":"abc","failing_gates":[],"fingerprint":"xyz"}"#;
+        let (status, tick, gates) = parse_main_health_state(raw);
+        assert_eq!(status, "green");
+        assert_eq!(tick, 1000000);
+        assert!(gates.is_empty());
+    }
+
+    #[test]
+    fn parse_red_state() {
+        let raw = r#"{"last_tick_at":1000001,"last_status":"red","head_sha":"abc","failing_gates":["cargo-fmt","clippy"],"fingerprint":"xyz"}"#;
+        let (status, tick, gates) = parse_main_health_state(raw);
+        assert_eq!(status, "red");
+        assert_eq!(tick, 1000001);
+        assert_eq!(gates, vec!["cargo-fmt", "clippy"]);
+    }
+
+    #[test]
+    fn parse_unknown_state_empty_string() {
+        let (status, tick, gates) = parse_main_health_state("");
+        assert!(status.is_empty());
+        assert_eq!(tick, 0);
+        assert!(gates.is_empty());
+    }
+
+    #[test]
+    fn format_duration_secs_cases() {
+        assert_eq!(format_duration_secs(0), "0s");
+        assert_eq!(format_duration_secs(45), "45s");
+        assert_eq!(format_duration_secs(60), "1m");
+        assert_eq!(format_duration_secs(90), "1m 30s");
+        assert_eq!(format_duration_secs(3600), "1h");
+        assert_eq!(format_duration_secs(3660), "1h 1m");
+        assert_eq!(format_duration_secs(7320), "2h 2m");
+    }
+
+    #[test]
+    fn extract_json_string_array_empty() {
+        let raw = r#"{"failing_gates":[]}"#;
+        let gates = extract_json_string_array(raw, "failing_gates");
+        assert!(gates.is_empty(), "expected empty vec, got {gates:?}");
+    }
+
+    #[test]
+    fn extract_json_string_array_two_items() {
+        let raw = r#"{"failing_gates":["gate-a","gate-b"]}"#;
+        let gates = extract_json_string_array(raw, "failing_gates");
+        assert_eq!(gates, vec!["gate-a", "gate-b"]);
+    }
+
+    #[test]
+    fn emit_main_health_event_writes_correct_kind() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("ambient.jsonl");
+        emit_main_health_event(
+            &log,
+            "claim_main_health_stale",
+            "INFRA-2398",
+            &["clippy".to_string()],
+            2000,
+            "red",
+        );
+        let content = std::fs::read_to_string(&log).expect("read");
+        assert!(
+            content.contains("claim_main_health_stale"),
+            "kind missing: {content}"
+        );
+        assert!(content.contains("INFRA-2398"), "gap_id missing: {content}");
+        assert!(content.contains("clippy"), "gate missing: {content}");
+        assert!(content.contains("2000"), "age missing: {content}");
     }
 }
 

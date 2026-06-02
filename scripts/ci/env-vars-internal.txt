@@ -800,3 +800,7 @@ CHUMP_AGENT_SYNC_AMBIENT_LOG
 CHUMP_MAIN_PREFLIGHT_DISABLED
 # Seconds between daemon ticks when running in loop mode (default 600).
 CHUMP_MAIN_PREFLIGHT_INTERVAL_S
+# ── INFRA-2398: main-health-gate claim bypass ─────────────────────────────────
+# Set to 1 to bypass the main-preflight-watchdog state check during chump claim.
+# Emits claim_main_health_bypass to ambient.jsonl for audit trail.
+CHUMP_CLAIM_IGNORE_MAIN_HEALTH
