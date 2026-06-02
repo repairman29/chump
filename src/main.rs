@@ -1345,6 +1345,17 @@ async fn main() -> Result<()> {
         std::process::exit(commands::inventory::run(&sub_args));
     }
 
+    // `chump contract-scan [--in-flight] [--against <pr-number>]` (INFRA-2405) —
+    // detect cross-PR state-file/IPC schema mismatches. Triggered by INFRA-2404:
+    // the main-preflight-watchdog (INFRA-2397) wrote {state, updated_at, last_tick_id}
+    // while the claim main-health-gate (INFRA-2398) read {last_status, last_tick_at,
+    // failing_gates} — keys never matched, the procedure layer shipped silently inert.
+    // Exit 0 = clean, 1 = mismatches detected, 2 = scan failure.
+    if args.get(1).map(String::as_str) == Some("contract-scan") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::contract_scan::run(&sub_args));
+    }
+
     // `chump add-env-var <NAME> --tier 1|2|3 [--gap-id X]` (INFRA-2399) —
     // author-time helper: adds a new env var to .env.example (tier 1) or
     // scripts/ci/env-vars-internal.txt (tier 2/3). Prevents CI env-var-coverage
