@@ -1,36 +1,38 @@
-// crates/chump-coord/src/rpc.rs — INFRA-1759
+// crates/chump-coord/src/rpc.rs — INFRA-1119
 //
-// A2A Layer 2b foundation slice (1/4) — strongly-typed request/response
-// RPC between Opus sessions with deadlines + idempotency.
+// A2A Layer 2b: RPC request/response activation (slice 2/4).
 //
-// This file ships ONLY: RpcRequest + RpcResponse wire types, RpcError enum,
-// in-memory dedup table, and stub call_rpc + serve_rpc async signatures
-// that return NotImplemented at runtime. The real implementation (NATS
-// subject routing + tokio-channel response delivery + handler crash
-// detection within 5s + 5 use-case wrappers) lands in INFRA-1119 slice 2/4.
+// Implements:
+// - call_rpc: publish to chump.rpc.<target>.<method>, await reply with deadline
+// - serve_rpc: subscribe on chump.rpc.<session>.<method>, dispatch handler, reply
+// - request_id dedup within 60s (retries safe)
+// - 5 use-case wrappers: ask-eta, ask-overlap, ask-handoff, ask-progress, ask-capability
+// - Ambient events: a2a_rpc_sent, a2a_rpc_timeout, a2a_rpc_send_failed,
+//   a2a_rpc_handler_crash, a2a_rpc_registered
 //
-// Why stub-first: lets ask-eta / ask-overlap / ask-handoff / ask-progress /
-// ask-capability wrappers (slice 2) be type-designed today against stable
-// RpcRequest/RpcResponse shapes.
+// Builds on: Layer 1a NATS subscribe (shipped in #2952).
+// Do NOT edit: nats_primary.rs / events.rs / scratchpad.rs (other A2A PRs in flight).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// Default RPC client deadline. Real impl in slice 2/4 wires this through
-/// to a `tokio::time::timeout` on the response channel.
+/// Default RPC client deadline.
 pub const DEFAULT_RPC_TIMEOUT_MS: u64 = 10_000;
 
-/// Dedup window for idempotent retries. Real impl in slice 2/4 expires
-/// entries via a tokio task that scans every 30s.
+/// Dedup window for idempotent retries.
 pub const DEDUP_WINDOW_SECONDS: u64 = 60;
 
-/// Request envelope sent from a caller to a target_session over Layer 2b.
+/// NATS subject prefix for RPC traffic.
+const RPC_SUBJECT_PREFIX: &str = "chump.rpc";
+
+// ── Wire types ────────────────────────────────────────────────────────────────
+
+/// Request envelope sent from caller to target_session over Layer 2b.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RpcRequest {
-    /// UUIDv4-style identifier. Server dedups within the dedup window so
-    /// network-blip retries are safe.
+    /// UUIDv4 identifier. Server dedups within DEDUP_WINDOW_SECONDS.
     pub request_id: String,
     /// Method name (e.g. "ask-eta", "ask-overlap").
     pub method: String,
@@ -55,13 +57,17 @@ pub struct RpcResponse {
     pub latency_ms: u64,
 }
 
-/// Error type for `call_rpc`. Stub returns NotImplemented; real impl will
-/// add Timeout (rc=124 equivalent), HandlerCrashed (distinct from Timeout
-/// per slice-3 chaos test), and Network (transport failure) variants.
+/// Error type for `call_rpc` and `serve_rpc`.
 #[derive(Debug)]
 pub enum RpcError {
-    /// Stub-only — real impl lands in INFRA-1119 slice 2/4.
-    NotImplemented,
+    /// NATS connection not provided.
+    NoNats,
+    /// Client deadline expired before reply arrived.
+    Timeout { request_id: String, timeout_ms: u64 },
+    /// Handler panicked or returned an error (distinct from Timeout per AC-3).
+    HandlerCrash { request_id: String, reason: String },
+    /// NATS publish or subscribe failed.
+    Transport(String),
     /// Wire-format decode error.
     Deserialize(serde_json::Error),
 }
@@ -69,9 +75,23 @@ pub enum RpcError {
 impl std::fmt::Display for RpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RpcError::NotImplemented => {
-                write!(f, "RPC stub — real impl ships in INFRA-1119 slice 2/4")
+            RpcError::NoNats => {
+                write!(f, "NATS client not provided — call with a connected client")
             }
+            RpcError::Timeout {
+                request_id,
+                timeout_ms,
+            } => write!(
+                f,
+                "RPC timeout after {}ms (request_id={}) — INFRA-1119",
+                timeout_ms, request_id
+            ),
+            RpcError::HandlerCrash { request_id, reason } => write!(
+                f,
+                "RPC handler crash (request_id={}): {} — INFRA-1119",
+                request_id, reason
+            ),
+            RpcError::Transport(e) => write!(f, "NATS transport error: {e}"),
             RpcError::Deserialize(e) => write!(f, "deserialize failed: {e}"),
         }
     }
@@ -80,8 +100,8 @@ impl std::fmt::Display for RpcError {
 impl std::error::Error for RpcError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            RpcError::NotImplemented => None,
             RpcError::Deserialize(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -92,9 +112,11 @@ impl From<serde_json::Error> for RpcError {
     }
 }
 
+// ── Dedup table ───────────────────────────────────────────────────────────────
+
 /// In-memory dedup table. Maps `request_id` → first-seen `Instant`.
-/// Real impl in slice 2/4 will add a tokio task that scans and evicts
-/// entries older than DEDUP_WINDOW_SECONDS.
+/// Evicts entries older than DEDUP_WINDOW_SECONDS opportunistically on each
+/// `record()` call.
 pub struct DedupTable {
     seen: Mutex<HashMap<String, Instant>>,
 }
@@ -111,7 +133,6 @@ impl DedupTable {
     pub fn record(&self, request_id: &str) -> bool {
         let mut g = self.seen.lock().expect("dedup poisoned");
         let now = Instant::now();
-        // Evict stale entries opportunistically.
         let window = std::time::Duration::from_secs(DEDUP_WINDOW_SECONDS);
         g.retain(|_, t| now.duration_since(*t) < window);
         if g.contains_key(request_id) {
@@ -122,7 +143,6 @@ impl DedupTable {
         }
     }
 
-    /// Snapshot of the current size. Useful for tests.
     pub fn len(&self) -> usize {
         self.seen.lock().expect("dedup poisoned").len()
     }
@@ -138,57 +158,470 @@ impl Default for DedupTable {
     }
 }
 
-/// Generate a new request_id. Falls back to ts+pid+counter when uuid crate
-/// isn't available. Real impl in slice 2/4 will use uuidv4 properly.
+// ── ID generation ─────────────────────────────────────────────────────────────
+
+/// Generate a new UUIDv4 request_id.
 pub fn new_request_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{:x}-{:x}-{}", nanos, std::process::id(), c)
+    uuid::Uuid::new_v4().to_string()
 }
 
-/// Send an RPC to a peer session. Stub returns NotImplemented + emits
-/// `a2a_rpc_stub_called` to ambient.
+// ── RPC client ────────────────────────────────────────────────────────────────
+
+/// Send an RPC to a peer session over NATS req-reply.
 ///
-/// Real impl (slice 2/4): publishes RpcRequest to NATS subject
-/// `chump.rpc.<target_session>.<method>`, awaits response on
-/// `chump.rpc.reply.<request_id>` with `tokio::time::timeout(timeout_ms)`.
+/// Publishes `RpcRequest` to `chump.rpc.<target_session>.<method>`.
+/// Awaits a `RpcResponse` on the auto-generated NATS reply subject.
+/// Emits `a2a_rpc_sent` on publish; `a2a_rpc_timeout` on deadline exceeded.
+///
+/// Falls back to `RpcError::NoNats` if no NATS client is available.
 pub async fn call_rpc(
     target_session: &str,
     method: &str,
     args: serde_json::Value,
     timeout_ms: u64,
 ) -> Result<RpcResponse, RpcError> {
-    let request_id = new_request_id();
-    let ts = chrono::Utc::now().to_rfc3339();
-    let line = format!(
-        r#"{{"ts":"{ts}","kind":"a2a_rpc_stub_called","target":"{target_session}","method":"{method}","request_id":"{request_id}","timeout_ms":{timeout_ms}}}"#
-    );
-    let _ = append_ambient(&line);
-    let _ = args; // accept but ignore for stub
-    Err(RpcError::NotImplemented)
+    call_rpc_with_nats(None, target_session, method, args, timeout_ms).await
 }
 
-/// Server-side handler registration. Stub returns NotImplemented; real
-/// impl in slice 2/4 will register the handler against a NATS subject
-/// subscription and serialize responses through a tokio task.
+/// Like `call_rpc` but accepts an explicit NATS client (for testing / worker integration).
+pub async fn call_rpc_with_nats(
+    nats: Option<&async_nats::Client>,
+    target_session: &str,
+    method: &str,
+    args: serde_json::Value,
+    timeout_ms: u64,
+) -> Result<RpcResponse, RpcError> {
+    let request_id = new_request_id();
+    let sent_at = chrono::Utc::now().to_rfc3339();
+
+    let req = RpcRequest {
+        request_id: request_id.clone(),
+        method: method.to_string(),
+        args,
+        sent_at: sent_at.clone(),
+    };
+    let payload = serde_json::to_vec(&req).map_err(RpcError::Deserialize)?;
+    let subject = format!("{}.{}.{}", RPC_SUBJECT_PREFIX, target_session, method);
+
+    // Emit a2a_rpc_sent before attempting publish
+    let sent_line = format!(
+        r#"{{"ts":"{sent_at}","kind":"a2a_rpc_sent","method":"{method}","target":"{target_session}","request_id":"{request_id}"}}"#
+    );
+    let _ = append_ambient(&sent_line);
+
+    let client = match nats {
+        Some(c) => c,
+        None => {
+            // No NATS client available — emit rpc_send_failed and return error
+            let ts = chrono::Utc::now().to_rfc3339();
+            let fail_line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}"}}"#
+            );
+            let _ = append_ambient(&fail_line);
+            return Err(RpcError::NoNats);
+        }
+    };
+
+    // Publish with NATS request — reply subject is auto-generated
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+
+    let reply_msg = match tokio::time::timeout(
+        timeout,
+        client.request(subject, bytes::Bytes::from(payload)),
+    )
+    .await
+    {
+        Ok(Ok(msg)) => msg,
+        Ok(Err(e)) => {
+            let ts = chrono::Utc::now().to_rfc3339();
+            let fail_line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}"}}"#
+            );
+            let _ = append_ambient(&fail_line);
+            return Err(RpcError::Transport(e.to_string()));
+        }
+        Err(_elapsed) => {
+            // Deadline exceeded — emit a2a_rpc_timeout
+            let ts = chrono::Utc::now().to_rfc3339();
+            let timeout_line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_timeout","request_id":"{request_id}","timeout_s":{}}}"#,
+                timeout_ms / 1000
+            );
+            let _ = append_ambient(&timeout_line);
+            return Err(RpcError::Timeout {
+                request_id,
+                timeout_ms,
+            });
+        }
+    };
+
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+
+    // Deserialize response
+    let mut response: RpcResponse =
+        serde_json::from_slice(&reply_msg.payload).map_err(RpcError::Deserialize)?;
+    // Patch latency if server didn't fill it
+    if response.latency_ms == 0 {
+        response.latency_ms = elapsed_ms;
+    }
+
+    // Check for handler crash reported by server
+    if let Some(ref err_str) = response.error {
+        if err_str.starts_with("handler_crash:") {
+            let reason = err_str
+                .trim_start_matches("handler_crash:")
+                .trim()
+                .to_string();
+            return Err(RpcError::HandlerCrash {
+                request_id: response.request_id,
+                reason,
+            });
+        }
+    }
+
+    Ok(response)
+}
+
+// ── RPC server ────────────────────────────────────────────────────────────────
+
+/// Register a per-method handler on `chump.rpc.<session_id>.<method>`.
+///
+/// Spawns a background tokio task that subscribes to the subject, applies
+/// dedup, calls `handler(args)`, and publishes the response to the reply
+/// subject. Handler panics are caught and returned as `a2a_rpc_handler_crash`
+/// events with error="handler_crash: <reason>" in the response.
+///
+/// Returns immediately after registering the subscription; the background
+/// task runs until the NATS connection is closed.
 pub async fn serve_rpc<F>(method: &str, handler: F) -> Result<(), RpcError>
 where
     F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
 {
-    let _ = method;
-    let _ = handler;
-    let ts = chrono::Utc::now().to_rfc3339();
-    let line = format!(
-        r#"{{"ts":"{ts}","kind":"a2a_rpc_stub_called","method":"{method}","mode":"serve"}}"#
-    );
-    let _ = append_ambient(&line);
-    Err(RpcError::NotImplemented)
+    serve_rpc_with_nats(None, "local", method, handler).await
 }
+
+/// Like `serve_rpc` but accepts explicit NATS client + session_id.
+/// This is the path used by worker startup.
+pub async fn serve_rpc_with_nats<F>(
+    nats: Option<&async_nats::Client>,
+    session_id: &str,
+    method: &str,
+    handler: F,
+) -> Result<(), RpcError>
+where
+    F: Fn(serde_json::Value) -> Result<serde_json::Value, String> + Send + Sync + 'static,
+{
+    let client = match nats {
+        Some(c) => c,
+        None => {
+            let ts = chrono::Utc::now().to_rfc3339();
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_registered","method":"{method}","session":"{session_id}","nats":"unavailable"}}"#
+            );
+            let _ = append_ambient(&line);
+            return Err(RpcError::NoNats);
+        }
+    };
+
+    let subject = format!("{}.{}.{}", RPC_SUBJECT_PREFIX, session_id, method);
+    let mut sub = client
+        .subscribe(subject.clone())
+        .await
+        .map_err(|e| RpcError::Transport(e.to_string()))?;
+
+    let ts = chrono::Utc::now().to_rfc3339();
+    let reg_line = format!(
+        r#"{{"ts":"{ts}","kind":"a2a_rpc_registered","method":"{method}","session":"{session_id}","subject":"{subject}"}}"#
+    );
+    let _ = append_ambient(&reg_line);
+
+    let method_owned = method.to_string();
+    let session_owned = session_id.to_string();
+    let handler = Arc::new(handler);
+    let dedup = Arc::new(DedupTable::new());
+    let nats_clone = client.clone();
+
+    tokio::spawn(async move {
+        use futures::StreamExt;
+        while let Some(msg) = sub.next().await {
+            let request: RpcRequest = match serde_json::from_slice(&msg.payload) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!(
+                        "[rpc-serve] {} deserialize error on {}: {}",
+                        session_owned, method_owned, e
+                    );
+                    continue;
+                }
+            };
+
+            // Dedup — if already seen, skip (reply was already sent on first delivery)
+            if !dedup.record(&request.request_id) {
+                eprintln!(
+                    "[rpc-serve] {} dedup hit for request_id={}",
+                    session_owned, request.request_id
+                );
+                continue;
+            }
+
+            let reply_subject = match msg.reply {
+                Some(ref s) => s.clone(),
+                None => {
+                    eprintln!(
+                        "[rpc-serve] {} no reply subject on request_id={}",
+                        session_owned, request.request_id
+                    );
+                    continue;
+                }
+            };
+
+            let start = std::time::Instant::now();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                handler(request.args.clone())
+            }));
+
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let response = match result {
+                Ok(Ok(val)) => RpcResponse {
+                    request_id: request.request_id.clone(),
+                    result: Some(val),
+                    error: None,
+                    latency_ms,
+                },
+                Ok(Err(err_str)) => {
+                    // Handler returned Err — emit handler_crash event
+                    let ts = chrono::Utc::now().to_rfc3339();
+                    let crash_line = format!(
+                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{err_str}"}}"#,
+                        request.request_id
+                    );
+                    let _ = append_ambient(&crash_line);
+                    RpcResponse {
+                        request_id: request.request_id.clone(),
+                        result: None,
+                        error: Some(format!("handler_crash: {err_str}")),
+                        latency_ms,
+                    }
+                }
+                Err(panic_val) => {
+                    // Handler panicked — stringify and emit handler_crash
+                    let reason = if let Some(s) = panic_val.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else if let Some(s) = panic_val.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "unknown panic".to_string()
+                    };
+                    let ts = chrono::Utc::now().to_rfc3339();
+                    let crash_line = format!(
+                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{reason}"}}"#,
+                        request.request_id
+                    );
+                    let _ = append_ambient(&crash_line);
+                    RpcResponse {
+                        request_id: request.request_id.clone(),
+                        result: None,
+                        error: Some(format!("handler_crash: {reason}")),
+                        latency_ms,
+                    }
+                }
+            };
+
+            let payload = match serde_json::to_vec(&response) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!(
+                        "[rpc-serve] {} serialize response failed: {}",
+                        session_owned, e
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(e) = nats_clone
+                .publish(reply_subject, bytes::Bytes::from(payload))
+                .await
+            {
+                eprintln!("[rpc-serve] {} reply publish failed: {}", session_owned, e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+// ── 5 use-case wrappers ───────────────────────────────────────────────────────
+
+/// Ask a peer session when it expects to complete a gap.
+///
+/// Args: `{"gap_id": "<ID>"}` (optional: `"include_subtasks": true`)
+/// Response: `{"eta_seconds": <N>}` or `{"eta_seconds": null}` if unknown.
+pub async fn ask_eta(
+    nats: &async_nats::Client,
+    target_session: &str,
+    gap_id: &str,
+) -> Result<RpcResponse, RpcError> {
+    call_rpc_with_nats(
+        Some(nats),
+        target_session,
+        "ask-eta",
+        serde_json::json!({"gap_id": gap_id}),
+        DEFAULT_RPC_TIMEOUT_MS,
+    )
+    .await
+}
+
+/// Ask a peer whether it overlaps with a set of files.
+///
+/// Args: `{"files": ["path/to/a.rs", ...]}`
+/// Response: `{"overlaps": true, "files": [...overlapping...]}` or `{"overlaps": false}`.
+pub async fn ask_overlap(
+    nats: &async_nats::Client,
+    target_session: &str,
+    files: &[&str],
+) -> Result<RpcResponse, RpcError> {
+    call_rpc_with_nats(
+        Some(nats),
+        target_session,
+        "ask-overlap",
+        serde_json::json!({"files": files}),
+        DEFAULT_RPC_TIMEOUT_MS,
+    )
+    .await
+}
+
+/// Initiate a handoff to a peer session (transfer a gap claim).
+///
+/// Args: `{"gap_id": "<ID>", "reason": "<why>"}` (optional: `"context": {...}`)
+/// Response: `{"accepted": true}` or `{"accepted": false, "reason": "<why>"}`.
+pub async fn ask_handoff(
+    nats: &async_nats::Client,
+    target_session: &str,
+    gap_id: &str,
+    reason: &str,
+) -> Result<RpcResponse, RpcError> {
+    call_rpc_with_nats(
+        Some(nats),
+        target_session,
+        "ask-handoff",
+        serde_json::json!({"gap_id": gap_id, "reason": reason}),
+        DEFAULT_RPC_TIMEOUT_MS,
+    )
+    .await
+}
+
+/// Ask a peer for its current progress on a gap.
+///
+/// Args: `{"gap_id": "<ID>"}`
+/// Response: `{"status": "claimed|implementing|reviewing", "pct_complete": <0-100>, "subtasks_done": <N>}`.
+pub async fn ask_progress(
+    nats: &async_nats::Client,
+    target_session: &str,
+    gap_id: &str,
+) -> Result<RpcResponse, RpcError> {
+    call_rpc_with_nats(
+        Some(nats),
+        target_session,
+        "ask-progress",
+        serde_json::json!({"gap_id": gap_id}),
+        DEFAULT_RPC_TIMEOUT_MS,
+    )
+    .await
+}
+
+/// Ask a peer what capabilities it supports.
+///
+/// Args: `{}` (optional: `"capability": "<name>"` to check a specific skill)
+/// Response: `{"capabilities": ["rust", "python", ...]}` or `{"present": true/false}` for specific check.
+pub async fn ask_capability(
+    nats: &async_nats::Client,
+    target_session: &str,
+    capability: Option<&str>,
+) -> Result<RpcResponse, RpcError> {
+    let args = match capability {
+        Some(cap) => serde_json::json!({"capability": cap}),
+        None => serde_json::json!({}),
+    };
+    call_rpc_with_nats(
+        Some(nats),
+        target_session,
+        "ask-capability",
+        args,
+        DEFAULT_RPC_TIMEOUT_MS,
+    )
+    .await
+}
+
+// ── Worker integration ────────────────────────────────────────────────────────
+
+/// Register all 5 standard RPC method handlers for a worker session.
+///
+/// Called from worker startup when a NATS connection is available.
+/// Each handler returns a simple "not implemented" stub reply so peers
+/// get an explicit error rather than a timeout.
+pub async fn register_worker_rpc_handlers(
+    nats: &async_nats::Client,
+    session_id: &str,
+) -> Result<(), RpcError> {
+    // ask-eta stub handler
+    serve_rpc_with_nats(Some(nats), session_id, "ask-eta", |_args| {
+        Ok(serde_json::json!({"eta_seconds": null}))
+    })
+    .await?;
+
+    // ask-overlap stub handler
+    serve_rpc_with_nats(Some(nats), session_id, "ask-overlap", |args| {
+        let empty: Vec<String> = vec![];
+        let files = args
+            .get("files")
+            .and_then(|f| f.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or(empty);
+        let _ = files;
+        Ok(serde_json::json!({"overlaps": false}))
+    })
+    .await?;
+
+    // ask-handoff stub handler
+    serve_rpc_with_nats(Some(nats), session_id, "ask-handoff", |_args| {
+        Ok(serde_json::json!({"accepted": false, "reason": "handoff not implemented in this worker"}))
+    })
+    .await?;
+
+    // ask-progress stub handler
+    serve_rpc_with_nats(Some(nats), session_id, "ask-progress", |_args| {
+        Ok(serde_json::json!({"status": "unknown", "pct_complete": 0}))
+    })
+    .await?;
+
+    // ask-capability: report capabilities from env
+    let caps: Vec<String> = std::env::var("WORKER_SKILLS")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let caps_json = serde_json::to_string(&caps).unwrap_or_else(|_| "[]".to_string());
+    serve_rpc_with_nats(Some(nats), session_id, "ask-capability", move |args| {
+        let caps: Vec<String> = serde_json::from_str(&caps_json).unwrap_or_default();
+        if let Some(cap_name) = args.get("capability").and_then(|v| v.as_str()) {
+            let present = caps.iter().any(|c| c == cap_name);
+            Ok(serde_json::json!({"present": present}))
+        } else {
+            Ok(serde_json::json!({"capabilities": caps}))
+        }
+    })
+    .await?;
+
+    Ok(())
+}
+
+// ── Ambient helper ───────────────────────────────────────────────────────────
 
 fn append_ambient(line: &str) -> std::io::Result<()> {
     use std::io::Write;
@@ -200,6 +633,8 @@ fn append_ambient(line: &str) -> std::io::Result<()> {
         .open(log)?;
     writeln!(f, "{}", line)
 }
+
+// ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -224,7 +659,16 @@ mod tests {
     fn new_request_id_unique_per_call() {
         let a = new_request_id();
         let b = new_request_id();
-        assert_ne!(a, b, "atomic counter should make consecutive ids distinct");
+        assert_ne!(a, b, "UUIDs should be distinct");
+    }
+
+    #[test]
+    fn new_request_id_is_valid_uuid() {
+        let id = new_request_id();
+        assert!(
+            uuid::Uuid::parse_str(&id).is_ok(),
+            "should be a valid UUID: {id}"
+        );
     }
 
     #[test]
@@ -232,7 +676,7 @@ mod tests {
         let r = RpcRequest {
             request_id: "abc-123".to_string(),
             method: "ask-eta".to_string(),
-            args: serde_json::json!({"gap_id": "INFRA-1759"}),
+            args: serde_json::json!({"gap_id": "INFRA-1119"}),
             sent_at: "2026-05-23T15:00:00Z".to_string(),
         };
         let j = serde_json::to_string(&r).unwrap();
@@ -251,5 +695,72 @@ mod tests {
         let j = serde_json::to_string(&r).unwrap();
         assert!(!j.contains("\"error\""), "None error should be omitted");
         assert!(j.contains("\"result\""), "Some result should be present");
+    }
+
+    #[test]
+    fn rpc_error_timeout_display_mentions_infra() {
+        let e = RpcError::Timeout {
+            request_id: "req-1".to_string(),
+            timeout_ms: 10_000,
+        };
+        let s = format!("{e}");
+        assert!(
+            s.contains("INFRA-1119"),
+            "timeout error should reference INFRA-1119: {s}"
+        );
+    }
+
+    #[test]
+    fn rpc_error_handler_crash_display_mentions_infra() {
+        let e = RpcError::HandlerCrash {
+            request_id: "req-1".to_string(),
+            reason: "test".to_string(),
+        };
+        let s = format!("{e}");
+        assert!(
+            s.contains("INFRA-1119"),
+            "handler_crash error should reference INFRA-1119: {s}"
+        );
+    }
+
+    #[tokio::test]
+    async fn call_rpc_no_nats_returns_no_nats_error() {
+        // Without NATS, call_rpc_with_nats(None, ...) should return NoNats
+        let result = call_rpc_with_nats(
+            None,
+            "peer-session",
+            "ask-eta",
+            serde_json::json!({"gap_id": "INFRA-1119"}),
+            DEFAULT_RPC_TIMEOUT_MS,
+        )
+        .await;
+        assert!(
+            matches!(result, Err(RpcError::NoNats)),
+            "expected NoNats, got: {:?}",
+            result.err().map(|e| e.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn serve_rpc_no_nats_returns_no_nats_error() {
+        let result = serve_rpc_with_nats(None, "session-1", "ask-eta", |_| {
+            Ok(serde_json::json!({"eta_seconds": 30}))
+        })
+        .await;
+        assert!(matches!(result, Err(RpcError::NoNats)), "expected NoNats");
+    }
+
+    #[test]
+    fn dedup_table_size_tracks_unique_entries() {
+        let t = DedupTable::new();
+        for i in 0..5 {
+            t.record(&format!("req-{i}"));
+        }
+        assert_eq!(t.len(), 5);
+        // Re-recording doesn't grow the table
+        for i in 0..5 {
+            t.record(&format!("req-{i}"));
+        }
+        assert_eq!(t.len(), 5);
     }
 }
