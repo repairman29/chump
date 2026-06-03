@@ -3348,6 +3348,18 @@ events:
       set-e failure) — the step's stage_start had no matching stage_done
     consumers: [fleet-brief, emergency-fast-path]
     fields_required: [ts, kind, step, pid, steps_file]
+
+  - kind: bot_merge_mode_failopen
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh (_bm_emit_mode_failopen, INFRA-2523)
+    trigger: bot-merge would route a gap to the batched integrator (Mode A) but
+      the integrator daemon is unhealthy (binary missing at the plist path, or
+      launchd last-exit != 0). Fails OPEN to per-PR auto-merge (Mode B) so the
+      gap cannot land in dead-queue limbo (the INFRA-2455 / INFRA-1120/2188 class).
+    consumers: [fleet-brief, audit-log, waste-tally]
+    fields_required: [ts, kind, gap_id, from_mode, to_mode, reason]
+    expected_volume: "once per ship while the integrator daemon is down"
+    status: stable
   # ── Gap store curation ───────────────────────────────────────────────────
   - kind: gap_store_curated
     effect_metric: self
