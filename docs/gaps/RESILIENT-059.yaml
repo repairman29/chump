@@ -1,0 +1,14 @@
+- id: RESILIENT-059
+  domain: RESILIENT
+  title: "RESILIENT: A2A L6b — durable gap execution (journal LLM calls, resume on crash, no re-claim-from-scratch)"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Tier-1 L6 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (Temporal/DBOS durable-execution pattern; DBOS-style SQLite/Postgres-native means zero new infra). Today a worker death mid-gap loses all LLM context and intermediate state and another worker re-claims from zero.
+  acceptance_criteria:
+    - each gap execution is journaled to a durable store (SQLite/Postgres-native, no new infrastructure)
+    - "a worker killed mid-gap RESUMES from the journal on restart: completed steps return cached results, work continues at the failed step"
+    - every LLM call is modeled as a retried activity whose result is journaled and never re-executed on replay
+    - a test kills a worker mid-gap and asserts the gap resumes (not re-claimed from scratch) with no duplicated LLM spend
+
