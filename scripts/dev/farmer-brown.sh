@@ -208,6 +208,8 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
   while true; do
     run_diagnose || true
     $DO_FIX && run_fix
+    # RESILIENT-076: guard the drain (ruleset strict reconcile + drain-daemon keep-alive).
+    $DO_FIX && { bash "$(dirname "$0")/farmer-drain-guard.sh" 2>&1 | tee -a "$LOG" || true; }
     sleep "$INTERVAL"
   done
 fi
@@ -217,6 +219,8 @@ fi
 run_diagnose || true
 if $DO_FIX; then
   run_fix
+  # RESILIENT-076: guard the drain (ruleset strict reconcile + drain-daemon keep-alive).
+  bash "$(dirname "$0")/farmer-drain-guard.sh" 2>&1 | tee -a "$LOG" || true
   log "Farmer Brown pass done."
 else
   log "Diagnosis only (FARMER_BROWN_DIAGNOSE_ONLY=1); no fix applied."

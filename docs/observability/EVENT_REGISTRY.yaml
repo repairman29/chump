@@ -73,6 +73,12 @@ events:
     trigger: any chump session begins (fleet worker, operator, reaper)
     consumers: [fleet-brief, ambient-context-inject]
 
+  - kind: farmer_drain_guard
+    effect_metric: self
+    emitter: scripts/dev/farmer-drain-guard.sh (via farmer-brown tick, RESILIENT-076)
+    trigger: drain-guard action — ruleset strict-policy reconcile/drift or drain-daemon reload; status field carries reconciled/drift_paused/reconcile_failed/daemon_reloaded/daemon_down_paused; never emitted on the in-sync path
+    consumers: [fleet-brief, observability]
+
   - kind: session_end
     effect_metric: self
     emitter: claude Stop hook + worker.sh cycle_end
