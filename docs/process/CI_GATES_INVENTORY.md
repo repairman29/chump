@@ -34,6 +34,7 @@
 | `cargo check --workspace` | `cargo-test` job (prereq) | `chump preflight` step 3 | ~5-30 s warm |
 | `scripts/ci/test-*.sh` (changed-only) | `fast-checks` + `audit` jobs | `chump preflight --with-tests` (scoped to diff) | Opt-in flag |
 | **event-registry-audit** | `audit` job | `chump preflight` (auto-gated on diff) | **INFRA-1731 shipped #2377** |
+| `test-fleet-pause-autolift.sh` | `test` job shard | pure shell sandbox, no GitHub API | **RESILIENT-066** |
 
 ## Tier B — hook-mirrored, not in preflight
 
