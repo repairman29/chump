@@ -133,6 +133,107 @@ events:
       General-purpose state change event emitted on any circuit breaker transition.
       Includes the target, previous state, new state, and reason for the change.
 
+  # ── Supervision trees — RESILIENT-058 (A2A L6a) ──────────────────────────────
+  # Per-gap and fleet-aggregate restart-intensity escalation, mirroring
+  # Erlang/OTP supervision-tree semantics. Motivating incident: 2026-06-03
+  # 12-zombie audit-run wedge (25+ min, required manual operator cancel).
+  # See: docs/design/A2A_MASTER_PLAN_2026-06-03.md §1.L6, §M2
+
+  - kind: gap_supervisor_escalated
+    effect_metric: self
+    emitter: scripts/coord/gap-supervisor.sh
+    trigger: >
+      Per-gap restart count exceeds CHUMP_GAP_SUPERVISOR_MAX_RESTARTS (default 3)
+      within CHUMP_GAP_SUPERVISOR_WINDOW_S (default 300s). Gap status set to blocked.
+    consumers: [ops-audit, fleet-brief, fleet-supervisor]
+    fields_required: [ts, kind, gap_id, restart_count, window_s, reason]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Per-gap restart-storm escalation. The fleet supervisor reads this event
+      to aggregate cross-gap escalations and trigger fleet-level pause when
+      CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS is exceeded.
+      Scanner-anchor: "kind":"gap_supervisor_escalated"
+
+  - kind: gap_supervisor_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/gap-supervisor.sh
+    trigger: >
+      Emitted on every gap-supervisor.sh tick (record or daemon tick command).
+      Confirms the per-gap supervisor is alive and processing.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source]
+    expected_min_per_day: 1440
+    status: stable
+    docs: |
+      Liveness signal for com.chump.gap-supervisor launchd daemon (RESILIENT-058).
+      Absence for >2 tick intervals (>120s) indicates daemon failure.
+      Scanner-anchor: "kind":"gap_supervisor_heartbeat"
+
+  - kind: fleet_supervisor_pickup_paused
+    effect_metric: self
+    emitter: scripts/coord/fleet-supervisor.sh
+    trigger: >
+      Fleet-aggregate escalation count exceeds CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS
+      (default 2) within CHUMP_FLEET_SUPERVISOR_WINDOW_S (default 600s).
+      Creates .chump-locks/.fleet-pickup-paused sentinel; new gap claims blocked.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, escalation_count, window_s, gap_ids, sentinel_file]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Fleet-level pickup pause triggered by cross-gap retry-storm. The sentinel
+      file .chump-locks/.fleet-pickup-paused must be removed (via resume-attempt
+      after fleet-doctor-strict passes) before new claims are allowed.
+      Scanner-anchor: "kind":"fleet_supervisor_pickup_paused"
+
+  - kind: fleet_pickup_resumed
+    effect_metric: self
+    emitter: scripts/coord/fleet-supervisor.sh
+    trigger: >
+      Recovery attempt succeeds: fleet-doctor-strict.sh exits 0.
+      Sentinel .chump-locks/.fleet-pickup-paused is removed.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, recovery_method, source]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Confirms fleet pickup has resumed after a supervised pause.
+      Paired with fleet_supervisor_pickup_paused. Absence after a pause event
+      indicates the fleet is still blocked — check fleet-doctor-strict output.
+      Scanner-anchor: "kind":"fleet_pickup_resumed"
+
+  - kind: fleet_doctor_strict_failed
+    effect_metric: self
+    emitter: scripts/coord/fleet-supervisor.sh
+    trigger: >
+      Recovery attempt via fleet-doctor-strict.sh returned non-zero.
+      Sentinel remains in place; fleet pickup stays paused.
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, failing_checks, doctor_rc, sentinel_kept, source]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Fleet-doctor-strict.sh failed during a supervisor recovery attempt.
+      The fleet remains paused. Operator must fix the health invariants listed
+      in failing_checks before pickup can resume.
+      Scanner-anchor: "kind":"fleet_doctor_strict_failed"
+
+  - kind: fleet_supervisor_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/fleet-supervisor.sh
+    trigger: >
+      Emitted on every fleet-supervisor.sh tick (every 300s from launchd).
+      Confirms the fleet-aggregate supervisor is alive.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, paused, window_s, max_escalations, source]
+    expected_min_per_day: 288
+    status: stable
+    docs: |
+      Liveness signal for com.chump.fleet-supervisor launchd daemon (RESILIENT-058).
+      Absence for >2 tick intervals (>600s) indicates daemon failure.
+      Scanner-anchor: "kind":"fleet_supervisor_heartbeat"
+
   - kind: fleet_snapshot
     effect_metric: self
     emitter: scripts/ops/fleet-snapshot.sh

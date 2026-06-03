@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.gap-supervisor — RESILIENT-058 LaunchAgent.
+
+  Per-gap restart-intensity supervisor (Erlang/OTP supervision-tree layer).
+  Ticks every 60 seconds; emits kind=gap_supervisor_heartbeat on each tick.
+  When a gap exceeds CHUMP_GAP_SUPERVISOR_MAX_RESTARTS (default 3) restarts
+  in CHUMP_GAP_SUPERVISOR_WINDOW_S (default 300s = 5 min), emits
+  kind=gap_supervisor_escalated and sets gap status=blocked.
+
+  MOTIVATING INCIDENT (2026-06-03): 12 audit runs wedged for 25+ min.
+  This daemon would have caught the restart-storm on cycle 4, not cycle 30+.
+  See: docs/design/A2A_MASTER_PLAN_2026-06-03.md §1.L6, §M2
+       docs/gaps/RESILIENT-058.yaml
+
+  INSTALLATION (use scripts/setup/chump-fleet-bootstrap.sh; or manual):
+    1. Edit this file: replace /Users/jeffadkins/Projects/Chump with your repo path.
+    2. cp .chump/launchd/com.chump.gap-supervisor.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.gap-supervisor.plist
+    4. Verify: launchctl list | grep chump.gap-supervisor
+    5. Manual run: launchctl start com.chump.gap-supervisor
+       Logs: tail /Users/jeffadkins/.chump/logs/gap-supervisor.out
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.gap-supervisor.plist
+    rm ~/Library/LaunchAgents/com.chump.gap-supervisor.plist
+
+  Tunables (set as EnvironmentVariables below or override at runtime):
+    CHUMP_GAP_SUPERVISOR_MAX_RESTARTS=3   — restarts before escalation (default 3)
+    CHUMP_GAP_SUPERVISOR_WINDOW_S=300     — rolling window seconds (default 300)
+    CHUMP_AMBIENT_LOG=<path>              — override ambient.jsonl path
+
+  Cadence: 60s — mirrors com.chump.daemon-exit-loop-watcher (INFRA-2417).
+  The gap-supervisor tick is cheap (reads state file, counts events in window).
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.gap-supervisor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/gap-supervisor.sh</string>
+    <string>tick</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <!-- Every 60 seconds — mirrors daemon-exit-loop-watcher cadence (INFRA-2417). -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <!-- RunAtLoad=true: exercises the daemon immediately on install so
+       "did the plist land correctly?" is answered at install time. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jeffadkins/.chump/logs/gap-supervisor.out</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/jeffadkins/.chump/logs/gap-supervisor.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- META-248: explicit absolute path to ambient.jsonl so the daemon
+         does not compute it relative to a stale /tmp worktree under
+         launchd's execution context. -->
+    <key>CHUMP_AMBIENT_LOG</key>
+    <string>/Users/jeffadkins/Projects/Chump/.chump-locks/ambient.jsonl</string>
+    <key>REPO_ROOT</key>
+    <string>/Users/jeffadkins/Projects/Chump</string>
+    <!-- Uncomment to tune thresholds: -->
+    <!-- <key>CHUMP_GAP_SUPERVISOR_MAX_RESTARTS</key> -->
+    <!-- <string>3</string> -->
+    <!-- <key>CHUMP_GAP_SUPERVISOR_WINDOW_S</key> -->
+    <!-- <string>300</string> -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>
