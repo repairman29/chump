@@ -5295,6 +5295,20 @@ mod rating_picker_demotion {
 ///
 /// CHUMP_CLAIM_IGNORE_MAIN_HEALTH has been deleted (INFRA-2428). Setting it
 /// has no effect — the gate still redirects to the trunk-fix gap.
+/// INFRA-2524: a plausible preflight gate name starts with an ASCII letter and
+/// contains only `[A-Za-z0-9_.-]`. Used by the main-health gate to reject
+/// garbled watchdog signals (e.g. a stray em-dash `—`) so a broken watchdog
+/// parser can never fail-CLOSED the entire fleet's claims.
+fn gate_name_is_plausible(g: &str) -> bool {
+    let g = g.trim();
+    match g.chars().next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    g.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+}
+
 fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
     let state_path = repo_root.join(".chump/main-preflight-state.json");
     let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
@@ -5356,6 +5370,33 @@ fn check_main_health_gate(repo_root: &Path, gap_id: &str) -> Result<()> {
 
     // Red → route claimer to the trunk-fix gap (INFRA-2428 zero-bypass).
     if last_status == "red" {
+        // INFRA-2524 fail-OPEN: a RED whose failing-gate names are ALL garbled
+        // (empty, punctuation-only, or a stray em-dash — the 2026-06-03 watchdog
+        // parser bug, INFRA-2458) is an untrustworthy signal. Halting the entire
+        // fleet's claims on garbage violates A2A_ROADMAP principle #7 (fail-open
+        // over deadlock) — that bug blocked all claims for 5h+. So if no failing
+        // gate looks like a real gate name, warn and proceed instead of blocking.
+        if !failing_gates.iter().any(|g| gate_name_is_plausible(g)) {
+            eprintln!();
+            eprintln!(
+                "[claim] WARN: main-health is RED but its failing-gate list is garbled \
+                 ([{}]) — treating as an untrustworthy signal and proceeding \
+                 (INFRA-2524 fail-open; the watchdog parser may be broken, see INFRA-2458).",
+                failing_gates.join(", ")
+            );
+            // scanner-anchor: "kind":"claim_main_health_garbled"
+            emit_main_health_event(
+                &ambient_log,
+                "claim_main_health_garbled",
+                gap_id,
+                &failing_gates,
+                &filed_gaps,
+                age_secs,
+                &last_status,
+            );
+            return Ok(());
+        }
+
         // Pick the most recently filed trunk-fix gap (last in the array).
         let trunk_fix_gap = filed_gaps
             .last()
@@ -5757,5 +5798,30 @@ mod open_pr_dup_tests {
         // verifies no panic and correct return type.
         let _result: Option<(u64, String)> = check_open_pr_for_gap(dir.path(), "INFRA-TESTONLY");
         // If we reach here, no panic — that's the pass condition.
+    }
+
+    #[test]
+    fn gate_name_is_plausible_rejects_garbled_signals() {
+        // INFRA-2524 regression: the 2026-06-03 watchdog wrote failing_gates=["—"]
+        // (a stray em-dash) which fail-CLOSED the whole fleet's claims for 5h+.
+        // A garbled token must NOT count as a real gate name → the gate fails OPEN.
+        assert!(!gate_name_is_plausible("—")); // em-dash (the actual bug)
+        assert!(!gate_name_is_plausible(""));
+        assert!(!gate_name_is_plausible("   "));
+        assert!(!gate_name_is_plausible(";"));
+        assert!(!gate_name_is_plausible("123abc")); // must start with a letter
+                                                    // real gate names pass
+        assert!(gate_name_is_plausible("audit"));
+        assert!(gate_name_is_plausible("fast-checks"));
+        assert!(gate_name_is_plausible("test-event-registry.sh"));
+        assert!(gate_name_is_plausible("clippy_required"));
+        // fleet-protecting property: a RED with only garbled gates → no plausible
+        // gate → fail open; a RED with at least one real gate → still blocks.
+        assert!(!["—".to_string(), "".to_string()]
+            .iter()
+            .any(|g| gate_name_is_plausible(g)));
+        assert!(["—".to_string(), "audit".to_string()]
+            .iter()
+            .any(|g| gate_name_is_plausible(g)));
     }
 }
