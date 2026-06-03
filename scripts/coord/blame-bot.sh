@@ -37,6 +37,7 @@
 #   CHUMP_BLAME_BOT_STALE_WINDOW_S    min seconds between stale-baseline emits (default 600)
 #   CHUMP_BLAME_BOT_TEST_CHECK_RUNS   test injection: JSON map of sha→check_runs (skip gh API)
 
+# shellcheck disable=SC2034  # SINCE_PR: --since-pr CLI arg parsed for compat, not yet wired into attribution
 set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -109,12 +110,10 @@ _find_last_green_sha() {
     fi
 
     local sha
-    sha="$(gh run list \
-        --workflow "$WORKFLOW" \
-        --branch main \
-        --status success \
-        --limit "$LOOKBACK" \
-        --json conclusion,headSha,startedAt 2>/dev/null \
+    # ZERO-WASTE-004: gh api (REST bucket) not gh run list (GraphQL — top burner).
+    # Reshape head_sha -> headSha so the parser below is unchanged.
+    sha="$(gh api "repos/{owner}/{repo}/actions/workflows/${WORKFLOW}/runs?branch=main&status=success&per_page=${LOOKBACK}" \
+        --jq '[.workflow_runs[] | {headSha: .head_sha, conclusion}]' 2>/dev/null \
         | python3 -c '
 import json, sys
 try:
