@@ -207,15 +207,56 @@ _run_preflight() {
     preflight_out="$(cd "$wt_path" && REPO_ROOT="$wt_path" \
         "$CHUMP_BIN" preflight 2>&1)" || preflight_rc=$?
 
-    # Parse FAIL: lines into a sorted CSV of gate names.
+    # INFRA-2458: Parse `chump preflight`'s structured per-gate failure marker:
+    #
+    #     [preflight] <gate-name> ... ✗ (<N>ms)
+    #
+    # The previous regex `FAIL[: \t]+[^ \t]+` matched the SUMMARY line
+    # `[preflight] FAIL — at least one gate did not pass (total {ms}ms)` and
+    # captured the literal em-dash as a "gate name", producing
+    # failing_gates=["—"] false positives that wedged the claim health gate
+    # for every fleet member until a human flipped state.json.
+    #
+    # New rules:
+    #   1. Extract only lines that match preflight's structured per-gate
+    #      failure marker: `^\[preflight\] <gate> ... ✗`. This is the ONE
+    #      authoritative signal for per-gate failure.
+    #   2. Gate names are restricted to `[A-Za-z][A-Za-z0-9_.-]*` — letters,
+    #      digits, dot, dash, underscore. Anything else (em-dash, punctuation,
+    #      whitespace) is rejected at the regex layer.
+    #   3. If the regex extracts nothing AND preflight_rc != 0, log a warning
+    #      and use the generic "preflight-exit-nonzero" label so we still
+    #      fingerprint+file, but the gate-name list is honest (one entry,
+    #      ASCII, no garbage).
     if [[ "$preflight_rc" -ne 0 ]]; then
-        # Extract gate names from lines like "FAIL: <gate-name>" or "[FAIL] <gate>"
+        # The ✗ character is U+2717 (HEAVY BALLOT X). Embed it literally in
+        # the regex; bash regex handles UTF-8 byte sequences as opaque.
         failing_gates="$(printf '%s' "$preflight_out" \
-            | grep -Eo 'FAIL[: \t]+[^ \t]+' \
-            | sed 's/^FAIL[: \t]*//' \
+            | grep -E '^\[preflight\] [A-Za-z][A-Za-z0-9_.-]* \.\.\. ✗' \
+            | sed -E 's/^\[preflight\] ([A-Za-z][A-Za-z0-9_.-]*) \.\.\. ✗.*$/\1/' \
             | sort -u \
             | tr '\n' ',' \
             | sed 's/,$//')"
+
+        # Defense-in-depth: drop any extracted "gate" that is empty or
+        # contains only non-alphanumeric characters (punctuation, dashes,
+        # whitespace). This catches edge cases the regex above might miss
+        # (e.g. future preflight output format drift).
+        local sanitized=""
+        local IFS=','
+        for g in $failing_gates; do
+            # Trim whitespace; reject if empty or no alphanumerics.
+            g="${g#"${g%%[![:space:]]*}"}"
+            g="${g%"${g##*[![:space:]]}"}"
+            if [[ -n "$g" && "$g" =~ [A-Za-z0-9] ]]; then
+                if [[ -z "$sanitized" ]]; then
+                    sanitized="$g"
+                else
+                    sanitized="$sanitized,$g"
+                fi
+            fi
+        done
+        failing_gates="$sanitized"
 
         # If no structured FAIL lines found but preflight exited non-zero,
         # use a generic label so we still file and fingerprint.
