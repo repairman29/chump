@@ -676,15 +676,28 @@ for line in sys.stdin:
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_recovered" \
                         >> "$_wedge_ambient" 2>/dev/null || true
                 else
-                    # INFRA-2463: no recovery event found in ambient, but the ambient event
-                    # may be stale. Do a live rate_limit check (cheap REST, doesn't burn
-                    # GraphQL quota) before aborting. If live remaining >= threshold,
-                    # the exhaustion event is stale — clear the wedge and proceed.
+                    # INFRA-2463 + INFRA-2674 hardening: no recovery event found, but
+                    # the ambient event may be stale (today's empty-coercion bug emitted
+                    # 31 false events / 30min while live GraphQL was 4159/5000 healthy).
+                    # Do a live rate_limit check (cheap REST, doesn't burn GraphQL
+                    # quota) before aborting. If live remaining >= threshold, the
+                    # exhaustion event is stale — clear the wedge and proceed.
+                    #
+                    # INFRA-2674: must use CHUMP_GH_NO_SHIM=1 + strict integer
+                    # validation. The prior code routed through the gh shim, which
+                    # has its own failure modes (recording-side errors, env-strip in
+                    # background subprocesses) that could make _wedge_live_remaining
+                    # empty or non-numeric — silently falling into the "real exhaustion"
+                    # branch when the live API was actually healthy.
                     _wedge_live_threshold="${CHUMP_GRAPHQL_WEDGE_LIVE_THRESHOLD:-100}"
-                    _wedge_live_remaining=$(gh api rate_limit --jq '.resources.graphql.remaining' 2>/dev/null || echo "")
-                    if [ -n "$_wedge_live_remaining" ] && [ "$_wedge_live_remaining" -ge "$_wedge_live_threshold" ] 2>/dev/null; then
+                    _wedge_live_remaining=$(CHUMP_GH_NO_SHIM=1 gh api rate_limit \
+                        --jq '.resources.graphql.remaining' 2>/dev/null \
+                        | tr -d '[:space:]' \
+                        || echo "")
+                    if [[ "$_wedge_live_remaining" =~ ^[0-9]+$ ]] \
+                            && [ "$_wedge_live_remaining" -ge "$_wedge_live_threshold" ]; then
                         # Live check shows rate limit is healthy — stale event, clear and proceed.
-                        printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_cleared","last_exhausted":"%s","live_remaining":%s,"note":"stale-event-cleared"}\n' \
+                        printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_cleared","last_exhausted":"%s","live_remaining":%s,"note":"INFRA-2674 stale-event-cleared via live-check"}\n' \
                             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_live_remaining" \
                             >> "$_wedge_ambient" 2>/dev/null || true
                     else
