@@ -858,3 +858,5 @@ CHUMP_FRESH_EYES_SHIPS_CMD
 CHUMP_FRESH_EYES_SLO_CMD
 # detected in: (standard input)
 CHUMP_FRESH_EYES_WINDOW_MIN
+# INFRA-2463: live GraphQL rate_limit threshold for bot-merge wedge guard stale-event check
+CHUMP_GRAPHQL_WEDGE_LIVE_THRESHOLD
