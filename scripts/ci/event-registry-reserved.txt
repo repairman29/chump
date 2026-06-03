@@ -693,6 +693,7 @@ gh_token_rotated           # reason: INFRA-2396; same as above
 # false-positive emit-without-register hits). The kind IS registered in
 # EVENT_REGISTRY.yaml. Reserved here so strict-mode CI gate passes.
 cross_pr_contract_mismatch  # reason: INFRA-2406; emitted by scripts/ci/test-cross-pr-contract.sh (CI-gate script, excluded from PROD_PATHS scan); registered in EVENT_REGISTRY.yaml
+prepush_lease_mismatch  # reason: INFRA-2446; emitted by scripts/git-hooks/pre-push Guard 5 (RESILIENT-026) via direct printf JSON; git-hooks/ dir is outside PROD_PATHS grep scan
 
 # ── INFRA-2534 stitch: 4 walker false-positives blocking the substrate cascade ──
 # These kinds ARE emitted in source — the audit walker has false-positive bugs
