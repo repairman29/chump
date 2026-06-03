@@ -21,6 +21,22 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# RESILIENT-073: Tests 1-4 exercise the compiled `chump` binary's claim gating.
+# Quick jobs (fast-checks) run cargo check but don't produce target/debug/chump,
+# so build it on demand here — keeps the test self-contained across CI jobs without
+# skipping any coverage. The incremental link is fast (cargo check already compiled
+# the crate; sccache warms the rest). A genuine build failure (code won't compile)
+# correctly fails the test.
+CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+if [[ ! -x "$CHUMP_BIN" ]]; then
+    echo "[kill-switch-test] chump binary absent in this job — building (cargo build --bin chump)…"
+    (cd "$REPO_ROOT" && cargo build --bin chump --quiet) || {
+        echo "[FAIL] could not build chump binary for kill-switch test" >&2
+        exit 1
+    }
+fi
+
 PASS=0
 FAIL=0
 
