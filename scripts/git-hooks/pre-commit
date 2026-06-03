@@ -1656,6 +1656,28 @@ if [ "${CHUMP_CREDENTIAL_CHECK:-1}" != "0" ]; then
     fi
 fi
 
+# ══════════════════════════════════════════════════════════════════════════
+# EFFECTIVE-089: LEAN PRE-COMMIT — the world-class collapse (kill the ship-tax)
+# ══════════════════════════════════════════════════════════════════════════
+# The HARD gates above (lease/stomp safety, cargo fmt, cargo check = compile,
+# credential scan) are what actually make a commit SAFE — and they're fast.
+# Everything below (gates #9-#18: infra-smoke shellcheck/clippy, event-registry,
+# obs-budget, default-flip, gap-divergence, git-identity, hardcoded-date,
+# main-worktree-config, branch-protection, preflight-vs-CI-parity, AC-enforce,
+# AC-completeness) is POLICY/ADVISORY. CI is their single enforcer. Blocking them
+# *locally* taxed every commit — and each carried its own bypass var, which is
+# proof each was wrong to block. Lean (the default) defers them to CI; set
+# CHUMP_PRECOMMIT_STRICT=1 to run them as hard local blocks (CI parity/debug).
+# Net: ONE knob replaces ~13 per-gate bypass vars (toward the EFFECTIVE-089
+# debt-ceiling: 227 → down). A commit is "safe to merge" iff CI's tests pass —
+# no local policy gate should stand between a clean diff and a commit.
+if [ "${CHUMP_PRECOMMIT_STRICT:-0}" != "1" ]; then
+    echo "[pre-commit] OK hard gates passed (lease + fmt + compile + credential)." >&2
+    echo "[pre-commit] lean: policy gates #9-#18 deferred to CI (CHUMP_PRECOMMIT_STRICT=1 to run them locally)." >&2
+    exit 0
+fi
+# ── CHUMP_PRECOMMIT_STRICT=1 only — the advisory policy tail (#9-#18) runs below ──
+
 # ------------------------------------------------------------------
 # 9. Pre-deploy smoke test for infra changes (CREDIBLE-001)
 # ------------------------------------------------------------------
@@ -1874,148 +1896,9 @@ if [ -x "$PREFLIGHT_PARITY_HOOK" ]; then
     fi
 fi
 
+# ── EFFECTIVE-089: the AC-enforce / AC-completeness gates that followed here were
+# DEAD (orphaned by a stray `exit 0`) and un-parseable (unclosed `if`) in the
+# committed source — removed. Acceptance-criteria is enforced where it belongs:
+# the gap-tooling layer (`chump gap reserve/set` reject empty/TODO acceptance_
+# criteria) and CI. It does not belong in a local pre-commit block.
 exit 0
-# 11. Acceptance-criteria enforcement (CREDIBLE-054): refuse commits that
-#     add or modify gaps without a non-empty `acceptance_criteria:` list.
-#     Unpickable gaps (no AC) waste fleet cycles. Bypass: CHUMP_AC_CHECK=0.
-            exit 1
-        fi
-    fi
-fi
-
-# ------------------------------------------------------------------
-# 3d. Acceptance-criteria enforcement (CREDIBLE-054): reject gaps without
-#     a non-empty acceptance_criteria field. Unpickable gaps waste fleet
-#     cycles; this forces AC definition at commit time.
-#     Bypass: CHUMP_AC_CHECK=0
-# ------------------------------------------------------------------
-if [ "${CHUMP_AC_CHECK:-1}" != "0" ]; then
-    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
-        _vague_gaps=$(python3 - <<'PYEOF_AC_ENFORCEMENT'
-import re, subprocess, sys
-
-def staged_text(path):
-    try:
-        return subprocess.check_output(
-            ["git", "show", f":0:{path}"], stderr=subprocess.DEVNULL
-        ).decode("utf-8", errors="replace")
-    except Exception:
-        return ""
-
-def check_acs(text):
-    """Return [gid] for gaps with missing or empty acceptance_criteria."""
-    vague = []
-    cur_id = None
-    in_acs = False
-    has_acs_key = False
-    ac_item_count = 0
-    for line in text.splitlines():
-        id_m = re.match(r"^-?\s*id:\s*([A-Z][A-Z0-9_-]+)", line)
-        if id_m:
-            # Before moving to new gap, check if previous gap had ACs
-            if cur_id is not None and (has_acs_key is False or ac_item_count == 0):
-                vague.append(cur_id)
-            cur_id = id_m.group(1)
-            has_acs_key = False
-            in_acs = False
-            ac_item_count = 0
-            continue
-        if cur_id is None:
-            continue
-        # Look for the acceptance_criteria: key
-        if re.match(r"^\s+acceptance_criteria\s*:", line):
-            has_acs_key = True
-            in_acs = True
-            continue
-        if in_acs:
-            # New top-level key (not starting with -) → end of ACs
-            if re.match(r"^\s+[a-z_]+\s*:", line) and not line.strip().startswith("-"):
-                in_acs = False
-                continue
-            # Count list items (lines starting with -)
-            if line.strip().startswith("- "):
-                ac_item_count += 1
-    # Check the last gap in the file
-    if cur_id is not None and (has_acs_key is False or ac_item_count == 0):
-        vague.append(cur_id)
-    return vague
-
-staged_paths = [p for p in subprocess.check_output(
-    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-    stderr=subprocess.DEVNULL
-).decode().splitlines()
-    if re.match(r"^docs/gaps(/[^/]+\.yaml|\.yaml)$", p)]
-
-vague_gaps = []
-for path in staged_paths:
-    txt = staged_text(path)
-    if txt:
-        vague_gaps.extend(check_acs(txt))
-
-print("\n".join(vague_gaps))
-PYEOF_AC_ENFORCEMENT
-)
-        if [ -n "$_vague_gaps" ]; then
-            echo "[pre-commit] ACCEPTANCE CRITERIA REQUIRED (CREDIBLE-054) — gap(s) lack acceptance_criteria:" >&2
-            echo "$_vague_gaps" | sed 's/^/  /' >&2
-            echo "" >&2
-            echo "[pre-commit] Every gap must have a non-empty 'acceptance_criteria:' list with ≥1 item." >&2
-            echo "[pre-commit] See: docs/FEEDBACK_GAPS_ALWAYS_HAVE_AC.md" >&2
-            echo "[pre-commit] Example:" >&2
-            echo "[pre-commit]   acceptance_criteria:" >&2
-            echo "[pre-commit]     - \"gap property: specific testable claim\"" >&2
-            echo "[pre-commit] Bypass (rare): CHUMP_AC_CHECK=0 git commit ..." >&2
-
-# ------------------------------------------------------------------
-# INFRA-1028: operator-recovery umbrella
-# CHUMP_OPERATOR_RECOVERY=1 enables the bypass set for human-supervised
-# manual recovery (e.g. after GraphQL exhaustion, orphaned leases, or
-# worktree state corruption). Does NOT bypass footgun guards (no-verify,
-# force-push-to-protected, hook-skip). Emits guard_bypassed once per
-# hook invocation so recovery sessions are auditable in ambient.jsonl.
-# ------------------------------------------------------------------
-if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
-    export CHUMP_BYPASS_BOT_MERGE=1
-    export CHUMP_GAP_CHECK=0
-    export CHUMP_ALLOW_UNREGISTERED_GAP=1
-    export CHUMP_ALLOW_REUSE_BRANCH=1
-    export CHUMP_ALLOW_GAP_REWRITE=1
-    export CHUMP_GAPS_LOCK=0
-    export CHUMP_STOMP_WARN=0
-    _or_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    _or_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    mkdir -p "${_or_root}/.chump-locks" 2>/dev/null || true
-    printf '{"ts":"%s","kind":"guard_bypassed","guard_name":"operator_recovery_umbrella","bypasses":["CHUMP_BYPASS_BOT_MERGE","CHUMP_GAP_CHECK","CHUMP_ALLOW_UNREGISTERED_GAP","CHUMP_GAPS_LOCK","CHUMP_STOMP_WARN"],"operator":true}\n' \
-        "$_or_ts" >> "${_or_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
-    unset _or_ts _or_root
-fi
-                echo "[pre-commit] Bypass: CHUMP_LEASE_CHECK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
-                echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
-        exit 1
-    fi
-fi
-
-# 15b. Redundancy gate (META-063): refuse new scripts/coord|ops|dispatch shell
-# files whose function-name Jaccard ≥ 0.6 vs an existing sibling.
-# Bypass: Redundancy-OK: <reason> trailer, or CHUMP_REDUNDANCY_CHECK=0.
-REDUNDANCY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-redundancy.sh"
-if [ -x "$REDUNDANCY_HOOK" ]; then
-    if ! "$REDUNDANCY_HOOK"; then
-        exit 1
-    fi
-fi
-# ------------------------------------------------------------------
-# 18. AC-completeness gate (INFRA-1401, 2026-05-16)
-# ------------------------------------------------------------------
-# For commits that reference a gap ID in the subject, verifies that every
-# scripts/ci|coord|ops/*.sh file named in acceptance_criteria is either
-# staged or already present in HEAD.
-# Bypass: AC-Backfill-Reason: <reason> trailer OR CHUMP_AC_COMPLETENESS_CHECK=0
-
-AC_COMPLETENESS_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-ac-completeness.sh"
-if [ -x "$AC_COMPLETENESS_HOOK" ]; then
-    if ! "$AC_COMPLETENESS_HOOK"; then
-        exit 1
-    fi
-fi
-
