@@ -1681,6 +1681,54 @@ elif [[ ${#GAP_IDS[@]} -gt 0 ]] && command -v chump >/dev/null 2>&1; then
     fi
 fi
 
+# ── INFRA-2523: fail-OPEN Mode A → Mode B when the integrator can't drain ─────
+# NATS-up != integrator-alive. On 2026-06-03 the chump-integrator daemon was a
+# MISSING binary (launchd exit 127) while NATS was up, so the existing
+# work-board fallback (which only checks NATS) still chose Mode A and silently
+# queued gaps into a dead queue → limbo (INFRA-2455; the INFRA-1120/2188 ghost
+# class). Verify the integrator binary + daemon health; if it can't actually
+# drain, fail open to per-PR auto-merge (Mode B), which always lands.
+_BM_INTEGRATOR_HEALTHY_CACHE=""
+_bm_integrator_healthy() {
+    [[ -n "$_BM_INTEGRATOR_HEALTHY_CACHE" ]] && return "$_BM_INTEGRATOR_HEALTHY_CACHE"
+    local rc=0
+    # Test hook (mirrors the watchdog MOCK_* pattern): 1=healthy, 0=unhealthy.
+    if [[ -n "${CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH:-}" ]]; then
+        [[ "$CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH" == "1" ]] && rc=0 || rc=1
+        _BM_INTEGRATOR_HEALTHY_CACHE="$rc"; return "$rc"
+    fi
+    # (1) integrator binary present at the daemon plist's ProgramArguments path?
+    local _plist="$HOME/Library/LaunchAgents/com.chump.integrator-daemon.plist"
+    local _bin
+    _bin="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$_plist" 2>/dev/null \
+        | grep -oE '/[^ ]*chump-integrator' | head -1)"
+    [[ -n "$_bin" ]] || _bin="$HOME/.cargo/bin/chump-integrator"
+    [[ -x "$_bin" ]] || rc=1
+    # (2) daemon loaded with last-exit 0? (absent=unloaded; non-zero=errored, eg 127)
+    if [[ "$rc" -eq 0 ]]; then
+        local _st
+        _st="$(launchctl list 2>/dev/null | awk '$3=="com.chump.integrator-daemon"{print $2}')"
+        [[ "$_st" == "0" ]] || rc=1
+    fi
+    _BM_INTEGRATOR_HEALTHY_CACHE="$rc"
+    return "$rc"
+}
+_bm_emit_mode_failopen() {
+    local _gap="${1:-unknown}" _ts _amb
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_mode_failopen"
+    printf '{"ts":"%s","kind":"bot_merge_mode_failopen","gap_id":"%s","from_mode":"A","to_mode":"B","reason":"integrator daemon unhealthy (binary/launchd) — per-PR fallback so the gap cannot land in dead-queue limbo","note":"INFRA-2523"}\n' \
+        "$_ts" "$_gap" >> "$_amb" 2>/dev/null || true
+    echo "[bot-merge] INFRA-2523: integrator daemon unhealthy — failing open to per-PR auto-merge (Mode B) so ${_gap} can't land in limbo." >&2
+}
+
+if [[ "$_BM_MODE" == "A" ]] && ! _bm_integrator_healthy; then
+    _BM_MODE="B"
+    _BM_MODE_REASON="integrator daemon unhealthy — fail-open to per-PR (INFRA-2523)"
+    _bm_emit_mode_failopen "${_bm_route_gap:-${GAP_IDS[0]:-unknown}}"
+fi
+
 info "INFRA-2133: routing mode=${_BM_MODE} reason=${_BM_MODE_REASON:-default}"
 
 if [[ "$_BM_MODE" == "A" ]]; then
