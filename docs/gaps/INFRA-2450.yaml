@@ -1,0 +1,11 @@
+- id: INFRA-2450
+  domain: INFRA
+  title: "ZERO-WASTE: R2 sccache lifecycle expiry + cost-model doc — cap unbounded storage growth (522GB+ accumulating, no eviction)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - scripts/ops/r2-sccache-lifecycle.sh applies object-expiry (default 30d) + incomplete-multipart-abort (1d) to BOTH chump-sccache and chump-sccache-ci via wrangler r2 bucket lifecycle add --expire-days; checks wrangler whoami first with actionable guidance if unauthenticated; idempotent (fixed rule name); EXPIRE_DAYS overridable
+    - "docs/process/SCCACHE_R2_CACHE.md gains a Cost model + eviction section: R2 pricing table + free tiers, our measured dashboard cost, unbounded-growth risk, eviction policy + how to apply"
+    - "scripts/ci/test-r2-sccache-lifecycle.sh structural smoke: script present+executable, references --expire-days + both bucket names, doc carries the cost-model section; exits non-zero on any missing invariant"
+

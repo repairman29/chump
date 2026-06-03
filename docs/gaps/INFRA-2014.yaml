@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P0: live inbox injector — daemon watches inbox files + tmux send-keys interrupts to running fleet-worker sessions when new urgency:CRIT message arrives; converts A2A from dead-letter to live signal"
   status: open
-  priority: P0
+  priority: P1
   effort: s
   acceptance_criteria:
     - New daemon scripts/coord/live-inbox-injector.sh (or chump-inbox-injector binary) — uses fswatch (macOS) / inotifywait (Linux) to watch .chump-locks/inbox/*.jsonl files for appended lines; detection latency <1s p95

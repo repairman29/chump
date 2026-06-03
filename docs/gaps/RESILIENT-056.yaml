@@ -1,0 +1,9 @@
+- id: RESILIENT-056
+  domain: RESILIENT
+  title: "RESILIENT: auth freshness safety net — capture expires_at in oauth-token-refresh.sh, add auth_token_stale watchdog in infra-watcher, widen AUTH_DEAD trigger"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. oauth-token-refresh.sh writes expires_at field from claudeAiOauth.expiresAt into token JSON\n2. infra-watcher emits kind=auth_token_stale within <=15min of token going stale/expired (mtime > 900s OR expires_at within 10min)\n3. operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or auth_token_stale, not only fleet_auth_storm+worker_exit\n4. scripts/ci/test-auth-freshness-watchdog.sh passes: stale token file => auth_token_stale event; AUTH_DEAD trigger fires\n5. all existing auth.rs and oauth refresh tests continue to pass"
+

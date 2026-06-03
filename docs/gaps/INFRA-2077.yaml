@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure failing consistently on main HEAD — wizard flagged CI rot, confirmed; ambient log empty when test reads it; blocks every PR's natural CI"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce: cargo test --package chump --bin chump dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure -- --nocapture; expect FAILED with \"expected lease_release_failed event in ambient log, got: (empty)\""

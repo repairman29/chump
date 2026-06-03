@@ -1,0 +1,19 @@
+- id: INFRA-2448
+  domain: INFRA
+  title: "RESILIENT: bypass-trailer validator false-positive on test filenames in commit body (pre-push-bypass-trailers.sh)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The pre-push bypass-trailer validator (scripts/git-hooks/pre-push-bypass-trailers.sh, lines 96-97) uses a SUBSTRING match `case "$_body_upper" in *BYPASS*)` to detect bypass tokens. It fires on ANY occurrence of the string BYPASS anywhere in the commit body — including test-script FILENAMES referenced in commit-body checklists, e.g. `test-no-manual-ship-bypass.sh`, which contain no actual bypass declaration.
+    
+    PRECEDENT: the INFRA-2432 trunk-red fix (PR #2965) tripped this false-positive and had to push with CHUMP_BYPASS_TRAILER_CHECK=0 to work around it — i.e. a guard meant to catch UN-declared bypasses FORCED a real bypass. Directly counter to the ZERO-BYPASS campaign (INFRA-2426/2407).
+    
+    ROOT-CAUSE FIX: narrow the pattern to match actual bypass-TRAILER SYNTAX rather than any 'bypass' substring — e.g. a line matching `^[A-Za-z][A-Za-z-]*-Bypass:[[:space:]]` (a trailer key ending in -Bypass followed by a colon + reason), or the known trailer keyword set (Bot-Merge-Bypass, Test-Gate-Bypass, Lint-Gate-Bypass, Rust-First-Bypass, Off-Rails-Bypass, Preflight-Skip-Reason, ...). Coordinate the keyword set with INFRA-2407 (Bypass-Tier/Class/Reason/Followup trailer schema) so both use ONE canonical list. The narrowing must NOT introduce a false-negative: a real declared trailer must still be detected.
+    
+    Touches: scripts/git-hooks/pre-push-bypass-trailers.sh (lines 96-97 case pattern); add a scripts/ci/test-*.sh regression fixture. Effort s. Operator-directed (Jeff) 2026-06-02.
+  acceptance_criteria:
+    - "the test filename test-no-manual-ship-bypass.sh appearing in a commit body checklist does NOT trigger the validator unless an actual <Word>-Bypass: <reason> trailer pattern is present"
+    - "a genuine declared trailer (e.g. Bot-Merge-Bypass: <reason>) STILL triggers the validator — the narrowing introduces no false-negative"
+    - "a scripts/ci/test-*.sh regression fixture covers both cases: filename-in-body (passes clean) and real-trailer-in-body (is detected)"
+

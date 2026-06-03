@@ -1,0 +1,30 @@
+- id: INFRA-2457
+  domain: INFRA
+  title: "RESILIENT: INFRA-NEW-MAIN-RED-—: preflight gate failure on origin/main (fp=c8a79a0120f7)"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    main-preflight-watchdog (INFRA-2397) detected one or more preflight gates failing on origin/main.
+    
+      - Failing gates: —
+      - Fingerprint: c8a79a0120f7
+      - Head SHA: 6b0667fda9907101a793d80126a3c25d6b49ec2d
+      - Tick ID: tick-1780443703-8449
+    
+    This gap was auto-filed by scripts/coord/main-preflight-watchdog-daemon.sh. The fingerprint is sha256(sorted failing-gate names) so a second tick with the same failure set will NOT re-file. A new failing gate will file a new gap.
+    
+    CONTEXT: The trunk-sentinel daemon watches ci.yml conclusion on main — it does NOT catch preflight/audit-class gates that fail on PR validation but not on main's own post-merge CI. This daemon fills that gap by running chump preflight against origin/main locally.
+    
+    Recommended workflow:
+      1. Run locally: chump preflight  (should reproduce the failure)
+      2. Identify the failing gate from: —
+      3. Fix the gate or the underlying code issue
+      4. When origin/main passes preflight, this daemon will emit main_preflight_recovered and close this gap automatically.
+    
+    This is a fleet-halt-class wedge: the next PR opened against main will inherit this failure. Fix before picking new work.
+  acceptance_criteria:
+    - All preflight gates pass on origin/main
+    - chump preflight exits 0 on a fresh worktree
+    - main-preflight-watchdog emits main_preflight_recovered and closes this gap
+

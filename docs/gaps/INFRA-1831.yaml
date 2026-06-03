@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE P0: chump preflight runs gaps-integrity gate locally — would have caught both 2026-05-23 yaml cascade keystones (#2417 + #2419)"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   acceptance_criteria:
     - src/preflight.rs gains a gaps-integrity local gate (extends INFRA-1731 / 1787 / 1789 / 1790 / 1791 / 1792 / 1793 mirror chain) — adds a step AFTER the existing pr-scope gate when staged diff touches docs/gaps/

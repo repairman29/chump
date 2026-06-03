@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 STRUCTURAL: chump preflight ≡ ALL CI gates parity — every CI step also runnable locally in <60s; eliminates 80% of today's CI-rot saga by surfacing wedges at commit time instead of post-push"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   acceptance_criteria:
     - "Inventory phase: scripts/ci/preflight-vs-ci-parity-audit.sh emits a list of (a) CI gates present in .github/workflows/ci.yml fast-checks + audit + cargo-test shards; (b) gates currently in chump preflight (per crates/chump-preflight/ or scripts/coord/preflight.sh); (c) DELTA — gates in CI but not in preflight. Today the delta is ~30%"

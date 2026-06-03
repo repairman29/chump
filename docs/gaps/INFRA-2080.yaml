@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: test-gap-reserve-padding.sh sandbox isolation broken after gap-reserve.sh migrated to state.db (INFRA-2000) — sandbox seeds docs/gaps.yaml but no state.db; script falls through to REAL state.db; got EVAL-125 expected EVAL-088 (real EVAL space)"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce: bash scripts/ci/test-gap-reserve-padding.sh; expect Failed: 3 (EVAL-088→125, BIG-10000→001, TINY-003→001) — sandbox is bleeding through to real state.db"

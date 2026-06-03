@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: ci.yml workflow has failed to QUEUE since 2026-05-27 14:30Z (2 days); 'workflow file issue', 0 jobs run; PRs landing only because ruleset required_status_checks rule has been empty/relaxed; need actionlint pass + root-cause specific line; supersedes INFRA-2191 (was a symptom)"
   status: open
-  priority: P0
+  priority: P1
   effort: s
   acceptance_criteria:
     - "Reproduce: gh run list --branch main --workflow .github/workflows/ci.yml --limit 5 — last 50+ runs all conclusion=failure, 0 jobs queued. gh run view <id> → \"This run likely failed because of a workflow file issue.\" Started 2026-05-27 14:30Z (~265 commits ago)"

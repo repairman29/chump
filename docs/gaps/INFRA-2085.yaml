@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 STRUCTURAL: canary-PR daemon — every 4h opens no-op PR touching docs+rust+shell+yaml, runs full CI, auto-files INFRA-XXXX gap per failing check (surfaces wedges proactively, not after a real PR exposes them)"
   status: open
-  priority: P0
+  priority: P1
   effort: s
   acceptance_criteria:
     - "New daemon scripts/coord/canary-pr-daemon.sh — runs every CHUMP_CANARY_INTERVAL_H (default 4h) via launchd plist. Per cycle: (a) git checkout new branch chump/canary-YYYY-MM-DD-HH from origin/main, (b) touch one file per type: docs/syntheses/canary-touch.md + crates/chump-noop/src/touch.rs + scripts/coord/canary-touch.sh + docs/gaps/canary-touch.yaml — each with a no-op change like adding a timestamp comment, (c) commit + push + open PR, (d) wait for all required CI checks to complete or timeout (90 min), (e) collect failing-check list"

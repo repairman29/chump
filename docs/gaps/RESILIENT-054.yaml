@@ -1,0 +1,36 @@
+- id: RESILIENT-054
+  domain: RESILIENT
+  title: "RESILIENT: auth substrate has no durable credential — long-lived setup-token as subscription primary, API-key as optional floor, validate-before-use, scream on staleness"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Operator-commissioned 2026-06-02 ('fix the auth substrate so this doesn't happen again'); credential model corrected 2026-06-02 to preserve the subscription cost model.
+    
+    INCIDENT: ~46h SILENT fleet-wide death — oauth-refresh daemon exited 1, ~/.chump/oauth-token.json froze with an expired token, every launchd manager's `claude -p` returned 'Not logged in'. Operator re-login did NOT fix the fleet (the refresh daemon can't read the login Keychain from the launchd context — keychain_miss). STRUCTURAL + RECURRING (INFRA-2124 round 1 done; INFRA-1865 still open).
+    
+    ROOT CAUSE: scripts/coord/oauth-token-refresh.sh is a Keychain MIRROR, not a refresher — it copies claude's SHORT-LIVED (~hourly) Keychain accessToken via `security find-generic-password`, cannot mint a new token, and breaks when the Keychain is unreadable from launchd. The mirror froze with a stale-but-non-empty token. src/auth.rs checks tokens are non-EMPTY but never VALID; no durable credential was configured; the 401-only fallback never fires for a CLI 'Not logged in'; operator-recall AUTH_DEAD watches worker_exit storms, not token staleness.
+    
+    REFRAME (cost-correct): the durable primary must be a LONG-LIVED SUBSCRIPTION credential — NOT the hourly Keychain token, and NOT a metered API key (which would silently move the token-hungry fleet off the flat subscription onto pay-per-token billing).
+    
+    CREDENTIAL LAYERING (subscription-preserving):
+    - PRIMARY (durable, subscription-billed, flat cost): a long-lived (~1yr) CLAUDE_CODE_OAUTH_TOKEN minted via `claude setup-token`, stored in ~/.chump/config.toml [api] claude_code_oauth_token (auth.rs already reads it there). Subscription cost, no hourly expiry, no Keychain-mirror dependency — this REPLACES the keychain-mirror as the daemon credential source.
+    - FLOOR (OPTIONAL, metered/API-billed, only if the subscription itself fails): ANTHROPIC_API_KEY in config.toml [api]. Non-expiring but pay-per-token, so it is a LAST-RESORT fallback, NOT the normal path.
+    
+    5 layers, defense in depth (decompose at claim):
+    L1 DURABLE SUBSCRIPTION PRIMARY: document + wire `claude setup-token` -> config.toml claude_code_oauth_token as the daemon credential; flip src/auth.rs AuthMode::Auto to PREFER a VALID subscription OAuth token (cost), using ANTHROPIC_API_KEY only as a last-resort floor (opposite of today's api-key-first). Daemons inherit config.toml regardless of launchd env.
+    L2 VALIDATE-BEFORE-USE: cheap cached auth-check at the spawn site; verify the credential actually authenticates (not just non-empty); fall back to the floor BEFORE the expensive claude -p, regardless of 401-vs-'Not logged in'. FAIL-OPEN on non-auth errors (network/timeout) — never lock out the fleet.
+    L3 CAPTURE EXPIRY: persist the token's expiry (claudeAiOauth.expiresAt for keychain tokens; the setup-token's ~1yr expiry) so freshness checks act proactively.
+    L4 FRESHNESS WATCHDOG THAT SCREAMS: fold into infra-watcher-loop.sh — emit a loud signal when the token is stale / near-expiry / refresh-failed, INDEPENDENT of worker usage. For the ~1yr setup-token, alert WEEKS before lapse so it's renewed on a calendar, not discovered dead in an outage.
+    L5 WIDEN AUTH_DEAD: operator-recall fires on repeated oauth_token_refresh_failed / token-staleness, not only worker_exit storms.
+    Also: the keychain-mirror (oauth-token-refresh.sh) becomes a best-effort SECONDARY refresher for the short-lived path, no longer the primary credential source — the setup-token in config.toml is the durable floor under it.
+    
+    Related: INFRA-1865 (REFRAMED — the answer is a long-lived setup-token, not a better keychain-refresher), INFRA-2124 (round 1, done), INFRA-1668, INFRA-2031. Touches src/auth.rs, scripts/coord/oauth-token-refresh.sh, scripts/coord/infra-watcher-loop.sh, scripts/dispatch/operator-recall.sh, + docs (CLAUDE.md auth section).
+  acceptance_criteria:
+    - the daemon credential is a long-lived subscription token (claude setup-token -> config.toml claude_code_oauth_token), NOT the hourly keychain token and NOT a metered API key by default; the fleet authenticates on subscription (flat) billing
+    - "src/auth.rs AuthMode::Auto prefers a VALID subscription OAuth token and uses ANTHROPIC_API_KEY only as a last-resort floor — no silent move to metered API billing"
+    - the spawn path validates that a credential actually authenticates before use (not merely non-empty) and falls back regardless of 401-vs-CLI-'Not logged in', failing OPEN on non-auth errors (network/timeout never locks out the fleet)
+    - oauth-token-refresh.sh persists expires_at and a freshness watchdog emits a loud signal WEEKS before a long-lived token lapses, independent of worker usage
+    - operator-recall AUTH_DEAD fires on repeated oauth_token_refresh_failed or token-staleness, not only worker_exit storms
+    - a regression test simulates an expired/invalid primary token (API key present) and asserts the fleet stays up via the floor AND an alarm fires (extends src/auth.rs tests + a scripts/ci/test-*.sh)
+

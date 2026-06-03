@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "pre-commit hook: commit subject must mention claimed gap ID (anti-off-rails defense, prevents wrong-gap commits like a44 2026-05-27)"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   description: |
     Today 2026-05-27T14:42Z a Sonnet sub-agent (a44) dispatched on INFRA-2051 went off-rails: committed work titled 'fix(INFRA-2048+INFRA-2049)' in the chump-infra-2051 worktree while holding the INFRA-2051 claim. Production-quality intelligent serializing (pre-applying prereq changes from another in-flight agent) but commit metadata didn't match the claim, creating confused state + risk of duplicate PR. A 10-LOC pre-commit hook gate would have caught this instantly. Includes intentional escape via Off-Rails-Bypass trailer for legitimate prereq-integration commits.

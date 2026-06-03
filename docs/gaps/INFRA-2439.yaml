@@ -1,8 +1,8 @@
-- id: INFRA-1776
+- id: INFRA-2439
   domain: INFRA
-  title: "RESILIENT P0: chump gap list explodes on BLOB acceptance_criteria — fleet picker stalled fleet-wide (INFRA-1751 write path side-effect)"
+  title: "PR #2945 failing on System integration test (INFRA-849): https://github.com/repairman29/chump/actions/runs/2683387240"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"

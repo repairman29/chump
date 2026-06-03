@@ -1,0 +1,12 @@
+- id: INFRA-2455
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh emits no stdout for entire run (7min+) — can't distinguish slow-preflight from silent hang, forcing manual-bypass reflex (INFRA-2426 follow-up)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - bot-merge.sh prints a timestamped progress line at each phase (pre-rebase, rebase, preflight-start, clippy, test-gate, push, pr-create, arm) so an operator/watchdog can see it is alive
+    - a per-phase soft-timeout warning is emitted to stderr + ambient (kind=bot_merge_phase_slow) when a phase exceeds a tunable threshold
+    - "repro documented: bot-merge --gap X --auto-merge on a fresh cold-claimed worktree produced zero stdout for 420s before timeout-kill on 2026-06-02, even after INFRA-2426 shipped"
+    - CI smoke asserts the phase markers appear in a --dry-run invocation
+

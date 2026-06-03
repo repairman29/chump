@@ -2,7 +2,7 @@
   domain: INFRA
   title: chump --execute-gap MUST emit kind=gap_shipped|gap_blocked|gap_deferred before exit — eliminates silent-exit wheel-spin class that bit wizard-daemon today
   status: open
-  priority: P0
+  priority: P1
   effort: m
   description: |
     chump --execute-gap is a multi-tool-call mini-agent that can exit silently without emitting a structured outcome. This is exactly what bit wizard-daemon today (2026-05-27T14:32-14:36Z): the wizard dispatched CREDIBLE-069 twice, both processes exited within ~3min without creating a PR or changing gap status, wizard had no signal to detect failure → wheel-spin. INFRA-2051 (in flight) adds heuristic outcome detection (PID-dead + no-PR + gap-still-open + >timeout = FAILED). But the AUTHORITATIVE fix is to make chump --execute-gap itself ALWAYS emit one of three terminal kinds before exit. Then wizard reads the explicit kind, not heuristic. Eliminates the silent-exit class entirely.\n\nFIX: wrap the chump --execute-gap exit path so EVERY path (success, error, timeout, ctrl-c, panic) emits exactly one of:\n  kind=gap_shipped {gap_id, pr_number, commit_sha}\n  kind=gap_blocked {gap_id, reason, recoverable_by}\n  kind=gap_deferred {gap_id, reason, defer_until_event}

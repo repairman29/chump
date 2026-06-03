@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: test-no-manual-ship-bypass.sh Test 2 fails when origin/main HEAD has legitimate Bot-Merge-Bypass trailer (from yesterday's recovery PR #2681); test must use synthetic commit SHA not real HEAD"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce: bash scripts/ci/test-no-manual-ship-bypass.sh; Test 2 fails with \"[FAIL] expected exit 1 (trailer required), got 0\" because origin/main HEAD (commit a4aebe4ee #2681) commit message legitimately contains Bot-Merge-Bypass: trailer from yesterday recovery work"

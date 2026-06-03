@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0: chump-curator-supervisor — L3 supervision daemon that auto-files + dispatches when curators silently fail"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   description: |
     L3 supervision layer over the curator-loop fleet. Today (2026-05-30) we discovered 3 productized curators (decompose, handoff, shepherd) had been silently no-op'ing for 32 hours — emitting heartbeats but failing every tick with 'unknown subcommand'. The session-start fleet brief said 'healthy' because it counts heartbeat presence. Nobody was reading the curator-*.log files. The supervisor closes that gap: read the logs + telemetry, detect failure, react. Belongs as a Rust crate (META-064: long-lived daemon, mutates state.db, > 200 LOC, will outlive 3 months). Belongs at L3 in the fleet layer model (L0 substrate / L1 curators / L2 jit-scheduler / L3 NEW supervisor). Two operator-pending decisions, supported as runtime config flags so we don't have to pick one forever: (i) remediation mode: conservative (file-only) vs aggressive (file + spawn claude -p Sonnet inline); (ii) auto-restart: should the supervisor also tmux respawn-pane broken curators, or only file + leave for operator.

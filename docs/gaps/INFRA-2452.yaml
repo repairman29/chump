@@ -1,0 +1,14 @@
+- id: INFRA-2452
+  domain: INFRA
+  title: "RESILIENT: audit job CANCELLED by workflow-level cancel-in-progress -> recurring trunk-red deadlock (audit-required FAILs, blocks every merge incl. the fix)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Live 2026-06-02: a 3h fleet-wide merge deadlock. ROOT: ci.yml's WORKFLOW-level concurrency (line ~48, cancel-in-progress: true, per-PR group) cancels the entire in-flight run -- including the required `audit` job -- whenever a new event hits the PR. The job-level per-SHA override (INFRA-1852, line ~1502, cancel-in-progress: false) only stops same-job cross-SHA cancels; it CANNOT stop the whole run being cancelled by the workflow-level group. So `audit` shows CANCELLED, `audit-required` (the required aggregator) reports FAILURE, and EVERY PR is BLOCKED -- including the PRs that fix it (the gate blocks its own repair). The ci.yml comment already confesses this is recurring ('forces operators to push empty commits... hit 10+ times on 2026-05-23'). Triggered fleet-wide this time, likely amplified by the broken merge daemons (auto-merge-rearm exit 78 / queue-driver) flapping PR events. Had to be broken manually via `gh pr merge --admin` on 6 PRs. FIX SHAPE (this is L3 of the 2026-06-02 Kaizen audit -- split self-audit CI from product CI): move the `audit` job into its OWN workflow file (its own concurrency, NOT subject to ci.yml's workflow-level cancel-in-progress), OR give audit a run-level exemption so a required check can never be cancelled by concurrency. Pairs with reviving the merge daemons (RESILIENT-054 auth) so event-flap stops. Touches .github/workflows/.
+  acceptance_criteria:
+    - the required `audit` check can NOT be cancelled by workflow-level concurrency -- it always runs to a real success/failure conclusion under normal PR event volume
+    - the trunk-red deadlock (audit CANCELLED -> audit-required FAILURE -> blocks the fix PR) cannot recur
+    - a regression/smoke asserts audit reaches a terminal conclusion even when a follow-up event arrives mid-run
+    - no operator empty-commit / admin-merge workaround is needed to land a PR when only audit is stuck
+

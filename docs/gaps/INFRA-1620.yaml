@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0: PWA web/v2/app.js has been syntactically broken on origin/main since 2026-05-14 (commit c64ddd676) — 5 classes truncated with missing closing braces; PWA fails to parse with 'Private field must be declared in enclosing class' error"
   status: open
-  priority: P0
+  priority: P1
   effort: m
   acceptance_criteria:
     - "Root cause: commit c64ddd676 (PRODUCT-111 PWA <chump-view-audit>) and subsequent PRs (PRODUCT-112 network audit, INFRA-1203 fleet-health, INFRA-1204 coord, INFRA-1207 roadmap) shipped class bodies that are truncated mid-method or mid-template-literal with missing closing braces. JS parser fails at the first private-field reference (this.#escAttr line 2059) because the enclosing class never closed. All 5 classes are affected."

@@ -1,0 +1,10 @@
+- id: INFRA-2446
+  domain: INFRA
+  title: "RESILIENT P0: pre-push RESILIENT-026 picks first claim file (head -1) — should match by branch/session ID, breaks parallel sessions"
+  status: open
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "[\"Pre-push hook scripts/git-hooks/pre-push line ~1257 reads .chump-locks/claim-*.json "
+    - " head -1 — picks first alphabetically (or by mtime), not the one matching current session or current branch\",\"Fix: enumerate ALL claim files, find the one whose session_id matches CHUMP_SESSION_ID env OR whose gap_id matches the current branch (chump/<gap-id>-claim case-insensitive)\",\"Smoke test scripts/ci/test-pre-push-multi-claim.sh: mock 3 lease files for different sessions; push from session 2s branch → assert hook accepts (not rejects on session 1s gap_id)\",\"Cite trigger: INFRA-2438 ship 2026-06-02 — 3 peer leases were present, hook picked peers RESILIENT-055, my INFRA-2438 push was rejected on branch-name mismatch\"]"
+

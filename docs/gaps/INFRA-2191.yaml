@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: ruleset required checks 'audit'+'test' never fire on doc/yaml-only PRs → entire queue silently BLOCKED with 0 fails 0 pending (today: 6 PRs stuck). Same wedge as INFRA-2128 pwa-onboarding class. Fix: rename audit-stub/test-stub job outputs to emit as 'audit'/'test' OR demote ruleset to require fast-checks/gap-status-check (always-runs)"
   status: open
-  priority: P0
+  priority: P1
   effort: s
   acceptance_criteria:
     - "Reproduce: open a doc/yaml-only PR (changes only docs/**, *.md, no Rust/script touches); gh pr checks shows zero `test` and zero `audit` entries; gh pr view --json mergeStateStatus reports BLOCKED despite zero fails + zero pending; the gh-api ruleset query lists `test` + `audit` as required-status-checks"

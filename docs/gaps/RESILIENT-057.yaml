@@ -1,0 +1,9 @@
+- id: RESILIENT-057
+  domain: RESILIENT
+  title: "RESILIENT: non-expiring credential floor + validate-before-use — OAuth-primary auto mode, API-key fallback floor, cached pre-spawn validation in src/auth.rs"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. AuthMode::Auto prefers OAuth when both present (OAuth is cost-primary); API key is the fallback floor\n2. key-absent behavior unchanged: OAuth-only still resolves to OAuth mode\n3. validate-before-use cached check wired at spawn site; on auth failure falls back before spawn\n4. fail-open: network/timeout/rate-limit errors do NOT trigger auth fallback\n5. regression test: dead OAuth + API key => ApiKey mode + fleet_auth_fallback event\n6. all existing src/auth.rs tests pass unchanged"
+

@@ -1,0 +1,11 @@
+- id: INFRA-2451
+  domain: INFRA
+  title: "RESILIENT P0: test-system-integration.sh Assertion 4 — SHIP_REPO needs fake origin so INFRA-2423 auto-fetch finds the marker commit"
+  status: closed
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "[\"scripts/ci/test-system-integration.sh Assertion 4 creates SHIP_REPO with a commit carrying gap_id but no origin remote — INFRA-2423s chump gap ship auto-fetches origin/main and finds nothing\",\"Fix: after creating SHIP_REPO + first commit, set up a bare mirror as origin (git clone --bare SHIP_REPO SHIP_BARE; git -C SHIP_REPO remote add origin SHIP_BARE) so origin/main is fetchable\",\"Verify locally: bash scripts/ci/test-system-integration.sh passes 7/7 assertions\",\"Cite: INFRA-2423 (merged 2026-06-02 15:58Z) deleted CHUMP_BYPASS_PROOF_OF_MERGE; integration test fixture wasnt updated to account for auto-fetch needing a real origin\",\"Affects PR #2968 (INFRA-2438 lint fix keystone) which is blocked from merge until this lands\"]"
+  notes: |
+    Superseded by INFRA-2445 (PR #2970, merged 2026-06-02). Same fix class (test-system-integration.sh Assertion 4 — chump gap ship auto-fetch after INFRA-2423 deleted CHUMP_BYPASS_PROOF_OF_MERGE). INFRA-2445 took the cleaner mechanism (git init --initial-branch main); my INFRA-2451 used bare-mirror origin. Both work; theirs landed first. ANOTHER duplicate-work-under-different-names instance — exactly the pattern INFRA-2434 (claim-time path-overlap gate) would catch.
+

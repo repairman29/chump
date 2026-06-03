@@ -1,0 +1,12 @@
+- id: RESILIENT-055
+  domain: RESILIENT
+  title: "RESILIENT: rotate-sccache-r2-gh-only.sh hard-rejects valid non-32-char R2 access keys — relax len==32/64 to advisory warn + keep empty/whitespace guard (CF R2 keys can be 40+; INFRA-2127 was not-a-bug)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - rotate-sccache-r2-gh-only.sh no longer hard-rejects an access key solely for length != 32 (CF R2 keys can be 40+ chars per CF docs); exact-length check becomes an advisory warning
+    - "genuine garbage still hard-rejected: empty, whitespace-containing, wrong charset, or absurd length (access <16 or >128; secret <40 or >128)"
+    - test-rotate-sccache-r2-gh-only.sh asserts a 40-char AND 53-char alnum access key is ACCEPTED and empty/whitespace still rejected
+    - shellcheck clean; bash -n passes
+

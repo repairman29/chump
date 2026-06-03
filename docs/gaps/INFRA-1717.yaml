@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: worker.sh auto-detect missing OAUTH path — falls through to chump-local when only ~/.chump/oauth-token.json exists (CLAUDE.md docs are right, code is wrong)"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce: unset ANTHROPIC_API_KEY; ensure CLAUDE_CODE_OAUTH_TOKEN unset but ~/.chump/oauth-token.json exists; run FLEET_SIZE=1 scripts/dispatch/run-fleet.sh; worker logs show FLEET_BACKEND=chump-local. Expected: FLEET_BACKEND=claude (subscription OAUTH works for claude -p)"

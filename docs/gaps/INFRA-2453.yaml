@@ -1,0 +1,12 @@
+- id: INFRA-2453
+  domain: INFRA
+  title: "ZERO-WASTE: rename INFRA-2183 CHUMP_WORKTREE_BUILD_CACHE_SKIP + CHUMP_WTBC_SKIP_CARGO to _DISABLED — clear the bypass-lint wart (INFRA-2429 Category-B exempt)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "src/worktree_build_cache.rs + docs/observability/EVENT_REGISTRY.yaml: CHUMP_WORKTREE_BUILD_CACHE_SKIP renamed to CHUMP_WORKTREE_BUILD_CACHE_DISABLED (Category-B kill-switch, exempt from INFRA-2429 bypass-lint)"
+    - "scripts/ci/test-worktree-build-cache.sh: CHUMP_WTBC_SKIP_CARGO renamed to CHUMP_WTBC_CARGO_DISABLED"
+    - "scripts/ci/env-vars-internal.txt: CHUMP_WORKTREE_BUILD_CACHE_DISABLED added for DOC-026 src-read coverage"
+    - test-no-new-bypass-env-vars.sh passes with 0 new bypass-class vars in the diff; cargo check clean
+

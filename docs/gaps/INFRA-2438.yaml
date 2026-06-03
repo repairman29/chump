@@ -1,0 +1,9 @@
+- id: INFRA-2438
+  domain: INFRA
+  title: "RESILIENT P0: INFRA-2429 lint pattern-tightening — must exclude comments, doc strings, and removal-tests (was: blocked every zero-bypass deletion PR)"
+  status: open
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "[\"scripts/ci/test-no-new-bypass-env-vars.sh currently matches any + line containing CHUMP_*_BYPASS/SKIP/IGNORE — including comments, test fixtures verifying deletion, and doc strings\",\"Tighten the regex to match only actual introductions: (a) Rust std::env::var(\\\"CHUMP_X\\\"), (b) shell ${CHUMP_X} or $CHUMP_X dereference NOT inside a comment, (c) env-vars-internal.txt bare-line ^CHUMP_X$ (no leading whitespace, no inline comment)\",\"Exclude lines whose effective leading non-whitespace char is # (shell/yaml comment) or // (Rust comment) or starts with a doc-string delimiter\",\"Update self-test to add 3 cases: + line in a shell comment is NOT flagged; + line in a doc string is NOT flagged; + line ${CHUMP_X} in actual code IS flagged\",\"Wire fix: ship as a single small commit on a new gap-claim branch; do NOT bypass any gate; the lints fixed version should pass against PR #2961 diff fixture\",\"Cite this PR (will be INFRA-NEW) in INFRA-2429s history; PR #2961 (INFRA-2425) was the first downstream PR blocked by the over-matching\"]"
+

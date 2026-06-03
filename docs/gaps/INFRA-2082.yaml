@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0 trunk-RED: chump-mcp-coord build silently fails on self-hosted runner — test-mcp-coord-smoke.sh exits 127 because target/debug/chump-mcp-coord doesn't exist after 'cargo build -q -p chump-mcp-coord'; works locally; likely runner cargo registry cache miss (tauri-2.11.2 proc-macro class)"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce on self-hosted runner: `cargo build -q -p chump-mcp-coord` exits 0 but produces no target/debug/chump-mcp-coord binary; subsequent execution returns 127 (No such file or directory); works fine on local dev machine"

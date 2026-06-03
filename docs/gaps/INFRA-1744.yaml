@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0: pre-push hook hangs indefinitely under fleet load — INFRA-1392/1714 sibling pushes + my INFRA-1429 retry all stalled 30+min, no output, kill-required"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Reproduce: with 2+ active worktrees pushing simultaneously, cargo test in scripts/git-hooks/pre-push line 598 hangs indefinitely (observed 31min+ on 2026-05-23 with sibling INFRA-1392/INFRA-1714 push hangs). No timeout in the test invocation"

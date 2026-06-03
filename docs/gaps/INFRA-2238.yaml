@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P0: 3 curator-loop wrappers call wrong subcommand — decompose/handoff/shepherd silently no-op for hours"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   description: |
     scripts/coord/fleet-autopilot.sh line 159 hardcodes '<script> tick' and '<script> heartbeat' subcommands when spawning curator-loop tmux panes. ci-audit-loop.sh and md-links-loop.sh accept tick (they work). But decompose-loop.sh (accepts: slice, audit-pending, heartbeat), handoff-loop.sh (accepts: scan-handoffs, review-pr, dispatch-sub, heartbeat), and opus-shepherd-triage.sh (flag-style only, NO subcommands) all reject tick → silently no-op every 5 minutes. handoff + decompose still pass the heartbeat call (so they look alive in ambient.jsonl), but neither does any work. Shepherd-triage rejects BOTH tick AND heartbeat → fully broken. Result: 3/6 productized curators have been silently no-op since the tmux session launched (Thu 8PM 2026-05-28).

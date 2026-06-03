@@ -2,7 +2,7 @@
   domain: INFRA
   title: "PWA-INFRA: pr-hygiene runs 'node --check web/v2/app.js' — block PR merge on JS syntax errors (would've caught INFRA-1620 in 1 PR)"
   status: open
-  priority: P0
+  priority: P1
   effort: xs
   acceptance_criteria:
     - "Add step to pr-hygiene job in .github/workflows/ci.yml: 'node --check web/v2/app.js' — fails the job on any syntax error."
