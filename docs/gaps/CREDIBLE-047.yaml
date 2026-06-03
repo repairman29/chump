@@ -1,7 +1,8 @@
 - id: CREDIBLE-047
   domain: CREDIBLE
   title: "CREDIBLE: autonomous-ship-rate dashboard + alert — Q1 instrumentation; metric is % of fleet-filed PRs that merge with zero operator touch"
-  status: open
+  status: done
+  closed_pr: 3018
   priority: P1
   effort: s
   description: |
