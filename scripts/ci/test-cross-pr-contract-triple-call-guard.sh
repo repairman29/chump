@@ -39,10 +39,11 @@ if [[ -z "$real_ci_block" ]]; then
     exit 1
 fi
 
-# Count occurrences of `chump contract-scan` in the real-CI branch.
-# Be flexible — match either "$CHUMP_BIN" contract-scan or chump contract-scan
-# (in case the binary reference style changes).
-scan_count=$(printf '%s\n' "$real_ci_block" | grep -cE '(\$CHUMP_BIN|chump) contract-scan' || true)
+# Count occurrences of actual `chump contract-scan` invocations in the real-CI
+# branch. Match $CHUMP_BIN reference followed by contract-scan — this excludes
+# the echo/log line that mentions the command as a string.
+# A real invocation looks like: `"$CHUMP_BIN" contract-scan --in-flight`
+scan_count=$(printf '%s\n' "$real_ci_block" | grep -cE '"\$CHUMP_BIN"\s+contract-scan' || true)
 
 echo "── INFRA-2534 triple-call guard ──"
 echo "  real-CI branch lines: $(printf '%s\n' "$real_ci_block" | wc -l | tr -d ' ')"
