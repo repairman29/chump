@@ -3282,6 +3282,7 @@ events:
 
   # ── INFRA-1673: local-CI discipline audit (preflight bypass) ─────────────
   - kind: preflight_bypassed
+    deprecated: true
     effect_metric: self
     emitter: scripts/coord/chump-commit.sh (INFRA-1673)
     trigger: commit fires with CHUMP_PREFLIGHT_SKIP=1 while staged paths
@@ -3290,6 +3291,10 @@ events:
       patterns that warrant tooling or process changes.
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, session, files]
+    deprecation_note: >
+      CHUMP_PREFLIGHT_SKIP deleted by INFRA-2422 (main-red-aware gate auto-skip).
+      Event no longer emitted; kept here so ambient log replay doesn't trigger
+      emit-without-register failures. Use preflight_main_red_skip going forward.
 
   - kind: no_bypass_violation
     effect_metric: self
