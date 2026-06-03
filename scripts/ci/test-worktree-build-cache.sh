@@ -45,8 +45,8 @@ grep -q 'provision_worktree_build_cache' src/atomic_claim.rs 2>/dev/null \
 
 # ── Faithful behavior: the Rust unit tests provision a temp worktree + assert ─
 # the written .cargo/config.toml. Skippable in cargo-less CI lanes via env.
-if [[ "${CHUMP_WTBC_SKIP_CARGO:-0}" == "1" ]]; then
-    echo "[SKIP] cargo unit tests (CHUMP_WTBC_SKIP_CARGO=1)"
+if [[ "${CHUMP_WTBC_CARGO_DISABLED:-0}" == "1" ]]; then
+    echo "[SKIP] cargo unit tests (CHUMP_WTBC_CARGO_DISABLED=1)"
 elif command -v cargo >/dev/null 2>&1; then
     if PATH="$HOME/.cargo/bin:$PATH" cargo test worktree_build_cache 2>&1 | tail -25 | grep -qE 'test result: ok'; then
         _p "rust: worktree_build_cache unit tests pass (provision + config.toml + unique target-dir)"
