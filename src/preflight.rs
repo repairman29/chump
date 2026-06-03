@@ -575,6 +575,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-stale-pr-rebase-bot.sh",
         // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
         "scripts/ci/test-reaper-trunk-red-hold.sh",
+        // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
+        // pure shell, no GitHub API, ~2s.
+        "scripts/ci/test-fleet-pause-autolift.sh",
     ];
     candidates
         .iter()

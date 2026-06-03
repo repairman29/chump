@@ -106,6 +106,12 @@ events:
     trigger: claude -p produced 0 stdout for full timeout window
     consumers: [waste-tally, watchdog]
 
+  - kind: fleet_recovery_choir_kicked
+    effect_metric: self
+    emitter: scripts/coord/ci-health-gate.sh
+    trigger: fleet-paused sentinel auto-lifted after slo-check passed; supervisor/reaper choir kicked (RESILIENT-066)
+    consumers: [watchdog, fleet-brief]
+
   - kind: fleet_health
     effect_metric: self
     emitter: launchd / scripts/ops/fleet-health.sh

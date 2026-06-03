@@ -161,6 +161,39 @@ if [[ -f "$PAUSE_FILE" ]]; then
         echo "[ci-health-gate] RECOVERED: fleet-paused removed after 2 consecutive clean runs"
         _emit "pipeline_health_throttle" \
             '"state":"resumed","prior_reason":"'"${prior_reason:-unknown}"'","blocked_pct":'"$blocked_pct"',"slo_rc":'"$slo_rc"
+
+        # ── RESILIENT-066: kick recovery choir after sentinel lift ────────────
+        # The supervisory + reaper daemons may have exit-coded during the pause
+        # (any `chump claim` they attempted returned non-zero). Now that the
+        # sentinel is gone, launchctl-kickstart them so recovery resumes without
+        # waiting for the next StartInterval tick.
+        #
+        # Safety: we only kick AFTER sentinel is removed AND slo_rc==0.
+        # No kickstart is attempted while fleet-paused still exists.
+        if command -v launchctl &>/dev/null; then
+            _uid="$(id -u)"
+            _recovery_daemons=(
+                "com.chump.curator-supervisor"
+                "com.chump.main-health-watchdog"
+                "dev.chump.auto-merge-rearm"
+                "com.chump.pr-shepherd"
+                "com.chump.ghost-gap-reaper"
+            )
+            _kicked=()
+            for _label in "${_recovery_daemons[@]}"; do
+                if launchctl list 2>/dev/null | grep -qF "$_label"; then
+                    echo "[ci-health-gate] kicking $_label after sentinel lift"
+                    launchctl kickstart "gui/${_uid}/${_label}" 2>/dev/null || true
+                    _kicked+=("$_label")
+                fi
+            done
+            if [[ "${#_kicked[@]}" -gt 0 ]]; then
+                echo "[ci-health-gate] kicked ${#_kicked[@]} recovery daemon(s): ${_kicked[*]}"
+            fi
+            _emit "fleet_recovery_choir_kicked" \
+                '"prior_reason":"'"${prior_reason:-unknown}"'","kicked_count":'"${#_kicked[@]}"',"daemons":"'"${_kicked[*]}"'"'
+        fi
+        # ── end RESILIENT-066 ────────────────────────────────────────────────
     fi
 else
     # No pause file — healthy
