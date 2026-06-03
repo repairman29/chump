@@ -22,6 +22,16 @@ FARMER="$REPO_ROOT/scripts/coord/farmer.sh"
 
 [[ -x "$FARMER" ]] || { echo "FAIL: farmer.sh not found or not executable: $FARMER"; exit 1; }
 
+# RESILIENT-068: the farmer is a macOS launchd daemon; despite the dry-run/stub
+# design these tests rely on BSD tooling (stat -f, BSD date, launchctl semantics)
+# and fail on Linux CI runners (7/9 fail). Skip on non-Darwin — the suite runs
+# 9/9 on macOS (the self-hosted runners). Re-added 2026-06-03 after a queue-driver
+# rebase silently dropped the original guard (commit d39a5ba2e).
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "SKIP: test-farmer.sh is macOS-specific (uname=$(uname -s)); farmer is a launchd daemon"
+    exit 0
+fi
+
 PASS=0
 FAIL=0
 
