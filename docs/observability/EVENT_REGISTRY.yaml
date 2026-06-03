@@ -446,6 +446,22 @@ events:
     status: stable
     # payload: {gap_id: str, status: "red", failing_gates: [str], age_secs: int, trunk_fix_gap_id: str}
 
+  - kind: claim_main_health_garbled
+    effect_metric: resilient
+    emitter: src/atomic_claim.rs emit_main_health_event (INFRA-2524)
+    trigger: >
+      Emitted when `chump claim` sees main RED but ALL failing-gate names are
+      garbled (empty, punctuation-only, or a stray em-dash — the 2026-06-03
+      watchdog parser bug, INFRA-2458). The claim proceeds (fail-OPEN) rather
+      than halting the whole fleet on an untrustworthy signal (A2A_ROADMAP
+      principle 7 fail-open-over-deadlock). A real gate name matches
+      [A-Za-z][A-Za-z0-9_.-]*; if none match, the RED is treated as noise.
+    consumers: [fleet-brief, audit-log, waste-tally]
+    fields_required: [ts, kind, gap_id, status, failing_gates, age_secs]
+    expected_volume: "rare — only when the watchdog emits a malformed RED"
+    status: stable
+    # payload: {gap_id: str, status: "red", failing_gates: [str], age_secs: int}
+
   - kind: curator_paused
     effect_metric: self
     emitter: scripts/coord/opus-curator.sh (META-065)
