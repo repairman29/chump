@@ -71,7 +71,10 @@ fi
 #          'e2e-pwa' + 'e2e-golden-path' (matrixed into single 'e2e' job per META-267 —
 #          'e2e' uses matrix-driven runs-on-expr flexibility which this classifier
 #          would need extending to accept; out-of-scope for this surgical fix).
-HEAVY_JOBS="clippy cargo-test audit tauri-cowork-e2e fast-checks"
+# INFRA-2475: 'audit' moved to audit.yml (INFRA-2452) — it is no longer a ci.yml job.
+# audit.yml has its own RUNNER_AUDIT flip mechanism (same pattern, different workflow).
+# Reduced expected count from 5 to 4.
+HEAVY_JOBS="clippy cargo-test tauri-cowork-e2e fast-checks"
 flexible=0
 fixed=0
 for job in $HEAVY_JOBS; do
