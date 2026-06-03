@@ -27,6 +27,14 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
+# INFRA-2655: INFRA-2452 moved `audit` and `audit-required` from ci.yml to a
+# dedicated audit.yml workflow. Auto-detect which workflow file currently
+# defines `audit-required` so the assertions run against the canonical
+# location (audit.yml today; ci.yml prior to INFRA-2452).
+AUDIT_YML="$REPO_ROOT/.github/workflows/audit.yml"
+if [[ -f "$AUDIT_YML" ]] && grep -q "^  audit-required:" "$AUDIT_YML"; then
+    CI_YML="$AUDIT_YML"
+fi
 
 PASS=0; FAIL=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
@@ -105,6 +113,9 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Assert 5: test rollup uses `if: always()` (no test-stub needed)
 # ──────────────────────────────────────────────────────────────────────────
+# INFRA-2655: the `test` rollup remains in ci.yml even though audit-required
+# was moved to audit.yml — read it from ci.yml explicitly.
+CI_YML_FOR_TEST="$REPO_ROOT/.github/workflows/ci.yml"
 test_if="$(awk '
   /^  test:$/ { in_block=1; next }
   in_block && /^    if:/ {
@@ -113,7 +124,7 @@ test_if="$(awk '
     exit
   }
   in_block && /^  [a-z]/ && !/^    / { in_block=0 }
-' "$CI_YML")"
+' "$CI_YML_FOR_TEST")"
 
 if [[ "$test_if" == "always()" ]]; then
   ok "test rollup uses 'if: always()' — fires on every PR (no test-stub needed)"
