@@ -7573,3 +7573,48 @@ events:
     # payload: {gap_id: str, agent_id: str, dispatched_at: ISO8601,
     #           elapsed_s: int}
     status: stable
+
+  # ── RESILIENT-059: durable gap execution journal ───────────────────────────
+
+  - kind: durable_journal_step_started
+    effect_metric: self
+    emitter: src/commands/durable_execution_journal.rs (RESILIENT-059)
+    # scanner-anchor: "kind":"durable_journal_step_started"
+    trigger: >
+      A DurableExecutor begins executing a named activity step for a gap run.
+      Fired by Journal::start_step before the activity closure is invoked.
+      Enables tracing which steps were in-flight at the moment of a crash.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, run_id, step_name, step_index]
+    # payload: {gap_id: str, run_id: int, step_name: str, step_index: int}
+    status: stable
+
+  - kind: durable_journal_step_completed
+    effect_metric: self
+    emitter: src/commands/durable_execution_journal.rs (RESILIENT-059)
+    # scanner-anchor: "kind":"durable_journal_step_completed"
+    trigger: >
+      A DurableExecutor activity step completed successfully and its result has
+      been persisted to durable_journal. Fired by Journal::complete_step.
+      elapsed_ms is the wall-clock time from started_at to completed_at.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, run_id, step_name, step_index, elapsed_ms]
+    # payload: {gap_id: str, run_id: int, step_name: str, step_index: int,
+    #           elapsed_ms: int}
+    status: stable
+
+  - kind: durable_journal_resumed
+    effect_metric: resilient
+    emitter: src/commands/durable_execution_journal.rs (RESILIENT-059)
+    # scanner-anchor: "kind":"durable_journal_resumed"
+    trigger: >
+      A DurableExecutor::resume() call found a prior incomplete run and is
+      reattaching to it rather than starting from scratch. replayed_steps is the
+      count of already-completed steps whose results will be served from cache
+      without re-executing. Fires once per resume, before the first activity call.
+      Absence of this event when a crash is known to have occurred indicates the
+      gap was re-claimed from zero (the failure mode RESILIENT-059 prevents).
+    consumers: [ops-audit, fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap_id, prior_run_id, replayed_steps]
+    # payload: {gap_id: str, prior_run_id: int, replayed_steps: int}
+    status: stable

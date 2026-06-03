@@ -6,6 +6,7 @@
 //! INFRA-2399: author-time helpers — add-env-var, emit-event, install-daemon,
 //!             add-path-filter, add-raw-gh-allowlist.
 //! INFRA-2405: contract-scan — detect cross-PR state-file/IPC schema mismatch (anti-Bug-1).
+//! RESILIENT-059: durable-execution — SQLite-journaled activity wrapper + resume CLI.
 
 pub mod add_env_var;
 pub mod add_path_filter;
@@ -13,6 +14,9 @@ pub mod add_raw_gh_allowlist;
 pub mod config;
 pub mod consensus_tally;
 pub mod contract_scan;
+pub mod durable_execution;
+pub mod durable_execution_journal;
+pub mod durable_resume;
 pub mod emit_event;
 pub mod install_daemon;
 pub mod inventory;
