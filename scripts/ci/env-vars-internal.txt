@@ -954,3 +954,7 @@ CHUMP_LAST_MILE_DISABLED
 CHUMP_LAST_MILE_DRY_RUN
 # detected in: (standard input)
 CHUMP_LAST_MILE_ORPHAN_WINDOW_S
+
+# RESILIENT-059: durable execution env vars (Tier 2 — test/debug)
+CHUMP_STATE_DB_PATH        # RESILIENT-059: override .chump/state.db path (test harness)
+CHUMP_DURABLE_AMBIENT_DISABLE  # RESILIENT-059: silence ambient emits from durable-execution unit tests
