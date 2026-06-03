@@ -27,15 +27,26 @@ echo "=== INFRA-1939 bot-merge.sh graphql_exhausted wedge guard ==="
 TMP1="$(mktemp -d)"
 trap 'rm -rf "$TMP1"' EXIT
 
-mkdir -p "$TMP1/.chump-locks"
+mkdir -p "$TMP1/.chump-locks" "$TMP1/bin"
 NOW_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Write a graphql_exhausted event with ts = now (clearly within 30min window)
 printf '{"ts":"%s","kind":"graphql_exhausted","source":"test","remaining":0}\n' "$NOW_TS" \
     > "$TMP1/.chump-locks/ambient.jsonl"
 
+# INFRA-2463: the wedge guard now does a live rate_limit check before aborting.
+# Mock gh to return remaining=0 so the live check confirms real exhaustion.
+_real_gh="$(command -v gh 2>/dev/null || echo gh)"
+cat > "$TMP1/bin/gh" <<GHEOF
+#!/usr/bin/env bash
+if [ "\$1" = "api" ] && [ "\$2" = "rate_limit" ]; then echo "0"; exit 0; fi
+exec "${_real_gh}" "\$@"
+GHEOF
+chmod +x "$TMP1/bin/gh"
+
 # Run bot-merge with the synth ambient + ~60s timeout
 SECONDS=0
-CHUMP_AMBIENT_LOG="$TMP1/.chump-locks/ambient.jsonl" \
+PATH="$TMP1/bin:$PATH" \
+    CHUMP_AMBIENT_LOG="$TMP1/.chump-locks/ambient.jsonl" \
     CHUMP_REPO_ROOT="$TMP1" \
     timeout 60 bash "$BOT_MERGE" --gap none --dry-run >/tmp/wedge-test-out 2>&1
 rc=$?
