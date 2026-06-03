@@ -25,12 +25,12 @@
 #   substrate → supervisors → choir → workers
 #
 # Event kinds (registered in docs/observability/EVENT_REGISTRY.yaml):
-#   farmer_heartbeat          — normal cycle end
-#   farmer_pause_lifted       — sentinel removed after slo recovery
-#   farmer_daemon_kicked      — launchd kickstart issued
-#   farmer_auth_dead          — oauth token stale, operator paged
-#   farmer_silent_worker      — stale lease detected, rescue triggered
-#   farmer_escalated          — daemon kicked >3 times in 10min → operator page
+# scanner-anchor: "kind":"farmer_heartbeat"
+# scanner-anchor: "kind":"farmer_pause_lifted"
+# scanner-anchor: "kind":"farmer_daemon_kicked"
+# scanner-anchor: "kind":"farmer_auth_dead"
+# scanner-anchor: "kind":"farmer_silent_worker"
+# scanner-anchor: "kind":"farmer_escalated"
 #
 # Usage:
 #   bash scripts/coord/farmer.sh         # run one tick (launchd calls this)
