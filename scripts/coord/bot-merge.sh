@@ -676,21 +676,36 @@ for line in sys.stdin:
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_recovered" \
                         >> "$_wedge_ambient" 2>/dev/null || true
                 else
-                    echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
-                    echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
-                    echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
-                    echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
-                    # INFRA-2426: emit structured kind=bot_merge_timeout (not silent exit 144).
-                    # Exit code changed from 144 (undocumented, confusing) to 4 (documented
-                    # misc-abort code) so automated callers can classify the failure.
-                    # scanner-anchor: "kind":"bot_merge_graphql_wedge_aborted"
-                    _ambient_dir=$(dirname "$_wedge_ambient")
-                    if [ -w "$_ambient_dir" ]; then
-                        printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_aborted","last_graphql_exhausted":"%s","lookback_s":%d,"exit_code":4,"note":"INFRA-2426: graphql wedge guard now exits 4 with structured event; phase=graphql_wedge_guard"}\n' \
-                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_lookback_s" \
+                    # INFRA-2463: no recovery event found in ambient, but the ambient event
+                    # may be stale. Do a live rate_limit check (cheap REST, doesn't burn
+                    # GraphQL quota) before aborting. If live remaining >= threshold,
+                    # the exhaustion event is stale — clear the wedge and proceed.
+                    _wedge_live_threshold="${CHUMP_GRAPHQL_WEDGE_LIVE_THRESHOLD:-100}"
+                    _wedge_live_remaining=$(gh api rate_limit --jq '.resources.graphql.remaining' 2>/dev/null || echo "")
+                    if [ -n "$_wedge_live_remaining" ] && [ "$_wedge_live_remaining" -ge "$_wedge_live_threshold" ] 2>/dev/null; then
+                        # Live check shows rate limit is healthy — stale event, clear and proceed.
+                        printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_cleared","last_exhausted":"%s","live_remaining":%s,"note":"stale-event-cleared"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_live_remaining" \
                             >> "$_wedge_ambient" 2>/dev/null || true
+                    else
+                        # Live remaining is low (or live check failed) — real exhaustion.
+                        echo "WEDGE: bot-merge cannot proceed under graphql_exhausted (last event: $_wedge_hit)." >&2
+                        echo "WEDGE: live remaining=${_wedge_live_remaining:-unknown} < threshold=${_wedge_live_threshold}" >&2
+                        echo "WEDGE: fall through to manual INFRA-028 recovery path." >&2
+                        echo "WEDGE: see docs/process/SUBAGENT_DISPATCH.md '#bot-merge-graphql-wedge'." >&2
+                        echo "WEDGE: bypass with CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 (not recommended)." >&2
+                        # INFRA-2426: emit structured kind=bot_merge_timeout (not silent exit 144).
+                        # Exit code changed from 144 (undocumented, confusing) to 4 (documented
+                        # misc-abort code) so automated callers can classify the failure.
+                        # scanner-anchor: "kind":"bot_merge_graphql_wedge_aborted"
+                        _ambient_dir=$(dirname "$_wedge_ambient")
+                        if [ -w "$_ambient_dir" ]; then
+                            printf '{"ts":"%s","kind":"bot_merge_graphql_wedge_aborted","last_graphql_exhausted":"%s","lookback_s":%d,"live_remaining":%s,"exit_code":4,"note":"INFRA-2426: graphql wedge guard now exits 4 with structured event; phase=graphql_wedge_guard"}\n' \
+                                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_wedge_hit" "$_wedge_lookback_s" "${_wedge_live_remaining:-null}" \
+                                >> "$_wedge_ambient" 2>/dev/null || true
+                        fi
+                        exit 4
                     fi
-                    exit 4
                 fi
             fi
         fi
