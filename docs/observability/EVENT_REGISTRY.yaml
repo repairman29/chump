@@ -3359,6 +3359,28 @@ events:
     consumers: [fleet-brief, audit-log, waste-tally]
     fields_required: [ts, kind, gap_id, from_mode, to_mode, reason]
     expected_volume: "once per ship while the integrator daemon is down"
+  # ── FLEET-034 work-routing mesh consumer (INFRA-2545) ─────────────────────
+  - kind: mesh_worker_routed
+    effect_metric: effective
+    emitter: scripts/coord/mesh-worker-loop.sh (INFRA-2545, route-only mode)
+    trigger: the mesh-worker consumer picked a capability-matched, mesh-routed
+      gap via chump-coord worker but is in ROUTE-ONLY mode (default) — it logs
+      the routing + releases the NATS-KV claim without executing. Proves the
+      FLEET-034 work-routing is live (coordinated, not coincidental, convergence).
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, session, mode]
+    expected_volume: "once per mesh-worker tick that matched a gap (route-only)"
+    status: stable
+  - kind: mesh_worker_executing
+    effect_metric: effective
+    emitter: scripts/coord/mesh-worker-loop.sh (INFRA-2545, CHUMP_MESH_WORKER_EXECUTE=1)
+    trigger: the mesh-worker picked a capability-matched gap and handed it to
+      chump --execute-gap (execute mode). The NATS-KV routing-claim is released
+      first; the executor takes the authoritative file-lease (coexists with the
+      pull fleet — the file-lease arbitrates).
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, session]
+    expected_volume: "once per mesh-worker tick that executed a gap"
     status: stable
   # ── Gap store curation ───────────────────────────────────────────────────
   - kind: gap_store_curated
