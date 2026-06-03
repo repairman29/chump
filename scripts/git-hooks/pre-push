@@ -1244,18 +1244,67 @@ fi
 # Prevents "pushed my work on the wrong branch" — an off-rails push
 # pattern complementary to RESILIENT-025/026 pre-commit guards.
 #
-# Only fires when a claim file is present — human pushes without a
-# claim pass through without noise.
+# Multi-session fix (INFRA-2446, 2026-06-03): when multiple claim files
+# are present (parallel sessions), enumerate ALL and find the one whose
+# gap_id matches the current branch (chump/<gap-id>-claim). Prefer the
+# file whose session_id matches CHUMP_SESSION_ID if multiple branch-match
+# (should never happen, but defensive). If no claim file matches the
+# current branch, emit prepush_lease_mismatch to ambient and proceed
+# without blocking — a peer's claim file must not block unrelated work.
+#
+# Only fires when at least one claim file is present — human pushes
+# without a claim pass through without noise.
 #
 # Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit.
 # Or: CHUMP_OFF_RAILS_CHECK=0 git push
 # -----------------------------------------------------------------------
 if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
-    _pp_claim_file="$(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1 || true)"
-    if [[ -n "$_pp_claim_file" && -f "$_pp_claim_file" ]]; then
-        _pp_claimed_gap="$(jq -r '.gap_id // empty' "$_pp_claim_file" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
-        _pp_current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
-        if [[ -n "$_pp_claimed_gap" && -n "$_pp_current_branch" ]]; then
+    _pp_current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+    _pp_ambient="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+
+    # Collect all claim files present.
+    _pp_all_claims=()
+    while IFS= read -r _f; do
+        [[ -f "$_f" ]] && _pp_all_claims+=("$_f")
+    done < <(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | sort || true)
+
+    if [[ "${#_pp_all_claims[@]}" -gt 0 && -n "$_pp_current_branch" ]]; then
+        # Find the claim file whose gap_id matches the current branch.
+        # Expected branch form: chump/<gap-id>-claim (gap-id lowercased).
+        _pp_claim_file=""
+        _pp_claimed_gap=""
+        _pp_available_gap_ids=""
+        for _f in "${_pp_all_claims[@]}"; do
+            _gap="$(jq -r '.gap_id // empty' "$_f" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+            _pp_available_gap_ids="${_pp_available_gap_ids:+$_pp_available_gap_ids,}${_gap}"
+            if [[ -n "$_gap" && "$_pp_current_branch" == "chump/${_gap}-claim" ]]; then
+                # Branch matches. Prefer session_id match when CHUMP_SESSION_ID is set.
+                _sid="$(jq -r '.session_id // empty' "$_f" 2>/dev/null || true)"
+                if [[ -n "${CHUMP_SESSION_ID:-}" && "$_sid" == "${CHUMP_SESSION_ID}" ]]; then
+                    # Exact session match — use this file and stop searching.
+                    _pp_claim_file="$_f"
+                    _pp_claimed_gap="$_gap"
+                    break
+                elif [[ -z "$_pp_claim_file" ]]; then
+                    # First branch match — record it; keep looking for a session match.
+                    _pp_claim_file="$_f"
+                    _pp_claimed_gap="$_gap"
+                fi
+            fi
+        done
+
+        if [[ -z "$_pp_claim_file" ]]; then
+            # No claim file matches the current branch. Peer leases are present but
+            # belong to other sessions/gaps. Emit diagnostic event and proceed without
+            # blocking — this push is not off-rails for the current session.
+            mkdir -p "$(dirname "$_pp_ambient")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"prepush_lease_mismatch","branch":"%s","available_claim_files":%d,"available_gap_ids":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pp_current_branch" \
+                "${#_pp_all_claims[@]}" "$_pp_available_gap_ids" \
+                >> "$_pp_ambient" 2>/dev/null || true
+            echo "[pre-push] WARN (RESILIENT-026): ${#_pp_all_claims[@]} claim file(s) present but none match branch '$_pp_current_branch' — skipping branch check (peer leases present)." >&2
+        else
+            # Found the matching claim file. Validate current branch equals expected.
             _pp_expected="chump/${_pp_claimed_gap}-claim"
             if [[ "$_pp_current_branch" != "$_pp_expected" ]]; then
                 # Check for bypass trailer on HEAD commit
@@ -1264,7 +1313,6 @@ if [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
                     # Audit the bypass — log which field was bypassed
                     _pp_bypass_reason="$(grep -E '^Off-Rails-Bypass:' <<<"$_pp_head_msg" \
                         | head -1 | sed -E 's/^Off-Rails-Bypass:[[:space:]]*//')"
-                    _pp_ambient="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
                     mkdir -p "$(dirname "$_pp_ambient")" 2>/dev/null || true
                     printf '{"ts":"%s","kind":"off_rails_bypassed","claimed_gap":"%s","bypassed_field":"branch","current_branch":"%s","expected_branch":"%s","reason":"%s"}\n' \
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pp_claimed_gap" \

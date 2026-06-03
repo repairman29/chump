@@ -5854,6 +5854,23 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, claimed_gap, reason]
 
+  - kind: prepush_lease_mismatch
+    effect_metric: resilient
+    emitter: scripts/git-hooks/pre-push Guard 5 (INFRA-2446)
+    trigger: >
+      Emitted by the RESILIENT-026 branch-name claim guard when one or more
+      claim-*.json files are present in .chump-locks/ but NONE of them match
+      the current branch (chump/<gap-id>-claim). This indicates peer sessions
+      are running concurrently with active leases for other gaps. The guard
+      proceeds without blocking — a peer's lease must not block unrelated
+      work — but emits this event so operators can audit parallelism patterns
+      and detect orphaned or unclaimed leases.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, branch, available_claim_files, available_gap_ids]
+    # payload: {branch: str (current branch lowercased),
+    #           available_claim_files: int (count of claim-*.json found),
+    #           available_gap_ids: str (comma-separated gap_ids from all claim files)}
+
   - kind: wizard_classify_deferred
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step1 (INFRA-2042)
