@@ -225,16 +225,18 @@ def failing_ci_jobs() -> list[str]:
     try:
         out = subprocess.check_output(
             [
-                "gh", "run", "list",
-                "--state", "failure",
-                "--limit", "20",
-                "--json", "name,status,conclusion",
+                # ZERO-WASTE-004: gh api (REST bucket) not gh run list (GraphQL).
+                # /actions/runs?status=failure -> .workflow_runs[]; map to the
+                # same {name,status,conclusion} shape the parser below expects.
+                "gh", "api",
+                "repos/{owner}/{repo}/actions/runs?status=failure&per_page=20",
+                "--jq", ".workflow_runs | map({name, status, conclusion})",
             ],
             stderr=subprocess.DEVNULL,
             timeout=30,
         ).decode().strip()
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        warn("gh run list failed — skipping CI gap seeding")
+        warn("gh api actions/runs failed — skipping CI gap seeding")
         return []
 
     if not out:
@@ -243,7 +245,7 @@ def failing_ci_jobs() -> list[str]:
     try:
         runs = json.loads(out)
     except json.JSONDecodeError:
-        warn("Could not parse gh run list output")
+        warn("Could not parse gh api actions/runs output")
         return []
 
     seen: set[str] = set()
