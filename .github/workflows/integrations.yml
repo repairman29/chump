@@ -25,6 +25,19 @@ on:
         required: false
         default: 'per-pr'
 
+# INFRA-1378: cancel superseded PR runs so re-pushes stop burning runners to
+# completion. integrations had NO concurrency block, so every force-push to a PR
+# branch spawned a fresh ~11min run while the old one kept a self-hosted runner
+# busy — a major contributor to the runner-saturation that stalls the merge queue.
+# DEADLOCK-SAFE (the INFRA-2452 class): only pull_request runs share a cancellable
+# group (keyed by PR number); push, merge_group, and schedule runs key on the
+# unique run_id so they are NEVER cancelled. This matters because the required
+# check "ACP protocol smoke test" runs in this workflow on merge_group — cancelling
+# a merge-queue run would fail the required check and wedge every merge.
+concurrency:
+  group: integrations-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
