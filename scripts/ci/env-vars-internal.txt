@@ -911,3 +911,5 @@ CHUMP_GAP_SUPERVISOR_MAX_RESTARTS
 CHUMP_GAP_SUPERVISOR_STATE
 # detected in: (standard input)
 CHUMP_GAP_SUPERVISOR_WINDOW_S
+# detected in: scripts/coord/chump-commit.sh (RESILIENT-065: cargo fmt timeout knob)
+CHUMP_AUTO_FMT_TIMEOUT
