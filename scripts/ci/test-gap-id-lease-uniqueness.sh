@@ -79,7 +79,9 @@ export CHUMP_HOME="$TMP"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
 # Skip gates that require network or git state.
-export CHUMP_PREFLIGHT_SKIP=1
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Use CHUMP_CLAIM_IGNORE_MAIN_HEALTH
+# to bypass the main-health gate in tests that use a synthetic repo.
+export CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1
 export CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1
 
 LOCKS_DIR="$TMP/.chump-locks"

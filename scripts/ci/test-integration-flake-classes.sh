@@ -175,7 +175,9 @@ for field in "${required_fields[@]}"; do
 done
 [[ "$missing_fields" -eq 0 ]] && ok "Test 10: all required fields present in registry entries"
 
-# ── Test 11: CHUMP_PREFLIGHT_SKIP=1 → exit 0 (testing mode) ─────────────────
+# ── Test 11: INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted — oracle still exits 0
+# when chump shim exits 0 (preflight passes). Setting the deleted var has no
+# special effect; the oracle runs normally.
 shim_dir_skip="$TMPDIR_TEST/shim-skip"
 mkdir -p "$shim_dir_skip"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$shim_dir_skip/chump"
@@ -190,9 +192,9 @@ PATH="$shim_dir_skip:$PATH" \
     bash "$ORACLE" >/dev/null 2>/dev/null || skip_exit=$?
 
 if [[ "$skip_exit" -eq 0 ]]; then
-    ok "Test 11: CHUMP_PREFLIGHT_SKIP=1 → exit 0"
+    ok "Test 11: deleted CHUMP_PREFLIGHT_SKIP has no special effect; chump exit 0 → oracle exit 0"
 else
-    fail "Test 11: CHUMP_PREFLIGHT_SKIP=1 → expected exit 0, got $skip_exit"
+    fail "Test 11: expected oracle exit 0 when chump shim exits 0, got $skip_exit"
 fi
 
 # ── summary ───────────────────────────────────────────────────────────────────

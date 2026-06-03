@@ -3,9 +3,9 @@
 #
 # Asserts the Guard 0a (chump preflight) block in scripts/git-hooks/pre-push:
 #   1. invokes `chump preflight` when the binary is available and push has Rust/scripts diff
-#   2. is bypassable via CHUMP_PREFLIGHT_SKIP=1
-#   3. skips silently when `chump` binary is unavailable
-#   4. skips when push has no Rust/scripts content
+#   2. skips silently when `chump` binary is unavailable
+#   3. skips when push has no Rust/scripts content
+#   4. INFRA-2422: CHUMP_PREFLIGHT_SKIP is deleted — no bypass env accepted
 #
 # Structural checks against the hook file itself — does NOT actually
 # install the hook in a sandbox repo (that's brittle and slow for CI).
@@ -42,11 +42,11 @@ else
     fail "hook does not call 'chump preflight'"
 fi
 
-# 3. Has the CHUMP_PREFLIGHT_SKIP bypass
+# 3. INFRA-2422: CHUMP_PREFLIGHT_SKIP must NOT appear as a bypass in the hook
 if grep -q 'CHUMP_PREFLIGHT_SKIP:-0' "$HOOK"; then
-    ok "CHUMP_PREFLIGHT_SKIP bypass gate present"
+    fail "CHUMP_PREFLIGHT_SKIP bypass still present — should be deleted (INFRA-2422)"
 else
-    fail "CHUMP_PREFLIGHT_SKIP bypass missing"
+    ok "CHUMP_PREFLIGHT_SKIP bypass absent (deleted per INFRA-2422)"
 fi
 
 # 4. Has the 'command -v chump' fallback (binary not installed)
@@ -84,11 +84,11 @@ else
     fail "missing exit 1 on preflight failure"
 fi
 
-# 7. Bypass instructions in failure message reference the trailer convention
-if echo "$guard_block" | grep -q "Preflight-Skip-Reason"; then
-    ok "failure message references audit trailer (INFRA-1673 link)"
+# 7. INFRA-2422: failure message references auto-skip (not deleted bypass)
+if echo "$guard_block" | grep -q "INFRA-2422"; then
+    ok "failure message references INFRA-2422 auto-skip (no bypass env)"
 else
-    fail "failure message missing audit-trailer guidance"
+    fail "failure message should reference INFRA-2422 auto-skip"
 fi
 
 # 8. Order: Guard 0a appears BEFORE Guard 0 (cargo fmt) in the file

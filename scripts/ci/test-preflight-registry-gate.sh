@@ -61,15 +61,13 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 AMBIENT="$TMP/ambient.jsonl"
 
-# Force the preflight to skip its OWN registry gate AND the umbrella skip,
-# but keep the bypass-emit alive. We invoke from the real repo so cargo
-# gates have something to look at, but redirect ambient to TMP.
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Use --scope docs to skip all
+# rust gates (no cargo needed) so we can test the registry bypass in isolation.
 CHUMP_AMBIENT_LOG="$AMBIENT" \
-CHUMP_PREFLIGHT_SKIP=1 \
-    "$CHUMP_BIN" preflight --scope rust 2>"$TMP/preflight.log" >&2 || true
+    "$CHUMP_BIN" preflight --scope docs 2>"$TMP/preflight.log" >&2 || true
 
-# The CHUMP_PREFLIGHT_SKIP=1 (umbrella skip) prevents anything from running,
-# so we run a second invocation that ONLY skips the registry gate.
+# Run a second invocation with ONLY the registry gate skipped via the
+# gate-specific bypass env (CHUMP_PREFLIGHT_SKIP_REGISTRY=1).
 CHUMP_AMBIENT_LOG="$AMBIENT" \
 CHUMP_PREFLIGHT_SKIP_REGISTRY=1 \
     "$CHUMP_BIN" preflight --scope all >"$TMP/preflight2.log" 2>&1 || true

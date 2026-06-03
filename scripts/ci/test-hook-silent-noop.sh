@@ -58,13 +58,18 @@ done
 run_hook() {
     local stdin="$1"
     > "$TMP/ambient.jsonl"
+    # INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Skip preflight in the hook by
+    # prepending a fake PATH dir that has no 'chump' binary — the hook's
+    # guard condition (command -v chump) fails, so preflight is skipped.
+    local fake_path_dir="$TMP/fake-path"
+    mkdir -p "$fake_path_dir"
     echo "$stdin" | \
+        PATH="$fake_path_dir:$PATH" \
         CHUMP_AMBIENT_LOG="$TMP/ambient.jsonl" \
         CHUMP_AUTOMERGE_OVERRIDE=1 \
         CHUMP_GAP_CHECK=0 \
         CHUMP_FMT_CHECK=0 \
         CHUMP_TEST_GATE=0 \
-        CHUMP_PREFLIGHT_SKIP=1 \
         CHUMP_FORCE_LEASE_CHECK=0 \
         CHUMP_CI_REGRESSION_GUARD=0 \
         CHUMP_MERGE_PREVIEW=0 \
