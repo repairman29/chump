@@ -392,6 +392,84 @@ gh pr merge <N> --auto --squash
 Opt-out of WIP checkpoints: `CHUMP_WIP_CHECKPOINT=0` — work is lost on
 timeout if set (useful for short-lived test workers only).
 
+## RESILIENT-060: Pre-dispatch guardrail (A2A L6c)
+
+**Orchestrators MUST run `agent-dispatch-guardrail.sh` BEFORE invoking the
+Agent tool.** If it exits non-zero, the dispatch must NOT proceed.
+
+### Why it exists
+
+Three incidents on 2026-06-03 where dispatched Sonnet agents wrote files
+outside their lease paths — caught only by the post-hoc git pre-commit hook,
+after the work was already done:
+
+1. RESILIENT-058 Sonnet rewrote `src/atomic_claim.rs` via stale-base rebase,
+   nearly rescinding INFRA-2524's fail-OPEN guard.
+2. INFRA-2565 Sonnet edited 5 files outside lease paths including
+   `.github/workflows/ci.yml`.
+3. RESILIENT-059 Sonnet ran `cargo test --lib` on a binary-only crate,
+   wasting 30 min on 6 false failures.
+
+The post-hoc hook (pre-commit) catches violations after the work is done.
+This guardrail catches them **before** the Agent tool fires.
+
+### Usage
+
+```bash
+# Run BEFORE every `Agent` tool call:
+bash scripts/coord/agent-dispatch-guardrail.sh <gap-id> <comma-separated-paths>
+```
+
+Exit 0 = all invariants pass — proceed with dispatch.
+Exit 1 = BLOCKED — do not dispatch. Read stderr for the specific violation.
+
+### What it checks
+
+1. **Lease path coverage** — every path the agent plans to write must be in
+   `claim.paths` of the active lease for `<gap-id>`. Always-allowed paths
+   (`.chump/state.sql`, `docs/gaps/*`, `.gitignore`) are exempt.
+2. **Branch / gap-id alignment** — current branch must start with
+   `chump/<gap-id-lower>` (e.g. gap `INFRA-2674` → branch must begin with
+   `chump/infra-2674`).
+3. **cargo fmt pre-check** — if any proposed path ends in `.rs`, runs
+   `cargo fmt --all -- --check` on the worktree before allowing dispatch.
+   A dirty worktree means the agent would inherit a lint failure it didn't
+   cause.
+
+### When the guardrail blocks
+
+**Do not bypass.** The correct responses are:
+
+- **Out-of-lease path**: expand the lease by re-claiming with `--paths`
+  including the additional file, then re-run the guardrail.
+- **Branch mismatch**: confirm you are on the correct branch for the gap.
+  If the worktree is on the wrong branch, switch before dispatching.
+- **No active lease**: run `chump claim <gap-id>` to establish a lease first.
+- **fmt dirty**: run `cargo fmt --all` in the worktree, commit, then
+  re-run the guardrail.
+
+There is no bypass env var. The escape valve is fixing the underlying
+invariant violation, not skipping the check.
+
+### Emitted events
+
+- `agent_dispatch_guardrail_passed` → dispatch may proceed
+- `agent_dispatch_guardrail_blocked` → dispatch refused; see `reason` field
+
+Both events carry `{gap_id, branch, attempted_paths, leased_paths, reason}`
+and are consumed by `ops-audit` and `fleet-brief`.
+
+### Integration point in the dispatch flow
+
+```
+1. Orchestrator selects gap + determines write paths for Sonnet brief
+2. → bash scripts/coord/agent-dispatch-guardrail.sh <gap-id> <paths>
+3.   rc=0 → invoke Agent tool with the brief
+3.   rc=1 → STOP; fix the invariant; re-run guardrail; then dispatch
+```
+
+---
+
 ## See also
 
 - [META-025](../gaps/META-025.yaml) — parent gap, dispatch-quality findings
