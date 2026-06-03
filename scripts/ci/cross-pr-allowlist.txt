@@ -17,5 +17,11 @@
 #
 # Example (do not uncomment without a real gap citation):
 #   scripts/coord/main-preflight-watchdog.sh  scripts/coord/chump-health-gate.sh  # reason: INFRA-XXXX intentional schema migration in-flight; remove once INFRA-XXXX ships
+#
+# INFRA-2534 NOTE on speed: allowlist entries are checked AFTER
+# `chump contract-scan --in-flight` completes. The allowlist does NOT
+# short-circuit the scan itself — it only filters which detected mismatches
+# fail-close vs pass-with-allowlist. If the gate runs slow, the bottleneck is
+# the scan time (948 writers × consumers per in-flight PR), not the allowlist.
 
 # (no entries yet — the gate starts with an empty allowlist)

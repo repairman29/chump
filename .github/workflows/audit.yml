@@ -460,6 +460,16 @@ jobs:
         # scripts/ci/event-registry-reserved.txt with reason comments.
         # strict mode: BOTH emit-without-register AND register-without-emit FAIL.
         run: CHUMP_REGISTRY_GATE_MODE=strict bash scripts/ci/test-event-registry-coverage.sh
+      - name: EVENT_REGISTRY audit regression — parser correctness (INFRA-2496)
+        # Guards against merge-conflict clobbers silently dropping registry kinds.
+        # Root cause: INFRA-1121 (commit 25d4219af) dropped daemon_exit_loop_*
+        # entries during conflict resolution; the audit then reported them as
+        # EMIT-NO-REG even though scanner-anchor comments were intact in the emit
+        # script. This regression test verifies: (a) the 3 INFRA-2417 kinds are
+        # present in the real registry, (b) the coverage audit exits 0 on them,
+        # (c) synthetic registered+emitted kind → no flag, (d) synthetic
+        # unregistered+emitted kind → correctly flagged.
+        run: bash scripts/ci/test-event-registry-audit-regression.sh
       - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
         # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
         # that write inline to ambient.jsonl. New emit sites should call
