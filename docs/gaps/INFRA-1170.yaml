@@ -1,9 +1,0 @@
-- id: INFRA-1170
-  domain: INFRA
-  title: "RESILIENT: per-worktree CARGO_TARGET_DIR fills /tmp; need automated reaper for inactive worktree target dirs"
-  status: open
-  priority: P1
-  effort: m
-  acceptance_criteria:
-    - "1. scripts/ops/cargo-target-reaper.sh (INFRA-1250) extended to also reap /tmp/chump-infra-*/target/ dirs where the originating git worktree no longer exists (git worktree list --porcelain shows no matching path)\n2. Emit kind=cargo_target_reaped per reaped /tmp worktree target dir with {ts, kind, path, bytes_freed, age_days, worktree_gone=true}\n3. scripts/ci/test-cargo-target-reaper.sh updated with a synthetic /tmp/chump-<gap>-<id>/target/ fixture that verifies the /tmp reap path\n4. Failure taxonomy: transient=cargo lock active; permanent=path not found; log both via ambient event with error field\n5. Cost: bytes_freed reported in cargo_target_reaper_summary ambient event alongside main-repo metrics"
-

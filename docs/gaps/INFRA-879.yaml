@@ -1,9 +1,0 @@
-- id: INFRA-879
-  domain: INFRA
-  title: "RESILIENT: API credential rotation and lifecycle management"
-  status: open
-  priority: P1
-  effort: s
-  acceptance_criteria:
-    - "1. scripts/ops/credential-lifecycle.sh checks AGE of ANTHROPIC_API_KEY and GH_TOKEN by reading creation_ts from ~/.chump/credential-meta.json (or env CHUMP_CRED_META_PATH); emits kind=credential_rotation_due when age > CHUMP_CRED_MAX_AGE_DAYS (default 90) with fields: cred_name, age_days, max_age_days. 2. --rotate-dry-run flag shows what would be rotated without writing. 3. chump fleet doctor integrates: calls credential-lifecycle.sh and includes cred_age_days in output. 4. scripts/ci/test-credential-lifecycle.sh: 8+ tests verifying event schema, age threshold, dry-run behavior."
-

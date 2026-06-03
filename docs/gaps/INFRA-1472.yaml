@@ -1,9 +1,0 @@
-- id: INFRA-1472
-  domain: INFRA
-  title: "RESILIENT: disk_critical P0 — INFRA-1349 reaper too conservative when disk <10GB; operator-action needed"
-  status: open
-  priority: P0
-  effort: xs
-  acceptance_criteria:
-    - "1. When git fetch origin/main fails but origin/main exists as a local ref, reaper continues using the cached ref and logs a WARN instead of aborting (exit 1).\n2. When git fetch fails AND no local origin/main ref exists, reaper still aborts (no regression on fresh clone).\n3. stale-worktree-reaper emits kind=reaper_fetch_fallback to ambient.jsonl when falling back to cached ref (fields: gap_id, remote, base, reason=offline).\n4. CI test scripts/ci/test-stale-worktree-reaper.sh passes: includes a fixture that blocks network access, verifies reaper runs to completion and emits reaper_fetch_fallback event.\n5. Manual smoke test: GIT_CONFIG_GLOBAL=/dev/null CHUMP_REAPER_SAFETY_CHECK=0 bash scripts/ops/stale-worktree-reaper.sh --execute --dry-run exits 0 even when origin is unreachable."
-

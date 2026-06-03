@@ -1,9 +1,0 @@
-- id: INFRA-881
-  domain: INFRA
-  title: "CREDIBLE: Gap deduplication and overlap detection"
-  status: open
-  priority: P1
-  effort: s
-  acceptance_criteria:
-    - "1. scripts/ops/gap-dedup-check.sh reads state.db via 'chump gap list', embeds gap titles using COG-046 Ollama embeddings or simple TF-IDF fallback; computes pairwise cosine similarity; reports pairs with similarity > 0.85. 2. --apply closes the lower-priority gap with a cross-reference note. 3. scripts/ci/test-gap-dedup.sh: 8+ tests using title-fixture pairs with known similarity (exact duplicates, near-dupes, distinct gaps)."
-

@@ -1,9 +1,0 @@
-- id: INFRA-1966
-  domain: INFRA
-  title: "CRITICAL: 33,730 LOC bash orchestrator (bot-merge/queue-driver/pr-rescue) racing without primitives (critique C3)"
-  status: open
-  priority: P1
-  effort: m
-  acceptance_criteria:
-    - "Failure: 33,730 LOC of bash in scripts/coord/ + scripts/dispatch/ does the orchestration-critical work (bot-merge, queue-driver, pr-rescue, pr-auto-rearm, pr-auto-rebase, worker.sh). Bash + concurrent subshells + git lock contention = unprovable race conditions."
-
