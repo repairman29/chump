@@ -121,14 +121,21 @@ _chump_gh_rate_remaining() {
 # (now + CHUMP_GH_EXHAUSTED_UNKNOWN_DEBOUNCE_S, default 60). State is shared
 # across concurrent shim invocations via .chump-locks/graphql-exhausted-debounce-state.json.
 _chump_gh_maybe_emit_exhausted() {
-    local gql_rem="${1:-0}" resets_at="${2:-0}" ambient="${3:-}"
+    # INFRA-2674: do NOT default $1 to 0 — empty/missing arg comes from a
+    # malformed _chump_gh_rate_remaining parse (e.g. `gh api rate_limit` returned
+    # an error JSON `{...}` that read drained into core_rem, leaving gql_rem
+    # empty). Coercing empty → "0" caused the threshold check to spuriously
+    # fire at 0 ≤ 100 → false graphql_exhausted cascade (31 events / 30 min
+    # observed on 2026-06-03 with live GraphQL at 4266/5000). Require explicit
+    # non-empty digit-only input before any comparison.
+    [[ -n "${1:-}" && "${1}" =~ ^[0-9]+$ ]] || return 0
+    local gql_rem="$1" resets_at="${2:-0}" ambient="${3:-}"
     local threshold="${CHUMP_GH_EXHAUSTED_THRESHOLD:-100}"
     local unknown_debounce_s="${CHUMP_GH_EXHAUSTED_UNKNOWN_DEBOUNCE_S:-60}"
 
-    # Only fire when we have a real non-negative number under threshold.
-    # AC1 (INFRA-2484): reject negative sentinels (-1 from failed rate_limit call).
-    [[ "$gql_rem" =~ ^[0-9]+$ ]] || return 0
-    [[ "$gql_rem" -ge 0 ]] || return 0
+    # Only fire when the value is under threshold.
+    # AC1 (INFRA-2484): reject negative sentinels (-1) — handled by digit-only regex above.
+    # AC1 (INFRA-2674): empty-string-as-zero coercion fixed in the guard above.
     [[ "$gql_rem" -le "$threshold" ]] || return 0
 
     local lock_dir
