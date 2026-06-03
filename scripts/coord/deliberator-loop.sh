@@ -112,6 +112,43 @@ _jq_num() {
     fi
 }
 
+# Parse multiple fields from a JSON line in a single jq call (perf: 1 fork per line).
+# Outputs: <event>\t<kind>\t<corr_id>\t<ts>\t<deadline>
+# Each field is empty if absent. Requires jq.
+_jq_proposal_fields() {
+    local line="$1"
+    printf '%s' "$line" | jq -r '
+        [ (.event // ""),
+          (.kind // ""),
+          (.corr_id // ""),
+          (.ts // ""),
+          (.deadline // "") ]
+        | join("\t")
+    ' 2>/dev/null || printf '\t\t\t\t'
+}
+
+# Parse vote fields from a JSON line in a single jq call (perf: 1 fork per line).
+# Outputs: <event>\t<kind>\t<corr_id>\t<ts>\t<vote>\t<session>
+_jq_vote_fields() {
+    local line="$1"
+    printf '%s' "$line" | jq -r '
+        [ (.event // ""),
+          (.kind // ""),
+          (.corr_id // ""),
+          (.ts // ""),
+          ((.vote // 0) | tostring),
+          (.session // "") ]
+        | join("\t")
+    ' 2>/dev/null || printf '\t\t\t\t0\t'
+}
+
+# Validate that a value is a non-empty integer (safe for bash (( )) arithmetic).
+# Returns 0 (true) if valid, 1 (false) if not.
+_is_epoch() {
+    local val="$1"
+    [[ "$val" =~ ^[0-9]+$ ]]
+}
+
 # Convert ISO8601 timestamp to epoch seconds (macOS + Linux compatible).
 _iso_to_epoch() {
     local ts="$1"
@@ -201,24 +238,30 @@ _tally_corr_id() {
     local line
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        # Filter for FEEDBACK kind=vote events matching our corr_id.
-        local line_kind line_corr line_event
-        line_event="$(_jq_field "$line" "event")"
-        line_kind="$(_jq_field "$line" "kind")"
-        line_corr="$(_jq_field "$line" "corr_id")"
+        # Parse all vote fields in a single jq call (RESILIENT-061 perf).
+        local _vf line_event line_kind line_corr line_ts vote_val voter
+        if _have_jq; then
+            IFS=$'\t' read -r line_event line_kind line_corr line_ts vote_val voter \
+                <<< "$(_jq_vote_fields "$line")"
+        else
+            line_event="$(_jq_field "$line" "event")"
+            line_kind="$(_jq_field "$line" "kind")"
+            line_corr="$(_jq_field "$line" "corr_id")"
+            line_ts="$(_jq_field "$line" "ts")"
+            vote_val="$(_jq_num "$line" "vote")"
+            voter="$(_jq_field "$line" "session")"
+        fi
         [[ "$line_event" != "FEEDBACK" ]] && continue
         [[ "$line_kind" != "vote" ]] && continue
         [[ "$line_corr" != "$corr_id" ]] && continue
 
-        # Check timestamp is within window.
-        local line_ts line_epoch
-        line_ts="$(_jq_field "$line" "ts")"
+        # Check timestamp is within window; guard epoch (RESILIENT-061).
+        local line_epoch
         line_epoch="$(_iso_to_epoch "$line_ts")"
+        if ! _is_epoch "$line_epoch"; then
+            continue  # skip votes with unparseable ts
+        fi
         (( line_epoch < window_cutoff )) && continue
-
-        local vote_val voter
-        vote_val="$(_jq_num "$line" "vote")"
-        voter="$(_jq_field "$line" "session")"
 
         if (( vote_val > 0 )); then
             (( yes++ )) || true
@@ -301,19 +344,29 @@ _cmd_tick() {
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
 
-        local line_event line_kind line_corr
-        line_event="$(_jq_field "$line" "event")"
-        line_kind="$(_jq_field "$line" "kind")"
+        # Parse all proposal fields in a single jq call (RESILIENT-061 perf).
+        local line_event line_kind line_corr line_ts deadline_str
+        if _have_jq; then
+            IFS=$'\t' read -r line_event line_kind line_corr line_ts deadline_str \
+                <<< "$(_jq_proposal_fields "$line")"
+        else
+            line_event="$(_jq_field "$line" "event")"
+            line_kind="$(_jq_field "$line" "kind")"
+            line_corr="$(_jq_field "$line" "corr_id")"
+            line_ts="$(_jq_field "$line" "ts")"
+            deadline_str="$(_jq_field "$line" "deadline")"
+        fi
         [[ "$line_event" != "FEEDBACK" ]] && continue
         [[ "$line_kind" != "proposal" ]] && continue
-
-        line_corr="$(_jq_field "$line" "corr_id")"
         [[ -z "$line_corr" ]] && continue
 
-        # Filter to window.
-        local line_ts line_epoch
-        line_ts="$(_jq_field "$line" "ts")"
+        # Filter to window; numeric-guard epoch to prevent (( )) crash (RESILIENT-061).
+        local line_epoch
         line_epoch="$(_iso_to_epoch "$line_ts")"
+        if ! _is_epoch "$line_epoch"; then
+            echo "  [deliberator] skipping proposal corr_id=${line_corr} — non-numeric ts epoch (ts=${line_ts})" >&2
+            continue
+        fi
         (( line_epoch < window_cutoff )) && continue
 
         proposals_found=1
@@ -325,10 +378,14 @@ _cmd_tick() {
         fi
 
         # Extract deadline from proposal event (default: proposal_ts + 48h).
-        local deadline_str deadline_epoch
-        deadline_str="$(_jq_field "$line" "deadline")"
+        # Numeric-guard deadline_epoch to prevent (( )) crash on bad deadline field (RESILIENT-061).
+        local deadline_epoch
         if [[ -n "$deadline_str" ]]; then
             deadline_epoch="$(_iso_to_epoch "$deadline_str")"
+            if ! _is_epoch "$deadline_epoch"; then
+                # Malformed deadline: fall back to proposal_ts + 48h
+                deadline_epoch=$(( line_epoch + 48 * 3600 ))
+            fi
         else
             deadline_epoch=$(( line_epoch + 48 * 3600 ))
         fi
@@ -434,13 +491,20 @@ _cmd_audit() {
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
 
-        local line_event line_kind line_corr
-        line_event="$(_jq_field "$line" "event")"
-        line_kind="$(_jq_field "$line" "kind")"
+        # Parse all proposal fields in a single jq call (RESILIENT-061 perf).
+        local line_event line_kind line_corr line_ts deadline_str
+        if _have_jq; then
+            IFS=$'\t' read -r line_event line_kind line_corr line_ts deadline_str \
+                <<< "$(_jq_proposal_fields "$line")"
+        else
+            line_event="$(_jq_field "$line" "event")"
+            line_kind="$(_jq_field "$line" "kind")"
+            line_corr="$(_jq_field "$line" "corr_id")"
+            line_ts="$(_jq_field "$line" "ts")"
+            deadline_str="$(_jq_field "$line" "deadline")"
+        fi
         [[ "$line_event" != "FEEDBACK" ]] && continue
         [[ "$line_kind" != "proposal" ]] && continue
-
-        line_corr="$(_jq_field "$line" "corr_id")"
         [[ -z "$line_corr" ]] && continue
 
         # Filter by corr_id if requested.
@@ -454,13 +518,18 @@ _cmd_audit() {
             continue
         fi
 
-        local line_ts line_epoch deadline_epoch
-        line_ts="$(_jq_field "$line" "ts")"
+        # Numeric-guard epoch to prevent (( )) crash on bad ts (RESILIENT-061).
+        local line_epoch deadline_epoch
         line_epoch="$(_iso_to_epoch "$line_ts")"
-        local deadline_str
-        deadline_str="$(_jq_field "$line" "deadline")"
+        if ! _is_epoch "$line_epoch"; then
+            echo "  [deliberator] skipping proposal corr_id=${line_corr} — non-numeric ts epoch (ts=${line_ts})" >&2
+            continue
+        fi
         if [[ -n "$deadline_str" ]]; then
             deadline_epoch="$(_iso_to_epoch "$deadline_str")"
+            if ! _is_epoch "$deadline_epoch"; then
+                deadline_epoch=$(( line_epoch + 48 * 3600 ))
+            fi
         else
             deadline_epoch=$(( line_epoch + 48 * 3600 ))
         fi
