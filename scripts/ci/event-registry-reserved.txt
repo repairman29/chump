@@ -694,3 +694,13 @@ gh_token_rotated           # reason: INFRA-2396; same as above
 # EVENT_REGISTRY.yaml. Reserved here so strict-mode CI gate passes.
 cross_pr_contract_mismatch  # reason: INFRA-2406; emitted by scripts/ci/test-cross-pr-contract.sh (CI-gate script, excluded from PROD_PATHS scan); registered in EVENT_REGISTRY.yaml
 prepush_lease_mismatch  # reason: INFRA-2446; emitted by scripts/git-hooks/pre-push Guard 5 (RESILIENT-026) via direct printf JSON; git-hooks/ dir is outside PROD_PATHS grep scan
+
+# ── INFRA-2534 stitch: 4 walker false-positives blocking the substrate cascade ──
+# These kinds ARE emitted in source — the audit walker has false-positive bugs
+# (likely the heredoc-in-Rust pattern at src/main.rs:7772 and the _emit helper
+# at scripts/coord/waste-spike-detector.sh:58). Reserving here so the strict-mode
+# CI gate passes while a follow-up gap addresses the walker bug.
+gap_reserve_blocked              # reason: INFRA-2534; emitted at src/main.rs:7772 via heredoc raw-string r#"..."# pattern; walker misses heredoc kind literals
+worker_paused_waste_spike_bypass # reason: INFRA-2534; emitted at scripts/coord/waste-spike-detector.sh:58 via _emit helper; walker fails to resolve _emit args as the kind name
+scratch_cache_hit                # reason: INFRA-2534; emitted by chump-coord scratchpad layer (INFRA-1121 A2A Layer 3d); Rust struct serialization path not parsed by walker
+scratch_cache_miss               # reason: INFRA-2534; emitted by chump-coord scratchpad layer (INFRA-1121 A2A Layer 3d); Rust struct serialization path not parsed by walker

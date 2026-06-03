@@ -561,6 +561,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
         "scripts/ci/test-event-registry-coverage.sh",
+        // INFRA-2496: audit parser correctness regression — guards against
+        // merge-conflict clobbers silently dropping registry kinds.
+        "scripts/ci/test-event-registry-audit-regression.sh",
         "scripts/ci/test-no-raw-gh-in-hot-paths.sh",
         "scripts/ci/check-path-filter-coverage.sh",
         "scripts/ci/test-env-var-coverage.sh",
