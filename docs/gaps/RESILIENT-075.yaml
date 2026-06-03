@@ -1,0 +1,28 @@
+- id: RESILIENT-075
+  domain: RESILIENT
+  title: "RESILIENT: git-hooks symlinked into transient /tmp worktree (install-hooks.sh ln -sf $REPO_ROOT) → ALL gates silently vanish when that claim is reaped; pin to stable main checkout + heal"
+  status: done
+  closed_pr: 3016
+  priority: P1
+  effort: s
+  notes: |
+    DONE via PR #3016: root-cause fix + recovery + resolution test.
+    - AC1 (pin to main worktree): install-hooks.sh now resolves SRC_DIR from the
+      first `git worktree list --porcelain` entry (the main checkout), never the
+      current $REPO_ROOT, + refuses to anchor hooks under /tmp|/private/tmp|/var/folders.
+    - AC5 (recovery): 21 live hook symlinks re-pointed from /private/tmp/chump-infra-2674
+      to the stable checkout (also un-masked the #3008 lean pre-commit).
+    - AC4 (test): scripts/ci/test-install-hooks-stable-target.sh 5/5, incl. isolated
+      linked-worktree resolution proof.
+    FOLLOW-UP (AC3, defense-in-depth, filed separately): an automated heal that
+    detects any .git/hooks/* (or .git/worktrees/*/hooks/*) symlink whose target is
+    under /tmp and re-points it, wired into chump-fleet-bootstrap.sh --check (warn)
+    + the infra-watcher substrate tick (auto-heal). Not blocking — the root cause is
+    fixed so new /tmp-pinning can't recur via install-hooks; the heal only matters if
+    some other path re-introduces it.
+  acceptance_criteria:
+    - "DONE: scripts/setup/install-hooks.sh pins symlink target to the MAIN checkout (first `git worktree list --porcelain` entry), never the current $REPO_ROOT, + refuses /tmp anchoring."
+    - Because core.hooksPath is a shared (.git/config) setting, ALL worktrees run the same .git/hooks/* — so a single /tmp-pinned symlink breaks gates fleet-wide, silently. The fix guarantees the target outlives any single claim.
+    - "FOLLOW-UP: auto-heal detecting /tmp-pinned hook symlinks, wired into bootstrap --check (warn) + infra-watcher tick (auto-heal)."
+    - "DONE: regression test asserts the resolution returns the main checkout from a linked worktree (scripts/ci/test-install-hooks-stable-target.sh, 5/5)."
+    - "DONE: recovery applied to the live repo (21 symlinks re-pointed to the stable checkout). RESILIENT — gate-integrity / silent-failure class."
