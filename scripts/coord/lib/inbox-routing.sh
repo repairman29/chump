@@ -90,7 +90,14 @@ resolve_inbox_targets() {
 
     # Deduplication scratch file (no associative arrays in bash 3.2).
     local seen_file; seen_file="$(mktemp /tmp/ir-seen.XXXXXX)"
-    trap 'rm -f "$seen_file"' RETURN
+    # INFRA-2495: single-quoted trap defers $seen_file expansion until RETURN,
+    # by which point the `local` variable is out of scope. Under `set -u` this
+    # crashes with "seen_file: unbound variable" and breaks the MANDATORY
+    # pre-flight `chump-inbox.sh read --no-advance` from CLAUDE.md.
+    # Fix: bake the path into the trap command at SET time via double-quoting
+    # (the mktemp path has no shell metacharacters so single-quote wrapping
+    # after expansion is safe).
+    trap "rm -f '$seen_file'" RETURN
 
     _ir_maybe_print() {
         local p="$1"

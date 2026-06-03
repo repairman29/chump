@@ -1,0 +1,9 @@
+- id: INFRA-2495
+  domain: INFRA
+  title: "RESILIENT: chump-inbox.sh fails on line 95 — seen_file unbound variable under set -u"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"scripts/coord/chump-inbox.sh line 95: seen_file variable referenced under set -u but not initialized — add :- default OR declare local seen_file= at function entry\", \"Regression test scripts/ci/test-chump-inbox-read.sh: clean shell + set -u + run chump-inbox.sh read --no-advance; assert rc=0 and no unbound-variable error\", \"Mandatory pre-flight script (per CLAUDE.md MANDATORY pre-flight section) MUST exit 0 — currently breaks the session-start gate\"]"
+
