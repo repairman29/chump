@@ -75,6 +75,19 @@ if (( ${#VIOLATIONS[@]} == 0 )); then
     exit 0
 fi
 
+# INFRA-2522: warn-only by default (mirrors obs-budget / INFRA-2425). Rust-first
+# is a heuristic discipline nudge — not a correctness gate — and is local-only
+# (0 CI workflows enforce it). Per the commit→merge audit
+# (docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md), gates of this class warn
+# rather than block. The detailed guidance + bypass-trailer machinery below now
+# run only under CHUMP_RUST_FIRST_BLOCK=1 (opt-in hard enforcement).
+if [[ "${CHUMP_RUST_FIRST_BLOCK:-0}" != "1" ]]; then
+    echo "[rust-first] WARN (advisory, INFRA-2522): ${#VIOLATIONS[@]} shell file(s) may meet the Rust-first criteria — consider a 'chump <verb>' subcommand:" >&2
+    for _v in "${VIOLATIONS[@]}"; do echo "    - ${_v}" >&2; done
+    echo "[rust-first] Not blocking (heuristic, local-only). Set CHUMP_RUST_FIRST_BLOCK=1 to enforce." >&2
+    exit 0
+fi
+
 # Check for Rust-First-Bypass trailer in the staged commit message.
 # When the hook runs from `git commit`, COMMIT_EDITMSG is the source.
 #
