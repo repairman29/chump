@@ -1,0 +1,9 @@
+- id: DOC-065
+  domain: DOC
+  title: "DOC: A2A master plan Phase B mid-pivot handoff doc — 25 PRs merged today, follow-ups filed (INFRA-2662/2663/2664/2665)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"docs/process/HANDOFF_2026-06-03_A2A_PHASE_B_PIVOT.md captures: phase A/B1/A-insert/B2 status, in-flight PR #3003 RESILIENT-059 + recovery history, what is not done (B3 / M2 gate / 4 follow-ups), 25 PRs merged today by category, 5 lessons learned (Sonnet-rescue pattern, stale-base, --lib gotcha, token waste, what to do differently), open coordination state, recommended next-session entry point\",\n\"4 follow-up gap YAMLs land alongside: docs/gaps/INFRA-2662.yaml, INFRA-2663.yaml, INFRA-2664.yaml, INFRA-2665.yaml\",\n\"Provides a complete handoff so the next session opens the doc and knows exactly where things stand\"\n]"
+
