@@ -152,6 +152,13 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
             }
         }
 
+        // MISSION-008: when outcomes exist, a gap with a non-null outcome_id FK
+        // is considered "traced" even if its ID doesn't appear in ROADMAP.md.
+        // This replaces the regex-over-ROADMAP.md path for traced gaps while
+        // keeping the ROADMAP.md regex as fallback when outcomes table is empty.
+        let outcomes = gs.list_outcomes().unwrap_or_default();
+        let use_outcome_join = !outcomes.is_empty();
+
         // INFRA-1145: collect all gap IDs referenced in the roadmap.
         let all_roadmap_ids: std::collections::HashSet<String> = weeks
             .iter()
@@ -160,11 +167,22 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
             .map(|g| g.id.clone())
             .collect();
 
-        // INFRA-1145: untraced_p0 — open P0/P1 gaps not in any ROADMAP week.
+        // INFRA-1145 / MISSION-008: untraced_p0 — open P0/P1 gaps not traced.
+        // A gap is traced if it appears in a ROADMAP.md week (original path) OR
+        // has a non-null outcome_id FK (new path; only active when outcomes exist).
         for row in &all_open {
             let priority = row.priority.as_str();
-            if (priority == "P0" || priority == "P1") && !all_roadmap_ids.contains(&row.id) {
-                untraced_p0.push(row.id.clone());
+            if priority == "P0" || priority == "P1" {
+                let in_roadmap = all_roadmap_ids.contains(&row.id);
+                let has_outcome_fk = use_outcome_join
+                    && row
+                        .outcome_id
+                        .as_ref()
+                        .map(|s| !s.is_empty())
+                        .unwrap_or(false);
+                if !in_roadmap && !has_outcome_fk {
+                    untraced_p0.push(row.id.clone());
+                }
             }
         }
 

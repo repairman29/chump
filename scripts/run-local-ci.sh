@@ -196,6 +196,14 @@ check_gap_audit_priorities() {
     bash "$REPO_ROOT/scripts/ci/test-gap-audit-priorities.sh" >/dev/null 2>&1
 }
 
+# MISSION-008: outcome migration idempotency + advisory-only close test.
+check_gap_outcome_migration() {
+    if [[ ! -f "$REPO_ROOT/scripts/ci/test-gap-outcome-migration.sh" ]]; then
+        return 0  # Skip if test doesn't exist
+    fi
+    bash "$REPO_ROOT/scripts/ci/test-gap-outcome-migration.sh" >/dev/null 2>&1
+}
+
 check_cli_integration() {
     if [[ ! -f "$REPO_ROOT/scripts/ci/test-cli-integration.sh" ]]; then
         return 0  # Skip if test doesn't exist
@@ -380,6 +388,19 @@ main() {
 
     if should_run_check "gap audit-priorities"; then
         if ! run_check "gap audit-priorities" check_gap_audit_priorities; then
+            exit_code=1
+            if [[ "$CONTINUE_ON_ERROR" == 0 ]]; then
+                if [[ "$OUTPUT_JSON" == 1 ]]; then
+                    output_json_results
+                fi
+                exit 1
+            fi
+        fi
+    fi
+
+    # MISSION-008: outcome migration idempotency + advisory-only close test.
+    if should_run_check "gap outcome-migration"; then
+        if ! run_check "gap outcome-migration" check_gap_outcome_migration; then
             exit_code=1
             if [[ "$CONTINUE_ON_ERROR" == 0 ]]; then
                 if [[ "$OUTPUT_JSON" == 1 ]]; then

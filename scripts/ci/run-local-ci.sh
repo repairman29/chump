@@ -135,6 +135,7 @@ run_test_script 1 "$SCRIPTS_CI/test-rust-first-bypass-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-ac-completeness-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-ac-coverage-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-gap-audit-priorities.sh"
+run_test_script 1 "$SCRIPTS_CI/test-gap-outcome-migration.sh"   # MISSION-008
 run_test_script 1 "$SCRIPTS_CI/test-event-registry-audit.sh"
 run_test_script 1 "$SCRIPTS_CI/test-env-vars-internal-coverage.sh"
 run_test_script 1 "$SCRIPTS_CI/test-registry-orphan.sh"
