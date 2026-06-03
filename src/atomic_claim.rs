@@ -991,6 +991,58 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // unreachable endpoint; bypass via CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1.
     nugget_prefetch::prefetch_and_print(&args.repo_root, &args.gap_id, &session_id);
 
+    // INFRA-2628: fresh-fetch immediately before worktree provisioning.
+    //
+    // The initial fetch at step 1 (line ~537) happens early in run_claim.
+    // By the time we reach worktree provisioning the caller may have held
+    // a long-running pre-flight check (main-health gate, overlap scan,
+    // nugget prefetch, etc.) — enough time for origin/main to advance.
+    // A stale worktree base is the 2026-06-03 reproducer: Sonnet worked
+    // for ~30 min, main moved (PR #2987 / INFRA-2524), and the diff would
+    // have rescinded a 66-line safety guard if the orchestrator hadn't
+    // caught it manually.
+    //
+    // This fetch is best-effort: network failures emit a warning but do
+    // not abort claim (same policy as step-1 fetch).
+    {
+        let fetch_args = [
+            "fetch",
+            args.remote.as_str(),
+            args.base_branch.as_str(),
+            "--quiet",
+        ];
+        match run_git(&args.repo_root, &fetch_args) {
+            Ok(_) => {
+                // Log the new HEAD so the operator can verify the base is current.
+                let new_head = run_git(
+                    &args.repo_root,
+                    &[
+                        "rev-parse",
+                        "--short",
+                        &format!("{}/{}", args.remote, args.base_branch),
+                    ],
+                )
+                .unwrap_or_else(|_| "unknown".to_string());
+                eprintln!(
+                    "[claim] INFRA-2628: fetched {}/{} (HEAD: {})",
+                    args.remote,
+                    args.base_branch,
+                    new_head.trim()
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "[claim] INFRA-2628: warn — fetch {}/{} failed (offline?): {}",
+                    args.remote, args.base_branch, e
+                );
+                eprintln!(
+                    "[claim] INFRA-2628: proceeding with last-known {}/{} ref; rebase before push.",
+                    args.remote, args.base_branch
+                );
+            }
+        }
+    }
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,

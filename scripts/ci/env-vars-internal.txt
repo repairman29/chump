@@ -911,3 +911,26 @@ CHUMP_GAP_SUPERVISOR_MAX_RESTARTS
 CHUMP_GAP_SUPERVISOR_STATE
 # detected in: (standard input)
 CHUMP_GAP_SUPERVISOR_WINDOW_S
+CHUMP_AUTOMERGE_OVERRIDE
+# detected in: (standard input)
+CHUMP_BOT_MERGE_IN_PROGRESS
+# detected in: (standard input)
+CHUMP_BYPASS_BOT_MERGE
+# detected in: (standard input)
+CHUMP_BYPASS_TRAILER_CHECK
+# detected in: (standard input)
+CHUMP_CI_REGRESSION_GUARD
+# detected in: (standard input)
+CHUMP_CLIPPY_GATE
+# detected in: (standard input)
+CHUMP_FIXTURE_AUTHOR_GUARD
+# detected in: (standard input)
+CHUMP_FMT_CHECK
+# detected in: (standard input)
+CHUMP_GAP_CHECK
+# detected in: (standard input)
+CHUMP_OFF_RAILS_CHECK
+# detected in: (standard input)
+CHUMP_STALE_REBASE_MAX_BEHIND
+# detected in: (standard input)
+CHUMP_TEST_GATE
