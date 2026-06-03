@@ -29,8 +29,14 @@ const POLL_INTERVAL: Duration = Duration::from_secs(60);
 /// Fetch `gh api rate_limit` synchronously (blocking). Called from the
 /// background tokio task via `spawn_blocking`.
 fn fetch_rate_limit_blocking() -> serde_json::Value {
+    // AC4 (INFRA-2484): bypass the chump_gh shim so this telemetry-only poll
+    // does not itself trigger rate-recording or exhausted-emit cycles.
+    // CHUMP_GH_NO_SHIM=1   — skip the PATH shim's recording path entirely.
+    // CHUMP_GH_SILENT=1    — suppress emission inside any sourced github.sh.
     let out = std::process::Command::new("gh")
         .args(["api", "rate_limit"])
+        .env("CHUMP_GH_NO_SHIM", "1")
+        .env("CHUMP_GH_SILENT", "1")
         .output();
 
     match out {
