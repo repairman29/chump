@@ -133,12 +133,15 @@ else
     fail "--vs flag not found in 'chump preflight --help' output"
 fi
 
-echo "=== checking --vs accepted without crash (CHUMP_PREFLIGHT_SKIP=1) ==="
-SKIP_OUT="$(CHUMP_PREFLIGHT_SKIP=1 "$CHUMP_BIN" preflight --vs origin/main 2>&1 || true)"
-if echo "$SKIP_OUT" | grep -qi "skip"; then
-    pass_msg "--vs + CHUMP_PREFLIGHT_SKIP=1 exits cleanly"
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Test that --vs flag is parsed
+# without crash by using --help (safe, no gates run).
+echo "=== checking --vs accepted without crash (via --help flag parsing) ==="
+VS_HELP_OUT="$("$CHUMP_BIN" preflight --vs origin/main --help 2>&1 || true)"
+if echo "$VS_HELP_OUT" | grep -qi "vs\|help\|usage"; then
+    pass_msg "--vs flag parsed without crash (--help exits cleanly)"
 else
-    fail "unexpected output: $SKIP_OUT"
+    # --help always exits 0; if we get here the binary is broken
+    fail "unexpected output from preflight --vs --help: $VS_HELP_OUT"
 fi
 
 echo "=== verifying baseline cache JSON round-trip (parse unit tests) ==="

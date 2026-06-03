@@ -22,7 +22,7 @@
 #   CHUMP_BISECT_WORKTREE   path to integration worktree for preflight
 #                           (default: current directory)
 #   CHUMP_AMBIENT_DISABLE   set to 1 to suppress ambient emit (useful in tests)
-#   CHUMP_PREFLIGHT_SKIP    set to 1 to skip preflight entirely (testing only)
+#   (CHUMP_PREFLIGHT_SKIP deleted per INFRA-2422 — no env skip accepted)
 #
 # Ambient event emitted: kind=bisect_step_evaluated
 #   Fields: commit, outcome (good|bad|skip), duration_s, matched_class
@@ -84,11 +84,8 @@ trap 'rm -f "$PREFLIGHT_LOG"' EXIT
 log "Running chump preflight in $WORKTREE ..."
 preflight_exit=0
 
-if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" == "1" ]]; then
-    log "CHUMP_PREFLIGHT_SKIP=1 — treating as good (testing mode only)"
-    emit_ambient "good" "none" "$(elapsed_s)"
-    exit 0
-fi
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Preflight auto-skips main-RED
+# gates internally. No env override accepted. Always run preflight.
 
 (cd "$WORKTREE" && chump preflight) >"$PREFLIGHT_LOG" 2>&1 || preflight_exit=$?
 

@@ -49,11 +49,11 @@ if [[ "${1:-}" == "--self-test" ]]; then
     local tmpdir
     tmpdir="$(mktemp -d)"
     local fake_list="$tmpdir/allowlist.txt"
-    # Use a minimal allowlist for self-tests that includes CHUMP_PREFLIGHT_SKIP
-    # so we can test the allowlist-hit path.
+    # Use a minimal allowlist for self-tests. CHUMP_PREFLIGHT_SKIP is deleted
+    # (INFRA-2422) so we use CHUMP_AUDIT_BYPASS as the allowlist-hit test case.
     printf '%s\n' \
       '# self-test allowlist' \
-      'CHUMP_PREFLIGHT_SKIP  # grandfathered; deletion target INFRA-2422' \
+      'CHUMP_AUDIT_BYPASS  # grandfathered; deletion gap TBD' \
       > "$fake_list"
     local out
     local actual_exit=0
@@ -80,8 +80,9 @@ if [[ "${1:-}" == "--self-test" ]]; then
     1
 
   # Case 2: New bypass var IN allowlist → exit 0
-  run_case "new CHUMP_PREFLIGHT_SKIP in allowlist" \
-    '+CHUMP_PREFLIGHT_SKIP=1' \
+  # (CHUMP_PREFLIGHT_SKIP deleted per INFRA-2422; using CHUMP_AUDIT_BYPASS as allowlist-hit test)
+  run_case "new CHUMP_AUDIT_BYPASS in allowlist" \
+    '+CHUMP_AUDIT_BYPASS=1' \
     0
 
   # Case 3: *_DISABLED var (Category B kill-switch) → exit 0 (exempt)

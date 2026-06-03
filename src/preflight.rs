@@ -14,8 +14,10 @@
 //! Each step prints its name + duration + status. Exits non-zero on the
 //! first failure (unless `--keep-going`).
 //!
-//! Bypass: `CHUMP_PREFLIGHT_SKIP=1` short-circuits the whole thing (with
-//! a warning). Audit-logged via `chump-commit.sh` per INFRA-1673.
+//! INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. When origin/main itself is
+//! failing a gate (main-RED), preflight reads .chump/main-preflight-state.json
+//! and auto-skips ONLY the failing gates (kind=preflight_main_red_skip).
+//! No agent-side override env var is needed or honored.
 //!
 //! Speed targets (INFRA-1672):
 //!   `--scope docs`     <5s   (no cargo, no scripts gates)
@@ -399,8 +401,9 @@ OPTIONS:
     -h, --help      This message
 
 BYPASS:
-    CHUMP_PREFLIGHT_SKIP=1   Skip everything (with audit warning).
-                             Add 'Preflight-Skip-Reason: <why>' to commit body.
+    Main-RED auto-skip (INFRA-2422): when origin/main itself is failing a
+    gate, preflight reads .chump/main-preflight-state.json and auto-skips
+    only those failing gates with a logged reason. No env override needed.
     CHUMP_PREFLIGHT_SKIP_REGISTRY=1   Skip event-registry-audit (INFRA-1731).
     CHUMP_PREFLIGHT_SKIP_DOCSDELTA=1  Skip docs-delta-trailer (INFRA-1788).
     CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
@@ -595,12 +598,6 @@ pub fn run(argv: &[String]) -> i32 {
         );
         return 2;
     }
-    if std::env::var("CHUMP_PREFLIGHT_SKIP").as_deref() == Ok("1") {
-        eprintln!("⚠  chump preflight: CHUMP_PREFLIGHT_SKIP=1 — skipping");
-        eprintln!("   Add 'Preflight-Skip-Reason: <why>' to your commit body for audit.");
-        return 0;
-    }
-
     let repo_root = match find_repo_root() {
         Some(p) => p,
         None => {
@@ -618,6 +615,19 @@ pub fn run(argv: &[String]) -> i32 {
         return 2;
     }
 
+    // INFRA-2422: read main-preflight state BEFORE scope so we can report
+    // which gates will be auto-skipped due to trunk-RED.
+    let main_red_gates = read_main_preflight_failing_gates(&repo_root);
+    let trunk_fix_gap_id = if main_red_gates.is_empty() {
+        String::new()
+    } else {
+        read_trunk_fix_gap_id(&repo_root)
+    };
+    // Helper: returns true when a gate should be auto-skipped because
+    // origin/main is already failing it (zero-bypass: no env override needed).
+    let is_main_red_gate =
+        |gate_name: &str| -> bool { main_red_gates.iter().any(|g| g == gate_name) };
+
     let scope = resolve_scope(args.scope, &repo_root);
     eprintln!(
         "[preflight] scope={} (--scope {:?})",
@@ -630,6 +640,16 @@ pub fn run(argv: &[String]) -> i32 {
     }
     if !scope.scripts && args.with_tests {
         eprintln!("[preflight] skipping scripts gates (no scripts files in scope)");
+    }
+    if !main_red_gates.is_empty() {
+        eprintln!(
+            "[preflight] main-RED: auto-skipping {} gate(s) failing on origin/main: [{}]",
+            main_red_gates.len(),
+            main_red_gates.join(", ")
+        );
+        if !trunk_fix_gap_id.is_empty() {
+            eprintln!("[preflight]   trunk fix tracked in: {}", trunk_fix_gap_id);
+        }
     }
 
     let mut steps: Vec<Step> = vec![];
@@ -1180,6 +1200,30 @@ pub fn run(argv: &[String]) -> i32 {
     }
 
     for s in &steps {
+        // INFRA-2422: auto-skip gates that are already failing on origin/main.
+        // This replaces the deleted CHUMP_PREFLIGHT_SKIP=1 env bypass. Only
+        // the specific failing gate is skipped; all other gates run normally.
+        if is_main_red_gate(s.name) {
+            eprintln!(
+                "[preflight] skipping {} (main-red — see {})",
+                s.name,
+                if trunk_fix_gap_id.is_empty() {
+                    "watchdog state"
+                } else {
+                    &trunk_fix_gap_id
+                }
+            );
+            emit_main_red_skip(s.name, &trunk_fix_gap_id);
+            head_outcomes.push((s.name.to_string(), Status::Skipped, 0));
+            if args.json {
+                json_results.push(format!(
+                    r#"{{"step":"{}","status":"Skipped","elapsed_ms":0,"reason":"main-red"}}"#,
+                    s.name
+                ));
+            }
+            continue;
+        }
+
         eprint!("[preflight] {} ... ", s.name);
         let out = run_step(s);
         let symbol = match out.status {
@@ -1335,7 +1379,7 @@ pub fn run(argv: &[String]) -> i32 {
                 new_failures.len(),
                 total_ms
             );
-            eprintln!("   Bypass: CHUMP_PREFLIGHT_SKIP=1 + 'Preflight-Skip-Reason: <why>' trailer");
+            eprintln!("   Fix the failing gate(s) or wait for trunk fix (if main is also RED).");
             return 1;
         } else if !preexisting.is_empty() {
             eprintln!(
@@ -1367,7 +1411,7 @@ pub fn run(argv: &[String]) -> i32 {
             "\n[preflight] FAIL — at least one gate did not pass (total {}ms)",
             total_ms
         );
-        eprintln!("   Bypass: CHUMP_PREFLIGHT_SKIP=1 + 'Preflight-Skip-Reason: <why>' trailer");
+        eprintln!("   Fix the failing gate(s) or wait for trunk fix (if main is also RED).");
         1
     } else {
         eprintln!("\n[preflight] PASS — all gates green ({}ms)", total_ms);
@@ -1389,6 +1433,119 @@ fn find_repo_root() -> Option<std::path::PathBuf> {
     } else {
         Some(std::path::PathBuf::from(path))
     }
+}
+
+// ─── INFRA-2422: main-red-aware gate auto-skip ─────────────────────────────
+//
+// Reads `.chump/main-preflight-state.json` written by the
+// main-preflight-watchdog daemon (INFRA-2397 + INFRA-2404).
+// Returns the list of gate names currently failing on origin/main.
+// When a gate is in this list, preflight auto-skips it with a logged
+// reason rather than blocking the contributor's work.
+//
+// Shape of the JSON (subset we care about):
+//   {"state":"RED","failing_gates":["event-registry-audit"],"filed_gaps":["INFRA-NNNN"]}
+//
+// Any parse error or missing file → empty Vec (no gates auto-skipped).
+fn read_main_preflight_failing_gates(repo_root: &std::path::Path) -> Vec<String> {
+    let state_path = repo_root.join(".chump/main-preflight-state.json");
+    let raw = match std::fs::read_to_string(&state_path) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    // Only auto-skip when state=RED.
+    if !raw.contains("\"RED\"") && !raw.contains("\"red\"") {
+        return vec![];
+    }
+    // Extract failing_gates array. We parse manually to avoid a serde dep.
+    // Pattern: "failing_gates":["gate1","gate2"]
+    let gates_start = match raw.find("\"failing_gates\"") {
+        Some(i) => i,
+        None => return vec![],
+    };
+    let after_key = &raw[gates_start..];
+    let arr_start = match after_key.find('[') {
+        Some(i) => i,
+        None => return vec![],
+    };
+    let arr_end = match after_key[arr_start..].find(']') {
+        Some(i) => arr_start + i,
+        None => return vec![],
+    };
+    let arr_content = &after_key[arr_start + 1..arr_end];
+    // Extract quoted strings from the array.
+    let mut gates = vec![];
+    let mut remaining = arr_content;
+    while let Some(q_start) = remaining.find('"') {
+        let after_open = &remaining[q_start + 1..];
+        if let Some(q_end) = after_open.find('"') {
+            let gate = after_open[..q_end].trim().to_string();
+            // Skip em-dash placeholder (watchdog uses "—" when no real gate name known).
+            if !gate.is_empty() && gate != "—" && gate != "-" {
+                gates.push(gate);
+            }
+            remaining = &after_open[q_end + 1..];
+        } else {
+            break;
+        }
+    }
+    gates
+}
+
+/// Emit `preflight_main_red_skip` to ambient for a gate that was auto-skipped
+/// because origin/main is already failing it.
+// scanner-anchor: "kind":"preflight_main_red_skip"
+fn emit_main_red_skip(gate: &str, trunk_fix_gap_id: &str) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "preflight_main_red_skip".to_string(),
+        source: Some("chump-preflight".to_string()),
+        fields: vec![
+            ("gate".to_string(), gate.to_string()),
+            ("trunk_fix_gap_id".to_string(), trunk_fix_gap_id.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Read the first filed trunk-fix gap ID from `.chump/main-preflight-state.json`.
+/// Returns an empty string if none is found.
+fn read_trunk_fix_gap_id(repo_root: &std::path::Path) -> String {
+    let state_path = repo_root.join(".chump/main-preflight-state.json");
+    let raw = match std::fs::read_to_string(&state_path) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    // Extract last element of filed_gaps array.
+    let key_start = match raw.find("\"filed_gaps\"") {
+        Some(i) => i,
+        None => return String::new(),
+    };
+    let after_key = &raw[key_start..];
+    let arr_start = match after_key.find('[') {
+        Some(i) => i,
+        None => return String::new(),
+    };
+    let arr_end = match after_key[arr_start..].find(']') {
+        Some(i) => arr_start + i,
+        None => return String::new(),
+    };
+    let arr_content = &after_key[arr_start + 1..arr_end];
+    // Take the last quoted value.
+    let mut last_gap = String::new();
+    let mut remaining = arr_content;
+    while let Some(q_start) = remaining.find('"') {
+        let after_open = &remaining[q_start + 1..];
+        if let Some(q_end) = after_open.find('"') {
+            let gap = after_open[..q_end].trim().to_string();
+            if !gap.is_empty() {
+                last_gap = gap;
+            }
+            remaining = &after_open[q_end + 1..];
+        } else {
+            break;
+        }
+    }
+    last_gap
 }
 
 // ─── META-153: diff-scoped failure attribution ──────────────────────────────
@@ -1808,13 +1965,81 @@ mod tests {
         assert!(out.captured.is_some());
     }
 
+    // INFRA-2422: The old skip_via_env_returns_zero test is removed because
+    // the env bypass is deleted. The --help path exits 0 regardless.
     #[test]
-    fn skip_via_env_returns_zero() {
-        // Set env, run, restore.
-        std::env::set_var("CHUMP_PREFLIGHT_SKIP", "1");
-        let code = run(&[]);
-        std::env::remove_var("CHUMP_PREFLIGHT_SKIP");
-        assert_eq!(code, 0);
+    fn help_exits_zero() {
+        let code = run(&["--help".to_string()]);
+        assert_eq!(code, 0, "--help must exit 0");
+    }
+
+    #[test]
+    fn read_main_preflight_failing_gates_parses_red_state() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let state_path = chump_dir.join("main-preflight-state.json");
+        let mut f = std::fs::File::create(&state_path).unwrap();
+        write!(
+            f,
+            r#"{{"state":"RED","last_status":"red","failing_gates":["event-registry-audit","env-var-coverage"],"filed_gaps":["INFRA-9999"]}}"#
+        )
+        .unwrap();
+        let gates = read_main_preflight_failing_gates(dir.path());
+        assert_eq!(gates, vec!["event-registry-audit", "env-var-coverage"]);
+    }
+
+    #[test]
+    fn read_main_preflight_failing_gates_green_returns_empty() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let state_path = chump_dir.join("main-preflight-state.json");
+        let mut f = std::fs::File::create(&state_path).unwrap();
+        write!(
+            f,
+            r#"{{"state":"GREEN","last_status":"green","failing_gates":[],"filed_gaps":[]}}"#
+        )
+        .unwrap();
+        let gates = read_main_preflight_failing_gates(dir.path());
+        assert!(gates.is_empty(), "GREEN state must return empty gates");
+    }
+
+    #[test]
+    fn read_main_preflight_failing_gates_emdash_placeholder_ignored() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let state_path = chump_dir.join("main-preflight-state.json");
+        let mut f = std::fs::File::create(&state_path).unwrap();
+        // Watchdog uses "—" (em-dash) as a placeholder when gate name is unknown.
+        write!(
+            f,
+            r#"{{"state":"RED","last_status":"red","failing_gates":["—"],"filed_gaps":["INFRA-9999"]}}"#
+        )
+        .unwrap();
+        let gates = read_main_preflight_failing_gates(dir.path());
+        assert!(gates.is_empty(), "em-dash placeholder must be ignored");
+    }
+
+    #[test]
+    fn read_trunk_fix_gap_id_returns_last_filed_gap() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let state_path = chump_dir.join("main-preflight-state.json");
+        let mut f = std::fs::File::create(&state_path).unwrap();
+        write!(
+            f,
+            r#"{{"state":"RED","filed_gaps":["INFRA-1000","INFRA-2422"]}}"#
+        )
+        .unwrap();
+        let gap_id = read_trunk_fix_gap_id(dir.path());
+        assert_eq!(gap_id, "INFRA-2422");
     }
 
     // ── INFRA-1672: scope_from_paths matrix ────────────────────────────────
