@@ -226,6 +226,11 @@ SIBLING_INFRA_JOBS = {
     "coverage",
     # gap-status-check (reads github.event.pull_request.title — PR context required)
     "gap-status-check",
+    # audit-required (INFRA-2452): rollup aggregator — was in CI_YML_INFRA_JOBS when
+    # it lived in ci.yml; moved to audit.yml by INFRA-2452 but retains its infra/rollup
+    # character. Its steps are inherited audit-required bookkeeping, not local-preflight
+    # candidates. Exempt here for the same reason CI_YML_INFRA_JOBS exempts it in ci.yml.
+    "audit-required",
 }
 
 
