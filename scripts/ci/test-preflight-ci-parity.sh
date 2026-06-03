@@ -212,8 +212,11 @@ SIBLING_INFRA_JOBS = {
     "visual-diff",
     # ACP real-client integration (requires live Zed/JetBrains clients)
     "acp-real-clients", "acp-force-fire",
-    # ACP smoke test in editor-integration.yml (requires ACP harness setup)
-    "acp-smoke",
+    # ACP smoke test in integrations.yml (requires ACP harness setup; Tier-D)
+    # RESILIENT-082: renamed acp-smoke → acp-smoke-impl (impl job, skips on docs PRs)
+    # acp-smoke-required is the required-check aggregator (rollup, not a real gate)
+    # changes is the path-filter job (infrastructure, not a CI gate)
+    "acp-smoke", "acp-smoke-impl", "acp-smoke-required", "changes",
     # cargo-audit-nightly (scheduled advisory scan against advisory DB)
     "audit",
     # repo-health annotation rollup (GitHub Actions annotation API, cloud-only)
