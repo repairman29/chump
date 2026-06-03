@@ -894,3 +894,20 @@ CHUMP_AUDIT_BYPASS
 CHUMP_AUDIT_SKIP
 # detected in: (standard input)
 CHUMP_SHARD_SKIP
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_DOCTOR_SCRIPT
+# detected in: (standard input)
+CHUMP_FLEET_PICKUP_SENTINEL
+# detected in: (standard input)
+CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS
+# detected in: (standard input)
+CHUMP_FLEET_SUPERVISOR_WINDOW_S
+# detected in: (standard input)
+CHUMP_GAP_SUPERVISOR_MAX_RESTARTS
+# detected in: (standard input)
+CHUMP_GAP_SUPERVISOR_STATE
+# detected in: (standard input)
+CHUMP_GAP_SUPERVISOR_WINDOW_S

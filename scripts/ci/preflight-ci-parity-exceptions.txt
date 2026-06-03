@@ -364,3 +364,6 @@ cross-PR contract gate              # reason: INFRA-2406 — step-name fragment 
 
 # ── INFRA-2452: audit workflow isolation guard ────────────────────────────────
 test-audit-workflow-not-cancellable.sh  # reason: INFRA-2452 — inspects .github/workflows/ YAML files to assert audit job lives in audit.yml with cancel-in-progress:false; workflow-file inspection is not meaningful in preflight worktree context (no .github/ awareness); Tier-C (mirrorable once preflight can read workflows/)
+
+# ── RESILIENT-058: supervision tree regression test ───────────────────────────
+test-supervision-trees.sh  # reason: RESILIENT-058 — Tier-C (fully local, should mirror in chump preflight); src/preflight.rs mirror deferred to RESILIENT-059 Rust port gap

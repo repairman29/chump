@@ -34,3 +34,5 @@ scripts/ops/stale-gap-lock-reaper.sh
 scripts/ops/stale-pr-reaper.sh
 scripts/coord/bot-merge-watchdog.sh
 scripts/ops/auto-arm-sweeper.sh
+scripts/coord/gap-supervisor.sh    # reason: printf fallback only when ambient-emit.sh fails (flock unavailable); RESILIENT-058
+scripts/coord/fleet-supervisor.sh  # reason: printf fallback only when ambient-emit.sh fails (flock unavailable); RESILIENT-058

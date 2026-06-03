@@ -817,6 +817,9 @@ jobs:
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
+      - name: supervision trees — per-gap + fleet restart-intensity (RESILIENT-058)
+        run: bash scripts/ci/test-supervision-trees.sh
+
       - name: fleet starve auto-action (INFRA-391)
         run: bash scripts/ci/test-fleet-starve-auto-action.sh
 

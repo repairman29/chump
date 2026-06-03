@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.fleet-supervisor — RESILIENT-058 LaunchAgent.
+
+  Fleet-aggregate supervision tree layer. Aggregates kind=gap_supervisor_escalated
+  events from ambient.jsonl. When CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS (default 2)
+  escalations accumulate in CHUMP_FLEET_SUPERVISOR_WINDOW_S (default 600s = 10 min),
+  creates .chump-locks/.fleet-pickup-paused sentinel to halt new gap claims.
+  Recovery: runs fleet-doctor-strict.sh; on rc=0 removes sentinel.
+
+  MOTIVATING INCIDENT (2026-06-03): fleet supervisor at this layer would have
+  paused pickup after the 2nd escalation, saving 90+ minutes of operator time.
+  See: docs/design/A2A_MASTER_PLAN_2026-06-03.md §1.L6, §M2
+       docs/gaps/RESILIENT-058.yaml
+
+  INSTALLATION (use scripts/setup/chump-fleet-bootstrap.sh; or manual):
+    1. Edit this file: replace /Users/jeffadkins/Projects/Chump with your repo path.
+    2. cp .chump/launchd/com.chump.fleet-supervisor.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.fleet-supervisor.plist
+    4. Verify: launchctl list | grep chump.fleet-supervisor
+    5. Manual run: launchctl start com.chump.fleet-supervisor
+       Logs: tail /Users/jeffadkins/.chump/logs/fleet-supervisor.out
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.fleet-supervisor.plist
+    rm ~/Library/LaunchAgents/com.chump.fleet-supervisor.plist
+
+  Tunables (set as EnvironmentVariables below or override at runtime):
+    CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS=2  — escalations before pause (default 2)
+    CHUMP_FLEET_SUPERVISOR_WINDOW_S=600       — rolling window seconds (default 600)
+    CHUMP_AMBIENT_LOG=<path>                  — override ambient.jsonl path
+    CHUMP_FLEET_PICKUP_SENTINEL=<path>        — override sentinel file path
+    CHUMP_FLEET_DOCTOR_SCRIPT=<path>          — override fleet-doctor-strict path
+
+  Cadence: 300s — recovery check every 5 min prevents long stuck-pause windows
+  while avoiding thundering-herd fleet-doctor-strict calls.
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.fleet-supervisor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/fleet-supervisor.sh</string>
+    <string>tick</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <!-- Every 300 seconds (5 min) — recovery check cadence. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <!-- RunAtLoad=true: exercises the daemon immediately on install. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jeffadkins/.chump/logs/fleet-supervisor.out</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/jeffadkins/.chump/logs/fleet-supervisor.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- META-248: explicit absolute path to ambient.jsonl. -->
+    <key>CHUMP_AMBIENT_LOG</key>
+    <string>/Users/jeffadkins/Projects/Chump/.chump-locks/ambient.jsonl</string>
+    <key>REPO_ROOT</key>
+    <string>/Users/jeffadkins/Projects/Chump</string>
+    <!-- Uncomment to tune thresholds: -->
+    <!-- <key>CHUMP_FLEET_SUPERVISOR_MAX_ESCALATIONS</key> -->
+    <!-- <string>2</string> -->
+    <!-- <key>CHUMP_FLEET_SUPERVISOR_WINDOW_S</key> -->
+    <!-- <string>600</string> -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
