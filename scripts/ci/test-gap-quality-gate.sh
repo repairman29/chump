@@ -47,11 +47,12 @@ else
     fail "INFRA-904 missing from validate-gap-quality.sh"
 fi
 
-# 13. Added to ci.yml
-if grep -q 'validate-gap-quality\|INFRA-904' "$CI_YML" 2>/dev/null; then
-    ok "validate-gap-quality.sh referenced in ci.yml"
+# 13. Added to ci.yml or audit.yml (INFRA-2452 moved gap-quality gate to audit.yml)
+AUDIT_YML="$REPO_ROOT/.github/workflows/audit.yml"
+if grep -q 'validate-gap-quality\|INFRA-904' "$CI_YML" 2>/dev/null ||    grep -q 'validate-gap-quality\|INFRA-904' "$AUDIT_YML" 2>/dev/null; then
+    ok "validate-gap-quality.sh referenced in ci.yml or audit.yml"
 else
-    fail "validate-gap-quality.sh missing from ci.yml"
+    fail "validate-gap-quality.sh missing from ci.yml and audit.yml"
 fi
 
 # ── Functional tests ──────────────────────────────────────────────────────────
