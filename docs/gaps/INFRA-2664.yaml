@@ -1,0 +1,9 @@
+- id: INFRA-2664
+  domain: INFRA
+  title: "RESILIENT P1: emit kind=sub_agent_dispatched + sub_agent_completed events from Agent-tool dispatch path — INFRA-2629 last-mile-rescuer Trigger 3 has no producer"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"INFRA-2629 last-mile-rescuer.sh Trigger 3 detects sub-agent stalls by scanning ambient for kind=sub_agent_dispatched events older than CHUMP_LAST_MILE_AGENT_STALL_S without a paired kind=sub_agent_completed event.\",\n\"But no producer in the codebase emits sub_agent_dispatched. Today every orchestrator-opus Agent-tool dispatch is invisible to this trigger.\",\n\"Add an emit at orchestrator dispatch wrapper (likely scripts/coord/chump-commit.sh has hooks; or new scripts/coord/agent-dispatch-emit.sh helper that orchestrator-opus sessions call before Agent tool invocations).\",\n\"Field shape per EVENT_REGISTRY entry filed by INFRA-2629: {ts, kind, agent_id, gap_id, dispatched_by_session, prompt_summary}.\",\n\"Verify by replaying todays 3 Sonnet drops (RESILIENT-058 / INFRA-2628 / RESILIENT-059) as synthetic events; last-mile-rescuer.sh Trigger 3 fires kind=last_mile_agent_stall_detected within 30 min.\"\n]"
+
