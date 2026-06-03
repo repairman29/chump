@@ -125,8 +125,10 @@ _chump_gh_maybe_emit_exhausted() {
     local threshold="${CHUMP_GH_EXHAUSTED_THRESHOLD:-100}"
     local unknown_debounce_s="${CHUMP_GH_EXHAUSTED_UNKNOWN_DEBOUNCE_S:-60}"
 
-    # Only fire when we have a real number under threshold.
-    [[ "$gql_rem" =~ ^-?[0-9]+$ ]] || return 0
+    # Only fire when we have a real non-negative number under threshold.
+    # AC1 (INFRA-2484): reject negative sentinels (-1 from failed rate_limit call).
+    [[ "$gql_rem" =~ ^[0-9]+$ ]] || return 0
+    [[ "$gql_rem" -ge 0 ]] || return 0
     [[ "$gql_rem" -le "$threshold" ]] || return 0
 
     local lock_dir
@@ -200,6 +202,17 @@ chump_gh_record() {
     printf '{"ts":"%s","kind":"github_api_call","script":"%s","api":"%s","remaining_core":%s,"remaining_graphql":%s,"used_ms":%d,"rc":%d}\n' \
         "$ts" "$script_tag" "$api_tag" "$core_rem" "$gql_rem" "$used_ms" "$rc" \
         >> "$ambient" 2>/dev/null || true
+
+    # AC2 (INFRA-2484): a failed gh call (rc != 0) cannot report truthful rate
+    # data — the rate_limit sub-call may also have failed, yielding sentinel -1
+    # values. Skip exhausted-emit to prevent false graphql_exhausted alarms.
+    if [[ "$rc" != "0" ]]; then
+        # AC3 (INFRA-2484): emit a debug breadcrumb so cascade triggers are auditable.
+        printf '{"ts":"%s","kind":"gh_recording_skipped_rc_nonzero","script":"%s","api":"%s","rc":%d,"used_ms":%d}\n' \
+            "$ts" "$script_tag" "$api_tag" "$rc" "$used_ms" \
+            >> "$ambient" 2>/dev/null || true
+        return 0
+    fi
 
     # INFRA-1040: fleet-wide signal when GraphQL bucket is exhausted.
     _chump_gh_maybe_emit_exhausted "$gql_rem" "$resets_at" "$ambient"

@@ -876,3 +876,12 @@ CHUMP_WORKTREE_BUILD_CACHE_SKIP
 CHUMP_MAIN_PREFLIGHT_WATCHDOG_MOCK
 # INFRA-2463: live GraphQL rate_limit threshold for bot-merge wedge guard stale-event check
 CHUMP_GRAPHQL_WEDGE_LIVE_THRESHOLD
+CHUMP_AMBIENT_OVERRIDE
+# detected in: (standard input)
+CHUMP_GH_EXHAUSTED_THRESHOLD
+# detected in: (standard input)
+CHUMP_GH_NO_PATH_INJECT
+# detected in: (standard input)
+CHUMP_GH_NO_SHIM
+# detected in: (standard input)
+CHUMP_GH_SILENT
