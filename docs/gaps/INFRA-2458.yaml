@@ -1,7 +1,7 @@
 - id: INFRA-2458
   domain: INFRA
   title: "RESILIENT P1: main-preflight-watchdog-daemon.sh gate-name extraction returns literal '—' on certain failure modes"
-  status: open
+  status: ready_to_ship
   priority: P0
   effort: s
   acceptance_criteria:
