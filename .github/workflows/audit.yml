@@ -39,6 +39,16 @@ env:
   CARGO_TERM_COLOR: always
   # INFRA-2118: per-run CARGO_TARGET_DIR — prevents cross-run build artifact collisions.
   CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+  # INFRA-2452-fix: sccache R2 env vars (mirrors ci.yml workflow-level block).
+  # RUSTC_WRAPPER is NOT set here — set per-job after sccache install to avoid
+  # the binary-not-on-PATH failure class documented in ci.yml lines 68-71.
+  SCCACHE_BUCKET: ${{ vars.SCCACHE_BUCKET || 'chump-sccache' }}
+  SCCACHE_REGION: auto
+  SCCACHE_ENDPOINT: ${{ secrets.R2_ACCOUNT_ID && format('https://{0}.r2.cloudflarestorage.com', secrets.R2_ACCOUNT_ID) || '' }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  SCCACHE_ERROR_LOG: /tmp/sccache.log
+  SCCACHE_LOG: info
 
 jobs:
   # ── audit ────────────────────────────────────────────────────────────────────
@@ -62,7 +72,7 @@ jobs:
     # to eliminate the self-hosted-Mac CI-rot tax (DOC-063 post-mortem).
     # Override: set RUNNER_AUDIT repo var to a JSON labels array if needed for diagnosis.
     runs-on: ${{ vars.RUNNER_AUDIT != '' && fromJSON(vars.RUNNER_AUDIT) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
-    timeout-minutes: 15  # smoke tests + observability assertions
+    timeout-minutes: 25  # INFRA-2452-fix: bumped 15→25 as cold-cache safety margin while sccache R2 warms
     # INFRA-1959: per-checkout state.db (CHUMP_REPO / CHUMP_LOCK_DIR for test scripts).
     env:
       CHUMP_REPO: ${{ github.workspace }}
@@ -94,6 +104,43 @@ jobs:
           shared-key: ci-audit
           # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
           prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+
+      # INFRA-2452-fix: restore sccache R2 compile cache dropped during audit extraction.
+      # Mirrors the ci.yml cargo-test job pattern (lines 1245-1303).
+      # RUSTC_WRAPPER is set via GITHUB_ENV after the health probe (not at workflow level)
+      # to avoid binary-not-on-PATH failure on steps before sccache is installed.
+      - name: Detect R2 secret presence
+        id: r2detect
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+        run: |
+          # RESILIENT-041: length floor >= 16 routes garbage creds through graceful
+          # no-cache fallback instead of crashing the toolchain (mirrors ci.yml).
+          if [ "${#R2_KEY}" -ge 16 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install sccache
+        if: steps.r2detect.outputs.configured == 'true'
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: sccache health probe
+        # INFRA-2288: degrade to no-cache if R2 unreachable; do NOT fail the job.
+        if: steps.r2detect.outputs.configured == 'true'
+        run: |
+          if ! sccache --start-server 2>/dev/null; then
+            echo "::warning::sccache --start-server failed; falling back to no-cache (INFRA-2288)"
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          else
+            {
+              echo "RUSTC_WRAPPER=sccache"
+              echo "CARGO_INCREMENTAL=0"
+              echo "SCCACHE_GHA_ENABLED=true"
+            } >> "$GITHUB_ENV"
+          fi
 
       - name: INFRA-503 — cargo audit moved to nightly cron
         run: |
@@ -440,6 +487,11 @@ jobs:
 
       - name: audit workflow not cancellable — audit job isolated from ci.yml cancel-in-progress (INFRA-2452)
         run: bash scripts/ci/test-audit-workflow-not-cancellable.sh
+
+      - name: sccache --show-stats
+        if: always() && steps.r2detect.outputs.configured == 'true'
+        continue-on-error: true
+        run: sccache --show-stats || true
 
   # ── audit-required: rollup aggregator ────────────────────────────────────────
   # INFRA-2452: moved from ci.yml alongside `audit`. The `audit-required` job
