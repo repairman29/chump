@@ -860,3 +860,13 @@ CHUMP_FRESH_EYES_SHIPS_CMD
 CHUMP_FRESH_EYES_SLO_CMD
 # detected in: (standard input)
 CHUMP_FRESH_EYES_WINDOW_MIN
+
+# ── INFRA-1121: A2A Layer 3d scratchpad prompt injection (src/briefing.rs) ──
+# Set to 0 to disable scratchpad context injection into briefings.
+# Default: inject when keys are set. Tier 2 — operator opt-out.
+CHUMP_SCRATCHPAD_INJECT
+
+# ── INFRA-2183: worktree build-cache provisioning skip (src/worktree_build_cache.rs) ──
+# Set to 1 to skip sccache config + per-worktree CARGO_TARGET_DIR setup during
+# `chump claim`. Used in CI and contexts where build-cache provisioning is unwanted.
+CHUMP_WORKTREE_BUILD_CACHE_SKIP

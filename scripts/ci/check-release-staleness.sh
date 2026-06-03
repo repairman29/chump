@@ -108,12 +108,29 @@ if [[ "$GAP_DAYS" -le "$STALENESS_DAYS" ]]; then
     echo "Results: 1 passed, 0 failed"
     exit 0
 else
-    fail "release is STALE — gap ${GAP_DAYS}d > threshold ${STALENESS_DAYS}d"
-    echo "       Latest release: $RELEASE_TAG ($RELEASE_DATE)"
-    echo "       main HEAD date: $HEAD_DATE"
-    echo "       Action: git tag vX.Y.Z && git push origin vX.Y.Z"
-    gate_emit_result "INFRA-1373" "fail" "release-stale" "tag=$RELEASE_TAG gap_days=$GAP_DAYS threshold=$STALENESS_DAYS" 2>/dev/null || true
-    echo ""
-    echo "Results: 0 passed, 1 failed"
-    exit 1
+    # INFRA-2475: advisory mode by default — staleness is a signal, not a blocker.
+    # A time-based guard must NOT hard-fail a required check and freeze the whole fleet
+    # (e.g. after an auth outage that delayed a release cut). Set
+    # CHUMP_RELEASE_STALENESS_STRICT=1 to re-enable hard-fail once cadence recovers.
+    STRICT="${CHUMP_RELEASE_STALENESS_STRICT:-0}"
+    if [[ "$STRICT" == "1" ]]; then
+        fail "release is STALE — gap ${GAP_DAYS}d > threshold ${STALENESS_DAYS}d"
+        echo "       Latest release: $RELEASE_TAG ($RELEASE_DATE)"
+        echo "       main HEAD date: $HEAD_DATE"
+        echo "       Action: git tag vX.Y.Z && git push origin vX.Y.Z"
+        gate_emit_result "INFRA-1373" "fail" "release-stale" "tag=$RELEASE_TAG gap_days=$GAP_DAYS threshold=$STALENESS_DAYS" 2>/dev/null || true
+        echo ""
+        echo "Results: 0 passed, 1 failed"
+        exit 1
+    else
+        printf '[WARN] release is STALE — gap %dd > threshold %dd (advisory; CHUMP_RELEASE_STALENESS_STRICT=1 to block)\n' \
+            "$GAP_DAYS" "$STALENESS_DAYS"
+        echo "       Latest release: $RELEASE_TAG ($RELEASE_DATE)"
+        echo "       main HEAD date: $HEAD_DATE"
+        echo "       Action: git tag vX.Y.Z && git push origin vX.Y.Z"
+        gate_emit_result "INFRA-1373" "warn" "release-stale" "tag=$RELEASE_TAG gap_days=$GAP_DAYS threshold=$STALENESS_DAYS" 2>/dev/null || true
+        echo ""
+        echo "Results: 1 passed (advisory warning), 0 failed"
+        exit 0
+    fi
 fi
