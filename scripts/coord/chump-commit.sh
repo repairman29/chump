@@ -663,6 +663,22 @@ if [[ "${CHUMP_PREFLIGHT_AUDIT:-1}" == "1" && "${CHUMP_PREFLIGHT_SKIP:-0}" == "1
     fi
 fi
 
+# RESILIENT-065: never silently abort before git commit. With `set -euo pipefail`
+# a non-zero anywhere in the auto-fix blocks below (classically a grep-no-match in
+# the INFRA-1853 env-var scan when a code commit adds no new CHUMP_* var — the
+# COMMON case) kills the script mid-way, leaving files STAGED but uncommitted with
+# ZERO output: the "stages but never commits, no error" bug. Armed HERE (after all
+# intentional gate-refusals above, which exit <665) so it only guards the
+# should-always-commit region; converts any pre-commit abort into a loud diagnostic.
+_commit_started=0
+_chump_commit_exit_trap() {
+    local _rc=$?
+    if [[ "${_commit_started:-0}" != "1" && "$_rc" -ne 0 ]]; then
+        echo "[chump-commit] ERROR: aborted (exit $_rc) BEFORE git commit — files are STAGED but NOT committed. Recover: re-run scripts/coord/chump-commit.sh, or commit manually: git commit ${GIT_ARGS[*]:-<your -m args>}" >&2
+    fi
+}
+trap _chump_commit_exit_trap EXIT
+
 # INFRA-1833: auto-fmt-on-commit. Run `cargo fmt --all` BEFORE commit so
 # the cargo fmt --check CI gate never fails. Auto-fix beats check-and-fail —
 # agents can't bypass what they don't see. Only runs when:
@@ -684,7 +700,10 @@ if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
         echo "[chump-commit] INFRA-1833: skipping cargo fmt (CHUMP_AUTO_FMT=0); audit emitted" >&2
     else
         echo "[chump-commit] INFRA-1833: cargo fmt --all (auto-fix, kills fmt-check CI failures)" >&2
-        if cargo fmt --all 2>&1 | tail -3 >&2; then
+        # RESILIENT-065: bound cargo fmt so cargo package-cache lock contention
+        # (many fleet cargo procs) can't hang the commit indefinitely. On timeout
+        # (124) or fmt failure, fall through to the non-fatal else and still commit.
+        if timeout "${CHUMP_AUTO_FMT_TIMEOUT:-120}" cargo fmt --all 2>&1 | tail -3 >&2; then
             # Re-stage any files cargo fmt touched. If nothing changed, this is a no-op.
             git add -A 2>/dev/null || true
             _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
@@ -736,7 +755,7 @@ if [[ "$_has_code_staged" -eq 1 ]] && [[ -f "$_envvar_file" ]]; then
                         echo "$ev"
                     fi
                 done
-        )
+        ) || true   # RESILIENT-065: grep-no-match (commit adds no new CHUMP_*) exits 1 under pipefail; without this guard the bare assignment trips set -e and silently aborts before git commit
         if [[ -n "$_new_envvars" ]]; then
             # Find which staged file(s) introduce each new env (breadcrumb).
             {
@@ -779,4 +798,5 @@ fi
 # closed and the lock released after git exits. With exec the FD is also
 # inherited and released on git exit — both work — but the non-exec form is
 # cleaner when callers capture the exit code via $?.
+_commit_started=1  # RESILIENT-065: past here the EXIT trap stays silent; a real git-commit failure surfaces its own exit code
 git commit "${GIT_ARGS[@]}"
