@@ -38,6 +38,37 @@ if [[ "${TEST_SELF_TEST:-0}" == "1" ]]; then
   exit $?
 fi
 
+# ── EFFECTIVE-094: bypass-var DEBT-CEILING (the addition tax) ────────────────────
+# The allowlist logic below permits growth-with-paperwork — which is exactly how
+# the count climbed 113 → 233. This is the hard ceiling: the TOTAL distinct
+# bypass/skip/check CHUMP_* var count must not EXCEED scripts/ci/bypass-var-ceiling.txt.
+# To add a var you must delete one (net-negative). The only way UP is the operator
+# editing the ceiling file with a reason. A cull (count < ceiling) prints a nudge to
+# ratchet the ceiling down, so the floor only ever falls. Skipped in --self-test.
+# DELIBERATELY no env bypass: an anti-bypass gate must not ship its own bypass var
+# (that would both defeat the purpose AND add to the count). The ONLY way up is the
+# operator editing the ceiling file — a visible, reviewed, single source of truth.
+if [[ "${1:-}" != "--self-test" ]]; then
+  _ceiling_file="$REPO_ROOT/scripts/ci/bypass-var-ceiling.txt"
+  _ceiling="$(grep -oE '^[0-9]+' "$_ceiling_file" 2>/dev/null | head -1 || true)"
+  _ceiling="${_ceiling:-99999}"
+  _now="$(grep -rhoE 'CHUMP_[A-Z0-9_]*(BYPASS|SKIP|IGNORE|_CHECK|NO_)[A-Z0-9_]*' \
+            "$REPO_ROOT/scripts" "$REPO_ROOT/src" "$REPO_ROOT/crates" 2>/dev/null \
+            | sort -u | wc -l | tr -d ' ')"
+  if [ "${_now:-0}" -gt "$_ceiling" ]; then
+    {
+      echo "[bypass-lint] FAIL (EFFECTIVE-094 debt-ceiling): bypass/skip/check var count ${_now} > ceiling ${_ceiling}."
+      echo "  To ADD a bypass var you must DELETE one — the count must ratchet DOWN, not up."
+      echo "  The only way to RAISE the ceiling is an operator editing scripts/ci/bypass-var-ceiling.txt with a reason."
+      echo "  This is the thing that reverses the 113 → 233 climb. See EFFECTIVE-089."
+    } >&2
+    exit 1
+  fi
+  if [ "${_now:-0}" -lt "$_ceiling" ]; then
+    echo "[bypass-lint] debt-ceiling OK: ${_now} < ceiling ${_ceiling} — culled $((_ceiling - _now)). Ratchet it down: echo ${_now} > scripts/ci/bypass-var-ceiling.txt" >&2
+  fi
+fi
+
 if [[ "${1:-}" == "--self-test" ]]; then
   PASS=0
   FAIL=0
