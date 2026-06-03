@@ -749,6 +749,28 @@ for line in sys.stdin:
     fi
 fi
 
+# ── RESILIENT-073: fleet kill switch — AUTONOMY_LEVEL check ─────────────────
+# Pure file read: ~/.chump/AUTONOMY_LEVEL must be >= 1 to proceed.
+# Fail-closed: missing / unreadable / non-numeric / 0 → refuse merge.
+# NO shared failure mode: does not call chump, state.db, NATS, or any daemon.
+# This check must survive a deadlocked fleet (the whole point).
+_al_file="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+_al_level=0
+if [[ -r "$_al_file" ]]; then
+    _al_raw="$(tr -d '[:space:]' < "$_al_file" 2>/dev/null || true)"
+    if [[ "$_al_raw" =~ ^[0-9]+$ ]] && [[ "$_al_raw" -gt 0 ]]; then
+        _al_level="$_al_raw"
+    fi
+fi
+if [[ "$_al_level" -eq 0 ]]; then
+    _al_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"fleet_stopped_kill_switch","source":"bot-merge","autonomy_level":%s,"note":"RESILIENT-073: bot-merge refused — fleet stopped"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${_al_level}" >> "$_al_amb" 2>/dev/null || true
+    printf '\033[0;31m[bot-merge] fleet stopped (AUTONOMY_LEVEL=%s). Run `chump fleet start` or `chump fleet level 5` to re-enable.\033[0m\n' "${_al_level}" >&2
+    exit 10
+fi
+# ── end RESILIENT-073 ────────────────────────────────────────────────────────
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── INFRA-305: hot-file rebase-loop expectation list ─────────────────────────

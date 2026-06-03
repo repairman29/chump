@@ -134,6 +134,7 @@ test-flake-autorerun.sh
 test-fleet-bootstrap.sh
 test-fleet-brief-pillar-table.sh
 test-fleet-fanout.sh
+test-fleet-kill-switch.sh       # reason: requires compiled chump binary + live bot-merge.sh invocation; cannot mirror in cargo-only preflight (RESILIENT-073)
 test-fleet-metrics-snapshot.sh
 test-fleet-race-loss.sh
 test-fleet-spec.sh

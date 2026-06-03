@@ -555,6 +555,19 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         run_doctor_probe(&args.repo_root)?;
     }
 
+    // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
+    // Must run BEFORE any state mutation (worktree creation, lease write).
+    // Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
+    // No shared failure mode: pure file read, no chump-op/DB/network.
+    if !crate::autonomy_level::is_go() {
+        let level = crate::autonomy_level::read_level(&crate::autonomy_level::default_path());
+        bail!(
+            "fleet stopped (AUTONOMY_LEVEL={}). Run `chump fleet start` or \
+             `chump fleet level 5` to re-enable the fleet.",
+            level
+        );
+    }
+
     // INFRA-2428: main-health-gate — refuse claim when main is red and route
     // claimer to the trunk-fix gap. Reads .chump/main-preflight-state.json
     // written by the watchdog daemon (INFRA-2397). Forces fix-main-first.
