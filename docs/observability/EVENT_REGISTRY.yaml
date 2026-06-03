@@ -7212,3 +7212,54 @@ events:
     fields_required: [ts, kind, gap_id, reason]
     # payload: {gap_id: str, reason: str}
     status: stable
+
+  # ── INFRA-2417: daemon-exit-loop-watcher ─────────────────────────────────
+  # NOTE: these 3 kinds were dropped by a merge-conflict resolution in
+  # INFRA-1121 (commit 25d4219af). Restored by INFRA-2496.
+  - kind: daemon_exit_loop_detected
+    effect_metric: daemon_exit_loop_recovered_within_45min
+    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
+    # scanner-anchor: "kind":"daemon_exit_loop_detected"
+    trigger: >
+      Emitted when a launchd daemon label has consecutive non-zero exits
+      >= CHUMP_DAEMON_EXIT_LOOP_THRESHOLD (default 3) as reported by
+      `launchctl print gui/<uid>/<label>`. Root cause: com.chump.integrator-daemon
+      crash-looped 145 times over 37+ hours (2026-06-02) with zero alerts.
+      This daemon closes that observation gap; worst-case detection latency is
+      3 × 15min = 45min. A P0 gap is auto-filed (idempotent via fingerprint =
+      sha256(label) first 12 chars). The `dedup` field is true on subsequent
+      ticks for the same label (no new gap filed).
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, label, fingerprint, gap_id, runs, last_exit_code, threshold]
+    # payload: {label: str, fingerprint: str, gap_id: str, runs: int,
+    #           last_exit_code: int, threshold: int, tick_id: str, dedup?: bool}
+    status: stable
+
+  - kind: daemon_exit_loop_recovered
+    effect_metric: self
+    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
+    # scanner-anchor: "kind":"daemon_exit_loop_recovered"
+    trigger: >
+      Emitted when a daemon previously in LOOP_DETECTED state (last_exit_code != 0)
+      returns to last_exit_code = 0. The auto-filed P0 gap is closed automatically
+      via `chump gap set <id> --status done`. Signals operator that the daemon
+      is healthy again without manual gap management.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, label, fingerprint, gap_id, runs, last_exit_code]
+    # payload: {label: str, fingerprint: str, gap_id: str, runs: int,
+    #           last_exit_code: int (=0), tick_id: str}
+    status: stable
+
+  - kind: daemon_exit_loop_disabled
+    effect_metric: self
+    emitter: scripts/coord/daemon-exit-loop-watcher-daemon.sh (INFRA-2417)
+    # scanner-anchor: "kind":"daemon_exit_loop_disabled"
+    trigger: >
+      Emitted when CHUMP_DAEMON_EXIT_LOOP_DISABLED is set to a non-empty value.
+      The daemon exits 0 immediately without querying any labels or filing gaps.
+      Audit trail only — allows operator to temporarily suppress the watcher
+      without leaving a silent gap in observability history.
+    consumers: [ops-audit]
+    fields_required: [ts, kind]
+    # payload: {}
+    status: stable

@@ -159,18 +159,28 @@ if [[ -n "${CHUMP_BIN_OVERRIDE:-}" ]]; then
     "$CHUMP_BIN" contract-scan --in-flight 2>/dev/null)" \
     || SCAN_EXIT=$?
 else
-  # ── Run chump contract-scan --in-flight ─────────────────────────────────────
+  # ── Run chump contract-scan --in-flight (INFRA-2534: ONCE) ──────────────────
+  # PRIOR BUG: this block called contract-scan THREE times — once for stderr
+  # progress display, once captured (discarded), once captured for real. Each
+  # call walks 948 writers × all consumers, so the triple-call tripled the
+  # audit-step wall-clock to 20+ min, causing operator-cancellation and
+  # 4 substrate PRs (#2981 / #2982 / #2983 / #2985) wedged in BLOCKED state
+  # 2026-06-03.
+  #
+  # Fix: single invocation. Capture stdout to a tempfile, tee stderr to
+  # terminal (progress visible) and to a tempfile (post-mortem). Single
+  # O(N×M) walk. ~7 min instead of ~20+ min.
   echo "[cross-pr-contract] running: chump contract-scan --in-flight"
-  SCAN_OUTPUT=""
-  SCAN_EXIT=0
-  SCAN_OUTPUT="$("$CHUMP_BIN" contract-scan --in-flight 2>&1 >/dev/null; \
-                 "$CHUMP_BIN" contract-scan --in-flight 2>/dev/null)" \
-    || true
+  SCAN_STDOUT_TMP="$(mktemp -t cross-pr-scan-stdout.XXXXXX)"
+  SCAN_STDERR_TMP="$(mktemp -t cross-pr-scan-stderr.XXXXXX)"
+  trap 'rm -f "$SCAN_STDOUT_TMP" "$SCAN_STDERR_TMP"' EXIT
 
-  # Re-run capturing stdout cleanly (stderr went to terminal above for progress)
   SCAN_EXIT=0
-  SCAN_OUTPUT="$("$CHUMP_BIN" contract-scan --in-flight 2>/dev/null)" \
-    || SCAN_EXIT=$?
+  "$CHUMP_BIN" contract-scan --in-flight \
+      > "$SCAN_STDOUT_TMP" \
+      2> >(tee "$SCAN_STDERR_TMP" >&2) \
+      || SCAN_EXIT=$?
+  SCAN_OUTPUT="$(cat "$SCAN_STDOUT_TMP")"
 fi
 
 if [[ $SCAN_EXIT -eq 2 ]]; then
