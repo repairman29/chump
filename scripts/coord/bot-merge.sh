@@ -173,6 +173,16 @@ _bm_progress_write() {
         "${GAP_IDS[0]:-${GAP_ID:-unknown}}" "$_BM_PID" \
         > "${_BM_PROGRESS_FILE}.tmp" 2>/dev/null \
     && mv "${_BM_PROGRESS_FILE}.tmp" "$_BM_PROGRESS_FILE" 2>/dev/null || true
+
+    # INFRA-2673: also APPEND a line-oriented phase marker to the
+    # user-supplied --progress-file (if set). This is independent from the
+    # JSON ledger above which is overwrite-per-step. The append-only marker
+    # lets background callers `tail -f` the file to see incremental progress.
+    if [[ -n "${PROGRESS_FILE_OVERRIDE:-}" ]]; then
+        printf 'phase=%s ts=%s gap=%s pid=%d\n' \
+            "$step" "$ts" "${GAP_IDS[0]:-${GAP_ID:-unknown}}" "$_BM_PID" \
+            >> "$PROGRESS_FILE_OVERRIDE" 2>/dev/null || true
+    fi
 }
 
 # Emit kind=bot_merge_step_stalled to ambient.jsonl and exit non-zero.
@@ -471,6 +481,14 @@ NEXT_IS_GAP=0
 # recent open PR's gap).
 STACK_ON_GAP=""
 NEXT_IS_STACK_ON=0
+# INFRA-2673: --progress-file PATH allows callers (especially background
+# invocations via run_in_background=true) to observe incremental phase
+# progress by tailing a line-oriented log. Each phase boundary writes one
+# line: "phase=<name> ts=<iso8601>". Independent from the existing JSON
+# ledger at .chump-locks/bot-merge-progress/<gap>.json which is overwritten
+# per-step (not appendable, not tail-friendly).
+PROGRESS_FILE_OVERRIDE=""
+NEXT_IS_PROGRESS_FILE=0
 for arg in "$@"; do
     if [[ $NEXT_IS_GAP -eq 1 ]]; then
         # Support --gap "AUTO-003 COMP-002" (space-separated) or --gap AUTO-003 --gap COMP-002
@@ -498,9 +516,15 @@ for arg in "$@"; do
         NEXT_IS_REQUIRED_CHECKS=0
         continue
     fi
+    if [[ $NEXT_IS_PROGRESS_FILE -eq 1 ]]; then
+        PROGRESS_FILE_OVERRIDE="$arg"
+        NEXT_IS_PROGRESS_FILE=0
+        continue
+    fi
     case "$arg" in
         --gap)             NEXT_IS_GAP=1 ;;
         --stack-on)        NEXT_IS_STACK_ON=1 ;;
+        --progress-file)   NEXT_IS_PROGRESS_FILE=1 ;;
         --auto-merge)         AUTO_MERGE=1 ;;
         --skip-tests)         SKIP_TESTS=1 ;;
         --fast)               FAST=1; SKIP_TESTS=1 ;;
