@@ -7554,6 +7554,92 @@ events:
     #           exit_code?: int, source: str}
     status: stable
 
+  # ── RESILIENT-068: dev.chump.farmer events ───────────────────────────────
+
+  - kind: farmer_heartbeat
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_heartbeat"
+    trigger: >
+      Emitted at the end of every successful farmer tick (60s cadence). Absence
+      of this event for >120s indicates the farmer itself is stalled — the
+      external watchdog (RESILIENT-071) uses heartbeat staleness to page the
+      operator.
+    consumers: [ops-audit, fleet-brief, farmer-watchdog]
+    fields_required: [ts, kind]
+    # payload: {dry_run: bool}
+    status: stable
+
+  - kind: farmer_pause_lifted
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_pause_lifted"
+    trigger: >
+      The farmer detected .chump/fleet-paused and confirmed that chump health
+      --slo-check now passes (via sqlite3 read-only ghost-gap count). Sentinel
+      removed; control-plane daemons kicked back to life. Two sub-reasons:
+      slo_recovered (fresh sentinel, SLO just passed) or stale_sentinel_slo_pass
+      (sentinel >15min old when SLO passed).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, reason, age_s]
+    # payload: {reason: "slo_recovered"|"stale_sentinel_slo_pass", age_s: int}
+    status: stable
+
+  - kind: farmer_daemon_kicked
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_daemon_kicked"
+    trigger: >
+      The farmer issued a launchctl kickstart -k for a control-plane daemon that
+      had a non-zero exit code (exit-78 pause-blocked, exit-127 binary-missing,
+      or other crash). Emitted once per kick action.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, label]
+    # payload: {label: str}
+    status: stable
+
+  - kind: farmer_auth_dead
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_auth_dead"
+    trigger: >
+      The farmer detected that ~/.chump/oauth-token.json is absent or older than
+      FARMER_OAUTH_MAX_AGE_S (default 3600s). Also emits operator_recall with
+      class=halt so the external watchdog pages the operator.
+    consumers: [ops-audit, fleet-brief, operator-recall-handler]
+    fields_required: [ts, kind]
+    # payload: {reason?: "token_file_absent", token_age_s?: int}
+    status: stable
+
+  - kind: farmer_silent_worker
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_silent_worker"
+    trigger: >
+      A claim lease file in .chump-locks/ has not been touched for
+      FARMER_SILENT_WORKER_S (default 1800s) and the session has no recent
+      ambient event. The farmer kicks com.chump.reap-stale-leases to release
+      the orphaned lease.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, lease_age_s, ambient_age_s]
+    # payload: {session: str, lease_age_s: int, ambient_age_s: int}
+    status: stable
+
+  - kind: farmer_escalated
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-068)
+    # scanner-anchor: "kind":"farmer_escalated"
+    trigger: >
+      A control-plane daemon has been kicked >= FARMER_KICK_ESCALATE_N (default 3)
+      times within FARMER_KICK_WINDOW_S (default 600s) and is still not healthy.
+      The farmer stops kicking and emits operator_recall with class=halt
+      (RESILIENT-058 restart-intensity threshold). Only emitted once per daemon
+      per escalation window (marked in .chump/farmer-kick-state.json).
+    consumers: [ops-audit, fleet-brief, operator-recall-handler]
+    fields_required: [ts, kind, label, exit_code]
+    # payload: {label: str, exit_code: int}
+    status: stable
+
   - kind: last_mile_agent_stall_detected
     effect_metric: resilient
     emitter: scripts/coord/last-mile-rescuer.sh (INFRA-2629)

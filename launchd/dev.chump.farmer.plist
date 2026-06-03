@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  dev.chump.farmer — RESILIENT-068: un-killable control-plane tender.
+
+  The defining property: NO shared failure mode with the layer it revives.
+  Pure /bin/bash + coreutils on the recovery path; KeepAlive=true so launchd
+  (macOS PID-1-equivalent) is the first restart authority. Zero dependence on
+  the GitHub cache, smee, NATS, GraphQL, or any chump gap|reserve op.
+
+  Fires every 60 seconds (StartInterval). KeepAlive=true means launchd will
+  restart it immediately if the process exits for any reason — making this
+  daemon effectively un-killable by the failure modes it heals.
+
+  Six modes auto-recovered per tick (see scripts/coord/farmer.sh):
+    1. pause-deadlock   — slo passes → rm sentinel + kickstart exit-78 daemons
+    2. crash-no-restart — exit-127 → restore binary + kick; else kick; escalate
+                          after 3 kicks/10min (RESILIENT-058 restart-intensity)
+    3. auth-death       — oauth token stale → operator_recall AUTH_DEAD
+    4. silent-worker    — stale lease + no ambient heartbeat → release + kick choir
+    5. stale-sentinel   — age>15min AND slo-check passes → rm
+    6. dead-supervisor  — loaded daemon with non-zero exit → kick
+
+  INSTALLATION:
+    scripts/setup/install-farmer-launchd.sh
+
+  Manual installation:
+    1. Run: scripts/setup/install-farmer-launchd.sh
+       (it replaces /path/to/Chump with your actual repo path)
+    OR:
+    1. Copy: cp launchd/dev.chump.farmer.plist ~/Library/LaunchAgents/
+    2. Edit: replace /path/to/Chump and /path/to/HOME with real paths
+    3. Load: launchctl load ~/Library/LaunchAgents/dev.chump.farmer.plist
+
+  STATUS:
+    launchctl list | grep dev.chump.farmer
+    tail -F /tmp/chump-farmer.out.log
+    tail -F /tmp/chump-farmer.err.log
+    cat .chump/farmer-heartbeat
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/dev.chump.farmer.plist
+    rm ~/Library/LaunchAgents/dev.chump.farmer.plist
+
+  DRY-RUN (diagnose without side effects):
+    FARMER_DRY_RUN=1 bash scripts/coord/farmer.sh
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.farmer</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/coord/farmer.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- KeepAlive=true: launchd restarts the process unconditionally on exit.
+       Combined with StartInterval=60, this means: run every 60s AND restart
+       immediately if the process crashes. The Farmer cannot be killed by
+       any failure mode it is responsible for healing. -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- 60 second tick — fast enough to detect and recover a pause-deadlock
+       before any armed auto-merge times out (~5min default GitHub timeout). -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <!-- Run immediately on load — detect any existing failure state at install. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Guard against rapid crash-restart loops consuming excessive resources.
+       With KeepAlive=true and a process that exits immediately, launchd will
+       throttle restarts to at most once per ThrottleInterval. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-farmer.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-farmer.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin</string>
+    <!-- Deliberately excludes ~/.cargo/bin — farmer must not depend on
+         cargo-installed binaries that may be absent during a binary failure. -->
+    <key>CHUMP_REPO_ROOT</key>
+    <string>/path/to/Chump</string>
+  </dict>
+</dict>
+</plist>
