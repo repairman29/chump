@@ -955,4 +955,429 @@ mod tests {
         restore_env("CHUMP_REPO", prev_repo);
         let _ = fs::remove_dir_all("target/chump_enrich_tool_error_test");
     }
+
+    // ─── Pure helper: get_path ───────────────────────────────────────────────
+
+    #[test]
+    fn get_path_returns_trimmed_string() {
+        let v = json!({ "path": "  src/foo.rs  " });
+        assert_eq!(get_path(&v).unwrap(), "src/foo.rs");
+    }
+
+    #[test]
+    fn get_path_rejects_missing_key() {
+        let v = json!({ "other": "bar" });
+        assert!(get_path(&v).is_err());
+        assert!(get_path(&v).unwrap_err().to_string().contains("missing"));
+    }
+
+    #[test]
+    fn get_path_rejects_empty_string() {
+        let v = json!({ "path": "   " });
+        assert!(get_path(&v).is_err());
+    }
+
+    #[test]
+    fn get_path_rejects_non_string_value() {
+        let v = json!({ "path": 42 });
+        assert!(get_path(&v).is_err());
+    }
+
+    // ─── Pure helper: get_patch_target_path ─────────────────────────────────
+
+    #[test]
+    fn get_patch_target_path_prefers_file_path_key() {
+        let v = json!({ "file_path": "a/b.rs", "path": "c/d.rs" });
+        assert_eq!(get_patch_target_path(&v).unwrap(), "a/b.rs");
+    }
+
+    #[test]
+    fn get_patch_target_path_falls_back_to_path() {
+        let v = json!({ "path": "c/d.rs" });
+        assert_eq!(get_patch_target_path(&v).unwrap(), "c/d.rs");
+    }
+
+    #[test]
+    fn get_patch_target_path_trims_whitespace() {
+        let v = json!({ "file_path": "  src/x.rs  " });
+        assert_eq!(get_patch_target_path(&v).unwrap(), "src/x.rs");
+    }
+
+    #[test]
+    fn get_patch_target_path_skips_empty_file_path_falls_back_to_path() {
+        // file_path present but empty — should fall through to path
+        let v = json!({ "file_path": "   ", "path": "real/file.rs" });
+        assert_eq!(get_patch_target_path(&v).unwrap(), "real/file.rs");
+    }
+
+    #[test]
+    fn get_patch_target_path_errors_when_both_absent() {
+        let v = json!({ "diff": "@@ -1 +1 @@\n+line\n" });
+        assert!(get_patch_target_path(&v).is_err());
+    }
+
+    // ─── Pure helper: format_numbered_snippet ────────────────────────────────
+
+    #[test]
+    fn format_numbered_snippet_empty_returns_sentinel() {
+        let out = format_numbered_snippet("", None);
+        assert_eq!(out, "(empty file)");
+    }
+
+    #[test]
+    fn format_numbered_snippet_short_file_returns_all_lines_numbered() {
+        let content = "alpha\nbeta\ngamma";
+        let out = format_numbered_snippet(content, None);
+        assert!(out.contains("   1| alpha"));
+        assert!(out.contains("   2| beta"));
+        assert!(out.contains("   3| gamma"));
+        // Should not contain header for short files
+        assert!(!out.contains("lines 1-"));
+    }
+
+    #[test]
+    fn format_numbered_snippet_exactly_200_lines_no_header() {
+        let content: String = (1..=200).map(|i| format!("line {}\n", i)).collect();
+        // Lines collection from .lines() drops trailing newline — 200 lines
+        let lines: Vec<_> = content.lines().collect();
+        assert_eq!(lines.len(), 200);
+        let out = format_numbered_snippet(&content, None);
+        // At MAX_WHOLE boundary, should render without window header
+        assert!(out.contains(" 200|"));
+        assert!(!out.starts_with("(lines "));
+    }
+
+    #[test]
+    fn format_numbered_snippet_large_file_shows_focus_window() {
+        // Build a 300-line file (> MAX_WHOLE=200)
+        let content: String = (1..=300).map(|i| format!("line {:03}\n", i)).collect();
+        // Focus on line 150 — window of ±45 → lines 105-195
+        let out = format_numbered_snippet(&content, Some(150));
+        assert!(out.starts_with("(lines "));
+        // Header must include the total line count
+        assert!(out.contains("of 300"));
+        // The focus line itself must be present
+        assert!(out.contains("| line 150"));
+    }
+
+    #[test]
+    fn format_numbered_snippet_large_file_clamps_focus_at_start() {
+        let content: String = (1..=300).map(|i| format!("line {:03}\n", i)).collect();
+        // Focus on line 1 — window lo should not go below 1
+        let out = format_numbered_snippet(&content, Some(1));
+        assert!(out.contains("(lines 1-"));
+    }
+
+    #[test]
+    fn format_numbered_snippet_large_file_clamps_focus_at_end() {
+        let content: String = (1..=300).map(|i| format!("line {:03}\n", i)).collect();
+        // Focus near end — hi should not exceed n
+        let out = format_numbered_snippet(&content, Some(299));
+        assert!(out.contains("of 300"));
+        assert!(out.contains("| line 300"));
+    }
+
+    // ─── Pure helper: line_focus_from_error_message ──────────────────────────
+
+    #[test]
+    fn line_focus_parses_first_line_number() {
+        assert_eq!(
+            line_focus_from_error_message("context mismatch at line 42"),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn line_focus_returns_none_for_no_number() {
+        assert_eq!(line_focus_from_error_message("some generic error"), None);
+    }
+
+    #[test]
+    fn line_focus_ignores_line_zero() {
+        // "line 0" should not be returned (we want 1-based only)
+        // The impl requires n >= 1, so line 0 is skipped; but "line 5" later would be returned
+        assert_eq!(line_focus_from_error_message("line 0 then line 5"), Some(5));
+    }
+
+    #[test]
+    fn line_focus_handles_multiple_line_references() {
+        // Should return the FIRST valid occurrence
+        assert_eq!(
+            line_focus_from_error_message("hunk failed at line 10, context at line 20"),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn line_focus_handles_large_line_number() {
+        assert_eq!(
+            line_focus_from_error_message("parse error: line 99999"),
+            Some(99999)
+        );
+    }
+
+    // ─── Tool edge cases ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    #[serial]
+    async fn read_file_start_gt_end_returns_error() {
+        let dir = test_dir("chump_read_start_gt_end_test");
+        let file = dir.join("f.txt");
+        fs::write(&file, "a\nb\nc\n").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ReadFileTool
+            .execute(json!({ "path": "f.txt", "start_line": 5, "end_line": 2 }))
+            .await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("start_line"));
+        let _ = fs::remove_dir_all("target/chump_read_start_gt_end_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_file_start_only_returns_tail() {
+        let dir = test_dir("chump_read_start_only_test");
+        let file = dir.join("lines.txt");
+        fs::write(&file, "one\ntwo\nthree\nfour\n").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ReadFileTool
+            .execute(json!({ "path": "lines.txt", "start_line": 3 }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.contains("three"));
+        assert!(out.contains("four"));
+        assert!(!out.contains("one"));
+        assert!(!out.contains("two"));
+        let _ = fs::remove_dir_all("target/chump_read_start_only_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_file_end_only_returns_head() {
+        let dir = test_dir("chump_read_end_only_test");
+        let file = dir.join("lines.txt");
+        fs::write(&file, "one\ntwo\nthree\nfour\n").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ReadFileTool
+            .execute(json!({ "path": "lines.txt", "end_line": 2 }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.contains("one"));
+        assert!(out.contains("two"));
+        assert!(!out.contains("three"));
+        let _ = fs::remove_dir_all("target/chump_read_end_only_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_file_unicode_filename_via_tool() {
+        let dir = test_dir("chump_read_unicode_name_test");
+        let file = dir.join("файл.txt");
+        fs::write(&file, "unicode content: 你好").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ReadFileTool
+            .execute(json!({ "path": "файл.txt" }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.contains("你好"));
+        let _ = fs::remove_dir_all("target/chump_read_unicode_name_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn read_file_missing_path_field_errors() {
+        let dir = test_dir("chump_read_no_path_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ReadFileTool.execute(json!({})).await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        let _ = fs::remove_dir_all("target/chump_read_no_path_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn write_file_append_mode_via_tool() {
+        let dir = test_dir("chump_write_append_via_tool_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        // First write establishes the file
+        WriteFileTool
+            .execute(json!({ "path": "append.txt", "content": "first\n", "mode": "overwrite" }))
+            .await
+            .unwrap();
+        // Second call appends
+        let result = WriteFileTool
+            .execute(json!({ "path": "append.txt", "content": "second\n", "mode": "append" }))
+            .await
+            .unwrap();
+        let written = dir.join("append.txt");
+        let content = fs::read_to_string(&written).unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(result.contains("Appended"));
+        assert_eq!(content, "first\nsecond\n");
+        let _ = fs::remove_dir_all("target/chump_write_append_via_tool_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn write_file_invalid_mode_errors() {
+        let dir = test_dir("chump_write_bad_mode_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = WriteFileTool
+            .execute(json!({ "path": "f.txt", "content": "x", "mode": "nope" }))
+            .await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("mode"));
+        let _ = fs::remove_dir_all("target/chump_write_bad_mode_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_dir_default_path_dot_lists_root() {
+        let dir = test_dir("chump_list_default_path_test");
+        fs::write(dir.join("root_file.txt"), "").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        // No "path" key — should default to "."
+        let out = ListDirTool.execute(json!({})).await.unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        assert!(out.contains("root_file.txt (file)"));
+        let _ = fs::remove_dir_all("target/chump_list_default_path_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_dir_shows_file_and_dir_types() {
+        let dir = test_dir("chump_list_types_test");
+        fs::write(dir.join("plain.txt"), "").unwrap();
+        fs::create_dir_all(dir.join("subdir")).unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ListDirTool.execute(json!({ "path": "." })).await.unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        assert!(out.contains("plain.txt (file)"));
+        assert!(out.contains("subdir (dir)"));
+        let _ = fs::remove_dir_all("target/chump_list_types_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_dir_on_file_returns_error() {
+        let dir = test_dir("chump_list_on_file_test");
+        fs::write(dir.join("file.txt"), "").unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = ListDirTool.execute(json!({ "path": "file.txt" })).await;
+        restore_env("CHUMP_REPO", prev_repo);
+        assert!(out.is_err());
+        let _ = fs::remove_dir_all("target/chump_list_on_file_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn patch_file_requires_chump_repo() {
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        let out = PatchFileTool
+            .execute(json!({ "path": "f.rs", "diff": "--- a/f.rs\n+++ b/f.rs\n@@ -1 +1 @@\n-old\n+new\n" }))
+            .await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn patch_file_missing_diff_errors() {
+        let dir = test_dir("chump_patch_no_diff_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = PatchFileTool.execute(json!({ "path": "f.rs" })).await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("diff"));
+        let _ = fs::remove_dir_all("target/chump_patch_no_diff_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn enrich_file_tool_error_falls_back_gracefully_without_repo() {
+        // When CHUMP_REPO is unset, enrich should return bare "Tool error: ..." without panic
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        let out = super::enrich_file_tool_error(
+            "read_file",
+            &json!({ "path": "some/file.rs" }),
+            &"not a file: some/file.rs",
+        );
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.starts_with("Tool error:"));
+        // No snippet should be injected since repo root is not set
+        assert!(
+            !out.contains("---"),
+            "no snippet expected without repo root"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn enrich_file_tool_error_unknown_tool_returns_bare_error() {
+        let dir = test_dir("chump_enrich_unknown_tool_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = super::enrich_file_tool_error(
+            "unknown_tool",
+            &json!({ "path": "x.txt" }),
+            &"some error",
+        );
+        restore_env("CHUMP_REPO", prev_repo);
+        // Unknown tool names should return base error only — no snippet enrichment
+        assert_eq!(out, "Tool error: some error");
+        let _ = fs::remove_dir_all("target/chump_enrich_unknown_tool_test");
+    }
 }

@@ -1,9 +1,10 @@
 - id: CREDIBLE-032
   domain: CREDIBLE
   title: "CREDIBLE: add tests to src/repo_tools.rs — git wrapper functions (889 LOC, decomp of CREDIBLE-004 child 3/4)"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 3019
   acceptance_criteria:
     - "tests/repo_tools_test.rs exercises every public function in src/repo_tools.rs using tempdir-based git fixtures (no real GitHub calls)"
     - "Cover: read_file, list_dir, run_cli, patch_file, write_file (the gen-agent surface), plus git wrappers used by claim/preflight/ship"
