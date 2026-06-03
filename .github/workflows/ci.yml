@@ -827,6 +827,9 @@ jobs:
       - name: fleet-pause autolift + pause-immune recovery choir (RESILIENT-066)
         run: bash scripts/ci/test-fleet-pause-autolift.sh
 
+      - name: farmer un-killable control-plane tender (RESILIENT-068)
+        run: bash scripts/ci/test-farmer.sh
+
       - name: fleet starve auto-action (INFRA-391)
         run: bash scripts/ci/test-fleet-starve-auto-action.sh
 

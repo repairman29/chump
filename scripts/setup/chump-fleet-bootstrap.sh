@@ -62,6 +62,10 @@ REQUIRED_DAEMONS=(
     # (INFRA-2067..2071) is plumbed but executes zero times.
     "com.chump.novel-wedge-classifier|scripts/setup/install-meta-118-daemons.sh"
     "com.chump.cascade-unblock-detector|scripts/setup/install-meta-118-daemons.sh"
+    # RESILIENT-068: Farmer — un-killable control-plane tender. KeepAlive=true,
+    # pure bash, no cargo dep. Without this, the pause-deadlock self-seals
+    # (RESILIENT-066 root cause) and the fleet cannot auto-recover.
+    "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
 )
 UID_VAL="$(id -u)"
 

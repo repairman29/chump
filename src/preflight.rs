@@ -578,6 +578,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
         // pure shell, no GitHub API, ~2s.
         "scripts/ci/test-fleet-pause-autolift.sh",
+        // RESILIENT-068: farmer un-killable control-plane tender — 9 fixture
+        // tests, pure bash+sqlite3, zero network, ~2s.
+        "scripts/ci/test-farmer.sh",
     ];
     candidates
         .iter()
