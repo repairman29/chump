@@ -5810,7 +5810,7 @@ mod open_pr_dup_tests {
         assert!(!gate_name_is_plausible("   "));
         assert!(!gate_name_is_plausible(";"));
         assert!(!gate_name_is_plausible("123abc")); // must start with a letter
-        // real gate names pass
+                                                    // real gate names pass
         assert!(gate_name_is_plausible("audit"));
         assert!(gate_name_is_plausible("fast-checks"));
         assert!(gate_name_is_plausible("test-event-registry.sh"));
