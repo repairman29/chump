@@ -60,7 +60,7 @@ Tier-0 M1 activation **done**. Phase B (M2 L6 reliability) **2 of 3 keystones sh
 | Gap | Title | Why |
 |---|---|---|
 | **INFRA-2662** | Wire `chump durable-resume` + DurableExecutor into `src/main.rs` dispatch | RESILIENT-059 shipped opt-in; activation needs main.rs wiring (intentionally out of scope of #3003) |
-| **INFRA-2663** | Migrate last-mile-rescuer.sh raw `gh` calls to `chump_gh` | INFRA-2629 shipped with allowlist exception; remove the exception once chump_gh is robust enough on cold start |
+| **INFRA-2663** | Migrate last-mile-rescuer.sh raw `gh` calls to `chump_gh` | INFRA-2629 shipped with allowlist exception; remove the exception once chump_gh is stable enough on cold start |
 | **INFRA-2664** | Emit `kind=sub_agent_dispatched` + `sub_agent_completed` events from Agent-tool path | INFRA-2629 Trigger 3 (sub-agent stall detection) has no producer today; the last-mile-rescuer can't catch today's 3 Sonnet drops without it |
 | **INFRA-2665** | Add binary-crate test gotcha to `docs/process/SUBAGENT_DISPATCH.md` | Third Sonnet-near-miss today on `cargo test --lib`; pattern needs to be documented so next dispatch brief catches it pre-flight |
 
