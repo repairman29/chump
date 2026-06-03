@@ -408,7 +408,12 @@ mod tests {
         let dirty = "INFRA:P2.n routing hint for one-jeff-many-repos; metadata";
         let clean = sanitize_token(dirty);
         for bad in [' ', '.', ':', ';', '*', '>'] {
-            assert!(!clean.contains(bad), "token still contains {:?}: {}", bad, clean);
+            assert!(
+                !clean.contains(bad),
+                "token still contains {:?}: {}",
+                bad,
+                clean
+            );
         }
         assert!(!clean.is_empty());
         assert!(clean.len() <= 48, "token not length-capped: {}", clean);
@@ -419,9 +424,6 @@ mod tests {
         assert_eq!(sanitize_token("P0"), "P0");
         assert_eq!(sanitize_token("runtime"), "runtime");
         // a full subject built from the cleaned token is dot-split-safe (3 dots)
-        assert_eq!(
-            format!("chump.work.{}.any", clean).matches('.').count(),
-            3
-        );
+        assert_eq!(format!("chump.work.{}.any", clean).matches('.').count(), 3);
     }
 }
