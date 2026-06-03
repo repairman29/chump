@@ -240,6 +240,49 @@ events:
       Absence for >2 tick intervals (>600s) indicates daemon failure.
       Scanner-anchor: "kind":"fleet_supervisor_heartbeat"
 
+  # ── Dispatch guardrail — RESILIENT-060 (A2A L6c) ─────────────────────────────
+  # Pre-write validation that BLOCKS Sonnet dispatch before any file is written.
+  # Invariants checked: lease path coverage, gap-id/branch alignment, cargo fmt.
+  # Motivating incident: 2026-06-03 three "writes outside lease" Sonnet drops.
+  # See: docs/design/A2A_MASTER_PLAN_2026-06-03.md §1.L6c
+
+  - kind: agent_dispatch_guardrail_passed
+    effect_metric: self
+    emitter: scripts/coord/agent-dispatch-guardrail.sh
+    trigger: >
+      All three pre-dispatch invariants passed: (1) every proposed write path is
+      in claim.paths, (2) current branch matches lease gap_id, (3) cargo fmt
+      --check passes (when *.rs paths are included). Orchestrator may proceed
+      with Agent tool dispatch.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, branch, attempted_paths, leased_paths, reason]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Emitted by scripts/coord/agent-dispatch-guardrail.sh before the orchestrator
+      invokes the Agent tool. Absence of this event (when a dispatch was made)
+      indicates the guardrail was bypassed — check for CHUMP_OFF_RAILS_CHECK=0.
+      Scanner-anchor: "kind":"agent_dispatch_guardrail_passed"
+
+  - kind: agent_dispatch_guardrail_blocked
+    effect_metric: self
+    emitter: scripts/coord/agent-dispatch-guardrail.sh
+    trigger: >
+      One or more pre-dispatch invariants failed: out-of-lease path, branch/gap-id
+      mismatch, missing lease, or cargo fmt --check failure. The orchestrator must
+      NOT invoke the Agent tool. The reason field identifies the specific violation.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, gap_id, branch, attempted_paths, leased_paths, reason]
+    expected_min_per_day: 0
+    status: stable
+    docs: |
+      Emitted when scripts/coord/agent-dispatch-guardrail.sh exits 1 (BLOCKED).
+      The ops-audit consumer uses this to detect scope-creep patterns across
+      dispatches. A cluster of these events from the same gap_id indicates the
+      lease paths need expansion (re-claim with --paths) or the agent brief needs
+      tighter scope definition.
+      Scanner-anchor: "kind":"agent_dispatch_guardrail_blocked"
+
   - kind: fleet_snapshot
     effect_metric: self
     emitter: scripts/ops/fleet-snapshot.sh
