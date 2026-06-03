@@ -154,12 +154,15 @@ CURRENT_BRANCH="$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || print
 if [[ -n "$CURRENT_BRANCH" ]]; then
     branch_lower="$(to_lower "$CURRENT_BRANCH")"
     expected_prefix="chump/${GAP_ID_LOWER}"
-    # Check with grep -q for POSIX-safe substring/prefix match
-    if ! printf '%s' "$branch_lower" | grep -q "^${expected_prefix}"; then
-        die_blocked \
-            "branch mismatch: branch '${CURRENT_BRANCH}' does not match gap-id '${GAP_ID}' (expected prefix '${expected_prefix}')" \
-            "$GAP_ID" "$CURRENT_BRANCH" "$PROPOSED_CSV" "$LEASED_PATHS_CSV"
-    fi
+    # INFRA-1658: case statement avoids pipefail race that `printf | grep -q` has.
+    case "$branch_lower" in
+        "${expected_prefix}"*) : ;;
+        *)
+            die_blocked \
+                "branch mismatch: branch '${CURRENT_BRANCH}' does not match gap-id '${GAP_ID}' (expected prefix '${expected_prefix}')" \
+                "$GAP_ID" "$CURRENT_BRANCH" "$PROPOSED_CSV" "$LEASED_PATHS_CSV"
+            ;;
+    esac
 fi
 
 # ── INVARIANT 2: Lease path check ─────────────────────────────────────────────
