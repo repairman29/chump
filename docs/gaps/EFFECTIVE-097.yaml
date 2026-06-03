@@ -1,0 +1,12 @@
+- id: EFFECTIVE-097
+  domain: EFFECTIVE
+  title: "EFFECTIVE: pre-push test-gate sccache probe uses --version (client-only, passes while server dead) → false-fails Rust pushes → forces CHUMP_TEST_GATE=0; heal via idempotent --start-server"
+  status: done
+  closed_pr: 3010
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "The INFRA-2184 sccache liveness probe in scripts/git-hooks/pre-push (~line 733-739) replaces the client-only `--version` check with an idempotent server-liveness probe (`--start-server`): when the sccache server is dead, the probe HEALS it so the test gate runs WITH caching, instead of false-failing."
+    - Only when the server genuinely cannot start does the probe fall back to disabling the wrapper (CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER=) — gate still runs (slow but correct), never a false fail. Echoes a distinguishable message to stderr (healed vs disabled) — no new ambient kind (avoids registry collision with in-flight RESILIENT-059).
+    - "Regression test scripts/ci/test-prepush-sccache-probe.sh: stop the server, run the probe logic in isolation, assert it ends with a LIVE server (heal) and exit 0 — proving the --version weakness is gone."
+    - Removes the sccache-death class from the CHUMP_TEST_GATE=0 bypass reasons. EFFECTIVE-089 ship-path-unification slice.
