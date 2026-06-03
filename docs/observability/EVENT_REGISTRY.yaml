@@ -7460,3 +7460,110 @@ events:
     fields_required: [ts, kind]
     # payload: {}
     status: stable
+
+  # ── INFRA-2629: last-mile rescuer daemon ──────────────────────────────────
+  # ── sub_agent_completed: Sonnet sub-agent completion signal ─────────────────
+  # Natural pair for kind=sub_agent_dispatched (INFRA-1922). Consumed by
+  # last-mile-rescuer (INFRA-2629) trigger3 to determine whether a dispatched
+  # sub-agent has finished. Emitted by any curator that dispatches a Sonnet
+  # sub-agent and receives its result (Claude Code Agent tool return, or
+  # harness-neutral completion wrapper). Filed here because the last-mile
+  # rescuer's stall-detection references it as a "completion signal" — the
+  # registry guard requires registration of any kind literal that appears in
+  # staged diffs.
+  - kind: sub_agent_completed
+    effect_metric: self
+    emitter: >
+      any curator role that dispatches a Sonnet sub-agent via the Agent tool
+      (Claude Code) or harness-neutral equivalent; expected from
+      scripts/coord/handoff-loop.sh and fleet worker completion paths.
+    # scanner-anchor: "kind":"sub_agent_completed"
+    trigger: >
+      A Sonnet sub-agent dispatched by an Opus curator (any role) has
+      completed its task — either shipped a PR or exited cleanly. Emitted
+      by the dispatching curator when it receives the sub-agent result.
+      Paired with kind=sub_agent_dispatched by gap_id / session fields.
+      Consumed by last-mile-rescuer (INFRA-2629) trigger3 to suppress stall
+      alerts for gaps where the sub-agent already completed successfully.
+    consumers: [ops-audit, fleet-brief, last-mile-rescuer]
+    fields_required: [ts, kind, session, gap, role]
+    # payload: {gap: str, role: str, session: str}
+    status: stable
+
+  # ── INFRA-2629: last-mile rescuer daemon ──────────────────────────────────
+  - kind: last_mile_rescue_triggered
+    effect_metric: resilient
+    emitter: scripts/coord/last-mile-rescuer.sh (INFRA-2629)
+    # scanner-anchor: "kind":"last_mile_rescue_triggered"
+    trigger: >
+      The last-mile rescuer daemon has identified a committed-but-never-pushed
+      claim branch and is about to attempt a rescue. Fired by either of two
+      detection paths: (1) consuming a kind=orphan_worktree_detected event from
+      ambient.jsonl within the last CHUMP_LAST_MILE_ORPHAN_WINDOW_S seconds
+      (default 600), or (2) scanning local claim branches for commits ahead of
+      origin/main with no open PR. Emitted before the rebase+push attempt so the
+      operator can see intent even if the push fails. In CHUMP_LAST_MILE_DRY_RUN=1
+      mode this is the only rescue event emitted — no actual push occurs.
+      Motivating incident 2026-06-03: INFRA-2458 + INFRA-2484 commits sat
+      unpushed for hours; rescued manually when orchestrator returned.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, branch, worktree_path, gap_id, source, commits_ahead, dry_run]
+    # payload: {branch: str, worktree_path: str, gap_id: str|null,
+    #           source: "trigger1_orphan_event"|"trigger2_branch_scan",
+    #           commits_ahead: int, dry_run: 0|1}
+    status: stable
+
+  - kind: last_mile_rescue_completed
+    effect_metric: resilient
+    emitter: scripts/coord/last-mile-rescuer.sh (INFRA-2629)
+    # scanner-anchor: "kind":"last_mile_rescue_completed"
+    trigger: >
+      The last-mile rescuer daemon successfully pushed a rescued claim branch
+      and armed auto-merge via bot-merge.sh. Emitted after a confirmed push —
+      the PR is open and auto-merge is armed. Pairs with a prior
+      last_mile_rescue_triggered event on the same branch.
+      Not emitted in CHUMP_LAST_MILE_DRY_RUN=1 mode (dry-run stops at triggered).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, branch, worktree_path, gap_id, commits_ahead, source]
+    # payload: {branch: str, worktree_path: str, gap_id: str|null,
+    #           commits_ahead: int, source: str}
+    status: stable
+
+  - kind: last_mile_rescue_failed
+    effect_metric: resilient
+    emitter: scripts/coord/last-mile-rescuer.sh (INFRA-2629)
+    # scanner-anchor: "kind":"last_mile_rescue_failed"
+    trigger: >
+      The last-mile rescuer attempted to rescue a claim branch but could not
+      complete the push. Two failure modes: (1) rebase_conflict — git rebase
+      onto origin/main produced a merge conflict; the rebase is aborted and the
+      branch is left as-is for operator inspection. (2) push_failed — bot-merge.sh
+      or the bare git push returned a non-zero exit code (e.g. force-push refused,
+      GitHub API error). In both cases the branch is NOT modified beyond the
+      aborted rebase. Operator action: inspect the branch and resolve manually.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, branch, gap_id, reason, source]
+    # payload: {branch: str, gap_id: str|null,
+    #           reason: "rebase_conflict"|"push_failed",
+    #           exit_code?: int, source: str}
+    status: stable
+
+  - kind: last_mile_agent_stall_detected
+    effect_metric: resilient
+    emitter: scripts/coord/last-mile-rescuer.sh (INFRA-2629)
+    # scanner-anchor: "kind":"last_mile_agent_stall_detected"
+    trigger: >
+      A kind=sub_agent_dispatched event in ambient.jsonl is older than
+      CHUMP_LAST_MILE_AGENT_STALL_S (default 1800s = 30 min) and has no paired
+      kind=sub_agent_completed event AND no open PR on the expected claim branch
+      (chump/<gap-id-lowercase>-claim). This is a notification-only signal —
+      the rescuer does NOT auto-push for stalled sub-agent dispatches; the
+      operator or orchestrator must inspect and decide whether to re-dispatch
+      or rescue manually. Near-miss incident 2026-06-03: RESILIENT-058 Sonnet
+      committed bd5457680, lease expired before push completed; orchestrator
+      caught it and rebased+pushed, only to find Sonnet had already finished.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, session, gap_id, agent_id, dispatched_at, elapsed_s]
+    # payload: {gap_id: str, agent_id: str, dispatched_at: ISO8601,
+    #           elapsed_s: int}
+    status: stable

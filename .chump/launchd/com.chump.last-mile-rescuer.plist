@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.last-mile-rescuer.plist — INFRA-2629
+  Launchd user agent that fires the last-mile-rescuer every 120 seconds.
+
+  Motivating incident (2026-06-03): INFRA-2458 and INFRA-2484 commits sat
+  unpushed in /tmp worktrees for hours. orphan-worktree-watchdog.sh
+  (RESILIENT-026) detected them but no consumer acted. This daemon IS the
+  consumer — it rescues committed-but-never-pushed work automatically.
+
+  Three triggers per tick:
+    1. Consume kind=orphan_worktree_detected events from ambient.jsonl (last 10 min)
+    2. Scan local claim branches for commits ahead of origin/main with no open PR
+    3. Detect stalled sub-agent dispatches (notification-only, no auto-push)
+
+  DRY_RUN by default. Operator sets CHUMP_LAST_MILE_DRY_RUN=0 to enable
+  live rescues. CHUMP_LAST_MILE_DISABLED=1 is the panic-stop.
+
+  Install:
+    cp __REPO_ROOT__/.chump/launchd/com.chump.last-mile-rescuer.plist \
+       ~/Library/LaunchAgents/
+    # Edit __REPO_ROOT__ and __HOME__ placeholders first, then:
+    launchctl load ~/Library/LaunchAgents/com.chump.last-mile-rescuer.plist
+
+  Or use the install helper (if available):
+    bash __REPO_ROOT__/scripts/setup/install-last-mile-rescuer.sh
+
+  Status:   launchctl print gui/$(id -u)/com.chump.last-mile-rescuer
+  Logs:     __HOME__/.chump/logs/last-mile-rescuer.{out,err}
+  Disable:  launchctl unload ~/Library/LaunchAgents/com.chump.last-mile-rescuer.plist
+
+  Safety rails:
+    - CHUMP_LAST_MILE_DRY_RUN=1 (default): emits intent events, no actual pushes
+    - CHUMP_LAST_MILE_DISABLED=1: panic-stop; logs once, exits 0
+    - Always re-verifies branch state + open PR before pushing
+    - Never touches stale-pr-rebase-bot.sh territory (open PRs only)
+    - Rebase conflict → emit last_mile_rescue_failed + abort; no push
+
+  Tunable env vars:
+    CHUMP_LAST_MILE_DRY_RUN          (default 1 — operator sets 0 to enable live)
+    CHUMP_LAST_MILE_DISABLED         (default 0 — set 1 for panic-stop)
+    CHUMP_LAST_MILE_AGENT_STALL_S    (default 1800 — 30 min stall threshold)
+    CHUMP_LAST_MILE_ORPHAN_WINDOW_S  (default 600 — 10 min ambient lookback)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.last-mile-rescuer</string>
+
+    <!-- Tick every 120 seconds — matches daemon-exit-loop-watcher cadence. -->
+    <key>StartInterval</key>
+    <integer>120</integer>
+
+    <!-- RunAtLoad=false: operator starts explicitly after verifying dry-run output. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>-c</string>
+        <string>cd __REPO_ROOT__ &amp;&amp; bash scripts/coord/last-mile-rescuer.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>__HOME__</string>
+        <key>PATH</key>
+        <string>__HOME__/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- DRY_RUN by default. Operator sets 0 to enable live rescues. -->
+        <key>CHUMP_LAST_MILE_DRY_RUN</key>
+        <string>1</string>
+        <!-- Panic-stop override. Set to 1 to disable the daemon entirely. -->
+        <key>CHUMP_LAST_MILE_DISABLED</key>
+        <string>0</string>
+        <!-- Stall detection threshold: 30 minutes (in seconds). -->
+        <key>CHUMP_LAST_MILE_AGENT_STALL_S</key>
+        <string>1800</string>
+        <!-- Orphan event lookback window: 10 minutes (in seconds). -->
+        <key>CHUMP_LAST_MILE_ORPHAN_WINDOW_S</key>
+        <string>600</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.chump/logs/last-mile-rescuer.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.chump/logs/last-mile-rescuer.err</string>
+
+    <!-- Don't tight-loop on crash. -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>

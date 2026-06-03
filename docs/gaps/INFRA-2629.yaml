@@ -1,0 +1,16 @@
+- id: INFRA-2629
+  domain: INFRA
+  title: "RESILIENT P0: last-mile rescuer daemon — catch orphan commits + unpushed branches + dispatched-agent-stalled work before they're abandoned"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"Today 2026-06-03 RESILIENT-058 Sonnet committed bd5457680 locally then lease expired without push; orphan-worktree-watchdog emitted kind=orphan_worktree_detected but no consumer existed to act. Earlier in same session, orchestrator-opus 5h gap left INFRA-2458 commit (e5358cf42) and INFRA-2484 commit (7ae7d5bb3) in /tmp worktrees never pushed until manual recovery. Operator: a lot of work gets dropped before the finish line.\",\n\"BUILD ON existing prior art: orphan-worktree-watchdog.sh (RESILIENT-026, detects abandoned worktrees, emits kind=orphan_worktree_detected) + stale-pr-rebase-bot.sh (INFRA-2295, rebases open PRs) already exist. The hole: orphan-worktree-watchdog notifies but no one acts.\",\n\"NEW scripts/coord/last-mile-rescuer.sh + .chump/launchd/com.chump.last-mile-rescuer.plist (tick every 120s) — CONSUMER side of the existing detection.\",\n\"Trigger 1: subscribe to kind=orphan_worktree_detected ambient events in last 10 min. For each: re-verify (worktree still exists, branch has commits ahead of origin/main, no PR open). If verified: rebase onto fresh origin/main; push via bot-merge.sh; emit kind=last_mile_rescue_completed.\",\n\"Trigger 2: scan local branches matching chump/(INFRA"
+    - RESILIENT
+    - EFFECTIVE
+    - CREDIBLE
+    - ZERO
+    - META
+    - COG
+    - "MISSION)-[0-9]+-claim. For each: same verify + rescue.\",\n\"Trigger 3: scan ambient for kind=sub_agent_dispatched events older than CHUMP_LAST_MILE_AGENT_STALL_S (default 1800s) without matching PR opened — emit kind=last_mile_agent_stall_detected.\",\n\"Operator audit gate: dry-run mode CHUMP_LAST_MILE_DRY_RUN=1 only emits intent events without actually pushing — for first deploy verification.\",\n\"Regression test scripts/ci/test-last-mile-rescuer.sh: synthetic orphan-worktree-detected event + branch with commits + no PR → assert rescuer triggered + (dry-run) push intent emitted; clean branch with open PR → assert skipped.\"\n]"
+
