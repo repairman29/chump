@@ -2795,6 +2795,18 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, script, api, waited_s, remaining_percent_before, remaining_percent_after]
 
+  # ── INFRA-2484: debug breadcrumb for skipped exhausted-emit on failed gh call
+  - kind: gh_recording_skipped_rc_nonzero
+    effect_metric: self
+    emitter: scripts/coord/lib/github.sh chump_gh_record (INFRA-2484)
+    trigger: chump_gh_record received rc != 0 from the recorded gh call. The
+      rate-limit data fetched alongside a failed call is unreliable (may return
+      sentinel -1 values), so the graphql_exhausted emit path is skipped to
+      prevent false alarms. This breadcrumb lets operators audit how often
+      cascade triggers originated from failing gh calls vs genuine exhaustion.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, script, api, rc, used_ms]
+
   # ── INFRA-1115: a2a mailbox primitive ─────────────────────────────────────
   - kind: inbox_advance
     effect_metric: self
