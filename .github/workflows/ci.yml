@@ -187,6 +187,10 @@ jobs:
               - 'build.rs'
               - 'tests/**'
               - 'wasm/**'
+              # RESILIENT-082: workflow changes must run full Rust CI
+              # (a ci.yml typo could silently drop a Rust gate).
+              - '.github/workflows/**'
+              - 'rust-toolchain.toml'
             scripts:
               - 'scripts/**'
               - '.github/workflows/**'

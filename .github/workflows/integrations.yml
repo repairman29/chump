@@ -29,18 +29,58 @@ env:
   CARGO_TERM_COLOR: always
 
 # ---------------------------------------------------------------------------
-# Job 1: ACP protocol smoke test (required check — DO NOT rename)
-# Source: editor-integration.yml (ACP-003)
+# RESILIENT-082: path-filter for Rust-heavy jobs.
+# On push/merge_group every filter is treated as changed (full suite).
+# On pull_request: only the `rust` filter fires when Rust files are touched.
 # ---------------------------------------------------------------------------
 jobs:
-  acp-smoke:
-    name: ACP protocol smoke test (Zed / JetBrains compatible)
+  # ── Path filter (RESILIENT-082) ─────────────────────────────────────────────
+  # Mirrors the `rust` lane from ci.yml changes job so acp-smoke can skip the
+  # full cargo build on docs/gaps-only PRs.  continue-on-error so a transient
+  # dorny failure degrades to full-run (null output → treated as changed = safe).
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'src/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'chump-tool-macro/**'
+              - 'build.rs'
+              - 'tests/**'
+              - 'wasm/**'
+              - '.github/workflows/**'
+              - 'rust-toolchain.toml'
+
+  # ---------------------------------------------------------------------------
+  # Job 1 (impl): ACP protocol smoke test — heavy Rust build.
+  # Skips on docs/gaps-only PRs (no Rust files changed).
+  # Required check emitted by the `acp-smoke-required` aggregator below.
+  # ---------------------------------------------------------------------------
+  acp-smoke-impl:
+    name: ACP protocol smoke test (impl)
+    needs: [changes]
     # INFRA-1535 stage 3: self-hosted routing (M4 has chromedriver + Chrome + node installed)
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && vars.CHUMP_SELF_HOSTED_ACP != 'false' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
+    # RESILIENT-082: skip on docs/gaps-only PRs; always run on push/merge_group/schedule.
+    # `needs.changes.outputs.rust` is null (not 'false') when the changes job
+    # errors (continue-on-error) — null != 'true', so a failed filter safely
+    # defaults to skip. Push, merge_group, schedule, and workflow_dispatch always override.
     if: >-
+      needs.changes.outputs.rust == 'true' ||
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
       github.event_name == 'merge_group' ||
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
@@ -107,6 +147,39 @@ jobs:
           name: acp-snapshots
           path: tests/fixtures/acp/
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # RESILIENT-082: Required-check aggregator for the ACP smoke test.
+  #
+  # Branch protection requires the check named exactly:
+  #   "ACP protocol smoke test (Zed / JetBrains compatible)"
+  # (docs/baselines/branch-protection-main.json, contexts[2]).
+  #
+  # When `acp-smoke-impl` is SKIPPED (docs/gaps-only PR), this aggregator
+  # still runs (if: always()) and reports SUCCESS so branch protection is
+  # satisfied.  When `acp-smoke-impl` runs and PASSES, this reports SUCCESS.
+  # When `acp-smoke-impl` FAILS, this reports FAILURE.  Skipped ≠ failure.
+  #
+  # Pattern mirrors the `clippy-required` / `cargo-test-required` pattern in
+  # ci.yml (META-261 / INFRA-1143).
+  # ---------------------------------------------------------------------------
+  acp-smoke-required:
+    name: ACP protocol smoke test (Zed / JetBrains compatible)
+    needs: [acp-smoke-impl]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify ACP smoke passed or was appropriately skipped (RESILIENT-082)
+        run: |
+          result="${{ needs.acp-smoke-impl.result }}"
+          echo "acp-smoke-impl=$result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "ACP protocol smoke test: PASS (result=$result)"
+          else
+            echo "::error::ACP protocol smoke test FAIL (result=$result)"
+            exit 1
+          fi
 
   # ---------------------------------------------------------------------------
   # Job 2: ACP real-client integration tests (matrix)
