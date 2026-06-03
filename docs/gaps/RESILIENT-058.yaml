@@ -1,7 +1,7 @@
 - id: RESILIENT-058
   domain: RESILIENT
   title: "RESILIENT: A2A L6a — supervision trees (per-gap restart-intensity + fleet escalation)"
-  status: open
+  status: ready_to_ship
   priority: P1
   effort: m
   description: |
