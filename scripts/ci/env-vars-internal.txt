@@ -934,3 +934,5 @@ CHUMP_OFF_RAILS_CHECK
 CHUMP_STALE_REBASE_MAX_BEHIND
 # detected in: (standard input)
 CHUMP_TEST_GATE
+# detected in: scripts/coord/chump-commit.sh (RESILIENT-065: cargo fmt timeout knob)
+CHUMP_AUTO_FMT_TIMEOUT
