@@ -61,8 +61,10 @@ else
 fi
 
 # ── Test 2: CHUMP_NO_BYPASS=0 → no-op ────────────────────────────────────────
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. Use CHUMP_FMT_CHECK (another
+# bypass-class var) as the test subject — strict-mode does not care which var.
 echo "Test 2: CHUMP_NO_BYPASS=0 → no-op"
-out=$(call_check "0" "CHUMP_PREFLIGHT_SKIP" "preflight skip")
+out=$(call_check "0" "CHUMP_FMT_CHECK" "fmt check bypass")
 if [[ "$out" == *"OK"* && "$out" != *"strict mode"* ]]; then
     echo "  PASS"
 else

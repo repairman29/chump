@@ -188,15 +188,14 @@ trap _silent_alarm_check_and_emit EXIT
 # gets the comprehensive diagnostic without waiting for individual guards.
 #
 # Skip conditions (preflight is opt-out, not mandatory):
-#   - CHUMP_PREFLIGHT_SKIP=1   — explicit bypass; emits preflight_bypassed
-#                                via chump-commit.sh on the next commit
 #   - `chump` binary not on PATH (early bootstrap; rely on downstream guards)
 #   - Push has zero rust/scripts content (doc-only PR; preflight has nothing useful)
 #
-# Bypass: CHUMP_PREFLIGHT_SKIP=1 git push  (auditable via ambient.jsonl)
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. When origin/main is already
+# failing a gate, preflight auto-skips only those failing gates internally.
+# No env override is accepted or needed.
 # -----------------------------------------------------------------------
-if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
-   && command -v chump &>/dev/null \
+if command -v chump &>/dev/null \
    && chump preflight --help &>/dev/null; then
     preflight_has_targets=0
     while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
@@ -249,9 +248,8 @@ if [[ "${CHUMP_PREFLIGHT_SKIP:-0}" != "1" ]] \
         if [[ "$_pf_rc" -ne 0 ]]; then
             echo "" >&2
             echo "[pre-push] BLOCKED: chump preflight failed (INFRA-1671)." >&2
-            echo "[pre-push] Fix the failing gate and try again, or bypass with:" >&2
-            echo "[pre-push]   CHUMP_PREFLIGHT_SKIP=1 git push" >&2
-            echo "[pre-push]   (plus 'Preflight-Skip-Reason: <why>' in your commit body)" >&2
+            echo "[pre-push] Fix the failing gate(s) and try again." >&2
+            echo "[pre-push] If origin/main is also RED, preflight auto-skips those gates (INFRA-2422)." >&2
             echo "" >&2
             unset _pf_rc
             exit 1

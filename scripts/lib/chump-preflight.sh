@@ -25,15 +25,8 @@
 #   - If chump is healthy: probe takes ~50ms and stays silent
 #     (CHUMP_DOCTOR_QUIET=1).
 #
-# Bypass: set `CHUMP_PREFLIGHT_SKIP=1` to skip the preflight entirely (for
-# environments where chump-binary-unwedge.sh's filesystem operations might race
-# with concurrent coord-script invocations on the same binary inode).
-
-# Use defensive parameter expansion in case the caller hasn't set
-# `set -u` yet — sourcing this script must not blow up early.
-if [ "${CHUMP_PREFLIGHT_SKIP:-0}" = "1" ]; then
-    return 0 2>/dev/null || true
-fi
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted. The binary-unwedge doctor
+# runs unconditionally (it is best-effort and takes ~50ms on healthy binaries).
 
 # Resolve the doctor relative to this lib script's location, regardless
 # of where the sourcing script lives or what the caller's CWD is.

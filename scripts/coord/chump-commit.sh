@@ -638,30 +638,9 @@ unset _next_is_inline_msg _ga _GIT_COMMON_DIR
 # branch the INFRA-1673 preflight check takes.
 _staged_paths=$(git diff --cached --name-only 2>/dev/null)
 
-# INFRA-1673: warn if preflight was skipped without an audit trailer.
-# Only fires when the commit touches Rust or scripts (where local CI matters).
-# Bypass: CHUMP_PREFLIGHT_AUDIT=0.
-if [[ "${CHUMP_PREFLIGHT_AUDIT:-1}" == "1" && "${CHUMP_PREFLIGHT_SKIP:-0}" == "1" ]]; then
-    if echo "$_staged_paths" | grep -qE '^(src/|crates/|scripts/|chump-tool-macro/|build\.rs|Cargo\.(toml|lock))'; then
-        _gcd="$(git rev-parse --git-common-dir 2>/dev/null)"
-        _msg_file="$_gcd/COMMIT_EDITMSG"
-        if [[ -f "$_msg_file" ]] && ! grep -qiE '^Preflight-Skip-Reason:' "$_msg_file"; then
-            echo "" >&2
-            echo "⚠  INFRA-1673: CHUMP_PREFLIGHT_SKIP=1 set but no audit trailer in commit body." >&2
-            echo "   Add to the commit message body:" >&2
-            echo "       Preflight-Skip-Reason: <one sentence why>" >&2
-            echo "   This is a soft warning, not a block. Bypass: CHUMP_PREFLIGHT_AUDIT=0" >&2
-            echo "" >&2
-        fi
-        # Emit an ambient event for retrospectives regardless.
-        _ambient="${CHUMP_AMBIENT_LOG:-$(git rev-parse --show-toplevel)/.chump-locks/ambient.jsonl}"
-        printf '{"ts":"%s","kind":"preflight_bypassed","session":"%s","files":%d}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            "${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}" \
-            "$(echo "$_staged_paths" | wc -l | tr -d ' ')" \
-            >> "$_ambient" 2>/dev/null || true
-    fi
-fi
+# INFRA-2422: CHUMP_PREFLIGHT_SKIP deleted — the audit block that warned
+# when the bypass was used without a Preflight-Skip-Reason trailer is removed.
+# preflight now auto-skips only main-RED gates; no bypass env is accepted.
 
 # INFRA-1833: auto-fmt-on-commit. Run `cargo fmt --all` BEFORE commit so
 # the cargo fmt --check CI gate never fails. Auto-fix beats check-and-fail —

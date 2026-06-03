@@ -5095,6 +5095,18 @@ events:
       shipped without local validation of the Net-new-docs trailer.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
+  - kind: preflight_main_red_skip
+    effect_metric: self
+    emitter: src/preflight.rs (INFRA-2422 main-red-aware gate auto-skip)
+    trigger: >
+      preflight auto-skipped a gate because origin/main is already failing
+      it (main-preflight-watchdog reported state=RED for that gate). Emitted
+      once per gate skipped per preflight run. Replaces the deleted
+      CHUMP_PREFLIGHT_SKIP env bypass — instead of blanket-skipping all gates,
+      only the specific trunk-failing gate is skipped. Consumers can join on
+      gate + trunk_fix_gap_id to see which trunk fix resolves the skip.
+    consumers: [fleet-brief, ops-audit, trunk-sentinel]
+    fields_required: [ts, kind, gate, trunk_fix_gap_id]
   - kind: preflight_baseline_diff
     effect_metric: self
     emitter: src/preflight.rs (META-153 --vs diff-scoped failure attribution)
