@@ -947,3 +947,10 @@ CHUMP_BLAME_BOT_TEST_CHECK_RUNS
 CHUMP_BLAME_BOT_TEST_GREEN_SHA
 # detected in: (standard input)
 CHUMP_BLAME_BOT_TEST_REPO_ROOT
+CHUMP_LAST_MILE_AGENT_STALL_S
+# detected in: (standard input)
+CHUMP_LAST_MILE_DISABLED
+# detected in: (standard input)
+CHUMP_LAST_MILE_DRY_RUN
+# detected in: (standard input)
+CHUMP_LAST_MILE_ORPHAN_WINDOW_S
