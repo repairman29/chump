@@ -1698,6 +1698,7 @@ mod tests {
                     preferred_machine: None,
                     estimated_minutes: None,
                     required_model: None,
+                    outcome_id: None,
                 },
             )
             .unwrap();
@@ -1722,6 +1723,7 @@ mod tests {
                     preferred_machine: None,
                     estimated_minutes: None,
                     required_model: None,
+                    outcome_id: None,
                 },
             )
             .unwrap();

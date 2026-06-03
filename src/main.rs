@@ -2293,6 +2293,153 @@ async fn main() -> Result<()> {
         }
     }
 
+    // MISSION-008: `chump outcome <sub>` — first-class Outcome object commands.
+    // chump outcome new --id X --title T [--priority P] [--definition-of-done D]
+    // chump outcome list [--json]
+    // chump outcome status <id> [--json]
+    // ADVISORY ONLY — outcome rollup never gates or blocks a child gap from closing.
+    if args.get(1).map(String::as_str) == Some("outcome") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let store = match gap_store::GapStore::open(&repo_root) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("chump outcome: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        // Inline flag helper valid for this block (flag closure defined later in main).
+        let oflag = |name: &str| -> Option<String> {
+            args.windows(2)
+                .find(|w| w[0] == name)
+                .and_then(|w| w.get(1))
+                .cloned()
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+        match sub {
+            "new" | "create" => {
+                let id = oflag("--id").unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome new --id X --title T [--priority P] [--definition-of-done D]");
+                    std::process::exit(2);
+                });
+                let title = oflag("--title").unwrap_or_else(|| {
+                    eprintln!("chump outcome new: --title required");
+                    std::process::exit(2);
+                });
+                let priority = oflag("--priority").unwrap_or_else(|| "P2".into());
+                let dod = oflag("--definition-of-done").unwrap_or_default();
+                match store.create_outcome(&id, &title, &priority, &dod) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{id}","title":"{title}","priority":"{priority}","created":true}}"#
+                            );
+                        } else {
+                            println!(
+                                "outcome {} created (advisory — never gates child close)",
+                                id
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome new: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "list" => {
+                let outcomes = store.list_outcomes().unwrap_or_default();
+                if json_out {
+                    let items: Vec<String> = outcomes
+                        .iter()
+                        .map(|o| {
+                            format!(
+                                r#"{{"id":"{}","title":"{}","priority":"{}","status":"{}"}}"#,
+                                o.id,
+                                o.title.replace('"', "\\\""),
+                                o.priority,
+                                o.status
+                            )
+                        })
+                        .collect();
+                    println!("[{}]", items.join(","));
+                } else {
+                    if outcomes.is_empty() {
+                        println!(
+                            "(no outcomes registered — use `chump outcome new` to create one)"
+                        );
+                    }
+                    for o in &outcomes {
+                        println!("{} [{}] {} — {}", o.id, o.priority, o.status, o.title);
+                    }
+                }
+            }
+            "status" => {
+                let oid = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome status <outcome-id> [--json]");
+                    std::process::exit(2);
+                });
+                match store.outcome_status(&oid) {
+                    Ok(Some(r)) => {
+                        if json_out {
+                            println!(
+                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true}}"#,
+                                r.outcome.id,
+                                r.outcome.title.replace('"', "\\\""),
+                                r.outcome.priority,
+                                r.outcome.status,
+                                r.total,
+                                r.open,
+                                r.done,
+                                r.other,
+                            );
+                        } else {
+                            println!("=== Outcome: {} ===", r.outcome.id);
+                            println!("Title    : {}", r.outcome.title);
+                            println!("Priority : {}", r.outcome.priority);
+                            println!("Status   : {}", r.outcome.status);
+                            if !r.outcome.definition_of_done.is_empty() {
+                                println!("DoD      : {}", r.outcome.definition_of_done);
+                            }
+                            println!();
+                            println!("Child gaps (advisory rollup — never gates close):");
+                            println!(
+                                "  total: {}  open: {}  done: {}  other: {}",
+                                r.total, r.open, r.done, r.other
+                            );
+                            if r.total > 0 {
+                                let pct = (r.done as f64 / r.total as f64 * 100.0) as usize;
+                                println!("  progress: {}%", pct);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        eprintln!("chump outcome status: outcome '{}' not found", oid);
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome status: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ => {
+                println!("Usage: chump outcome <sub> [args]");
+                println!();
+                println!("Subcommands:");
+                println!("  new --id X --title T [--priority P] [--definition-of-done D]");
+                println!("  list [--json]");
+                println!("  status <outcome-id> [--json]");
+                println!();
+                println!(
+                    "ADVISORY: outcome rollup never gates or blocks a child gap from closing."
+                );
+                println!("Assign a gap to an outcome with: chump gap set <GAP-ID> --outcome <OUTCOME-ID>");
+            }
+        }
+        return Ok(());
+    }
+
     // `chump roadmap-status [--json] [--exit-on-drift] [--top-starved N]`
     // INFRA-606: reads docs/ROADMAP.md, shows 🟢/🟡/🔴 progress per weekly outcome.
     // INFRA-1145: adds starved_outcomes, untraced_p0, pillar_coverage, --exit-on-drift.
@@ -7241,6 +7388,8 @@ async fn main() -> Result<()> {
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
+                // MISSION-008: optional --outcome <id> to assign gap to an outcome at reserve time.
+                let reserve_outcome_id = flag("--outcome");
                 let force = args.iter().any(|a| a == "--force");
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
@@ -7768,6 +7917,20 @@ async fn main() -> Result<()> {
                             if let Err(e) = store.set_fields(&id, update) {
                                 if !quiet {
                                     eprintln!("warning: failed to set acceptance_criteria: {e}");
+                                }
+                            }
+                        }
+
+                        // MISSION-008: set outcome_id when --outcome was passed.
+                        // Advisory-only FK; never gates gap close.
+                        if let Some(ref oid) = reserve_outcome_id {
+                            let update = gap_store::GapFieldUpdate {
+                                outcome_id: Some(oid.clone()),
+                                ..Default::default()
+                            };
+                            if let Err(e) = store.set_fields(&id, update) {
+                                if !quiet {
+                                    eprintln!("warning: failed to set outcome_id: {e}");
                                 }
                             }
                         }
@@ -8363,6 +8526,7 @@ async fn main() -> Result<()> {
                     eprintln!("                          [--closed-pr N] [--acceptance-criteria BULLET ...] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
                     eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
+                    eprintln!("                          [--outcome OUTCOME-ID]  (MISSION-008: advisory FK, never gates close)");
                     eprintln!("  Note: --add-note TEXT appends '[ISO-timestamp] TEXT' to existing notes; --notes OVERWRITES.");
                     eprintln!("  INFRA-1799: --acceptance-criteria accepts repeated flags — one AC bullet per occurrence.");
                     eprintln!("              Example (preferred, no escape needed for pipes):");
@@ -8446,6 +8610,8 @@ async fn main() -> Result<()> {
                     ("estimated-minutes", "--estimated-minutes"),
                     ("required_model", "--required-model"),
                     ("required-model", "--required-model"),
+                    ("outcome_id", "--outcome"),
+                    ("outcome-id", "--outcome"),
                 ];
                 // Normalise: rewrite bare positional field name at args[4] to its
                 // canonical `--flag` form in a local mutable shadow. We only apply
@@ -8607,6 +8773,8 @@ async fn main() -> Result<()> {
                     preferred_machine: flag_local("--preferred-machine"),
                     estimated_minutes: flag_local("--estimated-minutes"),
                     required_model: flag_local("--required-model"),
+                    // MISSION-008: advisory FK to outcomes table; never gates close.
+                    outcome_id: flag_local("--outcome"),
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
@@ -9023,6 +9191,10 @@ async fn main() -> Result<()> {
                     .filter(|g| g.status == "done" && g.closed_pr.is_some())
                     .collect();
 
+                // MISSION-008: outcome-aware P0 budget view (additive — existing per-gap
+                // checks remain intact; this is an advisory overlay alongside them).
+                let p0_outcomes = store.list_p0_outcomes().unwrap_or_default();
+
                 if json_out {
                     let report = serde_json::json!({
                         "p0_count": p0_count,
@@ -9040,6 +9212,11 @@ async fn main() -> Result<()> {
                             let age_days = (now_secs - g.created_at) / 86400;
                             let auto_filed = g.notes.contains(auto_filed_marker);
                             serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days, "auto_filed": auto_filed})
+                        }).collect::<Vec<_>>(),
+                        // MISSION-008: outcome-aware layer (advisory, alongside per-gap budget)
+                        "p0_outcomes_count": p0_outcomes.len(),
+                        "p0_outcomes": p0_outcomes.iter().map(|o| {
+                            serde_json::json!({"id": o.id, "title": o.title, "priority": o.priority})
                         }).collect::<Vec<_>>(),
                     });
                     println!(
@@ -9123,6 +9300,19 @@ async fn main() -> Result<()> {
                     println!("race-* test pollution (open): {}", race_pollution.len());
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);
+                    }
+                    // MISSION-008: outcome-aware P0 budget view (advisory alongside per-gap checks).
+                    println!();
+                    println!("=== Outcome-aware P0 budget (MISSION-008, advisory) ===");
+                    if p0_outcomes.is_empty() {
+                        println!(
+                            "  (no P0 outcomes registered — `chump outcome new` to create one)"
+                        );
+                    } else {
+                        println!("P0 open outcomes: {}", p0_outcomes.len());
+                        for o in &p0_outcomes {
+                            println!("  {} — {}", o.id, o.title);
+                        }
                     }
                 }
 

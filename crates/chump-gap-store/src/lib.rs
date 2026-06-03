@@ -91,6 +91,25 @@ pub struct GapRow {
     ///     "merge_sha": "<sha>" }
     #[serde(default)]
     pub shipped_in: Option<String>,
+    /// MISSION-008: nullable FK into the `outcomes` table.
+    /// NULL for all gaps that predate this migration or that have not been
+    /// assigned to an outcome. NEVER used to gate gap-close — advisory only.
+    #[serde(default)]
+    pub outcome_id: Option<String>,
+}
+
+/// MISSION-008: first-class Outcome object.
+/// Gaps ladder up to outcomes via `gaps.outcome_id` (nullable FK).
+/// Outcome status is advisory-only — it NEVER gates a child gap from closing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct OutcomeRow {
+    pub id: String,
+    pub title: String,
+    pub priority: String,
+    pub definition_of_done: String,
+    pub status: String, // "open" | "done"
+    pub created_at: i64,
+    pub closed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -490,6 +509,33 @@ impl GapStore {
             ",
         );
 
+        // MISSION-008: additive, non-destructive migrations for first-class
+        // Outcome objects. Two changes:
+        //   (a) CREATE TABLE IF NOT EXISTS outcomes — new table, never existed.
+        //   (b) ALTER TABLE gaps ADD COLUMN outcome_id — nullable FK,
+        //       existing rows default to NULL so all existing flows are unchanged.
+        //
+        // The outcome rollup (chump outcome status <id>) is ADVISORY ONLY —
+        // it never gates or blocks a child gap from closing.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS outcomes (
+                id                  TEXT PRIMARY KEY,
+                title               TEXT NOT NULL DEFAULT '',
+                priority            TEXT NOT NULL DEFAULT 'P2',
+                definition_of_done  TEXT NOT NULL DEFAULT '',
+                status              TEXT NOT NULL DEFAULT 'open',
+                created_at          INTEGER NOT NULL DEFAULT 0,
+                closed_at           INTEGER
+             );
+             CREATE INDEX IF NOT EXISTS outcomes_status ON outcomes(status);
+            ",
+        );
+        // ALTER TABLE ADD COLUMN is idempotent — duplicate-column errors are
+        // silently ignored so re-running migrate() is safe.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN outcome_id TEXT", []);
+
         Ok(())
     }
 }
@@ -565,6 +611,7 @@ impl GapStore {
                 estimated_minutes: row.get(19)?,
                 required_model: row.get(20)?,
                 shipped_in: row.get(21)?,
+                outcome_id: row.get(22)?,
             })
         };
         if let Some(s) = status_filter {
@@ -572,7 +619,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model,shipped_in
+                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -582,7 +629,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model,shipped_in
+                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -735,7 +782,7 @@ impl GapStore {
             "SELECT id,domain,title,description,priority,effort,status,
                     CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,shipped_in
+                    preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -763,6 +810,7 @@ impl GapStore {
                     estimated_minutes: row.get(19)?,
                     required_model: row.get(20)?,
                     shipped_in: row.get(21)?,
+                    outcome_id: row.get(22)?,
                 })
             })
             .optional()?;
@@ -775,7 +823,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                          CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                          opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                         preferred_machine,estimated_minutes,required_model,shipped_in
+                         preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
                   FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
             )?;
             // Collect up to 2 rows to detect ambiguity without borrow conflicts.
@@ -804,6 +852,7 @@ impl GapStore {
                         estimated_minutes: r.get(19)?,
                         required_model: r.get(20)?,
                         shipped_in: r.get(21)?,
+                        outcome_id: r.get(22)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1006,6 +1055,17 @@ impl GapStore {
         if let Some(v) = fields.required_model {
             sets.push("required_model=?");
             vals.push(Box::new(v));
+        }
+        // MISSION-008: nullable FK to outcomes. Empty string clears the FK
+        // (sets it to NULL in DB); non-empty string sets it.
+        if let Some(v) = fields.outcome_id {
+            sets.push("outcome_id=?");
+            // Treat empty string as SQL NULL so the FK is truly nullable.
+            if v.is_empty() {
+                vals.push(Box::new(Option::<String>::None));
+            } else {
+                vals.push(Box::new(v));
+            }
         }
         if sets.is_empty() {
             return Ok(());
@@ -2320,6 +2380,8 @@ pub struct GapFieldUpdate {
     pub estimated_minutes: Option<String>,
     /// INFRA-418: required model tier (haiku | sonnet | opus | any).
     pub required_model: Option<String>,
+    /// MISSION-008: nullable FK into outcomes table. None leaves it unchanged.
+    pub outcome_id: Option<String>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -2414,6 +2476,12 @@ fn format_gap_yaml(g: &GapRow) -> String {
     if !g.required_model.is_empty() {
         s.push_str(&format!("  required_model: {}\n", g.required_model));
     }
+    // MISSION-008: emit outcome_id when set (advisory FK — never gates close).
+    if let Some(ref oid) = g.outcome_id {
+        if !oid.is_empty() {
+            s.push_str(&format!("  outcome_id: {}\n", yaml_scalar(oid)));
+        }
+    }
     s.push('\n');
     s
 }
@@ -2450,6 +2518,7 @@ const DB_OWNED_GAP_FIELDS: &[&str] = &[
     "preferred_machine",
     "estimated_minutes",
     "required_model",
+    "outcome_id",
 ];
 
 /// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
@@ -2692,6 +2761,9 @@ struct YamlGap {
     /// INFRA-418: required model tier (haiku | sonnet | opus | any).
     #[serde(default)]
     required_model: Option<serde_yaml::Value>,
+    /// MISSION-008: nullable FK to outcomes table.
+    #[serde(default)]
+    outcome_id: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -3083,14 +3155,20 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .unwrap_or_default();
+            // MISSION-008: outcome_id is nullable — None if absent in YAML.
+            let outcome_id: Option<String> = g
+                .outcome_id
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
             let created_at = unix_now();
 
             let changed = self.conn.execute(
                 "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                    preferred_machine,estimated_minutes,required_model,outcome_id)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
                 params![
                     g.id,
                     g.domain,
@@ -3112,6 +3190,7 @@ impl GapStore {
                     preferred_machine,
                     estimated_minutes,
                     required_model,
+                    outcome_id,
                 ],
             )?;
             if changed > 0 {
@@ -3224,14 +3303,20 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .unwrap_or_default();
+            // MISSION-008: nullable outcome FK.
+            let outcome_id: Option<String> = g
+                .outcome_id
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
             let created_at = unix_now();
 
             self.conn.execute(
                 "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                    preferred_machine,estimated_minutes,required_model,outcome_id)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
                 params![
                     g.id,
                     g.domain,
@@ -3253,6 +3338,7 @@ impl GapStore {
                     preferred_machine,
                     estimated_minutes,
                     required_model,
+                    outcome_id,
                 ],
             )
             .with_context(|| format!("inserting gap {} during restore", g.id))?;
@@ -3793,6 +3879,11 @@ pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<O
         required_model: stringify_val(&yg.required_model),
         // INFRA-2134: YAML files don't carry shipped_in; it lives only in state.db.
         shipped_in: None,
+        // MISSION-008: outcome_id from YAML; None if absent.
+        outcome_id: yg.outcome_id.as_ref().and_then(|v| match v {
+            serde_yaml::Value::String(s) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        }),
     }))
 }
 
@@ -3932,6 +4023,140 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+}
+
+// ────────── MISSION-008: first-class Outcome CRUD ──────────
+
+/// Advisory rollup for one outcome: counts of child gaps by status.
+/// NEVER gates a child gap from closing — purely informational.
+#[derive(Debug, Clone, Default)]
+pub struct OutcomeStatusRollup {
+    pub outcome: OutcomeRow,
+    pub total: usize,
+    pub open: usize,
+    pub done: usize,
+    pub other: usize,
+}
+
+impl GapStore {
+    /// Create a new outcome row. IDs are caller-supplied (e.g. "META-067").
+    /// Idempotent: returns Ok if the ID already exists (INSERT OR IGNORE).
+    pub fn create_outcome(
+        &self,
+        id: &str,
+        title: &str,
+        priority: &str,
+        definition_of_done: &str,
+    ) -> Result<()> {
+        let now = unix_now();
+        self.conn.execute(
+            "INSERT OR IGNORE INTO outcomes(id,title,priority,definition_of_done,status,created_at)
+             VALUES(?1,?2,?3,?4,'open',?5)",
+            params![id, title, priority, definition_of_done, now],
+        )?;
+        Ok(())
+    }
+
+    /// Fetch one outcome by ID. Returns None if not found.
+    pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+             FROM outcomes WHERE id=?1",
+        )?;
+        stmt.query_row(params![id], |r| {
+            Ok(OutcomeRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                priority: r.get(2)?,
+                definition_of_done: r.get(3)?,
+                status: r.get(4)?,
+                created_at: r.get(5)?,
+                closed_at: r.get(6)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// List all outcomes, ordered by id.
+    pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+             FROM outcomes ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(OutcomeRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                priority: r.get(2)?,
+                definition_of_done: r.get(3)?,
+                status: r.get(4)?,
+                created_at: r.get(5)?,
+                closed_at: r.get(6)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Advisory rollup of child-gap progress for one outcome.
+    /// NEVER blocks or gates child-gap close — purely observable.
+    pub fn outcome_status(&self, outcome_id: &str) -> Result<Option<OutcomeStatusRollup>> {
+        let outcome = match self.get_outcome(outcome_id)? {
+            Some(o) => o,
+            None => return Ok(None),
+        };
+        let mut stmt = self
+            .conn
+            .prepare("SELECT status FROM gaps WHERE outcome_id=?1")?;
+        let statuses: Vec<String> = stmt
+            .query_map(params![outcome_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let total = statuses.len();
+        let open = statuses
+            .iter()
+            .filter(|s| s.as_str() == "open" || s.as_str() == "claimed")
+            .count();
+        let done = statuses.iter().filter(|s| s.as_str() == "done").count();
+        let other = total - open - done;
+        Ok(Some(OutcomeStatusRollup {
+            outcome,
+            total,
+            open,
+            done,
+            other,
+        }))
+    }
+
+    /// Return open P0 outcomes (for outcome-aware budget view in audit-priorities).
+    /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
+    pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at
+             FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(OutcomeRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                priority: r.get(2)?,
+                definition_of_done: r.get(3)?,
+                status: r.get(4)?,
+                created_at: r.get(5)?,
+                closed_at: r.get(6)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// List gaps that belong to a given outcome_id.
+    /// Used by roadmap-status LEFT JOIN path and outcome status rollup.
+    pub fn gaps_for_outcome(&self, outcome_id: &str) -> Result<Vec<GapRow>> {
+        self.list(None).map(|all| {
+            all.into_iter()
+                .filter(|g| g.outcome_id.as_deref() == Some(outcome_id))
+                .collect()
+        })
     }
 }
 
