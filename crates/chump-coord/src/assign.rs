@@ -98,7 +98,35 @@ fn parse_skills(csv: &str) -> Vec<String> {
         .collect()
 }
 
-/// Build the subject for a gap row.
+/// Sanitize an arbitrary string into a single NATS-safe subject token.
+/// NATS subject tokens cannot contain spaces, dots, `*`, `>`, or be empty —
+/// and gap fields (priority/class/machine, derived from skills_required etc.)
+/// can contain anything, so we map every non-`[A-Za-z0-9_-]` char to `_`,
+/// trim, cap length, and fall back to `x` if empty. Without this, a single gap
+/// with a polluted routing field (e.g. a description leaked into
+/// skills_required) yields an invalid subject and crashes the assign daemon
+/// every cycle — which is exactly why the mesh publisher never ran (INFRA-2476).
+fn sanitize_token(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let token: String = cleaned.trim_matches('_').chars().take(48).collect();
+    if token.is_empty() {
+        "x".to_string()
+    } else {
+        token
+    }
+}
+
+/// Build the subject for a gap row. Every token is sanitized so arbitrary gap
+/// data can never produce an invalid NATS subject (INFRA-2476).
 pub fn subject_for(row: &GapRow) -> String {
     let machine = if row.preferred_machine.is_empty() {
         "any".to_string()
@@ -108,9 +136,9 @@ pub fn subject_for(row: &GapRow) -> String {
     format!(
         "{}.{}.{}.{}",
         WORK_SUBJECT_PREFIX,
-        row.priority,
-        class_for(row),
-        machine
+        sanitize_token(&row.priority),
+        sanitize_token(&class_for(row)),
+        sanitize_token(&machine)
     )
 }
 
@@ -370,5 +398,32 @@ mod tests {
         };
         assert!(!worker_accepts(&env, &[], "macbook", ""));
         assert!(worker_accepts(&env, &[], "pi-mesh", ""));
+    }
+
+    #[test]
+    fn sanitize_token_yields_valid_nats_tokens() {
+        // INFRA-2476 regression: a description leaked into a routing field
+        // (spaces/colons/semicolons/dots) crashed the assign daemon every cycle
+        // with "invalid subject format". sanitize_token must neutralize it.
+        let dirty = "INFRA:P2.n routing hint for one-jeff-many-repos; metadata";
+        let clean = sanitize_token(dirty);
+        for bad in [' ', '.', ':', ';', '*', '>'] {
+            assert!(
+                !clean.contains(bad),
+                "token still contains {:?}: {}",
+                bad,
+                clean
+            );
+        }
+        assert!(!clean.is_empty());
+        assert!(clean.len() <= 48, "token not length-capped: {}", clean);
+        // empty / all-garbage falls back to a non-empty placeholder
+        assert_eq!(sanitize_token(""), "x");
+        assert_eq!(sanitize_token("   "), "x");
+        // clean values pass through unchanged
+        assert_eq!(sanitize_token("P0"), "P0");
+        assert_eq!(sanitize_token("runtime"), "runtime");
+        // a full subject built from the cleaned token is dot-split-safe (3 dots)
+        assert_eq!(format!("chump.work.{}.any", clean).matches('.').count(), 3);
     }
 }
