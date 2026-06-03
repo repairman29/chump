@@ -10,12 +10,15 @@
 # Targets are minimal (host-only); the chump-coord cross-build script
 # (scripts/dev/cross-build-linux.sh) installs additional targets on demand.
 #
-# Channel rationale (stable + min 1.82):
+# Channel rationale (pinned exact patch, INFRA-2674-context):
 #   - Stable codegen-backend syntax (`[profile.dev] codegen-backend = "..."`)
 #     landed in 1.82, which INFRA-2242 relies on for the cranelift dev opt-in.
-#   - "stable" tracks the latest stable release; bump the minimum here when
-#     a newer feature is adopted.
+#   - INFRA-2674 (2026-06-03): pinning the EXACT patch (not floating "stable")
+#     prevents the local-vs-CI rustfmt drift that caused PR #3003's fast-checks
+#     fail today. Local + CI must agree on the byte-exact rustfmt output.
+#   - When upgrading: bump this pin, run `cargo fmt --all` to apply any new
+#     formatter decisions, commit both in the same PR.
 [toolchain]
-channel = "stable"
+channel = "1.96.0"
 components = ["rustfmt", "clippy", "llvm-tools-preview"]
 profile = "minimal"

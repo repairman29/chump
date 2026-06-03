@@ -43,8 +43,28 @@ esac
 
 log() { [[ "$QUIET" == "0" ]] && echo "$@" || true; }
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+# RESILIENT-075: the symlink TARGET must be the MAIN worktree, never the current
+# one. `git rev-parse --show-toplevel` returns whatever worktree we happen to run
+# from — and this script installs hooks into EVERY worktree (the loop below),
+# including the main repo's shared .git/hooks/. If we run it from a transient
+# /tmp/chump-<gap> claim worktree, every worktree's hooks get symlinked into /tmp
+# and SILENTLY break the instant that claim is reaped (git skips a dangling-symlink
+# hook with no error — the whole gate layer vanishes fleet-wide). The main worktree
+# is always the FIRST entry of `git worktree list --porcelain`, so we pin to it.
+MAIN_WORKTREE="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+REPO_ROOT="${MAIN_WORKTREE:-$(git rev-parse --show-toplevel)}"
 SRC_DIR="$REPO_ROOT/scripts/git-hooks"
+
+# Defense in depth: never anchor the fleet's hooks under a temp dir. If the
+# resolved main worktree is itself transient (shouldn't happen, but a bare-repo or
+# misconfigured worktree could), refuse rather than install a self-destructing link.
+case "$REPO_ROOT" in
+    /tmp/*|/private/tmp/*|/var/folders/*)
+        echo "error (RESILIENT-075): resolved main worktree '$REPO_ROOT' is under a temp dir;" >&2
+        echo "  refusing to anchor hooks there (they would break when the dir is reaped)." >&2
+        echo "  Run install-hooks.sh from a stable checkout, or fix the main worktree path." >&2
+        exit 1 ;;
+esac
 
 if [ ! -d "$SRC_DIR" ]; then
     echo "error: $SRC_DIR not found" >&2
