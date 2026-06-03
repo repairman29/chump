@@ -730,9 +730,33 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             _PREPUSH_WRAPPER_OVERRIDE=()
             _PREPUSH_WRAPPER_BIN="${RUSTC_WRAPPER:-$(awk -F\" '/^[[:space:]]*rustc-wrapper[[:space:]]*=/ {print $2; exit}' "$REPO_ROOT_T/.cargo/config.toml" 2>/dev/null)}"
             if [[ -n "$_PREPUSH_WRAPPER_BIN" ]]; then
-                if [[ ! -x "$_PREPUSH_WRAPPER_BIN" ]] || ! "$_PREPUSH_WRAPPER_BIN" --version >/dev/null 2>&1; then
-                    echo "[pre-push] INFRA-2184: RUSTC_WRAPPER ($_PREPUSH_WRAPPER_BIN) failed --version probe — disabling wrapper for test gate (push proceeds without sccache caching)." >&2
+                # EFFECTIVE-097: HEAL, don't just probe. The old INFRA-2184 check ran
+                # `$WRAPPER --version`, but for sccache that is a CLIENT-only call that
+                # succeeds even when the compile SERVER is dead (the recurring
+                # "0 compile requests / os error 2 / never executed" failure). So the
+                # probe passed, cargo used the dead wrapper, every Rust push false-failed,
+                # and the whole fleet learned to reach for CHUMP_TEST_GATE=0. Instead:
+                #   1. `--start-server` is an idempotent HEAL (starts a dead server; it
+                #      exits 2 when one is already running, so its exit is intentionally
+                #      ignored — never used as the liveness signal).
+                #   2. `--show-stats` is the real liveness check: it returns 0 iff the
+                #      server responds (true both when it was already up and after a heal).
+                # Only when the binary is missing, OR cannot be healed AND fails --version
+                # (a non-sccache wrapper), do we disable the wrapper — gate still runs,
+                # just without caching (slow but a TRUE signal, never a false fail).
+                if [[ ! -x "$_PREPUSH_WRAPPER_BIN" ]]; then
+                    echo "[pre-push] EFFECTIVE-097: RUSTC_WRAPPER ($_PREPUSH_WRAPPER_BIN) not executable — disabling wrapper for test gate (push proceeds without sccache caching)." >&2
                     _PREPUSH_WRAPPER_OVERRIDE=(env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER=)
+                else
+                    "$_PREPUSH_WRAPPER_BIN" --start-server >/dev/null 2>&1 || true  # idempotent heal; exit ignored (2 == already running)
+                    if "$_PREPUSH_WRAPPER_BIN" --show-stats >/dev/null 2>&1; then
+                        : # server live (was up, or just healed) — keep the wrapper, gate runs cached
+                    elif "$_PREPUSH_WRAPPER_BIN" --version >/dev/null 2>&1; then
+                        : # non-sccache wrapper without --show-stats but responsive — trust it as before
+                    else
+                        echo "[pre-push] EFFECTIVE-097: RUSTC_WRAPPER ($_PREPUSH_WRAPPER_BIN) server could not start and is unresponsive — disabling wrapper for test gate (push proceeds without sccache caching; true signal preserved)." >&2
+                        _PREPUSH_WRAPPER_OVERRIDE=(env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER=)
+                    fi
                 fi
             fi
 
