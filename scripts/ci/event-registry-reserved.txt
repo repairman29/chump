@@ -703,4 +703,14 @@ prepush_lease_mismatch  # reason: INFRA-2446; emitted by scripts/git-hooks/pre-p
 gap_reserve_blocked              # reason: INFRA-2534; emitted at src/main.rs:7772 via heredoc raw-string r#"..."# pattern; walker misses heredoc kind literals
 worker_paused_waste_spike_bypass # reason: INFRA-2534; emitted at scripts/coord/waste-spike-detector.sh:58 via _emit helper; walker fails to resolve _emit args as the kind name
 scratch_cache_hit                # reason: INFRA-2534; emitted by chump-coord scratchpad layer (INFRA-1121 A2A Layer 3d); Rust struct serialization path not parsed by walker
+
+# ── INFRA-2628: stale-main guard ──────────────────────────────────────────────
+# Emitted by scripts/git-hooks/pre-push Guard 6 when a chump/ branch is more
+# than CHUMP_STALE_REBASE_MAX_BEHIND commits behind origin/main. The hook
+# script lives in scripts/git-hooks/ which is outside PROD_PATHS grep scan,
+# so the emit-without-register strict-mode check would flag it without this
+# reservation. The scanner-anchor comment in the hook (`# scanner-anchor:
+# "kind":"stale_rebase_blocked"`) is for human grep-ability; this entry is
+# the machine-readable allowlist entry.
+stale_rebase_blocked  # reason: INFRA-2628; emitted by scripts/git-hooks/pre-push Guard 6; git-hooks/ dir is outside PROD_PATHS grep scan
 scratch_cache_miss               # reason: INFRA-2534; emitted by chump-coord scratchpad layer (INFRA-1121 A2A Layer 3d); Rust struct serialization path not parsed by walker

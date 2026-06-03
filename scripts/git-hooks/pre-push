@@ -932,6 +932,64 @@ detect_recent_rebase() {
     return 1
 }
 
+# -----------------------------------------------------------------------
+# Guard 6: Stale-rebase staleness gate (INFRA-2628)
+#
+# Reproducer 2026-06-03: Sonnet worktree provisioned when origin/main was
+# at ~56e15def. After 30 min of work, PR #2987 (INFRA-2524) landed, moving
+# main to 31e71d16 and adding a 66-line gate_name_is_plausible() function.
+# The diff at push time showed -66 lines — a stale-base branch would have
+# rescinded the just-landed safety guard. The orchestrator caught it
+# manually via `git rebase origin/main`. This guard automates that catch.
+#
+# For any chump/<gap-id>-* branch push, if origin/main has moved more than
+# CHUMP_STALE_REBASE_MAX_BEHIND commits past the branch's merge-base, the
+# push is refused with a clear rebase directive.
+#
+# Override (increase limit, not disable): CHUMP_STALE_REBASE_MAX_BEHIND=999
+# Bypass intent is communicated via the =999 tunable, not a separate flag.
+# -----------------------------------------------------------------------
+_srb_current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+if [[ "$_srb_current_branch" =~ ^chump/[a-zA-Z]+-[0-9]+ ]]; then
+    # Fetch origin/main so the staleness count is against actual remote state.
+    git fetch origin main --quiet 2>/dev/null || true
+    _srb_max_behind="${CHUMP_STALE_REBASE_MAX_BEHIND:-5}"
+    _srb_merge_base="$(git merge-base origin/main HEAD 2>/dev/null || echo "")"
+    if [[ -n "$_srb_merge_base" ]]; then
+        _srb_commits_behind="$(git rev-list --count "${_srb_merge_base}..origin/main" 2>/dev/null || echo 0)"
+        _srb_current_main_head="$(git rev-parse --short origin/main 2>/dev/null || echo unknown)"
+        if [[ "$_srb_commits_behind" -gt "$_srb_max_behind" ]]; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: branch is ${_srb_commits_behind} commits behind origin/main since last rebase." >&2
+            echo "[pre-push] Rebase risk: stale-base may rescind recently-landed changes (INFRA-2628 reproducer 2026-06-03)." >&2
+            echo "[pre-push] Fix: cd <worktree> && git rebase origin/main && verify diff before push." >&2
+            echo "[pre-push] Override: CHUMP_STALE_REBASE_MAX_BEHIND=999 git push  (audit-logged)" >&2
+            echo "" >&2
+            # scanner-anchor: "kind":"stale_rebase_blocked"
+            _srb_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _wt_list_srb="$(git worktree list --porcelain 2>/dev/null || true)"
+            _main_repo_srb="$(awk '/^worktree / {print $2; exit}' <<<"$_wt_list_srb")"
+            unset _wt_list_srb
+            [[ -n "$_main_repo_srb" && -d "$_main_repo_srb/.chump-locks" ]] && _srb_root="$_main_repo_srb"
+            unset _main_repo_srb
+            _srb_ambient="${CHUMP_AMBIENT_LOG:-$_srb_root/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_srb_ambient")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"stale_rebase_blocked","branch":"%s","commits_behind":%d,"merge_base":"%s","current_main_head":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "$_srb_current_branch" \
+                "$_srb_commits_behind" \
+                "$_srb_merge_base" \
+                "$_srb_current_main_head" \
+                >> "$_srb_ambient" 2>/dev/null || true
+            unset _srb_root _srb_ambient _srb_commits_behind _srb_merge_base _srb_max_behind \
+                  _srb_current_branch _srb_current_main_head
+            exit 1
+        fi
+    fi
+fi
+unset _srb_current_branch _srb_max_behind _srb_merge_base _srb_commits_behind \
+      _srb_current_main_head 2>/dev/null || true
+
 # Read the list of refs being pushed from stdin (format: local_ref local_sha remote_ref remote_sha)
 while read -r local_ref local_sha remote_ref remote_sha; do
     # INFRA-1988: mark loop entered so the EXIT trap's silent-noop alarm
