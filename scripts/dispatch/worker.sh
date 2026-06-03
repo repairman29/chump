@@ -369,6 +369,23 @@ while :; do
         continue
     fi
 
+    # RESILIENT-069: farmer readiness gate — "lights on?" before any new claim.
+    # RED = sentinel present OR exit-78 daemon OR stale oauth OR stale heartbeat.
+    # RED admits no new claims; the Farmer's recovery routes around it.
+    # Gate is skipped if CHUMP_SKIP_FARMER_GATE=1 (emergency bypass, audited).
+    if [[ "${CHUMP_SKIP_FARMER_GATE:-0}" != "1" ]]; then
+        if ! CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status --quiet 2>/dev/null; then
+            _farmer_reason=$(CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status 2>/dev/null | head -3 || echo "unknown")
+            log "RESILIENT-069: farmer status RED — no new claims admitted; sleeping ${IDLE_SLEEP_S}s"
+            log "  reason: $_farmer_reason"
+            _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            printf '{"ts":"%s","kind":"worker_farmer_gate_red","agent_id":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" >> "$_amb" 2>/dev/null || true
+            sleep "${IDLE_SLEEP_S:-60}"
+            continue
+        fi
+    fi
+
     # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
     # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget.
     # (1) fleet-hold-check.sh — exits 2 if cluster-detector wrote fleet-hold.txt

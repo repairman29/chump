@@ -1245,6 +1245,44 @@ async fn main() -> Result<()> {
         std::process::exit(preflight::run(&sub_args));
     }
 
+    // `chump farmer status` (RESILIENT-069) — readiness probe.
+    // exit 0 = GREEN (sentinel absent, no exit-78 daemons, oauth fresh,
+    // farmer heartbeat fresh). exit 1 = RED. Reads only local state (<100ms).
+    // RED admits no new claims; Farmer's recovery routes around it, never through.
+    if args.get(1).map(String::as_str) == Some("farmer") {
+        let sub = args.get(2).map(String::as_str);
+        if sub == Some("status") || sub == Some("--help") || sub == Some("help") {
+            if sub == Some("--help") || sub == Some("help") {
+                println!("Usage: chump farmer status [--json] [--quiet]");
+                println!();
+                println!("Readiness probe for the control-plane farmer daemon.");
+                println!(
+                    "exit 0 = GREEN (all lights on), exit 1 = RED (at least one check failed)."
+                );
+                println!();
+                println!("Checks (all local state, no network):");
+                println!("  1. .chump/fleet-paused sentinel absent");
+                println!("  2. Zero control-plane daemons with exit-78");
+                println!("  3. OAuth token fresh (mtime < FARMER_OAUTH_MAX_AGE_S, default 3600s)");
+                println!("  4. Farmer heartbeat file fresh (mtime < 120s)");
+                println!();
+                println!("Options:");
+                println!("  --json    structured JSON output");
+                println!("  --quiet   no output, just exit code");
+                return Ok(());
+            }
+            let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+            std::process::exit(commands::farmer_status::run(
+                &commands::farmer_status::resolve_repo_root(),
+                &sub_args,
+            ));
+        }
+        // Unknown farmer subcommand
+        eprintln!("chump farmer: unknown subcommand '{}'", sub.unwrap_or(""));
+        eprintln!("Available: chump farmer status [--json] [--quiet]");
+        std::process::exit(2);
+    }
+
     // `chump session-summary` (INFRA-1437) — list merged + armed + filed PRs
     // in the current session window. Replaces the manual ambient.jsonl + gh
     // pr list scrape that PM-curator + operator were doing at every session

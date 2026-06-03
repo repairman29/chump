@@ -7752,4 +7752,20 @@ events:
     consumers: [ops-audit, fleet-brief, waste-tally]
     fields_required: [ts, kind, gap_id, prior_run_id, replayed_steps]
     # payload: {gap_id: str, prior_run_id: int, replayed_steps: int}
+  # ── RESILIENT-069: chump farmer status gate events ───────────────────────
+
+  - kind: worker_farmer_gate_red
+    effect_metric: resilient
+    emitter: scripts/dispatch/worker.sh (RESILIENT-069)
+    # scanner-anchor: "kind":"worker_farmer_gate_red"
+    trigger: >
+      A worker tick attempted to claim a new gap but `chump farmer status`
+      returned RED (at least one of: sentinel present, exit-78 daemon,
+      stale oauth token, stale farmer heartbeat). The worker sleeps
+      IDLE_SLEEP_S and retries on the next cycle. No claim is issued.
+      The Farmer's recovery path runs independently and will lift the RED
+      condition; once it does, the next worker tick will proceed normally.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, agent_id]
+    # payload: {agent_id: str}
     status: stable

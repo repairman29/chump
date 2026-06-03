@@ -830,6 +830,9 @@ jobs:
       - name: farmer un-killable control-plane tender (RESILIENT-068)
         run: bash scripts/ci/test-farmer.sh
 
+      - name: farmer status readiness gate (RESILIENT-069)
+        run: bash scripts/ci/test-farmer-status.sh
+
       - name: fleet starve auto-action (INFRA-391)
         run: bash scripts/ci/test-fleet-starve-auto-action.sh
 
