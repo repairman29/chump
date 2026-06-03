@@ -323,6 +323,7 @@ mod tests {
             estimated_minutes: String::new(),
             required_model: String::new(),
             shipped_in: None,
+            outcome_id: None,
         }
     }
 
