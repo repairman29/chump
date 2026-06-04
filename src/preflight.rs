@@ -608,6 +608,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // correctly to synthetic red-trunk conditions. Pure shell, ~1s,
         // detects regressions in the L6 keystones before they reach trunk.
         "scripts/ci/test-m2-gate-end-to-end.sh",
+        // INFRA-2265: bootstrap smoke — asserts `chump bootstrap <intent>` produces
+        // a git repo + README.md + Cargo.toml + ambient events. Scoped to
+        // src/main.rs OR src/commands/bootstrap.rs OR crates/chump-handoff/src/contracts.rs.
+        // Pure local, no network needed when --skip-arch-decision is honored.
+        "scripts/ci/test-bootstrap-smoke.sh",
     ];
     candidates
         .iter()

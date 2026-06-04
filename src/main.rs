@@ -1357,6 +1357,17 @@ async fn main() -> Result<()> {
         std::process::exit(commands::contract_scan::run(&sub_args));
     }
 
+    // `chump bootstrap <intent> [--dir <path>] [--skip-arch-decision] [--with-roadmap]`
+    // (INFRA-2265) — net-new product bootstrap entrypoint: empty dir → git init →
+    // scaffold (Cargo.toml | package.json | pyproject.toml) → README.md → first commit
+    // → umbrella gap via `chump gap reserve`. Sister of INFRA-1746 (`chump ingest`).
+    // This is the SUBSTRATE-layer entrypoint; consumer surfaces own the founder-facing
+    // pitch lane. Third demo-able 2026 outcome (META-067).
+    if args.get(1).map(String::as_str) == Some("bootstrap") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(commands::bootstrap::run(&sub_args));
+    }
+
     // `chump add-env-var <NAME> --tier 1|2|3 [--gap-id X]` (INFRA-2399) —
     // author-time helper: adds a new env var to .env.example (tier 1) or
     // scripts/ci/env-vars-internal.txt (tier 2/3). Prevents CI env-var-coverage

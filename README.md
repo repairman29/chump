@@ -74,6 +74,14 @@ chump fleet status --json       # machine-readable, for scripting
 
 Real-time view of active agents, current claims, recent ships, and pillar grades. Same data the PWA cockpit at `http://localhost:3000/v2/` renders graphically.
 
+**Bootstrap a new product from scratch** (INFRA-2265, META-067 outcome 3) — SUBSTRATE-layer entrypoint: empty dir → git init → scaffold → first commit → umbrella gap. Consumer surfaces own the founder-facing pitch lane on top of this.
+
+```bash
+mkdir /tmp/myproject
+chump bootstrap "A CLI tool that syncs files across machines" --dir /tmp/myproject --skip-arch-decision
+# → git repo initialized, Cargo.toml + README.md + first commit, umbrella gap filed
+```
+
 > **First-run validation in CI:** `.github/workflows/ftue-clean-machine-2026.yml` runs the entire 5-step flow on a fresh macOS runner on every PR touching the relevant paths. If this README is accurate, that workflow stays green.
 
 ### Troubleshooting (5-minute path)

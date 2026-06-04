@@ -100,6 +100,18 @@ Key constraint: depends_on is stored as JSON array — use parse_json_ac_list pa
 
 Never file sub-gaps manually in advance. The filing agent's context is valuable input to decompose, not a substitute for it.
 
+## Bootstrap a new product (INFRA-2265, META-067 outcome 3)
+
+SUBSTRATE-layer entrypoint: empty dir → git init → scaffold → first commit → umbrella gap.
+Consumer surfaces (founder pitch lane, roadmap UI) build on top. Sister of `chump ingest` (INFRA-1746).
+
+```bash
+mkdir /tmp/myproject
+chump bootstrap "A CLI tool that syncs files across machines" \
+  --dir /tmp/myproject --skip-arch-decision
+# → .git/ + Cargo.toml + README.md + first commit + umbrella gap in state.db
+```
+
 ## Claim before writing any code
 
 ```bash
