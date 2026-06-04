@@ -1,0 +1,15 @@
+- id: RESILIENT-073
+  domain: RESILIENT
+  title: "RESILIENT P0: fleet kill switch — chump fleet stop + AUTONOMY_LEVEL flag, fail-closed, checked at every work entry-point"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    The control the operator wants before ANYTHING runs unattended (operator-confirmed 2026-06-03). A single dumb flag ~/.chump/AUTONOMY_LEVEL (0=STOP, non-zero=run) is the source of truth for whether the fleet may do work. 'chump fleet stop' writes 0; 'chump fleet start'/'chump fleet level <n>' writes n. CRITICAL: the check must have NO shared failure mode with the fleet — a pure file read, never a chump-op/DB/network call that the very deadlock could block (contrast the current .chump/fleet-paused, which deadlocks and fails OPEN). Fail-CLOSED: file missing/unreadable/corrupt -> treat as STOP, never run. Wire the check into every work entry-point so level 0 means no new work fleet-wide.
+  acceptance_criteria:
+    - ~/.chump/AUTONOMY_LEVEL is the single source of truth; chump fleet stop writes 0, chump fleet start/level <n> writes n
+    - a pure-file-read check (no chump-op/DB/network dependency) returns stop/go and FAILS CLOSED (missing/unreadable -> STOP)
+    - the check is wired into chump claim, worker.sh tick, bot-merge.sh, and the dispatch path — level 0 refuses new claims, merges, and dispatches fleet-wide
+    - "the kill switch halts the fleet even when it is paused/deadlocked (proven: works with .chump/fleet-paused present and the supervisors down)"
+    - a CI test asserts level-0 and missing-file both refuse claim+merge+dispatch, and level>=1 proceeds
+

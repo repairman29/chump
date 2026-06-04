@@ -830,6 +830,9 @@ jobs:
       - name: farmer un-killable control-plane tender (RESILIENT-068)
         run: bash scripts/ci/test-farmer.sh
 
+      - name: fleet kill switch — AUTONOMY_LEVEL fail-closed (RESILIENT-073)
+        run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-fleet-kill-switch.sh
+
       - name: fleet starve auto-action (INFRA-391)
         run: bash scripts/ci/test-fleet-starve-auto-action.sh
 

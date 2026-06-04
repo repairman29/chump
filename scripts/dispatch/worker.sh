@@ -355,6 +355,29 @@ cycle=0
 while :; do
     cycle=$((cycle + 1))
 
+    # ── RESILIENT-073: fleet kill switch — AUTONOMY_LEVEL check ─────────────
+    # Pure file read: ~/.chump/AUTONOMY_LEVEL must be >= 1 to proceed.
+    # Fail-closed: missing / unreadable / non-numeric / 0 → skip cycle (STOP).
+    # NO shared failure mode: no chump-op, no DB, no NATS, no network.
+    # The operator halt works even when the fleet is deadlocked.
+    _al_file="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+    _al_level=0
+    if [[ -r "$_al_file" ]]; then
+        _al_raw="$(tr -d '[:space:]' < "$_al_file" 2>/dev/null || true)"
+        if [[ "$_al_raw" =~ ^[0-9]+$ ]] && [[ "$_al_raw" -gt 0 ]]; then
+            _al_level="$_al_raw"
+        fi
+    fi
+    if [[ "$_al_level" -eq 0 ]]; then
+        log "RESILIENT-073: fleet stopped (AUTONOMY_LEVEL=${_al_level}) — sleeping ${IDLE_SLEEP_S:-60}s before retry"
+        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"fleet_stopped_kill_switch","source":"worker","agent_id":"%s","autonomy_level":%s,"note":"RESILIENT-073"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "${_al_level}" >> "$_amb" 2>/dev/null || true
+        sleep "${IDLE_SLEEP_S:-60}"
+        continue
+    fi
+    # ── end RESILIENT-073 ────────────────────────────────────────────────────
+
     # FLEET-054: auto-pause when waste rate spikes. Workers check for the
     # .chump/fleet-paused sentinel before each claim cycle. The sentinel blocks
     # claim (work); it does NOT block gap reserve (filing is always allowed).

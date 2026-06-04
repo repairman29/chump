@@ -817,6 +817,18 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, rate, recovery_threshold, window]
 
+  - kind: fleet_stopped_kill_switch
+    effect_metric: resilient
+    emitter: scripts/dispatch/worker.sh + scripts/coord/bot-merge.sh (RESILIENT-073)
+    trigger: AUTONOMY_LEVEL file at ~/.chump/AUTONOMY_LEVEL was 0, missing,
+      unreadable, or non-numeric at the start of a work cycle or bot-merge
+      invocation. Fail-closed — any read failure is treated as STOP.
+      Worker sleeps and retries; bot-merge exits 10.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, autonomy_level]
+    # payload: {source: "worker"|"bot-merge", agent_id?: str, autonomy_level: int}
+    status: stable
+
   - kind: worker_paused_waste_spike
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (FLEET-054)

@@ -92,8 +92,18 @@ run_worker() {
     local amb_file="$FAKE_ROOT/.chump-locks/ambient.jsonl"
     : > "$amb_file"
     : > "$out_file"
+
+    # RESILIENT-073: worker.sh now checks ~/.chump/AUTONOMY_LEVEL as the
+    # FIRST step of each cycle and bails (fail-closed) if missing/zero.
+    # This starve test must set up a fake HOME with AUTONOMY_LEVEL=5 so
+    # the kill switch doesn't fire before the starve detection runs.
+    local fake_home="$TMP/fake-home"
+    mkdir -p "$fake_home/.chump"
+    echo "5" > "$fake_home/.chump/AUTONOMY_LEVEL"
+
     set +e
     env PATH="$TMP/bin:/usr/bin:/bin" \
+        HOME="$fake_home" \
         AGENT_ID="9" \
         REPO_ROOT="$FAKE_ROOT" \
         FLEET_LOG_DIR="$TMP/fleet-logs" \

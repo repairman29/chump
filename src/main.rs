@@ -28,6 +28,7 @@ mod assertion;
 mod atomic_claim;
 mod auth;
 mod autonomy_fsm;
+mod autonomy_level; // RESILIENT-073: fleet kill switch — fail-closed pure file read
 mod autonomy_loop;
 mod autopilot;
 mod battle_qa_tool;
@@ -3921,6 +3922,18 @@ async fn main() -> Result<()> {
                     .unwrap_or_default(),
                 );
 
+                // RESILIENT-073: write AUTONOMY_LEVEL=5 so workers see GO
+                // before the tmux session launches. Level 5 = full autonomy.
+                let al_path = autonomy_level::default_path();
+                match autonomy_level::write_level(5, &al_path) {
+                    Ok(()) => eprintln!(
+                        "chump fleet start: AUTONOMY_LEVEL=5 written to {}",
+                        al_path.display()
+                    ),
+                    Err(e) => {
+                        eprintln!("chump fleet start: WARNING: could not write AUTONOMY_LEVEL: {e}")
+                    }
+                }
                 let status = std::process::Command::new("bash")
                     .arg(&run_fleet_sh)
                     .env("FLEET_SIZE", &size)
@@ -3936,6 +3949,20 @@ async fn main() -> Result<()> {
                 std::process::exit(status.code().unwrap_or(1));
             }
             "stop" => {
+                // RESILIENT-073: write AUTONOMY_LEVEL=0 FIRST — this is the
+                // operator kill switch and must land before any tmux kill so
+                // workers that survive the SIGTERM see STOP on their next tick.
+                let al_path = autonomy_level::default_path();
+                match autonomy_level::write_level(0, &al_path) {
+                    Ok(()) => eprintln!(
+                        "chump fleet stop: AUTONOMY_LEVEL=0 written to {}",
+                        al_path.display()
+                    ),
+                    Err(e) => {
+                        eprintln!("chump fleet stop: WARNING: could not write AUTONOMY_LEVEL: {e}");
+                        eprintln!("  Fleet workers may not see the stop signal until the file is writable.");
+                    }
+                }
                 let session = flag("--session")
                     .or_else(|| cfg("session"))
                     .unwrap_or_else(|| "chump-fleet".to_string());
@@ -3949,6 +3976,44 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     });
                 std::process::exit(status.code().unwrap_or(1));
+            }
+            // RESILIENT-073: `chump fleet level <N>` — write an arbitrary
+            // autonomy level (0 = STOP, 1-5 = graduated go). The graduated
+            // dial (EFFECTIVE-086) layers nuance on top; this is the dumb
+            // write that every entry-point checks.
+            "level" => {
+                let n_str = args.get(3).cloned().unwrap_or_else(|| {
+                    // No arg: print current level and exit 0.
+                    let level = autonomy_level::read_level(&autonomy_level::default_path());
+                    println!("{level}");
+                    std::process::exit(0);
+                });
+                let n: i64 = n_str.parse().unwrap_or_else(|_| {
+                    eprintln!("chump fleet level: N must be an integer, got '{n_str}'");
+                    std::process::exit(2);
+                });
+                if n < 0 {
+                    eprintln!("chump fleet level: N must be >= 0 (0 = STOP)");
+                    std::process::exit(2);
+                }
+                let al_path = autonomy_level::default_path();
+                match autonomy_level::write_level(n, &al_path) {
+                    Ok(()) => {
+                        let status_word = if n == 0 { "STOP" } else { "GO" };
+                        println!(
+                            "AUTONOMY_LEVEL={n} ({status_word}) written to {}",
+                            al_path.display()
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "chump fleet level: failed to write {}: {e}",
+                            al_path.display()
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                std::process::exit(0);
             }
             "status" => {
                 let want_json = args.iter().any(|a| a == "--json");
@@ -6167,8 +6232,19 @@ async fn main() -> Result<()> {
                 });
                 std::process::exit(status.code().unwrap_or(1));
             }
-            // FLEET-037: ergonomic primary verb — alias for "stop".
+            // FLEET-037 + RESILIENT-073: ergonomic primary verb — alias for
+            // "stop". Also writes AUTONOMY_LEVEL=0 (kill switch).
             "down" => {
+                let al_path = autonomy_level::default_path();
+                match autonomy_level::write_level(0, &al_path) {
+                    Ok(()) => eprintln!(
+                        "chump fleet down: AUTONOMY_LEVEL=0 written to {}",
+                        al_path.display()
+                    ),
+                    Err(e) => {
+                        eprintln!("chump fleet down: WARNING: could not write AUTONOMY_LEVEL: {e}")
+                    }
+                }
                 let session = flag("--session")
                     .or_else(|| cfg("session"))
                     .unwrap_or_else(|| "chump-fleet".to_string());
@@ -6717,19 +6793,31 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
                 );
+                eprintln!("Kill switch (RESILIENT-073):");
+                eprintln!(
+                    "  stop        [--session NAME]  write AUTONOMY_LEVEL=0 then kill tmux workers"
+                );
+                eprintln!(
+                    "  start       [--size N] ...    write AUTONOMY_LEVEL=5 then launch workers"
+                );
+                eprintln!("  level       [N]               write N to AUTONOMY_LEVEL (0=STOP); no arg = print current");
+                eprintln!(
+                    "              The AUTONOMY_LEVEL file is checked at every work entry-point."
+                );
+                eprintln!("              Fail-closed: missing/unreadable/corrupt → STOP.");
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("              (like 'start' but refuses if session already running — use 'scale' to resize)");
-                eprintln!("  down        [--session NAME]  (alias for stop)");
+                eprintln!("  down        [--session NAME]  (alias for stop, also writes AUTONOMY_LEVEL=0)");
                 eprintln!("  status      [--json]");
                 eprintln!("  scale       N [--session NAME]");
                 eprintln!("  autopilot   <start|stop|status|restart|heartbeat> [--json]");
                 eprintln!("              -- META-090 single-command operator playbook (10-layer daemon set)");
                 eprintln!("Aliases / advanced:");
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]  (alias for up, no idempotency check)");
-                eprintln!("  stop        [--session NAME]  (alias for down)");
+                eprintln!("  stop        [--session NAME]  (alias for down, also writes AUTONOMY_LEVEL=0)");
                 eprintln!("  snapshot");
                 eprintln!("  restore     <snapshot-id>");
                 eprintln!("  restart     [--size N] [--session NAME]  (fleet-restart.sh — graceful reload)");
