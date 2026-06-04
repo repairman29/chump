@@ -689,6 +689,17 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, reason, worker_id]
 
+  - kind: picker_mission_boost
+    effect_metric: self
+    emitter: scripts/dispatch/_pick_gap.py (MISSION-011)
+    trigger: picker selected a gap linked to the active mission outcome AND
+      there was at least one equal-priority substrate gap in the same
+      planner-rank bucket that the mission gap outranked via the
+      mission_rank tiebreaker. Confirms the mission-directed picker is
+      actually influencing fleet behavior (not just configured).
+    consumers: [fleet-brief, audit-log, mission-grade]
+    fields_required: [ts, kind, gap_id, active_mission, worker_id]
+
   - kind: rust_first_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)

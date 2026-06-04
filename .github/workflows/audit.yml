@@ -523,6 +523,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-picker-priority.sh
 
+      - name: picker surfaces mission-linked gaps before equal-priority substrate (MISSION-011)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-mission-picker.sh
+
       - name: chump fleet bootstrap orchestrator (META-066)
         if: matrix.shard == 3
         run: bash scripts/ci/test-fleet-bootstrap.sh

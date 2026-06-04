@@ -186,6 +186,7 @@ test-orphan-pr-closer.sh
 test-orphan-worktree-prune.sh
 test-per-worktree-target-guard.sh
 test-pick-and-claim-lockdir.sh
+test-mission-picker.sh
 test-picker-priority.sh
 test-pillar-balance.sh
 # INFRA-2350: test-pipefail-race-sweep.sh now mirrored as Scripts-scope
