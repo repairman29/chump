@@ -32,6 +32,14 @@ skip() { echo "  SKIP: $1"; SKIP=$((SKIP+1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# RESILIENT-090: scrub GIT_DIR/GIT_WORK_TREE etc. that the pre-push hook
+# inherits from git and propagates to all subprocesses. Without this scrub,
+# `git init` + `git commit` in mktemp -d dirs IGNORE pwd and land in the
+# operator's worktree — root cause of #2066 + #3007/#3006/#2975 incidents.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/scrub-git-env.sh"
+
 echo "=== INFRA-849: System integration test (claim→commit→ship) ==="
 echo "  REPO_ROOT: $REPO_ROOT"
 echo

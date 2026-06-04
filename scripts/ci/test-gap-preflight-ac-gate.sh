@@ -16,6 +16,14 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# RESILIENT-090: scrub GIT_DIR/GIT_WORK_TREE etc. that the pre-push hook
+# inherits from git and propagates to subprocesses. Root cause of the
+# #2066 + #3007/#3006/#2975 leak incidents.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/scrub-git-env.sh"
+
 # Handle absolute CARGO_TARGET_DIR correctly (INFRA-runner-chump sets it to an
 # absolute path; naively prepending REPO_ROOT produces garbage).
 TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
