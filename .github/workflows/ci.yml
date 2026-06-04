@@ -114,7 +114,7 @@ jobs:
       scripts_only: ${{ steps.lanes.outputs.scripts_only }}
       docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -272,7 +272,7 @@ jobs:
     continue-on-error: true
     runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Same rationale as the test job's Free disk space step — this job
       # builds chump + chump-desktop (two binaries) plus tauri-driver.
@@ -310,7 +310,7 @@ jobs:
 
       - name: Cache tauri-driver binary
         id: tauri-driver-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/tauri-driver
           key: tauri-driver-crate-ubuntu-amd64-v1
@@ -332,7 +332,7 @@ jobs:
           cargo build -p chump-desktop
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -488,7 +488,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10  # CREDIBLE-026 + CREDIBLE-027 gate scripts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Both checkers need git history to resolve merge-base against
           # the target branch. fetch-depth: 0 fetches all history.
@@ -648,7 +648,7 @@ jobs:
       # runner after the job.
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
@@ -1144,7 +1144,7 @@ jobs:
     env:
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Free disk space
         if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
@@ -1212,7 +1212,7 @@ jobs:
       # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Free disk space
         if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
@@ -1283,7 +1283,7 @@ jobs:
 
       - name: Install sccache
         if: steps.r2detect.outputs.configured == 'true'
-        uses: mozilla-actions/sccache-action@v0.0.5
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: sccache health probe
         # INFRA-2288: probe sccache server startup after install; degrade to no-cache
@@ -1375,7 +1375,7 @@ jobs:
     runs-on: ${{ matrix.runs-on-expr }}
     timeout-minutes: ${{ matrix.timeout }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Shared setup (pwa + golden-path need Linux packages + Rust) ────────
       - name: Free disk space
@@ -1416,7 +1416,7 @@ jobs:
       # ── pwa-only: Ollama + Playwright ───────────────────────────────────────
       - name: Cache Ollama models
         if: matrix.suite == 'pwa'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ollama/models
           key: ollama-models-${{ runner.os }}-qwen25-7b-v2
@@ -1593,7 +1593,7 @@ jobs:
     continue-on-error: true
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
