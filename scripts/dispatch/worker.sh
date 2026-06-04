@@ -372,18 +372,29 @@ while :; do
     # RESILIENT-069: farmer readiness gate — "lights on?" before any new claim.
     # RED = sentinel present OR exit-78 daemon OR stale oauth OR stale heartbeat.
     # RED admits no new claims; the Farmer's recovery routes around it.
-    # Gate is skipped if CHUMP_SKIP_FARMER_GATE=1 (emergency bypass, audited).
-    if [[ "${CHUMP_SKIP_FARMER_GATE:-0}" != "1" ]]; then
-        if ! CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status --quiet 2>/dev/null; then
-            _farmer_reason=$(CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status 2>/dev/null | head -3 || echo "unknown")
-            log "RESILIENT-069: farmer status RED — no new claims admitted; sleeping ${IDLE_SLEEP_S}s"
-            log "  reason: $_farmer_reason"
-            _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
-            printf '{"ts":"%s","kind":"worker_farmer_gate_red","agent_id":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" >> "$_amb" 2>/dev/null || true
-            sleep "${IDLE_SLEEP_S:-60}"
-            continue
-        fi
+    # Resolve the chump binary lazily — fleet workers run from a worktree
+    # without a pre-built binary on PATH. Try CHUMP_BIN, the worktree's
+    # target/debug or release, then PATH. If none found, skip the gate
+    # rather than crash on `set -u` (the original $_chump reference was
+    # never defined — caused "unbound variable" in test).
+    _chump="${CHUMP_BIN:-}"
+    if [[ -z "$_chump" || ! -x "$_chump" ]]; then
+        for _cand in "$REPO_ROOT/target/debug/chump" "$REPO_ROOT/target/release/chump" "$(command -v chump 2>/dev/null || true)"; do
+            if [[ -n "$_cand" && -x "$_cand" ]]; then _chump="$_cand"; break; fi
+        done
+    fi
+    if [[ -z "${_chump:-}" || ! -x "$_chump" ]]; then
+        # Skip the gate — can't probe farmer without a binary. Don't crash the worker.
+        :
+    elif ! CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status --quiet 2>/dev/null; then
+        _farmer_reason=$(CHUMP_REPO_ROOT="$REPO_ROOT" "$_chump" farmer status 2>/dev/null | head -3 || echo "unknown")
+        log "RESILIENT-069: farmer status RED — no new claims admitted; sleeping ${IDLE_SLEEP_S}s"
+        log "  reason: $_farmer_reason"
+        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"worker_farmer_gate_red","agent_id":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" >> "$_amb" 2>/dev/null || true
+        sleep "${IDLE_SLEEP_S:-60}"
+        continue
     fi
 
     # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
