@@ -12,6 +12,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# RESILIENT-090/093: scrub GIT_DIR/GIT_WORK_TREE inherited from pre-push.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/scrub-git-env.sh"
+
 HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-rust-first.sh"
 
 PASS=0; FAIL=0
