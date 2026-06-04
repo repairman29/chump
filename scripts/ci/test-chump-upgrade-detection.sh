@@ -14,6 +14,11 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# RESILIENT-090/093: scrub GIT_DIR/GIT_WORK_TREE inherited from pre-push.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/scrub-git-env.sh"
+
 # INFRA-1978: assert schema_version before parsing any health JSON fields
 source "$REPO_ROOT/scripts/dispatch/lib/assert-schema.sh"
 SRC="$REPO_ROOT/src/fleet_health.rs"

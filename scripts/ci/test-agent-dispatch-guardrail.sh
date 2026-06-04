@@ -25,6 +25,12 @@ fail() { printf '  FAIL: %s\n' "$1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# RESILIENT-090/093: scrub GIT_DIR/GIT_WORK_TREE inherited from pre-push.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/scrub-git-env.sh"
+
 GUARDRAIL="$REPO_ROOT/scripts/coord/agent-dispatch-guardrail.sh"
 
 printf '=== RESILIENT-060 agent-dispatch-guardrail tests ===\n'

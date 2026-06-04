@@ -16,6 +16,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# RESILIENT-090/093: scrub GIT_DIR/GIT_WORK_TREE inherited from pre-push.
+# shellcheck source=../lib/scrub-git-env.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/scrub-git-env.sh"
+
 CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT/target/debug/chump}"
 
 if [[ ! -x "$CHUMP_BIN" ]]; then
