@@ -84,6 +84,14 @@ export CHUMP_RESERVE_NO_AUTOSTAGE=1
 export CHUMP_CLAIM_IGNORE_MAIN_HEALTH=1
 export CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1
 
+# RESILIENT-073: kill switch reads ~/.chump/AUTONOMY_LEVEL via HOME (not
+# CHUMP_HOME). Without this opt-in the gap-id-unique check never fires —
+# the fail-closed kill switch bails first. Set HOME=$TMP and write a
+# permissive level so the test exercises the path it cares about.
+export HOME="$TMP"
+mkdir -p "$TMP/.chump"
+echo "5" > "$TMP/.chump/AUTONOMY_LEVEL"
+
 LOCKS_DIR="$TMP/.chump-locks"
 mkdir -p "$LOCKS_DIR"
 
