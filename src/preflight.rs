@@ -1155,6 +1155,22 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-no-new-bypass-env-vars.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-2741: mission-picker gate. Mirrors the audit.yml
+        // test-mission-picker.sh step (MISSION-011) — verifies that
+        // scripts/dispatch/_pick_gap.py surfaces mission-linked gaps before
+        // equal-priority substrate gaps and that the boost stays bounded (a
+        // substrate P0 still beats a mission P1). Pure-Python unit test with
+        // synthetic gaps.json fixtures: no network, no chump binary, no
+        // GitHub API — runs in <2s, so it belongs in the local fast loop
+        // rather than the parity allowlist. Always-on with NO bypass env var
+        // (a CHUMP_*_SKIP would trip the EFFECTIVE-094 zero-bypass
+        // debt-ceiling enforced by the no-new-bypass-env-vars gate above).
+        steps.push(step(
+            "mission-picker",
+            &["bash", "scripts/ci/test-mission-picker.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {

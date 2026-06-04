@@ -186,7 +186,10 @@ test-orphan-pr-closer.sh
 test-orphan-worktree-prune.sh
 test-per-worktree-target-guard.sh
 test-pick-and-claim-lockdir.sh
-test-mission-picker.sh
+# INFRA-2741: test-mission-picker.sh now mirrored as Scripts-scope
+# always-on gate ("mission-picker" in preflight.rs). Pure-Python unit test
+# (MISSION-011), no network, <2s — belongs in the local fast loop.
+# (entry removed)
 test-picker-priority.sh
 test-pillar-balance.sh
 # INFRA-2350: test-pipefail-race-sweep.sh now mirrored as Scripts-scope
