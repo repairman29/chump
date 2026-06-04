@@ -53,6 +53,39 @@ if [[ -z "$CHUMP" || ! -x "$CHUMP" ]]; then
 fi
 echo "  binary: $CHUMP"
 
+# ── RESILIENT-085: Worktree-safety guard ─────────────────────────────────────
+# This test creates real git commits (via chump-commit.sh in Assertion 2,
+# and `git -C "$SHIP_REPO" commit ...` in Assertion 4). If anything in the
+# chain resolves $GIT_REPO incorrectly and writes to the OPERATOR's worktree
+# instead of the test's isolated tmp dir, those commits land on the current
+# branch and ship via the next push. This happened in incident 2026-06-03:
+# 3 open PRs (#3007/#3006/#2975) got polluted with `init`, `chore: initial
+# commit`, `test(INFRA-849): integration test commit` commits attributable
+# to this test, which then failed pr-hygiene + fast-checks downstream.
+#
+# Defense: refuse to run when invoked from a checkout that looks like a
+# live operator workspace (has open `.chump-locks/claim-*.json` files or
+# is on a `chump/*` claim branch). Use CHUMP_INTEGRATION_TEST_FORCE=1 to
+# bypass for legitimate test-of-test invocations.
+if [[ "${CHUMP_INTEGRATION_TEST_FORCE:-0}" != "1" ]]; then
+    _curr_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+    case "$_curr_branch" in
+        chump/*-claim)
+            echo "[test-system-integration] SKIPPING — invoked from claim branch '$_curr_branch'." >&2
+            echo "[test-system-integration]   RESILIENT-085: refuses to run from live worktrees to" >&2
+            echo "[test-system-integration]   prevent polluting the operator's push (incident 2026-06-03)." >&2
+            echo "[test-system-integration]   Bypass: CHUMP_INTEGRATION_TEST_FORCE=1 bash scripts/ci/test-system-integration.sh" >&2
+            exit 0
+            ;;
+    esac
+    if ls "$(git rev-parse --git-common-dir 2>/dev/null)/../.chump-locks/claim-"*.json >/dev/null 2>&1; then
+        echo "[test-system-integration] SKIPPING — active leases found in main repo." >&2
+        echo "[test-system-integration]   RESILIENT-085 incident class. Bypass: CHUMP_INTEGRATION_TEST_FORCE=1" >&2
+        exit 0
+    fi
+    unset _curr_branch
+fi
+
 # ── Temp directory setup ──────────────────────────────────────────────────────
 TMP="$(mktemp -d -t test-infra-849.XXXXXX)"
 cleanup() {
