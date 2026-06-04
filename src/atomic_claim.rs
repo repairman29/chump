@@ -538,6 +538,26 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
 /// Run the atomic claim. Each step is a separate function so the unit
 /// tests can exercise individual pieces in isolation.
 pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+    // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
+    // FIRST: must run BEFORE any state mutation OR any chump op that can
+    // fail. Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
+    // No shared failure mode: pure file read, no chump-op/DB/network.
+    //
+    // Ordering matters: previously this ran AFTER verify_or_seed_gap (step 2),
+    // but `chump gap import` fails with title-similarity blocks (INFRA-1434)
+    // before the kill switch could fire. The test-fleet-kill-switch.sh
+    // assertions then saw the gap-import error in stderr instead of
+    // "fleet stopped" — a real ordering bug that masked the kill switch
+    // entirely when state.db drifted. Kill switch MUST be the first gate.
+    if !crate::autonomy_level::is_go() {
+        let level = crate::autonomy_level::read_level(&crate::autonomy_level::default_path());
+        bail!(
+            "fleet stopped (AUTONOMY_LEVEL={}). Run `chump fleet start` or \
+             `chump fleet level 5` to re-enable the fleet.",
+            level
+        );
+    }
+
     // 1. Fetch latest base branch — best-effort; the worktree-add will
     //    fail loudly if origin is unreachable AND no local ref exists.
     let _ = run_git(
@@ -553,19 +573,6 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // 3. Binary health probe (INFRA-275 wedge prevention).
     if !args.skip_doctor {
         run_doctor_probe(&args.repo_root)?;
-    }
-
-    // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
-    // Must run BEFORE any state mutation (worktree creation, lease write).
-    // Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
-    // No shared failure mode: pure file read, no chump-op/DB/network.
-    if !crate::autonomy_level::is_go() {
-        let level = crate::autonomy_level::read_level(&crate::autonomy_level::default_path());
-        bail!(
-            "fleet stopped (AUTONOMY_LEVEL={}). Run `chump fleet start` or \
-             `chump fleet level 5` to re-enable the fleet.",
-            level
-        );
     }
 
     // INFRA-2428: main-health-gate — refuse claim when main is red and route
