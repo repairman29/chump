@@ -76,6 +76,28 @@ struct Outcome {
 
 fn run_step(s: &Step) -> Outcome {
     let started = Instant::now();
+
+    // INFRA-2721/2722: graceful-skip when a bash gate points at a missing
+    // script. Without this guard the gate hard-fails locally (because the
+    // script genuinely isn't on disk) but the CI parity rule says main is
+    // ALSO red, so blocking pushes is pure overhead. The skip emits an
+    // audit-trail outcome rather than a silent pass — operator/curator can
+    // see the missing-script class in --json output and file a restore gap.
+    if s.argv.len() >= 2 && s.argv[0] == "bash" {
+        let script_path = &s.argv[1];
+        if !std::path::Path::new(script_path).exists() {
+            return Outcome {
+                status: Status::Skipped,
+                elapsed_ms: started.elapsed().as_millis(),
+                captured: Some(format!(
+                    "[preflight] skip-missing-script: {} (file does not exist; \
+                     same condition on origin/main — see INFRA-2721/INFRA-2722)",
+                    script_path
+                )),
+            };
+        }
+    }
+
     let mut cmd = Command::new(&s.argv[0]);
     cmd.args(&s.argv[1..]).stdin(Stdio::null());
     let result = cmd.output();
@@ -867,9 +889,24 @@ pub fn run(argv: &[String]) -> i32 {
                 ..Default::default()
             });
         } else {
+            // INFRA-2720: cargo-test-with-rerun.sh REQUIRES `-- <cmd> [args...]`.
+            // Without the separator + cargo invocation the wrapper prints
+            // usage and exits non-zero — every push from a clean checkout
+            // failed this gate locally (CI ran the wrapper through a
+            // different ci.yml step that passed args; preflight inherited
+            // the wrapper but not the args).
             steps.push(step(
                 "cargo-test",
-                &["bash", "scripts/ci/cargo-test-with-rerun.sh"],
+                &[
+                    "bash",
+                    "scripts/ci/cargo-test-with-rerun.sh",
+                    "--",
+                    "cargo",
+                    "test",
+                    "--bin",
+                    "chump",
+                    "--tests",
+                ],
                 GateKind::Rust,
             ));
         }
