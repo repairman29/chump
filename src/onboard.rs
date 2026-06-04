@@ -474,42 +474,96 @@ fn extract_owner_repo(url: &str) -> Result<String> {
     Ok(format!("{}/{}", parts[0], parts[1]))
 }
 
-/// Resolve a GitHub authentication token from the environment or `gh auth token`.
+/// Resolve a *valid* explicit GitHub token from the environment.
 ///
-/// Priority order:
-///   1. `$GH_TOKEN` (explicit fleet token — preferred for autonomous workers)
-///   2. `$GITHUB_TOKEN` (alternative explicit token)
-///   3. `gh auth token` output (works for interactive dev sessions)
+/// Priority: `$GH_TOKEN` then `$GITHUB_TOKEN`. Each candidate is validated
+/// against the GitHub API and we fall through to the next when a token is set
+/// but rejected (EFFECTIVE-123: a stale `$GITHUB_TOKEN` sourced from an env
+/// file must NOT block onboarding — the clone falls back to the `gh` keyring).
 ///
-/// Returns `None` if no token can be obtained (e.g. unauthenticated CI).
-/// Never logs the token value — only redacted presence confirmations.
-fn resolve_github_token() -> Option<String> {
-    // 1. Explicit env var (preferred for autonomous fleet workers)
-    if let Ok(t) = std::env::var("GH_TOKEN") {
-        if !t.trim().is_empty() {
-            eprintln!("chump onboard: using GH_TOKEN for clone auth");
-            return Some(t.trim().to_string());
-        }
-    }
-    // 2. Alternative explicit env var
-    if let Ok(t) = std::env::var("GITHUB_TOKEN") {
-        if !t.trim().is_empty() {
-            eprintln!("chump onboard: using GITHUB_TOKEN for clone auth");
-            return Some(t.trim().to_string());
-        }
-    }
-    // 3. Ask the gh CLI (interactive dev sessions, keyring-backed)
-    match Command::new("gh").args(["auth", "token"]).output() {
-        Ok(o) if o.status.success() => {
-            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+/// The `gh` keyring is intentionally NOT consulted here: a keyring/OAuth token
+/// does not reliably re-validate or re-inject as a bearer (`gh api user` with
+/// it returns "Bad credentials"), so the keyring path uses `gh repo clone`
+/// natively instead (see `shallow_clone`).
+///
+/// Returns `None` if no valid explicit env token exists.
+/// Never logs the token value — only redacted source/validity confirmations.
+fn resolve_valid_env_token() -> Option<String> {
+    let candidates = collect_env_token_candidates();
+    first_valid_token(&candidates, validate_github_token)
+}
+
+/// Gather `(source-label, token)` env candidates in priority order, skipping
+/// empties. Split out so the priority/fall-through logic is unit-testable
+/// without touching process-global env or the network.
+fn collect_env_token_candidates() -> Vec<(&'static str, String)> {
+    let mut candidates: Vec<(&'static str, String)> = Vec::new();
+    for (label, var) in [("GH_TOKEN", "GH_TOKEN"), ("GITHUB_TOKEN", "GITHUB_TOKEN")] {
+        if let Ok(t) = std::env::var(var) {
+            let t = t.trim().to_string();
             if !t.is_empty() {
-                eprintln!("chump onboard: using gh auth token for clone auth");
-                return Some(t);
+                candidates.push((label, t));
             }
         }
-        _ => {}
+    }
+    candidates
+}
+
+/// Pure selection core (EFFECTIVE-123): return the first candidate the
+/// `validate` fn accepts, falling through tokens that are set-but-rejected.
+///
+/// `validate` is tri-state:
+///   * `Some(true)`  — token authenticates → use it.
+///   * `Some(false)` — checked and rejected (e.g. 401) → fall through.
+///   * `None`        — could not check (gh missing / offline) → use it
+///     best-effort rather than reject a possibly-valid token (preserves the
+///     pre-validation behavior for autonomous workers without the gh CLI).
+fn first_valid_token<F>(candidates: &[(&'static str, String)], validate: F) -> Option<String>
+where
+    F: Fn(&str) -> Option<bool>,
+{
+    for (source, token) in candidates {
+        match validate(token) {
+            Some(true) => {
+                eprintln!("chump onboard: using {source} for clone auth (validated)");
+                return Some(token.clone());
+            }
+            Some(false) => {
+                eprintln!(
+                    "chump onboard: WARN — {source} is set but GitHub rejected it; falling \
+                     through to the next auth source. Consider refreshing/removing it."
+                );
+            }
+            None => {
+                eprintln!(
+                    "chump onboard: using {source} for clone auth (unvalidated — gh CLI \
+                     unavailable to check)"
+                );
+                return Some(token.clone());
+            }
+        }
     }
     None
+}
+
+/// Validate a token against the GitHub API via `gh api user`.
+///
+/// Tri-state: `Some(true)` authenticates, `Some(false)` gh ran but the token
+/// was rejected, `None` gh could not execute (missing binary / offline) so
+/// validity is unknown — the caller then uses the token best-effort rather
+/// than reject a possibly-valid one. The token is passed through the child
+/// env, never logged.
+fn validate_github_token(token: &str) -> Option<bool> {
+    match Command::new("gh")
+        .args(["api", "user"])
+        .env("GH_TOKEN", token)
+        .env("GITHUB_TOKEN", token)
+        .output()
+    {
+        Ok(o) if o.status.success() => Some(true),
+        Ok(_) => Some(false),
+        Err(_) => None,
+    }
 }
 
 /// Inject a GitHub token into an HTTPS URL so private repos can be cloned.
@@ -529,56 +583,110 @@ fn inject_token_into_url(url: &str, token: &str) -> String {
 
 /// Shallow-clone the repo to `dest` (depth 1).
 ///
-/// For HTTPS GitHub URLs, automatically injects a token from
-/// `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` so private repos work.
-/// Falls back to unauthenticated clone when no token is available (public repos).
+/// GitHub HTTPS auth strategy (EFFECTIVE-123):
+///   1. A *validated* explicit env token (`$GH_TOKEN` / `$GITHUB_TOKEN`) →
+///      token-injected `git clone`. A set-but-invalid env token falls through.
+///   2. Otherwise `gh repo clone` using gh's own keyring auth (env tokens
+///      stripped so a stale `$GITHUB_TOKEN` can't poison gh's credential pick).
+///   3. Otherwise an unauthenticated clone (public repos only).
+///
+/// Non-GitHub URLs clone directly. Any clone failure returns a non-zero error
+/// (AC-2: clone errors are never swallowed).
 fn shallow_clone(url: &str, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).context("creating clone parent directory")?;
     }
     eprintln!("chump onboard: cloning {} ...", url);
 
-    // Build the effective clone URL — inject auth token for GitHub HTTPS.
-    let clone_url: String;
-    let clone_url_ref: &str;
     if url.starts_with("https://github.com/") {
-        match resolve_github_token() {
-            Some(token) => {
-                clone_url = inject_token_into_url(url, &token);
-                clone_url_ref = &clone_url;
-                eprintln!("chump onboard: authenticated clone (token injected, not logged)");
-            }
-            None => {
-                eprintln!(
-                    "chump onboard: WARN — no GitHub token found (GH_TOKEN, GITHUB_TOKEN, \
-                     gh auth token all empty); falling back to unauthenticated clone. \
-                     Private repos will fail."
-                );
-                clone_url_ref = url;
+        // 1. Validated explicit env token → token-injected clone.
+        if let Some(token) = resolve_valid_env_token() {
+            let auth_url = inject_token_into_url(url, &token);
+            eprintln!("chump onboard: authenticated clone via env token (injected, not logged)");
+            match run_git_clone(&auth_url, dest) {
+                Ok(()) => return Ok(()),
+                Err(_) => {
+                    eprintln!(
+                        "chump onboard: env-token clone failed; falling back to gh keyring auth"
+                    );
+                    let _ = fs::remove_dir_all(dest); // clear any partial checkout
+                }
             }
         }
-    } else {
-        clone_url_ref = url;
+        // 2. gh's own keyring auth via `gh repo clone` (env tokens stripped).
+        if gh_is_authenticated() {
+            eprintln!("chump onboard: authenticated clone via gh keyring (gh repo clone)");
+            return gh_repo_clone(url, dest);
+        }
+        eprintln!(
+            "chump onboard: WARN — no valid GitHub auth (env token rejected/absent and gh not \
+             logged in); falling back to unauthenticated clone. Private repos will fail."
+        );
     }
 
+    // Non-GitHub URL, or GitHub with no usable auth → direct clone.
+    run_git_clone(url, dest)
+}
+
+/// Run `git clone --depth=1 --quiet <url> <dest>`; non-zero exit → Err
+/// (AC-2: clone failures must surface, never be swallowed).
+fn run_git_clone(url: &str, dest: &Path) -> Result<()> {
     let status = Command::new("git")
         .args([
             "clone",
             "--depth=1",
             "--quiet",
-            clone_url_ref,
+            url,
             &dest.to_string_lossy(),
         ])
         .status()
         .context("git clone failed — is git installed?")?;
-
     if !status.success() {
-        // Exit non-zero on clone failure (AC-2: must not swallow clone errors).
         bail!(
-            "git clone exited {} — check that the repo URL is correct and that \
-             a GitHub token (GH_TOKEN / GITHUB_TOKEN / gh auth token) is available \
-             for private repos",
-            status
+            "git clone exited {status} — check that the repo URL is correct and that valid \
+             GitHub auth (GH_TOKEN / GITHUB_TOKEN / `gh auth login`) is available for private repos"
+        );
+    }
+    Ok(())
+}
+
+/// True if `gh` reports an authenticated github.com login. `$GH_TOKEN` /
+/// `$GITHUB_TOKEN` are stripped so a stale env token can't mask the keyring
+/// credential we actually intend to use for `gh repo clone`.
+fn gh_is_authenticated() -> bool {
+    Command::new("gh")
+        .args(["auth", "status", "--hostname", "github.com"])
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Clone via `gh repo clone OWNER/REPO dest` using gh's keyring auth. Stale
+/// `$GH_TOKEN` / `$GITHUB_TOKEN` are stripped so gh uses its stored credential
+/// — a keyring/OAuth token works natively here but NOT when re-injected as a
+/// bearer (the EFFECTIVE-123 trap). Non-zero exit → Err.
+fn gh_repo_clone(url: &str, dest: &Path) -> Result<()> {
+    let slug = extract_owner_repo(url).context("could not parse owner/repo for gh repo clone")?;
+    let status = Command::new("gh")
+        .args([
+            "repo",
+            "clone",
+            &slug,
+            &dest.to_string_lossy(),
+            "--",
+            "--depth=1",
+            "--quiet",
+        ])
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .status()
+        .context("gh repo clone failed — is gh installed?")?;
+    if !status.success() {
+        bail!(
+            "gh repo clone {slug} exited {status} — check the repo exists and that `gh auth \
+             status` shows an authenticated github.com login"
         );
     }
     Ok(())
@@ -873,5 +981,66 @@ mod tests {
         let url = "/Users/dev/myrepo";
         let result = inject_token_into_url(url, "sometoken");
         assert_eq!(result, url);
+    }
+
+    // --- EFFECTIVE-123: validate-and-fall-through token selection ---
+
+    fn cands(pairs: &[(&'static str, &str)]) -> Vec<(&'static str, String)> {
+        pairs.iter().map(|(s, t)| (*s, t.to_string())).collect()
+    }
+
+    #[test]
+    fn test_first_valid_token_falls_through_invalid_to_valid() {
+        // The EFFECTIVE-123 bug: a set-but-invalid GITHUB_TOKEN precedes the
+        // valid gh-auth token. The resolver MUST skip the rejected ones and
+        // land on the valid token instead of failing on the first.
+        let candidates = cands(&[
+            ("GH_TOKEN", "stale-1"),
+            ("GITHUB_TOKEN", "stale-2"),
+            ("gh auth token", "good-token"),
+        ]);
+        let got = first_valid_token(&candidates, |t| Some(t == "good-token"));
+        assert_eq!(got.as_deref(), Some("good-token"));
+    }
+
+    #[test]
+    fn test_first_valid_token_prefers_earliest_valid() {
+        // When several validate, priority order wins (GH_TOKEN before gh-auth).
+        let candidates = cands(&[("GH_TOKEN", "a"), ("gh auth token", "b")]);
+        let got = first_valid_token(&candidates, |_| Some(true));
+        assert_eq!(got.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn test_first_valid_token_none_when_all_rejected() {
+        let candidates = cands(&[("GH_TOKEN", "x"), ("GITHUB_TOKEN", "y")]);
+        let got = first_valid_token(&candidates, |_| Some(false));
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn test_first_valid_token_uncheckable_used_best_effort() {
+        // gh CLI missing/offline (None) → don't reject a possibly-valid token;
+        // use the first candidate best-effort (no regression for workers
+        // that have GH_TOKEN but no gh binary).
+        let candidates = cands(&[("GH_TOKEN", "maybe"), ("gh auth token", "other")]);
+        let got = first_valid_token(&candidates, |_| None);
+        assert_eq!(got.as_deref(), Some("maybe"));
+    }
+
+    #[test]
+    fn test_first_valid_token_rejected_then_uncheckable() {
+        // First rejected, second uncheckable → fall through the reject, then
+        // use the uncheckable one best-effort.
+        let candidates = cands(&[("GITHUB_TOKEN", "bad"), ("gh auth token", "unknown")]);
+        let got = first_valid_token(&candidates, |t| if t == "bad" { Some(false) } else { None });
+        assert_eq!(got.as_deref(), Some("unknown"));
+    }
+
+    #[test]
+    fn test_first_valid_token_empty_candidates_is_none() {
+        let candidates: Vec<(&'static str, String)> = Vec::new();
+        let got = first_valid_token(&candidates, |_| Some(true));
+        assert_eq!(got, None);
     }
 }
