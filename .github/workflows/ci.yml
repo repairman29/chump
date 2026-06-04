@@ -1327,6 +1327,15 @@ jobs:
         continue-on-error: true
         run: sccache --show-stats || true
 
+      # CREDIBLE-085: sccache hit-rate gate — fails the build when cache hit
+      # rate drops below CHUMP_SCCACHE_HIT_RATE_MIN (default 10%). Strong
+      # signal of R2 substrate health regression (cred rotation, bucket gone,
+      # server unreachable). Cold-cache: bypass with
+      # CHUMP_SCCACHE_HIT_RATE_CHECK=0 + Sccache-Hit-Rate-Bypass: trailer.
+      - name: sccache hit-rate gate (CREDIBLE-085)
+        if: always() && steps.r2detect.outputs.configured == 'true'
+        run: bash scripts/ci/check-sccache-hit-rate.sh
+
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
   # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
   # is replaced by three parallel shards + a thin rollup.  All shards start
