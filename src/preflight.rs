@@ -603,6 +603,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // RESILIENT-068: farmer un-killable control-plane tender — 9 fixture
         // tests, pure bash+sqlite3, zero network, ~2s.
         "scripts/ci/test-farmer.sh",
+        // CREDIBLE-089: M2 gate end-to-end verifier — asserts that the L6
+        // substrate (gap-supervisor, fleet-supervisor, guardrail) responds
+        // correctly to synthetic red-trunk conditions. Pure shell, ~1s,
+        // detects regressions in the L6 keystones before they reach trunk.
+        "scripts/ci/test-m2-gate-end-to-end.sh",
     ];
     candidates
         .iter()
