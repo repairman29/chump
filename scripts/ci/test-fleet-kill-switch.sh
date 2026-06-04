@@ -23,18 +23,37 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # RESILIENT-073: Tests 1-4 exercise the compiled `chump` binary's claim gating.
-# Quick jobs (fast-checks) run cargo check but don't produce target/debug/chump,
-# so build it on demand here — keeps the test self-contained across CI jobs without
-# skipping any coverage. The incremental link is fast (cargo check already compiled
-# the crate; sccache warms the rest). A genuine build failure (code won't compile)
-# correctly fails the test.
-CHUMP_BIN="$REPO_ROOT/target/debug/chump"
+# Quick jobs (fast-checks) run `cargo check` but don't produce a binary at
+# target/debug/chump, so build it on demand here — keeps the test self-contained
+# across CI jobs without skipping any coverage.
+#
+# Resolve the binary path via `cargo metadata` AFTER the build — that's the
+# only path that survives every env permutation we hit:
+#   - CI sets CARGO_TARGET_DIR=/tmp/cargo-target-NNNN-N (out-of-tree)
+#   - local dev sets .cargo/config.toml [build].target-dir = shared dir
+#     (INFRA-481, .gitignored — not present in CI)
+#   - vanilla worktree: $REPO_ROOT/target
+if ! command -v cargo &>/dev/null; then
+    echo "[FAIL] cargo not on PATH; cannot resolve chump binary" >&2
+    exit 1
+fi
+
+CHUMP_BIN="${CHUMP_BIN:-${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump}"
 if [[ ! -x "$CHUMP_BIN" ]]; then
     echo "[kill-switch-test] chump binary absent in this job — building (cargo build --bin chump)…"
     (cd "$REPO_ROOT" && cargo build --bin chump --quiet) || {
         echo "[FAIL] could not build chump binary for kill-switch test" >&2
         exit 1
     }
+    _target_dir="$(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("target_directory",""))' 2>/dev/null)"
+    if [[ -n "$_target_dir" && -x "$_target_dir/debug/chump" ]]; then
+        CHUMP_BIN="$_target_dir/debug/chump"
+    fi
+fi
+if [[ ! -x "$CHUMP_BIN" ]]; then
+    echo "[FAIL] chump binary still absent at $CHUMP_BIN after build" >&2
+    exit 1
 fi
 
 PASS=0
@@ -69,13 +88,13 @@ run_claim_check() {
     local label="$1"
     # Use a non-existent gap ID so claim fails fast; what matters is *why*.
     HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-        "$REPO_ROOT/target/debug/chump" claim RESILIENT-073-TEST-FAKE 2>&1 || true
+        "$CHUMP_BIN" claim RESILIENT-073-TEST-FAKE 2>&1 || true
 }
 
 # ── Test 1: AUTONOMY_LEVEL=0 → claim refuses ─────────────────────────────────
 echo "0" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$REPO_ROOT/target/debug/chump" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 1: AUTONOMY_LEVEL=0 → claim refused with 'fleet stopped'"
 else
@@ -85,7 +104,7 @@ fi
 # ── Test 2: File missing → claim refuses (fail-closed) ───────────────────────
 rm -f "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$REPO_ROOT/target/debug/chump" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 2: AUTONOMY_LEVEL missing → claim refused (fail-closed)"
 else
@@ -95,7 +114,7 @@ fi
 # ── Test 3: File corrupt → claim refuses (fail-closed) ───────────────────────
 echo "banana" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$REPO_ROOT/target/debug/chump" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 3: AUTONOMY_LEVEL=corrupt → claim refused (fail-closed)"
 else
@@ -107,7 +126,7 @@ fi
 # fail with "fleet stopped".
 echo "5" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$REPO_ROOT/target/debug/chump" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     fail "Test 4: AUTONOMY_LEVEL=5 → kill-switch fired (should not have)"
 else
