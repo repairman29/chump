@@ -27,6 +27,32 @@ if [[ ! -x "$BINARY" ]]; then
     cargo build --quiet 2>&1
 fi
 
+# ── RESILIENT-089: Worktree-safety guard ─────────────────────────────────────
+# This test creates real git commits via `git config user.email test@local
+# + git commit -m "init"`. Same incident class as RESILIENT-085 #3027: during
+# the 2026-06-03 PR-queue rescue, similar test scripts injected `init`
+# commits into open PR branches (#3007/#3006/#2975) when preflight ran on
+# every push. Refuse to run from a `chump/*-claim` branch or when leases
+# are active — the cheapest correct fix. Bypass: CHUMP_AC_GATE_TEST_FORCE=1.
+if [[ "${CHUMP_AC_GATE_TEST_FORCE:-0}" != "1" ]]; then
+    _curr_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+    case "$_curr_branch" in
+        chump/*-claim)
+            echo "[test-gap-preflight-ac-gate] SKIPPING — invoked from claim branch '$_curr_branch'." >&2
+            echo "[test-gap-preflight-ac-gate]   RESILIENT-089: prevents the RESILIENT-085 incident class" >&2
+            echo "[test-gap-preflight-ac-gate]   (preflight tests injecting 'init' commits into operator HEAD)." >&2
+            echo "[test-gap-preflight-ac-gate]   Bypass: CHUMP_AC_GATE_TEST_FORCE=1 bash scripts/ci/test-gap-preflight-ac-gate.sh" >&2
+            exit 0
+            ;;
+    esac
+    if ls "$(git rev-parse --git-common-dir 2>/dev/null)/../.chump-locks/claim-"*.json >/dev/null 2>&1; then
+        echo "[test-gap-preflight-ac-gate] SKIPPING — active leases found." >&2
+        echo "[test-gap-preflight-ac-gate]   Bypass: CHUMP_AC_GATE_TEST_FORCE=1" >&2
+        exit 0
+    fi
+    unset _curr_branch
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
