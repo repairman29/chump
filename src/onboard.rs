@@ -474,24 +474,112 @@ fn extract_owner_repo(url: &str) -> Result<String> {
     Ok(format!("{}/{}", parts[0], parts[1]))
 }
 
+/// Resolve a GitHub authentication token from the environment or `gh auth token`.
+///
+/// Priority order:
+///   1. `$GH_TOKEN` (explicit fleet token — preferred for autonomous workers)
+///   2. `$GITHUB_TOKEN` (alternative explicit token)
+///   3. `gh auth token` output (works for interactive dev sessions)
+///
+/// Returns `None` if no token can be obtained (e.g. unauthenticated CI).
+/// Never logs the token value — only redacted presence confirmations.
+fn resolve_github_token() -> Option<String> {
+    // 1. Explicit env var (preferred for autonomous fleet workers)
+    if let Ok(t) = std::env::var("GH_TOKEN") {
+        if !t.trim().is_empty() {
+            eprintln!("chump onboard: using GH_TOKEN for clone auth");
+            return Some(t.trim().to_string());
+        }
+    }
+    // 2. Alternative explicit env var
+    if let Ok(t) = std::env::var("GITHUB_TOKEN") {
+        if !t.trim().is_empty() {
+            eprintln!("chump onboard: using GITHUB_TOKEN for clone auth");
+            return Some(t.trim().to_string());
+        }
+    }
+    // 3. Ask the gh CLI (interactive dev sessions, keyring-backed)
+    match Command::new("gh").args(["auth", "token"]).output() {
+        Ok(o) if o.status.success() => {
+            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !t.is_empty() {
+                eprintln!("chump onboard: using gh auth token for clone auth");
+                return Some(t);
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// Inject a GitHub token into an HTTPS URL so private repos can be cloned.
+///
+/// Transforms `https://github.com/owner/repo` into
+/// `https://x-access-token:TOKEN@github.com/owner/repo`.
+/// Non-github.com URLs, SSH URLs, and local paths are returned unchanged.
+///
+/// The returned string MUST NOT be logged — it contains the live token.
+fn inject_token_into_url(url: &str, token: &str) -> String {
+    if !url.starts_with("https://github.com/") {
+        return url.to_string();
+    }
+    let rest = &url["https://".len()..]; // "github.com/..."
+    format!("https://x-access-token:{token}@{rest}")
+}
+
 /// Shallow-clone the repo to `dest` (depth 1).
+///
+/// For HTTPS GitHub URLs, automatically injects a token from
+/// `$GH_TOKEN` / `$GITHUB_TOKEN` / `gh auth token` so private repos work.
+/// Falls back to unauthenticated clone when no token is available (public repos).
 fn shallow_clone(url: &str, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).context("creating clone parent directory")?;
     }
     eprintln!("chump onboard: cloning {} ...", url);
+
+    // Build the effective clone URL — inject auth token for GitHub HTTPS.
+    let clone_url: String;
+    let clone_url_ref: &str;
+    if url.starts_with("https://github.com/") {
+        match resolve_github_token() {
+            Some(token) => {
+                clone_url = inject_token_into_url(url, &token);
+                clone_url_ref = &clone_url;
+                eprintln!("chump onboard: authenticated clone (token injected, not logged)");
+            }
+            None => {
+                eprintln!(
+                    "chump onboard: WARN — no GitHub token found (GH_TOKEN, GITHUB_TOKEN, \
+                     gh auth token all empty); falling back to unauthenticated clone. \
+                     Private repos will fail."
+                );
+                clone_url_ref = url;
+            }
+        }
+    } else {
+        clone_url_ref = url;
+    }
+
     let status = Command::new("git")
         .args([
             "clone",
             "--depth=1",
             "--quiet",
-            url,
+            clone_url_ref,
             &dest.to_string_lossy(),
         ])
         .status()
         .context("git clone failed — is git installed?")?;
+
     if !status.success() {
-        bail!("git clone exited {}", status);
+        // Exit non-zero on clone failure (AC-2: must not swallow clone errors).
+        bail!(
+            "git clone exited {} — check that the repo URL is correct and that \
+             a GitHub token (GH_TOKEN / GITHUB_TOKEN / gh auth token) is available \
+             for private repos",
+            status
+        );
     }
     Ok(())
 }
@@ -740,5 +828,50 @@ mod tests {
     fn test_parse_confidence_fallback() {
         assert_eq!(parse_confidence("high"), Confidence::High);
         assert_eq!(parse_confidence("junk"), Confidence::Med);
+    }
+
+    // ── Token injection tests (EFFECTIVE-112) ─────────────────────────────
+
+    #[test]
+    fn test_inject_token_github_https() {
+        let url = "https://github.com/repairman29/BEAST-MODE";
+        let result = inject_token_into_url(url, "ghp_TESTTOKEN123");
+        assert_eq!(
+            result,
+            "https://x-access-token:ghp_TESTTOKEN123@github.com/repairman29/BEAST-MODE"
+        );
+    }
+
+    #[test]
+    fn test_inject_token_github_https_with_git_suffix() {
+        let url = "https://github.com/owner/repo.git";
+        let result = inject_token_into_url(url, "ghp_XYZ");
+        assert_eq!(
+            result,
+            "https://x-access-token:ghp_XYZ@github.com/owner/repo.git"
+        );
+    }
+
+    #[test]
+    fn test_inject_token_non_github_unchanged() {
+        // Non-github.com HTTPS — returned as-is (don't mangle GitLab etc.)
+        let url = "https://gitlab.com/owner/repo";
+        let result = inject_token_into_url(url, "sometoken");
+        assert_eq!(result, url);
+    }
+
+    #[test]
+    fn test_inject_token_ssh_url_unchanged() {
+        // SSH URLs don't go through HTTPS auth
+        let url = "git@github.com:owner/repo.git";
+        let result = inject_token_into_url(url, "sometoken");
+        assert_eq!(result, url);
+    }
+
+    #[test]
+    fn test_inject_token_local_path_unchanged() {
+        let url = "/Users/dev/myrepo";
+        let result = inject_token_into_url(url, "sometoken");
+        assert_eq!(result, url);
     }
 }
