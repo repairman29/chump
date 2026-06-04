@@ -123,7 +123,7 @@ chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.1.0" }
-async-nats = "0.48"
+async-nats = "0.49"
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
@@ -169,9 +169,9 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "44"
-wasmtime-wasi = "44"
-wasi-common = "44"
+wasmtime = "45"
+wasmtime-wasi = "45"
+wasi-common = "45"
 sha2 = "0.11.0"
 hex = "0.4.3"
 
