@@ -613,7 +613,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -1250,7 +1250,7 @@ checksum = "d38f2da7a0a2c4ccf0065be06397cc26a81f4e528be095826eee9d4adbb8c60f"
 dependencies = [
  "byteorder",
  "fnv",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -1380,7 +1380,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "uuid 1.23.1",
+ "uuid 1.23.2",
  "wasi-common",
  "wasmtime",
  "wasmtime-wasi",
@@ -1400,7 +1400,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -1462,7 +1462,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -1644,7 +1644,7 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokio",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -1839,7 +1839,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -2802,7 +2802,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -3545,9 +3545,9 @@ dependencies = [
 
 [[package]]
 name = "fastembed"
-version = "5.13.4"
+version = "5.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0112bd54a5d1903b19c85609c282949523bb8bb39f1614d4db0017e0ef3b0ff"
+checksum = "c65faeb787d66e812248f992693268eee8a43a95e3e43e0c33547f1c8391ecce"
 dependencies = [
  "anyhow",
  "hf-hub 0.5.0",
@@ -5789,9 +5789,9 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libmimalloc-sys"
-version = "0.1.48"
+version = "0.1.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2892ae4ea6fa2cb7acb0e236a6880d39523239cd9089de71d220910ccc806790"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
 dependencies = [
  "cc",
 ]
@@ -6103,9 +6103,9 @@ checksum = "c2a86d3146ed3995b5913c414f6664344b9617457320782e64f0bb44afd49d74"
 
 [[package]]
 name = "mimalloc"
-version = "0.1.51"
+version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebca48a43116bc25f18a61360f1be98412f50cc218f5e52c823086b999a4a21a"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
 dependencies = [
  "libmimalloc-sys",
 ]
@@ -6326,7 +6326,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
- "uuid 1.23.1",
+ "uuid 1.23.2",
  "variantly",
  "vob",
 ]
@@ -6361,7 +6361,7 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tracing",
  "utoipa",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -8139,7 +8139,7 @@ checksum = "eb14dba8247a6a15b7fdbc7d389e2e6f03ee9f184f87117706d509c092dfe846"
 dependencies = [
  "r2d2",
  "rusqlite",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -9005,15 +9005,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scc"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
-dependencies = [
- "sdd",
-]
-
-[[package]]
 name = "schannel"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9043,7 +9034,7 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
- "uuid 1.23.1",
+ "uuid 1.23.2",
 ]
 
 [[package]]
@@ -9155,12 +9146,6 @@ dependencies = [
  "ring",
  "untrusted",
 ]
-
-[[package]]
-name = "sdd"
-version = "3.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
 name = "sec1"
@@ -9405,9 +9390,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "indexmap 2.14.0",
  "itoa",
@@ -9564,24 +9549,23 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
-version = "3.4.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "911bd979bf1070a3f3aa7b691a3b3e9968f339ceeec89e08c280a8a22207a32f"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
 dependencies = [
  "futures-executor",
  "futures-util",
  "log",
  "once_cell",
  "parking_lot",
- "scc",
  "serial_test_derive",
 ]
 
 [[package]]
 name = "serial_test_derive"
-version = "3.4.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a7d91949b85b0d2fb687445e448b40d322b6b3e4af6b44a29b21d9a5f33e6d9"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10569,7 +10553,7 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "url",
- "uuid 1.23.1",
+ "uuid 1.23.2",
  "walkdir",
 ]
 
@@ -10687,7 +10671,7 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "url",
  "urlpattern",
- "uuid 1.23.1",
+ "uuid 1.23.2",
  "walkdir",
 ]
 
@@ -11973,9 +11957,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.23.1"
+version = "1.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
@@ -13785,7 +13769,7 @@ dependencies = [
  "serde_repr",
  "tracing",
  "uds_windows",
- "uuid 1.23.1",
+ "uuid 1.23.2",
  "windows-sys 0.61.2",
  "winnow 1.0.2",
  "zbus_macros",
