@@ -30,6 +30,26 @@ Inputs (all env vars):
                         worker re-picking the same impossible gap on next
                         cycle (worker 4 hit INFRA-340 6× in 5min pre-fix).
                         Expired records are auto-cleaned each pick.
+
+MISSION-011: mission-directed picker
+  CHUMP_ACTIVE_MISSION  active mission outcome ID — gaps linked to this outcome
+                        are surfaced BEFORE equal-priority substrate gaps.
+                        Falls back to reading ~/.chump/ACTIVE_MISSION (one line).
+                        Default: MISSION-010 (self-coordinating fleet / 0→1).
+                        Set to empty string "" to disable mission boost.
+                        A gap is "mission-linked" when any of the following hold:
+                          (a) gap.outcome_id == active_mission_id
+                          (b) gap.domain == "MISSION"
+                          (c) gap.id == active_mission_id
+                          (d) active_mission_id appears verbatim in title, notes,
+                              or description (catches "blocks MISSION-010" etc.)
+                        Boost mechanism: mission_rank=0 (linked) / 1 (not linked)
+                        inserted between planner_rank and prio_rank in the sort
+                        tuple. A mission P1 sorts as (..., 0, 1, ...) vs a
+                        substrate P1 (..., 1, 1, ...) — mission wins. A mission
+                        P1 does NOT override a substrate P0 at the same
+                        planner_rank bucket (0+1 > 0+0 when prio is P0 vs P1).
+                        See scripts/ci/test-mission-picker.sh for the invariant.
 """
 
 from __future__ import annotations
@@ -43,9 +63,78 @@ import time
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 
+# MISSION-011: default active mission outcome when no explicit override is set.
+_DEFAULT_ACTIVE_MISSION = "MISSION-010"
+
 
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
+
+
+def _load_active_mission() -> str:
+    """MISSION-011: return the active mission outcome ID.
+
+    Resolution order (first non-empty wins):
+      1. CHUMP_ACTIVE_MISSION env var (set to "" to disable boost entirely)
+      2. ~/.chump/ACTIVE_MISSION file (one line, e.g. "MISSION-010")
+      3. Hard-coded default: MISSION-010
+
+    Returns an empty string when the operator has explicitly disabled the
+    mission boost (CHUMP_ACTIVE_MISSION="" or file contains only whitespace).
+    """
+    env_val = os.environ.get("CHUMP_ACTIVE_MISSION")
+    if env_val is not None:
+        # Env var present — use it verbatim (including "" to disable).
+        return env_val.strip()
+
+    # Try ~/.chump/ACTIVE_MISSION
+    mission_file = os.path.expanduser("~/.chump/ACTIVE_MISSION")
+    try:
+        with open(mission_file) as f:
+            val = f.read().strip()
+            if val:
+                return val
+    except OSError:
+        pass
+
+    return _DEFAULT_ACTIVE_MISSION
+
+
+def _is_mission_linked(g: dict, active_mission: str) -> bool:
+    """MISSION-011: return True when gap `g` is linked to the active mission.
+
+    A gap is mission-linked when ANY of these hold:
+      (a) gap.outcome_id matches active_mission (MISSION-008 Outcome FK)
+      (b) gap.domain is "MISSION" (mission-domain gaps are inherently linked)
+      (c) gap.id matches active_mission exactly
+      (d) active_mission appears verbatim in title, notes, or description
+          (catches "this blocks MISSION-010" or "unblocks 0→1 / MISSION-010")
+
+    Returns False when active_mission is empty (boost disabled).
+    """
+    if not active_mission:
+        return False
+
+    # (a) Outcome FK match
+    if (g.get("outcome_id") or "").strip() == active_mission:
+        return True
+
+    # (b) MISSION domain gaps are always considered mission-linked
+    if (g.get("domain") or "").upper() == "MISSION":
+        return True
+
+    # (c) Gap IS the active mission outcome itself
+    if (g.get("id") or "").strip() == active_mission:
+        return True
+
+    # (d) Title / notes / description contain the mission ID verbatim
+    needle = active_mission.upper()
+    for field in ("title", "notes", "description"):
+        val = (g.get(field) or "").upper()
+        if needle in val:
+            return True
+
+    return False
 
 
 def cooled_down_gaps(cooldown_dir: str, worker_id: str = "") -> set[str]:
@@ -311,6 +400,15 @@ def main() -> int:
             worker_id=os.environ.get("WORKER_ID", ""),
         )
 
+    # MISSION-011: load the active mission outcome ID. When set, mission-linked
+    # gaps receive a mission_rank=0 boost that sorts them before equal-priority
+    # substrate gaps (mission_rank=1). The boost is additive — it does NOT
+    # override the planner_rank or prio_rank tiers; a substrate P0 still beats
+    # a mission P1 (0+0 < 0+1 in the (planner_rank, mission_rank, prio_rank)
+    # sort key). Disable with CHUMP_ACTIVE_MISSION="" or an empty
+    # ~/.chump/ACTIVE_MISSION file.
+    active_mission = _load_active_mission()
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -411,10 +509,21 @@ def main() -> int:
         # remain pickable; legacy (prio_rank, effort, age) still resolves
         # ties within each bucket.
         planner_rank = planner_ranks.get(gid, 10_000)
+
+        # MISSION-011: mission_rank = 0 for gaps linked to the active mission
+        # outcome, 1 for everything else. Placed AFTER prio_rank so it acts as
+        # a within-priority-band tiebreaker. A substrate P0 (prio_rank=0) still
+        # beats a mission P1 (prio_rank=1) because prio_rank is compared first.
+        # Within the same priority band (both P1), mission_rank=0 causes the
+        # mission gap to sort before the substrate gap (mission_rank=1).
+        # Sort tuple: (planner_rank, prio_rank, mission_rank, effort_rank, age, id)
+        mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
+
         candidates.append(
             (
                 planner_rank,
                 prio_rank,
+                mission_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -431,17 +540,45 @@ def main() -> int:
             worker_idx = 1
         offset = (max(worker_idx, 1) - 1) % len(candidates)
         picked = candidates[offset]
+        # Tuple layout: (planner_rank, prio_rank, mission_rank, effort_rank, created_at, gid)
+        picked_planner_rank = picked[0]
+        picked_mission_rank = picked[2]
+        picked_gid = picked[-1]
+
         # INFRA-1258: emit attribution so operators can see whether the
         # planner influenced this pick (rank < 10_000) vs. legacy ordering.
-        if planner_status == "ok" and picked[0] < 10_000:
+        if planner_status == "ok" and picked_planner_rank < 10_000:
             _emit_picker_event(
                 repo_root,
                 "picker_used_priority",
-                gap_id=picked[-1],
-                planner_rank=picked[0],
+                gap_id=picked_gid,
+                planner_rank=picked_planner_rank,
                 worker_id=os.environ.get("WORKER_ID", ""),
             )
-        print(picked[-1])
+
+        # MISSION-011: emit when mission boost influenced the pick. We detect
+        # influence by checking whether mission_rank=0 AND there exists any
+        # candidate with the same planner_rank AND same prio_rank but
+        # mission_rank=1 (a substrate gap at equal priority that the mission
+        # gap outranked purely because of the mission tiebreaker).
+        # Tuple layout: (planner_rank[0], prio_rank[1], mission_rank[2], ...)
+        if picked_mission_rank == 0 and active_mission:
+            pr = picked[1]  # prio_rank of the picked gap
+            displaced = any(
+                c[0] == picked_planner_rank and c[1] == pr and c[2] == 1
+                for c in candidates
+                if c[-1] != picked_gid
+            )
+            if displaced:
+                _emit_picker_event(
+                    repo_root,
+                    "picker_mission_boost",
+                    gap_id=picked_gid,
+                    active_mission=active_mission,
+                    worker_id=os.environ.get("WORKER_ID", ""),
+                )
+
+        print(picked_gid)
     return 0
 
 

@@ -198,6 +198,7 @@ opus_shepherd_plan  # reason: META-091 — emitted by scripts/coord/opus-shepher
 opus_shepherd_triage  # reason: META-091 — emitted by scripts/coord/opus-shepherd-triage.sh via python3 heredoc, not grep-scannable as kind=X literal
 opus_shepherd_triage_skipped  # reason: META-091 — emitted by scripts/coord/opus-shepherd-triage.sh via python3 heredoc, not grep-scannable as kind=X literal
 orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
+picker_mission_boost       # reason: MISSION-011 emitted by scripts/dispatch/_pick_gap.py via _emit_picker_event(); python3 dict not grep-scannable as kind=X literal in shell
 picker_priority_stale      # reason: planned for INFRA-1258 picker priority stale detection
 pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
 pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
