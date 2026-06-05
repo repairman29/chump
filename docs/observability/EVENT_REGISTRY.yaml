@@ -7966,6 +7966,21 @@ events:
     fields_required: [ts, kind, repos, reaped, kept_count, freed_gb, budget_gb, max_age_d, dry_run]
     status: stable
 
+  # ── MISSION-041: external-repo tag backfill ─────────────────────────────────
+
+  - kind: gap_external_repo_backfilled
+    # scanner-anchor: gap_external_repo_backfilled (MISSION-041)
+    effect_metric: effective
+    emitter: src/main.rs gap backfill-external-repo --apply handler (MISSION-041)
+    trigger: >
+      Emitted once when `chump gap backfill-external-repo --apply` completes.
+      Summarises how many gaps had their skills_required field updated with
+      external_repo:<owner>/<repo> tags so the picker can route them correctly.
+      NOT emitted in dry-run mode.
+    consumers: [fleet-brief, ambient-glance]
+    fields_required: [ts, kind, linked_count, errors, already_tagged, skipped]
+    status: stable
+
   # ── MISSION-033: repos table auto-import (Phase-B Tier-1 of MISSION-032) ────
 
   - kind: repo_import_skipped
