@@ -287,6 +287,8 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
                 format!("Change described in gap {gap_id} is implemented"),
                 "At least one test proves the change".to_string(),
             ],
+            layer: None,
+            doctrine_justification: None,
         });
     }
 
@@ -307,11 +309,45 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
             )
         })?;
 
-    // Pick the highest-confidence proposed gap (scan is ranked descending by confidence).
-    scan.proposed_gaps
-        .into_iter()
+    // EFFECTIVE-201: doctrine-order picking — L1 → L2 → L3 → untagged,
+    // then within each layer by confidence descending (High > Med > Low).
+    //
+    // Rationale: foundation (L1) must be fixed before higher-level work adds
+    // value. L2 (unfulfilled claims) has more legible ROI than L3 (latent
+    // ideas). Within a layer, higher confidence means stronger evidence.
+    let mut gaps = scan.proposed_gaps;
+    gaps.sort_by(|a, b| {
+        let la = layer_sort_key(a.layer.as_deref());
+        let lb = layer_sort_key(b.layer.as_deref());
+        la.cmp(&lb).then_with(|| {
+            confidence_sort_key(&a.confidence).cmp(&confidence_sort_key(&b.confidence))
+        })
+    });
+    gaps.into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("onboard scan contains no proposed gaps"))
+}
+
+/// Map a doctrine layer string to a sort key (lower = picked first).
+///
+/// L1 < L2 < L3 < untagged — foundation before features before aspirations.
+fn layer_sort_key(layer: Option<&str>) -> u8 {
+    match layer {
+        Some("L1") => 0,
+        Some("L2") => 1,
+        Some("L3") => 2,
+        _ => 3, // untagged gaps (pre-doctrine scans) are de-prioritised
+    }
+}
+
+/// Map a `Confidence` to a sort key (lower = picked first / higher confidence).
+fn confidence_sort_key(c: &chump_handoff::external_repo_schema::Confidence) -> u8 {
+    use chump_handoff::external_repo_schema::Confidence;
+    match c {
+        Confidence::High => 0,
+        Confidence::Med => 1,
+        Confidence::Low => 2,
+    }
 }
 
 // ── Dedup types + logic ───────────────────────────────────────────────────
@@ -824,6 +860,8 @@ mod tests {
                         "Integration test added".to_string(),
                         "Test covers the main flow".to_string(),
                     ],
+                    layer: None,
+                    doctrine_justification: None,
                 },
                 ProposedGap {
                     title: "DOC: update contributing guide".to_string(),
@@ -837,6 +875,8 @@ mod tests {
                         excerpt: "setup instructions are outdated".to_string(),
                     },
                     acceptance_criteria_draft: vec!["CONTRIBUTING.md updated".to_string()],
+                    layer: None,
+                    doctrine_justification: None,
                 },
             ],
         }
@@ -924,6 +964,8 @@ mod tests {
                 excerpt: "streaming pipeline planned".to_string(),
             },
             acceptance_criteria_draft: vec!["Streaming pipeline implemented".to_string()],
+            layer: None,
+            doctrine_justification: None,
         };
 
         let result = dedup_check(clone_dir, &gap).unwrap();
@@ -961,6 +1003,8 @@ mod tests {
                 excerpt: "bd mandated; ROADMAP.md still markdown".to_string(),
             },
             acceptance_criteria_draft: vec!["Roadmap tasks migrated to bd".to_string()],
+            layer: None,
+            doctrine_justification: None,
         };
 
         let result = dedup_check(clone_dir, &gap).unwrap();
@@ -993,6 +1037,8 @@ mod tests {
                 excerpt: "streaming xyzzy planned but not built".to_string(),
             },
             acceptance_criteria_draft: vec!["Streaming xyzzy implemented".to_string()],
+            layer: None,
+            doctrine_justification: None,
         };
 
         let result = dedup_check(clone_dir, &gap).unwrap();
@@ -1224,5 +1270,138 @@ Some prose from the agent.
                 .map(|s| s.to_string())
         });
         assert!(result.is_none(), "missing file path should yield None");
+    }
+
+    // ── EFFECTIVE-201: doctrine-order picking tests ────────────────────────
+
+    /// Build a minimal `ProposedGap` with the given layer and confidence for
+    /// testing the doctrine-order picker. All other fields are placeholder.
+    fn make_gap(title: &str, layer: Option<&str>, conf: Confidence) -> ProposedGap {
+        ProposedGap {
+            title: title.to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P2,
+            effort: Effort::S,
+            confidence: conf,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "README.md".to_string(),
+                section: "§test".to_string(),
+                excerpt: "test".to_string(),
+            },
+            acceptance_criteria_draft: vec!["done".to_string()],
+            layer: layer.map(|s| s.to_string()),
+            doctrine_justification: layer.map(|l| format!("test {l} justification")),
+        }
+    }
+
+    /// Doctrine-order: L1 is always picked before L2 and L3 regardless of
+    /// position in the original scan.
+    #[test]
+    fn doctrine_order_l1_before_l2_before_l3() {
+        let tmp = TempDir::new().unwrap();
+        let repo_dir = tmp.path();
+
+        // Build a scan where gaps are ordered L3, L2, L1 — picker must re-sort
+        // and return the L1 gap first.
+        let scan = OnboardScan {
+            scan_timestamp: Utc::now(),
+            external_repo: "test/repo".to_string(),
+            tool_version: "0.1.0".to_string(),
+            inputs_read: vec![],
+            proposed_gaps: vec![
+                make_gap("L3: latent realization idea", Some("L3"), Confidence::High),
+                make_gap("L2: README claim unfulfilled", Some("L2"), Confidence::High),
+                make_gap("L1: foundation gate unmet", Some("L1"), Confidence::Med),
+            ],
+        };
+        save_scan(repo_dir, &scan).unwrap();
+
+        let clone_dir = repo_dir.join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+
+        let opts = Opts {
+            owner_repo: "test/repo".to_string(),
+            gap_id: None,
+            apply: false,
+            clone_dir: Some(clone_dir.clone()),
+        };
+
+        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        assert_eq!(
+            picked.title, "L1: foundation gate unmet",
+            "doctrine-order picking must select L1 first, even if it appears last in the scan"
+        );
+        assert_eq!(picked.layer.as_deref(), Some("L1"));
+    }
+
+    /// Within L1, higher confidence is picked first.
+    #[test]
+    fn doctrine_order_within_layer_by_confidence() {
+        let tmp = TempDir::new().unwrap();
+        let repo_dir = tmp.path();
+
+        let scan = OnboardScan {
+            scan_timestamp: Utc::now(),
+            external_repo: "test/repo".to_string(),
+            tool_version: "0.1.0".to_string(),
+            inputs_read: vec![],
+            proposed_gaps: vec![
+                make_gap("L1 low-conf", Some("L1"), Confidence::Low),
+                make_gap("L1 high-conf", Some("L1"), Confidence::High),
+                make_gap("L2 high-conf", Some("L2"), Confidence::High),
+            ],
+        };
+        save_scan(repo_dir, &scan).unwrap();
+
+        let clone_dir = repo_dir.join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+
+        let opts = Opts {
+            owner_repo: "test/repo".to_string(),
+            gap_id: None,
+            apply: false,
+            clone_dir: Some(clone_dir.clone()),
+        };
+
+        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        assert_eq!(
+            picked.title, "L1 high-conf",
+            "within L1, high-confidence gap must be picked before low-confidence"
+        );
+    }
+
+    /// Untagged gaps (no layer) are de-prioritised below L3.
+    #[test]
+    fn doctrine_order_untagged_after_l3() {
+        let tmp = TempDir::new().unwrap();
+        let repo_dir = tmp.path();
+
+        let scan = OnboardScan {
+            scan_timestamp: Utc::now(),
+            external_repo: "test/repo".to_string(),
+            tool_version: "0.1.0".to_string(),
+            inputs_read: vec![],
+            proposed_gaps: vec![
+                make_gap("untagged high-conf", None, Confidence::High),
+                make_gap("L3 low-conf", Some("L3"), Confidence::Low),
+            ],
+        };
+        save_scan(repo_dir, &scan).unwrap();
+
+        let clone_dir = repo_dir.join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+
+        let opts = Opts {
+            owner_repo: "test/repo".to_string(),
+            gap_id: None,
+            apply: false,
+            clone_dir: Some(clone_dir.clone()),
+        };
+
+        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        assert_eq!(
+            picked.title, "L3 low-conf",
+            "L3 (even low-confidence) must be picked before an untagged gap"
+        );
     }
 }

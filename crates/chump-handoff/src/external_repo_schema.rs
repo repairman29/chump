@@ -108,6 +108,16 @@ pub struct ProposedGap {
     pub source_of_evidence: SourceOfEvidence,
     /// Draft acceptance criteria (one item per string).
     pub acceptance_criteria_draft: Vec<String>,
+    /// EFFECTIVE-201: Doctrine layer tag — "L1" (foundation), "L2" (fulfillment),
+    /// or "L3" (realization). `None` for gaps produced before the doctrine was
+    /// introduced (back-compat: existing scan JSON round-trips without this field).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
+    /// EFFECTIVE-201: Human-readable justification for why this gap belongs to
+    /// its doctrine layer, citing the specific doctrine principle it satisfies.
+    /// `None` for pre-doctrine scans (back-compat).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doctrine_justification: Option<String>,
 }
 
 /// Priority tier — mirrors Chump's own gap priority vocabulary.
@@ -522,6 +532,8 @@ mod tests {
                     "SSE stream iterator returns typed chunks".to_string(),
                     "README updated with streaming example".to_string(),
                 ],
+                layer: None,
+                doctrine_justification: None,
             }],
         }
     }
