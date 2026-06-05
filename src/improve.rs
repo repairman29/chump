@@ -221,7 +221,8 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // ── Stage 2: DEDUP ────────────────────────────────────────────────────
     println!("\n[improve] Stage 2: DEDUP — checking work isn't already done...");
 
-    let dedup_result = dedup_check(&clone_dir, &picked)?;
+    let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
+    let dedup_result = dedup_check(&opts.owner_repo, &clone_dir, &picked, &gh_bin)?;
     if let DedupResult::Redundant { reason } = dedup_result {
         println!("[improve] SKIP (redundant): {reason}");
         emit_redundant_work_skipped(&opts.owner_repo, &picked.title, &reason);
@@ -360,12 +361,30 @@ enum DedupResult {
 }
 
 /// Stage 2: Check whether the proposed gap's work is already present in the
-/// target repo clone.
+/// target repo clone OR is already in flight as an open PR (ZERO-WASTE-011).
 ///
-/// Heuristic: grep the clone for the key phrase from the gap title and for
-/// evidence terms from the source_of_evidence excerpt. If every keyword appears
-/// in the codebase already, treat the gap as redundant.
-fn dedup_check(clone_dir: &Path, gap: &ProposedGap) -> Result<DedupResult> {
+/// Two sub-checks:
+///
+/// 1. **Merged-commit check** (ZERO-WASTE-010): `git log --oneline -50` on the
+///    clone. Skip only when the exact title core (> 10 chars) or all key terms
+///    co-occur in a single commit message. Errs toward PROCEED — the verify-merge
+///    bar is the backstop for truly-redundant merged work.
+///
+/// 2. **Open-PR check** (ZERO-WASTE-011): `gh pr list --repo <owner/repo>
+///    --state open --search "<key terms>"`. If any returned PR title matches the
+///    key terms, treat as redundant (work already in flight). This prevents
+///    opening duplicate PRs for work already submitted (the BEAST PR #2 case).
+///    `gh_bin` is the path to the `gh` CLI — read from `CHUMP_IMPROVE_GH_BIN`
+///    at the call site and passed in so this fn is unit-testable without touching
+///    global env.
+///    If `gh` fails (network error, unauthenticated), fail-open toward PROCEED;
+///    the verify-merge bar is the backstop.
+fn dedup_check(
+    owner_repo: &str,
+    clone_dir: &Path,
+    gap: &ProposedGap,
+    gh_bin: &str,
+) -> Result<DedupResult> {
     // Extract the key noun phrase from the gap title (drop the pillar prefix).
     // E.g. "EFFECTIVE: add streaming support" → "streaming support"
     let title_core = gap
@@ -376,7 +395,7 @@ fn dedup_check(clone_dir: &Path, gap: &ProposedGap) -> Result<DedupResult> {
         .trim()
         .to_string();
 
-    // Keyword list: first 3 words of the title core + one from the evidence excerpt.
+    // Keyword list: first 3 words of the title core.
     let keywords: Vec<&str> = title_core.split_whitespace().take(3).collect();
 
     if keywords.is_empty() {
@@ -384,7 +403,7 @@ fn dedup_check(clone_dir: &Path, gap: &ProposedGap) -> Result<DedupResult> {
         return Ok(DedupResult::NotRedundant);
     }
 
-    // Check git log for recent commits that look like they implement this gap.
+    // ── Sub-check 1: git log (merged work) ───────────────────────────────────
     // "git log --oneline -50" gives the last 50 commits; grep for the keywords.
     let log_out = Command::new("git")
         .args([
@@ -418,7 +437,121 @@ fn dedup_check(clone_dir: &Path, gap: &ProposedGap) -> Result<DedupResult> {
         }
     }
 
+    // ── Sub-check 2: open PR check (ZERO-WASTE-011) ───────────────────────────
+    // Build a search query from the first 3 key terms.
+    let search_query = keywords.join(" ");
+
+    let pr_list_out = Command::new(gh_bin)
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            owner_repo,
+            "--state",
+            "open",
+            "--search",
+            &search_query,
+            "--json",
+            "title,number",
+        ])
+        .output();
+
+    if let Ok(out) = pr_list_out {
+        if out.status.success() {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let lower_title = title_core.to_lowercase();
+            let kws_lower: Vec<String> = keywords.iter().map(|k| k.to_lowercase()).collect();
+            // Parse each JSON object's "title" field and check for keyword overlap.
+            // Use the same match heuristic as the commit check: exact title core OR
+            // all key terms co-occur in the PR title. This avoids false positives
+            // from loosely matching search results.
+            for line in stdout.lines() {
+                let l = line.to_lowercase();
+                if !l.contains("\"title\"") {
+                    continue;
+                }
+                let exact_title = lower_title.len() > 10 && l.contains(&lower_title);
+                let all_kw_co_occur =
+                    kws_lower.len() >= 2 && kws_lower.iter().all(|k| l.contains(k.as_str()));
+                if exact_title || all_kw_co_occur {
+                    return Ok(DedupResult::Redundant {
+                        reason: format!(
+                            "an open PR on {owner_repo} already covers this work: {}",
+                            line.trim()
+                        ),
+                    });
+                }
+            }
+        }
+        // If gh fails (e.g. unauthenticated, network unavailable) — proceed.
+        // The verify-merge bar is the backstop.
+    }
+
     Ok(DedupResult::NotRedundant)
+}
+
+// ── Auth env helper (B4) ─────────────────────────────────────────────────
+
+/// Configure auth env-vars on a `Command` that will spawn `claude -p`.
+///
+/// Two responsibilities:
+///
+/// 1. **Inject OAUTH token** (RESILIENT-106): if the parent env doesn't carry
+///    `CLAUDE_CODE_OAUTH_TOKEN`, try reading it from `~/.chump/oauth-token.json`
+///    and inject it so the spawned agent can authenticate outside the pre-authed
+///    fleet-worker environment.
+///
+/// 2. **Neutralize conflicting gateway vars** (B4 / RESILIENT-108): when we
+///    *will* use OAUTH (token found in env or token file), also strip any
+///    conflicting Anthropic gateway environment variables that the parent
+///    process may carry (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+///    `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`). Without this, a
+///    parent session running against a custom gateway causes the spawned claude
+///    to prefer the gateway over subscription OAUTH → "Not logged in".
+///
+/// GUARD: gateway vars are ONLY stripped when an OAUTH token is actually
+/// available. We never strip auth leaving the spawned process unauthenticated.
+///
+/// IMPORTANT: the token value is NEVER logged or printed.
+///
+/// Returns `true` if an OAUTH token was injected or already present (OAUTH
+/// path chosen); `false` if no token available (gateway env left intact).
+///
+/// Testable via `Command::get_envs` on a `std::process::Command` — no process
+/// spawn required.
+pub(crate) fn configure_claude_auth_env(cmd: &mut Command) -> bool {
+    // Step 1: check if OAUTH token is already present in the parent env.
+    let token_in_env = std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN").is_some();
+
+    // Step 2: if not in env, try reading from the token file.
+    let token_from_file: Option<String> = if token_in_env {
+        None
+    } else {
+        read_oauth_token_file()
+    };
+
+    // Determine whether we have (or will have) an OAUTH token.
+    let oauth_available = token_in_env || token_from_file.is_some();
+
+    if !oauth_available {
+        // No OAUTH token available — leave everything as-is; do not strip anything.
+        return false;
+    }
+
+    // Inject the file token if the env didn't already carry one.
+    if let Some(tok) = token_from_file {
+        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", tok);
+    }
+
+    // B4: strip conflicting gateway vars so the spawned claude uses OAUTH.
+    // Only done when OAUTH is available (guard above ensures we never strip
+    // auth leaving nothing).
+    cmd.env_remove("ANTHROPIC_API_KEY");
+    cmd.env_remove("ANTHROPIC_AUTH_TOKEN");
+    cmd.env_remove("ANTHROPIC_BASE_URL");
+    cmd.env_remove("ANTHROPIC_CUSTOM_HEADERS");
+
+    true
 }
 
 // ── Implement stage ───────────────────────────────────────────────────────
@@ -458,16 +591,12 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         .args(["--model", "claude-sonnet-4-5"])
         .current_dir(clone_dir);
 
-    // RESILIENT-106: if the env doesn't already carry CLAUDE_CODE_OAUTH_TOKEN
-    // (i.e. we're outside the pre-authed fleet-worker environment), inject it
-    // from ~/.chump/oauth-token.json — the file worker.sh (INFRA-620) keeps
-    // fresh. This lets `chump improve` work when run from an interactive session
-    // using ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN rather than the oauth path.
-    // IMPORTANT: the token value is NEVER logged or printed.
-    if std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN").is_none() {
-        if let Some(tok) = read_oauth_token_file() {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", tok);
-        }
+    // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
+    // gateway vars so the spawned agent authenticates from any context.
+    // configure_claude_auth_env handles both responsibilities atomically.
+    let oauth_path = configure_claude_auth_env(&mut cmd);
+    if oauth_path {
+        eprintln!("[improve] auth: using OAUTH token path for spawned claude");
     }
 
     // Capture output so we can extract the PR URL from the JSON block.
@@ -968,7 +1097,7 @@ mod tests {
             doctrine_justification: None,
         };
 
-        let result = dedup_check(clone_dir, &gap).unwrap();
+        let result = dedup_check("owner/testrepo", clone_dir, &gap, "gh").unwrap();
         assert!(
             matches!(result, DedupResult::Redundant { .. }),
             "dedup should detect work already done in a commit"
@@ -1007,7 +1136,7 @@ mod tests {
             doctrine_justification: None,
         };
 
-        let result = dedup_check(clone_dir, &gap).unwrap();
+        let result = dedup_check("owner/testrepo", clone_dir, &gap, "gh").unwrap();
         assert!(
             matches!(result, DedupResult::NotRedundant),
             "keywords in files (no matching commit) must NOT false-skip — ZERO-WASTE-010"
@@ -1041,7 +1170,7 @@ mod tests {
             doctrine_justification: None,
         };
 
-        let result = dedup_check(clone_dir, &gap).unwrap();
+        let result = dedup_check("owner/testrepo", clone_dir, &gap, "gh").unwrap();
         assert!(
             matches!(result, DedupResult::NotRedundant),
             "dedup should pass for new work"
@@ -1111,7 +1240,7 @@ Some prose from the agent.
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
 
         // Dedup on an empty clone dir should pass (no code present).
-        let dedup = dedup_check(&clone_dir, &picked).unwrap();
+        let dedup = dedup_check("owner/myrepo", &clone_dir, &picked, "gh").unwrap();
         assert!(matches!(dedup, DedupResult::NotRedundant));
 
         // Dry-run: stages 3-4 are not called. Verify the chain stops here.
@@ -1402,6 +1531,301 @@ Some prose from the agent.
         assert_eq!(
             picked.title, "L3 low-conf",
             "L3 (even low-confidence) must be picked before an untagged gap"
+        );
+    }
+
+    // ── B4: configure_claude_auth_env unit tests (RESILIENT-108) ──────────
+
+    /// B4: when CLAUDE_CODE_OAUTH_TOKEN is set in the parent env and fake
+    /// ANTHROPIC_* gateway vars are explicitly set on a Command, calling
+    /// configure_claude_auth_env strips all four gateway vars (they appear as
+    /// `(key, None)` in `Command::get_envs()`) and returns true.
+    ///
+    /// We use Command::get_envs() to inspect the env-override map without
+    /// spawning any process.
+    #[test]
+    fn configure_auth_env_strips_gateway_when_oauth_in_env() {
+        // Set the OAUTH token in the process env for this test.
+        // Use a clearly fake value — never logged.
+        unsafe {
+            std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token-b4-unit");
+        }
+
+        let mut cmd = Command::new("true"); // never spawned
+                                            // Explicitly add gateway vars to cmd so env_remove can target them.
+        cmd.env("ANTHROPIC_API_KEY", "fake-key");
+        cmd.env("ANTHROPIC_AUTH_TOKEN", "fake-auth-token");
+        cmd.env("ANTHROPIC_BASE_URL", "https://fake.gateway.example");
+        cmd.env("ANTHROPIC_CUSTOM_HEADERS", "X-Fake: header");
+
+        let result = configure_claude_auth_env(&mut cmd);
+
+        // Restore env before assertions (isolate from other tests).
+        unsafe {
+            std::env::remove_var("CLAUDE_CODE_OAUTH_TOKEN");
+        }
+
+        assert!(
+            result,
+            "configure_claude_auth_env must return true when OAUTH token is in env"
+        );
+
+        // After env_remove(), the key appears as (key, None) in get_envs().
+        let env_map: std::collections::HashMap<_, _> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.map(|v| v.to_string_lossy().to_string()),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            env_map.get("ANTHROPIC_API_KEY"),
+            Some(&None),
+            "ANTHROPIC_API_KEY must be removed from Command env when OAUTH is active"
+        );
+        assert_eq!(
+            env_map.get("ANTHROPIC_AUTH_TOKEN"),
+            Some(&None),
+            "ANTHROPIC_AUTH_TOKEN must be removed from Command env when OAUTH is active"
+        );
+        assert_eq!(
+            env_map.get("ANTHROPIC_BASE_URL"),
+            Some(&None),
+            "ANTHROPIC_BASE_URL must be removed from Command env when OAUTH is active"
+        );
+        assert_eq!(
+            env_map.get("ANTHROPIC_CUSTOM_HEADERS"),
+            Some(&None),
+            "ANTHROPIC_CUSTOM_HEADERS must be removed from Command env when OAUTH is active"
+        );
+        // CLAUDE_CODE_OAUTH_TOKEN was in the parent env (token_in_env=true) so
+        // configure_claude_auth_env does NOT re-inject it (no explicit cmd.env call).
+        // It must not be removed either.
+        assert_ne!(
+            env_map.get("CLAUDE_CODE_OAUTH_TOKEN"),
+            Some(&None),
+            "CLAUDE_CODE_OAUTH_TOKEN must NOT be removed from Command env"
+        );
+    }
+
+    /// B4: when no OAUTH token is available (neither env nor file), the
+    /// function returns false and does NOT strip any gateway vars.
+    #[test]
+    fn configure_auth_env_noop_when_no_oauth() {
+        // If the test process happens to carry CLAUDE_CODE_OAUTH_TOKEN, skip —
+        // we can't safely remove it without affecting other parallel tests.
+        if std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN").is_some() {
+            return;
+        }
+
+        // Point HOME at an empty tmp dir so read_oauth_token_file returns None.
+        let tmp = TempDir::new().unwrap();
+        let orig_home = std::env::var("HOME").unwrap_or_default();
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+        }
+
+        let mut cmd = Command::new("true");
+        cmd.env("ANTHROPIC_API_KEY", "real-key-must-not-be-stripped");
+
+        let result = configure_claude_auth_env(&mut cmd);
+
+        unsafe {
+            std::env::set_var("HOME", &orig_home);
+        }
+
+        assert!(
+            !result,
+            "configure_claude_auth_env must return false when no OAUTH token available"
+        );
+
+        // ANTHROPIC_API_KEY must NOT appear as None in the env map.
+        let env_map: std::collections::HashMap<_, _> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.map(|v| v.to_string_lossy().to_string()),
+                )
+            })
+            .collect();
+
+        assert_ne!(
+            env_map.get("ANTHROPIC_API_KEY"),
+            Some(&None),
+            "ANTHROPIC_API_KEY must NOT be stripped when no OAUTH token is available"
+        );
+    }
+
+    // ── B5: open-PR dedup unit tests (ZERO-WASTE-011 / RESILIENT-108) ─────
+
+    /// Helper: init a git repo in `dir` with one commit carrying `commit_msg`.
+    fn git_repo_with_commit_b5(dir: &std::path::Path, commit_msg: &str) {
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t.t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t.t")
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q"]);
+        fs::write(dir.join("seed.txt"), "seed").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", commit_msg]);
+    }
+
+    /// Write a fake gh binary at `path` that emits `output` on stdout and
+    /// exits with `exit_code`. Makes the file executable (unix only).
+    fn write_fake_gh(path: &std::path::Path, output: &str, exit_code: i32) {
+        let script = format!(
+            "#!/usr/bin/env bash\necho '{}'\nexit {}\n",
+            output.replace('\'', "'\\''"),
+            exit_code
+        );
+        fs::write(path, script).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// B5: fake gh returns a matching open PR → dedup Redundant.
+    #[test]
+    fn dedup_open_pr_match_is_redundant() {
+        let tmp = TempDir::new().unwrap();
+        let clone_dir = tmp.path().join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+        git_repo_with_commit_b5(&clone_dir, "initial commit: unrelated work");
+
+        let fake_gh = tmp.path().join("gh");
+        // The fake gh emits one PR whose title contains the gap's key terms.
+        write_fake_gh(
+            &fake_gh,
+            r#"[{"number":99,"title":"add streaming pipeline for async events"}]"#,
+            0,
+        );
+
+        let gap = ProposedGap {
+            title: "EFFECTIVE: add streaming pipeline".to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P1,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "README.md".to_string(),
+                section: "## Roadmap".to_string(),
+                excerpt: "streaming pipeline not yet built".to_string(),
+            },
+            acceptance_criteria_draft: vec!["Streaming pipeline implemented".to_string()],
+            layer: None,
+            doctrine_justification: None,
+        };
+
+        // Pass fake_gh directly — no global env mutation needed.
+        let result = dedup_check(
+            "owner/testrepo",
+            &clone_dir,
+            &gap,
+            &fake_gh.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert!(
+            matches!(result, DedupResult::Redundant { .. }),
+            "open PR matching title keywords must trigger Redundant (ZERO-WASTE-011)"
+        );
+        if let DedupResult::Redundant { reason } = result {
+            assert!(
+                reason.contains("open PR"),
+                "reason must mention 'open PR', got: {reason}"
+            );
+        }
+    }
+
+    /// B5: fake gh returns empty list + no matching commit → NotRedundant.
+    #[test]
+    fn dedup_no_open_pr_is_not_redundant() {
+        let tmp = TempDir::new().unwrap();
+        let clone_dir = tmp.path().join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+        git_repo_with_commit_b5(&clone_dir, "initial commit: unrelated work");
+
+        let fake_gh = tmp.path().join("gh");
+        write_fake_gh(&fake_gh, "[]", 0);
+
+        let gap = ProposedGap {
+            title: "EFFECTIVE: add streaming pipeline xyzzy99".to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P1,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "README.md".to_string(),
+                section: "## Roadmap".to_string(),
+                excerpt: "streaming xyzzy99 not built".to_string(),
+            },
+            acceptance_criteria_draft: vec!["Streaming xyzzy99 implemented".to_string()],
+            layer: None,
+            doctrine_justification: None,
+        };
+
+        let result = dedup_check(
+            "owner/testrepo",
+            &clone_dir,
+            &gap,
+            &fake_gh.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert!(
+            matches!(result, DedupResult::NotRedundant),
+            "empty open-PR list + no matching commit must be NotRedundant"
+        );
+    }
+
+    /// B5: gh exits non-zero (network error) → fail-open, returns NotRedundant.
+    #[test]
+    fn dedup_gh_failure_is_not_redundant() {
+        let tmp = TempDir::new().unwrap();
+        let clone_dir = tmp.path().join("clone");
+        fs::create_dir_all(&clone_dir).unwrap();
+        git_repo_with_commit_b5(&clone_dir, "initial commit");
+
+        let fake_gh = tmp.path().join("gh");
+        write_fake_gh(&fake_gh, "error: network failure", 1);
+
+        let gap = ProposedGap {
+            title: "EFFECTIVE: add streaming pipeline".to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P1,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "README.md".to_string(),
+                section: "## Roadmap".to_string(),
+                excerpt: "streaming pipeline not built".to_string(),
+            },
+            acceptance_criteria_draft: vec!["Streaming pipeline implemented".to_string()],
+            layer: None,
+            doctrine_justification: None,
+        };
+
+        let result = dedup_check(
+            "owner/testrepo",
+            &clone_dir,
+            &gap,
+            &fake_gh.to_string_lossy(),
+        )
+        .unwrap();
+
+        assert!(
+            matches!(result, DedupResult::NotRedundant),
+            "gh failure must fail-open toward NotRedundant (verify-merge is the backstop)"
         );
     }
 }
