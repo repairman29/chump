@@ -301,31 +301,20 @@ fn run_inner(args: &[String]) -> Result<()> {
             role: "user".into(),
             content: user_msg,
         }];
+        // EFFECTIVE-147: bump from 4096 → 16384 so a full 10-gap JSON array
+        // (each object ~300 tokens) can complete without being cut off mid-object.
         let resp = provider
-            .complete(messages, None, Some(4096), Some(system_prompt))
+            .complete(messages, None, Some(16384), Some(system_prompt))
             .await?;
         Ok::<String, anyhow::Error>(resp.text.unwrap_or_default())
     })?;
 
     // ── Parse LLM JSON response ───────────────────────────────────────────
 
-    let json_start = raw_text.find('[').unwrap_or(0);
-    let json_end = raw_text.rfind(']').map(|i| i + 1).unwrap_or(raw_text.len());
-    let json_slice = &raw_text[json_start..json_end];
-
-    #[derive(Debug, serde::Deserialize)]
-    struct LlmGap {
-        title: String,
-        domain: String,
-        priority: String,
-        effort: String,
-        confidence: String,
-        source: String,
-        #[serde(default)]
-        ac_draft: Vec<String>,
-    }
-
-    let llm_gaps: Vec<LlmGap> = serde_json::from_str(json_slice).map_err(|e| {
+    // EFFECTIVE-147: use truncation-tolerant parser — if the response was cut
+    // off mid-object (max_tokens hit), salvage all complete objects rather than
+    // returning an error with zero gaps.
+    let llm_gaps: Vec<LlmGap> = parse_llm_gaps_tolerant(&raw_text).map_err(|e| {
         anyhow!(
             "failed to parse LLM response as JSON: {e}\nRaw (first 500): {}",
             &raw_text[..raw_text.len().min(500)]
@@ -811,6 +800,103 @@ fn fetch_gh_context(owner_repo: &str) -> String {
     parts.join("\n")
 }
 
+// ── LLM gap struct (module-level so parse_llm_gaps_tolerant can reference it) ──
+
+#[derive(Debug, serde::Deserialize)]
+struct LlmGap {
+    title: String,
+    domain: String,
+    priority: String,
+    effort: String,
+    confidence: String,
+    source: String,
+    #[serde(default)]
+    ac_draft: Vec<String>,
+}
+
+/// Parse LLM JSON response into a list of gap proposals.
+///
+/// EFFECTIVE-147: tolerates a truncated response (LLM hit max_tokens mid-array).
+/// Strategy:
+///   1. Try full-array parse first — fast path for a well-formed response.
+///   2. On failure, extract complete JSON objects from the raw text by tracking
+///      brace depth; deserialize each complete `{...}` individually and collect
+///      only the ones that succeed.  A trailing partial object (the truncated one)
+///      is silently dropped, so a 10-gap array truncated after object 8 yields 8
+///      gaps rather than an error.
+///
+/// Returns `Err` only when *no* objects can be salvaged at all.
+fn parse_llm_gaps_tolerant(raw: &str) -> anyhow::Result<Vec<LlmGap>> {
+    // Narrow to the JSON array region (between the outermost '[' and ']').
+    let array_start = raw.find('[').unwrap_or(0);
+    let array_end = raw.rfind(']').map(|i| i + 1).unwrap_or(raw.len());
+    let slice = &raw[array_start..array_end];
+
+    // ── Fast path: well-formed array ─────────────────────────────────────
+    if let Ok(gaps) = serde_json::from_str::<Vec<LlmGap>>(slice) {
+        return Ok(gaps);
+    }
+
+    // ── Salvage path: extract every complete {...} object ────────────────
+    // Walk the raw text (not the slice) so we catch objects even when there
+    // is no closing ']' (the truncation point may be before the bracket).
+    let mut gaps: Vec<LlmGap> = Vec::new();
+    let bytes = raw.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        if bytes[i] == b'{' {
+            // Track nested braces to find the matching '}'.
+            let obj_start = i;
+            let mut depth: usize = 0;
+            let mut in_string = false;
+            let mut escape_next = false;
+
+            while i < len {
+                let b = bytes[i];
+                if escape_next {
+                    escape_next = false;
+                    i += 1;
+                    continue;
+                }
+                match b {
+                    b'\\' if in_string => {
+                        escape_next = true;
+                    }
+                    b'"' => {
+                        in_string = !in_string;
+                    }
+                    b'{' if !in_string => {
+                        depth += 1;
+                    }
+                    b'}' if !in_string => {
+                        depth -= 1;
+                        if depth == 0 {
+                            // Found the matching close-brace — try to parse.
+                            let obj_slice = &raw[obj_start..=i];
+                            if let Ok(gap) = serde_json::from_str::<LlmGap>(obj_slice) {
+                                gaps.push(gap);
+                            }
+                            i += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    if gaps.is_empty() {
+        anyhow::bail!("no complete JSON objects found in LLM response");
+    }
+    Ok(gaps)
+}
+
 fn extract_source_path(source: &str) -> String {
     // Heuristic: pick the first token that looks like a file path.
     for word in source.split_whitespace() {
@@ -1066,5 +1152,73 @@ mod tests {
     async fn block_on_in_runtime_no_nested_panic() {
         let got = block_on_in_runtime(async { 40 + 2 });
         assert_eq!(got, 42);
+    }
+
+    // ── EFFECTIVE-147: truncation-tolerant JSON parser ────────────────────
+
+    /// Helper: build a minimal well-formed JSON object string for a gap.
+    fn make_gap_obj(title: &str) -> String {
+        format!(
+            r#"{{"title":"{title}","domain":"EFFECTIVE","priority":"P1","effort":"s","confidence":"high","source":"README.md","ac_draft":["test passes"]}}"#
+        )
+    }
+
+    #[test]
+    fn test_parse_llm_gaps_tolerant_well_formed() {
+        // Fast path: a complete JSON array is parsed without salvage.
+        let obj1 = make_gap_obj("gap one");
+        let obj2 = make_gap_obj("gap two");
+        let input = format!("[{obj1},{obj2}]");
+        let gaps = parse_llm_gaps_tolerant(&input).unwrap();
+        assert_eq!(gaps.len(), 2);
+        assert_eq!(gaps[0].title, "gap one");
+        assert_eq!(gaps[1].title, "gap two");
+    }
+
+    #[test]
+    fn test_parse_llm_gaps_tolerant_truncated_array() {
+        // Regression for EFFECTIVE-147: array truncated mid-object (EOF while
+        // parsing the 3rd object) — must salvage the 2 completed objects.
+        let obj1 = make_gap_obj("gap one");
+        let obj2 = make_gap_obj("gap two");
+        // Partial 3rd object — cut off in the middle of the title value.
+        let partial = r#"{"title":"gap thr"#;
+        let input = format!("[{obj1},{obj2},{partial}");
+        let gaps = parse_llm_gaps_tolerant(&input).unwrap();
+        assert_eq!(
+            gaps.len(),
+            2,
+            "should salvage 2 complete objects, not error"
+        );
+        assert_eq!(gaps[0].title, "gap one");
+        assert_eq!(gaps[1].title, "gap two");
+    }
+
+    #[test]
+    fn test_parse_llm_gaps_tolerant_single_complete_then_truncated() {
+        // Even one salvaged gap is success, not an error.
+        let obj1 = make_gap_obj("only one");
+        let partial = r#"{"title":"cut"#;
+        let input = format!("[{obj1},{partial}");
+        let gaps = parse_llm_gaps_tolerant(&input).unwrap();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].title, "only one");
+    }
+
+    #[test]
+    fn test_parse_llm_gaps_tolerant_no_objects_is_err() {
+        // Completely garbled input — should return Err, not panic.
+        let result = parse_llm_gaps_tolerant("this is not json at all");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_llm_gaps_tolerant_prose_wrapping_array() {
+        // LLM sometimes emits prose before/after the JSON array; must still parse.
+        let obj = make_gap_obj("wrapped gap");
+        let input = format!("Here are your gaps:\n[{obj}]\nDone.");
+        let gaps = parse_llm_gaps_tolerant(&input).unwrap();
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].title, "wrapped gap");
     }
 }
