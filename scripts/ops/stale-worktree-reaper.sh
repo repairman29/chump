@@ -245,6 +245,22 @@ if [[ -d "$LOCKS_DIR" && "${REAPER_SAFETY_CHECK}" == "1" ]]; then
     done < <(lease_iter --repo "$REPO_ROOT")
 fi
 
+# RESILIENT-099: the loop above only sees .chump-locks/*.json leases, but interactive
+# `chump claim` writes the lease to the state.db `leases` table ONLY (no JSON sidecar
+# with a heartbeat). Without this, the reaper reaped an ACTIVELY-LEASED worktree
+# (the auto-stash saved the work, but an active lease must HARD-BLOCK reap). Append
+# every state.db lease whose claim has not expired so is_active_lease() protects it.
+# Same canonical-store split as INFRA-2744 (bot-merge re-claim) / RESILIENT-103.
+if [[ "${REAPER_SAFETY_CHECK}" == "1" ]] && command -v sqlite3 >/dev/null 2>&1; then
+    _statedb="${CHUMP_STATE_DB:-$REPO_ROOT/.chump/state.db}"
+    if [[ -f "$_statedb" ]]; then
+        _now_epoch="$(date -u +%s)"
+        while IFS= read -r _wt; do
+            [[ -n "$_wt" ]] && ACTIVE_WORKTREES="$ACTIVE_WORKTREES $_wt"
+        done < <(sqlite3 "$_statedb" "SELECT worktree FROM leases WHERE worktree != '' AND expires_at > $_now_epoch;" 2>/dev/null || true)
+    fi
+fi
+
 is_active_lease() {
     # $1 = worktree basename
     local wt="$1"

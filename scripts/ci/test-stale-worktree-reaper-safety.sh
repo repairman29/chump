@@ -397,6 +397,72 @@ else
     fail "worktree-prune: stale worktree wrongly protected"
 fi
 
+# ─── RESILIENT-099: state.db lease (interactive claim, no JSON sidecar) ──────────
+echo ""
+echo "=== RESILIENT-099: state.db lease (no .chump-locks/*.json) hard-blocks reap ==="
+echo ""
+echo "--- Test 13: a non-expired state.db lease adds its worktree to ACTIVE_WORKTREES"
+if command -v sqlite3 >/dev/null 2>&1; then
+    SDB="$TMPDIR_BASE/state.db"
+    sqlite3 "$SDB" "CREATE TABLE leases (session_id TEXT PRIMARY KEY, gap_id TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL);"
+    NOW_EPOCH="$(date -u +%s)"
+    sqlite3 "$SDB" "INSERT INTO leases VALUES ('claim-statedb-test','TEST-099','/tmp/chump-statedb-active',$((NOW_EPOCH + 9999)));"
+    sqlite3 "$SDB" "INSERT INTO leases VALUES ('claim-statedb-old','TEST-099X','/tmp/chump-statedb-expired',$((NOW_EPOCH - 9999)));"
+    # Mirror the RESILIENT-099 collection added to stale-worktree-reaper.sh:
+    ACTIVE_WORKTREES=""
+    while IFS= read -r _wt; do
+        [[ -n "$_wt" ]] && ACTIVE_WORKTREES="$ACTIVE_WORKTREES $_wt"
+    done < <(sqlite3 "$SDB" "SELECT worktree FROM leases WHERE worktree != '' AND expires_at > $NOW_EPOCH;" 2>/dev/null || true)
+    if is_active_lease_test "chump-statedb-active"; then
+        ok "RESILIENT-099: non-expired state.db lease protects worktree (no JSON sidecar needed)"
+    else
+        fail "RESILIENT-099: state.db lease NOT collected (ACTIVE_WORKTREES='$ACTIVE_WORKTREES')"
+    fi
+    if ! is_active_lease_test "chump-statedb-expired"; then
+        ok "RESILIENT-099: EXPIRED state.db lease correctly excluded (no over-protection)"
+    else
+        fail "RESILIENT-099: expired state.db lease wrongly protected"
+    fi
+else
+    ok "RESILIENT-099: sqlite3 absent — skipping state.db lease test"
+fi
+
+echo ""
+echo "--- Test 14: wt_has_active_lease state.db check (worktree-prune path) + /private/tmp normalization"
+if command -v sqlite3 >/dev/null 2>&1; then
+    SDB2="$TMPDIR_BASE/state2.db"
+    sqlite3 "$SDB2" "CREATE TABLE leases (session_id TEXT PRIMARY KEY, gap_id TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL);"
+    NE2="$(date -u +%s)"
+    sqlite3 "$SDB2" "INSERT INTO leases VALUES ('s','TEST-099','/tmp/chump-wha-active',$((NE2 + 9999)));"
+    # Mirror the RESILIENT-099 state.db check added to wt_has_active_lease() in
+    # worktree-iter.sh, including the macOS /tmp <-> /private/tmp normalization.
+    _statedb_lease_active() {
+        local wt_path="$1" sdb="$2" wt_alt=""
+        [[ "$wt_path" == /tmp/* ]] && wt_alt="/private${wt_path}"
+        [[ "$wt_path" == /private/tmp/* ]] && wt_alt="${wt_path#/private}"
+        local now hit; now="$(date -u +%s)"
+        hit="$(sqlite3 "$sdb" "SELECT 1 FROM leases WHERE (worktree='$wt_path' OR worktree='$wt_alt') AND expires_at > $now LIMIT 1;" 2>/dev/null || true)"
+        [[ -n "$hit" ]]
+    }
+    if _statedb_lease_active "/tmp/chump-wha-active" "$SDB2"; then
+        ok "RESILIENT-099: wt_has_active_lease state.db check matches the leased worktree"
+    else
+        fail "RESILIENT-099: wt_has_active_lease state.db check MISSED the lease"
+    fi
+    if _statedb_lease_active "/private/tmp/chump-wha-active" "$SDB2"; then
+        ok "RESILIENT-099: state.db check matches via the /private/tmp alt form"
+    else
+        fail "RESILIENT-099: state.db check missed the /private/tmp alt form"
+    fi
+    if _statedb_lease_active "/tmp/chump-no-such" "$SDB2"; then
+        fail "RESILIENT-099: state.db check false-positive on an unleased worktree"
+    else
+        ok "RESILIENT-099: state.db check returns false for an unleased worktree"
+    fi
+else
+    ok "RESILIENT-099: sqlite3 absent — skipping wt_has_active_lease test"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

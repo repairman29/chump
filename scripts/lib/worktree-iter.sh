@@ -119,6 +119,22 @@ wt_has_active_lease() {
     fi
 
     local repo; repo="$(_wt_main_repo)"
+
+    # RESILIENT-099: interactive `chump claim` writes the lease to the state.db
+    # `leases` table ONLY (no .chump-locks/*.json sidecar with a heartbeat). Check
+    # it FIRST so an active interactive claim HARD-BLOCKS reap — the reaper ate an
+    # actively-leased worktree this way. Same canonical-store split as INFRA-2744
+    # (bot-merge re-claim) / RESILIENT-103 (lease unification).
+    if command -v sqlite3 >/dev/null 2>&1; then
+        local _sdb="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+        if [[ -f "$_sdb" ]]; then
+            local _now _hit
+            _now="$(date -u +%s)"
+            _hit="$(sqlite3 "$_sdb" "SELECT 1 FROM leases WHERE (worktree='$wt_path' OR worktree='$wt_alt') AND expires_at > $_now LIMIT 1;" 2>/dev/null || true)"
+            [[ -n "$_hit" ]] && return 0
+        fi
+    fi
+
     local lock_dir="${CHUMP_LOCK_DIR:-$repo/.chump-locks}"
     [[ -d "$lock_dir" ]] || return 1
 
