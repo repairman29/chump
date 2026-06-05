@@ -350,47 +350,24 @@ fn dedup_check(clone_dir: &Path, gap: &ProposedGap) -> Result<DedupResult> {
         .output();
 
     if let Ok(out) = log_out {
-        let log_text = String::from_utf8_lossy(&out.stdout).to_lowercase();
         let lower_title = title_core.to_lowercase();
-        // If the exact title core appears in recent commit messages, likely redundant.
-        if lower_title.len() > 10 && log_text.contains(&lower_title) {
-            return Ok(DedupResult::Redundant {
-                reason: format!(
-                    "git log contains a recent commit matching the gap title: {lower_title}"
-                ),
-            });
-        }
-    }
-
-    // Check whether all top-3 keywords appear in the codebase via grep -r.
-    // If ALL keywords hit at least one file, the feature likely already exists.
-    if keywords.len() >= 2 {
-        let all_present = keywords.iter().all(|kw| {
-            // grep -r --include="*.rs" --include="*.ts" (etc) <keyword> <clone_dir>
-            let out = Command::new("grep")
-                .args([
-                    "-r",
-                    "-l",
-                    "-i",
-                    "--include=*.rs",
-                    "--include=*.ts",
-                    "--include=*.py",
-                    "--include=*.go",
-                    "--include=*.js",
-                    kw,
-                    &clone_dir.to_string_lossy(),
-                ])
-                .output();
-            matches!(out, Ok(o) if o.status.success() && !o.stdout.is_empty())
-        });
-
-        if all_present {
-            return Ok(DedupResult::Redundant {
-                reason: format!(
-                    "all keywords {:?} already present in the codebase",
-                    keywords
-                ),
-            });
+        let kws_lower: Vec<String> = keywords.iter().map(|k| k.to_lowercase()).collect();
+        // ZERO-WASTE-010: a real "already done" signal is a COMMIT that did this work,
+        // NOT mere file-keyword presence — common title words like "roadmap"/"tasks"
+        // appear in any repo that has a roadmap, which false-skipped real work on the
+        // first live BEAST-MODE run. So skip ONLY if the exact title core appears in a
+        // recent commit message, or all key terms co-occur in one commit line. Err
+        // toward PROCEED; the verify-merge bar is the backstop for truly-redundant work.
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let l = line.to_lowercase();
+            let exact_title = lower_title.len() > 10 && l.contains(&lower_title);
+            let all_kw_co_occur =
+                kws_lower.len() >= 2 && kws_lower.iter().all(|k| l.contains(k.as_str()));
+            if exact_title || all_kw_co_occur {
+                return Ok(DedupResult::Redundant {
+                    reason: format!("a recent commit already does this work: {}", line.trim()),
+                });
+            }
         }
     }
 
@@ -791,21 +768,33 @@ mod tests {
         assert_eq!(picked.title, "EFFECTIVE-177");
     }
 
-    /// Stage 2 DEDUP: skips if gap keywords already in the codebase.
+    /// Init a git repo in `dir` with one commit carrying `commit_msg`.
+    fn git_repo_with_commit(dir: &std::path::Path, commit_msg: &str) {
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t.t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t.t")
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q"]);
+        fs::write(dir.join("seed.txt"), "seed").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", commit_msg]);
+    }
+
+    /// Stage 2 DEDUP (ZERO-WASTE-010): skips when a COMMIT already did the work
+    /// (key terms co-occur in a commit message), NOT on mere file-keyword presence.
     #[test]
     fn dedup_detects_redundant_work() {
         let tmp = TempDir::new().unwrap();
         let clone_dir = tmp.path();
-
-        // Write a file containing all three top keywords from the gap title.
-        // Title core: "add streaming pipeline" → keywords: "add", "streaming", "pipeline"
-        let src_dir = clone_dir.join("src");
-        fs::create_dir_all(&src_dir).unwrap();
-        fs::write(
-            src_dir.join("streaming.rs"),
-            "// add streaming pipeline support\nfn streaming_pipeline() {}",
-        )
-        .unwrap();
+        // A commit already did this work — its message carries the gap's key terms.
+        git_repo_with_commit(clone_dir, "feat: add streaming pipeline support");
 
         let gap = ProposedGap {
             title: "EFFECTIVE: add streaming pipeline".to_string(),
@@ -824,7 +813,44 @@ mod tests {
         let result = dedup_check(clone_dir, &gap).unwrap();
         assert!(
             matches!(result, DedupResult::Redundant { .. }),
-            "dedup should detect the keywords already present"
+            "dedup should detect work already done in a commit"
+        );
+    }
+
+    /// ZERO-WASTE-010 regression: common title words present in FILES (but no commit
+    /// did the work) must NOT trigger a skip — this is the exact BEAST-MODE roadmap
+    /// false-positive that skipped real work on the first live run.
+    #[test]
+    fn dedup_proceeds_when_keywords_only_in_files() {
+        let tmp = TempDir::new().unwrap();
+        let clone_dir = tmp.path();
+        // Real repo, but the commit does NOT do the work.
+        git_repo_with_commit(clone_dir, "initial commit");
+        // Files DO contain the title keywords (like any repo that has a roadmap).
+        fs::write(
+            clone_dir.join("ROADMAP.md"),
+            "# Roadmap\n- migrate the tasks eventually\n- more roadmap tasks\n",
+        )
+        .unwrap();
+
+        let gap = ProposedGap {
+            title: "EFFECTIVE: Migrate roadmap tasks to bd".to_string(),
+            domain: "EFFECTIVE".to_string(),
+            priority: Priority::P1,
+            effort: Effort::S,
+            confidence: Confidence::High,
+            source_of_evidence: SourceOfEvidence {
+                input_path: "AGENTS.md".to_string(),
+                section: "## Tracking".to_string(),
+                excerpt: "bd mandated; ROADMAP.md still markdown".to_string(),
+            },
+            acceptance_criteria_draft: vec!["Roadmap tasks migrated to bd".to_string()],
+        };
+
+        let result = dedup_check(clone_dir, &gap).unwrap();
+        assert!(
+            matches!(result, DedupResult::NotRedundant),
+            "keywords in files (no matching commit) must NOT false-skip — ZERO-WASTE-010"
         );
     }
 
