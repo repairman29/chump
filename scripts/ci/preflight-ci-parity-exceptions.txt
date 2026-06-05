@@ -388,3 +388,8 @@ check-sccache-hit-rate.sh  # reason: Tier-D, CI-env-specific (CREDIBLE-085)
 # PR author + GitHub Checks summary). CI-specific.
 triage-cargo-test-failure.sh  # reason: Tier-D, post-build classifier (CREDIBLE-013)
 CI failure triage             # reason: Tier-D, post-build classifier (CREDIBLE-013)
+# EFFECTIVE-028 — broadcast.sh --reply-to / corr_id threading smoke test.
+# Tier-C (fully local, no CI-env dependency). Deferred mirror in src/preflight.rs
+# until the broader broadcast.sh Rust port (INFRA-1998 Phase 2) lands; at that
+# point this test and its Rust equivalent will both run in preflight.
+test-broadcast-reply-to.sh  # reason: Tier-C coord-layer shell test; preflight mirror deferred to INFRA-1998 Rust-port gap (EFFECTIVE-028)

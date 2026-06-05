@@ -14,12 +14,22 @@
 # live session lease files in .chump-locks/.
 #
 # Usage:
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] INTENT  <gap-id> [file1,file2,...]
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] HANDOFF <gap-id> <to-session>
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] STUCK   <gap-id> "<reason>"
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] DONE    <gap-id> [commit-sha]
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] WARN    "<message>"
-#   scripts/coord/broadcast.sh [--to <recipient>] [--urgency INFO|WARN|CRIT|EMERGENCY] ALERT   kind=<kind> "<message>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] INTENT  <gap-id> [file1,file2,...]
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] HANDOFF <gap-id> <to-session>
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] STUCK   <gap-id> "<reason>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] DONE    <gap-id> [commit-sha]
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] WARN    "<message>"
+#   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] ALERT   kind=<kind> "<message>"
+#   scripts/coord/broadcast.sh --reply-to <proposal-corr-id> FEEDBACK preference <subject> "<rationale>" +1|-1
+#
+# EFFECTIVE-028 — corr_id threading (--reply-to):
+#   --reply-to <parent-corr-id>
+#     Sets corr_id=<parent-corr-id> in the emitted payload so this event
+#     threads under the parent broadcast. Also writes parent_corr_id=<parent-corr-id>
+#     for explicit lineage. Use when voting on a specific proposal:
+#       broadcast.sh --reply-to abc-123 FEEDBACK preference some-subject "vote +1" +1
+#     The deliberator tallies FEEDBACK/preference votes keyed by corr_id, so
+#     --reply-to ensures the vote lands on the correct proposal's tally.
 #
 # Urgency tiers (INFRA-2015):
 #   INFO      (default) — inbox + ambient only; next-session pickup
@@ -28,15 +38,17 @@
 #   EMERGENCY — all of above + inbox-injector.sh (immediate tmux send-keys)
 #
 # Event schema (all events):
-#   event    — one of: INTENT HANDOFF STUCK DONE WARN ALERT
-#   session  — sender's session ID
-#   ts       — ISO-8601 UTC timestamp
-#   gap      — gap ID (when applicable)
-#   files    — comma-separated file paths (INTENT only)
-#   to       — recipient session (HANDOFF, or any event with --to)
-#   reason   — free-form note (STUCK, WARN, ALERT)
-#   commit   — sha (DONE only)
-#   kind     — alert sub-type (ALERT only)
+#   event          — one of: INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK
+#   session        — sender's session ID
+#   ts             — ISO-8601 UTC timestamp
+#   gap            — gap ID (when applicable)
+#   files          — comma-separated file paths (INTENT only)
+#   to             — recipient session (HANDOFF, or any event with --to)
+#   reason         — free-form note (STUCK, WARN, ALERT)
+#   commit         — sha (DONE only)
+#   kind           — alert sub-type (ALERT only)
+#   corr_id        — correlation ID; auto-derived from gap-id/branch/ts unless overridden
+#   parent_corr_id — set when --reply-to used; links this event to a parent broadcast
 #
 # Agents should check ambient.jsonl for INTENT events from the last 5 minutes
 # before claiming a gap. If another session announced INTENT for the same gap,
@@ -319,6 +331,11 @@ fi
 
 # INFRA-1115: optional --to <recipient> targets the inbox(es) named.
 # INFRA-1255: optional --corr <id> sets correlation_id explicitly.
+# EFFECTIVE-028: optional --reply-to <parent-corr-id> threads this event under a
+#   parent broadcast. Sets corr_id=<parent-corr-id> (so deliberator tallies land on
+#   the parent's tally bucket) and adds parent_corr_id=<parent-corr-id> for lineage.
+#   Use when voting on a specific proposal:
+#     broadcast.sh --reply-to <proposal-corr-id> FEEDBACK preference <subject> "..." +1
 # INFRA-2015: optional --urgency INFO|WARN|CRIT|EMERGENCY controls routing tier.
 #   INFO      (default) — file inbox only; next-session pickup. No extra side-effects.
 #   WARN      — file inbox + emit kind=urgent_broadcast to ambient (5 min loop tick).
@@ -335,6 +352,7 @@ fi
 # All flags can appear in any order before the event-type positional.
 TO=""
 CORR_FLAG=""
+REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 while :; do
@@ -347,6 +365,12 @@ while :; do
         --corr)
             CORR_FLAG="${2:-}"
             [[ -z "$CORR_FLAG" ]] && { echo "Usage: $0 --corr <id> EVENT [args...]" >&2; exit 1; }
+            shift 2
+            ;;
+        --reply-to)
+            # EFFECTIVE-028: thread this event under a parent broadcast's corr_id.
+            REPLY_TO="${2:-}"
+            [[ -z "$REPLY_TO" ]] && { echo "Usage: $0 --reply-to <parent-corr-id> EVENT [args...]" >&2; exit 1; }
             shift 2
             ;;
         --urgency)
@@ -370,11 +394,14 @@ done
 EVENT="$1"
 shift
 
-# INFRA-1255: corr_id derivation. Precedence: --corr flag > env > gap-id (set
-# per-event below) > branch name > ts. Per-event handlers set CORR_ID after
-# they parse their own gap argument.
+# INFRA-1255: corr_id derivation. Precedence:
+#   --reply-to > --corr flag > env > gap-id > branch name > ts.
+# EFFECTIVE-028: --reply-to sets highest precedence so the emitted event
+# threads under the parent broadcast's tally bucket in the deliberator.
+# Per-event handlers set CORR_ID after they parse their own gap argument.
 _derive_corr() {
     local from_gap="${1:-}"
+    if [[ -n "$REPLY_TO" ]]; then echo "$REPLY_TO"; return; fi
     if [[ -n "$CORR_FLAG" ]]; then echo "$CORR_FLAG"; return; fi
     if [[ -n "$CORR_ID_OVERRIDE" ]]; then echo "$CORR_ID_OVERRIDE"; return; fi
     if [[ -n "$from_gap" ]]; then echo "$from_gap"; return; fi
@@ -382,6 +409,23 @@ _derive_corr() {
     br="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
     if [[ -n "$br" && "$br" != "HEAD" ]]; then echo "branch:$br"; return; fi
     echo "ts:$TS"
+}
+
+# EFFECTIVE-028: inject parent_corr_id into an already-built JSON payload when
+# --reply-to was specified. No-op when REPLY_TO is empty (default path unchanged).
+# Uses python3 (same runtime as build_json) to guarantee valid JSON output.
+_maybe_add_parent_corr_id() {
+    local json="$1"
+    if [[ -z "$REPLY_TO" ]]; then
+        printf '%s' "$json"
+        return
+    fi
+    python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+d['parent_corr_id'] = sys.argv[2]
+print(json.dumps(d))
+" "$json" "$REPLY_TO"
 }
 
 case "$EVENT" in
@@ -392,9 +436,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")")"
         else
-            JSON="$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -411,7 +455,7 @@ case "$EVENT" in
         EFFECTIVE_TO="${TO:-$POS_TO}"
         [[ -n "$GAP" && -n "$EFFECTIVE_TO" ]] || { echo "Usage: $0 [--to <recipient>] HANDOFF <gap-id> [<to-session>]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
-        JSON="$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")"
+        JSON="$(_maybe_add_parent_corr_id "$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")")"
         emit_to_file "$JSON"
         emit_to_inbox "$EFFECTIVE_TO" "$JSON"
         emit_to_nats HANDOFF "gap=$GAP" "to=$EFFECTIVE_TO"
@@ -424,9 +468,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON" to "$TO")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON" to "$TO")")"
         else
-            JSON="$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON")")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -440,9 +484,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")")"
         else
-            JSON="$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -456,9 +500,9 @@ case "$EVENT" in
         [[ -n "$MSG" ]] || { echo "Usage: $0 WARN \"<message>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG" to "$TO")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG" to "$TO")")"
         else
-            JSON="$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG")")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -473,9 +517,9 @@ case "$EVENT" in
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG" to "$TO")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG" to "$TO")")"
         else
-            JSON="$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG")")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -504,14 +548,16 @@ case "$EVENT" in
             defect|proposal|preference|retro) : ;;
             *) echo "FEEDBACK kind must be one of: defect proposal preference retro (got $FB_KIND)" >&2; exit 1 ;;
         esac
-        # corr_id: subject (gap-id or policy name), so DONE / inbox-reap lifecycle
+        # corr_id: when --reply-to is given, use the parent's corr_id so this
+        # vote lands in the correct deliberator tally bucket. Otherwise fall
+        # back to subject (gap-id or policy name) so DONE/inbox-reap lifecycle
         # naturally clears retro entries once the gap ships.
         CORR_ID="$(_derive_corr "$FB_SUBJECT")"
         if [[ "$FB_KIND" == "preference" ]]; then
             : "${FB_VOTE:=0}"
-            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" vote "$FB_VOTE" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" vote "$FB_VOTE" model "$MODEL" harness "$HARNESS")")"
         else
-            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")"
+            JSON="$(_maybe_add_parent_corr_id "$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")")"
         fi
         # File-mode emit: still write to ambient.jsonl (audit trail) AND to the
         # dedicated feedback.jsonl that the curator (INFRA-1272) reads.
