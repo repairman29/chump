@@ -1,0 +1,9 @@
+- id: EFFECTIVE-001
+  domain: EFFECTIVE
+  title: "Bootstrap: hello-world"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.iQtX7vap4n/hello-world has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"hello-world\"\n3. Sub-gaps filed for core feature areas"
+

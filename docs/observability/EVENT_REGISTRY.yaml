@@ -7895,3 +7895,14 @@ events:
     # payload: {verdict: str, failed_test_count: int, flake_test_count: int,
     #           real_test_count: int, commit: str, job: str, pr_number: str}
     status: stable
+
+  # ── INFRA-1881: chump bootstrap --template rust (2026 demo #1: net-new outcome) ─
+
+  - kind: chump_bootstrap_complete
+    effect_metric: effective
+    emitter: src/commands/bootstrap.rs (INFRA-1881)
+    # scanner-anchor: "kind":"chump_bootstrap_complete"
+    trigger: chump bootstrap successfully scaffolded a template and cargo check verified the build
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, path, template, build_ok]
+    status: stable
