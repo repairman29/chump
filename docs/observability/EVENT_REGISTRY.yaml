@@ -43,6 +43,24 @@
 #   2. Update the consumer code to parse the event
 #   3. Stage your changes; pre-commit guard verifies the entry exists
 #
+# ── UNIVERSAL FIELDS (EFFECTIVE-028) ─────────────────────────────────────────
+# The following fields are available on EVERY event emitted by broadcast.sh,
+# regardless of kind. Consumers may rely on them being present.
+#
+#   corr_id        — correlation ID linking request/response pairs (INFRA-1255).
+#                    Auto-derived from: gap-id > branch name > timestamp.
+#                    Override with --corr <id> or CHUMP_CORR_ID env var.
+#                    The deliberator (deliberator-loop.sh) tallies FEEDBACK/
+#                    preference votes keyed by this field.
+#
+#   parent_corr_id — (optional) set when --reply-to <parent-corr-id> is used
+#                    to thread a reply under a specific prior broadcast.
+#                    When present, corr_id=parent_corr_id so the vote/reply
+#                    lands in the correct deliberator tally bucket.
+#                    Absent on events not using --reply-to (default path).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Schema:
 #   kind:                (required) the literal string emitted in `"kind":"..."` JSON
 #   emitter:             (required) source file or component that emits it
