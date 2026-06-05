@@ -166,6 +166,20 @@ const CSS = `
     color: var(--accent, #0a84ff); text-decoration: none;
   }
   .brief-meta a:hover { text-decoration: underline; }
+  /* EFFECTIVE-027: wedge-watch zone */
+  .wedge-watch-zone {
+    flex: 0 0 auto;
+    min-height: 120px;
+    max-height: 260px;
+    display: flex;
+    flex-direction: column;
+  }
+  .wedge-watch-zone chump-wedge-watch {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: block;
+  }
   .ambient-collapsed {
     flex: 0 0 auto; max-height: 38px; overflow: hidden;
     transition: max-height 0.2s;
@@ -450,6 +464,14 @@ class ChumpViewCockpit extends HTMLElement {
             </div>
             <div id="slot-daemon-set"></div>
           </div>
+          <!-- EFFECTIVE-027: wedge-watch live-tail panel -->
+          <div class="wedge-watch-zone">
+            <div class="zone-header">
+              <span>Wedge watch</span>
+              <span class="question">What's stuck?</span>
+            </div>
+            <div id="slot-wedge-watch"></div>
+          </div>
           <div class="ambient-collapsed" id="ambient-wrap">
             <button class="ambient-toggle" id="ambient-toggle" type="button"
                     aria-expanded="false">
@@ -473,6 +495,7 @@ class ChumpViewCockpit extends HTMLElement {
     this.#mount('slot-inbox', 'chump-inbox');
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
     this.#mount('slot-daemon-set', 'chump-daemon-set-panel'); // EFFECTIVE-026
+    this.#mount('slot-wedge-watch', 'chump-wedge-watch');    // EFFECTIVE-027
     this.#mount('slot-ambient', 'chump-ambient-viewer');
     this.#mount('slot-quick', 'chump-quick-actions');
     // Center: synthesize Read/Signal/Noise from ambient + gap-queue.
