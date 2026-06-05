@@ -4128,6 +4128,15 @@ events:
       main-checkout path via git worktree list and used that in the wrapper instead.
     consumers: [fleet-brief]
     fields_required: [ts, kind, worktree_path, canonical_path]
+  # ── MISSION-030: outcome backfill observability ────────────────────────────
+  - kind: outcome_backfill_completed
+    # scanner-anchor: outcome_backfill_completed
+    effect_metric: self
+    emitter: src/main.rs outcome backfill --apply handler (MISSION-030)
+    trigger: chump outcome backfill --apply completes successfully.
+    consumers: [fleet-brief, ambient-glance]
+    fields_required: [ts, kind, applied, errors, skipped]
+
   # ── INFRA-1145: roadmap-status drift detection ─────────────────────────────
   - kind: roadmap_drift_detected
     effect_metric: self
