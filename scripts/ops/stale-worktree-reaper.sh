@@ -41,6 +41,17 @@
 #   .claude/worktrees/ (which are proper git linked worktrees). The /tmp/chump-*
 #   pass handles the chump claim convention worktrees directly.
 #
+# INFRA-2339: Broadened scan — two new discovery paths beyond /tmp/chump-*:
+#   1. ANY git-registered worktree whose path starts with /tmp/ is now included
+#      via the git-worktree-list walk (scan_source=git-list). Catches orphans
+#      like /tmp/infra-2446-fix (7.8 Gi) and /tmp/ship-068 (6.3 Gi) that were
+#      invisible to the old /tmp/chump-* glob filter.
+#   2. Standalone (non-git-registered) /tmp/ directories older than 12h that
+#      match common rescue patterns (infra-NNNN-*, ship-NNN, fix-*, *-rescue,
+#      *-fix) are enumerated by enumerate_tmp_rescue_orphans() and flagged
+#      (scan_source=rescue-pattern or scan_source=tmp-age).
+#   The existing SKIP heuristics (lsof, log-freshness, lease, age) are unchanged.
+#
 # Usage:
 #   ./scripts/ops/stale-worktree-reaper.sh              # default: --dry-run
 #   ./scripts/ops/stale-worktree-reaper.sh --dry-run    # explicit dry-run
@@ -259,7 +270,10 @@ current_branch=""
 process_worktree() {
     local wt_path="$1" wt_branch="$2"
     # INFRA-2020: optional source tag for ambient event differentiation.
-    # Values: "claude_worktrees" (from .claude/worktrees/) or "tmp_chump" (from /tmp/chump-*).
+    # Values: "claude_worktrees" (from .claude/worktrees/), "tmp_chump" (from /tmp/chump-*),
+    #         "git-list" (any /tmp/* git-registered worktree — INFRA-2339),
+    #         "rescue-pattern" (standalone /tmp/ dir matching rescue pattern — INFRA-2339),
+    #         "tmp-age" (standalone /tmp/ dir matched by age — INFRA-2339).
     local wt_source="${3:-claude_worktrees}"
     [[ -z "$wt_path" ]] && return 0
 
@@ -268,9 +282,26 @@ process_worktree() {
     # accept anything under CHUMP_WORKTREE_BASE when configured.
     # INFRA-2020: /tmp/chump-* paths bypass the base check — they're a separate
     # scan path handled by the tmp_chump pass below.
+    # INFRA-2339: ANY /tmp/* path is now accepted when wt_source is git-list,
+    # rescue-pattern, or tmp-age — these are enumerated by the new broad-scan
+    # pass and must not be filtered out by the old chump-* name check.
     case "$wt_path" in
         */\.claude/worktrees/*) ;;
         /tmp/chump-*) ;;
+        /tmp/*)
+            # INFRA-2339: accept any /tmp/* when it comes from a broad-scan source.
+            case "$wt_source" in
+                git-list|rescue-pattern|tmp-age) ;;
+                *)
+                    if [[ -n "${CHUMP_WORKTREE_BASE:-}" && "$wt_path" == "${CHUMP_WORKTREE_BASE%/}/"* ]]; then
+                        :
+                    else
+                        log "SKIP $wt_path reason=path_not_in_scan_scope source=$wt_source"
+                        return 0
+                    fi
+                    ;;
+            esac
+            ;;
         *)
             if [[ -n "${CHUMP_WORKTREE_BASE:-}" && "$wt_path" == "${CHUMP_WORKTREE_BASE%/}/"* ]]; then
                 :
@@ -386,7 +417,9 @@ process_worktree() {
 
     # INFRA-2020: for /tmp/chump-<gap-id>/ worktrees, additionally check gap
     # status in state.db and PR merge state via GitHub cache.
-    if [[ $reapable -eq 0 && "$wt_source" == "tmp_chump" ]]; then
+    # INFRA-2339: also apply to git-list / rescue-pattern / tmp-age sources
+    # whose dirname may encode a gap ID (e.g. /tmp/infra-2446-fix).
+    if [[ $reapable -eq 0 ]] && [[ "$wt_source" == "tmp_chump" || "$wt_source" == "git-list" || "$wt_source" == "rescue-pattern" || "$wt_source" == "tmp-age" ]]; then
         local gap_id
         gap_id=$(basename "$wt_path" | sed 's/^chump-//' | tr '[:lower:]-' '[:upper:]-')
         if [[ -n "$gap_id" ]]; then
@@ -437,15 +470,17 @@ process_worktree() {
             info "  below age threshold ($AGE_MIN_HOURS h) — keeping for now"
             age_check_ok=0
         fi
-    elif [[ "$wt_source" == "tmp_chump" ]]; then
-        # No branch info — use directory mtime.
+    else
+        # No branch info — use directory mtime as age proxy.
+        # Applies to: tmp_chump (gap-status path), rescue-pattern, tmp-age orphans.
         local dir_mtime now age_hours
         dir_mtime=$(stat -f%m "$wt_path" 2>/dev/null || stat -c%Y "$wt_path" 2>/dev/null || echo 0)
         now=$(date +%s)
         age_hours=$(( (now - dir_mtime) / 3600 ))
-        info "  age: $age_hours h since dir mtime (no branch — gap-status path)"
+        info "  age: $age_hours h since dir mtime (no branch — source=$wt_source)"
         if [[ $age_hours -lt $AGE_MIN_HOURS ]]; then
             info "  below age threshold ($AGE_MIN_HOURS h) — keeping for now"
+            log "SKIP $wt_path reason=below_age_threshold age_h=$age_hours min_h=$AGE_MIN_HOURS scan_source=$wt_source"
             age_check_ok=0
         fi
     fi
@@ -558,11 +593,18 @@ process_worktree() {
 
     if [[ $DRY_RUN -eq 1 ]]; then
         info "  [dry-run] would archive logs/ab/* → $arch_dest"
-        if [[ "$wt_source" == "tmp_chump" ]]; then
-            info "  [dry-run] would: rm -rf $wt_path  (source=tmp_chump)"
-        else
-            info "  [dry-run] would: git worktree remove --force $wt_path"
-        fi
+        case "$wt_source" in
+            tmp_chump|rescue-pattern|tmp-age)
+                info "  [dry-run] would: rm -rf $wt_path  [scan_source=$wt_source]"
+                ;;
+            git-list)
+                info "  [dry-run] would: git worktree remove --force $wt_path  [scan_source=git-list]"
+                ;;
+            *)
+                info "  [dry-run] would: git worktree remove --force $wt_path  [scan_source=$wt_source]"
+                ;;
+        esac
+        log "DRY_RUN_REAPABLE $wt_path branch=$wt_branch reason='$reason' scan_source=$wt_source"
         # dry-run stash reporting already printed above in the _wip_stash_work block.
         REAPED=$((REAPED+1))
         return 0
@@ -595,23 +637,111 @@ process_worktree() {
     fi
 
     if [[ $removed -eq 1 ]]; then
-        green "  REMOVED $wt_path"
-        log "REMOVED $wt_path branch=$wt_branch reason='$reason'"
+        green "  REMOVED $wt_path  [scan_source=$wt_source]"
+        log "REAPED $wt_path branch=$wt_branch reason='$reason' scan_source=$wt_source"
         # INFRA-2020: emit worktree_reaped with source= tag for audit differentiation.
+        # INFRA-2339: add scan_source field distinguishing git-list / tmp-glob /
+        #             rescue-pattern / tmp-age discovery paths.
         # scanner-anchor: "kind":"worktree_reaped"
         emit_reaper_event "worktree_reaped" "$wt_path" "$reason" \
-            "\"source\":\"$wt_source\",\"branch\":\"${wt_branch:-}\",\"dry_run\":0"
+            "\"source\":\"$wt_source\",\"scan_source\":\"$wt_source\",\"branch\":\"${wt_branch:-}\",\"dry_run\":0"
         REAPED=$((REAPED+1))
     else
-        red "  FAILED to remove $wt_path (see $LOG)"
+        red "  FAILED to remove $wt_path  [scan_source=$wt_source]"
+        log "REAP_FAIL $wt_path reason='$reason' scan_source=$wt_source"
         SKIPPED=$((SKIPPED+1))
     fi
 }
 
+# ── INFRA-2339: enumerate_tmp_rescue_orphans ──────────────────────────────────
+# Finds standalone (non-git-registered) /tmp/ directories that match common
+# rescue/work patterns and are older than ORPHAN_AGE_MIN_HOURS (default 12h).
+# These are NOT surfaced by `git worktree list` and NOT matched by /tmp/chump-*.
+# Patterns: infra-NNNN[-suffix], ship-NNN, fix-*, *-rescue, *-fix
+#
+# Emits one path per line to stdout. The caller tags each with scan_source.
+ORPHAN_AGE_MIN_HOURS="${ORPHAN_AGE_MIN_HOURS:-12}"
+
+# Build the set of all git-registered worktree paths so we can exclude them
+# (they are already handled by the git-worktree-list pass).
+_GIT_REGISTERED_PATHS=""
+_RESCUE_SCAN_BASE="${CHUMP_RESCUE_SCAN_BASE:-/tmp}"
+while IFS= read -r _gwl_line; do
+    case "$_gwl_line" in
+        worktree\ /tmp/*) _GIT_REGISTERED_PATHS="$_GIT_REGISTERED_PATHS ${_gwl_line#worktree }" ;;
+    esac
+    # Also collect paths under CHUMP_RESCUE_SCAN_BASE when overridden for testing
+    # (case patterns don't expand variables, so use [[ == ]] prefix match instead).
+    if [[ "$_RESCUE_SCAN_BASE" != "/tmp" && "$_gwl_line" == "worktree ${_RESCUE_SCAN_BASE}/"* ]]; then
+        _GIT_REGISTERED_PATHS="$_GIT_REGISTERED_PATHS ${_gwl_line#worktree }"
+    fi
+done <<< "$WTLIST"
+
+enumerate_tmp_rescue_orphans() {
+    local min_age_h="${1:-$ORPHAN_AGE_MIN_HOURS}"
+    local now; now=$(date +%s)
+    local min_age_s=$(( min_age_h * 3600 ))
+    # CHUMP_RESCUE_SCAN_BASE overrides /tmp for testing (CI can't use real /tmp).
+    local _scan_base="${CHUMP_RESCUE_SCAN_BASE:-/tmp}"
+
+    for _d in "$_scan_base"/*/; do
+        _d="${_d%/}"
+        [[ -d "$_d" ]] || continue
+
+        local _name; _name=$(basename "$_d")
+
+        # Skip main repo root (unlikely in /tmp but be safe).
+        [[ "$_d" == "$REPO_ROOT" ]] && continue
+
+        # Skip if already git-registered (handled by the git-worktree-list pass).
+        case " $_GIT_REGISTERED_PATHS " in
+            *" $_d "*) continue ;;
+        esac
+
+        # Skip if it looks like a chump-claim worktree (handled by tmp_chump pass).
+        case "$_name" in
+            chump-*) continue ;;
+        esac
+
+        # Pattern match — rescue/work naming conventions.
+        local _matched=0
+        case "$_name" in
+            infra-[0-9]*|INFRA-[0-9]*)        _matched=1 ;;
+            ship-[0-9]*)                        _matched=1 ;;
+            fix-*)                              _matched=1 ;;
+            *-rescue)                           _matched=1 ;;
+            *-fix)                              _matched=1 ;;
+        esac
+
+        if [[ $_matched -eq 0 ]]; then
+            continue
+        fi
+
+        # Age check — only flag dirs older than min_age_h.
+        local _mtime
+        _mtime=$(stat -f%m "$_d" 2>/dev/null || stat -c%Y "$_d" 2>/dev/null || echo 0)
+        local _age_s=$(( now - _mtime ))
+        if [[ $_age_s -lt $min_age_s ]]; then
+            log "SKIP_ORPHAN $_d reason=too_young age_s=$_age_s min_age_s=$min_age_s"
+            continue
+        fi
+
+        printf '%s\n' "$_d"
+    done
+}
+
 # Stream the porcelain output, fire on blank line.
+# INFRA-2339: tag any /tmp/* git-registered worktree with scan_source=git-list
+# so process_worktree accepts it regardless of name pattern.
 while IFS= read -r line; do
     if [[ -z "$line" ]]; then
-        process_worktree "$current_path" "$current_branch"
+        # Determine source: /tmp/* non-chump paths get git-list tag.
+        _src="claude_worktrees"
+        case "$current_path" in
+            /tmp/chump-*) _src="tmp_chump" ;;
+            /tmp/*)       _src="git-list" ;;
+        esac
+        process_worktree "$current_path" "$current_branch" "$_src"
         current_path=""; current_branch=""
         continue
     fi
@@ -622,7 +752,12 @@ while IFS= read -r line; do
     esac
 done <<< "$WTLIST"
 # Final block (no trailing blank).
-process_worktree "$current_path" "$current_branch"
+_final_src="claude_worktrees"
+case "$current_path" in
+    /tmp/chump-*) _final_src="tmp_chump" ;;
+    /tmp/*)       _final_src="git-list" ;;
+esac
+process_worktree "$current_path" "$current_branch" "$_final_src"
 
 # ── INFRA-2020: /tmp/chump-* scan pass ───────────────────────────────────────
 # The git worktree list walk above only sees git-linked worktrees. The chump
@@ -675,6 +810,37 @@ for _scan_pattern in $WORKTREE_SCAN_PATHS; do
     done
 done
 info "tmp_chump scan: $_TMP_REAPED reapable, $_TMP_KEPT kept, $_TMP_SKIPPED skipped"
+
+# ── INFRA-2339: rescue-pattern orphan scan pass ───────────────────────────────
+# Enumerate standalone /tmp/* dirs matching rescue naming patterns that are NOT
+# git-registered worktrees (those are already covered by the git-list pass above).
+# Root cause of 14 Gi orphan leak: /tmp/infra-2446-fix (7.8 Gi) and /tmp/ship-068
+# (6.3 Gi) were not git-registered worktrees at reap time, and /tmp/chump-* glob
+# only matched the chump claim convention.
+info "----"
+info "INFRA-2339: rescue-pattern orphan scan (ORPHAN_AGE_MIN_HOURS=$ORPHAN_AGE_MIN_HOURS)"
+_RESCUE_REAPED=0
+_RESCUE_KEPT=0
+_RESCUE_SKIPPED=0
+
+while IFS= read -r _rescue_wt; do
+    [[ -d "$_rescue_wt" ]] || continue
+    info "----"
+    info "rescue-pattern candidate: $_rescue_wt"
+
+    # Determine scan_source: dirs with a git worktree marker use rescue-pattern;
+    # plain dirs (no .git file) still use rescue-pattern (git-list covered above).
+    _rescue_src="rescue-pattern"
+
+    _before_reaped=$REAPED
+    _before_kept=$KEPT
+    _before_skipped=$SKIPPED
+    process_worktree "$_rescue_wt" "" "$_rescue_src"
+    _RESCUE_REAPED=$(( _RESCUE_REAPED + REAPED - _before_reaped ))
+    _RESCUE_KEPT=$(( _RESCUE_KEPT + KEPT - _before_kept ))
+    _RESCUE_SKIPPED=$(( _RESCUE_SKIPPED + SKIPPED - _before_skipped ))
+done < <(enumerate_tmp_rescue_orphans "$ORPHAN_AGE_MIN_HOURS")
+info "rescue-pattern scan: $_RESCUE_REAPED reapable, $_RESCUE_KEPT kept, $_RESCUE_SKIPPED skipped"
 
 echo ""
 green "=== reaper done: ${REAPED} reapable, ${KEPT} kept, ${SKIPPED} skipped ==="
