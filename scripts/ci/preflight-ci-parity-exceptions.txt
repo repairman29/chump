@@ -344,6 +344,7 @@ Detect R2 secret presence                    # reason: INFRA-2093 secret-presenc
 sccache --show-stats                         # reason: INFRA-2093 observability emit at end of cargo-test (only runs when R2 configured). Pure runtime stats reporting, no source code dependency; not preflight-shaped.
 nextest via INFRA-764                        # reason: INFRA-2094 step-name fragment for `cargo test (nextest via INFRA-764 flake auto-rerun wrapper)`. Parity script reads only first line of multi-line `run: |` blocks (line 214), so substring-matching the step NAME is more reliable than the run content.
 test-sccache-reaper.sh                       # reason: INFRA-2303 reaper coverage test — not a ci.yml gate; tests sccache + incremental reap logic locally. No CI-side counterpart to mirror.
+test-worktree-reaper-safety.sh               # reason: INFRA-1074 active-worktree safety guard for the daemon-side worktree/target reapers; tests reaper-skip logic locally, no preflight-shaped counterpart to mirror.
 
 # ── META-268: sibling workflow steps not using scripts/ci/*.sh paths ─────────
 # These are caught by the widened scan (META-268) but use non-scripts/ci/ paths.

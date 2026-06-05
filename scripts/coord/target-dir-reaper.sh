@@ -34,6 +34,11 @@
 
 set -uo pipefail
 
+# INFRA-1074: shared "is this worktree actively in use?" guard so the reaper
+# never deletes a building / committing / unpushed worktree's target/, even in
+# critical mode (where the active-lease check was previously the only guard).
+source "$(dirname "$0")/lib/worktree-reaper-safety.sh"
+
 DRY_RUN=1
 FORCE=0
 CRITICAL=0
@@ -55,7 +60,8 @@ CRITICAL_GB="${CHUMP_REAPER_CRITICAL_GB:-10}"
 NEVER_ESCALATE="${CHUMP_REAPER_NEVER_ESCALATE:-0}"
 # Where to look. /private/tmp/chump-* is the worktree home on macOS;
 # .claude/worktrees/*/target on Linux/CI hosts. Both safe to scan.
-SCAN_PATHS=("/private/tmp/chump-*")
+# CHUMP_TARGET_REAPER_SCAN_GLOB overrides the base glob (used by the test harness).
+SCAN_PATHS=("${CHUMP_TARGET_REAPER_SCAN_GLOB:-/private/tmp/chump-*}")
 # If the main repo has a .claude/worktrees dir, scan that too.
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-$(pwd)}}"
 if [[ -d "$REPO_ROOT/.claude/worktrees" ]]; then
@@ -130,6 +136,15 @@ for pattern in "${SCAN_PATHS[@]}"; do
     # Skip if active lease.
     if [[ " $ACTIVE_LEASES " == *" $gap_id "* ]]; then
       skip "$target (active lease $gap_id)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    # INFRA-1074: protect actively-in-use worktrees (fresh git index /
+    # uncommitted / unpushed work) even in CRITICAL mode — the active-lease
+    # guard alone misses leaseless-but-building worktrees (created via
+    # `git worktree add`, or whose lease was reaped mid-build).
+    if worktree_is_active "$wt" "$REPO_ROOT"; then
+      skip "$target (active worktree — INFRA-1074 safety)"
       skipped=$((skipped + 1))
       continue
     fi

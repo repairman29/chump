@@ -24,6 +24,11 @@ set -uo pipefail
 REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
 TARGET_REAPER="$REPO_ROOT/scripts/coord/target-dir-reaper.sh"
 
+# INFRA-1074: shared active-worktree guard (fresh lease heartbeat / git index /
+# uncommitted / unpushed work) — protect in-flight worktrees from whole-worktree
+# reaping, which destroys source + git state, not just reproducible build output.
+source "$(dirname "$0")/lib/worktree-reaper-safety.sh"
+
 DRY_RUN=1
 TIER_OVERRIDE=""
 while [[ $# -gt 0 ]]; do
@@ -151,6 +156,9 @@ if [[ "$tier" -ge 2 ]]; then
     if git -C "$REPO_ROOT" ls-remote --heads chump "$branch" 2>/dev/null | grep -q .; then continue; fi
     # Skip if uncommitted changes inside.
     if [[ -d "$wt/.git" ]] && git -C "$wt" status --porcelain 2>/dev/null | grep -q .; then continue; fi
+    # INFRA-1074: skip actively-in-use worktrees (fresh git index / unpushed /
+    # freshly-leased) that the cheaper checks above can miss.
+    if worktree_is_active "$wt" "$REPO_ROOT"; then continue; fi
     # Safe to reap.
     size=$(du -sm "$wt" 2>/dev/null | awk '{print $1}')
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -209,6 +217,10 @@ if [[ "$tier" -ge 3 ]]; then
     if find "$wt" -mmin -30 -not -path '*/target/*' -print -quit 2>/dev/null | grep -q .; then continue; fi
     # Uncommitted check.
     if [[ -d "$wt/.git" ]] && git -C "$wt" status --porcelain 2>/dev/null | grep -q .; then continue; fi
+    # INFRA-1074: skip actively-in-use worktrees (fresh git index / unpushed /
+    # freshly-leased) — protects committed-but-unpushed work with no recent edit
+    # that the 30m-idle + uncommitted checks miss.
+    if worktree_is_active "$wt" "$REPO_ROOT"; then continue; fi
     size=$(du -sm "$wt" 2>/dev/null | awk '{print $1}')
     if [[ "$DRY_RUN" -eq 1 ]]; then
       warn "would reap $wt (~${size}MB) — tier 3"

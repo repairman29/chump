@@ -818,6 +818,9 @@ jobs:
       - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
         run: bash scripts/ci/test-cargo-target-reaper.sh
 
+      - name: worktree-reaper active-worktree safety guard (INFRA-1074)
+        run: bash scripts/ci/test-worktree-reaper-safety.sh
+
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
