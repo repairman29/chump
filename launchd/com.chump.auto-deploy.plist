@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.auto-deploy — MISSION-012 LaunchAgent.
+
+  Runs scripts/ops/auto-deploy.sh every 1200s (~20 min) to ensure the
+  installed /opt/homebrew/bin/chump binary tracks origin/main.
+
+  Build isolation: auto-deploy.sh delegates to refresh-runner-binary.sh
+  which creates an isolated detached worktree in /tmp for the cargo build
+  and tears it down after install.  The main checkout is NEVER touched.
+
+  INSTALLATION:
+    scripts/setup/install-auto-deploy-launchd.sh
+    launchctl list | grep chump.auto-deploy
+
+  Manual run:
+    launchctl start com.chump.auto-deploy
+    tail /path/to/Chump/.chump-locks/auto-deploy-logs/
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.auto-deploy.plist
+    rm ~/Library/LaunchAgents/com.chump.auto-deploy.plist
+
+  Emits:
+    kind=binary_auto_deployed   — on successful rebuild + install
+    kind=binary_auto_deploy_skipped — no-op when SHA is current
+    kind=binary_auto_deploy_failed  — on error
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.auto-deploy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/ops/auto-deploy.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 20 minutes. -->
+  <key>StartInterval</key>
+  <integer>1200</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-auto-deploy.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-auto-deploy.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+    <key>CHUMP_REPO_ROOT</key>
+    <string>/path/to/Chump</string>
+  </dict>
+
+  <!-- Prevent overlapping runs. -->
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>
