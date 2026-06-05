@@ -1699,6 +1699,7 @@ mod tests {
                     estimated_minutes: None,
                     required_model: None,
                     outcome_id: None,
+                    evidence: None,
                 },
             )
             .unwrap();
@@ -1724,6 +1725,7 @@ mod tests {
                     estimated_minutes: None,
                     required_model: None,
                     outcome_id: None,
+                    evidence: None,
                 },
             )
             .unwrap();
