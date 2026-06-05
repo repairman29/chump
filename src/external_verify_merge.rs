@@ -15,7 +15,7 @@
 //!    - Zero checks → HELD(no-gates): refuse to merge without any signal.
 //!
 //!    Polling interval: CHUMP_VERIFY_CI_POLL_SECS (default 30 s).
-//!    Advisory checks: CHUMP_VERIFY_CI_ADVISORY_CHECKS (comma-separated
+//!    Advisory checks: CHUMP_VERIFY_CI_ADVISORY_NAMES (comma-separated
 //!    case-insensitive substrings). Matching checks are polled + logged but
 //!    NEVER gate the verdict — their pending/failure state cannot HELD.
 //!
@@ -580,7 +580,7 @@ fn fetch_check_runs(opts: &Opts) -> anyhow::Result<Vec<serde_json::Value>> {
 /// Tuning env vars:
 ///   CHUMP_VERIFY_CI_POLL_SECS  — polling interval in seconds (default 30)
 ///   CHUMP_VERIFY_CI_WAIT_SECS  — maximum wait in seconds (default 1200 = 20 min)
-///   CHUMP_VERIFY_CI_ADVISORY_CHECKS — comma-separated case-insensitive name
+///   CHUMP_VERIFY_CI_ADVISORY_NAMES — comma-separated case-insensitive name
 ///                                      substrings; matching checks are non-gating
 fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
     let poll_secs: u64 = std::env::var("CHUMP_VERIFY_CI_POLL_SECS")
@@ -593,7 +593,7 @@ fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
         .unwrap_or(1200);
 
     // Parse advisory substrings (lowercase for case-insensitive matching).
-    let advisory_substrings: Vec<String> = std::env::var("CHUMP_VERIFY_CI_ADVISORY_CHECKS")
+    let advisory_substrings: Vec<String> = std::env::var("CHUMP_VERIFY_CI_ADVISORY_NAMES")
         .unwrap_or_default()
         .split(',')
         .map(|s| s.trim().to_ascii_lowercase())
@@ -1201,7 +1201,7 @@ fi
         // POLL_SECS=0 for instant polling; WAIT_SECS large enough to not time out.
         std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
         std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
-        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_CHECKS");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
         // Redirect ambient writes.
         std::env::set_var(
             "CHUMP_AMBIENT_IN_PROMPT",
@@ -1239,7 +1239,7 @@ fi
 
         std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
         std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
-        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_CHECKS");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
         std::env::set_var(
             "CHUMP_AMBIENT_IN_PROMPT",
             tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
@@ -1281,7 +1281,7 @@ fi
         std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
         // WAIT_SECS=0 means the elapsed check fires on the first pending poll.
         std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "0");
-        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_CHECKS");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
         std::env::set_var(
             "CHUMP_AMBIENT_IN_PROMPT",
             tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
@@ -1325,7 +1325,7 @@ fi
         std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
         std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
         // Mark "vercel" as advisory (case-insensitive substring match).
-        std::env::set_var("CHUMP_VERIFY_CI_ADVISORY_CHECKS", "vercel");
+        std::env::set_var("CHUMP_VERIFY_CI_ADVISORY_NAMES", "vercel");
         std::env::set_var(
             "CHUMP_AMBIENT_IN_PROMPT",
             tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
