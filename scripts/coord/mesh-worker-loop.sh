@@ -42,6 +42,13 @@ _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 [ -x "$BIN" ] || { echo "[mesh-worker] chump-coord not found at $BIN — exit." >&2; exit 0; }
 
+# MISSION-018: log external-repo pick state at every tick so "is the flag
+# flipped?" is observable from the worker logs. Implemented at
+# crates/chump-coord/src/worker/capability.rs:130 — gaps tagged with
+# skills_required containing `external_repo:<owner>/<repo>` are skipped unless
+# this env var is "1". The plist sets it to 1 by default (BEAST-MODE work).
+echo "[mesh-worker] $(_ts) external_repo_pick_ok=${CHUMP_EXTERNAL_REPO_PICK_OK:-0}" >&2
+
 # FAIL-OPEN: no broker → let the pull fleet handle all work.
 if ! "$BIN" ping >/dev/null 2>&1; then
     echo "[mesh-worker] NATS unreachable — fail-open; pull fleet handles work." >&2
