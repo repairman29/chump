@@ -1,7 +1,8 @@
 - id: RESILIENT-096
   domain: RESILIENT
   title: "RESILIENT: reaper-instrumentation emits duplicate + note-less disk_critical events (no device-dedup; dir:/tmp hides APFS shared-container) → operator misreads true-positive as false-positive"
-  status: open
+  status: done
+  closed_pr: 3056
   priority: P2
   effort: s
   description: |

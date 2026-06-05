@@ -131,3 +131,31 @@ lease_is_expired() {
     local now; now="$(date -u +%s)"
     [[ "$now" -gt "$(( exp_epoch + grace ))" ]]
 }
+
+# ── state.db lease reader (INFRA-2744) ───────────────────────────────────────
+# The helpers above read `.chump-locks/*.json` lease files. But the CANONICAL
+# lease store is the `leases` table in `.chump/state.db` — interactive
+# `chump claim` (atomic_claim::try_claim_gap) writes the lease there ONLY, with
+# no JSON sidecar. Any tool that resolves "who holds gap X's claim" purely from
+# JSON (bot-merge re-claim, --release) therefore misses an interactive claim and
+# wrongly reports "owned by a DIFFERENT session". This reader closes that gap.
+#
+# lease_session_from_statedb <gap_id> [<state_db_path>]
+#   Echoes the session_id holding <gap_id>'s lease (empty if none / no sqlite3).
+#   Default db resolves the MAIN repo's state.db via --git-common-dir, so it is
+#   correct when called from inside a linked worktree (whose own state.db does
+#   NOT hold the canonical lease). Read-only.
+lease_session_from_statedb() {
+    local gap_id="$1" db="${2:-}"
+    # gap ids are [A-Za-z0-9_-]; reject anything else rather than risk SQL.
+    [[ "$gap_id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    if [[ -z "$db" ]]; then
+        local repo gitdir
+        gitdir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        if [[ -n "$gitdir" ]]; then repo="$(dirname "$gitdir")"; else repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
+        db="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+    fi
+    [[ -f "$db" ]] || return 0
+    sqlite3 "$db" "SELECT session_id FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
+}

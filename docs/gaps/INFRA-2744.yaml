@@ -1,0 +1,15 @@
+- id: INFRA-2744
+  domain: INFRA
+  title: "INFRA: bot-merge re-claim reads .chump-locks/*.json but interactive chump claim writes only the state.db lease — blocks interactive-claim-then-ship"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Found 2026-06-04 shipping INFRA-2741. bot-merge.sh re-claim path (META-156 AC#2, ~line 1990-2010) reads the existing claim's session_id by scanning $LOCK_DIR/*.json. But interactive 'chump claim' writes the lease to .chump/state.db only — it does NOT write a .chump-locks/<session>.json file (confirmed: 0 json files in the worktree .chump-locks; lease present in state.db leases table). So bot-merge reads _existing_claim_session as <unknown>, the session never matches CHUMP_SESSION_ID, and it refuses with 'owned by a DIFFERENT session' — even when it is the SAME operator session. This blocks the interactive-claim-then-bot-merge ship flow (forces a CHUMP_BYPASS_BOT_MERGE manual fallback). --force-recover is NOT a safe workaround here: it removes the worktree dir + local branch, destroying a committed-but-unpushed branch.
+  acceptance_criteria:
+    - bot-merge re-claim resolves the existing claim session from .chump/state.db leases table (canonical) when no JSON lock file exists, not solely from .chump-locks/*.json
+    - "interactive `chump claim` followed by `bot-merge.sh --gap <ID>` from the same session ships WITHOUT requiring CHUMP_BYPASS_BOT_MERGE=1 (the same-session re-claim force-recovers or no-ops cleanly)"
+    - "a regression test covers: state.db lease present + no JSON lock file -> bot-merge recognizes same-session ownership"
+  notes: |
+    [2026-06-04T18:34:22Z] Same root cause hit again during INFRA-2741 post-merge cleanup: 'chump --release --force' reported 'released session_id=...' but the lease ROW PERSISTED in state.db (had to DELETE it directly via sqlite3). So the state.db-vs-.chump-locks/*.json lease-storage split affects BOTH bot-merge re-claim AND chump --release — both operate on JSON files while the canonical lease lives in state.db. Fix should make all lease tooling (claim write, bot-merge re-claim read, --release delete) agree on state.db as the single source of truth.
+    [2026-06-05] Shipped: added lease_session_from_statedb() to scripts/lib/lease.sh (canonical state.db leases reader, git-common-dir aware for worktrees); wired as the fallback in bot-merge auto-detect + re-claim; same-session re-claim now NO-OPS + reuses the existing worktree instead of `chump claim --force-recover` (which destroys committed-but-unpushed work). Regression test in scripts/ci/test-lease-lib.sh. Follow-ups filed: make `chump --release` read state.db (the second half of the notes above); wire test-lease-lib.sh into CI (currently orphaned); stale-worktree-reaper reaped an actively-leased 0-commits-ahead worktree mid-edit (auto-stash saved the work, but an active lease must hard-block reap).
