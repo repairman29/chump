@@ -104,6 +104,14 @@ if ! git -C "$REPO_ROOT" worktree add -d -f "$BUILD_WORKTREE" "origin/main" >>"$
     emit runner_binary_refresh_failed "\"reason\":\"worktree_add_failed\""
     exit 1
 fi
+# RESILIENT-107: drop a .chump-no-reap sentinel so stale-worktree-reaper.sh and
+# active-target-reaper.sh skip this worktree while cargo build is running. Without
+# this, the 10-12 min release build races against /tmp/chump-* scanners and gets
+# its target/release/deps/ rm -rf'd mid-compile (verified 2026-06-05: two
+# consecutive auto-deploy ticks failed with "couldn't create a temp dir at
+# /tmp/chump-binary-refresh-<PID>/target/release/deps/rustc<hash>").
+touch "$BUILD_WORKTREE/.chump-no-reap" 2>>"$LOG" || true
+
 # Always tear down the worktree on exit (success OR failure path)
 trap 'git -C "$REPO_ROOT" worktree remove --force "$BUILD_WORKTREE" >>"$LOG" 2>&1 || true' EXIT
 
