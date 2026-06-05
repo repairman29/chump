@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MISSION-036 (MISSION-032 Phase-B Tier-1): daily rotation of per-repo
+     onboard-scan-*.json files under ~/.chump/external/<owner>/<repo>/scans/.
+     Keeps the latest CHUMP_EXTERNAL_SCAN_KEEP_N (default 5) per repo and
+     reaps older. Pure reaper, no state mutation, safe to run anytime.
+
+     Install:
+       cp scripts/setup/com.chump.external-scan-reaper.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.chump.external-scan-reaper.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.chump.external-scan-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/ops/external-scan-reaper.sh --execute</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CHUMP_EXTERNAL_SCAN_KEEP_N</key><string>5</string>
+  </dict>
+  <key>WorkingDirectory</key><string>/Users/jeffadkins/Projects/Chump</string>
+  <!-- Daily at 03:17 local — off-peak, off-the-:00/:30 marks. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>17</integer>
+  </dict>
+  <key>StandardErrorPath</key><string>/Users/jeffadkins/.chump/logs/external-scan-reaper.err</string>
+  <key>StandardOutPath</key><string>/Users/jeffadkins/.chump/logs/external-scan-reaper.out</string>
+</dict>
+</plist>

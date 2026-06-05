@@ -7924,3 +7924,18 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, path, template, build_ok]
     status: stable
+
+  # ── MISSION-036: external-scan-reaper (Phase-B Tier-1 of MISSION-032 scale) ─
+
+  - kind: external_scan_reaped
+    effect_metric: zero_waste
+    emitter: scripts/ops/external-scan-reaper.sh (MISSION-036)
+    # scanner-anchor: "kind":"external_scan_reaped"
+    trigger: >
+      Daily reaper rotated per-repo onboard-scan-*.json files under
+      ~/.chump/external/<owner>/<repo>/scans/, keeping the latest
+      CHUMP_EXTERNAL_SCAN_KEEP_N (default 5) per repo. Always emitted at end
+      of a reaper tick (even when reaped=0, for liveness signal).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repos, reaped, kept, keep_n, dry_run]
+    status: stable
