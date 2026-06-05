@@ -299,7 +299,7 @@ assert oid == 'TEST-001', f'outcome_id not set: {oid!r}'
 fi
 
 echo
-echo "--- (h) MISSION-039: bootstrap seeds 8 outcomes (4 canonical + 4 pillar) ---"
+echo "--- (h) MISSION-043: bootstrap seeds 8 outcomes (4 canonical + 4 pillar) ---"
 
 # Run bootstrap on the fixture env (idempotent — TEST-001 and MISSION-010 already exist).
 "$BIN" outcome bootstrap 2>/dev/null || true
@@ -327,16 +327,9 @@ else
 fi
 
 echo
-echo "--- (i) MISSION-039: heuristic 7 — domain-prefix backfill links pillar gaps ---"
+echo "--- (i) MISSION-043: heuristic 7 — domain-prefix backfill links pillar gaps ---"
 
-# Reserve one gap per pillar domain; give them IDs that match pillar prefixes.
-# We use gap reserve and rely on the auto-assigned sequential ID — then check
-# the outcome after backfill --apply.  The IDs assigned by the fixture DB will
-# be INFRA-* (wrong domain), so we use outcome link directly to test the wiring,
-# then test the heuristic via a source-code grep guard plus a targeted SQL
-# exercise using the binary itself.
-
-# Source-code guard: heuristic 7 block must be present.
+# Source-code guard: heuristic 7 block must be present in main.rs.
 if grep -q 'Heuristic 7' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
     ok "heuristic 7 block present in main.rs"
 else
@@ -377,7 +370,6 @@ if [[ -f "$FIXTURE_DB" ]]; then
     "$BIN" outcome backfill --apply 2>/dev/null || true
 
     # Verify each pillar gap now has the correct outcome_id.
-    # Use parallel arrays (POSIX-compatible, no declare -A needed).
     PILLAR_GIDS=("CREDIBLE-9991" "EFFECTIVE-9991" "RESILIENT-9991" "ZERO-WASTE-9991")
     PILLAR_OIDS=("CREDIBLE-000"  "EFFECTIVE-000"  "RESILIENT-000"  "ZERO-WASTE-000")
 
@@ -407,8 +399,8 @@ if [[ -f "$FIXTURE_DB" ]]; then
         fi
     done
 
-    # Heuristic-7-skips-when-no-pillar-outcome: insert a CREDIBLE-* gap,
-    # delete CREDIBLE-000, run backfill — gap must stay unlinked (not error).
+    # Graceful skip when pillar outcome not registered: insert a CREDIBLE-* gap,
+    # delete CREDIBLE-000 from outcomes, run backfill — gap must stay unlinked.
     sqlite3 "$FIXTURE_DB" \
         "INSERT OR IGNORE INTO gaps(id,title,status,domain,priority,effort,description,acceptance_criteria,outcome_id)
          VALUES('CREDIBLE-9992','credible no-outcome fixture','open','TEST','P1','xs','fixture','fixture',NULL);" \
