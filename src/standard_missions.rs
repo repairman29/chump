@@ -130,6 +130,258 @@ pub fn readme_claim_mission() -> StandardMission {
     README_CLAIM_HAS_TEST
 }
 
+// ── EFFECTIVE-201: Mission check results ───────────────────────────────────
+
+/// Result of checking one L1 mission against a specific repo clone.
+#[derive(Debug, Clone)]
+pub enum MissionCheckResult {
+    /// The mission is already satisfied — do NOT emit a gap.
+    Met,
+    /// The mission is not satisfied — emit an L1 ProposedGap.
+    Unmet {
+        /// Human-readable explanation of why the gate is unmet.
+        why: String,
+        /// File (or pseudo-path) used as evidence.
+        evidence_path: String,
+        /// Short verbatim excerpt or description of the evidence.
+        excerpt: String,
+    },
+}
+
+/// Run all L1 mission checks against the given repo clone directory.
+///
+/// Returns one `MissionCheckResult` per mission in the same order as the
+/// input slice. All checks are heuristic and intentionally over-inclusive
+/// (err toward Unmet) — the verify-merge bar is the backstop for false
+/// positives.
+pub fn check_l1_missions(
+    clone_dir: &std::path::Path,
+    missions: &[StandardMission],
+) -> Vec<MissionCheckResult> {
+    missions
+        .iter()
+        .map(|m| check_one_mission(clone_dir, m.id))
+        .collect()
+}
+
+fn check_one_mission(clone_dir: &std::path::Path, id: &str) -> MissionCheckResult {
+    match id {
+        "build-clean-from-checkout" | "deps-resolve" => check_build_manifest(clone_dir),
+        "tests-run-in-ci" => check_tests_in_ci_workflow(clone_dir),
+        "ci-gates-every-pr" => check_pr_trigger_in_ci(clone_dir),
+        "no-secrets-committed" => check_no_secrets_in_tracked_files(clone_dir),
+        _ => MissionCheckResult::Met, // unknown id — don't emit a spurious gap
+    }
+}
+
+/// Check (build-clean-from-checkout, deps-resolve): is a build manifest present?
+fn check_build_manifest(clone_dir: &std::path::Path) -> MissionCheckResult {
+    let manifests = [
+        "Cargo.toml",
+        "package.json",
+        "pyproject.toml",
+        "setup.py",
+        "go.mod",
+        "Makefile",
+        "pom.xml",
+        "build.gradle",
+    ];
+    for m in &manifests {
+        if clone_dir.join(m).exists() {
+            return MissionCheckResult::Met;
+        }
+    }
+    MissionCheckResult::Unmet {
+        why: "no recognisable build manifest found".to_string(),
+        evidence_path: "(repo root)".to_string(),
+        excerpt: "Cargo.toml / package.json / pyproject.toml / go.mod / Makefile absent"
+            .to_string(),
+    }
+}
+
+/// Check (tests-run-in-ci): does any CI workflow run a test command?
+fn check_tests_in_ci_workflow(clone_dir: &std::path::Path) -> MissionCheckResult {
+    let workflows_dir = clone_dir.join(".github").join("workflows");
+    if !workflows_dir.exists() {
+        return MissionCheckResult::Unmet {
+            why: "no .github/workflows directory — CI is not configured".to_string(),
+            evidence_path: ".github/workflows/".to_string(),
+            excerpt: "directory absent".to_string(),
+        };
+    }
+
+    let test_keywords = [
+        "cargo test",
+        "npm test",
+        "yarn test",
+        "pytest",
+        "go test",
+        "make test",
+        "npm run test",
+        "python -m pytest",
+        "bundle exec rspec",
+        "mvn test",
+        "gradle test",
+    ];
+
+    let yml_files: Vec<_> = std::fs::read_dir(&workflows_dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    matches!(
+                        p.extension().and_then(|e| e.to_str()),
+                        Some("yml") | Some("yaml")
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if yml_files.is_empty() {
+        return MissionCheckResult::Unmet {
+            why: "no YAML workflow files in .github/workflows/".to_string(),
+            evidence_path: ".github/workflows/".to_string(),
+            excerpt: "directory empty".to_string(),
+        };
+    }
+
+    for path in &yml_files {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if test_keywords.iter().any(|kw| content.contains(kw)) {
+                return MissionCheckResult::Met;
+            }
+        }
+    }
+
+    MissionCheckResult::Unmet {
+        why: "CI workflow files found but none run a test command".to_string(),
+        evidence_path: ".github/workflows/".to_string(),
+        excerpt: format!(
+            "{} workflow file(s) present, none contain: {}",
+            yml_files.len(),
+            &test_keywords[..3].join(", ")
+        ),
+    }
+}
+
+/// Check (ci-gates-every-pr): does any CI workflow trigger on pull_request?
+fn check_pr_trigger_in_ci(clone_dir: &std::path::Path) -> MissionCheckResult {
+    let workflows_dir = clone_dir.join(".github").join("workflows");
+    if !workflows_dir.exists() {
+        return MissionCheckResult::Unmet {
+            why: "no .github/workflows — CI cannot gate PRs".to_string(),
+            evidence_path: ".github/workflows/".to_string(),
+            excerpt: "directory absent".to_string(),
+        };
+    }
+
+    let yml_files: Vec<_> = std::fs::read_dir(&workflows_dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    matches!(
+                        p.extension().and_then(|e| e.to_str()),
+                        Some("yml") | Some("yaml")
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    for path in &yml_files {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if content.contains("pull_request") {
+                return MissionCheckResult::Met;
+            }
+        }
+    }
+
+    if yml_files.is_empty() {
+        return MissionCheckResult::Unmet {
+            why: "no CI workflow files found".to_string(),
+            evidence_path: ".github/workflows/".to_string(),
+            excerpt: "directory empty".to_string(),
+        };
+    }
+
+    MissionCheckResult::Unmet {
+        why: "no workflow has a pull_request trigger — PRs are not gated by CI".to_string(),
+        evidence_path: ".github/workflows/".to_string(),
+        excerpt: "no `pull_request:` trigger in any workflow".to_string(),
+    }
+}
+
+/// Check (no-secrets-committed): scan tracked files for common secret patterns.
+fn check_no_secrets_in_tracked_files(clone_dir: &std::path::Path) -> MissionCheckResult {
+    use std::process::Command;
+
+    let out = Command::new("git")
+        .args(["-C", &clone_dir.to_string_lossy(), "ls-files"])
+        .output();
+
+    let files: Vec<String> = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(|l| l.to_string())
+            .filter(|f| {
+                let ext = std::path::Path::new(f)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                !matches!(
+                    ext,
+                    "png"
+                        | "jpg"
+                        | "jpeg"
+                        | "gif"
+                        | "svg"
+                        | "ico"
+                        | "woff"
+                        | "woff2"
+                        | "ttf"
+                        | "eot"
+                        | "pdf"
+                        | "zip"
+                        | "gz"
+                        | "tar"
+                        | "exe"
+                        | "bin"
+                )
+            })
+            .take(200)
+            .collect(),
+        _ => return MissionCheckResult::Met, // git not available — skip
+    };
+
+    let patterns: &[(&str, &str)] = &[
+        ("AKIA", "AWS access key ID (AKIA…)"),
+        ("ghp_", "GitHub PAT (ghp_…)"),
+        ("ghs_", "GitHub server token (ghs_…)"),
+        ("glpat-", "GitLab PAT (glpat-…)"),
+        ("sk-ant-", "Anthropic API key (sk-ant-…)"),
+    ];
+
+    for rel in &files {
+        let content = match std::fs::read_to_string(clone_dir.join(rel)) {
+            Ok(c) if c.len() <= 200_000 => c,
+            _ => continue,
+        };
+        for (pattern, label) in patterns {
+            if content.contains(pattern) {
+                return MissionCheckResult::Unmet {
+                    why: format!("possible secret pattern committed: {label}"),
+                    evidence_path: rel.clone(),
+                    excerpt: format!("contains `{pattern}`"),
+                };
+            }
+        }
+    }
+
+    MissionCheckResult::Met
+}
+
 // ── Unit tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]

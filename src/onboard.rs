@@ -35,6 +35,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::standard_missions::{check_l1_missions, l1_missions, MissionCheckResult};
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -365,7 +367,7 @@ fn run_inner(args: &[String]) -> Result<()> {
 
     // ── Convert to schema types ───────────────────────────────────────────
 
-    let proposed_gaps: Vec<ProposedGap> = llm_gaps
+    let mut proposed_gaps: Vec<ProposedGap> = llm_gaps
         .iter()
         .map(|g| ProposedGap {
             title: g.title.clone(),
@@ -379,8 +381,29 @@ fn run_inner(args: &[String]) -> Result<()> {
                 excerpt: g.source.clone(),
             },
             acceptance_criteria_draft: g.ac_draft.clone(),
+            layer: g.layer.clone(),
+            doctrine_justification: g.doctrine_justification.clone(),
         })
         .collect();
+
+    // ── EFFECTIVE-201: Standard-mission injection (L1 FOUNDATION) ────────
+    //
+    // Check the five objective L1 foundation gates. For each gate that is
+    // UNMET, prepend an L1-tagged ProposedGap before the LLM-proposed gaps.
+    // Gates that are already satisfied are silently skipped.
+    //
+    // L1 gaps are prepended so the doctrine-order picker in `chump improve`
+    // sees them first and selects them before L2/L3 work.
+    let l1_gaps = inject_l1_gaps(&clone_dir, &owner_repo);
+    if !l1_gaps.is_empty() {
+        eprintln!(
+            "chump onboard: injecting {} unmet L1 foundation gap(s)",
+            l1_gaps.len()
+        );
+        let scout_gaps = proposed_gaps;
+        proposed_gaps = l1_gaps;
+        proposed_gaps.extend(scout_gaps);
+    }
 
     // ── Markdown table output ─────────────────────────────────────────────
 
@@ -847,6 +870,67 @@ fn run_list_scheduled(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+// ── EFFECTIVE-201: L1 standard-mission injection ────────────────────────
+
+/// Run the five L1 foundation checks against `clone_dir` and convert each
+/// UNMET result into a `ProposedGap` tagged `layer = "L1"`.
+///
+/// Met gates are silently skipped — we only emit gaps for work that actually
+/// needs doing. The resulting gaps are prepended to the proposed-gap list in
+/// `run_inner` so the doctrine-order picker in `chump improve` sees them first.
+///
+/// The domain is derived from the pillar prefix in the mission title
+/// (e.g. "INFRA: …" → domain "INFRA").
+fn inject_l1_gaps(clone_dir: &Path, _owner_repo: &str) -> Vec<ProposedGap> {
+    let missions = l1_missions();
+    let results = check_l1_missions(clone_dir, missions);
+
+    missions
+        .iter()
+        .zip(results.iter())
+        .filter_map(|(mission, result)| match result {
+            MissionCheckResult::Met => None,
+            MissionCheckResult::Unmet {
+                why,
+                evidence_path,
+                excerpt,
+            } => {
+                // Derive domain from the pillar prefix in the mission title.
+                // E.g. "INFRA: clean build …" → "INFRA", "CREDIBLE: …" → "CREDIBLE".
+                let domain = mission
+                    .title
+                    .split(':')
+                    .next()
+                    .unwrap_or("INFRA")
+                    .trim()
+                    .to_string();
+
+                Some(ProposedGap {
+                    title: mission.title.to_string(),
+                    domain,
+                    priority: Priority::P1,
+                    effort: Effort::S,
+                    confidence: Confidence::High,
+                    source_of_evidence: SourceOfEvidence {
+                        input_path: evidence_path.clone(),
+                        section: format!("L1 foundation check: {}", mission.id),
+                        excerpt: excerpt.clone(),
+                    },
+                    acceptance_criteria_draft: vec![
+                        mission.done_criterion.to_string(),
+                        format!("CI remains green after fixing {}", mission.id),
+                    ],
+                    layer: Some("L1".to_string()),
+                    doctrine_justification: Some(format!(
+                        "L1 FOUNDATION gate '{}' is unmet: {}",
+                        mission.id, why
+                    )),
+                })
+            }
+        })
+        .collect()
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /// Returns `~/.chump/external/<owner>/<repo>/`.
@@ -1225,6 +1309,12 @@ struct LlmGap {
     source: String,
     #[serde(default)]
     ac_draft: Vec<String>,
+    /// EFFECTIVE-201: doctrine layer tag ("L1"/"L2"/"L3"), optional for back-compat.
+    #[serde(default)]
+    layer: Option<String>,
+    /// EFFECTIVE-201: why this gap belongs to its doctrine layer.
+    #[serde(default)]
+    doctrine_justification: Option<String>,
 }
 
 /// EFFECTIVE-166: Spawn an agentic scout — a capable `claude -p` sub-agent
@@ -1295,6 +1385,15 @@ fn spawn_agentic_scout(clone_dir: &Path, owner_repo: &str, max_gaps: usize) -> R
 
 /// Build the scouting prompt given to the agentic sub-agent.
 ///
+/// EFFECTIVE-201: Extended to request doctrine-layer tagging. The agent now
+/// classifies each proposal as:
+///   - L2 (FULFILLMENT): a feature the README CLAIMS is working but has no test.
+///   - L3 (REALIZATION): a latent idea the repo's own identity suggests — novel
+///     work grounded in what the repo already is.
+///
+/// L1 (FOUNDATION) gaps are injected separately by `inject_l1_gaps` — the
+/// scout does NOT generate L1 proposals (they are objective checks).
+///
 /// The prompt instructs the agent to EXPLORE first (read files, run git log,
 /// query gh issues, check failing CI, scan for TODO/DIAGNOSIS/FIX files),
 /// then emit a JSON array of proposals, each with a concrete evidence signal.
@@ -1309,7 +1408,7 @@ REPO PATH ON DISK: {clone_path}
 YOUR TASK:
 1. EXPLORE the repo. Use your tools to investigate — do NOT propose from memory or generic advice.
    Required investigations (do ALL of these):
-   a) Read README.md (understand what the project is)
+   a) Read README.md (understand what the project is and what it claims to do)
    b) Read the package manifest: package.json OR Cargo.toml OR pyproject.toml OR go.mod
    c) List the test suite: look in tests/, test/, src/__tests__/, spec/, *.test.*, *_test.rs, etc.
       Read 2–3 test files to understand test quality and coverage gaps.
@@ -1324,7 +1423,21 @@ YOUR TASK:
       Read any files found.
    h) Read CLAUDE.md, AGENTS.md, or any ROADMAP.md if present.
 
-2. PROPOSE exactly {max_gaps} next-step gaps grounded in what you found.
+2. CLASSIFY each proposal into a DOCTRINE LAYER:
+   - L2 (FULFILLMENT): The README or docs CLAIM a feature is working, but there is no test
+     that would fail if that feature were removed. Evidence: "README §X claims Y but no
+     test exercises Y". Legible value, verifiable.
+   - L3 (REALIZATION): A latent idea that fits naturally within this repo's identity —
+     novel work the repo's purpose implies but hasn't yet done. Evidence: the repo's domain,
+     patterns, or existing code shape make this a natural next step. Must be REVERSIBLE
+     (no lock-in, can be reverted), WITHIN IDENTITY (not a pivot), and have LEGIBLE VALUE
+     (operator can verify it mattered). Do NOT propose L3 ideas that would change the
+     fundamental nature of the repo.
+   NOTE: L1 (foundation: CI, build, secrets) gaps are handled separately — do NOT emit L1.
+
+3. PROPOSE exactly {max_gaps} next-step gaps grounded in what you found.
+   Aim for a mix: ~40% L2 (claim-gaps), ~60% L3 (realization theses). Prefer L2 when
+   there are clear README-claim gaps; prefer L3 when the codebase is already well-tested.
    RULES FOR PROPOSALS:
    - Every proposal MUST cite a CONCRETE signal from your investigation:
      * "failing test X in FILE"
@@ -1334,6 +1447,7 @@ YOUR TASK:
      * "git log shows incomplete commit: SHA SUBJECT"
      * "failing CI workflow NAME"
      * "README states X but no implementation exists for X"
+     * "repo pattern Y implies Z is the natural next step"
    - A proposal with NO concrete signal is NOT allowed.
    - Use Chump conventions:
      * domain: EFFECTIVE | INFRA | DOC | CREDIBLE | RESILIENT
@@ -1343,8 +1457,10 @@ YOUR TASK:
      * confidence: high / med / low
      * source: one sentence citing the specific signal (file, line, issue #, commit SHA)
      * ac_draft: 2–3 testable acceptance criteria
+     * layer: "L2" or "L3" (never "L1" — those are injected separately)
+     * doctrine_justification: one sentence explaining why this is L2 or L3 per the doctrine
 
-3. OUTPUT ONLY a JSON array — no prose before or after the array.
+4. OUTPUT ONLY a JSON array — no prose before or after the array.
    Schema for each object:
    {{
      "title": "DOMAIN: short imperative",
@@ -1353,7 +1469,9 @@ YOUR TASK:
      "effort": "xs|s|m|l",
      "confidence": "high|med|low",
      "source": "concrete signal (file, issue #, commit SHA, TODO line)",
-     "ac_draft": ["testable criterion 1", "testable criterion 2"]
+     "ac_draft": ["testable criterion 1", "testable criterion 2"],
+     "layer": "L2|L3",
+     "doctrine_justification": "one sentence: why L2 or L3 per the doctrine"
    }}
 
 Begin your investigation now, then output the JSON array."#
