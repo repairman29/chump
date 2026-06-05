@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MISSION-035 (MISSION-032 Phase-B Tier-1): daily LRU eviction of git clone
+     directories under ~/.chump/external/<owner>/<repo>/clone/.
+     Evicts clones older than CHUMP_EXTERNAL_CLONE_MAX_AGE_D (default 14 days)
+     AND/OR evicts LRU clones when total usage exceeds
+     CHUMP_EXTERNAL_CLONE_BUDGET_GB (default 20 GB). Pure reaper — no state
+     mutation beyond rm -rf the clone dir. Safe to run anytime.
+
+     Install:
+       cp scripts/setup/com.chump.external-clone-reaper.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.chump.external-clone-reaper.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.chump.external-clone-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/ops/external-clone-reaper.sh --execute</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CHUMP_EXTERNAL_CLONE_BUDGET_GB</key><string>20</string>
+    <key>CHUMP_EXTERNAL_CLONE_MAX_AGE_D</key><string>14</string>
+  </dict>
+  <key>WorkingDirectory</key><string>/Users/jeffadkins/Projects/Chump</string>
+  <!-- Daily at 03:23 local — off-peak, offset from external-scan-reaper (03:17)
+       so the two reapers don't race for disk I/O simultaneously. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>23</integer>
+  </dict>
+  <key>StandardErrorPath</key><string>/Users/jeffadkins/.chump/logs/external-clone-reaper.err</string>
+  <key>StandardOutPath</key><string>/Users/jeffadkins/.chump/logs/external-clone-reaper.out</string>
+</dict>
+</plist>

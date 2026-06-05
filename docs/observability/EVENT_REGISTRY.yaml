@@ -7939,3 +7939,20 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, repos, reaped, kept, keep_n, dry_run]
     status: stable
+
+  # ── MISSION-035: external-clone-reaper (Phase-B Tier-1 of MISSION-032 scale) ─
+
+  - kind: external_clone_reaped
+    effect_metric: zero_waste
+    emitter: scripts/ops/external-clone-reaper.sh (MISSION-035)
+    # scanner-anchor: "kind":"external_clone_reaped"
+    trigger: >
+      Daily reaper evicted git clone dirs under
+      ~/.chump/external/<owner>/<repo>/clone/ by two criteria (OR): (1) clone
+      mtime older than CHUMP_EXTERNAL_CLONE_MAX_AGE_D (default 14 days), or
+      (2) total clone disk usage exceeds CHUMP_EXTERNAL_CLONE_BUDGET_GB
+      (default 20 GB), evicting LRU (oldest mtime) first. Always emitted at
+      end of a reaper tick (even when reaped=0, for liveness signal).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repos, reaped, kept_count, freed_gb, budget_gb, max_age_d, dry_run]
+    status: stable
