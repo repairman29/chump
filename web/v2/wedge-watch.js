@@ -387,10 +387,13 @@ class ChumpWedgeWatch extends HTMLElement {
     // ALERT wrapper with a wedge-flavored inner kind
     if (k === 'alert' && payload.kind === 'ALERT') {
       const note = String(payload.note || '').toLowerCase();
-      // ALERT events whose note contains wedge-signal keywords
+      // ALERT events whose note contains wedge-signal keywords.
+      // Covers: pr_stuck BLOCKED/DIRTY wrappers, silent_agent (last_event_age),
+      // force_recover wip_loss, stall events, and wedge class mentions.
       if (note.includes('blocked') || note.includes('dirty') ||
           note.includes('pr_stuck') || note.includes('silent_agent') ||
-          note.includes('wedge') || note.includes('stall')) {
+          note.includes('wedge') || note.includes('stall') ||
+          note.includes('last_event_age') || note.includes('wip_loss')) {
         return true;
       }
     }
