@@ -199,19 +199,26 @@ else
 fi
 
 # ── Test 7: INFRA-386 — auto-close filed gap when underlying PR resolves ─────
-echo "Test 7: filed gap auto-closes when its PR is MERGED"
+# RESILIENT-098 (2026-06-05): auto-close now uses `gap set --status closed`
+# instead of `gap ship` to bypass the INFRA-2423 auto-fetch gate that blocks
+# daemon-context calls when local main is behind origin AND tree is dirty.
+echo "Test 7: filed gap auto-closes when its PR is MERGED (RESILIENT-098)"
 SHIP_LOG="$TMP/ship.log"
 rm -f "$SHIP_LOG"
 cat > "$TMP/bin/chump" <<EOF
 #!/usr/bin/env bash
-case "\$*" in
-    "gap list --status open --json")
+case "\$1 \$2" in
+    "gap list")
         echo '[{"id":"INFRA-9777","title":"PR #777 stuck — DIRTY for 6h","status":"open"}]'
         ;;
-    "gap ship INFRA-9777 --closed-pr 777 --update-yaml")
-        echo "INFRA-9777 ship --closed-pr 777" >> "$SHIP_LOG"
+    "gap set")
+        # Match: gap set INFRA-9777 --status closed --closed-pr 777 --add-note "..."
+        if [[ "\$3" == "INFRA-9777" ]] && [[ "\$*" == *"--status closed"* ]] \
+           && [[ "\$*" == *"--closed-pr 777"* ]]; then
+            echo "INFRA-9777 set --status closed --closed-pr 777" >> "$SHIP_LOG"
+        fi
         ;;
-    "gap reserve "*) echo "INFRA-9999" ;;
+    "gap reserve") echo "INFRA-9999" ;;
     *) exit 0 ;;
 esac
 EOF
@@ -228,11 +235,11 @@ EOF
 chmod +x "$TMP/bin/gh"
 
 out=$(REMOTE=origin "$SCRIPT" 2>&1 || true)
-if [[ -f "$SHIP_LOG" ]] && grep -q "INFRA-9777 ship --closed-pr 777" "$SHIP_LOG" \
+if [[ -f "$SHIP_LOG" ]] && grep -q "INFRA-9777 set --status closed --closed-pr 777" "$SHIP_LOG" \
    && [[ "$out" == *"auto-closed INFRA-9777"* ]]; then
     echo "  PASS"
 else
-    echo "  FAIL: expected gap ship + auto-closed message"
+    echo "  FAIL: expected gap set --status closed + auto-closed message"
     echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
     echo "  output:"
     echo "$out" | sed 's/^/    /'

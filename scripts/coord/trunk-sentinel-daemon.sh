@@ -568,10 +568,14 @@ print(s.get('red_since_epoch', 0))
 
     # ── TRUNK_GREEN: recover, reset state ─────────────────────────────────────
     if [[ "$cur_state" == "TRUNK_GREEN" ]]; then
-        # If we were RED, close any gaps we filed.
-        if [[ "$prev_state" == "TRUNK_RED" ]]; then
-            _recover_close_gaps "$prev_state_str"
-        fi
+        # RESILIENT-097: close any gaps we filed, regardless of prev_state.
+        # Original gate was `prev_state == TRUNK_RED` which skipped the
+        # RED→AMBER→GREEN path (sentinel transiently saw AMBER between the
+        # red event and recovery), leaking zombie P0 trunk-red gaps. The
+        # durable signal is state.filed_gaps[]; _recover_close_gaps()
+        # already noops when that list is empty, so always-calling here is
+        # safe + idempotent.
+        _recover_close_gaps "$prev_state_str"
         _save_state "$(printf '{"state":"TRUNK_GREEN","red_since_epoch":0,"filed_fingerprints":[],"filed_gaps":[],"dispatched_fingerprints":[],"recalled_fingerprints":[],"last_run_id":%d,"last_head_sha":"%s","updated_at":"%s"}' \
             "$run_id" "$head_sha" "$(_ts)")"
         return 0
