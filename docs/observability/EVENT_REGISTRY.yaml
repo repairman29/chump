@@ -7880,4 +7880,18 @@ events:
     trigger: chump onboard --unschedule unloaded a per-repo launchd plist
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, repo_path, reason]
+  - kind: ci_triage_verdict
+    effect_metric: credible
+    emitter: scripts/ci/triage-cargo-test-failure.sh (CREDIBLE-013)
+    # scanner-anchor: "kind":"ci_triage_verdict"
+    trigger: >
+      cargo-test step failed; triage script classified failures and emitted
+      verdict to GitHub job summary + ambient. Verdict is one of: flake (all
+      failures are in KNOWN_FLAKES.yaml), real (genuine regression, fix needed),
+      known-bug (matches open tracked gap), unknown (empty/unparseable input).
+      Fires from the CI failure triage step added to the cargo-test job.
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, verdict, failed_test_count, commit, job]
+    # payload: {verdict: str, failed_test_count: int, flake_test_count: int,
+    #           real_test_count: int, commit: str, job: str, pr_number: str}
     status: stable
