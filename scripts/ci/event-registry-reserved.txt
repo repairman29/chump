@@ -754,3 +754,9 @@ external_repo_unscheduled
 # The emit is real (post-build triage step in CI cargo-test job), just not
 # detectable by the regex walker. Registered here so coverage gate does not flag.
 ci_triage_verdict
+
+# ── INFRA-1881: chump bootstrap --template rust (2026 demo #1: net-new outcome) ─
+# Emitted via Rust struct-init `kind: "X".to_string()` syntax (colon form) which
+# Pattern 2 grep (`kind = "X"` equals form) misses. Scanner-anchor present in source.
+# Reserved here to satisfy strict-mode register-without-emit until pattern is generalized.
+chump_bootstrap_complete
