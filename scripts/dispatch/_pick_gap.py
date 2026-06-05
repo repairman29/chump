@@ -44,11 +44,12 @@ MISSION-011: mission-directed picker
                           (d) active_mission_id appears verbatim in title, notes,
                               or description (catches "blocks MISSION-010" etc.)
                         Boost mechanism: mission_rank=0 (linked) / 1 (not linked)
-                        inserted between planner_rank and prio_rank in the sort
-                        tuple. A mission P1 sorts as (..., 0, 1, ...) vs a
-                        substrate P1 (..., 1, 1, ...) — mission wins. A mission
-                        P1 does NOT override a substrate P0 at the same
-                        planner_rank bucket (0+1 > 0+0 when prio is P0 vs P1).
+                        inserted between prio_rank and planner_rank in the sort
+                        tuple. A mission P1 sorts as (1, 0, ...) vs a substrate
+                        P1 (1, 1, ...) — mission wins within the band. A mission
+                        P1 does NOT override a substrate P0 because prio_rank is
+                        compared first (0 < 1 regardless of mission_rank).
+                        Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
                         See scripts/ci/test-mission-picker.sh for the invariant.
 """
 
@@ -451,9 +452,18 @@ def main() -> int:
         # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
         # sonnet workers refuse effort=xs — cheap models handle cleanup; don't burn frontier tokens.
         # opus is unconstrained.
+        # MISSION-026: P0 mission-linked gaps bypass the sonnet xs-effort gate so
+        # xs-effort P0 MISSION gaps (e.g. MISSION-018) are never permanently blocked
+        # by worker tier. The rationale for the original rule still holds for P1+
+        # xs gaps (let haiku handle them), but a P0 mission gap is urgent enough
+        # that any capable worker should pick it rather than skip it entirely.
+        _is_p0_mission = (
+            p == "P0"
+            and (g.get("domain") or "").upper() == "MISSION"
+        )
         if worker_model == "haiku" and e in ("m", "l", "xl"):
             continue
-        if worker_model == "sonnet" and e == "xs":
+        if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
             continue
         # Conservative: skip gaps with non-empty depends_on.
         # INFRA-397: depends_on arrives as a JSON-encoded string from
@@ -503,11 +513,19 @@ def main() -> int:
         if ac_text and ("TODO" in ac_text_upper or "TBD" in ac_text_upper or "<FILL IN>" in ac_text_upper):
             prio_rank += 5
 
-        # INFRA-1258: planner rank takes precedence when available. Lower rank
-        # = better (1 is rank-1 best). Gaps not in the planner output get a
-        # sentinel large rank so they sort AFTER planner-ranked gaps but
-        # remain pickable; legacy (prio_rank, effort, age) still resolves
-        # ties within each bucket.
+        # INFRA-1258: planner rank is used as a within-priority-band tiebreaker.
+        # Lower rank = better (1 is rank-1 best). Gaps not in the planner output
+        # get a sentinel large rank so they sort after planner-ranked gaps within
+        # the SAME priority band; legacy (effort, age) still resolves ties.
+        #
+        # MISSION-026 FIX: planner_rank was previously the PRIMARY sort key, which
+        # allowed a planner-ranked P1 (rank=1) to sort before an unranked P0
+        # (rank=10000). This violated priority: a substrate P1 that the hourly
+        # planner happens to score highly should never beat a P0 mission gap that
+        # the planner has no opinion on. The fix moves prio_rank first so planner
+        # only breaks ties within the same priority band.
+        # Old sort: (planner_rank, prio_rank, mission_rank, effort_rank, age, id)
+        # New sort: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
         planner_rank = planner_ranks.get(gid, 10_000)
 
         # MISSION-011: mission_rank = 0 for gaps linked to the active mission
@@ -516,14 +534,14 @@ def main() -> int:
         # beats a mission P1 (prio_rank=1) because prio_rank is compared first.
         # Within the same priority band (both P1), mission_rank=0 causes the
         # mission gap to sort before the substrate gap (mission_rank=1).
-        # Sort tuple: (planner_rank, prio_rank, mission_rank, effort_rank, age, id)
+        # Sort tuple: (prio_rank, mission_rank, planner_rank, effort_rank, age, id)
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
         candidates.append(
             (
-                planner_rank,
                 prio_rank,
                 mission_rank,
+                planner_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -540,9 +558,10 @@ def main() -> int:
             worker_idx = 1
         offset = (max(worker_idx, 1) - 1) % len(candidates)
         picked = candidates[offset]
-        # Tuple layout: (planner_rank, prio_rank, mission_rank, effort_rank, created_at, gid)
-        picked_planner_rank = picked[0]
-        picked_mission_rank = picked[2]
+        # Tuple layout: (prio_rank, mission_rank, planner_rank, effort_rank, created_at, gid)
+        picked_prio_rank = picked[0]
+        picked_mission_rank = picked[1]
+        picked_planner_rank = picked[2]
         picked_gid = picked[-1]
 
         # INFRA-1258: emit attribution so operators can see whether the
@@ -558,14 +577,14 @@ def main() -> int:
 
         # MISSION-011: emit when mission boost influenced the pick. We detect
         # influence by checking whether mission_rank=0 AND there exists any
-        # candidate with the same planner_rank AND same prio_rank but
-        # mission_rank=1 (a substrate gap at equal priority that the mission
-        # gap outranked purely because of the mission tiebreaker).
-        # Tuple layout: (planner_rank[0], prio_rank[1], mission_rank[2], ...)
+        # candidate with the same prio_rank but mission_rank=1 (a substrate
+        # gap at equal priority that the mission gap outranked purely because
+        # of the mission tiebreaker).
+        # Tuple layout: (prio_rank[0], mission_rank[1], planner_rank[2], ...)
         if picked_mission_rank == 0 and active_mission:
-            pr = picked[1]  # prio_rank of the picked gap
+            pr = picked_prio_rank  # prio_rank of the picked gap
             displaced = any(
-                c[0] == picked_planner_rank and c[1] == pr and c[2] == 1
+                c[0] == pr and c[1] == 1
                 for c in candidates
                 if c[-1] != picked_gid
             )
