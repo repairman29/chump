@@ -1188,6 +1188,7 @@ fi
 
     // ── (a) pending → pending → SUCCESS: Gate 1 PASS ─────────────────────
     #[test]
+    #[serial_test::serial]
     fn test_ci_wait_pending_then_success() {
         let tmp = tempfile::tempdir().expect("tmpdir");
         let pending_json =
@@ -1229,6 +1230,7 @@ fi
 
     // ── (b) pending → FAILURE: Gate 1 HELD(ci) ───────────────────────────
     #[test]
+    #[serial_test::serial]
     fn test_ci_wait_pending_then_failure() {
         let tmp = tempfile::tempdir().expect("tmpdir");
         let pending_json =
@@ -1270,6 +1272,7 @@ fi
 
     // ── (c) stays pending past wait cap: HELD(ci_pending) ─────────────────
     #[test]
+    #[serial_test::serial]
     fn test_ci_wait_timeout() {
         let tmp = tempfile::tempdir().expect("tmpdir");
         let pending_json =
@@ -1312,6 +1315,7 @@ fi
 
     // ── (d) required SUCCESS + advisory pending: Gate 1 PASS ─────────────
     #[test]
+    #[serial_test::serial]
     fn test_ci_advisory_pending_does_not_gate() {
         let tmp = tempfile::tempdir().expect("tmpdir");
         // required CI check SUCCESS, advisory "vercel" check still pending.
