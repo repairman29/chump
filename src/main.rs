@@ -2607,7 +2607,7 @@ async fn main() -> Result<()> {
                 }
             }
             // MISSION-030: `bootstrap` — seed canonical mission outcomes (idempotent).
-            // MISSION-039: also seeds 4 pillar outcomes (CREDIBLE/EFFECTIVE/RESILIENT/ZERO-WASTE).
+            // MISSION-043: also seeds 4 pillar outcomes (CREDIBLE/EFFECTIVE/RESILIENT/ZERO-WASTE).
             "bootstrap" => {
                 // Canonical outcomes per docs/MISSION.md and gap dispatch context.
                 // Each entry: (id, title, priority, dod)
@@ -2641,7 +2641,7 @@ async fn main() -> Result<()> {
                          Demo 2: Chump takes over an existing repo; \
                          Demo 3: sustained autonomous throughput.",
                     ),
-                    // MISSION-039: four pillar outcomes — one per quality pillar.
+                    // MISSION-043: four pillar outcomes — one per quality pillar.
                     (
                         "CREDIBLE-000",
                         "Credible: measurable, verifiable, trustworthy",
@@ -2750,12 +2750,6 @@ async fn main() -> Result<()> {
                 //    → link to named outcome id if registered.
                 // 4. Title/description contains "BEAST" or "BEAST-MODE" → MISSION-010.
                 // 5. Title/description contains "META-067" → META-067.
-                // 6. MISSION-* prefix gap ids → MISSION-010 umbrella.
-                // 7. (MISSION-039) Domain-prefix → pillar outcome (only when registered):
-                //    CREDIBLE-* → CREDIBLE-000, EFFECTIVE-* → EFFECTIVE-000,
-                //    RESILIENT-* → RESILIENT-000, ZERO-/ZERO-WASTE-* → ZERO-WASTE-000.
-                // 8. (MISSION-039) INFRA-* / META-* → MISSION-010 (fleet infrastructure
-                //    and process gaps collectively implement the self-coordinating fleet).
                 // Default: skip (don't guess).
 
                 // Counters per outcome.
@@ -2837,10 +2831,9 @@ async fn main() -> Result<()> {
                         assigned = Some("MISSION-010");
                     }
 
-                    // Heuristic 7 (MISSION-039): domain-prefix → pillar outcome.
+                    // Heuristic 7 (MISSION-043): domain-prefix → pillar outcome.
                     // Only fires when the pillar outcome is registered (idempotent /
                     // graceful fallback when bootstrap wasn't run yet).
-                    // OR-branches are written as separate ifs to avoid precedence bugs.
                     if assigned.is_none() {
                         if id_uc.starts_with("CREDIBLE-") && outcome_ids.contains("CREDIBLE-000") {
                             assigned = Some("CREDIBLE-000");
@@ -2859,7 +2852,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    // Heuristic 8 (MISSION-039): INFRA-* and META-* → MISSION-010.
+                    // Heuristic 8 (MISSION-043): INFRA-* and META-* → MISSION-010.
                     // INFRA gaps are fleet infrastructure gaps; they collectively implement
                     // the self-coordinating-fleet mission. META-* gaps are fleet PM/process
                     // gaps that support mission coordination. Both route to MISSION-010
