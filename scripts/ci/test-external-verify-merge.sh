@@ -125,15 +125,17 @@ TESTSH
     git -C "${dir}" add FAIL_ON_BASE
     git -C "${dir}" commit -q --amend --no-edit
     BASE_SHA="$(git -C "${dir}" rev-parse HEAD)"
-    # Back to pr-head, remove the sentinel.
-    git -C "${dir}" checkout -q -b pr-head
+    # Back to pr-head — reset it onto the sentinel-bearing base so the
+    # subsequent `git rm FAIL_ON_BASE` has the file to remove. (pr-head was
+    # branched from the pre-amend base at line 105, so -B + BASE_SHA is required;
+    # a plain `checkout -b` fails "already exists" and leaves no sentinel to rm.)
+    git -C "${dir}" checkout -q -B pr-head "${BASE_SHA}"
     git -C "${dir}" rm -q FAIL_ON_BASE
     git -C "${dir}" commit -q -m "fix: implement the feature"
   fi
 
   if [[ "${has_test}" == "has_test" ]]; then
-    # Add a test file.
-    printf "#!/usr/bin/env bash\necho 'test file'\n" > "${dir}/tests/test_feature.sh"
+    # Add a test file (mkdir the dir first).
     mkdir -p "${dir}/tests"
     printf "#!/usr/bin/env bash\necho 'test file'\n" > "${dir}/tests/test_feature.sh"
     git -C "${dir}" add tests/test_feature.sh

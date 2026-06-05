@@ -161,8 +161,11 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
     }
 
     // Prove the test fails on base and passes on head.
-    let (fails_on_base, base_output) =
-        run_tests_at_sha(&clone_dir, &base_sha, &runner, &test_files)?;
+    // run_tests_at_sha returns whether the suite PASSED (exit 0); "fails on base"
+    // is the negation of that. (Bug fix: this was assigned `passed` directly, so a
+    // legitimately-failing base read as fails_on_base=false → wrong HELD(unproven).)
+    let (base_passed, base_output) = run_tests_at_sha(&clone_dir, &base_sha, &runner, &test_files)?;
+    let fails_on_base = !base_passed;
     let (passes_on_head, head_output) =
         run_tests_at_sha(&clone_dir, &head_sha, &runner, &test_files)?;
 
