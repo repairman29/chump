@@ -398,3 +398,11 @@ CI failure triage             # reason: Tier-D, post-build classifier (CREDIBLE-
 # point this test and its Rust equivalent will both run in preflight.
 test-broadcast-reply-to.sh  # reason: Tier-C coord-layer shell test; preflight mirror deferred to INFRA-1998 Rust-port gap (EFFECTIVE-028)
 test-inbox-lane-filter.sh     # reason: EFFECTIVE-029 lane-filter is SessionStart hook logic; test drives a Python inline block, not a cargo gate; hermetic shell+python, not preflight-shaped
+
+# EFFECTIVE-177: chump improve orchestrator integration test.
+# Tier-C (fully local, no GitHub API, uses stub binaries). Deferred mirror in
+# src/preflight.rs until the improve subcommand ships and stabilises; at that
+# point the Rust unit tests inside src/improve.rs cover the same logic and
+# preflight already runs `cargo test`.
+test-chump-improve.sh  # reason: Tier-C integration test; logic covered by cargo test (src/improve.rs); full shell integration test deferred mirror EFFECTIVE-177
+chump improve orchestrator  # reason: Tier-C integration test (test-chump-improve.sh); cargo test covers the logic in src/improve.rs; full shell mirror deferred (EFFECTIVE-177)

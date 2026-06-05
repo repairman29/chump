@@ -1138,6 +1138,15 @@ jobs:
       - name: external verify-merge judge — 5-case synthetic matrix (CREDIBLE-096)
         run: bash scripts/ci/test-external-verify-merge.sh
 
+      # EFFECTIVE-177: chump improve orchestrator integration test.
+      # Exercises all 4 stages (pick→dedup→implement→verify-merge) using
+      # stub binaries for claude/gh/chump so no LLM or network calls are made.
+      # Tier-C (fully local). CI parity: Tier-C exception in preflight-ci-parity-exceptions.txt.
+      - name: chump improve orchestrator — 4-stage mock chain (EFFECTIVE-177)
+        run: |
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
+            bash scripts/ci/test-chump-improve.sh
+
       # docs/process/CI_GATES_INVENTORY.md OR allowlisted in
       # scripts/ci/preflight-ci-parity-exceptions.txt.
       # Exits non-zero on unmirrored + non-allowlisted gate; emits
