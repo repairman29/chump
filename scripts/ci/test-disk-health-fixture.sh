@@ -8,6 +8,9 @@
 #   3. disk_critical BLOCKING ALERT + fleet-pause file created when <2%.
 #   4. No ALERT when free space is healthy (>=10%).
 #   5. reaper_check_disk_headroom exits 0 + emits disk_critical when <5% free.
+#   8. reaper_check_disk_headroom dedups by filesystem + emits a self-diagnosing
+#      note naming the real mount point, not a duplicate per probed dir
+#      (RESILIENT-096).
 
 set -euo pipefail
 
@@ -226,5 +229,53 @@ git -C "$FAKE_OPT_REPO" init -q
 grep -q "CONTINUED" "$TMP/opt-out" \
     || fail "REAPER_FREES_DISK=1 did not exempt the early exit. out: $(cat "$TMP/opt-out")"
 ok "INFRA-973: REAPER_FREES_DISK=1 exempts the early exit (generic opt-out)"
+
+# ── Test 8: RESILIENT-096 — dedup by filesystem + self-diagnosing note ───────
+# Both probed dirs (/tmp and the lock dir) resolve to ONE filesystem — exactly
+# the macOS APFS case where /tmp and the repo share the Data volume. Assert we
+# emit exactly ONE disk_critical (no per-dir duplicate) and that it carries a
+# non-empty note naming the real mount point (not just the probed dir).
+FAKE_DEDUP_REPO="$TMP/deduprepo"
+mkdir -p "$FAKE_DEDUP_REPO/.chump-locks"
+git -C "$FAKE_DEDUP_REPO" init -q
+DEDUP_AMBIENT="$FAKE_DEDUP_REPO/.chump-locks/ambient.jsonl"
+
+# Fake df: one shared filesystem (/dev/fakedata at /System/Volumes/Data) for
+# ANY probed dir — mirrors the APFS shared-container case from the gap.
+FAKE_DEDUP_BIN="$TMP/fakededuppath"
+mkdir -p "$FAKE_DEDUP_BIN"
+cat >"$FAKE_DEDUP_BIN/df" <<'EOF'
+#!/usr/bin/env bash
+echo "Filesystem      Size  Used Avail Use%  Mounted on"
+echo "/dev/fakedata   460G  455G    5G  99%  /System/Volumes/Data"
+EOF
+chmod +x "$FAKE_DEDUP_BIN/df"
+
+(
+    export PATH="$FAKE_DEDUP_BIN:$PATH"
+    export CHUMP_SKIP_DISK_HEADROOM=0
+    cd "$FAKE_DEDUP_REPO"
+    # shellcheck disable=SC1090
+    source "$LIB"
+    REAPER_NAME="dedup-test"
+    REAPER_REPO_ROOT="$FAKE_DEDUP_REPO"
+    REAPER_LOCK_DIR="$FAKE_DEDUP_REPO/.chump-locks"
+    REAPER_HEARTBEAT="/tmp/chump-reaper-dedup-test.heartbeat"
+    REAPER_START_EPOCH="$(date +%s)"
+    reaper_check_disk_headroom
+) >/dev/null 2>&1 || true
+
+[[ -f "$DEDUP_AMBIENT" ]] || fail "RESILIENT-096: ambient.jsonl not created by reaper_check_disk_headroom"
+dc_count=$(grep -c '"kind":"disk_critical"' "$DEDUP_AMBIENT" || true)
+[[ "$dc_count" -eq 1 ]] \
+    || fail "RESILIENT-096: expected exactly 1 disk_critical (dedup by filesystem), got $dc_count: $(cat "$DEDUP_AMBIENT")"
+ok "RESILIENT-096: one filesystem yields exactly one disk_critical (no per-dir duplicate)"
+
+dc_line=$(grep '"kind":"disk_critical"' "$DEDUP_AMBIENT" | tail -1)
+printf '%s' "$dc_line" | grep -q '"note":"[^"]' \
+    || fail "RESILIENT-096: disk_critical has empty/missing note field: $dc_line"
+printf '%s' "$dc_line" | grep -q '/System/Volumes/Data' \
+    || fail "RESILIENT-096: event does not reference the real mount point /System/Volumes/Data: $dc_line"
+ok "RESILIENT-096: disk_critical carries a non-empty note naming the real mount point"
 
 printf '\n\033[0;32mall tests passed\033[0m\n'

@@ -144,6 +144,17 @@ print(json.dumps({
 # this exemption the stale-worktree-reaper kept ALERTing for hours
 # while doing 0 reaping on a 100%-full disk.
 #
+# RESILIENT-096 (2026-06-05): the event is deduped by df filesystem-source and
+# carries a self-diagnosing `note` + `fs`/`mount` fields. On macOS APFS /tmp and
+# the repo share ONE Data volume, so probing both used to emit two identical
+# disk_critical events per run; we now emit at most one per backing filesystem.
+# The note names the REAL full volume + mount point — `df /` shows only the tiny
+# read-only system-volume footprint and misleads, because `/` and
+# /System/Volumes/Data share one container free-pool (the Avail column). We key
+# the dedup on the df source string (col 1), NOT `stat -f%d`: APFS reports the
+# same container device id for `/` and the Data volume, so a stat-based key
+# would wrongly conflate volumes with very different usage.
+#
 # Bypass: CHUMP_SKIP_DISK_HEADROOM=1 (tests / dev only).
 # Per-reaper exempt: REAPER_FREES_DISK=1 set before calling.
 reaper_check_disk_headroom() {
@@ -155,22 +166,38 @@ reaper_check_disk_headroom() {
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     # Always check /tmp (heartbeat dir) and the lock dir (ambient.jsonl dir).
+    # Dedup by df filesystem-source (col 1) so we emit at most ONE disk_critical
+    # per backing filesystem per run (RESILIENT-096). seen_fs is a |-delimited
+    # set — portable to /bin/bash 3.2 (no associative arrays; the reaper plists
+    # run under /bin/bash, which is 3.2 on macOS).
     local dirs=("/tmp" "$lock_dir")
     local triggered=0
     local dir
+    local seen_fs="|"
     for dir in "${dirs[@]}"; do
         [[ -d "$dir" ]] || dir="$(dirname "$dir")"
-        local df_out used_pct free_pct
+        local df_out used_pct free_pct fs mount note
         df_out="$(df -Ph "$dir" 2>/dev/null | tail -1)" || continue
+        fs="$(printf '%s\n' "$df_out" | awk '{print $1}')"
+        mount="$(printf '%s\n' "$df_out" | awk '{print $NF}')"
         used_pct="$(printf '%s\n' "$df_out" | awk '{print $5}' | tr -d '%')"
         [[ "$used_pct" =~ ^[0-9]+$ ]] || continue
+        # Skip a dir whose backing filesystem we've already evaluated this run.
+        if [[ -n "$fs" && "$seen_fs" == *"|${fs}|"* ]]; then
+            continue
+        fi
+        [[ -n "$fs" ]] && seen_fs="${seen_fs}${fs}|"
         free_pct=$(( 100 - used_pct ))
         if [[ "$free_pct" -lt "$threshold" ]]; then
+            # Self-diagnosing note: name the REAL full filesystem + mount point
+            # (not just the logical dir we probed), so the operator does not have
+            # to re-run df or untangle the macOS APFS volume-vs-container split.
+            note="filesystem ${fs} at ${mount} is ${free_pct}% free (<${threshold}% critical); probed via ${dir}"
             printf 'ALERT [disk_critical] %s: %d%% free (threshold %d%%). df: %s\n' \
                 "$dir" "$free_pct" "$threshold" "$df_out" >&2
             mkdir -p "$lock_dir" 2>/dev/null || true
-            printf '{"event":"ALERT","kind":"disk_critical","reaper":"%s","dir":"%s","free_pct":%d,"threshold_pct":%d,"ts":"%s","df":"%s"}\n' \
-                "${REAPER_NAME:-unknown}" "$dir" "$free_pct" "$threshold" "$ts" "$df_out" \
+            printf '{"event":"ALERT","kind":"disk_critical","reaper":"%s","dir":"%s","fs":"%s","mount":"%s","free_pct":%d,"threshold_pct":%d,"note":"%s","ts":"%s","df":"%s"}\n' \
+                "${REAPER_NAME:-unknown}" "$dir" "$fs" "$mount" "$free_pct" "$threshold" "$note" "$ts" "$df_out" \
                 >> "$ambient" 2>/dev/null || true
             triggered=1
         fi

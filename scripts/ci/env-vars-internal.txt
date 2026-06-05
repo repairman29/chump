@@ -969,3 +969,8 @@ CHUMP_ACTIVE_MISSION
 # CHUMP_INBOX_LANE_FILTER=0 disables the lane filter (show all broadcasts, for debugging)
 # Default is 1 (filter ON). Not a bypass var — _FILTER suffix, not _SKIP/_BYPASS/_IGNORE.
 CHUMP_INBOX_LANE_FILTER
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SKIP_DISK_HEADROOM
