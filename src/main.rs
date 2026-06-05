@@ -115,6 +115,7 @@ mod health;
 mod health_server;
 mod hitl_escalation;
 mod hooks;
+mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
@@ -708,6 +709,8 @@ fn print_help() {
     println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
     println!("  ship <GAP-ID>   (alias: s)  shorthand for 'gap ship <GAP-ID>'");
     println!("  onboard <repo-url-or-path>  first-touch external-repo scanner (INFRA-2108)");
+    println!("  improve <owner/repo> [--gap <ID>] [--apply] [--clone-dir <path>]");
+    println!("                              autonomous improve loop: pick→dedup→implement→verify-merge (EFFECTIVE-177)");
     println!("  external verify-merge --pr <N> --repo <owner/repo> --gap <ID> [--clone-dir <path>] [--apply]");
     println!("                              autonomous PR merge judge — 3-gate anti-cosmetic bar (CREDIBLE-096)");
     println!("  gen <task>         AI-driven single-shot coding task (offline-LLM)");
@@ -1292,6 +1295,18 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("onboard") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(onboard::run(&sub_args));
+    }
+
+    // `chump improve <owner/repo>` (EFFECTIVE-177) — autonomous external-repo
+    // improve loop (Mode-D path). Chains 4 stages:
+    //   1. PICK      — scout via onboard scan (ExternalRepoContract / OnboardScan)
+    //   2. DEDUP     — skip if work already done (ZERO-WASTE-006)
+    //   3. IMPLEMENT — spawn claude -p agent in the clone; open external PR
+    //   4. VERIFY-MERGE — delegate to `chump external verify-merge` (CREDIBLE-096)
+    // Dry-run by default; --apply executes for real.
+    if args.get(1).map(String::as_str) == Some("improve") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(improve::run(&sub_args));
     }
 
     // `chump external verify-merge` (CREDIBLE-096) — autonomous PR merge judge.

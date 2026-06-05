@@ -990,3 +990,13 @@ CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED
 CHUMP_EXTERNAL_VERIFY_FULL_SUITE
 # CHUMP_GH_BIN — path to the gh binary; defaults to "gh". Override in tests to inject a fake stub.
 CHUMP_GH_BIN
+
+# EFFECTIVE-177: chump improve orchestrator (Tier 2 — test/debug injection)
+# CHUMP_IMPROVE_CLAUDE_BIN — path to claude CLI used by the implement stage (default: claude)
+# CHUMP_IMPROVE_GH_BIN     — path to gh CLI passed through to verify-merge (default: gh)
+# CHUMP_IMPROVE_CHUMP_BIN  — path to chump binary for verify-merge delegation (default: auto-resolve)
+# CHUMP_IMPROVE_DISABLED   — Category-B kill-switch; set to 1 to disable the subcommand (INFRA-2429)
+CHUMP_IMPROVE_CLAUDE_BIN
+CHUMP_IMPROVE_GH_BIN
+CHUMP_IMPROVE_CHUMP_BIN
+CHUMP_IMPROVE_DISABLED

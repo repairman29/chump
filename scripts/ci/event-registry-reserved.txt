@@ -767,3 +767,10 @@ inbox_lane_filtered  # reason: EFFECTIVE-029 emitted by scripts/coord/ambient-co
 # ── CREDIBLE-096: external verify-merge judge ─────────────────────────────────
 external_merge_verified  # reason: CREDIBLE-096 emitted by src/external_verify_merge.rs when all 3 gates pass (CI green + anti-cosmetic test + no-regression); scanner-anchor comment present in source: "ambient-kind: external_merge_verified"
 external_merge_held      # reason: CREDIBLE-096 emitted by src/external_verify_merge.rs when any gate fails; carries reason field; scanner-anchor comment present in source: "ambient-kind: external_merge_held"
+
+# ── EFFECTIVE-177: chump improve orchestrator ──────────────────────────────────
+# Emitted by src/improve.rs using Rust struct-init `kind: "X".to_string()` syntax
+# (colon form). Scanner-anchor comments present in source ("scanner-anchor: kind=X").
+# Reserved here so the register-without-emit coverage gate does not flag these.
+improve_cycle_complete   # reason: EFFECTIVE-177 emitted at end of every improve cycle (dry-run or apply); fields: repo, gap, verdict, pr
+redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage decided the work is already in the target repo; fields: repo, gap, reason
