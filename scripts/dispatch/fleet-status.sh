@@ -209,9 +209,14 @@ render_recent_merges() {
 
   # Git-log path — no API call, always available.
   # Counts commits on origin/main within the time windows.
+  # CREDIBLE-093: when origin/main ref doesn't exist (fake test repos, brand-new
+  # clones), `git log origin/main` fails non-zero — under set -e + pipefail
+  # that killed the whole fleet-status script and downstream renders never ran.
+  # Sub-shell + `|| echo ""` swallows the failure so this section degrades to
+  # "0 merges" instead of crashing the dashboard.
   local merges_1h merges_24h
-  merges_1h=$(git log origin/main --since="1 hour ago" --format="%H" 2>/dev/null | wc -l | tr -d ' ')
-  merges_24h=$(git log origin/main --since="24 hours ago" --format="%H" 2>/dev/null | wc -l | tr -d ' ')
+  merges_1h=$( { git log origin/main --since="1 hour ago" --format="%H" 2>/dev/null || echo ""; } | wc -l | tr -d ' ')
+  merges_24h=$( { git log origin/main --since="24 hours ago" --format="%H" 2>/dev/null || echo ""; } | wc -l | tr -d ' ')
 
   printf "merges last 1h:  %s\n" "$merges_1h"
   printf "merges last 24h: %s\n" "$merges_24h"
@@ -399,14 +404,28 @@ render_rate_limit() {
   fi
 
   # INFRA-1055: use gate snapshot if available (avoids duplicate /rate_limit call).
+  # CREDIBLE-093: when the snapshot path EXISTS but returns 0/empty values (its
+  # default uninitialised state when rate_limit_snapshot was sourced but the gh
+  # call inside it failed silently), fall through to the direct gh-api path
+  # below so the test's mock gh actually gets called.  Symptom this fixes:
+  # EFFECTIVE-025 test failing in CI audit-shard 2 because the snapshot
+  # returned 0/0 and the formatted line didn't match the regex.
   local rest_rem rest_lim gql_rem gql_lim
+  local _used_snapshot=0
   if declare -F rate_limit_snapshot >/dev/null 2>&1; then
     rate_limit_snapshot --source "fleet-status.sh" 2>/dev/null || true
-    rest_rem="$RL_REST_REMAINING"; rest_lim="$RL_REST_LIMIT"
-    gql_rem="$RL_GQL_REMAINING";  gql_lim="$RL_GQL_LIMIT"
-    # Emit threshold events so operator-facing dashboard triggers ambient alerts.
-    rate_limit_gate "fleet-status" --source "fleet-status.sh" >/dev/null 2>&1 || true
-  else
+    rest_rem="${RL_REST_REMAINING:-}"; rest_lim="${RL_REST_LIMIT:-}"
+    gql_rem="${RL_GQL_REMAINING:-}";  gql_lim="${RL_GQL_LIMIT:-}"
+    # Did the snapshot produce real data?  REST limit > 0 is the smoking-gun.
+    # Use case/regex instead of -gt so a non-numeric value (or empty) never
+    # trips `set -e` and silently kills render_rate_limit.
+    case "$rest_lim" in
+      ''|0|*[!0-9]*) : ;;
+      *) _used_snapshot=1
+         rate_limit_gate "fleet-status" --source "fleet-status.sh" >/dev/null 2>&1 || true ;;
+    esac
+  fi
+  if [[ "$_used_snapshot" -eq 0 ]]; then
     local raw
     raw="$(gh api rate_limit 2>/dev/null || echo "")"
     if [[ -z "$raw" ]]; then
@@ -424,11 +443,12 @@ render_rate_limit() {
   fi
 
   local reset_ts
-  if declare -F rate_limit_snapshot >/dev/null 2>&1; then
-    # Gate snapshot already populated — reuse the raw data we already have.
-    # Compute reset from RL_ vars or fall back to ??.
+  if [[ "$_used_snapshot" -eq 1 ]]; then
+    # CREDIBLE-093: gate snapshot was used — RL_ vars don't expose the reset
+    # epoch directly so show ?? for the timestamp (real data, not a fallback).
     reset_ts="??"
   else
+    # Direct gh-api path (else branch above populated $raw); parse the reset.
     reset_ts="$(echo "$raw" | python3 -c "
 import json, sys, datetime
 d = json.load(sys.stdin)
