@@ -29,6 +29,13 @@ gap-picking.
 Chump's own development is done by the fleet — Claude Code, opencode, and
 manual operator commits all interop through the same coordinator primitives.
 
+> **The load-bearing mission lives in [`docs/MISSION.md`](./docs/MISSION.md)**
+> (MISSION-014). Canonical mission gap: **MISSION-010**. Read it before filing
+> any new gap — the 4 pillars below grade *how* every gap is built; MISSION.md
+> tells you *what* "done" looks like for the year. Active mission pointer:
+> `~/.chump/ACTIVE_MISSION` (currently `MISSION-010`).
+> Scoreboard (read-only, safe anytime): `bash scripts/dev/mission-scoreboard.sh`.
+
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the 4-pillar mission and active thrusts,
 [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) for the system map,
 [`docs/research/RESEARCH_PLAN_2026Q3.md`](./docs/research/RESEARCH_PLAN_2026Q3.md) for current
