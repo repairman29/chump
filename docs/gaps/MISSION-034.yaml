@@ -1,0 +1,13 @@
+- id: MISSION-034
+  domain: MISSION
+  title: "MISSION P1 (MISSION-032 Phase-B Tier-1): .chump-locks/external/<owner>/<repo>/ namespace partition for external claims"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    MISSION-032 Phase-B Tier-1. .chump-locks/ is a single flat dir; 50 concurrent BEAST claims listed alongside internal Chump claims means ls .chump-locks/*.json is O(N×M) and lease-overlap audits get noisy. Add per-repo subtree: .chump-locks/external/<owner>/<repo>/claim-*.json. Update chump claim to write to the correct sub-tree based on external_repo: tag. Backwards compat: search both trees in read paths (bot-merge re-claim, lease reaper, --release).
+  acceptance_criteria:
+    - "chump claim on an external_repo:foo/bar gap writes .chump-locks/external/foo/bar/claim-*.json"
+    - All read paths (bot-merge re-claim, ghost-gap-reaper, --release) handle both legacy flat layout and per-repo layout
+    - "Test: 50 simulated external claims do not appear in flat .chump-locks/ listings"
+

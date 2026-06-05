@@ -1,0 +1,13 @@
+- id: MISSION-037
+  domain: MISSION
+  title: "MISSION P1 (MISSION-032 Phase-B Tier-1): mission-scoreboard --per-repo + aggregate rollup (% repos with mission-ship this week)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    MISSION-032 Phase-B Tier-1. scripts/dev/mission-scoreboard.sh reports BEAST as the binary. With 100 tracked repos there's no per-repo ① view, no aggregate '% repos with zero-touch ship this month'. Add --per-repo flag + aggregate rollup. Per-repo: ①/②/③/④ for each repos.status='active' row. Aggregate: % repos with mission-ship this week, P50 last-ship-age, zero-touch ship count, # repos with no activity > 30d. Same exit-code semantics.
+  acceptance_criteria:
+    - mission-scoreboard.sh --per-repo prints per-repo block for each active repo from repos table (MISSION-033)
+    - "Default output adds 'Aggregate (10 repos): X% with mission-ship this week' line"
+    - "Exit code unchanged: 0=HANDS-OFF/ON-TRACK, 1=DRIFTING/STALLED"
+

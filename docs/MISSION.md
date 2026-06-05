@@ -73,6 +73,35 @@ the loop.**
 - **Operator controls remain sovereign:** `~/.chump/AUTONOMY_LEVEL` (0 = stop,
   fail-closed) and `chump fleet stop`. Autonomy is dialed, not assumed.
 
+## Scale (the *to where* — operator framing 2026-06-05)
+
+> *"I want this to scale to 100s of repos soon. I alone have 100 repos.
+> So maybe we need 10,000s."*
+
+The mission's proof (BEAST-MODE, MISSION-010) is N=1 external repo.
+That's necessary, not sufficient. The fleet has to generalize. Full
+phase model + per-phase load-bearing gaps lives in
+[`docs/strategy/MULTI_REPO_SCALE_2026-06-05.md`](./strategy/MULTI_REPO_SCALE_2026-06-05.md);
+short version:
+
+| Phase | Repos | Status |
+|---|---|---|
+| **A** | 1–10  | TODAY. Tag-based routing in `gap.skills_required`. BEAST proves. |
+| **B** | 10–100 | Operator's own portfolio. 6 Tier-1 gaps under MISSION-032. |
+| **C** | 100–10,000 | Multi-customer commercial. Sharding + per-customer privacy. |
+
+**Substrate decisions** (constraints, not gaps):
+- state.db stays single-writer through Phase B; sharding decision deferred to Phase C entry.
+- Per-repo namespace is filesystem (`~/.chump/external/<owner>/<repo>/`), not schema.
+- Privacy boundary is **per-repo** (`repos.cascade_tier`, operator-controlled), not per-gap.
+
+**Phase-transition triggers** to watch for: tracking ≥5 active external repos,
+disk usage `~/.chump/external/` > 5 GB, or mission scoreboard needing a
+per-repo view → start Phase B work. See strategy doc for the full trigger
+table.
+
+Canonical umbrella: **MISSION-032**.
+
 ## Follow-ups
 
 - Port `scripts/dev/mission-scoreboard.sh` into **`chump kpi mission`** (Rust,
@@ -82,3 +111,4 @@ the loop.**
 - Instrument a true **human-touch counter** (Goal 5) — events for manual merge,
   manual rebuild/deploy, operator-recall-acted, conductor-intervention — so the
   zero-touch metric is measured, not estimated.
+- Phase B Tier-1 gaps (MISSION-033 — MISSION-038) — see MISSION-032 umbrella.

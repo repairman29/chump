@@ -1,0 +1,14 @@
+- id: MISSION-031
+  domain: MISSION
+  title: "MISSION P0: pull-fleet workers not running — flag flipped, picker mission-ranked, but zero workers to claim BEAST gaps (scoreboard ① stays NO)"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    VERIFIED 2026-06-05 14:18Z (tick 2 of this session's musher loop). After shipping MISSION-018 (CHUMP_EXTERNAL_REPO_PICK_OK=1) and confirming MISSION-028 picker mission-rank fix in main: pgrep -fa 'worker.sh|run-fleet' returns ZERO processes. The chump-fleet tmux session has 3 panes but no claude/autopilot/worker processes inside. The mesh-worker (launchd) IS live but runs ROUTE-ONLY (CHUMP_MESH_WORKER_EXECUTE=0) — it announces routing intent, doesn't claim+work. Net: the fleet has the mission alignment (flag + picker) but no EXECUTION capacity. Scoreboard ① 'BEAST zero-touch PR' CANNOT progress without workers running. This is the load-bearing gap between 'mission-aware infrastructure' and 'mission-shipping fleet.' Options: (a) launch run-fleet.sh manually (operator action — short-term); (b) flip CHUMP_MESH_WORKER_EXECUTE=1 in mesh-worker plist (substrate — medium-term, autonomous-execution risk per plist comments); (c) operator-managed autopilot daemon (long-term — MISSION-007 / MISSION-010 territory). Without a path forward, every other mission gap shipped this session compounds into wasted ships — the fleet is mission-perfect but idle.
+  acceptance_criteria:
+    - pgrep -fa 'worker.sh|run-fleet|autopilot' returns at least one running PID continuously
+    - scripts/dev/mission-scoreboard.sh shows last-merge-age < 2h continuously (not stuck at 'no recent activity')
+    - Operator-documented chosen path (manual run-fleet, mesh-execute flip, or autopilot)
+    - "If autonomous: a worker actually claims a MISSION-* or external_repo:* gap within 30min of activation (live test)"
+
