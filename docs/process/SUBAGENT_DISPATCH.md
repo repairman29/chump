@@ -6,6 +6,31 @@
 > (2) clarifying-question hesitation (fixed by the no-clarifying-questions
 > directive below). **Every subagent prompt must include both.**
 
+## Feed the fleet first (dispatch doctrine, ratified 2026-06-05 — KAIZEN)
+
+**Before you dispatch at all, ask: should the *fleet* pick this up instead of an
+Agent-tool sub-agent?** The conductor feeds the fleet; it does not become a
+worker. For any shippable gap the **default is to file it with clear AC and let a
+tmux worker pick it** — not to spawn an Agent-tool Sonnet.
+
+| | Fleet tmux worker | Agent-tool sub-agent |
+|---|---|---|
+| Ambient/observable | ✅ emits `sub_agent_dispatched` | ❌ `sub_agent_dispatched=0` — invisible |
+| Farmer-revivable on death | ✅ auto-revived | ❌ un-revivable (farmer can't see it) |
+| pty isolation | ✅ own tmux pane | ❌ leaks ~60-94 ptys into your session |
+| Ship-wall behavior | worker loop retries | ❌ stalls at `step=init`, needs hand-salvage |
+
+**Evidence (2026-06-05 KAIZEN):** the worker loop shipped **85 PRs/24h** reliably,
+while in-session Agent dispatches cost **~38 min / 94 ptys / 106k tok each** and
+tripped the **30-min `step=init` ship-wall**. The pty leak from Agent dispatches
+is what exhausted `kern.tty.ptmx_max` and crashed the machine.
+
+**Reserve Agent-tool dispatch for exactly three cases:** (a) the fleet is down,
+(b) read-only analysis (audits, KAIZENs, surveys), (c) a one-shot the fleet
+structurally cannot pick. Everything else → file a gap, let the fleet ship it.
+Driving Agent-tool Sonnets past a working fleet is "opus in a trench coat"
+wearing a dispatch badge.
+
 ## Dispatch defaults by model (META-069, 2026-05-23)
 
 The orchestrator's job is to pick the right model for the work. Empirical

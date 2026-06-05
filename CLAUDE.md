@@ -159,6 +159,21 @@ Quick rule: if the work must run after you close this Claude Code session → us
 
 > Uses Claude Code's `Agent` tool. Non-Claude harnesses parallelize via the fleet (multiple workers) — see harness contract doc §Out-of-scope.
 
+> **Feed the fleet first (dispatch doctrine, ratified 2026-06-05 — KAIZEN).**
+> The conductor *feeds* the fleet; it does not *become* a worker. **Default for
+> any shippable gap = file it with clear AC and let a tmux worker pick it.**
+> Workers are instrumented (emit `sub_agent_dispatched`/ambient), farmer-protected
+> (auto-revived), and pty-isolated (own pane). Agent-tool sub-agents are **none**
+> of those: they emit no ambient event (invisible to the farmer → un-revivable),
+> leak ~60-94 ptys *into your session* (machine-wide pty-exhaustion blast radius),
+> and stall at the ship-wall needing hand-salvage. **Reserve Agent-tool dispatch
+> for: (a) the fleet is down, (b) read-only analysis, or (c) a one-shot the fleet
+> structurally cannot pick.** Evidence (2026-06-05 KAIZEN): the worker loop shipped
+> 85 PRs/24h while in-session Agent dispatches cost ~38 min / 94 ptys / 106k tok
+> each and tripped the 30-min `step=init` ship-wall. Reaching past the fleet to
+> drive Agent-tool Sonnets is "opus in a trench coat" wearing a dispatch badge.
+> Full rationale + comparison table: `docs/process/SUBAGENT_DISPATCH.md` §Feed the fleet first.
+
 When spawning via the `Agent` tool, paste the full shipping epilogue **AND** the
 pre-push checklist from `docs/process/SUBAGENT_DISPATCH.md` into every subagent
 prompt. The checklist (META-069, 2026-05-23) catches the 5 most common
