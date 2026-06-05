@@ -117,48 +117,151 @@ render_agents() {
   local leases=("$LOCK_DIR"/*.json)
   shopt -u nullglob
 
-  echo "live leases: ${#leases[@]}"
-  if [[ ${#leases[@]} -gt 0 ]]; then
-    local PY="${PYTHON:-python3}"
-    if command -v "$PY" >/dev/null 2>&1; then
-      "$PY" -c '
-import json, os, sys, time
+  # EFFECTIVE-087: distinguish ACTIVE leases (real claim with session_id +
+  # expires within 6h) from stale/marker files. Only count/classify — never delete.
+  local PY="${PYTHON:-python3}"
+  if [[ ${#leases[@]} -gt 0 ]] && command -v "$PY" >/dev/null 2>&1; then
+    "$PY" -c '
+import json, os, sys, time, datetime
 now = time.time()
-rows = []
+ACTIVE_TTL_SECS = 6 * 3600  # 6h — leases beyond this are stale
+
+active_rows = []
+stale_rows  = []
+
 for path in sys.argv[1:]:
+    fname = os.path.basename(path)
     try:
         with open(path) as fh:
             d = json.load(fh)
-    except Exception as exc:
-        rows.append((os.path.basename(path), "?", "?", "?", "?", "unparseable: %s" % exc))
+    except Exception:
+        stale_rows.append((fname, "unparseable", "", "", ""))
         continue
-    sess = d.get("session_id") or d.get("session") or "?"
-    gap = d.get("gap_id") or (d.get("pending_new_gap") or {}).get("id") or "(none)"
-    wt = d.get("worktree") or d.get("cwd") or "?"
+
+    sess = d.get("session_id") or d.get("session") or ""
+    gap  = d.get("gap_id") or (d.get("pending_new_gap") or {}).get("id") or ""
+    wt   = d.get("worktree") or d.get("cwd") or ""
     if isinstance(wt, str) and len(wt) > 50:
         wt = "..." + wt[-47:]
-    expires = d.get("expires_at") or d.get("expires") or ""
-    age = ""
+
+    expires_str = d.get("expires_at") or d.get("expires") or ""
     try:
         st = os.stat(path)
-        age = "%dm" % int((now - st.st_mtime) / 60)
+        age_secs = now - st.st_mtime
     except OSError:
-        pass
-    rows.append((os.path.basename(path), sess[:18], gap, age, wt, expires))
-print("  %-28s %-19s %-14s %-5s %-50s %s" % ("lease", "session", "gap", "age", "worktree", "expires"))
-for r in rows:
-    print("  %-28s %-19s %-14s %-5s %-50s %s" % r)
-' "${leases[@]}" 2>/dev/null || {
-        for f in "${leases[@]}"; do echo "  $f"; done
-      }
-    else
-      for f in "${leases[@]}"; do echo "  $f"; done
-    fi
+        age_secs = 9999999
+
+    # Classify: ACTIVE = has a real session_id AND file is fresh (< 6h old)
+    # OR has an expires_at that is in the future.
+    is_active = False
+    if sess:
+        # Check expires_at first
+        if expires_str:
+            try:
+                exp_ts = datetime.datetime.fromisoformat(
+                    expires_str.replace("Z", "+00:00")).timestamp()
+                if exp_ts > now:
+                    is_active = True
+            except Exception:
+                pass
+        # Fallback: file modified within the active TTL window
+        if not is_active and age_secs < ACTIVE_TTL_SECS:
+            is_active = True
+
+    age_label = "%dm" % int(age_secs / 60)
+
+    if is_active:
+        active_rows.append((fname[:28], sess[:18], gap[:14], age_label, wt))
+    else:
+        stale_rows.append((fname[:28], sess[:18] if sess else "(no session)", gap[:14], age_label, ""))
+
+print("active leases: %d" % len(active_rows))
+if active_rows:
+    print("  %-28s %-19s %-14s %-5s %s" % ("lease", "session", "gap", "age", "worktree"))
+    for r in active_rows:
+        print("  %-28s %-19s %-14s %-5s %s" % r)
+print("stale lease files: %d%s" % (
+    len(stale_rows),
+    "  (run: ls .chump-locks/*.json | grep curator-filed-)" if stale_rows else ""
+))
+' "${leases[@]}" 2>/dev/null || echo "live leases: ${#leases[@]}"
+  else
+    echo "active leases: 0"
+    echo "stale lease files: ${#leases[@]}"
   fi
 
   echo "----"
   echo "linked worktrees:"
   git worktree list 2>/dev/null | sed 's/^/  /' | head -n 20 || echo "  (git worktree list failed)"
+}
+
+# EFFECTIVE-087: last-hour / last-24h PR merges + agent:human coordination ratio.
+# Cache-first (per CLAUDE.md): reads .chump/github_cache.db if present and fresh,
+# falls back to git log on origin/main (cheap, no API calls).
+render_recent_merges() {
+  echo "========== recent merges + agent:human ratio ($(date -u +%H:%M:%SZ)) =========="
+
+  local PY="${PYTHON:-python3}"
+  if ! command -v "$PY" >/dev/null 2>&1; then
+    echo "(python3 unavailable — skipping recent-merges section)"
+    return 0
+  fi
+
+  # Git-log path — no API call, always available.
+  # Counts commits on origin/main within the time windows.
+  local merges_1h merges_24h
+  merges_1h=$(git log origin/main --since="1 hour ago" --format="%H" 2>/dev/null | wc -l | tr -d ' ')
+  merges_24h=$(git log origin/main --since="24 hours ago" --format="%H" 2>/dev/null | wc -l | tr -d ' ')
+
+  printf "merges last 1h:  %s\n" "$merges_1h"
+  printf "merges last 24h: %s\n" "$merges_24h"
+  echo "----"
+
+  # Agent:human ratio — last N commits by author email.
+  # Fleet authors: jeffadkins1@gmail.com, chump-dispatch, t@t.t, bigpickle
+  # Human/operator: any other email (including jeffadkins@... personal commits)
+  "$PY" -c '
+import subprocess, sys
+
+N = 20
+# Agent author patterns (substrings of email)
+AGENT_PATTERNS = [
+    "jeffadkins1@gmail.com",
+    "chump-dispatch",
+    "t@t.t",
+    "bigpickle",
+    "noreply@anthropic.com",
+]
+
+try:
+    result = subprocess.run(
+        ["git", "log", "origin/main", "--format=%ae", f"-{N}"],
+        capture_output=True, text=True, timeout=15
+    )
+    emails = [e.strip() for e in result.stdout.splitlines() if e.strip()]
+except Exception as exc:
+    print(f"(git log failed: {exc})")
+    sys.exit(0)
+
+if not emails:
+    print("(no recent commits found)")
+    sys.exit(0)
+
+agent_count = 0
+human_count = 0
+for email in emails:
+    el = email.lower()
+    if any(p.lower() in el for p in AGENT_PATTERNS):
+        agent_count += 1
+    else:
+        human_count += 1
+
+total = agent_count + human_count
+pct = int(agent_count * 100 / total) if total else 0
+print(f"agent:human ratio (last {len(emails)} commits):  {agent_count}:{human_count}  ({pct}% autonomous)")
+if human_count > 0:
+    print("  (human commits detected — review for manual intervention pattern)")
+' 2>/dev/null || echo "(ratio computation failed)"
 }
 
 render_starvation() {
@@ -372,6 +475,8 @@ render_ship_rate() {
 render_all() {
   render_version_skew
   render_agents
+  echo
+  render_recent_merges
   echo
   render_queue
   echo
