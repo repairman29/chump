@@ -112,6 +112,30 @@ pub struct OutcomeRow {
     pub closed_at: Option<i64>,
 }
 
+/// MISSION-033: first-class Repo object.
+/// `repos` is a DERIVED INDEX — `external_repo:<owner>/<repo>` in
+/// `gaps.skills_required` is the canonical registry; this table is populated
+/// by auto-upsert on `chump gap import` and by manual `chump repos add`.
+/// Lifecycle is decoupled from gaps: removing a gap does NOT remove its repo row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct RepoRow {
+    /// "owner/repo" — primary key.
+    pub id: String,
+    pub owner: String,
+    pub name: String,
+    pub added_at: i64,
+    /// Unix epoch of last onboard scan (NULL until first scan).
+    pub last_scan_at: Option<i64>,
+    /// Unix epoch of last clone GC pass (NULL until first GC).
+    pub last_clone_at: Option<i64>,
+    /// Unix epoch of last external PR ship (NULL until first ship).
+    pub last_ship_at: Option<i64>,
+    /// dogfood | trains | safe  (Phase B privacy tier).
+    pub cascade_tier: String,
+    /// active | paused | archived.
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseRow {
     pub session_id: String,
@@ -535,6 +559,29 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN outcome_id TEXT", []);
+
+        // MISSION-033: first-class repos table + 3 indexes.
+        // Derived index: auto-upserted on `chump gap import` for every
+        // `external_repo:<owner>/<repo>` tag in gaps.skills_required.
+        // Also supports manual `chump repos add` for repos not yet gap-tagged.
+        // Lifecycle is decoupled: removing a gap does NOT remove its repo row.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS repos (
+                id              TEXT PRIMARY KEY,
+                owner           TEXT NOT NULL,
+                name            TEXT NOT NULL,
+                added_at        INTEGER NOT NULL,
+                last_scan_at    INTEGER,
+                last_clone_at   INTEGER,
+                last_ship_at    INTEGER,
+                cascade_tier    TEXT NOT NULL DEFAULT 'dogfood',
+                status          TEXT NOT NULL DEFAULT 'active'
+             );
+             CREATE INDEX IF NOT EXISTS repos_status ON repos(status);
+             CREATE INDEX IF NOT EXISTS repos_last_scan_at ON repos(last_scan_at);
+             CREATE INDEX IF NOT EXISTS repos_last_clone_at ON repos(last_clone_at);
+            ",
+        );
 
         Ok(())
     }
@@ -3222,6 +3269,11 @@ impl GapStore {
         // the backfill to YAML-says-done means we never accidentally
         // re-open a gap or erase a hand-set state.
         let status_backfilled = self.backfill_status_done_from_yaml(repo_root)?;
+        // MISSION-033: auto-upsert repos rows for every external_repo:* tag
+        // found in the gaps we just processed. Idempotent: INSERT OR IGNORE
+        // preserves existing rows (last_scan_at etc. are never overwritten here).
+        // Malformed tags (no '/' separator) are skipped with an ambient event.
+        let _ = self.upsert_repos_from_skills(&file.gaps);
         Ok((inserted, skipped, backfilled + status_backfilled))
     }
 
@@ -4157,6 +4209,200 @@ impl GapStore {
                 .filter(|g| g.outcome_id.as_deref() == Some(outcome_id))
                 .collect()
         })
+    }
+}
+
+// ────────── repos table (MISSION-033) ──────────
+
+impl GapStore {
+    /// Parse one row from the repos table.
+    fn row_to_repo(row: &rusqlite::Row<'_>) -> rusqlite::Result<RepoRow> {
+        Ok(RepoRow {
+            id: row.get(0)?,
+            owner: row.get(1)?,
+            name: row.get(2)?,
+            added_at: row.get(3)?,
+            last_scan_at: row.get(4)?,
+            last_clone_at: row.get(5)?,
+            last_ship_at: row.get(6)?,
+            cascade_tier: row.get(7)?,
+            status: row.get(8)?,
+        })
+    }
+
+    /// Emit a `repo_import_skipped` event to `.chump-locks/ambient.jsonl`.
+    fn emit_repo_import_skipped(&self, value: &str, reason: &str) {
+        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+        let ts = unix_to_iso_full(unix_now());
+        let safe_val = value.replace('"', "\\\"");
+        let line = format!(
+            "{{\"ts\":\"{ts}\",\"kind\":\"repo_import_skipped\",\
+             \"value\":\"{safe_val}\",\"reason\":\"{reason}\"}}\n"
+        );
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&amb)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
+    /// MISSION-033: scan a list of YamlGap rows and INSERT OR IGNORE one
+    /// repos row per distinct `external_repo:<owner>/<repo>` tag found in
+    /// `skills_required`. Idempotent — existing rows are never overwritten.
+    /// Malformed tags (no '/' separator) are silently skipped and a
+    /// `kind=repo_import_skipped` event is emitted to ambient.jsonl.
+    pub(crate) fn upsert_repos_from_skills(&self, gaps: &[YamlGap]) -> Result<usize> {
+        let now = unix_now();
+        let mut inserted = 0usize;
+        let mut seen = std::collections::HashSet::new();
+
+        for g in gaps {
+            let skills = match &g.skills_required {
+                Some(v) => {
+                    let s = yaml_value_to_string(v);
+                    if s.is_empty() {
+                        continue;
+                    }
+                    s
+                }
+                None => continue,
+            };
+            for tag in skills.split(',') {
+                let tag = tag.trim();
+                if !tag.starts_with("external_repo:") {
+                    continue;
+                }
+                let owner_repo = &tag["external_repo:".len()..];
+                if seen.contains(owner_repo) {
+                    continue;
+                }
+                let Some(slash) = owner_repo.find('/') else {
+                    // Malformed — no '/' separator. Skip + emit ambient event.
+                    self.emit_repo_import_skipped(owner_repo, "no_slash");
+                    continue;
+                };
+                let owner = &owner_repo[..slash];
+                let name = &owner_repo[slash + 1..];
+                if owner.is_empty() || name.is_empty() {
+                    self.emit_repo_import_skipped(owner_repo, "empty_component");
+                    continue;
+                }
+                let changed = self.conn.execute(
+                    "INSERT OR IGNORE INTO repos(id,owner,name,added_at,cascade_tier,status)
+                     VALUES(?1,?2,?3,?4,'dogfood','active')",
+                    params![owner_repo, owner, name, now],
+                )?;
+                if changed > 0 {
+                    inserted += 1;
+                }
+                seen.insert(owner_repo.to_string());
+            }
+        }
+        Ok(inserted)
+    }
+
+    /// List repos, optionally filtered by status.
+    pub fn list_repos(&self, status_filter: Option<&str>) -> Result<Vec<RepoRow>> {
+        let sql = if status_filter.is_some() {
+            "SELECT id,owner,name,added_at,last_scan_at,last_clone_at,last_ship_at,\
+             cascade_tier,status FROM repos WHERE status=?1 ORDER BY id"
+        } else {
+            "SELECT id,owner,name,added_at,last_scan_at,last_clone_at,last_ship_at,\
+             cascade_tier,status FROM repos ORDER BY id"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = if let Some(s) = status_filter {
+            stmt.query_map(params![s], Self::row_to_repo)?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_map([], Self::row_to_repo)?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(rows)
+    }
+
+    /// Fetch one repo by id ("owner/repo"). Returns None if not found.
+    pub fn get_repo(&self, id: &str) -> Result<Option<RepoRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id,owner,name,added_at,last_scan_at,last_clone_at,last_ship_at,\
+             cascade_tier,status FROM repos WHERE id=?1",
+        )?;
+        stmt.query_row(params![id], Self::row_to_repo)
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Insert a new repo row. Returns error if the id already exists.
+    /// For idempotent upsert from gap import, use upsert_repos_from_skills.
+    pub fn add_repo(
+        &self,
+        id: &str,
+        owner: &str,
+        name: &str,
+        cascade_tier: &str,
+        status: &str,
+    ) -> Result<()> {
+        let now = unix_now();
+        self.conn.execute(
+            "INSERT INTO repos(id,owner,name,added_at,cascade_tier,status)
+             VALUES(?1,?2,?3,?4,?5,?6)",
+            params![id, owner, name, now, cascade_tier, status],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a repo row. Does NOT touch any gaps. Errors if not found.
+    pub fn remove_repo(&self, id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute("DELETE FROM repos WHERE id=?1", params![id])?;
+        Ok(n > 0)
+    }
+
+    /// Update one or more nullable fields on a repo row.
+    /// All parameters are Option — only Some values are applied.
+    /// Returns false if the repo id was not found.
+    pub fn set_repo_fields(
+        &self,
+        id: &str,
+        cascade_tier: Option<&str>,
+        status: Option<&str>,
+        last_scan_at: Option<i64>,
+        last_clone_at: Option<i64>,
+        last_ship_at: Option<i64>,
+    ) -> Result<bool> {
+        let existing = match self.get_repo(id)? {
+            Some(r) => r,
+            None => return Ok(false),
+        };
+        let tier = cascade_tier.unwrap_or(&existing.cascade_tier);
+        let st = status.unwrap_or(&existing.status);
+        let scan = last_scan_at.or(existing.last_scan_at);
+        let clone = last_clone_at.or(existing.last_clone_at);
+        let ship = last_ship_at.or(existing.last_ship_at);
+        self.conn.execute(
+            "UPDATE repos SET cascade_tier=?1,status=?2,last_scan_at=?3,\
+             last_clone_at=?4,last_ship_at=?5 WHERE id=?6",
+            params![tier, st, scan, clone, ship, id],
+        )?;
+        Ok(true)
+    }
+
+    /// Count gaps linked to a repo via `external_repo:<id>` tag in skills_required.
+    pub fn repo_gap_count(&self, repo_id: &str) -> Result<i64> {
+        // skills_required is a CSV; search with LIKE for the tag pattern.
+        // Two forms: tag at start, in middle, or at end of CSV.
+        let pattern = format!("%external_repo:{}%", repo_id);
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM gaps WHERE skills_required LIKE ?1",
+                params![pattern],
+                |r| r.get(0),
+            )
+            .map_err(Into::into)
     }
 }
 

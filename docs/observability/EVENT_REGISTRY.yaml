@@ -7965,3 +7965,18 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, repos, reaped, kept_count, freed_gb, budget_gb, max_age_d, dry_run]
     status: stable
+
+  # ── MISSION-033: repos table auto-import (Phase-B Tier-1 of MISSION-032) ────
+
+  - kind: repo_import_skipped
+    effect_metric: zero_waste
+    emitter: crates/chump-gap-store/src/lib.rs (MISSION-033, upsert_repos_from_skills)
+    # scanner-anchor: "kind":"repo_import_skipped"
+    trigger: >
+      Emitted during `chump gap import` when an `external_repo:` tag in a
+      gap's skills_required is malformed (missing '/' separator or empty
+      owner/name component). The bad value is logged so operators can fix
+      the source gap YAML. Does NOT abort the import.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, value, reason]
+    status: stable
