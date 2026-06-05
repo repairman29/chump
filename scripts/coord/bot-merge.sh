@@ -1336,6 +1336,10 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# INFRA-2744: lease_session_from_statedb — resolve a gap's claim session from the
+# canonical state.db leases table (interactive `chump claim` writes no JSON sidecar).
+# shellcheck source=../lib/lease.sh
+source "$(dirname "$0")/../lib/lease.sh"
 # shellcheck source=lib/github.sh
 # INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
 source "$(dirname "$0")/lib/github.sh"
@@ -1453,6 +1457,19 @@ except Exception:
             fi
         done
     done
+    # INFRA-2744: JSON lock files are legacy — interactive `chump claim` writes
+    # the lease to state.db only. Fall back to the canonical leases table so we
+    # recognize the operator's own claim (else bot-merge re-claim refuses it).
+    if [[ -z "${CHUMP_SESSION_ID:-}" ]]; then
+        for _gid in "${GAP_IDS[@]}"; do
+            _sess="$(lease_session_from_statedb "$_gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+            if [[ -n "$_sess" ]]; then
+                export CHUMP_SESSION_ID="$_sess"
+                info "INFRA-2744: resolved session ID from state.db lease: $CHUMP_SESSION_ID"
+                break
+            fi
+        done
+    fi
 fi
 
 # INFRA-919: release lease on any exit so the gap can be re-claimed after a
@@ -2020,10 +2037,20 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                             break
                         fi
                     done
+                    # INFRA-2744: JSON lock files are legacy; interactive `chump
+                    # claim` writes the lease to the canonical state.db only. Fall
+                    # back to it so we recognize the operator's own claim.
+                    if [[ -z "$_existing_claim_session" ]]; then
+                        _existing_claim_session="$(lease_session_from_statedb "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+                    fi
                     if [[ -n "${CHUMP_SESSION_ID:-}" && "$_existing_claim_session" == "$CHUMP_SESSION_ID" ]]; then
-                        # Same session — safe to force-recover.
-                        info "META-156 AC#2: re-claim failure (same session_id=$CHUMP_SESSION_ID) — retrying with --force-recover"
-                        chump claim "$gid" $_claim_extra --force-recover 2>/dev/null || true
+                        # Same session — the existing worktree + (committed,
+                        # possibly-unpushed) branch are already OURS. INFRA-2744:
+                        # do NOT `chump claim --force-recover` here — it removes the
+                        # worktree dir + local branch, destroying committed-but-
+                        # unpushed work. The claim is already ours; no-op and reuse
+                        # the existing worktree + branch for the ship steps.
+                        info "INFRA-2744: re-claim no-op — gap $gid already held by our session ($CHUMP_SESSION_ID); reusing existing worktree + branch"
                     else
                         red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
                         red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
