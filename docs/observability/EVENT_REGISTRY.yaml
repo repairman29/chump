@@ -7934,6 +7934,34 @@ events:
     fields_required: [ts, kind, path, template, build_ok]
     status: stable
 
+  # ── MISSION-038: onboard-scout-scheduler (Phase-B Tier-1 of MISSION-032 scale) ─
+
+  - kind: onboard_scan_scheduled
+    effect_metric: effective
+    emitter: scripts/ops/onboard-scout-scheduler.sh (MISSION-038)
+    # scanner-anchor: "kind":"onboard_scan_scheduled"
+    trigger: >
+      Emitted once per repo each time the onboard-scout-scheduler selects a stale
+      repo (last_scan_at < CHUMP_ONBOARD_SCHED_STALE_DAYS ago or never scanned,
+      status='active') and invokes `chump onboard <owner/repo>`. Emitted in both
+      dry_run=1 and dry_run=0 modes so the operator can audit scheduled throughput.
+    consumers: [ops-audit, fleet-brief, ambient-glance]
+    fields_required: [ts, kind, repo, dry_run]
+    status: stable
+
+  - kind: onboard_scan_batch_complete
+    effect_metric: effective
+    emitter: scripts/ops/onboard-scout-scheduler.sh (MISSION-038)
+    # scanner-anchor: "kind":"onboard_scan_batch_complete"
+    trigger: >
+      Emitted once at the end of every scheduler tick (even when scheduled=0,
+      for liveness signal). Summarises the batch: how many repos were scheduled,
+      how many were skipped due to active leases, how many errored, and the
+      rate/stale tunables in effect.
+    consumers: [ops-audit, fleet-brief, ambient-glance]
+    fields_required: [ts, kind, scheduled, skipped_lease, errors, dry_run, rate_per_hr, stale_days]
+    status: stable
+
   # ── MISSION-036: external-scan-reaper (Phase-B Tier-1 of MISSION-032 scale) ─
 
   - kind: external_scan_reaped
