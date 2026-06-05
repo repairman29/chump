@@ -6235,14 +6235,19 @@ events:
 
   - kind: worktree_reaped
     effect_metric: resilient
-    emitter: scripts/ops/stale-worktree-reaper.sh (INFRA-2020)
+    emitter: scripts/ops/stale-worktree-reaper.sh (INFRA-2020, INFRA-2339)
     trigger: >
-      Emitted when stale-worktree-reaper removes a /tmp/chump-* worktree that
-      met all reap criteria (idle past threshold + no active lease + branch
-      pushed-or-deletable). Includes source tag distinguishing operator-manual
-      worktrees from agent-created ones for audit differentiation.
+      Emitted when stale-worktree-reaper removes a worktree that met all reap
+      criteria (idle past threshold + no active lease + branch pushed-or-deletable).
+      Includes source tag distinguishing operator-manual worktrees from
+      agent-created ones for audit differentiation.
+      INFRA-2339 adds scan_source field distinguishing how the worktree was
+      discovered: git-list (any /tmp/* git-registered worktree regardless of name),
+      tmp_chump (existing /tmp/chump-* glob), rescue-pattern (standalone /tmp/ dir
+      matching infra-NNN-*, ship-NNN, fix-*, *-rescue, *-fix patterns), or
+      tmp-age (standalone /tmp/ dir matched by age alone).
     consumers: [ops-audit]
-    fields_required: [ts, kind, source, branch, dry_run]
+    fields_required: [ts, kind, source, scan_source, branch, dry_run]
   - kind: wizard_dispatch_cooldown
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step4 (INFRA-2051)
