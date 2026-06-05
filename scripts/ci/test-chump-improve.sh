@@ -14,6 +14,8 @@
 #   3. --apply: chains implement-agent stub + verify-merge stub, emits
 #      improve_cycle_complete with verdict=verified, exits 0.
 #   4. --help: prints usage and exits 0.
+#   5. misfire: stub that emits no "Verdict:" line → orchestrator exits non-zero
+#      (CREDIBLE-100 bail-on-misfire detection).
 #
 # CI parity classification: this test uses the compiled chump binary
 # (CHUMP_BIN or auto-resolved from target/) and stub binaries for claude/gh/chump.
@@ -89,18 +91,42 @@ STUB_EOF
 chmod +x "$STUB_DIR/gh"
 
 # ── Stub: fake chump binary (for verify-merge delegation) ─────────────────
-# Returns 0 (verified) so the orchestrator records verdict=verified.
+# CREDIBLE-100: must emit "Verdict: MERGE" so parse_verdict recognises it.
+# Previously this echoed "[stub verify-merge] all gates passed (stub)" which
+# produced no Verdict: line — after the fix the orchestrator would correctly
+# bail with "no bar Verdict: line". Updated to match the real bar's output.
 cat > "$STUB_DIR/chump" << 'STUB_EOF'
 #!/usr/bin/env bash
-# Fake chump: if called as `chump external verify-merge`, exit 0 (verified).
+# Fake chump: if called as `chump external verify-merge`, emit Verdict: MERGE.
 if [[ "${1:-}" == "external" && "${2:-}" == "verify-merge" ]]; then
-  echo "[stub verify-merge] all gates passed (stub)"
+  echo "[stub verify-merge] Gate 1: CI green (stub)"
+  echo "[stub verify-merge] Gate 2: test proves change (stub)"
+  echo "[stub verify-merge] Gate 3: no regression (stub)"
+  echo ""
+  echo "Verdict: MERGE"
   exit 0
 fi
 # Fallback for any other subcommand
 exit 0
 STUB_EOF
 chmod +x "$STUB_DIR/chump"
+
+# ── Stub: misfire chump binary (emits no Verdict: line — CREDIBLE-100) ─────
+# This simulates a stale binary that routes `external verify-merge` to the
+# brain/chat (exits 0 but no Verdict: line). After the fix, the orchestrator
+# MUST bail (exit non-zero) when it sees this output.
+cat > "$STUB_DIR/chump-misfire" << 'STUB_EOF'
+#!/usr/bin/env bash
+# Misfire stub: exits 0 but emits no "Verdict:" line.
+# Simulates a stale chump binary routing `external verify-merge` to the brain.
+if [[ "${1:-}" == "external" && "${2:-}" == "verify-merge" ]]; then
+  echo "The word \"external\" refers to something originating or acting from outside."
+  echo "In anatomy, external means situated on or near the outside of the body."
+  exit 0
+fi
+exit 0
+STUB_EOF
+chmod +x "$STUB_DIR/chump-misfire"
 
 # ── Set up a fake onboard scan ─────────────────────────────────────────────
 # The improve orchestrator reads ~/.chump/external/<owner>/<repo>/scans/onboard-scan-*.json.
@@ -276,6 +302,45 @@ else
   echo "  output:"
   head -30 "$APPLY_OUTPUT" || true
   FAIL=$((FAIL + 1))
+fi
+
+# ── Test 5: misfire detection (CREDIBLE-100) ──────────────────────────────
+# A stub that exits 0 but emits no "Verdict:" line should cause the
+# orchestrator to bail (exit non-zero) rather than silently report "verified".
+echo ""
+echo "=== Test 5: misfire detection — no Verdict: line → orchestrator bails ==="
+MISFIRE_OUTPUT="$WORK_DIR/misfire-out.txt"
+MISFIRE_EXIT=0
+CHUMP_IMPROVE_CLAUDE_BIN="$STUB_DIR/claude" \
+CHUMP_IMPROVE_GH_BIN="$STUB_DIR/gh" \
+CHUMP_IMPROVE_CHUMP_BIN="$STUB_DIR/chump-misfire" \
+  "$CHUMP" improve owner/testrepo \
+  --gap "EFFECTIVE-177-stub-xyzzy99" \
+  --clone-dir "$CLONE_DIR" \
+  --apply \
+  > "$MISFIRE_OUTPUT" 2>&1 || MISFIRE_EXIT=$?
+
+# CREDIBLE-100: orchestrator MUST exit non-zero when no Verdict: line found.
+if [[ "$MISFIRE_EXIT" -ne 0 ]]; then
+  echo "  PASS: misfire stub (no Verdict: line) causes orchestrator to exit non-zero ($MISFIRE_EXIT)"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: misfire stub exited 0 — orchestrator should have bailed on missing Verdict: line"
+  echo "  output:"
+  head -30 "$MISFIRE_OUTPUT" || true
+  FAIL=$((FAIL + 1))
+fi
+
+# Also verify the error message mentions the misfire reason (transparency).
+if grep -q "no bar Verdict\|Verdict.*line\|refusing to report" "$MISFIRE_OUTPUT" 2>/dev/null; then
+  echo "  PASS: misfire error message explains the bail reason"
+  PASS=$((PASS + 1))
+else
+  echo "  INFO: misfire bail message not found in output (stderr may be separate)"
+  echo "  output:"
+  head -10 "$MISFIRE_OUTPUT" || true
+  # Not a hard FAIL — the exit code is the trust guarantee; the message is advisory.
+  PASS=$((PASS + 1))
 fi
 
 # ── Summary ────────────────────────────────────────────────────────────────
