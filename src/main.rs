@@ -2607,6 +2607,7 @@ async fn main() -> Result<()> {
                 }
             }
             // MISSION-030: `bootstrap` — seed canonical mission outcomes (idempotent).
+            // MISSION-039: also seeds 4 pillar outcomes (CREDIBLE/EFFECTIVE/RESILIENT/ZERO-WASTE).
             "bootstrap" => {
                 // Canonical outcomes per docs/MISSION.md and gap dispatch context.
                 // Each entry: (id, title, priority, dod)
@@ -2639,6 +2640,36 @@ async fn main() -> Result<()> {
                         "Demo 1: zero-to-first-PR on a blank repo; \
                          Demo 2: Chump takes over an existing repo; \
                          Demo 3: sustained autonomous throughput.",
+                    ),
+                    // MISSION-039: four pillar outcomes — one per quality pillar.
+                    (
+                        "CREDIBLE-000",
+                        "Credible: measurable, verifiable, trustworthy",
+                        "P1",
+                        "Every CREDIBLE-* gap traces to honest measurement (no proxy metrics, \
+                         no silent failures). Reality-check gate (CREDIBLE-090) is the keystone.",
+                    ),
+                    (
+                        "EFFECTIVE-000",
+                        "Effective: user-facing capability, real-world impact",
+                        "P1",
+                        "Every EFFECTIVE-* gap moves a user-visible surface forward \
+                         (CLI, PWA, docs that reach humans). META-067 demo outcomes are \
+                         canonical evidence.",
+                    ),
+                    (
+                        "RESILIENT-000",
+                        "Resilient: self-healing, no fragile single points of failure",
+                        "P1",
+                        "Every RESILIENT-* gap removes a halt-class or recovers from one. \
+                         Fleet recovers from any halt with no human terminal.",
+                    ),
+                    (
+                        "ZERO-WASTE-000",
+                        "Zero-waste: no idle agents, no duplicated work, no shelved capability",
+                        "P1",
+                        "Every ZERO-WASTE-* gap removes a waste class. \
+                         Substrate doesn't accumulate without being used.",
                     ),
                 ];
                 let mut created = 0usize;
@@ -2719,6 +2750,12 @@ async fn main() -> Result<()> {
                 //    → link to named outcome id if registered.
                 // 4. Title/description contains "BEAST" or "BEAST-MODE" → MISSION-010.
                 // 5. Title/description contains "META-067" → META-067.
+                // 6. MISSION-* prefix gap ids → MISSION-010 umbrella.
+                // 7. (MISSION-039) Domain-prefix → pillar outcome (only when registered):
+                //    CREDIBLE-* → CREDIBLE-000, EFFECTIVE-* → EFFECTIVE-000,
+                //    RESILIENT-* → RESILIENT-000, ZERO-/ZERO-WASTE-* → ZERO-WASTE-000.
+                // 8. (MISSION-039) INFRA-* / META-* → MISSION-010 (fleet infrastructure
+                //    and process gaps collectively implement the self-coordinating fleet).
                 // Default: skip (don't guess).
 
                 // Counters per outcome.
@@ -2796,6 +2833,41 @@ async fn main() -> Result<()> {
                     if assigned.is_none()
                         && id_uc.starts_with("MISSION-")
                         && outcome_ids.contains("MISSION-010")
+                    {
+                        assigned = Some("MISSION-010");
+                    }
+
+                    // Heuristic 7 (MISSION-039): domain-prefix → pillar outcome.
+                    // Only fires when the pillar outcome is registered (idempotent /
+                    // graceful fallback when bootstrap wasn't run yet).
+                    // OR-branches are written as separate ifs to avoid precedence bugs.
+                    if assigned.is_none() {
+                        if id_uc.starts_with("CREDIBLE-") && outcome_ids.contains("CREDIBLE-000") {
+                            assigned = Some("CREDIBLE-000");
+                        } else if id_uc.starts_with("EFFECTIVE-")
+                            && outcome_ids.contains("EFFECTIVE-000")
+                        {
+                            assigned = Some("EFFECTIVE-000");
+                        } else if id_uc.starts_with("RESILIENT-")
+                            && outcome_ids.contains("RESILIENT-000")
+                        {
+                            assigned = Some("RESILIENT-000");
+                        } else if (id_uc.starts_with("ZERO-WASTE-") || id_uc.starts_with("ZERO-"))
+                            && outcome_ids.contains("ZERO-WASTE-000")
+                        {
+                            assigned = Some("ZERO-WASTE-000");
+                        }
+                    }
+
+                    // Heuristic 8 (MISSION-039): INFRA-* and META-* → MISSION-010.
+                    // INFRA gaps are fleet infrastructure gaps; they collectively implement
+                    // the self-coordinating-fleet mission. META-* gaps are fleet PM/process
+                    // gaps that support mission coordination. Both route to MISSION-010
+                    // as the umbrella fleet-mission outcome.
+                    // Only fires when MISSION-010 is registered.
+                    if assigned.is_none()
+                        && outcome_ids.contains("MISSION-010")
+                        && (id_uc.starts_with("INFRA-") || id_uc.starts_with("META-"))
                     {
                         assigned = Some("MISSION-010");
                     }
@@ -2886,7 +2958,7 @@ async fn main() -> Result<()> {
                 println!("  show <outcome-id> [--json]");
                 println!("  link <gap-id> --outcome <outcome-id>");
                 println!("  unlink <gap-id>");
-                println!("  bootstrap   (seed canonical MISSION-010/012/032 + META-067)");
+                println!("  bootstrap   (seed 8 outcomes: MISSION-010/012/032 + META-067 + 4 pillar outcomes)");
                 println!("  backfill [--dry-run] [--apply]");
                 println!();
                 println!(
