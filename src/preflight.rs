@@ -613,6 +613,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // src/main.rs OR src/commands/bootstrap.rs OR crates/chump-handoff/src/contracts.rs.
         // Pure local, no network needed when --skip-arch-decision is honored.
         "scripts/ci/test-bootstrap-smoke.sh",
+        // INFRA-2275: external-repo plist installer smoke test. macOS-only;
+        // skips cleanly on Linux via [SKIP] exit 0 path. Runs when
+        // src/onboard.rs OR scripts/plists/com.chump.external-repo-loop.plist.template touched.
+        "scripts/ci/test-external-repo-plist-installer.sh",
     ];
     candidates
         .iter()
