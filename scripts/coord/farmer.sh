@@ -242,11 +242,50 @@ operator_page() {
 }
 
 # ── Mode 3: auth-death ─────────────────────────────────────────────────────────
+# RESILIENT-113 (durable-fix per docs/process/DURABLE_FIX_DOCTRINE.md):
+# Previously this checked only ~/.chump/oauth-token.json age. Shallow — never
+# validated whether the OPERATOR's auth path (api-key / oauth / auto per
+# CLAUDE.md §Auth modes) was actually working. Empirical 2026-06-05: operator
+# on CHUMP_AUTH_MODE=auto with ANTHROPIC_API_KEY in .env → fleet shipping
+# 8 PRs / 6 sibling claims / gh pr list responding → AUTH WAS FINE →
+# AUTH_DEAD fired ~1.1/min anyway (274 false positives in 4h). The durable
+# fix is to validate the chosen auth mode FIRST, only paging when there's
+# NO working auth path.
 check_auth() {
+    # ── Layer 1: API-key path (per CLAUDE.md §Auth modes) ────────────────
+    # Read ANTHROPIC_API_KEY from $REPO_ROOT/.env if not in env (launchd
+    # context doesn't auto-source .env). Safe-parse: grep+cut+sed, no eval.
+    local api_key="${ANTHROPIC_API_KEY:-}"
+    if [[ -z "$api_key" && -f "$REPO_ROOT/.env" ]]; then
+        api_key="$(grep -E '^ANTHROPIC_API_KEY=' "$REPO_ROOT/.env" 2>/dev/null \
+                  | head -1 | cut -d= -f2- \
+                  | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//')"
+    fi
+    local auth_mode="${CHUMP_AUTH_MODE:-auto}"
+
+    # scanner-anchor: "kind":"farmer_auth_ok"
+    # api-key mode + key present → AUTH OK, skip OAuth entirely.
+    if [[ "$auth_mode" == "api-key" && -n "$api_key" ]]; then
+        emit "farmer_auth_ok" "\"path\":\"api_key\",\"mode\":\"api-key\""
+        return
+    fi
+    # auto mode + key present → api-key is the preferred fallback; OAuth dormant.
+    if [[ "$auth_mode" == "auto" && -n "$api_key" ]]; then
+        emit "farmer_auth_ok" "\"path\":\"api_key\",\"mode\":\"auto\""
+        return
+    fi
+    # api-key mode + NO key → genuine misconfig; page (this IS halt-class).
+    if [[ "$auth_mode" == "api-key" && -z "$api_key" ]]; then
+        operator_page "AUTH_DEAD" "CHUMP_AUTH_MODE=api-key but ANTHROPIC_API_KEY unset"
+        emit "farmer_auth_dead" "\"reason\":\"api_key_mode_no_key\""
+        return
+    fi
+
+    # ── Layer 2: OAuth path (CHUMP_AUTH_MODE=oauth, or auto+no-api-key) ──
     local token_file="$HOME/.chump/oauth-token.json"
     [[ -f "$token_file" ]] || {
-        operator_page "AUTH_DEAD" "oauth-token.json absent"
-        emit "farmer_auth_dead" "\"reason\":\"token_file_absent\""
+        operator_page "AUTH_DEAD" "oauth-token.json absent (and no ANTHROPIC_API_KEY fallback)"
+        emit "farmer_auth_dead" "\"reason\":\"token_file_absent\",\"mode\":\"${auth_mode}\""
         return
     }
     local mtime now age
@@ -254,9 +293,9 @@ check_auth() {
     now="$(_now)"
     age=$(( now - mtime ))
     if [[ "$age" -gt "$OAUTH_MAX_AGE_S" ]]; then
-        log "oauth token is ${age}s old (max ${OAUTH_MAX_AGE_S}s) — paging operator"
-        operator_page "AUTH_DEAD" "oauth token ${age}s old"
-        emit "farmer_auth_dead" "\"token_age_s\":$age"
+        log "oauth token is ${age}s old (max ${OAUTH_MAX_AGE_S}s) — paging (no api-key fallback)"
+        operator_page "AUTH_DEAD" "oauth token ${age}s old, no ANTHROPIC_API_KEY fallback"
+        emit "farmer_auth_dead" "\"token_age_s\":$age,\"mode\":\"${auth_mode}\""
     fi
 }
 

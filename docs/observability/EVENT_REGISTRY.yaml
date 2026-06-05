@@ -8023,3 +8023,21 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, value, reason]
     status: stable
+
+  # ── RESILIENT-113: farmer.sh check_auth durable fix (API-key fallback) ────
+
+  - kind: farmer_auth_ok
+    effect_metric: resilient
+    emitter: scripts/coord/farmer.sh (RESILIENT-113)
+    # scanner-anchor: "kind":"farmer_auth_ok"
+    trigger: >
+      farmer.sh check_auth verified the operator's auth mode is satisfied:
+      either CHUMP_AUTH_MODE=api-key with ANTHROPIC_API_KEY present, or
+      CHUMP_AUTH_MODE=auto with ANTHROPIC_API_KEY present (the auto-mode
+      preference per CLAUDE.md §Auth modes). OAuth-token-file freshness
+      is irrelevant in these cases — no AUTH_DEAD page. Replaces the
+      pre-fix shallow check that paged ~1.1×/min for 17h+ on
+      operators using api-key auth (274 false positives in 4h, 2026-06-05).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, path, mode]
+    status: stable
