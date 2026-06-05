@@ -1019,3 +1019,9 @@ CHUMP_VERIFY_CI_POLL_SECS
 CHUMP_VERIFY_CI_WAIT_SECS
 # CHUMP_VERIFY_CI_ADVISORY_NAMES — comma-separated case-insensitive advisory (non-gating) check-name substrings, verify-merge Gate 1
 CHUMP_VERIFY_CI_ADVISORY_NAMES
+# CHUMP_VERIFY_DEPS_TIMEOUT_SECS — verify-merge deps install timeout in seconds (default 600); bounds npm ci / npm install duration (CREDIBLE-104)
+CHUMP_VERIFY_DEPS_TIMEOUT_SECS
+# CHUMP_NPM_BIN — override npm binary path for verify-merge (default: npm); used by tests
+CHUMP_NPM_BIN
+# CHUMP_NPX_BIN — override npx binary path for verify-merge (default: npx); used by tests
+CHUMP_NPX_BIN
