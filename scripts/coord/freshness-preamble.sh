@@ -174,3 +174,16 @@ case "$state" in
     CRITICAL_STALE) exit 2 ;;
     *)              exit 0 ;;  # defensive: should not be reachable
 esac
+
+# ── CREDIBLE-092: gap reconcile — self-heal merged-but-open gaps ───────────────
+# Run `chump gap reconcile` in the background after freshness classification so
+# local state.db stays in sync with origin/main after each merge cycle.  This is
+# a no-op when there is no drift (already-done gaps are skipped).  We run it
+# here because freshness-preamble is the lightest reliable session-start surface;
+# it already owns the `git fetch origin main` call we need.
+#
+# Env: CHUMP_FRESHNESS_SKIP_RECONCILE=1 to disable (e.g. offline, CI).
+if [[ "${CHUMP_FRESHNESS_SKIP_RECONCILE:-0}" != "1" ]] && command -v chump >/dev/null 2>&1; then
+    # Run silently in background; never block the session-start gate.
+    chump gap reconcile >/dev/null 2>&1 &
+fi

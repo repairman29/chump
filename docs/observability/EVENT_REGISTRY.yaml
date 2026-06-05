@@ -6409,6 +6409,17 @@ events:
     consumers: [ops-audit, fleet-doctor]
     fields_required: [ts, kind, gap, pr, reason]
 
+  - kind: gap_reconciled
+    effect_metric: effective
+    emitter: chump gap reconcile subcommand (CREDIBLE-092)
+    trigger: >
+      Emitted locally after `chump gap reconcile` flips one or more
+      open-but-merged gaps to done. The local reconcile heals the
+      drift that auto-flip-on-merge.yml cannot fix because CI has no
+      canonical state.db. Contains flipped_count and gap_ids array.
+    consumers: [ops-audit, fleet-brief, gap-status-check]
+    fields_required: [ts, kind, flipped_count, gap_ids, source]
+
   - kind: gap_backfill_flipped
     effect_metric: effective
     emitter: scripts/ops/backfill-shipped-gaps.sh (INFRA-2121)

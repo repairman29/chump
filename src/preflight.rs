@@ -850,6 +850,20 @@ pub fn run(argv: &[String]) -> i32 {
             ));
         }
 
+        // CREDIBLE-092: gap-reconcile regression test. Verifies that
+        // `chump gap reconcile` correctly flips open-but-merged gaps using
+        // a synthetic state.db + fake git repo (no network needed).
+        // Skip via CHUMP_PREFLIGHT_SKIP_RECONCILE=1.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_RECONCILE").as_deref() == Ok("1") {
+            eprintln!("[preflight] skipping gap-reconcile (CHUMP_PREFLIGHT_SKIP_RECONCILE=1)");
+        } else {
+            steps.push(step(
+                "gap-reconcile",
+                &["bash", "scripts/ci/test-gap-reconcile.sh"],
+                GateKind::Rust,
+            ));
+        }
+
         // INFRA-1790: markdown intra-doc-links audit (DOC-039). Catches
         // broken relative links in .md files modified by the current PR
         // (vs origin/main). The underlying script defaults to "changed"

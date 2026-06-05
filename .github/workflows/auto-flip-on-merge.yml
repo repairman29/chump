@@ -96,6 +96,24 @@ jobs:
             exit 1
           fi
 
+          # CREDIBLE-092: detect no-state.db early.
+          # CI checks out a fresh clone; .chump/state.db is local/gitignored
+          # and will never exist here. Detect this before calling gap ship so
+          # we emit gap_auto_flip_failed (honest signal) instead of silently
+          # succeeding on a no-op. The local `chump gap reconcile` command
+          # (also added by CREDIBLE-092) is the canonical fixer; this step
+          # remains for the YAML-mirror update only.
+          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          state_db="$PWD/.chump/state.db"
+          if [[ ! -f "$state_db" ]]; then
+            echo "[flip] ⚠ no canonical state.db at $state_db — CI has no local registry"
+            echo "[flip] gap_auto_flip_failed: the flip is a no-op in CI; use 'chump gap reconcile' locally"
+            printf '{"ts":"%s","kind":"gap_auto_flip_failed","gap":"%s","pr":%s,"reason":"no-state-db-in-ci"}\n' \
+                "$ts" "$GAP_ID" "$PR_NUMBER"
+            # Continue to YAML mirror update even without state.db — the
+            # docs/gaps/<ID>.yaml file CAN be updated from the checked-out tree.
+          fi
+
           # Capture pre-flip state for verification.
           pre_status=$("$chump_bin" gap show "$GAP_ID" 2>/dev/null | awk '/^  status:/ {print $2; exit}' || true)
           echo "[flip] $GAP_ID pre-status: ${pre_status:-(unknown)}"
@@ -104,7 +122,6 @@ jobs:
           # --update-yaml writes the per-file mirror at docs/gaps/<ID>.yaml.
           # --closed-pr stores the PR number for retrospective audit.
           # --bypass-stale-check: in CI we know main is fresh.
-          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           if CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
              "$chump_bin" gap ship "$GAP_ID" \
                 --closed-pr "$PR_NUMBER" \
