@@ -1,0 +1,12 @@
+- id: RESILIENT-108
+  domain: RESILIENT
+  title: "RESILIENT: chump improve RUN-robustness — implement_gap neutralizes a conflicting ANTHROPIC gateway when using OAUTH (auth from any context); dedup_check also checks OPEN PRs (gh pr list) not just merged commits (ZERO-WASTE-011)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "configure_claude_auth_env(&mut cmd) strips ANTHROPIC_API_KEY/AUTH_TOKEN/BASE_URL/CUSTOM_HEADERS from spawned Command when OAUTH token is available; asserted via Command::get_envs() in unit test (no process spawn required)"
+    - configure_claude_auth_env() returns false and does NOT strip gateway vars when no OAUTH token is found (env absent + token file missing); prevents stripping auth and leaving nothing
+    - "dedup_check() accepts gh_bin parameter and calls gh pr list --repo <owner/repo> --state open --search <key-terms>; a matching open PR title triggers DedupResult::Redundant with 'open PR' in the reason string"
+    - cargo fmt/clippy/test (improve module) all pass; scripts/ci/test-chump-improve.sh exits 0 with all 9 scenarios green
+
