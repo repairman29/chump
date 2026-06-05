@@ -143,24 +143,11 @@ fi
 
 # ── Safety guards ────────────────────────────────────────────────────────────
 
-# 1. Refuse if any cargo process is active
-if pgrep -x "cargo" > /dev/null 2>&1 || pgrep -f "rustc " > /dev/null 2>&1; then
-    echo "[cargo-target-reaper] ABORT: active cargo/rustc processes detected — run after build completes." >&2
-    exit 1
-fi
-
-# 2. Refuse if free disk < MIN_FREE_GB
-_free_kb=$(df -k "$REPO_ROOT" 2>/dev/null | awk 'NR==2{print $4}' || echo "9999999")
-_free_gb=$(( _free_kb / 1024 / 1024 ))
-if [[ $_free_gb -lt $MIN_FREE_GB ]]; then
-    echo "[cargo-target-reaper] ABORT: only ${_free_gb}GB free — less than minimum ${MIN_FREE_GB}GB." >&2
-    exit 1
-fi
-
-# INFRA-2188: 3. Disk-critical escalation — when free space below
-# CHUMP_DISK_CRITICAL_GB on $HOME, drop FINGERPRINT_AGE_D→1 and FLEET_AGE_D→2
-# so this run reaps aggressively. Operator can opt out with
-# CHUMP_DISK_CRITICAL_GB=0.
+# INFRA-2188 + ZERO-WASTE-012: compute the disk-critical AGGRESSIVE_MODE FIRST, so
+# the guards below can relax when disk is critical. Previously this ran AFTER the
+# guards — so on a continuously-building fleet at low disk, the blanket cargo-active
+# guard ALWAYS aborted and the aggressive mode never engaged → the reaper never ran
+# while the shared target grew unbounded → recurring disk_critical.
 AGGRESSIVE_MODE=0
 if [[ "$DISK_CRITICAL_GB" -gt 0 ]]; then
     _home_free_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo "9999999")
@@ -171,12 +158,34 @@ if [[ "$DISK_CRITICAL_GB" -gt 0 ]]; then
         FLEET_AGE_D=2
         echo "[cargo-target-reaper] disk-critical: ${_home_free_gb}GB free on \$HOME (< ${DISK_CRITICAL_GB}GB threshold) — escalating: FINGERPRINT_AGE_D=${FINGERPRINT_AGE_D} FLEET_AGE_D=${FLEET_AGE_D}"
         # INFRA-2188: emit ambient event so fleet observers can react.
-        # Use a temp path since AMBIENT_LOG is set just below.
         _agg_log="${REPO_ROOT}/.chump-locks/ambient.jsonl"
         printf '{"ts":"%s","kind":"cargo_reaper_aggressive_mode_engaged","free_gb":%d,"disk_critical_gb":%d,"fingerprint_age_d":%d,"fleet_age_d":%d}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_home_free_gb" "$DISK_CRITICAL_GB" \
             "$FINGERPRINT_AGE_D" "$FLEET_AGE_D" \
             >> "$_agg_log" 2>/dev/null || true
+    fi
+fi
+
+# 1. Refuse if any cargo process is active — NORMAL MODE ONLY (ZERO-WASTE-012).
+# In disk-critical aggressive mode the fleet is always building, so a blanket abort
+# means the reaper NEVER runs while disk fills. The per-target cargo-lock check
+# (later, per candidate) + age-based reaping (only stale artifacts an active build
+# does not reference) keep aggressive-mode reaping build-safe.
+if [[ $AGGRESSIVE_MODE -eq 0 ]] \
+   && { pgrep -x "cargo" > /dev/null 2>&1 || pgrep -f "rustc " > /dev/null 2>&1; }; then
+    echo "[cargo-target-reaper] ABORT: active cargo/rustc processes detected — run after build completes." >&2
+    exit 1
+fi
+
+# 2. Refuse if free disk < MIN_FREE_GB — NORMAL MODE ONLY (ZERO-WASTE-012).
+# When disk IS critical (aggressive mode), reaping is exactly what is needed;
+# aborting here is backwards for a disk reaper.
+if [[ $AGGRESSIVE_MODE -eq 0 ]]; then
+    _free_kb=$(df -k "$REPO_ROOT" 2>/dev/null | awk 'NR==2{print $4}' || echo "9999999")
+    _free_gb=$(( _free_kb / 1024 / 1024 ))
+    if [[ $_free_gb -lt $MIN_FREE_GB ]]; then
+        echo "[cargo-target-reaper] ABORT: only ${_free_gb}GB free — less than minimum ${MIN_FREE_GB}GB." >&2
+        exit 1
     fi
 fi
 

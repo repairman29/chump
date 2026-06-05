@@ -179,5 +179,34 @@ grep -q 'worktree_orphan_count' "$REAPER" \
     || fail "worktree_orphan_count not present in cargo_target_reaper_summary emit"
 pass "summary event includes worktree_orphan_count"
 
+# ── Test 10: ZERO-WASTE-012 — disk-critical aggressive mode bypasses the blanket
+#    cargo-active abort, so the reaper actually runs on a continuously-building fleet.
+#    (Runs the reaper in dry-run = default, so it never deletes during the test.) ──
+echo "--- Test 10: aggressive mode bypasses the blanket cargo-active abort (ZERO-WASTE-012) ---"
+# Spawn a fake process matching the reaper's `pgrep -f \"rustc \"` guard (argv0=\"rustc \").
+( exec -a "rustc " sleep 20 ) &
+_fake_rustc_pid=$!
+sleep 0.3
+if ! pgrep -f "rustc " >/dev/null 2>&1; then
+    kill "$_fake_rustc_pid" 2>/dev/null || true
+    echo "  SKIP (could not spawn a fake rustc matcher in this environment)"
+else
+    # Normal mode (disk healthy) + active build → MUST still abort.
+    out_normal="$(CHUMP_DISK_CRITICAL_GB=0 bash "$REAPER" 2>&1 || true)"
+    printf '%s' "$out_normal" | grep -q "ABORT: active cargo" \
+        && pass "normal mode still aborts on an active cargo/rustc process" \
+        || fail "normal mode did NOT abort on active rustc — the conservative guard was lost"
+    # Disk-critical aggressive mode + active build → must NOT abort; must escalate.
+    out_agg="$(CHUMP_DISK_CRITICAL_GB=999999 bash "$REAPER" 2>&1 || true)"
+    if printf '%s' "$out_agg" | grep -q "ABORT: active cargo"; then
+        fail "aggressive mode STILL aborts on active cargo — fix ineffective (the bug)"
+    elif printf '%s' "$out_agg" | grep -q "escalating"; then
+        pass "disk-critical aggressive mode bypasses the blanket cargo-active abort + escalates"
+    else
+        fail "aggressive mode neither aborted nor escalated — unexpected"
+    fi
+    kill "$_fake_rustc_pid" 2>/dev/null || true
+fi
+
 echo ""
 echo "All cargo-target-reaper tests passed."
