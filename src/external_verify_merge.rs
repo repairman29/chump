@@ -1,4 +1,4 @@
-//! CREDIBLE-096: `chump external verify-merge` — autonomous PR merge judge.
+//! CREDIBLE-096 / CREDIBLE-102: `chump external verify-merge` — autonomous PR merge judge.
 //!
 //! Trust keystone for Chump's "autonomously improve someone's repo, no human
 //! in the loop" mission. Decides whether a PR on an external repo meets the
@@ -6,8 +6,18 @@
 //!
 //! ## Gates (ALL must pass to merge)
 //!
-//! 1. **Repo CI green** — every check-run on the PR head SHA is SUCCESS.
-//!    Zero checks → HELD(no-gates): we refuse to merge without any signal.
+//! 1. **Repo CI green** — polls the PR head SHA's check-runs until ALL
+//!    non-advisory checks reach a **terminal** conclusion, then judges:
+//!    - All SUCCESS / SKIPPED / NEUTRAL → PASS.
+//!    - Any FAILURE / CANCELLED / TIMED_OUT / ACTION_REQUIRED → HELD(ci).
+//!    - Timeout (CHUMP_VERIFY_CI_WAIT_SECS, default 1200 s) with checks still
+//!      pending → HELD(ci_pending).
+//!    - Zero checks → HELD(no-gates): refuse to merge without any signal.
+//!
+//!    Polling interval: CHUMP_VERIFY_CI_POLL_SECS (default 30 s).
+//!    Advisory checks: CHUMP_VERIFY_CI_ADVISORY_NAMES (comma-separated
+//!    case-insensitive substrings). Matching checks are polled + logged but
+//!    NEVER gate the verdict — their pending/failure state cannot HELD.
 //!
 //! 2. **Anti-cosmetic test gate** — the PR diff MUST add or modify at least
 //!    one test file (heuristic: path contains `test` / `spec`, or file is
@@ -87,14 +97,14 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
     println!("[verify-merge] clone dir: {}", clone_dir.display());
 
     // ── Gate 1: Repo CI green ─────────────────────────────────────────────
-    println!("\n[verify-merge] Gate 1: Repo CI check-runs ...");
-    let ci_result = check_ci(&opts)?;
+    println!("\n[verify-merge] Gate 1: Repo CI check-runs (polling until terminal) ...");
+    let ci_result = poll_ci_until_terminal(&opts)?;
     match &ci_result {
         CiResult::Green {
             check_count,
             checks,
         } => {
-            println!("  PASS: {check_count} check-runs all SUCCESS");
+            println!("  PASS: {check_count} check-runs all terminal-green");
             for c in checks.iter().take(5) {
                 println!("    ✓ {c}");
             }
@@ -112,13 +122,25 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
         }
         CiResult::Red { failing } => {
             let reason = format!(
-                "CI red: {} check(s) not SUCCESS: {}",
+                "CI red: {} check(s) failed: {}",
                 failing.len(),
                 failing.join(", ")
             );
             println!("  FAIL: {reason}");
             emit_held(&opts, &reason);
             println!("\nVerdict: HELD(ci)");
+            println!("  {reason}");
+            return Ok(1);
+        }
+        CiResult::TimedOut { pending } => {
+            let reason = format!(
+                "CI timeout: {} check(s) still pending after wait cap: {}",
+                pending.len(),
+                pending.join(", ")
+            );
+            println!("  FAIL: {reason}");
+            emit_held(&opts, &reason);
+            println!("\nVerdict: HELD(ci_pending)");
             println!("  {reason}");
             return Ok(1);
         }
@@ -360,6 +382,10 @@ enum CiResult {
     Red {
         failing: Vec<String>,
     },
+    /// Timed out waiting for checks to reach terminal state.
+    TimedOut {
+        pending: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -419,9 +445,111 @@ fn resolve_clone_dir(opts: &Opts) -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
-/// Invoke `gh pr view <pr> --repo <repo> --json statusCheckRollup`.
-/// Returns the list of check names (all SUCCESS) or the failing ones.
-fn check_ci(opts: &Opts) -> anyhow::Result<CiResult> {
+// ── Terminal-state constants ───────────────────────────────────────────────
+// A check-run conclusion is terminal when it is one of these values (GitHub docs).
+// QUEUED / IN_PROGRESS / null-conclusion are non-terminal (still running).
+const TERMINAL_CONCLUSIONS: &[&str] = &[
+    "success",
+    "failure",
+    "cancelled",
+    "timed_out",
+    "action_required",
+    "skipped",
+    "neutral",
+    "stale",
+];
+// These terminal conclusions are treated as a non-blocking pass.
+const PASS_CONCLUSIONS: &[&str] = &["success", "skipped", "neutral"];
+// These terminal conclusions are hard failures.
+const FAIL_CONCLUSIONS: &[&str] = &["failure", "cancelled", "timed_out", "action_required"];
+
+/// Parse a single check entry from statusCheckRollup JSON.
+/// Returns `(name, is_advisory, is_terminal, is_pass, is_fail)`.
+fn classify_check(check: &serde_json::Value, advisory_substrings: &[String]) -> CheckInfo {
+    let name = check
+        .get("name")
+        .or_else(|| check.get("context"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unnamed)")
+        .to_string();
+
+    let conclusion = check
+        .get("conclusion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let state = check
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let status = check
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    // Commit-status uses `state`; check-run uses `conclusion`.
+    // Terminal = conclusion is one of TERMINAL_CONCLUSIONS, OR state is a
+    // commit-status terminal value (success/failure/error).
+    let effective_conclusion = if !conclusion.is_empty() {
+        conclusion.clone()
+    } else {
+        // commit status: state = success | failure | error | pending
+        match state.as_str() {
+            "success" => "success".to_string(),
+            "failure" | "error" => "failure".to_string(),
+            _ => String::new(),
+        }
+    };
+
+    let is_terminal = TERMINAL_CONCLUSIONS.contains(&effective_conclusion.as_str())
+        // commit-status pending → not terminal
+        || (!effective_conclusion.is_empty()
+            && effective_conclusion != "pending"
+            && !status.eq("in_progress")
+            && !status.eq("queued")
+            && !status.eq("requested")
+            && !state.eq("pending"));
+
+    // Also treat as non-terminal when status shows still running.
+    let is_still_running = status == "in_progress"
+        || status == "queued"
+        || status == "requested"
+        || state == "pending";
+
+    let is_terminal = is_terminal && !is_still_running;
+
+    let is_pass = PASS_CONCLUSIONS.contains(&effective_conclusion.as_str()) || state == "success";
+
+    let is_fail = FAIL_CONCLUSIONS.contains(&effective_conclusion.as_str())
+        || state == "failure"
+        || state == "error";
+
+    let name_lower = name.to_ascii_lowercase();
+    let is_advisory = advisory_substrings
+        .iter()
+        .any(|sub| name_lower.contains(sub.as_str()));
+
+    CheckInfo {
+        name,
+        is_advisory,
+        is_terminal,
+        is_pass,
+        is_fail,
+    }
+}
+
+struct CheckInfo {
+    name: String,
+    is_advisory: bool,
+    is_terminal: bool,
+    is_pass: bool,
+    is_fail: bool,
+}
+
+/// Fetch check-runs once via `gh pr view --json statusCheckRollup`.
+fn fetch_check_runs(opts: &Opts) -> anyhow::Result<Vec<serde_json::Value>> {
     let output = Command::new(&opts.gh_bin)
         .args([
             "pr",
@@ -439,64 +567,115 @@ fn check_ci(opts: &Opts) -> anyhow::Result<CiResult> {
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| anyhow::anyhow!("failed to parse gh json: {e}\nraw: {stdout}"))?;
 
-    let checks = json
+    Ok(json
         .get("statusCheckRollup")
         .and_then(|v| v.as_array())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_default())
+}
 
-    if checks.is_empty() {
-        return Ok(CiResult::NoGates);
-    }
+/// Poll the PR's check-runs until ALL non-advisory checks are terminal,
+/// then judge the result. Implements the CREDIBLE-102 wait-before-judge logic.
+///
+/// Tuning env vars:
+///   CHUMP_VERIFY_CI_POLL_SECS  — polling interval in seconds (default 30)
+///   CHUMP_VERIFY_CI_WAIT_SECS  — maximum wait in seconds (default 1200 = 20 min)
+///   CHUMP_VERIFY_CI_ADVISORY_NAMES — comma-separated case-insensitive name
+///                                      substrings; matching checks are non-gating
+fn poll_ci_until_terminal(opts: &Opts) -> anyhow::Result<CiResult> {
+    let poll_secs: u64 = std::env::var("CHUMP_VERIFY_CI_POLL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+    let wait_secs: u64 = std::env::var("CHUMP_VERIFY_CI_WAIT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1200);
 
-    let mut passing = vec![];
-    let mut failing = vec![];
+    // Parse advisory substrings (lowercase for case-insensitive matching).
+    let advisory_substrings: Vec<String> = std::env::var("CHUMP_VERIFY_CI_ADVISORY_NAMES")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
 
-    for check in &checks {
-        let name = check
-            .get("name")
-            .or_else(|| check.get("context"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("(unnamed)")
-            .to_string();
-        // Both check-runs and commit statuses land here.
-        // check-run: status=COMPLETED, conclusion=SUCCESS
-        // commit status: state=SUCCESS
-        let conclusion = check
-            .get("conclusion")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let state = check.get("state").and_then(|v| v.as_str()).unwrap_or("");
-        let status = check.get("status").and_then(|v| v.as_str()).unwrap_or("");
-        // A check is green if conclusion=SUCCESS OR state=SUCCESS.
-        let is_success = conclusion.eq_ignore_ascii_case("success")
-            || state.eq_ignore_ascii_case("success")
-            // Neutral/skipped are OK (they're intentional opt-outs).
-            || conclusion.eq_ignore_ascii_case("neutral")
-            || conclusion.eq_ignore_ascii_case("skipped")
-            || state.eq_ignore_ascii_case("neutral");
-        // In-progress checks: status=IN_PROGRESS or QUEUED — treat as not-green.
-        let is_pending = status.eq_ignore_ascii_case("in_progress")
-            || status.eq_ignore_ascii_case("queued")
-            || status.eq_ignore_ascii_case("requested")
-            || state.eq_ignore_ascii_case("pending");
+    let started_at = std::time::Instant::now();
 
-        if is_success {
-            passing.push(name);
-        } else if is_pending {
-            failing.push(format!("{name} (pending)"));
-        } else {
-            failing.push(name);
+    loop {
+        let checks = fetch_check_runs(opts)?;
+
+        if checks.is_empty() {
+            return Ok(CiResult::NoGates);
         }
-    }
 
-    if failing.is_empty() {
-        Ok(CiResult::Green {
-            check_count: passing.len(),
-            checks: passing,
-        })
-    } else {
-        Ok(CiResult::Red { failing })
+        let infos: Vec<CheckInfo> = checks
+            .iter()
+            .map(|c| classify_check(c, &advisory_substrings))
+            .collect();
+
+        // Partition into required vs advisory.
+        let required: Vec<&CheckInfo> = infos.iter().filter(|i| !i.is_advisory).collect();
+        let advisory: Vec<&CheckInfo> = infos.iter().filter(|i| i.is_advisory).collect();
+
+        // Log advisory check state (informational, never gates).
+        for a in &advisory {
+            if !a.is_terminal {
+                println!("  [advisory] {} — still pending (non-gating)", a.name);
+            } else if a.is_fail {
+                println!(
+                    "  [advisory] {} — failed (non-gating, advisory check)",
+                    a.name
+                );
+            }
+        }
+
+        // Check if all required checks are terminal.
+        let pending_required: Vec<&str> = required
+            .iter()
+            .filter(|i| !i.is_terminal)
+            .map(|i| i.name.as_str())
+            .collect();
+
+        if pending_required.is_empty() {
+            // All required checks are terminal — judge now.
+            let failing: Vec<String> = required
+                .iter()
+                .filter(|i| i.is_fail)
+                .map(|i| i.name.clone())
+                .collect();
+
+            if failing.is_empty() {
+                let passing: Vec<String> = required.iter().map(|i| i.name.clone()).collect();
+                return Ok(CiResult::Green {
+                    check_count: passing.len(),
+                    checks: passing,
+                });
+            } else {
+                return Ok(CiResult::Red { failing });
+            }
+        }
+
+        // Not all terminal yet — check timeout.
+        let elapsed = started_at.elapsed().as_secs();
+        if elapsed >= wait_secs {
+            return Ok(CiResult::TimedOut {
+                pending: pending_required.iter().map(|s| s.to_string()).collect(),
+            });
+        }
+
+        // Progress report and sleep.
+        println!(
+            "[verify-merge] Gate 1: waiting for CI — {} pending ({}), elapsed {}s / cap {}s",
+            pending_required.len(),
+            pending_required.join(", "),
+            elapsed,
+            wait_secs,
+        );
+
+        if poll_secs > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(poll_secs));
+        }
     }
 }
 
@@ -930,5 +1109,257 @@ fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
             .append(true)
             .open(&ambient)
             .and_then(|mut f| writeln!(f, "{line}"));
+    }
+}
+
+// ── Unit tests (CREDIBLE-102) ─────────────────────────────────────────────
+//
+// Each test injects a fake `gh` binary (written to a tmpdir and referenced via
+// CHUMP_GH_BIN) that reads a counter file to decide which canned response to
+// return, advancing the counter on every invocation.  CHUMP_VERIFY_CI_POLL_SECS=0
+// makes the polling loop instant.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Build a minimal Opts with a custom gh_bin and PR=1 on owner/test-repo.
+    fn make_opts(gh_bin: &str) -> Opts {
+        Opts {
+            pr: 1,
+            repo: "owner/test-repo".into(),
+            gap: "CREDIBLE-102".into(),
+            clone_dir: None,
+            apply: false,
+            gh_bin: gh_bin.to_string(),
+        }
+    }
+
+    /// Write a shell script to `dir/gh` and make it executable.
+    /// Returns the path to the script.
+    fn write_fake_gh(dir: &std::path::Path, script_body: &str) -> String {
+        let bin = dir.join("gh");
+        let content = format!("#!/usr/bin/env bash\n{script_body}\n");
+        fs::write(&bin, content).expect("write fake gh");
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).expect("chmod fake gh");
+        bin.to_string_lossy().into_owned()
+    }
+
+    /// Build a fake gh script that uses a counter file to cycle through
+    /// `responses`.  Each call to gh (when the args contain "statusCheckRollup")
+    /// increments the counter and returns the corresponding JSON.
+    /// Other calls (baseRefOid, merge, etc.) return a safe stub.
+    fn fake_gh_with_responses(dir: &std::path::Path, responses: &[&str]) -> String {
+        let counter_file = dir.join("call_counter");
+        fs::write(&counter_file, "0").expect("write counter");
+
+        // Embed responses as a bash array.
+        let responses_bash: Vec<String> = responses
+            .iter()
+            .map(|r| format!("'{}'", r.replace('\'', "'\\''")))
+            .collect();
+        let array_literal = responses_bash.join(" ");
+        let counter_path = counter_file.to_string_lossy().into_owned();
+
+        let script = format!(
+            r#"
+RESPONSES=({array_literal})
+COUNT_FILE='{counter_path}'
+COUNT=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+ARGS="$*"
+if echo "$ARGS" | grep -q "statusCheckRollup"; then
+    IDX=$COUNT
+    if [ "$IDX" -ge "${{#RESPONSES[@]}}" ]; then
+        IDX=$(( ${{#RESPONSES[@]}} - 1 ))
+    fi
+    echo "${{RESPONSES[$IDX]}}"
+    echo $(( COUNT + 1 )) > "$COUNT_FILE"
+elif echo "$ARGS" | grep -q "baseRefOid"; then
+    echo '{{"baseRefOid":"aabbcc112233","headRefOid":"ddeeff445566"}}'
+else
+    echo '{{}}'
+fi
+"#
+        );
+        write_fake_gh(dir, &script)
+    }
+
+    // ── (a) pending → pending → SUCCESS: Gate 1 PASS ─────────────────────
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_wait_pending_then_success() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let pending_json =
+            r#"{"statusCheckRollup":[{"name":"CI","status":"IN_PROGRESS","conclusion":null}]}"#;
+        let success_json =
+            r#"{"statusCheckRollup":[{"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"}]}"#;
+
+        let gh_bin =
+            fake_gh_with_responses(tmp.path(), &[pending_json, pending_json, success_json]);
+
+        // POLL_SECS=0 for instant polling; WAIT_SECS large enough to not time out.
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        // Redirect ambient writes.
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Green { check_count, .. } => {
+                assert_eq!(check_count, 1, "expected 1 check to be green");
+            }
+            other => panic!(
+                "expected CiResult::Green, got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Red { .. } => "Red",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Green { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    // ── (b) pending → FAILURE: Gate 1 HELD(ci) ───────────────────────────
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_wait_pending_then_failure() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let pending_json =
+            r#"{"statusCheckRollup":[{"name":"tests","status":"IN_PROGRESS","conclusion":null}]}"#;
+        let failure_json = r#"{"statusCheckRollup":[{"name":"tests","status":"COMPLETED","conclusion":"FAILURE"}]}"#;
+
+        let gh_bin = fake_gh_with_responses(tmp.path(), &[pending_json, failure_json]);
+
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Red { failing } => {
+                assert!(
+                    failing.iter().any(|f| f.contains("tests")),
+                    "expected 'tests' in failing list, got {:?}",
+                    failing
+                );
+            }
+            other => panic!(
+                "expected CiResult::Red, got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Green { .. } => "Green",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Red { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    // ── (c) stays pending past wait cap: HELD(ci_pending) ─────────────────
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_wait_timeout() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let pending_json =
+            r#"{"statusCheckRollup":[{"name":"slow-job","status":"QUEUED","conclusion":null}]}"#;
+
+        // Only ever returns pending — will time out immediately since WAIT_SECS=0.
+        let gh_bin = fake_gh_with_responses(tmp.path(), &[pending_json]);
+
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        // WAIT_SECS=0 means the elapsed check fires on the first pending poll.
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "0");
+        std::env::remove_var("CHUMP_VERIFY_CI_ADVISORY_NAMES");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::TimedOut { pending } => {
+                assert!(
+                    pending.iter().any(|p| p.contains("slow-job")),
+                    "expected 'slow-job' in pending list, got {:?}",
+                    pending
+                );
+            }
+            other => panic!(
+                "expected CiResult::TimedOut, got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Green { .. } => "Green",
+                    CiResult::Red { .. } => "Red",
+                    CiResult::TimedOut { .. } => unreachable!(),
+                }
+            ),
+        }
+    }
+
+    // ── (d) required SUCCESS + advisory pending: Gate 1 PASS ─────────────
+    #[test]
+    #[serial_test::serial]
+    fn test_ci_advisory_pending_does_not_gate() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        // required CI check SUCCESS, advisory "vercel" check still pending.
+        let mixed_json = r#"{"statusCheckRollup":[
+            {"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"},
+            {"name":"Vercel Preview","status":"IN_PROGRESS","conclusion":null}
+        ]}"#;
+
+        let gh_bin = fake_gh_with_responses(tmp.path(), &[mixed_json]);
+
+        std::env::set_var("CHUMP_VERIFY_CI_POLL_SECS", "0");
+        std::env::set_var("CHUMP_VERIFY_CI_WAIT_SECS", "3600");
+        // Mark "vercel" as advisory (case-insensitive substring match).
+        std::env::set_var("CHUMP_VERIFY_CI_ADVISORY_NAMES", "vercel");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let opts = make_opts(&gh_bin);
+        let result = poll_ci_until_terminal(&opts).expect("poll_ci");
+
+        match result {
+            CiResult::Green {
+                check_count,
+                checks,
+            } => {
+                // Only the non-advisory "CI" check should appear in the passing list.
+                assert_eq!(check_count, 1, "expected 1 required check (CI)");
+                assert!(
+                    checks.iter().any(|c| c == "CI"),
+                    "expected 'CI' in passing list, got {:?}",
+                    checks
+                );
+            }
+            other => panic!(
+                "expected CiResult::Green (advisory pending should not gate), got: {}",
+                match other {
+                    CiResult::NoGates => "NoGates",
+                    CiResult::Red { .. } => "Red",
+                    CiResult::TimedOut { .. } => "TimedOut",
+                    CiResult::Green { .. } => unreachable!(),
+                }
+            ),
+        }
     }
 }

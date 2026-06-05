@@ -1013,3 +1013,9 @@ CHUMP_FEEDBACK_LOG
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_DISK_CRITICAL_GB
+# CHUMP_VERIFY_CI_POLL_SECS — verify-merge Gate 1 CI poll interval, seconds (default 30)
+CHUMP_VERIFY_CI_POLL_SECS
+# CHUMP_VERIFY_CI_WAIT_SECS — verify-merge Gate 1 max wait for CI terminal state, seconds (default 1200)
+CHUMP_VERIFY_CI_WAIT_SECS
+# CHUMP_VERIFY_CI_ADVISORY_NAMES — comma-separated case-insensitive advisory (non-gating) check-name substrings, verify-merge Gate 1
+CHUMP_VERIFY_CI_ADVISORY_NAMES
