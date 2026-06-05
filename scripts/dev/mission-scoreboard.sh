@@ -6,9 +6,26 @@
 # No state mutation. Safe to run anytime. Exit 0 = HANDS-OFF/ON-TRACK,
 # exit 1 = DRIFTING/STALLED (so a conductor loop can gate on $?).
 #
+# Modes:
+#   (default)     single-repo view focused on BEAST (the proof)
+#   --per-repo    per-repo block for every row in `chump repos list` + aggregate
+#   --aggregate   aggregate-only rollup (no per-repo blocks)
+#
 # Follow-up: port to `chump kpi mission` (Rust) once metrics stabilize.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" 2>/dev/null || true
+
+MODE="default"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --per-repo)  MODE="per-repo"; shift ;;
+        --aggregate) MODE="aggregate"; shift ;;
+        -h|--help)
+            sed -n '2,15p' "$0"
+            exit 0 ;;
+        *) echo "[mission-scoreboard] unknown flag: $1" >&2; exit 2 ;;
+    esac
+done
 
 BEAST="repairman29/BEAST-MODE"
 ACTIVE_MISSION="$(cat "$HOME/.chump/ACTIVE_MISSION" 2>/dev/null || echo MISSION-010)"
@@ -20,10 +37,146 @@ iso_to_epoch() { date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date
 
 wk="$(days_ago 7)"; day="$(days_ago 1)"
 
+# MISSION-037: per-repo block. Prints ①/②/③ for one repo.
+# Args: $1 = owner/repo
+score_one_repo() {
+    local repo="$1"
+    local beast_ships ratio_str="n/a" linked_count=0 last_ship_age="?"
+
+    # ① binary: zero-touch ship this week (we don't differentiate touched vs zero-touch
+    # at the per-repo grain — just "did Chump merge anything there?")
+    beast_ships=$(gh pr list -R "$repo" --state merged --search "merged:>=$wk" --json number --jq 'length' 2>/dev/null)
+    beast_ships="${beast_ships:-0}"
+
+    # ② mission-link rate for THIS repo (count gaps tagged for this repo)
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
+        linked_count=$(sqlite3 .chump/state.db \
+            "SELECT COUNT(*) FROM gaps WHERE skills_required LIKE '%external_repo:${repo}%' AND status='open';" \
+            2>/dev/null || echo 0)
+    fi
+
+    # ④ last-merge age in this repo (in days, to keep output tight)
+    local last_merge_iso
+    last_merge_iso=$(gh pr list -R "$repo" --state merged --limit 1 --json mergedAt --jq '.[0].mergedAt' 2>/dev/null)
+    if [[ -n "$last_merge_iso" ]]; then
+        local last_ep age_days
+        last_ep=$(iso_to_epoch "$last_merge_iso")
+        age_days=$(( (now - last_ep) / 86400 ))
+        last_ship_age="${age_days}d"
+    fi
+
+    printf "  %-35s  ships(7d)=%-3s  open_gaps_tagged=%-3s  last_ship=%s\n" \
+        "$repo" "$beast_ships" "$linked_count" "$last_ship_age"
+
+    # Return aggregate state via stdout-only-channel? Use external accumulators.
+    AGG_SHIPS_WK=$((AGG_SHIPS_WK + beast_ships))
+    AGG_TAGGED=$((AGG_TAGGED + linked_count))
+    if [[ "$beast_ships" -gt 0 ]]; then
+        AGG_REPOS_SHIPPED_WK=$((AGG_REPOS_SHIPPED_WK + 1))
+    fi
+}
+
+# Enumerate tracked repos. Returns owner/repo per line, or empty if unavailable.
+list_tracked_repos() {
+    if command -v chump >/dev/null 2>&1; then
+        # chump repos list --json gives well-shaped output; fall back to raw column scan
+        chump repos list --json 2>/dev/null \
+            | python3 -c "
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+    if isinstance(rows, list):
+        for r in rows:
+            rid = r.get('id') if isinstance(r, dict) else None
+            if rid: print(rid)
+except Exception:
+    pass
+" 2>/dev/null
+    fi
+    # Fallback: direct SQL (works even if CLI subcommand not wired in old binary)
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
+        sqlite3 .chump/state.db "SELECT id FROM repos WHERE status='active';" 2>/dev/null
+    fi
+}
+
 echo "═══ CHUMP MISSION SCOREBOARD ═══  $(date -u +%Y-%m-%dT%H:%MZ)"
 echo "Mission: $ACTIVE_MISSION — zero-human-touch software delivery; proof: $BEAST 0→1"
 echo "(read-only; see docs/MISSION.md)"
 echo
+
+# ── MISSION-037: per-repo + aggregate rollup ─────────────────────────────────
+# When --per-repo or --aggregate, scoreboard rolls up across every active repo
+# (from `chump repos list`, the MISSION-033 derived index) instead of focusing
+# solely on BEAST. Exits 0 when at least one repo has shipped this week AND
+# tagged-gap coverage is non-zero across the fleet; exits 1 otherwise.
+if [[ "$MODE" == "per-repo" || "$MODE" == "aggregate" ]]; then
+    AGG_SHIPS_WK=0
+    AGG_TAGGED=0
+    AGG_REPOS_SHIPPED_WK=0
+    AGG_REPO_COUNT=0
+
+    # Pre-flight: enumerate. Always include BEAST as the canonical repo even
+    # if the repos table is empty (today's reality before MISSION-041 backfill
+    # flows through gap import).
+    repo_list_tmp="$(list_tracked_repos 2>/dev/null || true)"
+    if [[ -z "$repo_list_tmp" ]]; then
+        repo_list_tmp="$BEAST"
+        echo "(no repos in registry — falling back to BEAST canonical: $BEAST)"
+        echo
+    fi
+
+    if [[ "$MODE" == "per-repo" ]]; then
+        echo "═══ PER-REPO ═══"
+        while IFS= read -r r; do
+            [[ -z "$r" ]] && continue
+            AGG_REPO_COUNT=$((AGG_REPO_COUNT + 1))
+            score_one_repo "$r"
+        done <<< "$repo_list_tmp"
+        echo
+    else
+        # aggregate-only: still iterate but suppress per-repo output by redirecting
+        # the printf inside score_one_repo. Cheaper: just count + sum directly.
+        while IFS= read -r r; do
+            [[ -z "$r" ]] && continue
+            AGG_REPO_COUNT=$((AGG_REPO_COUNT + 1))
+            ships_q=$(gh pr list -R "$r" --state merged --search "merged:>=$wk" --json number --jq 'length' 2>/dev/null)
+            ships_q="${ships_q:-0}"
+            AGG_SHIPS_WK=$((AGG_SHIPS_WK + ships_q))
+            if [[ "$ships_q" -gt 0 ]]; then
+                AGG_REPOS_SHIPPED_WK=$((AGG_REPOS_SHIPPED_WK + 1))
+            fi
+            if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
+                tagged_q=$(sqlite3 .chump/state.db \
+                    "SELECT COUNT(*) FROM gaps WHERE skills_required LIKE '%external_repo:${r}%' AND status='open';" \
+                    2>/dev/null || echo 0)
+                AGG_TAGGED=$((AGG_TAGGED + tagged_q))
+            fi
+        done <<< "$repo_list_tmp"
+    fi
+
+    echo "═══ AGGREGATE (across $AGG_REPO_COUNT tracked repos) ═══"
+    if [[ "$AGG_REPO_COUNT" -gt 0 ]]; then
+        pct=$(( AGG_REPOS_SHIPPED_WK * 100 / AGG_REPO_COUNT ))
+    else
+        pct=0
+    fi
+    echo "  ① mission ratio (repo-coverage): $AGG_REPOS_SHIPPED_WK of $AGG_REPO_COUNT shipped this week (${pct}%)"
+    echo "  ② total ships across fleet (7d):  $AGG_SHIPS_WK"
+    echo "  ③ open gaps with external_repo: tag: $AGG_TAGGED"
+    echo
+
+    echo "═══ VERDICT ═══"
+    if [[ "$AGG_REPOS_SHIPPED_WK" -gt 0 && "$AGG_TAGGED" -gt 0 ]]; then
+        echo "  🟢 MISSION ACTIVE — $AGG_REPOS_SHIPPED_WK repo(s) shipping, $AGG_TAGGED open routable gaps. Watch BEAST for zero-touch."
+        exit 0
+    elif [[ "$AGG_REPOS_SHIPPED_WK" -gt 0 ]]; then
+        echo "  🟡 SHIPPING-BUT-UNROUTED — repos active, but $AGG_TAGGED gaps tagged for routing. Backfill external_repo: tags (MISSION-041)."
+        exit 1
+    else
+        echo "  🔴 NO REPO ACTIVITY — no tracked repo merged a PR this week. The mission isn't moving."
+        exit 1
+    fi
+fi
 
 # ── ① THE BINARY: zero-touch BEAST ship this week ───────────────────────────
 beast=$(gh pr list -R "$BEAST" --state merged --search "merged:>=$wk" --json number --jq 'length' 2>/dev/null)
