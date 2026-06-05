@@ -1,0 +1,34 @@
+- id: RESILIENT-096
+  domain: RESILIENT
+  title: "RESILIENT: reaper-instrumentation emits duplicate + note-less disk_critical events (no device-dedup; dir:/tmp hides APFS shared-container) → operator misreads true-positive as false-positive"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    False-positive-LOOKING (not strictly false) disk_critical events fired 2026-06-05T02:21:15Z (reaper=pr-blocked) and 02:24:13Z (reaper=lint-storm) — 4 events total at .chump-locks/ambient.jsonl.1 lines 66516-66517 and 66712-66713.
+    
+    EMITTER: scripts/lib/reaper-instrumentation.sh, reaper_check_disk_headroom() (~lines 149-189). NOT the canonical scripts/ops/disk-health-monitor.sh (which uses body=/level=/dir=/free_pct= and dedups by device).
+    
+    ROOT CAUSE — three defects in EMISSION, none in detection:
+    
+    (1) NO DEVICE-DEDUP -> DUPLICATE EVENTS. The function loops dirs=("/tmp" "$lock_dir") and emits one event per dir. On macOS both /tmp and ~/Projects/Chump/.chump-locks live on the SAME APFS Data volume (/dev/disk3s5). Verified: stat -f%d returns 16777234 for /, /tmp, .chump-locks AND /System/Volumes/Data; df -Ph /tmp and df -Ph .chump-locks both return the /dev/disk3s5 line. Result: 2 identical events (same free_pct) per reaper run. disk-health-monitor.sh has a SEEN_DEVS guard for exactly this; reaper-instrumentation lacks it.
+    
+    (2) EMPTY/MISSING note= FIELD. The event JSON carries event/kind/reaper/dir/free_pct/threshold_pct/ts/df but NO note=/body= human sentence (every other disk_critical emitter includes one). A reader cannot tell WHAT is full or what to free — which is exactly why these got misread as false positives.
+    
+    (3) MISLEADING dir= ON APFS. dir:"/tmp" implies a tiny temp partition is full. The embedded df field shows /dev/disk3s5 460Gi 419Gi 10Gi 98% /System/Volumes/Data — the 460GB Data volume / shared APFS container was genuinely at 98% (02:21, 10Gi free) then 99% (02:24, 8.2Gi free). These were TRUE positives at emit time.
+    
+    WHY IT LOOKED FALSE: the operator read df / (the read-only SYSTEM volume disk3s1s1: 11Gi used, 27%) and concluded fine. macOS APFS volume-vs-container trap — / and /System/Volumes/Data share ONE free pool (both Avail=31Gi). "11GB used on /" is the system volume footprint, NOT container free space. Container free = the Avail column (31Gi now ~7%; was 8-10Gi ~2% at emit).
+    
+    DOWNSTREAM IMPACT: scripts/dispatch/operator-recall.sh:370 counts disk_critical events in a 600s window to decide whether to PAGE the operator; the 2x-per-run duplication inflates that count, making a transient dip (that the reaper is already fixing) more likely to spuriously page. Cry-wolf erodes trust in a genuine disk_critical (cf. CREDIBLE-090 / 2026-06-04 auth-dead misdiagnosis).
+    
+    SCOPE: fix EMISSION only (dedup + note + honest fs label). The 5% threshold and the set of checked dirs are correct — do NOT change them.
+  acceptance_criteria:
+    - reaper_check_disk_headroom() in scripts/lib/reaper-instrumentation.sh dedups checked dirs by the df FILESYSTEM-SOURCE (first column of df -Ph, e.g. /dev/disk3s5) or mount-point (last column), NOT by stat -f%d (which on APFS returns the shared-container device and would wrongly conflate / with Data); given /tmp and the lock dir both resolve to /dev/disk3s5, exactly ONE disk_critical event is emitted per reaper run
+    - "the emitted disk_critical JSON includes a non-empty note field naming the real full filesystem + mount point (df col 1 + col NF) and free_pct, e.g. \"/dev/disk3s5 at /System/Volumes/Data is 2% free (shared APFS container; /tmp + repo live here)\", so the event is self-diagnosing without separately running df"
+    - the event distinguishes the logical dir checked (/tmp) from the actual filesystem under pressure (/dev/disk3s5 -> /System/Volumes/Data), so a reader is not misled that a small temp partition is full when it is the 460GB Data volume / shared container
+    - "a regression test (extend scripts/ci/test-disk-health-fixture.sh or add scripts/ci/test-reaper-instrumentation-disk.sh) drives reaper_check_disk_headroom with a stubbed df where two checked dirs map to one filesystem and asserts: exactly one disk_critical event, note non-empty, note references the real mount point"
+    - the macOS APFS volume-vs-container gotcha (df / shows the system volume small footprint while /System/Volumes/Data shares the same free pool) is documented in the function header comment and the disk section of docs/process/CLAUDE_GOTCHAS.md so the misread does not recur
+    - no change to CHUMP_DISK_CRITICAL_PCT (5%) or the set of directories checked — detection was correct; only emission/dedup/diagnosability is in scope
+  notes: |
+    Precedent: scripts/ops/disk-health-monitor.sh already solves both halves — SEEN_DEVS device-dedup (lines ~48-49 + 123-129) and a body= human sentence; port the pattern but key the dedup on df fs-source NOT stat -f%d (APFS-safe). Evidence events: .chump-locks/ambient.jsonl.1:66516-66517 and 66712-66713. Framing: detector credibility / cry-wolf (CREDIBLE-090, docs/process/REALITY_CHECK.md) — events were true-positive at emit time but undiagnosable, so the operator reasonably misread them as false-positive; the fix makes a disk alarm self-explaining. Sibling consumer that double-counts: scripts/dispatch/operator-recall.sh:370.
+
