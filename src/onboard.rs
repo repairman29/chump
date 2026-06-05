@@ -125,6 +125,18 @@ fn print_usage() {
 
 // ── Core logic ────────────────────────────────────────────────────────────
 
+/// Drive an async future to completion from *within* chump's `#[tokio::main]`
+/// runtime without nesting a new runtime (EFFECTIVE-133).
+///
+/// `onboard::run` is dispatched inside the multi-threaded Tokio runtime, so the
+/// old `Runtime::new().block_on(...)` panicked with "Cannot start a runtime from
+/// within a runtime". `block_in_place` parks the current worker thread as
+/// blocking and the existing `Handle` drives the future on the live runtime.
+/// Requires the multi-thread flavor (chump's `#[tokio::main]` default).
+fn block_on_in_runtime<F: std::future::Future>(fut: F) -> F::Output {
+    tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fut))
+}
+
 fn run_inner(args: &[String]) -> Result<()> {
     let opts = parse_args(args)?;
     let repo_url_or_path = opts.repo_url_or_path.trim().to_string();
@@ -279,12 +291,11 @@ fn run_inner(args: &[String]) -> Result<()> {
 
     eprintln!("chump onboard: calling provider cascade ({max_g} gaps requested)...");
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build tokio runtime")?;
-
-    let raw_text = rt.block_on(async {
+    // EFFECTIVE-133: `onboard::run` executes inside chump's `#[tokio::main]`
+    // (multi-thread) runtime, so a nested `Runtime::new().block_on(...)` here
+    // panicked with "Cannot start a runtime from within a runtime". Drive the
+    // async provider call on the EXISTING runtime via `block_on_in_runtime`.
+    let raw_text = block_on_in_runtime(async {
         let provider = crate::provider_cascade::build_provider();
         let messages = vec![axonerai::provider::Message {
             role: "user".into(),
@@ -1042,5 +1053,18 @@ mod tests {
         let candidates: Vec<(&'static str, String)> = Vec::new();
         let got = first_valid_token(&candidates, |_| Some(true));
         assert_eq!(got, None);
+    }
+
+    // EFFECTIVE-133: the onboard provider-cascade must drive its async LLM call
+    // on the EXISTING tokio runtime (block_on_in_runtime = block_in_place +
+    // Handle::current), NEVER a nested Runtime::new — which panicked with
+    // "Cannot start a runtime from within a runtime". Run the helper from inside
+    // a multi-thread runtime (chump's #[tokio::main] flavor) and assert no panic
+    // + correct value. No network: a trivial stand-in future exercises the same
+    // scheduling path the real cascade uses.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn block_on_in_runtime_no_nested_panic() {
+        let got = block_on_in_runtime(async { 40 + 2 });
+        assert_eq!(got, 42);
     }
 }
