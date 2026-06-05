@@ -61,9 +61,46 @@ _emit_ambient() {
 
 # scanner-anchor: "kind":"oauth_token_refreshed"
 # scanner-anchor: "kind":"oauth_token_refresh_failed"
+# scanner-anchor: "kind":"oauth_refresh_not_applicable"
 cmd_refresh_once() {
     local prev_age
     prev_age="$(_age_seconds "$TOKEN_FILE")"
+
+    # RESILIENT-115 (2026-06-05): if operator is on api-key auth, OAuth refresh
+    # is irrelevant — skip cleanly with an informational event, NOT a
+    # failure event. Pre-fix, this daemon spammed oauth_token_refresh_failed
+    # every 5 min for 17h+ on operators using ANTHROPIC_API_KEY, which
+    # farmer.sh tripped on as AUTH_DEAD (~1.1 false-positive pages/min).
+    # Two short-circuit conditions:
+    #   (1) CHUMP_AUTH_MODE explicitly api-key
+    #   (2) auto-mode + ANTHROPIC_API_KEY non-empty (the auto-mode preference)
+    # In either case the OAuth path is dormant by design; this daemon should
+    # honor that. Operator can force-run via CHUMP_OAUTH_FORCE_REFRESH=1.
+    #
+    # Launchd plists use `bash -lc` which sources login rc, but operator's
+    # `.env` isn't guaranteed to be auto-sourced. Read ANTHROPIC_API_KEY
+    # explicitly from $REPO_ROOT/.env if it's not already in env. Safe parse:
+    # match the exact key, strip quotes, do NOT eval arbitrary content.
+    if [[ -z "${ANTHROPIC_API_KEY:-}" && -f "$REPO_ROOT/.env" ]]; then
+        local _api_key
+        _api_key="$(grep -E '^ANTHROPIC_API_KEY=' "$REPO_ROOT/.env" 2>/dev/null \
+                  | head -1 | cut -d= -f2- \
+                  | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//')"
+        [[ -n "$_api_key" ]] && export ANTHROPIC_API_KEY="$_api_key"
+    fi
+    local auth_mode="${CHUMP_AUTH_MODE:-auto}"
+    if [[ "${CHUMP_OAUTH_FORCE_REFRESH:-0}" != "1" ]]; then
+        if [[ "$auth_mode" == "api-key" ]]; then
+            _emit_ambient "oauth_refresh_not_applicable" \
+                ",\"reason\":\"auth_mode_api_key\",\"prev_age_seconds\":${prev_age}"
+            return 0
+        fi
+        if [[ "$auth_mode" == "auto" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
+            _emit_ambient "oauth_refresh_not_applicable" \
+                ",\"reason\":\"auto_mode_with_api_key_present\",\"prev_age_seconds\":${prev_age}"
+            return 0
+        fi
+    fi
 
     # 1. Extract the credential blob from keychain
     local blob

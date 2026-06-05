@@ -8040,4 +8040,18 @@ events:
       operators using api-key auth (274 false positives in 4h, 2026-06-05).
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, path, mode]
+  # ── RESILIENT-115: oauth-token-refresh short-circuit on api-key auth ──────
+
+  - kind: oauth_refresh_not_applicable
+    effect_metric: resilient
+    emitter: scripts/coord/oauth-token-refresh.sh (RESILIENT-115)
+    # scanner-anchor: "kind":"oauth_refresh_not_applicable"
+    trigger: >
+      OAuth refresh daemon short-circuited because CHUMP_AUTH_MODE=api-key
+      OR auto-mode with ANTHROPIC_API_KEY non-empty. The OAuth path is dormant
+      by design on api-key auth; this event replaces the false-positive
+      oauth_token_refresh_failed spam (~1.1/min for 17h+ pre-fix on
+      operator's box, which drove farmer.sh AUTH_DEAD pages).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
