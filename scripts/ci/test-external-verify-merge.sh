@@ -27,7 +27,12 @@ export PATH="${TOOLCHAIN_BIN}:${HOME}/.cargo/bin:${PATH}"
 # Build the binary first (fail fast if it doesn't compile).
 echo "[test] building chump binary ..."
 cargo build --quiet --manifest-path "${REPO_ROOT}/Cargo.toml" 2>&1
-CHUMP_BIN="${REPO_ROOT}/target/debug/chump"
+# Resolve the REAL target dir. Both CI (CARGO_TARGET_DIR / sccache cache) and
+# linked worktrees (.cargo/config target-dir, INFRA-481) redirect it, so the
+# binary is NOT always under ${REPO_ROOT}/target. cargo metadata reports the
+# actual target_directory; fall back to the conventional path if it's empty.
+_target_dir="$(cargo metadata --no-deps --format-version 1 --manifest-path "${REPO_ROOT}/Cargo.toml" 2>/dev/null | jq -r '.target_directory // empty')"
+CHUMP_BIN="${_target_dir:-${REPO_ROOT}/target}/debug/chump"
 if [[ ! -x "${CHUMP_BIN}" ]]; then
   echo "FAIL: chump binary not found at ${CHUMP_BIN}" >&2
   exit 1
