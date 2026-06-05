@@ -7861,3 +7861,23 @@ events:
     fields_required: [ts, kind, reason]
     # payload: {reason: str}
     status: stable
+
+  # ── INFRA-2275: external-repo plist installer (BEAST overnight loop slice 1/3) ─
+
+  - kind: external_repo_scheduled
+    effect_metric: effective
+    emitter: src/onboard.rs (INFRA-2275)
+    # scanner-anchor: "kind":"external_repo_scheduled"
+    trigger: chump onboard --schedule loaded a per-repo launchd plist
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, plist_label]
+    status: stable
+
+  - kind: external_repo_unscheduled
+    effect_metric: effective
+    emitter: src/onboard.rs (INFRA-2275)
+    # scanner-anchor: "kind":"external_repo_unscheduled"
+    trigger: chump onboard --unschedule unloaded a per-repo launchd plist
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, reason]
+    status: stable

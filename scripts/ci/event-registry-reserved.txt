@@ -741,3 +741,10 @@ bootstrap_failed
 binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
 binary_auto_deploy_skipped  # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh when origin/main SHA matches last-deployed SHA (idempotent no-op path)
 binary_auto_deploy_failed   # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh on refresh script failure or missing script
+
+# INFRA-2275 — chump onboard --schedule/--unschedule emits via crate::ambient_emit::emit()
+# with Rust struct-init `kind: "X".to_string()` syntax (colon, not equals). Same pattern as
+# INFRA-2265/bootstrap above: the audit's Pattern 2 grep targets `kind = "X"` (equals form)
+# and misses these. Reserved until the regex is generalized. Real emit sites: src/onboard.rs.
+external_repo_scheduled
+external_repo_unscheduled

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  INFRA-2275: per-repo launchd plist for the BEAST-MODE overnight loop (slice 1/3).
+
+  Template variables filled by `chump onboard --schedule`:
+    {{LABEL}}      — com.chump.external-repo.<sanitized-path>
+    {{REPO_PATH}}  — absolute path to the external repo
+    {{CHUMP_BIN}}  — absolute path to the chump binary
+    {{LOG_OUT}}    — stdout log: /tmp/chump-external-repo-<sanitized>.out.log
+    {{LOG_ERR}}    — stderr log: /tmp/chump-external-repo-<sanitized>.err.log
+
+  NOTE: --iter-once (the worker loop body) is owned by INFRA-2276 (slice 2/3).
+  This plist will load and fire at 03:17 daily, but the worker is a no-op until
+  INFRA-2276 ships. INFRA-2277 (slice 3/3) adds observability + state + test coverage.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{{LABEL}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{CHUMP_BIN}}</string>
+    <string>onboard</string>
+    <string>--iter-once</string>
+    <string>{{REPO_PATH}}</string>
+  </array>
+  <!-- Fire once daily at 03:17. INFRA-2276 owns the --iter-once handler. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>17</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{{LOG_OUT}}</string>
+  <key>StandardErrorPath</key>
+  <string>{{LOG_ERR}}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
