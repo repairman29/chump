@@ -10,6 +10,10 @@
 # Scenario C: idempotency — running tick twice on the same resolved proposal
 #   → asserts consensus_result count stays at 1 (no double-emit)
 #
+# Scenario D (RESILIENT-062): a proposal + votes that live ONLY in the durable
+#   feedback.jsonl (NOT ambient.jsonl, simulating reaper-pruned ambient) are still
+#   seen + tallied → asserts consensus no longer ages out of the audit stream.
+#
 # Follows the fixture style of scripts/ci/test-chump-consensus-tally.sh.
 set -euo pipefail
 
@@ -30,8 +34,12 @@ PAST_DEADLINE="2026-06-01T00:00:00Z"
 
 _run_tick() {
     local ambient="$1"
+    # RESILIENT-062: optional 2nd arg = the durable feedback.jsonl the deliberator
+    # now scans for proposals/votes. Default to a nonexistent path so _consensus_src
+    # falls back to $ambient and the ambient-seeded scenarios (A/B/C) keep working.
+    local feedback="${2:-${ambient}.absent-feedback}"
     # tick exits 1 for "quiet" (nothing actionable) — absorb so set -e doesn't abort.
-    CHUMP_FLEET_RECV_SIDE_V0=1 CHUMP_AMBIENT_LOG="$ambient" \
+    CHUMP_FLEET_RECV_SIDE_V0=1 CHUMP_AMBIENT_LOG="$ambient" CHUMP_FEEDBACK_LOG="$feedback" \
         bash "$DELIBERATOR" tick 2>&1 || true
 }
 
@@ -221,5 +229,36 @@ fi
 
 echo "[test-deliberator-tick-emits] PASS — Scenario C (idempotency confirmed)"
 
+# ── Scenario D: RESILIENT-062 — proposal+votes in the DURABLE feedback.jsonl (NOT
+#    ambient) are still seen + tallied (consensus no longer ages out of pruned ambient) ──
 echo ""
-echo "[test-deliberator-tick-emits] ALL PASS — RESILIENT-061 AC #4 verified"
+echo "[test-deliberator-tick-emits] Scenario D: proposal only in feedback.jsonl → seen + resolved"
+AMBIENT_D="$TMPDIR_TEST/ambient-d.jsonl"
+FEEDBACK_D="$TMPDIR_TEST/feedback-d.jsonl"
+CORR_D="resilient-062-feedback-$$"
+# ambient deliberately lacks the proposal (simulates it reaped from the audit stream).
+printf '{"ts":"%s","event":"ALERT","kind":"unrelated_noise"}\n' "$NOW_TS" >> "$AMBIENT_D"
+printf '{"ts":"%s","event":"FEEDBACK","kind":"proposal","corr_id":"%s","subject":"feedback-only","deadline":"%s"}\n' \
+    "$NOW_TS" "$CORR_D" "$PAST_DEADLINE" >> "$FEEDBACK_D"
+for i in 1 2 3; do
+    printf '{"ts":"%s","event":"FEEDBACK","kind":"vote","corr_id":"%s","vote":1,"session":"d%d"}\n' \
+        "$NOW_TS" "$CORR_D" "$i" >> "$FEEDBACK_D"
+done
+if grep -q "$CORR_D" "$AMBIENT_D" 2>/dev/null; then
+    echo "FAIL [Scenario D]: corr_id leaked into the ambient fixture — test setup bug"; exit 1
+fi
+OUT_D="$(_run_tick "$AMBIENT_D" "$FEEDBACK_D")"
+echo "[test-deliberator-tick-emits] tick output (D): $OUT_D"
+assert_contains "verdict=PASSED" "$OUT_D" "Scenario D feedback.jsonl read"
+CR_D=0
+if grep -q '"kind":"consensus_result"' "$AMBIENT_D" 2>/dev/null \
+   && grep '"kind":"consensus_result"' "$AMBIENT_D" | grep -q "\"corr_id\":\"${CORR_D}\""; then
+    CR_D=1
+fi
+if [[ "$CR_D" -ne 1 ]]; then
+    echo "FAIL [Scenario D]: proposal living only in feedback.jsonl was NOT tallied (RESILIENT-062 regression)"; exit 1
+fi
+echo "[test-deliberator-tick-emits] PASS — Scenario D (durable feedback.jsonl scanned, not ambient-dependent)"
+
+echo ""
+echo "[test-deliberator-tick-emits] ALL PASS — RESILIENT-061 AC #4 + RESILIENT-062 verified"
