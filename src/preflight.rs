@@ -1189,6 +1189,18 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-mission-picker.sh"],
             GateKind::Scripts,
         ));
+
+        // MISSION-028: worker-picker mission-rank gate. Mirrors the audit.yml
+        // test-mission-picker-worker.sh step — verifies that the WORKER's
+        // picker (_pick_and_claim_gap.py, used by worker.sh) also surfaces
+        // P0-MISSION gaps before P0-substrate gaps and that the xs-effort
+        // gate exception works for sonnet workers. Same characteristics as
+        // the mission-picker gate above: pure-Python, <2s, no network.
+        steps.push(step(
+            "mission-picker-worker",
+            &["bash", "scripts/ci/test-mission-picker-worker.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
