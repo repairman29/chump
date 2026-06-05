@@ -139,6 +139,35 @@ if command -v jq >/dev/null 2>&1; then
     export PATH
 fi
 
+# ── INFRA-2744: state.db lease reader (lease_session_from_statedb) ────────────
+# The canonical lease store is the state.db `leases` table — interactive
+# `chump claim` writes the lease there ONLY (no .chump-locks/*.json sidecar).
+# Resolving "who holds gap X" must therefore fall back to state.db, else
+# bot-merge re-claim refuses the operator's own claim. Mirrors the live schema.
+if command -v sqlite3 >/dev/null 2>&1; then
+    SDB="$TMP/state.db"
+    sqlite3 "$SDB" "CREATE TABLE leases (session_id TEXT PRIMARY KEY, gap_id TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL); CREATE INDEX leases_gap ON leases(gap_id);"
+    sqlite3 "$SDB" "INSERT INTO leases (session_id, gap_id, worktree, expires_at) VALUES ('claim-infra-2744-test-99','INFRA-2744','/tmp/wt',9999999999);"
+    # Lease present in state.db + NO JSON sidecar -> resolves the session.
+    got="$(lease_session_from_statedb INFRA-2744 "$SDB")"
+    [[ "$got" == "claim-infra-2744-test-99" ]] \
+        && ok "lease_session_from_statedb resolves session from state.db (no JSON needed)" \
+        || fail "lease_session_from_statedb got='$got' (expected claim-infra-2744-test-99)"
+    # Absent gap -> empty (no false positive).
+    got="$(lease_session_from_statedb NOPE-0000 "$SDB")"
+    [[ -z "$got" ]] && ok "lease_session_from_statedb empty for absent gap" \
+        || fail "lease_session_from_statedb absent-gap got='$got' (expected empty)"
+    # SQL-unsafe gap id rejected before any query; table must survive.
+    got="$(lease_session_from_statedb "x'; DROP TABLE leases;--" "$SDB")"
+    [[ -z "$got" ]] && ok "lease_session_from_statedb rejects SQL-unsafe gap id" \
+        || fail "lease_session_from_statedb unsafe-id got='$got' (expected empty)"
+    sqlite3 "$SDB" "SELECT 1 FROM leases LIMIT 1;" >/dev/null 2>&1 \
+        && ok "leases table intact after unsafe gap id (no SQL injection)" \
+        || fail "leases table harmed by unsafe gap id (injection!)"
+else
+    ok "sqlite3 absent — skipping INFRA-2744 state.db lease reader tests"
+fi
+
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then
