@@ -7776,3 +7776,53 @@ events:
     fields_required: [ts, kind, gap_id, prior_run_id, replayed_steps]
     # payload: {gap_id: str, prior_run_id: int, replayed_steps: int}
     status: stable
+
+  # ── INFRA-2265: chump bootstrap net-new entrypoint ─────────────────────────
+
+  - kind: bootstrap_initiated
+    effect_metric: effective
+    emitter: src/commands/bootstrap.rs (INFRA-2265)
+    # scanner-anchor: "kind":"bootstrap_initiated"
+    trigger: >
+      `chump bootstrap <intent>` begins execution. Fires immediately after the
+      CLI args are parsed and before any filesystem mutation. Fields: intent
+      (the product intent string), target_dir (absolute path), session_id.
+      Absence of this event when bootstrap is expected indicates the CLI
+      was not reached (arg-parse failure or binary not in PATH).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, intent, target_dir, session_id]
+    # payload: {intent: str, target_dir: str, session_id: str}
+    status: stable
+
+  - kind: bootstrap_completed
+    effect_metric: effective
+    emitter: src/commands/bootstrap.rs (INFRA-2265)
+    # scanner-anchor: "kind":"bootstrap_completed"
+    trigger: >
+      `chump bootstrap <intent>` completed successfully: git repo initialized,
+      scaffold written, first commit made, and umbrella gap reserved. Fields:
+      intent, target_dir, gap_ids (comma-separated gap IDs reserved, may be
+      empty if gap reserve was not available), duration_ms, files_created
+      (comma-separated list of files written).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, intent, target_dir, gap_ids, duration_ms, files_created]
+    # payload: {intent: str, target_dir: str, gap_ids: str, duration_ms: int,
+    #           files_created: str}
+    status: stable
+
+  - kind: bootstrap_failed
+    effect_metric: effective
+    emitter: src/commands/bootstrap.rs (INFRA-2265)
+    # scanner-anchor: "kind":"bootstrap_failed"
+    trigger: >
+      `chump bootstrap <intent>` failed mid-flight. failure_class is one of:
+      arch_decision_timeout (LLM not wired, exit 2),
+      scaffolding_write_failed (filesystem error writing scaffold or README),
+      gap_reserve_failed (chump gap reserve returned non-zero),
+      git_init_failed (git init or first commit failed).
+      Best-effort cleanup of created files is attempted before this event fires.
+      Fields: failure_class, intent, target_dir.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, failure_class, intent, target_dir]
+    # payload: {failure_class: str, intent: str, target_dir: str}
+    status: stable

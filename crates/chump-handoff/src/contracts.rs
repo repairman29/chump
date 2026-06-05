@@ -1616,3 +1616,166 @@ mod tests {
         assert!(p.contains("Cadence"), "missing trigger_reason");
     }
 }
+
+// ── (INFRA-2265) ArchitectureDecisionContract ─────────────────────────────────
+
+/// Input to the arch-decision subagent: the product intent string + any
+/// constraints the parent already knows (e.g. team language, existing stack).
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchitectureDecisionInput {
+    /// One-sentence product intent (from `chump bootstrap <intent>`).
+    pub intent: String,
+    /// Optional free-form constraints (existing team language, infra, etc.).
+    /// Empty string means "no constraints".
+    pub constraints: String,
+}
+
+/// Output: the decided architecture for the new product.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ArchitectureDecisionOutput {
+    /// Primary language (e.g. `"rust"`, `"python"`, `"typescript"`).
+    pub language: String,
+    /// Framework or approach (e.g. `"axum"`, `"fastapi"`, `"minimal"`).
+    pub framework: String,
+    /// Test harness (e.g. `"cargo test"`, `"pytest"`, `"jest"`).
+    pub test_harness: String,
+    /// Core library dependencies to add at project creation time.
+    pub deps: Vec<String>,
+    /// Brief rationale for why this architecture fits the intent.
+    pub rationale: String,
+}
+
+impl Validate for ArchitectureDecisionOutput {
+    fn validate(&self) -> Result<(), ValidationError> {
+        if self.language.trim().is_empty() {
+            return Err(ValidationError::new(
+                "language cannot be empty — must specify a primary language (e.g. rust, python, typescript)",
+            ));
+        }
+        if self.framework.trim().is_empty() {
+            return Err(ValidationError::new("framework cannot be empty"));
+        }
+        if self.test_harness.trim().is_empty() {
+            return Err(ValidationError::new("test_harness cannot be empty"));
+        }
+        if self.rationale.trim().is_empty() {
+            return Err(ValidationError::new("rationale cannot be empty"));
+        }
+        Ok(())
+    }
+}
+
+/// Subagent decides the architecture for a new product given an intent string.
+///
+/// Use case: `chump bootstrap <intent>` (INFRA-2265) uses this contract to get a
+/// typed architecture decision before scaffolding the project. The parent uses the
+/// `language` field to choose between Cargo.toml / package.json / pyproject.toml.
+///
+/// When `--skip-arch-decision` is passed (for tests), the parent uses the
+/// default output directly without spawning a subagent under this contract.
+pub struct ArchitectureDecisionContract;
+
+impl HandoffContract for ArchitectureDecisionContract {
+    type Input = ArchitectureDecisionInput;
+    type Output = ArchitectureDecisionOutput;
+
+    fn name() -> &'static str {
+        "ArchitectureDecisionContract"
+    }
+
+    fn prompt(input: &Self::Input) -> String {
+        format!(
+            r#"You are deciding the technology architecture for a new product.
+
+Product intent: {intent}
+
+Constraints: {constraints}
+
+Choose the primary language, framework, test harness, and core dependencies that
+best fit this intent. Prefer well-tested, production-ready choices. For systems-level
+or performance-critical work, prefer Rust. For data/ML work, prefer Python.
+For web/API work with a small team, prefer TypeScript or Python.
+
+Emit a single fenced JSON block with this exact shape (no other JSON, no extra commentary outside the block):
+
+```json
+{{
+  "language": "rust" | "python" | "typescript" | ...,
+  "framework": "axum" | "fastapi" | "minimal" | ...,
+  "test_harness": "cargo test" | "pytest" | "jest" | ...,
+  "deps": ["dep1", "dep2", ...],
+  "rationale": "<2-3 sentence justification for why this architecture fits the intent>"
+}}
+```
+
+Rules:
+- `language` MUST be a single lowercase string (no version numbers).
+- `framework` SHOULD be a well-known framework for the chosen language; use `"minimal"` if none applies.
+- `deps` MAY be empty if no core libraries are needed at project creation.
+- `rationale` MUST explain why this architecture fits the stated intent specifically.
+"#,
+            intent = input.intent,
+            constraints = if input.constraints.is_empty() {
+                "none"
+            } else {
+                &input.constraints
+            }
+        )
+    }
+
+    fn model_tier() -> ModelTier {
+        // Architecture decisions benefit from Sonnet-level reasoning.
+        // Opus reserved for genuinely complex cross-pillar trade-offs.
+        ModelTier::Sonnet
+    }
+}
+
+#[cfg(test)]
+mod arch_decision_tests {
+    use super::*;
+    use crate::HandoffContract;
+
+    #[test]
+    fn arch_decision_validate_rejects_empty_language() {
+        let out = ArchitectureDecisionOutput {
+            language: String::new(),
+            framework: "minimal".to_string(),
+            test_harness: "cargo test".to_string(),
+            deps: vec![],
+            rationale: "some rationale".to_string(),
+        };
+        assert!(
+            out.validate().is_err(),
+            "empty language should fail validation"
+        );
+    }
+
+    #[test]
+    fn arch_decision_validate_accepts_valid_output() {
+        let out = ArchitectureDecisionOutput {
+            language: "rust".to_string(),
+            framework: "minimal".to_string(),
+            test_harness: "cargo test".to_string(),
+            deps: vec![],
+            rationale: "test fixture default".to_string(),
+        };
+        assert!(
+            out.validate().is_ok(),
+            "valid output should pass validation"
+        );
+    }
+
+    #[test]
+    fn arch_decision_prompt_contains_intent() {
+        let input = ArchitectureDecisionInput {
+            intent: "A CLI tool that syncs files across machines".to_string(),
+            constraints: String::new(),
+        };
+        let p = ArchitectureDecisionContract::prompt(&input);
+        assert!(
+            p.contains("A CLI tool that syncs files across machines"),
+            "intent missing from prompt"
+        );
+        assert!(p.contains("none"), "empty constraints should show 'none'");
+    }
+}

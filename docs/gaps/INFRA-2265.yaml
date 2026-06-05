@@ -1,0 +1,29 @@
+id: INFRA-2265
+domain: INFRA
+title: "EFFECTIVE: chump bootstrap <intent> — net-new product bootstrap entrypoint (META-067 third demo-able outcome, complements INFRA-1746 ingest)"
+status: open
+priority: P1
+effort: m
+opened_date: "2026-05-30"
+description: |
+  Filed 2026-05-30 from META-067 (three demo-able 2026 outcomes: net-new bootstrap is the
+  missing entrypoint). Substrate-layer primitive for empty-dir → first-commit + first umbrella
+  gap. Sister to INFRA-2267 (roadmap-from-vision) — INFRA-2265 owns the CLI surface + git init
+  + ArchitectureDecisionContract; INFRA-2267 owns the LLM vision→N-gaps pipeline.
+  INFRA-2265 calls INFRA-2267 when --with-roadmap flag is passed.
+acceptance_criteria:
+  - "chump bootstrap <intent> CLI subcommand in src/main.rs; accepts intent string positional arg, optional --dir <path> (default $PWD), --skip-arch-decision for tests, --with-roadmap (delegates to INFRA-2267 chump roadmap-from-vision for initial gap-filing)"
+  - "Bails non-zero with operator-readable error if target dir non-empty (excluding .git/, .gitignore, .DS_Store); does not mutate filesystem on bail"
+  - "On success: target dir contains initialized git repo, README.md whose first body line contains the verbatim intent string, scaffolding appropriate to architecture decision (Cargo.toml | package.json | pyproject.toml), and 1+ commit (scaffold + README)"
+  - "ArchitectureDecisionContract typed handoff defined in crates/chump-handoff/src/contracts.rs with Input/Output structs (language, framework, test_harness, deps[], rationale), serde derives, Validate impl that rejects empty language field, prompt() template baked"
+  - "Without --with-roadmap: files single umbrella gap via existing chump gap reserve machinery; description carries architecture decision as Rough shape: multiline block. With --with-roadmap: delegates roadmap generation to INFRA-2267, files N grouped gaps"
+  - "Emits kind=bootstrap_initiated at start (fields: intent, target_dir, session_id) and kind=bootstrap_completed at end (fields: intent, target_dir, gap_ids[], duration_ms, files_created); both registered in docs/observability/EVENT_REGISTRY.yaml with effect_metric set"
+  - "On any mid-flight failure: emits kind=bootstrap_failed with failure_class enum (arch_decision_timeout | scaffolding_write_failed | gap_reserve_failed | git_init_failed); target dir not left half-written (best-effort rollback OR explicit operator-cleanup-required message)"
+  - "Smoke test scripts/ci/test-bootstrap-smoke.sh: <90s, no network if --skip-arch-decision honored, asserts .git/ + README contains intent + Cargo.toml exists + state.db has new gap + ambient.jsonl has both bootstrap_* events"
+  - "chump preflight runs the smoke test under scope auto when src/main.rs OR crates/chump-handoff/src/contracts.rs is touched"
+  - "README.md and CLAUDE.md updated with 3-line example invocation; mention this is the SUBSTRATE-layer entrypoint (consumer surfaces own the founder-facing pitch lane)"
+depends_on: []
+notes: |
+  Substrate-layer entrypoint. Intentionally not a founder-facing surface — consumer products
+  built on Chump own that lane. INFRA-1746 (chump ingest) is the natural sibling — same shape,
+  different starting state.
