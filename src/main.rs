@@ -2337,10 +2337,15 @@ async fn main() -> Result<()> {
         }
     }
 
-    // MISSION-008: `chump outcome <sub>` — first-class Outcome object commands.
-    // chump outcome new --id X --title T [--priority P] [--definition-of-done D]
-    // chump outcome list [--json]
-    // chump outcome status <id> [--json]
+    // MISSION-008 / MISSION-030: `chump outcome <sub>` — first-class Outcome object commands.
+    // chump outcome new|create --id X --title T [--priority P] [--dod D]
+    // chump outcome list [--status open|done] [--json]
+    // chump outcome show <id> [--json]
+    // chump outcome status <id> [--json]   (alias for show)
+    // chump outcome link <GAP-ID> --outcome <OUTCOME-ID>
+    // chump outcome unlink <GAP-ID>
+    // chump outcome bootstrap              (seed canonical mission outcomes)
+    // chump outcome backfill [--dry-run] [--apply]
     // ADVISORY ONLY — outcome rollup never gates or blocks a child gap from closing.
     if args.get(1).map(String::as_str) == Some("outcome") {
         let sub = args.get(2).map(String::as_str).unwrap_or("help");
@@ -2363,15 +2368,19 @@ async fn main() -> Result<()> {
         match sub {
             "new" | "create" => {
                 let id = oflag("--id").unwrap_or_else(|| {
-                    eprintln!("Usage: chump outcome new --id X --title T [--priority P] [--definition-of-done D]");
+                    eprintln!("Usage: chump outcome new --id X --title T [--priority P] [--dod D]");
                     std::process::exit(2);
                 });
                 let title = oflag("--title").unwrap_or_else(|| {
                     eprintln!("chump outcome new: --title required");
                     std::process::exit(2);
                 });
-                let priority = oflag("--priority").unwrap_or_else(|| "P2".into());
-                let dod = oflag("--definition-of-done").unwrap_or_default();
+                let priority = oflag("--priority")
+                    .or_else(|| oflag("--p"))
+                    .unwrap_or_else(|| "P2".into());
+                let dod = oflag("--dod")
+                    .or_else(|| oflag("--definition-of-done"))
+                    .unwrap_or_default();
                 match store.create_outcome(&id, &title, &priority, &dod) {
                     Ok(()) => {
                         if json_out {
@@ -2392,17 +2401,42 @@ async fn main() -> Result<()> {
                 }
             }
             "list" => {
+                let status_filter = oflag("--status");
                 let outcomes = store.list_outcomes().unwrap_or_default();
+                let outcomes: Vec<_> = outcomes
+                    .into_iter()
+                    .filter(|o| {
+                        status_filter
+                            .as_deref()
+                            .map(|s| o.status == s)
+                            .unwrap_or(true)
+                    })
+                    .collect();
                 if json_out {
+                    // Build gap-count per outcome for richer output.
+                    let all_gaps = store.list(None).unwrap_or_default();
                     let items: Vec<String> = outcomes
                         .iter()
                         .map(|o| {
+                            let gap_count = all_gaps
+                                .iter()
+                                .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                                .count();
+                            let open_count = all_gaps
+                                .iter()
+                                .filter(|g| {
+                                    g.outcome_id.as_deref() == Some(o.id.as_str())
+                                        && g.status == "open"
+                                })
+                                .count();
                             format!(
-                                r#"{{"id":"{}","title":"{}","priority":"{}","status":"{}"}}"#,
+                                r#"{{"id":"{}","title":"{}","priority":"{}","status":"{}","gap_count":{},"open_count":{}}}"#,
                                 o.id,
                                 o.title.replace('"', "\\\""),
                                 o.priority,
-                                o.status
+                                o.status,
+                                gap_count,
+                                open_count,
                             )
                         })
                         .collect();
@@ -2410,24 +2444,47 @@ async fn main() -> Result<()> {
                 } else {
                     if outcomes.is_empty() {
                         println!(
-                            "(no outcomes registered — use `chump outcome new` to create one)"
+                            "(no outcomes registered — use `chump outcome bootstrap` or `chump outcome create`)"
                         );
                     }
+                    let all_gaps = store.list(None).unwrap_or_default();
                     for o in &outcomes {
-                        println!("{} [{}] {} — {}", o.id, o.priority, o.status, o.title);
+                        let gap_count = all_gaps
+                            .iter()
+                            .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                            .count();
+                        println!(
+                            "{} [{}] {} — {} ({} gaps)",
+                            o.id, o.priority, o.status, o.title, gap_count
+                        );
                     }
                 }
             }
-            "status" => {
+            // MISSION-030: `show` = detailed view of one outcome + its linked gaps.
+            "show" | "status" => {
                 let oid = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump outcome status <outcome-id> [--json]");
+                    eprintln!("Usage: chump outcome show <outcome-id> [--json]");
                     std::process::exit(2);
                 });
                 match store.outcome_status(&oid) {
                     Ok(Some(r)) => {
                         if json_out {
+                            // Include linked gaps in JSON.
+                            let linked = store.gaps_for_outcome(&oid).unwrap_or_default();
+                            let gaps_json: Vec<String> = linked
+                                .iter()
+                                .map(|g| {
+                                    format!(
+                                        r#"{{"id":"{}","title":"{}","status":"{}","priority":"{}"}}"#,
+                                        g.id,
+                                        g.title.replace('"', "\\\""),
+                                        g.status,
+                                        g.priority,
+                                    )
+                                })
+                                .collect();
                             println!(
-                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true}}"#,
+                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]}}"#,
                                 r.outcome.id,
                                 r.outcome.title.replace('"', "\\\""),
                                 r.outcome.priority,
@@ -2436,6 +2493,7 @@ async fn main() -> Result<()> {
                                 r.open,
                                 r.done,
                                 r.other,
+                                gaps_json.join(","),
                             );
                         } else {
                             println!("=== Outcome: {} ===", r.outcome.id);
@@ -2455,30 +2513,384 @@ async fn main() -> Result<()> {
                                 let pct = (r.done as f64 / r.total as f64 * 100.0) as usize;
                                 println!("  progress: {}%", pct);
                             }
+                            let linked = store.gaps_for_outcome(&oid).unwrap_or_default();
+                            if !linked.is_empty() {
+                                println!();
+                                println!("Linked gaps:");
+                                for g in &linked {
+                                    println!(
+                                        "  {} [{}] {} — {}",
+                                        g.id, g.priority, g.status, g.title
+                                    );
+                                }
+                            }
                         }
                     }
                     Ok(None) => {
-                        eprintln!("chump outcome status: outcome '{}' not found", oid);
+                        eprintln!("chump outcome show: outcome '{}' not found", oid);
                         std::process::exit(1);
                     }
                     Err(e) => {
-                        eprintln!("chump outcome status: {e:#}");
+                        eprintln!("chump outcome show: {e:#}");
                         std::process::exit(1);
                     }
+                }
+            }
+            // MISSION-030: `link <GAP-ID> --outcome <OUTCOME-ID>` — set gaps.outcome_id.
+            "link" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome link <GAP-ID> --outcome <OUTCOME-ID>");
+                    std::process::exit(2);
+                });
+                let oid = oflag("--outcome").unwrap_or_else(|| {
+                    eprintln!("chump outcome link: --outcome required");
+                    std::process::exit(2);
+                });
+                // Verify outcome exists before linking.
+                match store.get_outcome(&oid) {
+                    Ok(None) => {
+                        eprintln!(
+                            "chump outcome link: outcome '{}' not found — create it first",
+                            oid
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome link: {e:#}");
+                        std::process::exit(1);
+                    }
+                    Ok(Some(_)) => {}
+                }
+                let update = gap_store::GapFieldUpdate {
+                    outcome_id: Some(oid.clone()),
+                    ..Default::default()
+                };
+                match store.set_fields(&gap_id, update) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"gap_id":"{gap_id}","outcome_id":"{oid}","linked":true}}"#
+                            );
+                        } else {
+                            println!("{} linked to outcome {}", gap_id, oid);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome link: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            // MISSION-030: `unlink <GAP-ID>` — clear gaps.outcome_id.
+            "unlink" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump outcome unlink <GAP-ID>");
+                    std::process::exit(2);
+                });
+                let update = gap_store::GapFieldUpdate {
+                    outcome_id: Some(String::new()), // empty = set NULL
+                    ..Default::default()
+                };
+                match store.set_fields(&gap_id, update) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(r#"{{"gap_id":"{gap_id}","outcome_id":null,"linked":false}}"#);
+                        } else {
+                            println!("{} unlinked from outcome", gap_id);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump outcome unlink: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            // MISSION-030: `bootstrap` — seed canonical mission outcomes (idempotent).
+            "bootstrap" => {
+                // Canonical outcomes per docs/MISSION.md and gap dispatch context.
+                // Each entry: (id, title, priority, dod)
+                let canonical: &[(&str, &str, &str, &str)] = &[
+                    (
+                        "MISSION-010",
+                        "self-coordinating fleet (BEAST proof)",
+                        "P0",
+                        "Fleet ships PRs to external repos without human in the loop; \
+                         BEAST-MODE overnight proof completed.",
+                    ),
+                    (
+                        "MISSION-012",
+                        "self-deploy: auto-deploy daemon keeps installed binary on origin/main",
+                        "P0",
+                        "Binary on each fleet node always tracks origin/main; \
+                         no manual pull required after a ship.",
+                    ),
+                    (
+                        "MISSION-032",
+                        "scale to 100s-to-10000s of external repos",
+                        "P1",
+                        "Phase B: repos table + external claims + per-repo mission scoreboard; \
+                         Phase C: multi-tenant with repo_scope.",
+                    ),
+                    (
+                        "META-067",
+                        "three demo-able 2026 outcomes: net-new bootstrap / repo takeover / autonomous throughput",
+                        "P1",
+                        "Demo 1: zero-to-first-PR on a blank repo; \
+                         Demo 2: Chump takes over an existing repo; \
+                         Demo 3: sustained autonomous throughput.",
+                    ),
+                ];
+                let mut created = 0usize;
+                let mut already = 0usize;
+                for (id, title, priority, dod) in canonical {
+                    // Check existence first (create_outcome is idempotent via INSERT OR IGNORE).
+                    let exists = store.get_outcome(id).unwrap_or(None).is_some();
+                    match store.create_outcome(id, title, priority, dod) {
+                        Ok(()) => {
+                            if exists {
+                                already += 1;
+                                if !json_out {
+                                    println!("  {} already exists (skipped)", id);
+                                }
+                            } else {
+                                created += 1;
+                                if !json_out {
+                                    println!("  {} created: {}", id, title);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("chump outcome bootstrap: error creating {}: {}", id, e);
+                        }
+                    }
+                }
+                if json_out {
+                    println!(
+                        r#"{{"created":{},"already_existed":{},"total":{}}}"#,
+                        created,
+                        already,
+                        canonical.len()
+                    );
+                } else {
+                    println!();
+                    println!(
+                        "bootstrap complete: {} created, {} already existed ({} total)",
+                        created,
+                        already,
+                        canonical.len()
+                    );
+                }
+            }
+            // MISSION-030: `backfill [--dry-run] [--apply]` — auto-link open gaps to outcomes.
+            "backfill" => {
+                let dry_run = !args.iter().any(|a| a == "--apply");
+                if dry_run {
+                    println!("[outcome backfill] DRY RUN — use --apply to commit changes");
+                }
+
+                let outcomes = store.list_outcomes().unwrap_or_default();
+                if outcomes.is_empty() {
+                    eprintln!(
+                        "chump outcome backfill: no outcomes registered. Run `chump outcome bootstrap` first."
+                    );
+                    std::process::exit(1);
+                }
+
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump outcome backfill: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Build outcome-id set for fast lookup.
+                let outcome_ids: std::collections::HashSet<&str> =
+                    outcomes.iter().map(|o| o.id.as_str()).collect();
+
+                // Backfill heuristics (applied in order; first match wins):
+                // 1. Exact-prefix: gap.id == outcome.id → link directly.
+                //    (e.g. MISSION-030 → MISSION-010 as scaffolding)
+                //    Actually: for gaps whose id STARTS with same prefix as any outcome.
+                //    Concretely: MISSION-* gaps → MISSION-010 (the umbrella mission).
+                // 2. Title contains outcome id → link to that outcome.
+                // 3. Description contains "MISSION-XXX umbrella" / "Tier-1 of MISSION-XXX"
+                //    → link to named outcome id if registered.
+                // 4. Title/description contains "BEAST" or "BEAST-MODE" → MISSION-010.
+                // 5. Title/description contains "META-067" → META-067.
+                // Default: skip (don't guess).
+
+                // Counters per outcome.
+                let mut counts: std::collections::HashMap<&str, usize> =
+                    outcomes.iter().map(|o| (o.id.as_str(), 0usize)).collect();
+                let mut skipped = 0usize;
+                let mut already_linked = 0usize;
+                let mut changes: Vec<(String, String)> = Vec::new(); // (gap_id, outcome_id)
+
+                for g in &all_gaps {
+                    // Don't overwrite existing links.
+                    if g.outcome_id.as_deref().map(|s| !s.is_empty()) == Some(true) {
+                        already_linked += 1;
+                        continue;
+                    }
+
+                    let id_uc = g.id.to_uppercase();
+                    let title_uc = g.title.to_uppercase();
+                    let desc_uc = g.description.to_uppercase();
+
+                    let mut assigned: Option<&str> = None;
+
+                    // Heuristic 1: gap id IS a registered outcome → self-link.
+                    if outcome_ids.contains(g.id.as_str()) {
+                        assigned = Some(g.id.as_str());
+                    }
+
+                    // Heuristic 2: gap title contains a registered outcome id.
+                    if assigned.is_none() {
+                        for oid in &outcome_ids {
+                            if title_uc.contains(&oid.to_uppercase()) {
+                                assigned = Some(oid);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Heuristic 3: description contains "umbrella" or "Tier-1 of" phrase
+                    // referring to a registered outcome id.
+                    if assigned.is_none() {
+                        for oid in &outcome_ids {
+                            let needle = oid.to_uppercase();
+                            let paren_prefix = format!("({needle} ");
+                            let paren_slice = format!("({needle} SLICE");
+                            if desc_uc.contains(&format!("{needle} UMBRELLA"))
+                                || desc_uc.contains(&format!("TIER-1 OF {needle}"))
+                                || desc_uc.contains(paren_prefix.as_str())
+                                || desc_uc.contains(paren_slice.as_str())
+                                || desc_uc.contains(&format!("{needle} PHASE"))
+                            {
+                                assigned = Some(oid);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Heuristic 4: BEAST / BEAST-MODE → MISSION-010.
+                    if assigned.is_none()
+                        && outcome_ids.contains("MISSION-010")
+                        && (title_uc.contains("BEAST") || desc_uc.contains("BEAST"))
+                    {
+                        assigned = Some("MISSION-010");
+                    }
+
+                    // Heuristic 5: META-067 in title or description → META-067.
+                    if assigned.is_none()
+                        && outcome_ids.contains("META-067")
+                        && (title_uc.contains("META-067") || desc_uc.contains("META-067"))
+                    {
+                        assigned = Some("META-067");
+                    }
+
+                    // Heuristic 6: MISSION-* prefix gap ids → MISSION-010 umbrella
+                    // (since MISSION-010 is the fleet self-coordination master mission).
+                    if assigned.is_none()
+                        && id_uc.starts_with("MISSION-")
+                        && outcome_ids.contains("MISSION-010")
+                    {
+                        assigned = Some("MISSION-010");
+                    }
+
+                    match assigned {
+                        Some(oid) => {
+                            changes.push((g.id.clone(), oid.to_string()));
+                            *counts.entry(oid).or_default() += 1;
+                        }
+                        None => {
+                            skipped += 1;
+                        }
+                    }
+                }
+
+                // Report plan.
+                println!("Backfill plan:");
+                for o in &outcomes {
+                    let c = counts.get(o.id.as_str()).copied().unwrap_or(0);
+                    if c > 0 {
+                        println!("  {} ← {} gap(s)", o.id, c);
+                    }
+                }
+                println!("  already linked: {}", already_linked);
+                println!("  unmatched (skipped): {}", skipped);
+                println!("  total to link: {}", changes.len());
+
+                if dry_run {
+                    println!();
+                    println!("[dry-run] no changes written. Re-run with --apply to commit.");
+                    return Ok(());
+                }
+
+                // Apply.
+                let mut applied = 0usize;
+                let mut errors = 0usize;
+                for (gid, oid) in &changes {
+                    let update = gap_store::GapFieldUpdate {
+                        outcome_id: Some(oid.clone()),
+                        ..Default::default()
+                    };
+                    match store.set_fields(gid, update) {
+                        Ok(()) => {
+                            applied += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("  WARN: could not link {} → {}: {}", gid, oid, e);
+                            errors += 1;
+                        }
+                    }
+                }
+                println!();
+                if json_out {
+                    println!(
+                        r#"{{"applied":{},"errors":{},"already_linked":{},"skipped":{}}}"#,
+                        applied, errors, already_linked, skipped
+                    );
+                } else {
+                    println!("applied {} link(s), {} error(s)", applied, errors);
+                    // Emit ambient event for observability.
+                    let lock_dir = repo_root.join(".chump-locks");
+                    let ambient = lock_dir.join("ambient.jsonl");
+                    let ts = std::process::Command::new("date")
+                        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+                        .output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_default();
+                    // scanner-anchor: outcome_backfill_completed (MISSION-030)
+                    let event = format!(
+                        r#"{{"ts":"{ts}","kind":"outcome_backfill_completed","applied":{applied},"errors":{errors},"skipped":{skipped}}}"#,
+                    );
+                    let _ = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&ambient)
+                        .and_then(|mut f| {
+                            use std::io::Write;
+                            writeln!(f, "{}", event)
+                        });
                 }
             }
             _ => {
                 println!("Usage: chump outcome <sub> [args]");
                 println!();
                 println!("Subcommands:");
-                println!("  new --id X --title T [--priority P] [--definition-of-done D]");
-                println!("  list [--json]");
-                println!("  status <outcome-id> [--json]");
+                println!("  create --id X --title T [--priority P] [--dod D]");
+                println!("  list [--status open|done] [--json]");
+                println!("  show <outcome-id> [--json]");
+                println!("  link <gap-id> --outcome <outcome-id>");
+                println!("  unlink <gap-id>");
+                println!("  bootstrap   (seed canonical MISSION-010/012/032 + META-067)");
+                println!("  backfill [--dry-run] [--apply]");
                 println!();
                 println!(
                     "ADVISORY: outcome rollup never gates or blocks a child gap from closing."
                 );
-                println!("Assign a gap to an outcome with: chump gap set <GAP-ID> --outcome <OUTCOME-ID>");
             }
         }
         return Ok(());
@@ -9326,8 +9738,11 @@ async fn main() -> Result<()> {
                 // checks remain intact; this is an advisory overlay alongside them).
                 let p0_outcomes = store.list_p0_outcomes().unwrap_or_default();
 
+                // MISSION-030: --by-outcome flag — per-outcome gap counts + orphan rate.
+                let by_outcome = args.iter().any(|a| a == "--by-outcome");
+
                 if json_out {
-                    let report = serde_json::json!({
+                    let mut report = serde_json::json!({
                         "p0_count": p0_count,
                         "p0_manual_count": p0_manual_count,
                         "p0_auto_filed_count": p0_auto_filed.len(),
@@ -9350,6 +9765,65 @@ async fn main() -> Result<()> {
                             serde_json::json!({"id": o.id, "title": o.title, "priority": o.priority})
                         }).collect::<Vec<_>>(),
                     });
+                    // MISSION-030: inject by-outcome rollup into JSON when flag set.
+                    if by_outcome {
+                        let outcomes = store.list_outcomes().unwrap_or_default();
+                        let open_gaps: Vec<_> =
+                            all_gaps.iter().filter(|g| g.status == "open").collect();
+                        let total_open = open_gaps.len();
+                        let linked_open = open_gaps
+                            .iter()
+                            .filter(|g| {
+                                g.outcome_id.as_deref().map(|s| !s.is_empty()) == Some(true)
+                            })
+                            .count();
+                        let orphan_rate = linked_open
+                            .checked_mul(100)
+                            .and_then(|n| n.checked_div(total_open))
+                            .map(|pct_linked| 100usize.saturating_sub(pct_linked))
+                            .unwrap_or(0);
+                        let per_outcome: Vec<serde_json::Value> = outcomes
+                            .iter()
+                            .map(|o| {
+                                let o_open = open_gaps
+                                    .iter()
+                                    .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                                    .count();
+                                let o_done = all_gaps
+                                    .iter()
+                                    .filter(|g| {
+                                        g.status == "done"
+                                            && g.outcome_id.as_deref() == Some(o.id.as_str())
+                                    })
+                                    .count();
+                                let o_total = all_gaps
+                                    .iter()
+                                    .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                                    .count();
+                                serde_json::json!({
+                                    "outcome_id": o.id,
+                                    "title": o.title,
+                                    "priority": o.priority,
+                                    "open_gaps": o_open,
+                                    "done_gaps": o_done,
+                                    "total_gaps": o_total,
+                                })
+                            })
+                            .collect();
+                        if let serde_json::Value::Object(ref mut map) = report {
+                            map.insert(
+                                "by_outcome".into(),
+                                serde_json::json!({
+                                    "outcomes_registered": outcomes.len(),
+                                    "open_gaps_total": total_open,
+                                    "open_gaps_linked": linked_open,
+                                    "open_gaps_orphaned": total_open - linked_open,
+                                    "mission_orphan_rate_pct": orphan_rate,
+                                    "per_outcome": per_outcome,
+                                }),
+                            );
+                        }
+                    }
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&report).unwrap_or_default()
@@ -9437,12 +9911,63 @@ async fn main() -> Result<()> {
                     println!("=== Outcome-aware P0 budget (MISSION-008, advisory) ===");
                     if p0_outcomes.is_empty() {
                         println!(
-                            "  (no P0 outcomes registered — `chump outcome new` to create one)"
+                            "  (no P0 outcomes registered — `chump outcome bootstrap` to seed)"
                         );
                     } else {
                         println!("P0 open outcomes: {}", p0_outcomes.len());
                         for o in &p0_outcomes {
                             println!("  {} — {}", o.id, o.title);
+                        }
+                    }
+                    // MISSION-030: --by-outcome human-readable section.
+                    if by_outcome {
+                        println!();
+                        println!("=== Outcome mission-orphan report (MISSION-030) ===");
+                        let outcomes = store.list_outcomes().unwrap_or_default();
+                        if outcomes.is_empty() {
+                            println!("  (no outcomes registered — run `chump outcome bootstrap`)");
+                        } else {
+                            let open_gaps: Vec<_> =
+                                all_gaps.iter().filter(|g| g.status == "open").collect();
+                            let total_open = open_gaps.len();
+                            let linked_open = open_gaps
+                                .iter()
+                                .filter(|g| {
+                                    g.outcome_id.as_deref().map(|s| !s.is_empty()) == Some(true)
+                                })
+                                .count();
+                            let orphan_rate = 100usize
+                                - linked_open
+                                    .checked_mul(100)
+                                    .and_then(|n| n.checked_div(total_open))
+                                    .unwrap_or(0);
+                            println!(
+                                "Outcomes registered: {}  |  open gaps: {}  linked: {}  orphaned: {}  orphan-rate: {}%",
+                                outcomes.len(),
+                                total_open,
+                                linked_open,
+                                total_open - linked_open,
+                                orphan_rate,
+                            );
+                            println!();
+                            println!("Per-outcome breakdown:");
+                            for o in &outcomes {
+                                let o_open = open_gaps
+                                    .iter()
+                                    .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+                                    .count();
+                                let o_done = all_gaps
+                                    .iter()
+                                    .filter(|g| {
+                                        g.status == "done"
+                                            && g.outcome_id.as_deref() == Some(o.id.as_str())
+                                    })
+                                    .count();
+                                println!(
+                                    "  {} [{}] open={} done={} — {}",
+                                    o.id, o.priority, o_open, o_done, o.title
+                                );
+                            }
                         }
                     }
                 }
