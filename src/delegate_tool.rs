@@ -69,21 +69,29 @@ fn worker_provider() -> Box<dyn Provider> {
             .or_else(|| std::env::var("OPENAI_API_BASE").ok())
             .filter(|u| !u.is_empty())
     };
-    let model = std::env::var("CHUMP_WORKER_MODEL")
+    let env_model = std::env::var("CHUMP_WORKER_MODEL")
         .ok()
         .filter(|m| !m.is_empty())
-        .or_else(|| std::env::var("OPENAI_MODEL").ok())
-        .unwrap_or_else(|| "gpt-5-mini".to_string());
+        .or_else(|| std::env::var("OPENAI_MODEL").ok().filter(|m| !m.is_empty()));
     let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
         .ok()
         .filter(|s| !s.is_empty());
-    if let Some(base) = base {
+    if let Some(ref base_url) = base {
+        let model = crate::provider_cascade::resolve_model_for_endpoint(base_url, env_model);
         Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-            base, fallback, api_key, model,
+            base_url.clone(),
+            fallback,
+            api_key,
+            model,
         ))
     } else if crate::provider_cascade::looks_like_openai_platform_key(&api_key) {
+        let model = env_model.unwrap_or_else(|| "gpt-4o-mini".to_string());
         Box::new(OpenAIProvider::new(api_key).with_model(model))
     } else {
+        let model = crate::provider_cascade::resolve_model_for_endpoint(
+            crate::provider_cascade::DEFAULT_OLLAMA_API_BASE,
+            env_model,
+        );
         Box::new(local_openai::LocalOpenAIProvider::with_fallback(
             crate::provider_cascade::DEFAULT_OLLAMA_API_BASE.to_string(),
             fallback,

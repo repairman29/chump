@@ -163,6 +163,159 @@ fn cascade_enabled() -> bool {
         .unwrap_or(false)
 }
 
+// ── Local-model auto-discovery (EFFECTIVE-141) ────────────────────────────────
+
+/// True if the base URL points to a local (loopback) endpoint that may not
+/// serve cloud models like `gpt-5-mini`.
+pub fn is_local_endpoint(base_url: &str) -> bool {
+    let lower = base_url.to_lowercase();
+    lower.contains("127.0.0.1")
+        || lower.contains("localhost")
+        || lower.contains("::1")
+        || lower.starts_with("http://[::1]")
+}
+
+/// Preferred model order for auto-selection when `$OPENAI_MODEL` is unset and
+/// the endpoint is local (Ollama / llama.cpp / vLLM). First match wins.
+///
+/// The list is deliberately conservative — these are the models confirmed
+/// present on the reference local fleet. Operators can override via
+/// `OPENAI_MODEL`.
+pub const LOCAL_MODEL_PREFERENCE: &[&str] = &[
+    "qwen2.5:14b",
+    "qwen2.5:7b",
+    "qwen3:14b",
+    "qwen3:8b",
+    "llama3.2:3b",
+];
+
+/// Pure, testable model selector. Given the list of model IDs reported by the
+/// local endpoint:
+/// - If `override_model` is `Some(s)` and `s` is non-empty, return it
+///   (operator's explicit `$OPENAI_MODEL` wins unconditionally).
+/// - Otherwise pick from `available`, *excluding* embedding models (name
+///   contains "embed"), preferring `LOCAL_MODEL_PREFERENCE` in order, then
+///   falling back to the first non-embedding model.
+/// - Returns `None` when `available` contains only embedding models (or is
+///   empty).
+pub fn select_local_model(available: &[String], override_model: Option<&str>) -> Option<String> {
+    // Operator override always wins.
+    if let Some(m) = override_model {
+        if !m.is_empty() {
+            return Some(m.to_string());
+        }
+    }
+
+    let non_embed: Vec<&String> = available
+        .iter()
+        .filter(|m| !m.to_lowercase().contains("embed"))
+        .collect();
+
+    // Check preference list first.
+    for pref in LOCAL_MODEL_PREFERENCE {
+        if let Some(m) = non_embed.iter().find(|m| m.as_str() == *pref) {
+            return Some(m.to_string());
+        }
+    }
+
+    // Fallback: first non-embedding model.
+    non_embed.first().map(|m| m.to_string())
+}
+
+/// Fetch the list of available model IDs from an OpenAI-compatible `/models`
+/// endpoint. Best-effort: returns an empty vec on any error (timeout, parse
+/// failure, etc.).
+///
+/// The function spawns a one-shot tokio runtime in a dedicated thread so it
+/// can be called from sync contexts (`build_provider_single`, `from_env`) without
+/// blocking an existing async executor.
+pub fn fetch_local_models_sync(base_url: &str) -> Vec<String> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let url_clone = url.clone();
+    // Use a thread + fresh single-thread runtime to avoid nesting tokio runtimes.
+    let handle = std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        rt.block_on(async move {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .build()
+                .ok()?;
+            let resp = client.get(&url_clone).send().await.ok()?;
+            if !resp.status().is_success() {
+                return None;
+            }
+            let json: serde_json::Value = resp.json().await.ok()?;
+            let ids: Vec<String> = json
+                .get("data")
+                .and_then(|d| d.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| {
+                            v.get("id")
+                                .and_then(|id| id.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(ids)
+        })
+        .unwrap_or_default()
+    });
+    handle.join().unwrap_or_default()
+}
+
+/// Resolve the model to use for a given endpoint.
+///
+/// - If `env_override` is `Some` and non-empty, use it directly.
+/// - If the endpoint is local, query `/models` and pick the best available
+///   model via [`select_local_model`]. Logs to stderr on success so the
+///   operator knows which model was auto-selected.
+/// - For non-local (cloud) endpoints with no override, fall back to
+///   `"gpt-4o-mini"` (the cloud default; `gpt-5-mini` was incorrect).
+pub fn resolve_model_for_endpoint(base_url: &str, env_override: Option<String>) -> String {
+    // Operator explicit choice always wins.
+    if let Some(ref m) = env_override {
+        if !m.is_empty() {
+            return m.clone();
+        }
+    }
+
+    if is_local_endpoint(base_url) {
+        let available = fetch_local_models_sync(base_url);
+        if let Some(model) = select_local_model(&available, None) {
+            eprintln!(
+                "chump: auto-selected local model '{}' from {} (set OPENAI_MODEL to override)",
+                model, base_url
+            );
+            return model;
+        }
+        // Could not discover models — warn and fall back to a sensible default.
+        if available.is_empty() {
+            eprintln!(
+                "chump: could not query {}/models — using qwen2.5:7b as default (set OPENAI_MODEL to override)",
+                base_url
+            );
+            return "qwen2.5:7b".to_string();
+        }
+        // Only embedding models available — operator should configure OPENAI_MODEL.
+        eprintln!(
+            "chump: only embedding models found at {} — set OPENAI_MODEL to a chat model",
+            base_url
+        );
+        return "qwen2.5:7b".to_string();
+    }
+
+    // Non-local cloud endpoint: gpt-4o-mini is a real model; gpt-5-mini is not.
+    "gpt-4o-mini".to_string()
+}
+
 fn rpm_headroom_pct() -> f32 {
     std::env::var("CHUMP_CASCADE_RPM_HEADROOM")
         .ok()
@@ -368,8 +521,10 @@ impl ProviderCascade {
             let base = base.trim_end_matches('/').to_string();
             if !base.is_empty() {
                 let api_key = resolved_openai_api_key();
-                let model =
-                    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
+                let model = resolve_model_for_endpoint(
+                    &base,
+                    std::env::var("OPENAI_MODEL").ok().filter(|m| !m.is_empty()),
+                );
                 let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
                     .ok()
                     .filter(|s| !s.is_empty());
@@ -1728,10 +1883,11 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
         }
     }
     let api_key = resolved_openai_api_key();
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
+    let env_model = std::env::var("OPENAI_MODEL").ok().filter(|m| !m.is_empty());
     if let Ok(base) = std::env::var("OPENAI_API_BASE") {
         let base = base.trim();
         if !base.is_empty() {
+            let model = resolve_model_for_endpoint(base, env_model);
             let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
                 .ok()
                 .filter(|s| !s.is_empty());
@@ -1744,10 +1900,14 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
         }
     }
     if looks_like_openai_platform_key(&api_key) {
+        // Cloud endpoint: use env override or cloud default (not gpt-5-mini).
+        let model = env_model.unwrap_or_else(|| "gpt-4o-mini".to_string());
         return Box::new(OpenAiApiLlmRecorder {
             inner: OpenAIProvider::new(api_key).with_model(model),
         });
     }
+    // Default local Ollama path: auto-discover model.
+    let model = resolve_model_for_endpoint(DEFAULT_OLLAMA_API_BASE, env_model);
     let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
         .ok()
         .filter(|s| !s.is_empty());
@@ -3213,5 +3373,68 @@ mod tests {
             !should_cascade_on_error_string(err),
             "generic 400 (not the Gemini tool-config class) must not cascade"
         );
+    }
+
+    // ── EFFECTIVE-141: select_local_model unit tests ──────────────────────────
+
+    fn mk(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn select_local_model_override_wins() {
+        let available = mk(&["qwen2.5:14b", "llama3.2:3b"]);
+        let result = select_local_model(&available, Some("my-custom-model"));
+        assert_eq!(result, Some("my-custom-model".to_string()));
+    }
+
+    #[test]
+    fn select_local_model_empty_override_falls_through() {
+        let available = mk(&["qwen2.5:14b"]);
+        // empty string override should NOT win — fall through to auto-select
+        let result = select_local_model(&available, Some(""));
+        assert_eq!(result, Some("qwen2.5:14b".to_string()));
+    }
+
+    #[test]
+    fn select_local_model_prefers_qwen2_5_14b_when_present() {
+        let available = mk(&[
+            "nomic-embed-text",
+            "qwen2.5:7b",
+            "qwen2.5:14b",
+            "llama3.2:3b",
+        ]);
+        let result = select_local_model(&available, None);
+        assert_eq!(result, Some("qwen2.5:14b".to_string()));
+    }
+
+    #[test]
+    fn select_local_model_excludes_embedding_models() {
+        // Only an embedding model available → should not be selected.
+        let available = mk(&["nomic-embed-text", "all-minilm:l6-v2-embed"]);
+        let result = select_local_model(&available, None);
+        assert_eq!(result, None, "embedding-only list must yield None");
+    }
+
+    #[test]
+    fn select_local_model_falls_back_to_first_non_embedding() {
+        let available = mk(&["nomic-embed-text", "phi3:mini", "gemma2:2b"]);
+        let result = select_local_model(&available, None);
+        assert_eq!(result, Some("phi3:mini".to_string()));
+    }
+
+    #[test]
+    fn select_local_model_returns_none_on_empty_list() {
+        let result = select_local_model(&[], None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn is_local_endpoint_recognises_loopback_variants() {
+        assert!(is_local_endpoint("http://127.0.0.1:11434/v1"));
+        assert!(is_local_endpoint("http://localhost:8080/v1"));
+        assert!(is_local_endpoint("http://[::1]:11434/v1"));
+        assert!(!is_local_endpoint("https://api.openai.com/v1"));
+        assert!(!is_local_endpoint("https://api.groq.com/openai/v1"));
     }
 }
