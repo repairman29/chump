@@ -11,6 +11,17 @@ and pillar starvation (a pillar absent from recent ships). Gaps from
 underserved domains/pillars get a sort-key boost so they surface ahead
 of yet-another-INFRA-fix.
 
+MISSION-028 FIX: this file now mirrors the ranking logic from _pick_gap.py
+(the CANONICAL ranking source). When changing ranking behaviour, change
+_pick_gap.py first and mirror here. Key invariants:
+  - Sort tuple: (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
+  - mission_rank=0 for MISSION-linked gaps, 1 otherwise; causes MISSION gaps to win
+    within the same priority band (e.g. P0-MISSION beats P0-self-maintenance).
+  - substrate P0 still beats mission P1 because effective_prio is compared first.
+  - P0+domain=MISSION gaps bypass the sonnet xs-effort gate (mirroring
+    _pick_gap.py MISSION-026 fix) so xs-effort P0 MISSION gaps are never
+    permanently blocked by worker tier.
+
 Reads the open-gap JSON, applies fleet filters, attempts to claim each
 candidate in priority order. Returns the first gap that was successfully
 claimed, or nothing if all candidates are already claimed/unavailable.
@@ -23,6 +34,7 @@ Environment (same as _pick_gap.py plus):
   CHUMP_STATE_DB   override path to state.db (default: repo_root/.chump/state.db)
   REBALANCE_WINDOW number of recent ships to consider (default: 20)
   REBALANCE_DOMAIN_THRESHOLD  domain monopoly threshold 0-100 (default: 70)
+  CHUMP_ACTIVE_MISSION  active mission outcome ID (MISSION-011); see _pick_gap.py
 """
 
 from __future__ import annotations
@@ -40,6 +52,10 @@ PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
 
+# MISSION-011: default active mission outcome when no explicit override is set.
+# Canonical copy lives in _pick_gap.py; keep in sync.
+_DEFAULT_ACTIVE_MISSION = "MISSION-010"
+
 
 def extract_pillar(title: str) -> str:
     """Extract pillar tag from gap title (e.g. 'EFFECTIVE: foo bar' → 'EFFECTIVE')."""
@@ -48,6 +64,62 @@ def extract_pillar(title: str) -> str:
         if upper.startswith(tag + ":"):
             return tag
     return ""
+
+
+def _load_active_mission() -> str:
+    """MISSION-011: return the active mission outcome ID.
+
+    Canonical copy in _pick_gap.py — keep in sync (MISSION-028).
+
+    Resolution order (first non-empty wins):
+      1. CHUMP_ACTIVE_MISSION env var (set to "" to disable boost entirely)
+      2. ~/.chump/ACTIVE_MISSION file (one line, e.g. "MISSION-010")
+      3. Hard-coded default: MISSION-010
+    """
+    env_val = os.environ.get("CHUMP_ACTIVE_MISSION")
+    if env_val is not None:
+        return env_val.strip()
+
+    mission_file = os.path.expanduser("~/.chump/ACTIVE_MISSION")
+    try:
+        with open(mission_file) as f:
+            val = f.read().strip()
+            if val:
+                return val
+    except OSError:
+        pass
+
+    return _DEFAULT_ACTIVE_MISSION
+
+
+def _is_mission_linked(g: dict, active_mission: str) -> bool:
+    """MISSION-011: return True when gap `g` is linked to the active mission.
+
+    Canonical copy in _pick_gap.py — keep in sync (MISSION-028).
+
+    A gap is mission-linked when ANY of these hold:
+      (a) gap.outcome_id matches active_mission
+      (b) gap.domain is "MISSION"
+      (c) gap.id matches active_mission exactly
+      (d) active_mission appears verbatim in title, notes, or description
+    """
+    if not active_mission:
+        return False
+
+    if (g.get("outcome_id") or "").strip() == active_mission:
+        return True
+    if (g.get("domain") or "").upper() == "MISSION":
+        return True
+    if (g.get("id") or "").strip() == active_mission:
+        return True
+
+    needle = active_mission.upper()
+    for field in ("title", "notes", "description"):
+        val = (g.get(field) or "").upper()
+        if needle in val:
+            return True
+
+    return False
 
 
 def get_ship_history(window: int) -> list[dict]:
@@ -514,6 +586,10 @@ def main() -> int:
         # Check for pillar imbalance and emit alert if detected.
         detect_and_emit_pillar_imbalance(ambient_path)
 
+    # MISSION-028: load the active mission outcome ID for mission_rank scoring.
+    # Canonical logic mirrors _pick_gap.py (_load_active_mission / _is_mission_linked).
+    active_mission = _load_active_mission()
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -550,9 +626,16 @@ def main() -> int:
         # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
         # sonnet workers refuse effort=xs — cheap models handle cleanup; don't burn frontier tokens.
         # opus is unconstrained.
+        # MISSION-026/028: P0 mission-linked gaps bypass the sonnet xs-effort gate so
+        # xs-effort P0 MISSION gaps (e.g. MISSION-018) are never permanently blocked
+        # by worker tier. Mirrored from _pick_gap.py (canonical source).
+        _is_p0_mission = (
+            p == "P0"
+            and (g.get("domain") or "").upper() == "MISSION"
+        )
         if worker_model == "haiku" and e in ("m", "l", "xl"):
             continue
-        if worker_model == "sonnet" and e == "xs":
+        if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
             continue
         deps_raw = g.get("depends_on")
         if isinstance(deps_raw, str):
@@ -623,11 +706,21 @@ def main() -> int:
 
         effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
 
-        # Primary sort: affinity (desc), effective priority, effort, created_at.
+        # MISSION-028: mission_rank = 0 for gaps linked to the active mission,
+        # 1 for everything else. Inserted AFTER effective_prio so a P0-MISSION
+        # gap beats a P0-self-maintenance gap within the same priority band, but
+        # a substrate P0 (effective_prio=0) still beats a mission P1
+        # (effective_prio=1) because effective_prio is compared first.
+        # Canonical sort order matches _pick_gap.py:
+        #   (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
+        mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
+
+        # Primary sort: affinity (desc), effective priority, mission rank, effort, created_at.
         candidates.append(
             (
                 -affinity_score,
                 effective_prio,
+                mission_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -653,7 +746,7 @@ def main() -> int:
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
-            gap_id = candidates[idx][4]  # Index changed from [3] to [4] due to affinity_score.
+            gap_id = candidates[idx][5]  # Index [5]: (-affinity, eff_prio, mission_rank, effort, age, gid)
             if dry_run:
                 print(gap_id)
                 return 0
