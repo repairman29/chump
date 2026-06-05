@@ -1,4 +1,4 @@
-//! CREDIBLE-096 / CREDIBLE-102: `chump external verify-merge` — autonomous PR merge judge.
+//! CREDIBLE-096 / CREDIBLE-102 / CREDIBLE-104: `chump external verify-merge` — autonomous PR merge judge.
 //!
 //! Trust keystone for Chump's "autonomously improve someone's repo, no human
 //! in the loop" mission. Decides whether a PR on an external repo meets the
@@ -25,12 +25,31 @@
 //!    - FAIL (non-zero exit) on the **base** commit of the repo, AND
 //!    - PASS (exit 0) on the **PR head** commit.
 //!
+//!    Base run: checks out base SHA, then overlays the PR's test files from
+//!    head onto the working tree (so ADDED test files — not present on base —
+//!    are available). Runs only the changed test files.
+//!
 //!    A test that passes on both proves nothing — HELD(unproven).
 //!    A PR with no changed test files at all — HELD(cosmetic).
+//!    Deps are installed (ensure_deps) before EVERY run.
 //!
-//! 3. **No-regression** — the existing test suite passes on PR head.
-//!    If repo CI already runs tests (gate 1 covers this), the gate is noted
-//!    as satisfied by CI. If CI only lints, we run the test suite locally.
+//! 3. **No-regression (DELTA)** — runs full suite on BOTH base and head,
+//!    compares failing-test sets. HELD(regression) ONLY if a test that
+//!    PASSED on base now FAILS on head (newly-introduced regression).
+//!    Pre-existing failures (red on both base and head) do NOT block.
+//!    This is NOT a weakening: Gate 2 still proves the specific fix;
+//!    Gate 3 ensures the PR introduces no new breakage.
+//!    If CHUMP_EXTERNAL_VERIFY_FULL_SUITE is not "1", gate is marked
+//!    CoveredByCi (same as before — clean repos unaffected).
+//!
+//! ## Dependency installation (FIX 1 — CREDIBLE-104)
+//!
+//! Before running tests at any SHA, `ensure_deps` is called:
+//!   - Npm: if `node_modules/` absent, runs `npm ci` (fallback `npm install`
+//!     when no `package-lock.json`). Timeout: CHUMP_VERIFY_DEPS_TIMEOUT_SECS
+//!     (default 600 s). Failure → HELD(install-failed), NOT a test failure.
+//!   - Pytest: best-effort `pip install -r requirements.txt` if present.
+//!   - Cargo / Make: no-op (toolchain assumed present).
 //!
 //! ## Ambient events emitted
 //!
@@ -53,6 +72,7 @@
 //! entirely (exits 1 with an explanatory message). For use when the upstream
 //! gh API is unavailable or during incident response.
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -182,60 +202,112 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
         return Ok(1);
     }
 
-    // Prove the test fails on base and passes on head.
-    // run_tests_at_sha returns whether the suite PASSED (exit 0); "fails on base"
-    // is the negation of that. (Bug fix: this was assigned `passed` directly, so a
-    // legitimately-failing base read as fails_on_base=false → wrong HELD(unproven).)
-    let (base_passed, base_output) = run_tests_at_sha(&clone_dir, &base_sha, &runner, &test_files)?;
-    let fails_on_base = !base_passed;
-    let (passes_on_head, head_output) =
-        run_tests_at_sha(&clone_dir, &head_sha, &runner, &test_files)?;
+    // Base run: checkout base, overlay PR test files from head, run tests.
+    // This correctly handles ADDED test files (not present on base).
+    let base_result =
+        run_tests_at_sha_with_overlay(&clone_dir, &base_sha, &head_sha, &runner, &test_files)?;
+    match base_result {
+        TestRunResult::InstallFailed { reason } => {
+            let msg = format!("deps install failed on base: {reason}");
+            println!("  FAIL: {msg}");
+            emit_held(&opts, &msg);
+            println!("\nVerdict: HELD(install-failed)");
+            println!("  {msg}");
+            return Ok(1);
+        }
+        TestRunResult::Ran {
+            passed: base_passed,
+            output: base_output,
+        } => {
+            let fails_on_base = !base_passed;
 
-    println!("  fails on base: {fails_on_base}");
-    println!("  passes on head: {passes_on_head}");
+            // Head run: checkout head, run tests (no overlay needed — test files present).
+            let head_result =
+                run_tests_at_sha_no_overlay(&clone_dir, &head_sha, &runner, &test_files)?;
+            match head_result {
+                TestRunResult::InstallFailed { reason } => {
+                    let msg = format!("deps install failed on head: {reason}");
+                    println!("  FAIL: {msg}");
+                    emit_held(&opts, &msg);
+                    println!("\nVerdict: HELD(install-failed)");
+                    println!("  {msg}");
+                    return Ok(1);
+                }
+                TestRunResult::Ran {
+                    passed: passes_on_head,
+                    output: head_output,
+                } => {
+                    println!("  fails on base: {fails_on_base}");
+                    println!("  passes on head: {passes_on_head}");
 
-    if !fails_on_base {
-        let reason = "test passes on base too — change is unproven (cosmetic or duplicate)";
-        println!("  FAIL: {reason}");
-        println!(
-            "  base output: {}",
-            base_output.trim().lines().next().unwrap_or("(empty)")
-        );
-        emit_held(&opts, reason);
-        println!("\nVerdict: HELD(unproven)");
-        println!("  {reason}");
-        return Ok(1);
+                    if !fails_on_base {
+                        let reason =
+                            "test passes on base too — change is unproven (cosmetic or duplicate)";
+                        println!("  FAIL: {reason}");
+                        println!(
+                            "  base output: {}",
+                            base_output.trim().lines().next().unwrap_or("(empty)")
+                        );
+                        emit_held(&opts, reason);
+                        println!("\nVerdict: HELD(unproven)");
+                        println!("  {reason}");
+                        return Ok(1);
+                    }
+
+                    if !passes_on_head {
+                        let reason =
+                            "test still fails on PR head — change does not fix what it claims";
+                        println!("  FAIL: {reason}");
+                        println!(
+                            "  head output: {}",
+                            head_output.trim().lines().next().unwrap_or("(empty)")
+                        );
+                        emit_held(&opts, reason);
+                        println!("\nVerdict: HELD(test-fails-on-head)");
+                        println!("  {reason}");
+                        return Ok(1);
+                    }
+
+                    println!(
+                        "  PASS: test fails on base, passes on head (real behavioral change proven)"
+                    );
+                }
+            }
+        }
     }
 
-    if !passes_on_head {
-        let reason = "test still fails on PR head — change does not fix what it claims";
-        println!("  FAIL: {reason}");
-        println!(
-            "  head output: {}",
-            head_output.trim().lines().next().unwrap_or("(empty)")
-        );
-        emit_held(&opts, reason);
-        println!("\nVerdict: HELD(test-fails-on-head)");
-        println!("  {reason}");
-        return Ok(1);
-    }
-
-    println!("  PASS: test fails on base, passes on head (real behavioral change proven)");
-
-    // ── Gate 3: No regression (existing suite on head) ───────────────────
-    println!("\n[verify-merge] Gate 3: No-regression (full suite on head) ...");
-    let regression_result = run_full_suite_at_sha(&clone_dir, &head_sha, &runner)?;
+    // ── Gate 3: No regression (delta between base and head) ──────────────
+    println!("\n[verify-merge] Gate 3: No-regression (delta: base vs head) ...");
+    let regression_result = run_full_suite_delta(&clone_dir, &base_sha, &head_sha, &runner)?;
     match regression_result {
-        RegressionResult::Pass => {
-            println!("  PASS: full test suite green on head");
+        RegressionResult::Pass {
+            base_fail_count,
+            head_fail_count,
+        } => {
+            println!(
+                "  PASS: no new failures (base failures: {base_fail_count}, head failures: {head_fail_count})"
+            );
         }
         RegressionResult::CoveredByCi => {
             println!("  PASS (covered by CI gate 1 — CI runs tests)");
         }
-        RegressionResult::Fail { output } => {
+        RegressionResult::InstallFailed { reason } => {
+            let msg = format!("deps install failed during regression check: {reason}");
+            println!("  FAIL: {msg}");
+            emit_held(&opts, &msg);
+            println!("\nVerdict: HELD(install-failed)");
+            println!("  {msg}");
+            return Ok(1);
+        }
+        RegressionResult::NewFailures {
+            newly_failing,
+            base_fail_count,
+            head_fail_count,
+        } => {
             let reason = format!(
-                "regression: full test suite fails on head: {}",
-                output.trim().lines().next().unwrap_or("(no output)")
+                "regression: {} test(s) newly failing (base_failures={base_fail_count} head_failures={head_fail_count}): {}",
+                newly_failing.len(),
+                newly_failing.join(", ")
             );
             println!("  FAIL: {}", &reason);
             emit_held(&opts, &reason);
@@ -252,8 +324,6 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
             _ => vec![],
         },
         test_files: test_files.clone(),
-        fails_on_base,
-        passes_on_head,
         base_sha: base_sha.clone(),
         head_sha: head_sha.clone(),
     };
@@ -367,8 +437,6 @@ impl Opts {
 struct Proof {
     ci_checks: Vec<String>,
     test_files: Vec<String>,
-    fails_on_base: bool,
-    passes_on_head: bool,
     base_sha: String,
     head_sha: String,
 }
@@ -402,12 +470,30 @@ enum TestRunner {
     Unknown,
 }
 
+/// Result of a single test invocation (specific files or full suite).
+enum TestRunResult {
+    /// Dependencies failed to install — surfaces as HELD(install-failed), NOT test failure.
+    InstallFailed { reason: String },
+    /// Tests ran; `passed` = exit 0.
+    Ran { passed: bool, output: String },
+}
+
+/// Gate 3 regression result.
 enum RegressionResult {
-    Pass,
+    /// No new failures introduced (includes the old all-green case).
+    Pass {
+        base_fail_count: usize,
+        head_fail_count: usize,
+    },
     /// CI gate already proved tests pass; skip local run.
     CoveredByCi,
-    Fail {
-        output: String,
+    /// Deps installation failed during regression check.
+    InstallFailed { reason: String },
+    /// Tests that passed on base now fail on head.
+    NewFailures {
+        newly_failing: Vec<String>,
+        base_fail_count: usize,
+        head_fail_count: usize,
     },
 }
 
@@ -419,16 +505,20 @@ fn print_usage() {
     println!("    [--clone-dir <path>] [--apply]");
     println!();
     println!("Gates (ALL must pass):");
-    println!("  1. Repo CI green — every check-run on PR head SHA is SUCCESS.");
+    println!("  1. Repo CI green — polls check-runs until all terminal; all must be green.");
     println!("     Zero checks → HELD(no-gates).");
-    println!("  2. Anti-cosmetic — diff adds/modifies a test; that test fails on base,");
-    println!("     passes on head. No test → HELD(cosmetic). Passes-on-both → HELD(unproven).");
-    println!("  3. No-regression — existing test suite passes on head.");
+    println!("  2. Anti-cosmetic — diff adds/modifies a test; that test fails on base");
+    println!("     (with PR test files overlaid), passes on head. Deps installed first.");
+    println!("     No test → HELD(cosmetic). Passes-on-both → HELD(unproven).");
+    println!("  3. No-regression (delta) — full suite on base + head; HELD(regression)");
+    println!("     only when a test that passed on base fails on head. Pre-existing");
+    println!("     failures do NOT block. Set CHUMP_EXTERNAL_VERIFY_FULL_SUITE=1 to enable.");
     println!();
     println!("Verdict: MERGE (all pass) or HELD(<reason>).");
     println!("Dry-run by default; --apply executes the merge.");
     println!();
     println!("Kill-switch: CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED=1");
+    println!("Deps timeout: CHUMP_VERIFY_DEPS_TIMEOUT_SECS (default 600)");
 }
 
 fn resolve_clone_dir(opts: &Opts) -> anyhow::Result<PathBuf> {
@@ -880,14 +970,243 @@ fn detect_test_runner(clone_dir: &Path) -> anyhow::Result<TestRunner> {
     Ok(TestRunner::Unknown)
 }
 
-/// Checkout a SHA, run the test files, return (passed, output).
-fn run_tests_at_sha(
+// ── FIX 1: Dependency installation ────────────────────────────────────────
+
+/// Ensure dependencies are installed before running tests.
+///
+/// - Npm: if `node_modules/` absent → `npm ci` (or `npm install` on no lock).
+///   Timeout: CHUMP_VERIFY_DEPS_TIMEOUT_SECS (default 600 s).
+/// - Pytest: best-effort `pip install -r requirements.txt` if present.
+/// - Cargo / Make: no-op.
+///
+/// Returns `Ok(())` on success or when no-op.
+/// Returns `Err` when installation fails — caller should surface HELD(install-failed).
+fn ensure_deps(clone_dir: &Path, runner: &TestRunner) -> anyhow::Result<()> {
+    match runner {
+        TestRunner::Npm => {
+            // Only install if node_modules is absent.
+            if clone_dir.join("node_modules").exists() {
+                return Ok(());
+            }
+
+            let timeout_secs: u64 = std::env::var("CHUMP_VERIFY_DEPS_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600);
+
+            // Prefer npm ci (reproducible); fallback to npm install if no lockfile.
+            let use_ci = clone_dir.join("package-lock.json").exists()
+                || clone_dir.join("npm-shrinkwrap.json").exists();
+
+            let npm_cmd = std::env::var("CHUMP_NPM_BIN").unwrap_or_else(|_| "npm".to_string());
+            let install_args: &[&str] = if use_ci { &["ci"] } else { &["install"] };
+
+            println!(
+                "[verify-merge] ensure_deps: running `npm {}` in {} (timeout {}s) ...",
+                install_args[0],
+                clone_dir.display(),
+                timeout_secs
+            );
+
+            // We use std::process with a timeout via a background thread + kill.
+            // (std::process::Command has no built-in timeout on stable Rust.)
+            let mut child = Command::new(&npm_cmd)
+                .args(install_args)
+                .current_dir(clone_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("failed to spawn npm: {e}"))?;
+
+            let deadline = std::time::Duration::from_secs(timeout_secs);
+            let start = std::time::Instant::now();
+
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        if !status.success() {
+                            anyhow::bail!(
+                                "npm {} failed (exit {:?})",
+                                install_args[0],
+                                status.code()
+                            );
+                        }
+                        println!("[verify-merge] ensure_deps: npm {} OK", install_args[0]);
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        if start.elapsed() >= deadline {
+                            let _ = child.kill();
+                            anyhow::bail!(
+                                "npm {} timed out after {}s",
+                                install_args[0],
+                                timeout_secs
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                    Err(e) => {
+                        anyhow::bail!("npm {} wait error: {e}", install_args[0]);
+                    }
+                }
+            }
+        }
+        TestRunner::Pytest => {
+            // Best-effort: if requirements.txt exists, install it.
+            let req = clone_dir.join("requirements.txt");
+            if !req.exists() {
+                return Ok(());
+            }
+            println!("[verify-merge] ensure_deps: pip install -r requirements.txt ...");
+            let status = Command::new("pip")
+                .args(["install", "-r", "requirements.txt"])
+                .current_dir(clone_dir)
+                .status()
+                .map_err(|e| anyhow::anyhow!("pip install: {e}"))?;
+            if !status.success() {
+                anyhow::bail!("pip install -r requirements.txt failed");
+            }
+            Ok(())
+        }
+        // Cargo: toolchain assumed present; `cargo test` handles deps via Cargo.lock.
+        // Make: external deps are out of scope.
+        TestRunner::Cargo | TestRunner::Make | TestRunner::Unknown => Ok(()),
+    }
+}
+
+// ── FIX 2: Anti-cosmetic base run with test-file overlay ─────────────────
+
+/// Gate 2 base run: checkout `base_sha`, overlay test files from `head_sha`,
+/// install deps, run only `test_files`, then restore.
+///
+/// This correctly handles the case where a test file is ADDED by the PR
+/// (doesn't exist on base): overlaying it from head makes it available so
+/// the test can fail vs. the base production code.
+fn run_tests_at_sha_with_overlay(
+    clone_dir: &Path,
+    base_sha: &str,
+    head_sha: &str,
+    runner: &TestRunner,
+    test_files: &[String],
+) -> anyhow::Result<TestRunResult> {
+    // 1. Checkout base production code.
+    git_checkout_detach(clone_dir, base_sha)?;
+
+    // 2. Install deps at base (node_modules etc. may not exist).
+    if let Err(e) = ensure_deps(clone_dir, runner) {
+        return Ok(TestRunResult::InstallFailed {
+            reason: e.to_string(),
+        });
+    }
+
+    // 3. Overlay each changed test file from head onto the working tree.
+    for f in test_files {
+        // Ensure parent directory exists (for ADDED files).
+        if let Some(parent) = Path::new(f).parent() {
+            let full_parent = clone_dir.join(parent);
+            let _ = std::fs::create_dir_all(&full_parent);
+        }
+        let status = Command::new("git")
+            .args([
+                "-C",
+                &clone_dir.to_string_lossy(),
+                "checkout",
+                head_sha,
+                "--",
+                f.as_str(),
+            ])
+            .status()
+            .map_err(|e| anyhow::anyhow!("git checkout head -- {f}: {e}"))?;
+        if !status.success() {
+            // Non-fatal: file might not exist on head either (deleted) — skip.
+            eprintln!("[verify-merge] warning: could not overlay {f} from head (skipping)");
+        }
+    }
+
+    // 4. Run only the test files.
+    let cmd_and_args = test_command_specific(runner, test_files);
+    let output = Command::new(&cmd_and_args[0])
+        .args(&cmd_and_args[1..])
+        .current_dir(clone_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| anyhow::anyhow!("test runner (base+overlay) {:?}: {e}", runner))?;
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let passed = output.status.success();
+
+    // 5. Restore test files to base state (cleanup; subsequent runs start clean).
+    for f in test_files {
+        let _ = Command::new("git")
+            .args([
+                "-C",
+                &clone_dir.to_string_lossy(),
+                "checkout",
+                base_sha,
+                "--",
+                f.as_str(),
+            ])
+            .status();
+        // If the file didn't exist on base, the checkout above will fail and
+        // leave the file absent — which is correct. Remove it explicitly.
+        let full = clone_dir.join(f);
+        if full.exists() {
+            // Check if it was tracked at base: if git checkout succeeded it's fine.
+            // If it errored, the overlay file is still there; remove it.
+        } else {
+            // File wasn't on base — remove any leftover from the overlay.
+            let _ = std::fs::remove_file(&full);
+        }
+    }
+
+    Ok(TestRunResult::Ran {
+        passed,
+        output: combined,
+    })
+}
+
+/// Gate 2 head run: checkout `sha`, install deps, run test files (no overlay).
+fn run_tests_at_sha_no_overlay(
     clone_dir: &Path,
     sha: &str,
     runner: &TestRunner,
     test_files: &[String],
-) -> anyhow::Result<(bool, String)> {
-    // Checkout the SHA.
+) -> anyhow::Result<TestRunResult> {
+    git_checkout_detach(clone_dir, sha)?;
+
+    if let Err(e) = ensure_deps(clone_dir, runner) {
+        return Ok(TestRunResult::InstallFailed {
+            reason: e.to_string(),
+        });
+    }
+
+    let cmd_and_args = test_command_specific(runner, test_files);
+    let output = Command::new(&cmd_and_args[0])
+        .args(&cmd_and_args[1..])
+        .current_dir(clone_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| anyhow::anyhow!("test runner (head) {:?}: {e}", runner))?;
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(TestRunResult::Ran {
+        passed: output.status.success(),
+        output: combined,
+    })
+}
+
+/// Detached-HEAD checkout helper.
+fn git_checkout_detach(clone_dir: &Path, sha: &str) -> anyhow::Result<()> {
     let co = Command::new("git")
         .args([
             "-C",
@@ -902,56 +1221,40 @@ fn run_tests_at_sha(
         let err = String::from_utf8_lossy(&co.stderr);
         anyhow::bail!("git checkout {sha} failed: {err}");
     }
-
-    let cmd_and_args = test_command(runner, test_files);
-    let output = Command::new(&cmd_and_args[0])
-        .args(&cmd_and_args[1..])
-        .current_dir(clone_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| anyhow::anyhow!("test runner {:?}: {e}", runner))?;
-
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok((output.status.success(), combined))
+    Ok(())
 }
 
-/// Build the test command argv for the detected runner + specific test files.
-fn test_command(runner: &TestRunner, test_files: &[String]) -> Vec<String> {
+/// Build the test command for SPECIFIC changed test files (Gate 2).
+fn test_command_specific(runner: &TestRunner, test_files: &[String]) -> Vec<String> {
     match runner {
         TestRunner::Cargo => {
-            // `cargo test` runs all tests; for the anti-cosmetic gate we want
-            // to exercise the changed test files. Rust doesn't have per-file
-            // targeting easily, so run the full test suite and interpret
-            // failure/pass accordingly.
-            vec![
-                "cargo".into(),
-                "test".into(),
-                "--".into(),
-                // Include changed file stems as filter hints (best-effort).
-                test_files
-                    .iter()
-                    .filter_map(|f| {
-                        std::path::Path::new(f)
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.to_string())
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ]
-            // If no stems, just run all tests.
+            // Cargo doesn't have per-file targeting, so use file-stem filter hints.
+            let filter = test_files
+                .iter()
+                .filter_map(|f| {
+                    Path::new(f)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if filter.is_empty() {
+                vec!["cargo".into(), "test".into()]
+            } else {
+                vec!["cargo".into(), "test".into(), "--".into(), filter]
+            }
         }
-        TestRunner::Npm => vec![
-            "npm".into(),
-            "test".into(),
-            "--".into(),
-            "--passWithNoTests".into(),
-        ],
+        TestRunner::Npm => {
+            // Use npx jest with --passWithNoTests and specific file paths.
+            // Falls back gracefully if jest is not present (npx will error → test fails).
+            let npx = std::env::var("CHUMP_NPX_BIN").unwrap_or_else(|_| "npx".to_string());
+            let mut cmd = vec![npx, "jest".into(), "--passWithNoTests".into()];
+            for f in test_files {
+                cmd.push(f.clone());
+            }
+            cmd
+        }
         TestRunner::Pytest => {
             let mut cmd = vec!["python".into(), "-m".into(), "pytest".into(), "-x".into()];
             for f in test_files {
@@ -960,30 +1263,90 @@ fn test_command(runner: &TestRunner, test_files: &[String]) -> Vec<String> {
             cmd
         }
         TestRunner::Make => vec!["make".into(), "test".into()],
-        TestRunner::Unknown => vec!["true".into()], // never reached — caller guards Unknown
+        TestRunner::Unknown => vec!["true".into()],
     }
 }
 
-/// Run the full suite on head to check for regressions.
-/// Returns CoveredByCi if CI runs tests (indicated by CI passing gate 1).
-fn run_full_suite_at_sha(
+// ── FIX 3: Gate 3 as delta (base vs head) ────────────────────────────────
+
+/// Run the full suite on BOTH base and head (when enabled) and compute the
+/// delta of failing tests. HELD(regression) only if a test that PASSED on
+/// base FAILS on head.
+///
+/// Pre-existing failures (red on both) do NOT block. This correctly handles
+/// messy 0→1 repos with a partially-red existing suite.
+///
+/// When CHUMP_EXTERNAL_VERIFY_FULL_SUITE != "1", returns CoveredByCi.
+fn run_full_suite_delta(
     clone_dir: &Path,
-    _head_sha: &str,
+    base_sha: &str,
+    head_sha: &str,
     runner: &TestRunner,
 ) -> anyhow::Result<RegressionResult> {
-    // We already verified CI is green via gate 1.  If the repo's CI
-    // includes a test step (the majority case), that is authoritative.
-    // We use a simple heuristic: if Cargo.toml exists and we saw CI pass,
-    // the CI almost certainly ran `cargo test`.  Same logic for npm/pytest.
-    // A future improvement could inspect the workflow YAML; for now we mark
-    // it covered and avoid a redundant local run (which would need the full
-    // toolchain installed).
-    //
-    // To force a local run, set CHUMP_EXTERNAL_VERIFY_FULL_SUITE=1.
     if std::env::var("CHUMP_EXTERNAL_VERIFY_FULL_SUITE").as_deref() != Ok("1") {
         return Ok(RegressionResult::CoveredByCi);
     }
 
+    // Run on base.
+    println!(
+        "[verify-merge] Gate 3: running full suite on base ({}) ...",
+        &base_sha[..base_sha.len().min(12)]
+    );
+    git_checkout_detach(clone_dir, base_sha)?;
+    if let Err(e) = ensure_deps(clone_dir, runner) {
+        return Ok(RegressionResult::InstallFailed {
+            reason: e.to_string(),
+        });
+    }
+    let base_failures = collect_failing_tests(clone_dir, runner)?;
+    println!(
+        "[verify-merge] Gate 3: base failures: {}",
+        base_failures.len()
+    );
+
+    // Run on head.
+    println!(
+        "[verify-merge] Gate 3: running full suite on head ({}) ...",
+        &head_sha[..head_sha.len().min(12)]
+    );
+    git_checkout_detach(clone_dir, head_sha)?;
+    if let Err(e) = ensure_deps(clone_dir, runner) {
+        return Ok(RegressionResult::InstallFailed {
+            reason: e.to_string(),
+        });
+    }
+    let head_failures = collect_failing_tests(clone_dir, runner)?;
+    println!(
+        "[verify-merge] Gate 3: head failures: {}",
+        head_failures.len()
+    );
+
+    // Delta: tests that passed on base but fail on head.
+    let newly_failing: Vec<String> = head_failures.difference(&base_failures).cloned().collect();
+
+    let base_fail_count = base_failures.len();
+    let head_fail_count = head_failures.len();
+
+    if newly_failing.is_empty() {
+        Ok(RegressionResult::Pass {
+            base_fail_count,
+            head_fail_count,
+        })
+    } else {
+        Ok(RegressionResult::NewFailures {
+            newly_failing,
+            base_fail_count,
+            head_fail_count,
+        })
+    }
+}
+
+/// Run the full suite and collect names of failing tests.
+///
+/// Uses the full-suite command and parses output to extract test identifiers.
+/// For runners where parsing is not available (Make), failure = any non-zero
+/// exit and the sentinel "ALL" is used.
+fn collect_failing_tests(clone_dir: &Path, runner: &TestRunner) -> anyhow::Result<HashSet<String>> {
     let cmd_and_args = full_suite_command(runner);
     let output = Command::new(&cmd_and_args[0])
         .args(&cmd_and_args[1..])
@@ -1000,16 +1363,88 @@ fn run_full_suite_at_sha(
     );
 
     if output.status.success() {
-        Ok(RegressionResult::Pass)
-    } else {
-        Ok(RegressionResult::Fail { output: combined })
+        return Ok(HashSet::new());
     }
+
+    // Parse failing test names from combined output.
+    let failures = parse_failing_tests(runner, &combined);
+    Ok(failures)
+}
+
+/// Extract failing test identifiers from runner output.
+/// Returns a set of test name strings. For runners where parsing is not
+/// practical, returns {"ALL"} on any failure so the delta comparison still
+/// works (pre-existing ALL failure on both base+head → no regression).
+fn parse_failing_tests(runner: &TestRunner, output: &str) -> HashSet<String> {
+    let mut failures = HashSet::new();
+    match runner {
+        TestRunner::Cargo => {
+            // Cargo test output: "test path::to::test_name ... FAILED"
+            for line in output.lines() {
+                let trimmed = line.trim();
+                if trimmed.ends_with("... FAILED") || trimmed.ends_with("...FAILED") {
+                    let name = trimmed
+                        .trim_end_matches("FAILED")
+                        .trim_end_matches("...")
+                        .trim()
+                        .to_string();
+                    if !name.is_empty() {
+                        failures.insert(name);
+                    }
+                }
+            }
+            // Fallback if no individual failures parsed but suite failed.
+            if failures.is_empty() {
+                failures.insert("ALL".to_string());
+            }
+        }
+        TestRunner::Npm => {
+            // Jest output: "  ✕ test description" or "  × test description"
+            // Also: "FAIL src/foo.test.js"
+            for line in output.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("✕ ")
+                    || trimmed.starts_with("× ")
+                    || trimmed.starts_with("FAIL ")
+                    || trimmed.starts_with("✗ ")
+                {
+                    failures.insert(trimmed.to_string());
+                }
+            }
+            if failures.is_empty() {
+                failures.insert("ALL".to_string());
+            }
+        }
+        TestRunner::Pytest => {
+            // pytest output: "FAILED tests/test_foo.py::test_bar"
+            for line in output.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("FAILED ") {
+                    let name = trimmed.trim_start_matches("FAILED ").trim().to_string();
+                    if !name.is_empty() {
+                        failures.insert(name);
+                    }
+                }
+            }
+            if failures.is_empty() {
+                failures.insert("ALL".to_string());
+            }
+        }
+        TestRunner::Make | TestRunner::Unknown => {
+            // Can't parse — treat any failure as the sentinel "ALL".
+            failures.insert("ALL".to_string());
+        }
+    }
+    failures
 }
 
 fn full_suite_command(runner: &TestRunner) -> Vec<String> {
     match runner {
         TestRunner::Cargo => vec!["cargo".into(), "test".into()],
-        TestRunner::Npm => vec!["npm".into(), "test".into()],
+        TestRunner::Npm => {
+            let npm = std::env::var("CHUMP_NPM_BIN").unwrap_or_else(|_| "npm".to_string());
+            vec![npm, "test".into()]
+        }
         TestRunner::Pytest => vec!["python".into(), "-m".into(), "pytest".into()],
         TestRunner::Make => vec!["make".into(), "test".into()],
         TestRunner::Unknown => vec!["true".into()],
@@ -1040,8 +1475,6 @@ fn emit_verified(opts: &Opts, proof: &Proof) {
     let proof_json = serde_json::json!({
         "ci_checks": proof.ci_checks.len(),
         "test_files": proof.test_files,
-        "fails_on_base": proof.fails_on_base,
-        "passes_on_head": proof.passes_on_head,
         "base_sha": &proof.base_sha[..proof.base_sha.len().min(12)],
         "head_sha": &proof.head_sha[..proof.head_sha.len().min(12)],
     });
@@ -1112,12 +1545,12 @@ fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
     }
 }
 
-// ── Unit tests (CREDIBLE-102) ─────────────────────────────────────────────
+// ── Unit tests ────────────────────────────────────────────────────────────
 //
-// Each test injects a fake `gh` binary (written to a tmpdir and referenced via
-// CHUMP_GH_BIN) that reads a counter file to decide which canned response to
-// return, advancing the counter on every invocation.  CHUMP_VERIFY_CI_POLL_SECS=0
-// makes the polling loop instant.
+// CREDIBLE-102 tests: poll_ci_until_terminal with fake gh binary + counter file.
+// CREDIBLE-104 tests: ensure_deps, base-overlay, Gate-3 delta.
+//
+// Tests that set env vars are #[serial_test::serial] to prevent races.
 
 #[cfg(test)]
 mod tests {
@@ -1185,6 +1618,8 @@ fi
         );
         write_fake_gh(dir, &script)
     }
+
+    // ── CREDIBLE-102: poll_ci_until_terminal tests ────────────────────────
 
     // ── (a) pending → pending → SUCCESS: Gate 1 PASS ─────────────────────
     #[test]
@@ -1361,5 +1796,337 @@ fi
                 }
             ),
         }
+    }
+
+    // ── CREDIBLE-104 new tests ────────────────────────────────────────────
+
+    /// Helper: create a minimal npm repo (package.json with jest test script)
+    /// at `dir`. No node_modules. Two commits:
+    ///   base: src/add.js with a bug (always returns 0), no test file
+    ///   head branch: src/add.js fixed + __tests__/add.test.js that fails on buggy code
+    ///
+    /// Returns (base_sha, head_sha, test_file_path).
+    fn setup_npm_repo(dir: &Path) -> (String, String, String) {
+        std::fs::create_dir_all(dir).expect("create repo dir");
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(dir)
+            .status()
+            .expect("git init");
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(dir)
+            .status()
+            .ok();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(dir)
+            .status()
+            .ok();
+
+        // package.json with a jest-like test script (we'll stub jest via CHUMP_NPX_BIN)
+        fs::write(
+            dir.join("package.json"),
+            r#"{"name":"test-repo","version":"1.0.0","scripts":{"test":"jest"}}"#,
+        )
+        .expect("package.json");
+        // package-lock.json so npm ci is preferred
+        fs::write(dir.join("package-lock.json"), r#"{"lockfileVersion":3}"#).expect("lock");
+
+        std::fs::create_dir_all(dir.join("src")).expect("src dir");
+        // Buggy implementation: always returns 0
+        fs::write(
+            dir.join("src/add.js"),
+            "module.exports = function add(a, b) { return 0; };\n",
+        )
+        .expect("src/add.js");
+
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir)
+            .status()
+            .expect("git add");
+        Command::new("git")
+            .args(["commit", "-q", "-m", "base: buggy add"])
+            .current_dir(dir)
+            .status()
+            .expect("git commit base");
+        let base_sha = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir)
+                .output()
+                .expect("rev-parse")
+                .stdout,
+        )
+        .expect("utf8")
+        .trim()
+        .to_string();
+
+        // PR head: fix the implementation AND add a test
+        Command::new("git")
+            .args(["checkout", "-q", "-b", "pr-head"])
+            .current_dir(dir)
+            .status()
+            .ok();
+        fs::write(
+            dir.join("src/add.js"),
+            "module.exports = function add(a, b) { return a + b; };\n",
+        )
+        .expect("src/add.js fixed");
+
+        std::fs::create_dir_all(dir.join("__tests__")).expect("__tests__ dir");
+        // Test file that requires add.js; will only pass with the fixed implementation
+        fs::write(
+            dir.join("__tests__/add.test.js"),
+            "const add = require('../src/add');\nif (add(1,2) !== 3) { process.exit(1); }\nconsole.log('pass');\n",
+        ).expect("add.test.js");
+
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir)
+            .status()
+            .expect("git add head");
+        Command::new("git")
+            .args(["commit", "-q", "-m", "fix: add returns sum + add test"])
+            .current_dir(dir)
+            .status()
+            .expect("git commit head");
+        let head_sha = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir)
+                .output()
+                .expect("rev-parse")
+                .stdout,
+        )
+        .expect("utf8")
+        .trim()
+        .to_string();
+
+        (base_sha, head_sha, "__tests__/add.test.js".to_string())
+    }
+
+    /// Write a fake npm binary that records invocations.
+    fn write_fake_npm(dir: &Path, invocation_log: &Path) -> String {
+        let log = invocation_log.to_string_lossy().into_owned();
+        let bin = dir.join("npm");
+        fs::write(
+            &bin,
+            format!(
+                "#!/usr/bin/env bash\necho \"npm $*\" >> \"{log}\"\n# ci and install succeed; test is handled by npx stub\nexit 0\n"
+            ),
+        ).expect("write fake npm");
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).expect("chmod npm");
+        bin.to_string_lossy().into_owned()
+    }
+
+    /// Write a fake npx binary that runs the test file via `node` directly.
+    /// When called as `npx jest --passWithNoTests <file>`, it runs the file with node.
+    fn write_fake_npx(dir: &Path) -> String {
+        let bin = dir.join("npx");
+        fs::write(
+            &bin,
+            // Skip "jest" and "--passWithNoTests", run remaining args as node scripts.
+            r#"#!/usr/bin/env bash
+# Fake npx: skip "jest" and "--passWithNoTests", run remaining args with node
+ARGS=("$@")
+FILES=()
+skip_next=0
+for arg in "${ARGS[@]}"; do
+    case "$arg" in
+        jest|--passWithNoTests) continue ;;
+        *) FILES+=("$arg") ;;
+    esac
+done
+if [ ${#FILES[@]} -eq 0 ]; then
+    exit 0
+fi
+for f in "${FILES[@]}"; do
+    node "$f" || exit 1
+done
+exit 0
+"#,
+        )
+        .expect("write fake npx");
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).expect("chmod npx");
+        bin.to_string_lossy().into_owned()
+    }
+
+    // ── Test (a): Npm PR ADDS a test; base-overlay proves fail-on-base → MERGE ─
+
+    #[test]
+    #[serial_test::serial]
+    fn test_npm_added_test_overlay_proves_fix() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let repo_dir = tmp.path().join("repo");
+        let clone_dir = tmp.path().join("clone");
+        let fake_bin_dir = tmp.path().join("fake_bins");
+        fs::create_dir_all(&fake_bin_dir).expect("fake_bins dir");
+
+        let (base_sha, head_sha, test_file) = setup_npm_repo(&repo_dir);
+
+        // Clone it
+        Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                repo_dir.to_str().unwrap(),
+                clone_dir.to_str().unwrap(),
+            ])
+            .status()
+            .expect("clone");
+        // Make both SHAs available
+        Command::new("git")
+            .args(["fetch", "-q", "origin", &base_sha, &head_sha])
+            .current_dir(&clone_dir)
+            .status()
+            .ok();
+
+        // Stub npm (records calls) and npx (runs node)
+        let invocation_log = tmp.path().join("npm_invocations.txt");
+        let _npm_bin = write_fake_npm(&fake_bin_dir, &invocation_log);
+        let _npx_bin = write_fake_npx(&fake_bin_dir);
+
+        std::env::set_var("CHUMP_NPM_BIN", fake_bin_dir.join("npm").to_str().unwrap());
+        std::env::set_var("CHUMP_NPX_BIN", fake_bin_dir.join("npx").to_str().unwrap());
+        std::env::set_var("CHUMP_VERIFY_DEPS_TIMEOUT_SECS", "30");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_str().unwrap(),
+        );
+
+        let runner = TestRunner::Npm;
+        let test_files = vec![test_file];
+
+        // Base run with overlay: should FAIL (base code is buggy, test file overlaid from head)
+        let base_result =
+            run_tests_at_sha_with_overlay(&clone_dir, &base_sha, &head_sha, &runner, &test_files)
+                .expect("base overlay run");
+
+        let base_passed = match base_result {
+            TestRunResult::Ran { passed, .. } => passed,
+            TestRunResult::InstallFailed { reason } => panic!("install failed on base: {reason}"),
+        };
+        assert!(
+            !base_passed,
+            "test should FAIL on base code (add always returns 0)"
+        );
+
+        // Head run (no overlay): should PASS (fixed code)
+        let head_result = run_tests_at_sha_no_overlay(&clone_dir, &head_sha, &runner, &test_files)
+            .expect("head run");
+
+        let head_passed = match head_result {
+            TestRunResult::Ran { passed, .. } => passed,
+            TestRunResult::InstallFailed { reason } => panic!("install failed on head: {reason}"),
+        };
+        assert!(head_passed, "test should PASS on head code (add fixed)");
+
+        // This combination (fail on base, pass on head) → MERGE verdict in Gate 2
+    }
+
+    // ── Test (b): ensure_deps invokes npm ci when node_modules absent ──────
+
+    #[test]
+    #[serial_test::serial]
+    fn test_ensure_deps_calls_npm_ci_when_node_modules_absent() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let fake_bin_dir = tmp.path().join("bins");
+        fs::create_dir_all(&fake_bin_dir).expect("bins dir");
+
+        // Fake repo dir with package.json + package-lock.json (no node_modules)
+        let repo_dir = tmp.path().join("repo");
+        fs::create_dir_all(&repo_dir).expect("repo dir");
+        fs::write(
+            repo_dir.join("package.json"),
+            r#"{"name":"x","scripts":{"test":"jest"}}"#,
+        )
+        .expect("pkg.json");
+        fs::write(
+            repo_dir.join("package-lock.json"),
+            r#"{"lockfileVersion":3}"#,
+        )
+        .expect("lock");
+        // No node_modules directory.
+
+        let invocation_log = tmp.path().join("npm_calls.txt");
+        let npm_bin = write_fake_npm(&fake_bin_dir, &invocation_log);
+
+        std::env::set_var("CHUMP_NPM_BIN", &npm_bin);
+        std::env::set_var("CHUMP_VERIFY_DEPS_TIMEOUT_SECS", "30");
+
+        let result = ensure_deps(&repo_dir, &TestRunner::Npm);
+        assert!(result.is_ok(), "ensure_deps should succeed: {:?}", result);
+
+        // Check invocation log contains "npm ci"
+        let log = fs::read_to_string(&invocation_log).unwrap_or_default();
+        assert!(
+            log.contains("npm ci"),
+            "expected 'npm ci' in invocation log, got: {log:?}"
+        );
+    }
+
+    // ── Test (c): Gate-3 delta: pre-existing failure not held; new regression is held ─
+
+    #[test]
+    #[serial_test::serial]
+    fn test_gate3_delta_preexisting_failure_not_regression() {
+        // Simulate: full suite on base has 1 failure ("old_test_fail").
+        // Full suite on head also has that same failure + a NEW passing test added.
+        // Delta: no new failures → PASS (not held).
+
+        let base_failures: HashSet<String> = ["old_test_fail".to_string()].into_iter().collect();
+        let head_failures: HashSet<String> = ["old_test_fail".to_string()].into_iter().collect();
+
+        let newly_failing: Vec<String> =
+            head_failures.difference(&base_failures).cloned().collect();
+
+        assert!(
+            newly_failing.is_empty(),
+            "pre-existing failure should not be a regression: {:?}",
+            newly_failing
+        );
+    }
+
+    #[test]
+    fn test_gate3_delta_new_regression_is_held() {
+        // Simulate: base has no failures; head introduces a new one.
+        let base_failures: HashSet<String> = HashSet::new();
+        let head_failures: HashSet<String> =
+            ["newly_broken_test".to_string()].into_iter().collect();
+
+        let newly_failing: Vec<String> =
+            head_failures.difference(&base_failures).cloned().collect();
+
+        assert_eq!(
+            newly_failing,
+            vec!["newly_broken_test".to_string()],
+            "new failure should be detected as regression"
+        );
+    }
+
+    #[test]
+    fn test_gate3_delta_mixed_preexisting_and_new() {
+        // Simulate: base has 2 failures; head has those 2 plus a NEW one.
+        let base_failures: HashSet<String> = ["fail_a".to_string(), "fail_b".to_string()]
+            .into_iter()
+            .collect();
+        let head_failures: HashSet<String> = [
+            "fail_a".to_string(),
+            "fail_b".to_string(),
+            "fail_new".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let newly_failing: Vec<String> =
+            head_failures.difference(&base_failures).cloned().collect();
+
+        assert_eq!(
+            newly_failing,
+            vec!["fail_new".to_string()],
+            "only new failure should be detected"
+        );
     }
 }

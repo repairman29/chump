@@ -1,0 +1,12 @@
+- id: CREDIBLE-104
+  domain: CREDIBLE
+  title: "CREDIBLE: verify-merge bar real-repo hardening — install deps before testing + prove ADDED tests via base-overlay of changed test files + Gate-3 no-regression as delta (no NEW failures), so messy 0→1 repos like BEAST-MODE verify correctly without watering down the proof"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "FIX 1: ensure_deps() installs node_modules via npm ci (fallback npm install) before running tests on any npm repo; a missing node_modules does NOT surface as a test failure but as a clear HELD(install-failed) verdict; timeout bounded by CHUMP_VERIFY_DEPS_TIMEOUT_SECS (default 600)"
+    - "FIX 2: run_tests_at_sha base-run overlays PR test files onto base code so ADDED test files (not present on base) correctly prove fail-on-base; Npm uses npx jest --passWithNoTests <files> for specific-file targeting; Pytest passes specific files; Cargo uses existing filter"
+    - "FIX 3: run_full_suite_at_sha (Gate 3) when CHUMP_EXTERNAL_VERIFY_FULL_SUITE=1 runs suite on both base and head and compares failing-test sets; HELD(regression) only when a test PASSES on base but FAILS on head; pre-existing failures on both are not regressions"
+    - "All new test cases pass: (a) npm added-test overlay → MERGE, (b) npm ci invoked when node_modules absent, (c) gate-3 delta: pre-existing failure not held + new regression held; ALL existing CREDIBLE-096/102 tests remain green; cargo fmt/clippy/test clean"
+
