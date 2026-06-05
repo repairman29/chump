@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MISSION-038 (MISSION-032 Phase-B Tier-1): hourly onboard-scout scheduler.
+     Reads the repos table, picks up to CHUMP_ONBOARD_SCHED_RATE_PER_HR active
+     repos whose last_scan_at is older than CHUMP_ONBOARD_SCHED_STALE_DAYS days
+     (or never scanned), and invokes `chump onboard <owner/repo>` on each.
+
+     Install:
+       cp scripts/setup/com.chump.onboard-scout-scheduler.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/com.chump.onboard-scout-scheduler.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.chump.onboard-scout-scheduler</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/ops/onboard-scout-scheduler.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CHUMP_ONBOARD_SCHED_RATE_PER_HR</key><string>5</string>
+    <key>CHUMP_ONBOARD_SCHED_STALE_DAYS</key><string>7</string>
+    <key>CHUMP_ONBOARD_ROOT</key><string>/Users/jeffadkins/.chump/external</string>
+  </dict>
+  <key>WorkingDirectory</key><string>/Users/jeffadkins/Projects/Chump</string>
+  <!-- Hourly at :23 — off-peak, off the :00/:30 crowding marks. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Minute</key><integer>23</integer>
+  </dict>
+  <key>StandardErrorPath</key><string>/Users/jeffadkins/.chump/logs/onboard-scout-scheduler.err</string>
+  <key>StandardOutPath</key><string>/Users/jeffadkins/.chump/logs/onboard-scout-scheduler.out</string>
+</dict>
+</plist>
