@@ -405,3 +405,4 @@ test-inbox-lane-filter.sh     # reason: EFFECTIVE-029 lane-filter is SessionStar
 # point the Rust unit tests inside src/improve.rs cover the same logic and
 # preflight already runs `cargo test`.
 test-chump-improve.sh  # reason: Tier-C integration test; logic covered by cargo test (src/improve.rs); full shell integration test deferred mirror EFFECTIVE-177
+chump improve orchestrator  # reason: Tier-C integration test (test-chump-improve.sh); cargo test covers the logic in src/improve.rs; full shell mirror deferred (EFFECTIVE-177)
