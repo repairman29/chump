@@ -427,6 +427,46 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 | [`docs/process/EXTERNAL_REPO_USAGE.md`](./docs/process/EXTERNAL_REPO_USAGE.md) | Onboarding guide for non-Chump repos using Chump as a coordination platform (DOC-022) |
 
+## Durable-fix doctrine — no band-aids (CREDIBLE-105)
+
+> **Fix the thing that's broken — not your path around it.** A workaround that
+> unblocks only *you* while leaving the breakage in place for the next agent is a
+> **band-aid**, and a band-aid as a *terminal* action is forbidden.
+
+A band-aid is a **credibility** failure first: it makes something *look* fixed when
+it isn't — the fix-class sibling of the Reality-check rule (a signal is not an
+outcome). Full doctrine, ban-list, and carve-out:
+[`docs/process/DURABLE_FIX_DOCTRINE.md`](./docs/process/DURABLE_FIX_DOCTRINE.md).
+
+**The pre-workaround test — before you route around any failure:**
+
+1. **Cause or cover?** Disabling the tool, skipping the gate, `--no-verify`,
+   retry-until-green, hardcoding/mocking past it, `|| true`, `2>/dev/null` on an
+   undiagnosed error → you are *hiding* it, not fixing it.
+2. **Who inherits the breakage?** If "every other agent / the next worker / the
+   next session," it is a **fleet-wide** band-aid — fix the cause now; the blast
+   radius is not yours to silently pass on.
+3. **Is the deferral visible?** A workaround is allowed *only as a bridge* and
+   *only if* **(a)** the real fix is **filed as a gap** with the root cause, AND
+   **(b)** it **emits an audit signal** (ambient event or bypass trailer). Silent
+   workarounds are never acceptable.
+
+**When you DO fix it:** fix the root cause (ask "why" until the fix prevents
+recurrence) and leave a **regression guard** (test / lock / invariant / CI gate)
+so it can't silently come back.
+
+**Status claims are covered too:** do not report a mechanism active before you
+verify it is — "the loop is running" with no job set; "tests pass" when the test
+binary never ran (`exit 0` ≠ assertions executed). Same lie, pointed at status
+instead of code.
+
+Canonical case (2026-06-05): a `cargo` build hit `sccache: encountered fatal
+error`; the tempting band-aid was `RUSTC_WRAPPER=` (disable sccache) to get one
+build through — which would have left the wedged server breaking *every* fleet
+worker's build and masked the cause (two unlocked cache-reapers racing the live
+cache → daemon split-brain). Durable fix: kill the split-brain, collapse to one
+clean daemon, **and** file the missing reaper lock (RESILIENT-112).
+
 ## No-operator-escalation discipline (operator-decision-of-record 2026-05-30)
 
 > **Operator directive 2026-05-30T17:30Z (verbatim):** *"Make sure the don't escalate to the human protocol is locked in for agents. I'm not here to babysit. I'm here for results."*
