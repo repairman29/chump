@@ -441,6 +441,106 @@ tail -20 /tmp/chump-my-task.out.log       # recent output
 
 ---
 
+## Dynamic-mode `/loop` best practice (DOC-066, 2026-06-05)
+
+> One concrete failure mode the canonical layers above don't quite cover:
+> an operator-presence loop that **silently dies** because the agent
+> chose a fragile chaining pattern.
+
+The `/loop` skill has two modes per its spec:
+
+- **Fixed-interval** (e.g., `/loop 5m <prompt>`) → CronCreate, recurring,
+  fires every N min while session is alive.
+- **Dynamic-mode** (no interval, just `/loop <prompt>`) → ScheduleWakeup,
+  one-shot, self-pacing. **Each tick must re-arm ScheduleWakeup** or the
+  loop dies after the next fire.
+
+**The fragile pattern (don't do this for long-running operator loops):**
+
+```
+operator → /loop <prompt>
+agent → does work + arms Monitor + calls ScheduleWakeup(1500s, prompt)
+        → harness re-invokes at deadline
+agent → ... → forgets to re-arm OR crashes mid-tick OR drifts off-script
+        → loop dies silently. Operator thinks it's still running.
+```
+
+This is the **"reporting a mechanism as active before verifying it is
+active"** band-aid family in `DURABLE_FIX_DOCTRINE.md` — pointed at status
+instead of code.
+
+### The durable pattern (recurring CronCreate + persistent Monitor hybrid)
+
+For any operator-presence loop that must keep firing across many ticks
+without depending on the agent re-arming each time:
+
+```
+1. CronCreate with recurring=true → fires every N min on its own
+   (the harness re-arms — agent failure doesn't stop the next tick).
+2. Persistent Monitor on .chump-locks/ambient.jsonl filtered for
+   halt-class events → wakes immediately on real problems, independent
+   of the cron schedule.
+3. Each cron tick prompt is FIRE-AND-FORGET:
+   - one pulse (cache-first SQL reads, < 1s)
+   - one ship-class action (claim/close/dispatch/file/release)
+   - then RETURN. NO merge-watch Monitors. NO Bash run_in_background polls.
+   Let the auto-merge daemon land PRs in the background; the next tick
+   observes the merged result.
+```
+
+### Why each piece is required
+
+| Component | Solves |
+|---|---|
+| `CronCreate recurring=true` | Survives agent failure within a session. Harness re-arms. |
+| `Monitor` on ambient.jsonl | Event-driven wake on real halt-class signals (faster than waiting for the next cron tick). |
+| No merge-watch Monitors | Each merge-watch pins the REPL non-idle, starving the cron of fire windows. |
+| Fire-and-forget tick body | Lets the cron complete in < 2 min so the next tick has space. |
+
+### Halt-class Monitor filter
+
+Filter `tail -F .chump-locks/ambient.jsonl` for kinds that warrant immediate
+wake. Exclude known false-positive classes that haven't been substrate-fixed
+yet (cross-ref the case study in `DURABLE_FIX_DOCTRINE.md` and any open
+`*_false_positive` gaps):
+
+```bash
+# 2026-06-05 example. After RESILIENT-113 lands, AUTH_DEAD becomes
+# legitimately halt-class again because farmer.sh no longer false-positives.
+tail -F .chump-locks/ambient.jsonl \
+  | grep --line-buffered -E '"kind":"(fleet_wedge|disk_critical|trunk_red|silent_agent|pr_stuck|farmer_auth_dead)"' \
+  | grep --line-buffered -v "AUTH_DEAD"   # remove once #3090 in main
+```
+
+### Verifying the loop is actually live (not just claimed-live)
+
+Per `DURABLE_FIX_DOCTRINE.md`: don't report a mechanism as active before
+verifying. For session-bound loops:
+
+```bash
+# 1. Cron job armed?
+# (in Claude Code session) CronList — shows job ID + schedule
+# 2. Monitor armed?
+# (in Claude Code session) TaskList (if available) — shows persistent Monitor
+# 3. Empirical proof: do nothing for one cron interval + 30s.
+#    If a tick report arrives unprompted, the loop is firing.
+#    If nothing arrives, the loop is NOT firing (most likely cause:
+#    REPL non-idle on cron boundaries — kill any blocking Monitor/Agent).
+```
+
+The `4 minutes` cadence on a recurring CronCreate has a Claude Code
+limitation: jobs **only fire while the REPL is idle.** Long Sonnet
+dispatches and merge-watch Monitors prevent fires. The fire-and-forget
+discipline above is what unblocks the cron in practice.
+
+### When to NOT use a session loop at all
+
+If the work needs to run after the operator closes the session →
+fleet-durable launchd plist per the layer table above. Don't try to keep a
+session loop alive overnight — that's the inverse failure of this section.
+
+---
+
 ## Cross-links
 
 - **CLAUDE.md** — "No idle curators in loops (Pattern 15)" documents
