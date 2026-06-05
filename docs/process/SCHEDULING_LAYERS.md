@@ -232,6 +232,21 @@ launchctl list | grep com.chump.NAME           # verify
 - New daemon shipped but operator hasn't reloaded = drift (freshness layer
   4 per `docs/process/FRESHNESS_DISCIPLINE.md`). `chump cron health`
   (INFRA-2046) catches this.
+- **Legacy-label orphan plists (split-brain footgun, RESILIENT-120).** The
+  canonical durable `/loop` scheduler is **`chump fleet autopilot`** plus
+  **`com.chump.wizard-daemon`** — the launchd label prefix is `com.chump.*`.
+  Older installers used an `ai.chump.*` prefix; a renamed daemon can leave an
+  `ai.chump.NAME.plist` orphan on disk that no repo installer references.
+  It is dangerous *even while unloaded*: if it is ever loaded it **double-ticks
+  at a stale interval running a divergent script** (the `ai.chump.wizard-daemon`
+  orphan ticked at 180s and ran `origin/main`'s `wizard-daemon.sh` vs the
+  canonical 300s local one). `install-wizard-daemon-launchd.sh` now purges the
+  legacy `ai.chump.wizard-daemon.plist` on every install **and** uninstall;
+  re-run it to self-heal a split-brain machine. Audit:
+  ```bash
+  ls ~/Library/LaunchAgents | grep -c 'chump.wizard-daemon'   # must be 1 (com.chump only)
+  chump fleet autopilot status                                # loaded == configured, ticking
+  ```
 
 ---
 

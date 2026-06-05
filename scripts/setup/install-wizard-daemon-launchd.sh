@@ -24,6 +24,26 @@ SCRIPT="$REPO_ROOT/scripts/coord/wizard-daemon.sh"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST="$PLIST_DIR/com.chump.wizard-daemon.plist"
 
+# RESILIENT-120: remove legacy-label orphan plists. The wizard-daemon launchd
+# label was renamed ai.chump.* -> com.chump.*, but old installers left the
+# ai.chump.wizard-daemon.plist on disk (unloaded). It is a split-brain footgun:
+# if it is ever loaded it double-ticks at a DIFFERENT interval (180s vs the
+# canonical 300s) running a DIVERGENT script (it fetches + runs origin/main's
+# wizard-daemon.sh instead of the local one). Defensively unload + remove any
+# legacy-label plist on every install AND uninstall so no machine carries it.
+LEGACY_PLISTS=(
+    "$PLIST_DIR/ai.chump.wizard-daemon.plist"
+)
+cleanup_legacy_plists() {
+    local lp
+    for lp in "${LEGACY_PLISTS[@]}"; do
+        [[ -e "$lp" ]] || continue
+        launchctl unload "$lp" 2>/dev/null || true
+        rm -f "$lp"
+        echo "[install-wizard-daemon] removed legacy-label orphan plist: $lp"
+    done
+}
+
 ENABLE_NOW=0
 UNINSTALL=0
 
@@ -39,6 +59,7 @@ done
 if [[ "$UNINSTALL" == "1" ]]; then
     launchctl unload "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"
+    cleanup_legacy_plists
     echo "[install-wizard-daemon] uninstalled plist at $PLIST"
     exit 0
 fi
@@ -46,6 +67,10 @@ fi
 [[ -x "$SCRIPT" ]] || { echo "ERROR: missing/non-executable: $SCRIPT"; exit 1; }
 
 mkdir -p "$PLIST_DIR"
+
+# RESILIENT-120: purge any legacy-label orphan before (re)installing the canonical
+# com.chump.wizard-daemon, so re-running the installer self-heals a split-brain machine.
+cleanup_legacy_plists
 
 WIZARD_ENABLED="0"
 [[ "$ENABLE_NOW" == "1" ]] && WIZARD_ENABLED="1"
