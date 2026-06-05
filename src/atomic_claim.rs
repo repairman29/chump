@@ -1452,6 +1452,42 @@ fn write_db_claim(
     Ok(())
 }
 
+/// RESILIENT-103: clear the state.db `leases` row on release. Symmetric with
+/// `write_db_claim()` — the claim writes the row, so release must delete it, or
+/// the lease lingers in state.db after the JSON sidecar is gone. That triple-store
+/// split (JSON deleted, state.db + NATS-KV orphaned) is what blocked recovery of an
+/// abandoned claim: re-claim saw a stale state.db row and refused. Deletes by
+/// `session_id` (the table key) AND by `gap_id` (handles the cross-session
+/// same-gap re-claim case — the INFRA-2744 scenario where bot-merge re-claims a
+/// gap under a different session name). Best-effort when the DB is absent (fresh
+/// clone). Returns the number of rows deleted.
+pub fn release_db_lease(repo_root: &Path, session_id: &str, gap_id: &str) -> Result<usize> {
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return Ok(0);
+    }
+    let conn = rusqlite::Connection::open(&db_path)
+        .with_context(|| format!("opening {} for lease release", db_path.display()))?;
+    let mut deleted = 0usize;
+    if !session_id.is_empty() {
+        deleted += conn
+            .execute(
+                "DELETE FROM leases WHERE session_id = ?1",
+                rusqlite::params![session_id],
+            )
+            .with_context(|| format!("deleting state.db lease for session {}", session_id))?;
+    }
+    if !gap_id.is_empty() {
+        deleted += conn
+            .execute(
+                "DELETE FROM leases WHERE gap_id = ?1",
+                rusqlite::params![gap_id],
+            )
+            .with_context(|| format!("deleting state.db lease for gap {}", gap_id))?;
+    }
+    Ok(deleted)
+}
+
 /// Verify that .git/worktrees/<branch-slug>/gitdir points at <worktree_path>/.git.
 /// Repairs the file if wrong (INFRA-779: concurrent sibling claims can clobber it).
 ///
@@ -5895,5 +5931,111 @@ mod open_pr_dup_tests {
         assert!(["—".to_string(), "audit".to_string()]
             .iter()
             .any(|g| gate_name_is_plausible(g)));
+    }
+}
+
+#[cfg(test)]
+mod release_lease_tests {
+    //! RESILIENT-103: the state.db `leases` row must be cleared on release,
+    //! symmetric with the claim-side `write_db_claim`. Without this delete, a
+    //! released lease lingers in state.db and blocks re-claim of the gap — the
+    //! triple-store split (JSON deleted, state.db + NATS-KV orphaned) that forced
+    //! a 3-command manual recovery. These tests assert ZERO state.db residue after
+    //! release. (The JSON sidecar deletion is covered by scrap_cmd tests; the
+    //! NATS-KV leg is a best-effort `chump-coord release` shell-out.)
+    use super::*;
+    use tempfile::tempdir;
+
+    fn setup_db(repo_root: &Path) {
+        let chump_dir = repo_root.join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let conn = rusqlite::Connection::open(chump_dir.join("state.db")).unwrap();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS leases (
+                session_id TEXT PRIMARY KEY,
+                gap_id     TEXT NOT NULL,
+                worktree   TEXT NOT NULL DEFAULT '',
+                expires_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+    }
+
+    fn lease_count(repo_root: &Path) -> i64 {
+        let conn = rusqlite::Connection::open(repo_root.join(".chump/state.db")).unwrap();
+        conn.query_row("SELECT COUNT(*) FROM leases", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn release_clears_row_written_by_claim() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        setup_db(root);
+
+        // Use the exact claim-side writer `chump claim` takes.
+        write_db_claim(
+            root,
+            "RESILIENT-103",
+            "claim-resilient-103-1",
+            "/tmp/wt",
+            900,
+        )
+        .unwrap();
+        assert_eq!(lease_count(root), 1, "claim should write one lease row");
+
+        let deleted = release_db_lease(root, "claim-resilient-103-1", "RESILIENT-103").unwrap();
+        assert!(deleted >= 1, "release should delete the lease row");
+        assert_eq!(
+            lease_count(root),
+            0,
+            "state.db must have zero lease residue after release"
+        );
+    }
+
+    #[test]
+    fn release_clears_by_gap_id_when_session_drifts() {
+        // INFRA-2744 scenario: a re-claim wrote the row under a DIFFERENT session
+        // name, so the releasing session_id won't match. Release-by-gap_id must
+        // still clear it (the cross-session same-gap case).
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        setup_db(root);
+        write_db_claim(root, "RESILIENT-103", "some-other-session", "/tmp/wt", 900).unwrap();
+
+        let deleted = release_db_lease(root, "the-releasing-session", "RESILIENT-103").unwrap();
+        assert!(deleted >= 1);
+        assert_eq!(
+            lease_count(root),
+            0,
+            "gap-id match must clear cross-session residue"
+        );
+    }
+
+    #[test]
+    fn release_is_best_effort_when_db_absent() {
+        // Fresh clone has no state.db — release must not error.
+        let dir = tempdir().unwrap();
+        let n = release_db_lease(dir.path(), "s", "GAP-1").unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn release_leaves_unrelated_leases_untouched() {
+        // Releasing one session/gap must NOT nuke an unrelated active lease.
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        setup_db(root);
+        write_db_claim(root, "RESILIENT-103", "session-a", "/tmp/a", 900).unwrap();
+        write_db_claim(root, "EFFECTIVE-216", "session-b", "/tmp/b", 900).unwrap();
+
+        release_db_lease(root, "session-a", "RESILIENT-103").unwrap();
+        assert_eq!(lease_count(root), 1, "unrelated lease must survive");
+        let conn = rusqlite::Connection::open(root.join(".chump/state.db")).unwrap();
+        let surviving: String = conn
+            .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(surviving, "EFFECTIVE-216");
     }
 }

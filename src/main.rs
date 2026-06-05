@@ -14967,6 +14967,48 @@ async fn main() -> Result<()> {
                 // INFRA-1116 AC6: emit intent_retracted so other sessions' overlap
                 // gates treat this session as inactive immediately on release.
                 atomic_claim::emit_intent_retracted(&ambient_path, &release_gap_id, &target_id);
+
+                // RESILIENT-103: the JSON sidecar is now gone, but `chump claim`
+                // writes a lease to THREE stores — the JSON sidecar, the state.db
+                // `leases` row, and (when NATS is up) a NATS-KV atomic claim.
+                // Release must clear all three or the lease lingers in the other two
+                // and blocks re-claim of the gap (the triple-store split that forced
+                // a 3-command manual recovery: sqlite DELETE + git branch -D +
+                // chump-coord release).
+                let release_repo_root = repo_path::repo_root();
+                match atomic_claim::release_db_lease(
+                    &release_repo_root,
+                    &target_id,
+                    &release_gap_id,
+                ) {
+                    Ok(n) if n > 0 => tracing::info!(
+                        rows = n,
+                        session_id = %target_id,
+                        gap_id = %release_gap_id,
+                        "cleared state.db lease row(s) on release (RESILIENT-103)"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("warning: failed to clear state.db lease on release: {}", e)
+                    }
+                }
+                // NATS-KV leg: best-effort `chump-coord release <gap>`. NATS is
+                // optional (offline fallback), so a failure here is non-fatal — the
+                // KV claim TTL-expires on its own; this just makes recovery instant.
+                if !release_gap_id.is_empty() {
+                    let coord = std::env::current_exe()
+                        .ok()
+                        .and_then(|p| p.parent().map(|d| d.join("chump-coord")))
+                        .filter(|p| p.exists())
+                        .unwrap_or_else(|| std::path::PathBuf::from("chump-coord"));
+                    let _ = std::process::Command::new(&coord)
+                        .arg("release")
+                        .arg(&release_gap_id)
+                        .current_dir(&release_repo_root)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
                 return Ok(());
             }
             Err(e) => {
