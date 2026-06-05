@@ -226,6 +226,78 @@ else
     fail "AC2-ext: expected INFRA-P1 over mission P2, got '$picked'"
 fi
 
+# ── Test 7 (MISSION-026): P0 mission gap beats P0 self-maintenance gap ────────
+# The core regression: a P0 domain=MISSION gap must be picked over a P0
+# substrate gap of the same effort/age. Before MISSION-026 the planner_rank
+# was the primary sort key, so a planner-ranked substrate gap could outrank
+# an unranked P0 mission gap.
+cat > "$TMP/t7.json" <<'EOF'
+[
+  {"id":"INFRA-MAINT","domain":"INFRA","priority":"P0","effort":"s","status":"open",
+   "created_at":1000,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Self-maintenance substrate gap at P0.\"]",
+   "title":"Self-maintenance substrate gap","outcome_id":null,"notes":"","description":""},
+  {"id":"MISSION-KEY","domain":"MISSION","priority":"P0","effort":"s","status":"open",
+   "created_at":1001,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Mission P0 gap.\"]",
+   "title":"Mission P0 keystone","outcome_id":null,"notes":"","description":""}
+]
+EOF
+# Simulate planner ranking the substrate gap highly (rank=1) while the mission
+# gap has no planner entry (rank=10000). Before fix, INFRA-MAINT would win.
+PRIORITY_JSON="$TMP/.chump-locks/gap-priority.json"
+printf '{"items":[{"gap_id":"INFRA-MAINT","rank":1}]}\n' > "$PRIORITY_JSON"
+: > "$TMP/.chump-locks/ambient.jsonl"
+picked="$(CHUMP_ACTIVE_MISSION=MISSION-010 FLEET_MODEL=sonnet run_picker "$TMP/t7.json")"
+rm -f "$PRIORITY_JSON"
+if [[ "$picked" == "MISSION-KEY" ]]; then
+    ok "AC-MISSION-026a: P0 mission gap beats P0 substrate gap even when planner ranks substrate (planner can't override prio)"
+else
+    fail "AC-MISSION-026a: expected MISSION-KEY over planner-ranked INFRA-MAINT, got '$picked'"
+fi
+
+# ── Test 8 (MISSION-026): substrate P0 still beats mission P1 (invariant preserved) ──
+# The invariant from MISSION-011 must hold after the MISSION-026 fix: a
+# substrate P0 must still outrank a mission P1 (priority wins over mission boost).
+cat > "$TMP/t8.json" <<'EOF'
+[
+  {"id":"INFRA-P0","domain":"INFRA","priority":"P0","effort":"s","status":"open",
+   "created_at":1000,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Substrate P0 gap.\"]",
+   "title":"Substrate P0 gap","outcome_id":null,"notes":"","description":""},
+  {"id":"MISSION-P1","domain":"MISSION","priority":"P1","effort":"s","status":"open",
+   "created_at":1001,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Mission P1 gap.\"]",
+   "title":"Mission P1 keystone","outcome_id":null,"notes":"","description":""}
+]
+EOF
+: > "$TMP/.chump-locks/ambient.jsonl"
+picked="$(CHUMP_ACTIVE_MISSION=MISSION-010 FLEET_MODEL=sonnet run_picker "$TMP/t8.json")"
+if [[ "$picked" == "INFRA-P0" ]]; then
+    ok "AC-MISSION-026b: substrate P0 still beats mission P1 (priority invariant preserved)"
+else
+    fail "AC-MISSION-026b: expected INFRA-P0 over mission P1, got '$picked'"
+fi
+
+# ── Test 9 (MISSION-026): xs-effort P0 MISSION gap is NOT skipped by sonnet worker ──
+# Before MISSION-026, a sonnet worker unconditionally skipped xs-effort gaps,
+# permanently blocking xs P0 MISSION gaps like MISSION-018.
+cat > "$TMP/t9.json" <<'EOF'
+[
+  {"id":"MISSION-XS","domain":"MISSION","priority":"P0","effort":"xs","status":"open",
+   "created_at":1000,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. xs-effort P0 MISSION gap.\"]",
+   "title":"xs P0 mission gap","outcome_id":null,"notes":"","description":""}
+]
+EOF
+: > "$TMP/.chump-locks/ambient.jsonl"
+picked="$(CHUMP_ACTIVE_MISSION=MISSION-010 FLEET_MODEL=sonnet run_picker "$TMP/t9.json")"
+if [[ "$picked" == "MISSION-XS" ]]; then
+    ok "AC-MISSION-026c: xs-effort P0 MISSION gap is NOT skipped by sonnet worker (effort gate exception)"
+else
+    fail "AC-MISSION-026c: expected MISSION-XS to be picked by sonnet worker, got '$picked' (xs P0 mission blocked by effort gate)"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
