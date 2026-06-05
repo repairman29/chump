@@ -219,6 +219,7 @@ mod spawn_worker_tool;
 mod speculative_execution;
 mod stack_detect;
 mod staleness;
+mod standard_missions; // EFFECTIVE-199: L1 foundation queue for 0→1 onboard — see docs/design/ONBOARD_0TO1_DOCTRINE.md
 mod state_db;
 mod stream_events;
 mod streaming_provider;
