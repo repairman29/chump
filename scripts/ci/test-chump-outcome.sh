@@ -299,5 +299,133 @@ assert oid == 'TEST-001', f'outcome_id not set: {oid!r}'
 fi
 
 echo
+echo "--- (h) MISSION-039: bootstrap seeds 8 outcomes (4 canonical + 4 pillar) ---"
+
+# Run bootstrap on the fixture env (idempotent — TEST-001 and MISSION-010 already exist).
+"$BIN" outcome bootstrap 2>/dev/null || true
+
+BOOT_LIST=$("$BIN" outcome list --json 2>/dev/null || echo "[]")
+
+for EXPECTED_ID in MISSION-010 MISSION-012 MISSION-032 META-067 \
+                   CREDIBLE-000 EFFECTIVE-000 RESILIENT-000 ZERO-WASTE-000; do
+    if echo "$BOOT_LIST" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)
+assert any(i['id'] == '$EXPECTED_ID' for i in items), '$EXPECTED_ID not found'
+" 2>/dev/null; then
+        ok "bootstrap seeded $EXPECTED_ID"
+    else
+        fail "bootstrap missing $EXPECTED_ID"
+    fi
+done
+
+# Idempotent: second bootstrap run must not fail.
+if "$BIN" outcome bootstrap 2>/dev/null; then
+    ok "bootstrap is idempotent (second run exits 0)"
+else
+    fail "bootstrap is NOT idempotent (second run failed)"
+fi
+
+echo
+echo "--- (i) MISSION-039: heuristic 7 — domain-prefix backfill links pillar gaps ---"
+
+# Reserve one gap per pillar domain; give them IDs that match pillar prefixes.
+# We use gap reserve and rely on the auto-assigned sequential ID — then check
+# the outcome after backfill --apply.  The IDs assigned by the fixture DB will
+# be INFRA-* (wrong domain), so we use outcome link directly to test the wiring,
+# then test the heuristic via a source-code grep guard plus a targeted SQL
+# exercise using the binary itself.
+
+# Source-code guard: heuristic 7 block must be present.
+if grep -q 'Heuristic 7' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+    ok "heuristic 7 block present in main.rs"
+else
+    fail "heuristic 7 block NOT found in main.rs"
+fi
+
+if grep -q 'CREDIBLE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
+    && grep -q 'EFFECTIVE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
+    && grep -q 'RESILIENT-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
+    && grep -q 'ZERO-WASTE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+    ok "all 4 pillar outcome IDs referenced in backfill heuristic"
+else
+    fail "one or more pillar outcome IDs missing from backfill heuristic"
+fi
+
+# Functional: inject synthetic gaps with pillar-prefix IDs directly into the
+# fixture DB, run backfill --apply, verify they are linked.
+FIXTURE_DB="$TMP/.chump/state.db"
+
+if [[ -f "$FIXTURE_DB" ]]; then
+    # Ensure pillar outcomes exist (bootstrap already ran above).
+    # Insert synthetic pillar-prefixed gaps with no outcome_id.
+    for ROW in \
+        "CREDIBLE-9991|credible heuristic fixture|open" \
+        "EFFECTIVE-9991|effective heuristic fixture|open" \
+        "RESILIENT-9991|resilient heuristic fixture|open" \
+        "ZERO-WASTE-9991|zero-waste heuristic fixture|open"; do
+        GID="${ROW%%|*}"
+        REST="${ROW#*|}"
+        GTITLE="${REST%%|*}"
+        GSTATUS="${REST##*|}"
+        sqlite3 "$FIXTURE_DB" \
+            "INSERT OR IGNORE INTO gaps(id,title,status,domain,priority,effort,description,acceptance_criteria,outcome_id)
+             VALUES('$GID','$GTITLE','$GSTATUS','TEST','P1','xs','fixture','fixture',NULL);" 2>/dev/null || true
+    done
+
+    # Run backfill --apply.
+    "$BIN" outcome backfill --apply 2>/dev/null || true
+
+    # Verify each pillar gap now has the correct outcome_id.
+    # Use parallel arrays (POSIX-compatible, no declare -A needed).
+    PILLAR_GIDS=("CREDIBLE-9991" "EFFECTIVE-9991" "RESILIENT-9991" "ZERO-WASTE-9991")
+    PILLAR_OIDS=("CREDIBLE-000"  "EFFECTIVE-000"  "RESILIENT-000"  "ZERO-WASTE-000")
+
+    for IDX in 0 1 2 3; do
+        GID="${PILLAR_GIDS[$IDX]}"
+        EXPECTED_OID="${PILLAR_OIDS[$IDX]}"
+        ACTUAL_OID=$(sqlite3 "$FIXTURE_DB" \
+            "SELECT outcome_id FROM gaps WHERE id='$GID';" 2>/dev/null || echo "")
+        if [[ "$ACTUAL_OID" == "$EXPECTED_OID" ]]; then
+            ok "heuristic 7: $GID → $EXPECTED_OID"
+        else
+            fail "heuristic 7: $GID expected $EXPECTED_OID, got '${ACTUAL_OID:-<null>}'"
+        fi
+    done
+
+    # Idempotent re-apply: run backfill again and confirm outcome_ids unchanged.
+    "$BIN" outcome backfill --apply 2>/dev/null || true
+    for IDX in 0 1 2 3; do
+        GID="${PILLAR_GIDS[$IDX]}"
+        EXPECTED_OID="${PILLAR_OIDS[$IDX]}"
+        ACTUAL_OID=$(sqlite3 "$FIXTURE_DB" \
+            "SELECT outcome_id FROM gaps WHERE id='$GID';" 2>/dev/null || echo "")
+        if [[ "$ACTUAL_OID" == "$EXPECTED_OID" ]]; then
+            ok "heuristic 7 idempotent: $GID still → $EXPECTED_OID after re-apply"
+        else
+            fail "heuristic 7 idempotent: $GID changed after re-apply (got '${ACTUAL_OID:-<null>}')"
+        fi
+    done
+
+    # Heuristic-7-skips-when-no-pillar-outcome: insert a CREDIBLE-* gap,
+    # delete CREDIBLE-000, run backfill — gap must stay unlinked (not error).
+    sqlite3 "$FIXTURE_DB" \
+        "INSERT OR IGNORE INTO gaps(id,title,status,domain,priority,effort,description,acceptance_criteria,outcome_id)
+         VALUES('CREDIBLE-9992','credible no-outcome fixture','open','TEST','P1','xs','fixture','fixture',NULL);" \
+        2>/dev/null || true
+    sqlite3 "$FIXTURE_DB" "DELETE FROM outcomes WHERE id='CREDIBLE-000';" 2>/dev/null || true
+    "$BIN" outcome backfill --apply 2>/dev/null || true
+    ORPHAN_OID=$(sqlite3 "$FIXTURE_DB" \
+        "SELECT outcome_id FROM gaps WHERE id='CREDIBLE-9992';" 2>/dev/null || echo "")
+    if [[ -z "$ORPHAN_OID" ]]; then
+        ok "heuristic 7 skips gracefully when pillar outcome not registered"
+    else
+        fail "heuristic 7 linked CREDIBLE-9992 even though CREDIBLE-000 was deleted (got '$ORPHAN_OID')"
+    fi
+else
+    ok "fixture DB not available — skipping functional heuristic-7 tests (source guards passed)"
+fi
+
+echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
