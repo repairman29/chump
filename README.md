@@ -82,6 +82,14 @@ chump bootstrap "A CLI tool that syncs files across machines" --dir /tmp/myproje
 # → git repo initialized, Cargo.toml + README.md + first commit, umbrella gap filed
 ```
 
+**Net-new in one command** (INFRA-1881, 2026 demo #1):
+
+```bash
+chump bootstrap ~/projects/hello-world --template rust --skip-arch-decision
+cd ~/projects/hello-world && cargo run
+# → Hello, Chump!
+```
+
 > **First-run validation in CI:** `.github/workflows/ftue-clean-machine-2026.yml` runs the entire 5-step flow on a fresh macOS runner on every PR touching the relevant paths. If this README is accurate, that workflow stays green.
 
 ### Troubleshooting (5-minute path)

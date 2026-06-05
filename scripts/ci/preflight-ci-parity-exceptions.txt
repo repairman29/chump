@@ -380,3 +380,16 @@ test-supervision-trees.sh  # reason: RESILIENT-058 — Tier-C (fully local, shou
 # substrate-health signal, not a code-correctness signal. Bypass is
 # CHUMP_SCCACHE_HIT_RATE_CHECK=0 which exists for this exact case.
 check-sccache-hit-rate.sh  # reason: Tier-D, CI-env-specific (CREDIBLE-085)
+
+# CREDIBLE-013 — CI failure triage step. Tier-D: this is a CI-environment
+# post-build classifier that reads cargo test output captured by the cargo-test
+# step. Mirroring it in preflight would require capturing local cargo test
+# output and re-parsing, with no actionable signal (the goal is annotating
+# PR author + GitHub Checks summary). CI-specific.
+triage-cargo-test-failure.sh  # reason: Tier-D, post-build classifier (CREDIBLE-013)
+CI failure triage             # reason: Tier-D, post-build classifier (CREDIBLE-013)
+# EFFECTIVE-028 — broadcast.sh --reply-to / corr_id threading smoke test.
+# Tier-C (fully local, no CI-env dependency). Deferred mirror in src/preflight.rs
+# until the broader broadcast.sh Rust port (INFRA-1998 Phase 2) lands; at that
+# point this test and its Rust equivalent will both run in preflight.
+test-broadcast-reply-to.sh  # reason: Tier-C coord-layer shell test; preflight mirror deferred to INFRA-1998 Rust-port gap (EFFECTIVE-028)

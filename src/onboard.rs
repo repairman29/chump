@@ -16,6 +16,9 @@
 //!    per the INFRA-2116 schema.
 //!
 //! INFRA-2108 (META-123 Wave 2)
+//!
+//! INFRA-2275: adds `--schedule`, `--unschedule`, `--list-scheduled` for
+//! per-repo launchd plist management (BEAST-MODE overnight loop slice 1/3).
 
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
@@ -24,6 +27,7 @@ use chump_handoff::external_repo_schema::{
     ProposedGap, SourceOfEvidence,
 };
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,6 +40,36 @@ const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// `chump onboard` subcommand. `args` is everything *after* `onboard`.
 pub fn run(args: &[String]) -> i32 {
+    // INFRA-2275: route --schedule / --unschedule / --list-scheduled before
+    // the original scan parser so the scan positional-arg requirement doesn't
+    // swallow them.
+    if args.iter().any(|a| a == "--schedule") {
+        return match run_schedule(args) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("chump onboard --schedule: {e:#}");
+                1
+            }
+        };
+    }
+    if args.iter().any(|a| a == "--unschedule") {
+        return match run_unschedule(args) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("chump onboard --unschedule: {e:#}");
+                1
+            }
+        };
+    }
+    if args.iter().any(|a| a == "--list-scheduled") {
+        return match run_list_scheduled(args) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("chump onboard --list-scheduled: {e:#}");
+                1
+            }
+        };
+    }
     match run_inner(args) {
         Ok(()) => 0,
         Err(e) => {
@@ -121,6 +155,15 @@ fn print_usage() {
     println!("  --clone-to PATH   Clone destination (default: ~/.chump/external/<owner>/<repo>/)");
     println!("  --max-gaps N      Maximum proposed gaps (default: 10)");
     println!("  --apply           Reserve each proposed gap with chump gap reserve");
+    println!();
+    println!("Scheduling (INFRA-2275 — BEAST overnight loop slice 1/3):");
+    println!("  --schedule <path>        Install a per-repo launchd plist and load it");
+    println!("  --unschedule <path>      Unload the plist and remove from the schedule list");
+    println!("  --list-scheduled [--json]  Show all scheduled repos");
+    println!();
+    println!("NOTE: --iter-once (the worker loop body) is owned by INFRA-2276.");
+    println!("      The plist will load successfully but the worker is a no-op until");
+    println!("      INFRA-2276 ships.");
 }
 
 // ── Core logic ────────────────────────────────────────────────────────────
@@ -429,6 +472,381 @@ fn run_inner(args: &[String]) -> Result<()> {
         println!(
             "Gaps tagged `{tag_value}` — filter with: chump gap list --skills-required {tag_value}"
         );
+    }
+
+    Ok(())
+}
+
+// ── INFRA-2275: Scheduling (launchd plist management) ────────────────────
+
+/// Schedule state file: `~/.chump/external-repo-schedule.json`.
+/// Maps `repo_path -> { label, scheduled_at, last_iter_at }`.
+fn schedule_state_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home)
+        .join(".chump")
+        .join("external-repo-schedule.json")
+}
+
+/// Sanitize a repo path into a launchd-safe label component.
+///
+/// Replaces `/` with `-` and any remaining non-alphanumeric-non-hyphen-non-dot
+/// chars with `_`. Truncates to 200 chars to stay well under launchd's ~256
+/// label limit (we need room for the `com.chump.external-repo.` prefix).
+fn sanitize_label_component(path: &str) -> String {
+    let replaced: String = path
+        .chars()
+        .map(|c| match c {
+            '/' => '-',
+            c if c.is_alphanumeric() || c == '-' || c == '.' => c,
+            _ => '_',
+        })
+        .collect();
+    // Trim leading/trailing hyphens that result from leading `/`
+    let trimmed = replaced.trim_matches('-');
+    let truncated = if trimmed.len() > 200 {
+        &trimmed[..200]
+    } else {
+        trimmed
+    };
+    truncated.to_string()
+}
+
+/// Build the full launchd label for a repo path.
+fn plist_label(repo_path: &str) -> String {
+    format!(
+        "com.chump.external-repo.{}",
+        sanitize_label_component(repo_path)
+    )
+}
+
+/// Plist installation directory for per-user launchd agents.
+fn launchd_agents_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join("Library").join("LaunchAgents")
+}
+
+/// Path where we install the generated plist.
+fn plist_install_path(label: &str) -> PathBuf {
+    launchd_agents_dir().join(format!("{label}.plist"))
+}
+
+/// Load current schedule state from disk. Returns empty map on missing file.
+fn load_schedule_state() -> Result<HashMap<String, serde_json::Value>> {
+    let path = schedule_state_path();
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("reading schedule state {}", path.display()))?;
+    let map: HashMap<String, serde_json::Value> = serde_json::from_str(&content)
+        .with_context(|| format!("parsing schedule state {}", path.display()))?;
+    Ok(map)
+}
+
+/// Persist schedule state to disk (atomic write via temp file + rename).
+fn save_schedule_state(state: &HashMap<String, serde_json::Value>) -> Result<()> {
+    let path = schedule_state_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let content = serde_json::to_string_pretty(state).context("serializing schedule state")?;
+    fs::write(&tmp, content).with_context(|| format!("writing {}", tmp.display()))?;
+    fs::rename(&tmp, &path).with_context(|| format!("renaming to {}", path.display()))?;
+    Ok(())
+}
+
+/// Render the plist template, substituting `{{LABEL}}`, `{{REPO_PATH}}`,
+/// `{{CHUMP_BIN}}`, `{{LOG_OUT}}`, `{{LOG_ERR}}`.
+fn render_plist_template(label: &str, repo_path: &str, sanitized: &str) -> Result<String> {
+    let template_path = {
+        // Locate the repo root relative to the running binary. Fall back to
+        // the CHUMP_REPO_ROOT env var for testing.
+        let repo_root = std::env::var("CHUMP_REPO_ROOT")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                // Walk up from current binary dir looking for Cargo.toml
+                std::env::current_exe().ok().and_then(|exe| {
+                    let mut d = exe.parent()?.to_path_buf();
+                    for _ in 0..6 {
+                        if d.join("Cargo.toml").exists() {
+                            return Some(d);
+                        }
+                        d = d.parent()?.to_path_buf();
+                    }
+                    None
+                })
+            })
+            .or_else(|| {
+                // Last resort: use current working directory
+                std::env::current_dir().ok()
+            });
+        repo_root
+            .ok_or_else(|| anyhow!("cannot locate repo root (try CHUMP_REPO_ROOT env var)"))?
+            .join("scripts/plists/com.chump.external-repo-loop.plist.template")
+    };
+
+    let template = fs::read_to_string(&template_path)
+        .with_context(|| format!("reading plist template {}", template_path.display()))?;
+
+    let chump_bin = std::env::current_exe()
+        .context("cannot determine chump binary path")?
+        .to_string_lossy()
+        .to_string();
+
+    let log_out = format!("/tmp/chump-external-repo-{sanitized}.out.log");
+    let log_err = format!("/tmp/chump-external-repo-{sanitized}.err.log");
+
+    let rendered = template
+        .replace("{{LABEL}}", label)
+        .replace("{{REPO_PATH}}", repo_path)
+        .replace("{{CHUMP_BIN}}", &chump_bin)
+        .replace("{{LOG_OUT}}", &log_out)
+        .replace("{{LOG_ERR}}", &log_err);
+
+    Ok(rendered)
+}
+
+/// `chump onboard --schedule <repo-path>` handler.
+fn run_schedule(args: &[String]) -> Result<()> {
+    // Find the repo path argument (the positional arg after --schedule)
+    let repo_path = {
+        let mut found: Option<String> = None;
+        let mut i = 0;
+        while i < args.len() {
+            if args[i] == "--schedule" {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or_else(|| anyhow!("--schedule requires a repo path argument"))?;
+                found = Some(v.clone());
+                break;
+            }
+            i += 1;
+        }
+        found.ok_or_else(|| anyhow!("--schedule requires a repo path argument"))?
+    };
+
+    // Resolve to absolute path
+    let abs_path = if repo_path.starts_with('/') {
+        PathBuf::from(&repo_path)
+    } else {
+        std::env::current_dir()
+            .context("getting cwd")?
+            .join(&repo_path)
+    };
+    let abs_str = abs_path.to_string_lossy().to_string();
+
+    let label = plist_label(&abs_str);
+    let sanitized = sanitize_label_component(&abs_str);
+
+    eprintln!("chump onboard: scheduling {} (label: {label})", abs_str);
+
+    // Render and install the plist
+    let plist_content = render_plist_template(&label, &abs_str, &sanitized)?;
+    let agents_dir = launchd_agents_dir();
+    fs::create_dir_all(&agents_dir)
+        .with_context(|| format!("creating LaunchAgents dir {}", agents_dir.display()))?;
+
+    let install_path = plist_install_path(&label);
+    fs::write(&install_path, &plist_content)
+        .with_context(|| format!("writing plist to {}", install_path.display()))?;
+
+    // Load via launchctl
+    let load_status = Command::new("launchctl")
+        .args(["load", "-w", &install_path.to_string_lossy()])
+        .status()
+        .context("running launchctl load (is this macOS?)")?;
+
+    if !load_status.success() {
+        // Clean up the installed plist so we don't leave a half-loaded entry
+        let _ = fs::remove_file(&install_path);
+        bail!(
+            "launchctl load exited {} — plist removed; check launchd logs",
+            load_status
+        );
+    }
+
+    // Persist to schedule state
+    let mut state = load_schedule_state()?;
+    let ts = Utc::now().to_rfc3339();
+    state.insert(
+        abs_str.clone(),
+        serde_json::json!({
+            "label": label,
+            "scheduled_at": ts,
+            "last_iter_at": null
+        }),
+    );
+    save_schedule_state(&state)?;
+
+    println!("scheduled: {abs_str}");
+    println!("  label:   {label}");
+    println!("  plist:   {}", install_path.display());
+    println!();
+    println!("NOTE: --iter-once (worker loop body) is not yet implemented;");
+    println!("      the plist will run at 03:17 daily but the worker is a no-op");
+    println!("      until INFRA-2276 ships.");
+
+    // Emit ambient event
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "external_repo_scheduled".to_string(),
+        source: Some("chump-onboard".to_string()),
+        fields: vec![
+            ("repo_path".to_string(), abs_str.clone()),
+            ("plist_label".to_string(), label.clone()),
+        ],
+        ..Default::default()
+    });
+
+    Ok(())
+}
+
+/// `chump onboard --unschedule <repo-path>` handler.
+fn run_unschedule(args: &[String]) -> Result<()> {
+    let repo_path = {
+        let mut found: Option<String> = None;
+        let mut i = 0;
+        while i < args.len() {
+            if args[i] == "--unschedule" {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or_else(|| anyhow!("--unschedule requires a repo path argument"))?;
+                found = Some(v.clone());
+                break;
+            }
+            i += 1;
+        }
+        found.ok_or_else(|| anyhow!("--unschedule requires a repo path argument"))?
+    };
+
+    let abs_path = if repo_path.starts_with('/') {
+        PathBuf::from(&repo_path)
+    } else {
+        std::env::current_dir()
+            .context("getting cwd")?
+            .join(&repo_path)
+    };
+    let abs_str = abs_path.to_string_lossy().to_string();
+
+    let label = plist_label(&abs_str);
+    let install_path = plist_install_path(&label);
+
+    eprintln!("chump onboard: unscheduling {} (label: {label})", abs_str);
+
+    // Unload via launchctl (tolerant of already-unloaded)
+    if install_path.exists() {
+        let unload_status = Command::new("launchctl")
+            .args(["unload", "-w", &install_path.to_string_lossy()])
+            .status()
+            .context("running launchctl unload")?;
+        if !unload_status.success() {
+            eprintln!(
+                "chump onboard: WARN launchctl unload exited {} (may already be unloaded)",
+                unload_status
+            );
+        }
+        fs::remove_file(&install_path)
+            .with_context(|| format!("removing plist {}", install_path.display()))?;
+        println!("unloaded and removed: {}", install_path.display());
+    } else {
+        eprintln!(
+            "chump onboard: plist not found at {} (may already be removed)",
+            install_path.display()
+        );
+    }
+
+    // Remove from schedule state
+    let mut state = load_schedule_state()?;
+    let was_present = state.remove(&abs_str).is_some();
+    save_schedule_state(&state)?;
+
+    if was_present {
+        println!("removed from schedule list: {abs_str}");
+    } else {
+        println!("WARN: {abs_str} was not in schedule list (state cleaned)");
+    }
+
+    // Emit ambient event
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "external_repo_unscheduled".to_string(),
+        source: Some("chump-onboard".to_string()),
+        fields: vec![
+            ("repo_path".to_string(), abs_str.clone()),
+            ("reason".to_string(), "operator_requested".to_string()),
+        ],
+        ..Default::default()
+    });
+
+    Ok(())
+}
+
+/// `chump onboard --list-scheduled [--json]` handler.
+fn run_list_scheduled(args: &[String]) -> Result<()> {
+    let json_mode = args.iter().any(|a| a == "--json");
+    let state = load_schedule_state()?;
+
+    if json_mode {
+        // Build a JSON array of entries
+        let entries: Vec<serde_json::Value> = state
+            .iter()
+            .map(|(repo_path, meta)| {
+                let label = meta
+                    .get("label")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let scheduled_at = meta
+                    .get("scheduled_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let last_iter_at = meta
+                    .get("last_iter_at")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let plist_loaded = plist_install_path(&label).exists();
+                serde_json::json!({
+                    "repo_path": repo_path,
+                    "label": label,
+                    "scheduled_at": scheduled_at,
+                    "last_iter_at": last_iter_at,
+                    "plist_loaded": plist_loaded,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&entries).context("serializing list")?
+        );
+    } else {
+        if state.is_empty() {
+            println!("(no scheduled repos)");
+            return Ok(());
+        }
+        println!("{:<60} {:<10} LABEL", "REPO_PATH", "LOADED");
+        println!("{}", "-".repeat(90));
+        let mut sorted: Vec<_> = state.iter().collect();
+        sorted.sort_by_key(|(k, _)| k.as_str());
+        for (repo_path, meta) in sorted {
+            let label = meta
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let plist_loaded = plist_install_path(&label).exists();
+            let loaded_str = if plist_loaded { "yes" } else { "no" };
+            // Truncate long paths for readability
+            let display_path = if repo_path.len() > 58 {
+                format!("…{}", &repo_path[repo_path.len() - 57..])
+            } else {
+                repo_path.clone()
+            };
+            println!("{:<60} {:<10} {}", display_path, loaded_str, label);
+        }
     }
 
     Ok(())

@@ -737,7 +737,26 @@ bootstrap_initiated
 bootstrap_completed
 bootstrap_failed
 
+
 # ── MISSION-012: auto-deploy daemon ──────────────────────────────────────────
 binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
 binary_auto_deploy_skipped  # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh when origin/main SHA matches last-deployed SHA (idempotent no-op path)
 binary_auto_deploy_failed   # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh on refresh script failure or missing script
+
+# INFRA-2275 — chump onboard --schedule/--unschedule emits via crate::ambient_emit::emit()
+# with Rust struct-init `kind: "X".to_string()` syntax (colon, not equals). Same pattern as
+# INFRA-2265/bootstrap above: the audit's Pattern 2 grep targets `kind = "X"` (equals form)
+# and misses these. Reserved until the regex is generalized. Real emit sites: src/onboard.rs.
+external_repo_scheduled
+external_repo_unscheduled
+# CREDIBLE-013 — CI failure triage emits from scripts/ci/ path which is excluded
+# from the audit's PROD_PATHS scan (same pattern as CREDIBLE-085 sccache entries).
+# The emit is real (post-build triage step in CI cargo-test job), just not
+# detectable by the regex walker. Registered here so coverage gate does not flag.
+ci_triage_verdict
+
+# ── INFRA-1881: chump bootstrap --template rust (2026 demo #1: net-new outcome) ─
+# Emitted via Rust struct-init `kind: "X".to_string()` syntax (colon form) which
+# Pattern 2 grep (`kind = "X"` equals form) misses. Scanner-anchor present in source.
+# Reserved here to satisfy strict-mode register-without-emit until pattern is generalized.
+chump_bootstrap_complete
