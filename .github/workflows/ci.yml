@@ -1311,14 +1311,50 @@ jobs:
         # path (which is the safe default — re-runs the full suite once if any tests fail).
         # Bypass: CARGO_NEXTEST_DISABLE=1 reverts to plain `cargo test`. See INFRA-2094 / INFRA-764.
         # INFRA-2093: per-step RUSTC_WRAPPER pairs sccache binary with its install (above).
+        # CREDIBLE-013: capture output for downstream triage step via tee → tmp file.
+        id: cargo-test
         env:
           RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
         run: |
+          _TRIAGE_OUT="$(mktemp /tmp/cargo-test-output.XXXXXX)"
+          echo "log_path=$_TRIAGE_OUT" >> "$GITHUB_OUTPUT"
           if [ "${CARGO_NEXTEST_DISABLE:-0}" = "1" ]; then
-            bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           else
-            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           fi
+
+      # CREDIBLE-013: CI failure triage — classify failures as flake / real /
+      # known-bug / unknown. Verdict posted to the job summary so PR authors
+      # see it immediately without digging through raw logs.
+      # Non-blocking: triage is informational; the cargo-test step's own exit
+      # code is what fails the build.
+      - name: CI failure triage (CREDIBLE-013)
+        if: failure() && steps.cargo-test.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          _LOG="${{ steps.cargo-test.outputs.log_path }}"
+          if [[ -r "$_LOG" ]]; then
+            _VERDICT="$(bash scripts/ci/triage-cargo-test-failure.sh --file "$_LOG" 2>/dev/null || echo 'TRIAGE: unknown — triage script error')"
+          else
+            _VERDICT="$(bash scripts/ci/triage-cargo-test-failure.sh < /dev/null 2>/dev/null || echo 'TRIAGE: unknown — no log captured')"
+          fi
+          echo "$_VERDICT"
+          {
+            echo "## CI Failure Triage (CREDIBLE-013)"
+            echo ""
+            echo "\`\`\`"
+            echo "$_VERDICT"
+            echo "\`\`\`"
+            echo ""
+            echo "**Legend:**"
+            echo "- \`flake\` — all failures are registered flakes; auto-rerun may recover"
+            echo "- \`real\` — genuine regression, fix needed before merge"
+            echo "- \`known-bug\` — matches an open tracked gap; expected failure"
+            echo "- \`unknown\` — could not parse output; investigate manually"
+            echo ""
+            echo "Tune flake registry: \`docs/process/KNOWN_FLAKES.yaml\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # INFRA-2093: emit cache stats for observability — hits/misses/cache size
       # tells operators if R2 is healthy. Non-blocking (continue-on-error).
