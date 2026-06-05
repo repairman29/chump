@@ -2896,6 +2896,273 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // MISSION-033: `chump repos <sub>` — first-class repo index commands.
+    // chump repos list [--status active|paused|archived] [--json]
+    // chump repos show <owner/repo> [--json]
+    // chump repos add <owner/repo> [--cascade-tier T] [--status S]
+    // chump repos set <owner/repo> --cascade-tier T | --status S | --last-clone-at N | ...
+    // chump repos rm <owner/repo>
+    //
+    // Derived index: repos table is populated by auto-upsert on `chump gap import`
+    // for every external_repo:* tag in gaps.skills_required. Manual add also supported.
+    if args.get(1).map(String::as_str) == Some("repos") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let store = match gap_store::GapStore::open(&repo_root) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("chump repos: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let rflag = |name: &str| -> Option<String> {
+            args.windows(2)
+                .find(|w| w[0] == name)
+                .and_then(|w| w.get(1))
+                .cloned()
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+
+        match sub {
+            "list" => {
+                let status_filter = rflag("--status");
+                let repos = match store.list_repos(status_filter.as_deref()) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("chump repos list: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                if json_out {
+                    let items: Vec<String> = repos
+                        .iter()
+                        .map(|r| {
+                            let gap_count = store.repo_gap_count(&r.id).unwrap_or(0);
+                            format!(
+                                r#"{{"id":"{}","owner":"{}","name":"{}","added_at":{},"last_scan_at":{},"last_clone_at":{},"last_ship_at":{},"cascade_tier":"{}","status":"{}","gap_count":{}}}"#,
+                                r.id.replace('"', "\\\""),
+                                r.owner.replace('"', "\\\""),
+                                r.name.replace('"', "\\\""),
+                                r.added_at,
+                                r.last_scan_at.map(|v| v.to_string()).unwrap_or_else(|| "null".into()),
+                                r.last_clone_at.map(|v| v.to_string()).unwrap_or_else(|| "null".into()),
+                                r.last_ship_at.map(|v| v.to_string()).unwrap_or_else(|| "null".into()),
+                                r.cascade_tier,
+                                r.status,
+                                gap_count,
+                            )
+                        })
+                        .collect();
+                    println!("[{}]", items.join(","));
+                } else {
+                    if repos.is_empty() {
+                        println!("(no repos registered — run `chump gap import` or `chump repos add <owner/repo>`)");
+                    }
+                    for r in &repos {
+                        let gap_count = store.repo_gap_count(&r.id).unwrap_or(0);
+                        println!(
+                            "{} [{}] {} | last_scan={} | last_clone={} | gaps={}",
+                            r.id,
+                            r.cascade_tier,
+                            r.status,
+                            r.last_scan_at
+                                .map(|v| v.to_string())
+                                .unwrap_or_else(|| "never".into()),
+                            r.last_clone_at
+                                .map(|v| v.to_string())
+                                .unwrap_or_else(|| "never".into()),
+                            gap_count,
+                        );
+                    }
+                }
+            }
+            "show" => {
+                let repo_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump repos show <owner/repo> [--json]");
+                    std::process::exit(2);
+                });
+                match store.get_repo(&repo_id) {
+                    Ok(Some(r)) => {
+                        let gap_count = store.repo_gap_count(&r.id).unwrap_or(0);
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{}","owner":"{}","name":"{}","added_at":{},"last_scan_at":{},"last_clone_at":{},"last_ship_at":{},"cascade_tier":"{}","status":"{}","gap_count":{}}}"#,
+                                r.id.replace('"', "\\\""),
+                                r.owner.replace('"', "\\\""),
+                                r.name.replace('"', "\\\""),
+                                r.added_at,
+                                r.last_scan_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "null".into()),
+                                r.last_clone_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "null".into()),
+                                r.last_ship_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "null".into()),
+                                r.cascade_tier,
+                                r.status,
+                                gap_count,
+                            );
+                        } else {
+                            println!("=== Repo: {} ===", r.id);
+                            println!("Owner        : {}", r.owner);
+                            println!("Name         : {}", r.name);
+                            println!("Cascade tier : {}", r.cascade_tier);
+                            println!("Status       : {}", r.status);
+                            println!("Added at     : {}", r.added_at);
+                            println!(
+                                "Last scan    : {}",
+                                r.last_scan_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "never".into())
+                            );
+                            println!(
+                                "Last clone   : {}",
+                                r.last_clone_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "never".into())
+                            );
+                            println!(
+                                "Last ship    : {}",
+                                r.last_ship_at
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "never".into())
+                            );
+                            println!("Linked gaps  : {}", gap_count);
+                        }
+                    }
+                    Ok(None) => {
+                        eprintln!("chump repos show: '{}' not found", repo_id);
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump repos show: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "add" => {
+                let repo_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!(
+                        "Usage: chump repos add <owner/repo> [--cascade-tier T] [--status S]"
+                    );
+                    std::process::exit(2);
+                });
+                let slash = repo_id.find('/').unwrap_or_else(|| {
+                    eprintln!(
+                        "chump repos add: id must be 'owner/repo', got '{}'",
+                        repo_id
+                    );
+                    std::process::exit(2);
+                });
+                let owner = &repo_id[..slash];
+                let name = &repo_id[slash + 1..];
+                if owner.is_empty() || name.is_empty() {
+                    eprintln!("chump repos add: owner and name must be non-empty");
+                    std::process::exit(2);
+                }
+                let cascade_tier = rflag("--cascade-tier").unwrap_or_else(|| "dogfood".into());
+                let status = rflag("--status").unwrap_or_else(|| "active".into());
+                match store.add_repo(&repo_id, owner, name, &cascade_tier, &status) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{repo_id}","cascade_tier":"{cascade_tier}","status":"{status}","added":true}}"#
+                            );
+                        } else {
+                            println!(
+                                "repo {} added (tier={}, status={})",
+                                repo_id, cascade_tier, status
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump repos add: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "set" => {
+                let repo_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump repos set <owner/repo> [--cascade-tier T] [--status S] [--last-scan-at N] [--last-clone-at N] [--last-ship-at N]");
+                    std::process::exit(2);
+                });
+                let cascade_tier = rflag("--cascade-tier");
+                let status = rflag("--status");
+                let last_scan_at = rflag("--last-scan-at").and_then(|v| v.parse::<i64>().ok());
+                let last_clone_at = rflag("--last-clone-at").and_then(|v| v.parse::<i64>().ok());
+                let last_ship_at = rflag("--last-ship-at").and_then(|v| v.parse::<i64>().ok());
+                match store.set_repo_fields(
+                    &repo_id,
+                    cascade_tier.as_deref(),
+                    status.as_deref(),
+                    last_scan_at,
+                    last_clone_at,
+                    last_ship_at,
+                ) {
+                    Ok(true) => {
+                        if json_out {
+                            println!(r#"{{"id":"{repo_id}","updated":true}}"#);
+                        } else {
+                            println!("repo {} updated", repo_id);
+                        }
+                    }
+                    Ok(false) => {
+                        eprintln!("chump repos set: '{}' not found — add it first", repo_id);
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump repos set: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "rm" | "remove" => {
+                let repo_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump repos rm <owner/repo>");
+                    std::process::exit(2);
+                });
+                match store.remove_repo(&repo_id) {
+                    Ok(true) => {
+                        if json_out {
+                            println!(r#"{{"id":"{repo_id}","removed":true}}"#);
+                        } else {
+                            println!("repo {} removed", repo_id);
+                        }
+                    }
+                    Ok(false) => {
+                        eprintln!("chump repos rm: '{}' not found", repo_id);
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump repos rm: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ => {
+                println!("Usage: chump repos <sub> [args]");
+                println!();
+                println!("Subcommands:");
+                println!("  list [--status active|paused|archived] [--json]");
+                println!("  show <owner/repo> [--json]");
+                println!("  add <owner/repo> [--cascade-tier T] [--status S]");
+                println!("  set <owner/repo> [--cascade-tier T] [--status S]");
+                println!("         [--last-scan-at EPOCH] [--last-clone-at EPOCH] [--last-ship-at EPOCH]");
+                println!("  rm <owner/repo>");
+                println!();
+                println!("Derived index: repos rows are auto-upserted from external_repo:* tags");
+                println!("in gaps.skills_required on `chump gap import`. Lifecycle is decoupled");
+                println!("from gaps — removing a gap does NOT remove its repo row.");
+                println!();
+                println!("Daemon-callable: `chump repos set <id> --last-clone-at EPOCH` works");
+                println!("without a TTY (used by MISSION-035 clone GC and MISSION-038 scheduler).");
+            }
+        }
+        return Ok(());
+    }
+
     // `chump roadmap-status [--json] [--exit-on-drift] [--top-starved N]`
     // INFRA-606: reads docs/ROADMAP.md, shows 🟢/🟡/🔴 progress per weekly outcome.
     // INFRA-1145: adds starved_outcomes, untraced_p0, pillar_coverage, --exit-on-drift.

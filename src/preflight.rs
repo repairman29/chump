@@ -805,6 +805,14 @@ pub fn run(argv: &[String]) -> i32 {
                 GateKind::Rust,
             ));
         }
+        // MISSION-033: repos table migration + CLI + auto-import gate.
+        // Verifies the repos table schema, all 3 indexes, upsert_repos_from_skills
+        // auto-population, and the full chump repos list/show/add/set/rm CLI.
+        steps.push(step(
+            "repos table migration + CLI + auto-import (MISSION-033)",
+            &["bash", "scripts/ci/test-chump-repos.sh"],
+            GateKind::Rust,
+        ));
         // INFRA-1791: gap-preflight-ac-gate audit. Surfaces open gaps with
         // vague/empty AC (TODO placeholders) before the operator tries to
         // claim them — INFRA-1259's "every open gap must have concrete AC"

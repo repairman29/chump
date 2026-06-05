@@ -752,6 +752,9 @@ jobs:
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
         run: bash scripts/ci/test-chump-subcommand-help.sh
 
+      - name: repos table migration + CLI + auto-import (MISSION-033)
+        run: bash scripts/ci/test-chump-repos.sh
+
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
 
