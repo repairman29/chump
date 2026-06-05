@@ -736,3 +736,8 @@ sccache_hit_rate_check_bypassed
 bootstrap_initiated
 bootstrap_completed
 bootstrap_failed
+
+# ── MISSION-012: auto-deploy daemon ──────────────────────────────────────────
+binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
+binary_auto_deploy_skipped  # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh when origin/main SHA matches last-deployed SHA (idempotent no-op path)
+binary_auto_deploy_failed   # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh on refresh script failure or missing script

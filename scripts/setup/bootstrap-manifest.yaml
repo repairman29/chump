@@ -176,3 +176,11 @@ installers:
     install: "cp scripts/launchd/com.chump.quartermaster-audit.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.chump.quartermaster-audit.plist"
     check: launchctl list 2>/dev/null | grep -q com.chump.quartermaster-audit
     adds: ~/Library/LaunchAgents/com.chump.quartermaster-audit.plist + 5-min shelfware-audit tick
+
+  - id: auto-deploy-launchd
+    why: "MISSION-012 — 20-min auto-deploy daemon that ensures /opt/homebrew/bin/chump tracks origin/main. Without this, merged fixes are inert until a manual rebuild. Delegates to refresh-runner-binary.sh which builds in an isolated detached worktree (main checkout never touched). Emits kind=binary_auto_deployed on each successful deploy."
+    priority: P0
+    install: bash scripts/setup/install-auto-deploy-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.auto-deploy
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.auto-deploy.plist + 20-min auto-deploy cycle

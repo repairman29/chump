@@ -69,3 +69,12 @@ CHUMP_PREFLIGHT_SKIP_DOCSDELTA     # Bypass-Justification: docs-delta-trailer ga
 # cold-cache class is legitimate, not regression. Deletion path: when sccache
 # warm-cache mode becomes universal we delete this bypass.
 CHUMP_SCCACHE_HIT_RATE_CHECK
+
+# CHUMP_SKIP_AUTO_DEPLOY — operator escape hatch for the MISSION-012 auto-deploy
+# launchd daemon. Set=1 to make scripts/ops/auto-deploy.sh exit 0 immediately
+# (useful during manual binary rollback, kernel upgrades, or incident response
+# when the auto-deploy cycle should be paused without uninstalling the plist).
+# Bypass-Justification: MISSION-012 — genuine operational escape valve for daemon
+# pause; emits kind=binary_auto_deploy_skipped. Deletion path: when daemon gains
+# an explicit pause/resume CLI (MISSION-013 or later) we remove this env var.
+CHUMP_SKIP_AUTO_DEPLOY
