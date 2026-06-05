@@ -25,6 +25,12 @@
     <key>WORKER_BACKEND</key><string>claude</string>
     <!-- Route-only by default. Flip to 1 to enable autonomous execution: -->
     <key>CHUMP_MESH_WORKER_EXECUTE</key><string>0</string>
+    <!-- MISSION-018: allow worker capability filter to pick external-repo
+         tagged gaps (skills_required contains `external_repo:<owner>/<repo>`).
+         Implemented at crates/chump-coord/src/worker/capability.rs:130. Required
+         for the fleet to claim BEAST-MODE work (MISSION-015 cluster); without
+         this flag external-repo gaps are skipped by every worker. -->
+    <key>CHUMP_EXTERNAL_REPO_PICK_OK</key><string>1</string>
   </dict>
   <key>WorkingDirectory</key><string>/Users/jeffadkins/Projects/Chump</string>
   <key>RunAtLoad</key><true/>

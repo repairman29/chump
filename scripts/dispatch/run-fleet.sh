@@ -267,6 +267,13 @@ FLEET_HARNESS="${FLEET_HARNESS:-fleet-dispatcher}"
 export FLEET_INLINE_BRIEFING="${FLEET_INLINE_BRIEFING:-1}"
 export CHUMP_LESSONS_AT_SPAWN_N="${CHUMP_LESSONS_AT_SPAWN_N:-0}"
 export CHUMP_AMBIENT_INSTALL_SKIP="${CHUMP_AMBIENT_INSTALL_SKIP:-1}"
+# MISSION-018: allow workers to pick external-repo gaps (skills_required
+# contains `external_repo:<owner>/<repo>`). Required for the fleet to claim
+# BEAST-MODE work autonomously. Implemented at
+# crates/chump-coord/src/worker/capability.rs:130 — without this, every
+# external-repo gap is skipped by every worker. Operator-overridable
+# (export CHUMP_EXTERNAL_REPO_PICK_OK=0 before invoking to disable).
+export CHUMP_EXTERNAL_REPO_PICK_OK="${CHUMP_EXTERNAL_REPO_PICK_OK:-1}"
 
 # INFRA-738: chump-local backend guard. When ANTHROPIC_API_KEY is set and the
 # user explicitly chose chump-local, require CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND=1
