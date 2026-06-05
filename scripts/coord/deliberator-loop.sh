@@ -62,6 +62,16 @@ else
 fi
 LOCK_DIR="$MAIN_REPO/.chump-locks"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
+# RESILIENT-062: broadcast.sh writes FEEDBACK proposals + votes canonically to the
+# DURABLE feedback.jsonl; ambient.jsonl is the reaper-pruned audit stream where they
+# age out before tally (root cause: consensus emitted 0 verdicts EVER). Scan the
+# durable feedback.jsonl when present — each proposal/vote appears once there (the
+# vote loop has no per-voter dedup, so unioning with ambient would double-count).
+# Fall back to ambient.jsonl only on a fresh install before feedback.jsonl exists.
+# NOTE: _has_consensus_result + _emit_kind keep reading/writing ambient.jsonl, where
+# consensus_result verdicts are emitted — only the proposal/vote SCANS move here.
+FEEDBACK_LOG="${CHUMP_FEEDBACK_LOG:-$LOCK_DIR/feedback.jsonl}"
+_consensus_src() { if [[ -f "$FEEDBACK_LOG" ]]; then printf '%s' "$FEEDBACK_LOG"; else printf '%s' "$AMBIENT"; fi; }
 SESSION_ID="${CHUMP_SESSION_ID:-deliberator-$$}"
 PROPOSAL_WINDOW_HOURS="${CHUMP_PROPOSAL_WINDOW_HOURS:-24}"
 NO_QUORUM_GRACE_HOURS="${CHUMP_NO_QUORUM_GRACE_HOURS:-24}"
@@ -230,7 +240,7 @@ _tally_corr_id() {
     local window_cutoff
     window_cutoff=$(( now_epoch - PROPOSAL_WINDOW_HOURS * 3600 ))
 
-    if [[ ! -f "$AMBIENT" ]]; then
+    if [[ ! -f "$(_consensus_src)" ]]; then
         printf '{"verdict":"NO_QUORUM","yes":0,"no":0,"abstain":0,"total":0,"voters":[]}'
         return 0
     fi
@@ -272,7 +282,7 @@ _tally_corr_id() {
         fi
         (( total++ )) || true
         voters+=("\"${voter}\"")
-    done < "$AMBIENT"
+    done < "$(_consensus_src)"
 
     local verdict
     verdict="$(_compute_verdict "$yes" "$no" "$total" "$deadline_epoch" "$now_epoch")"
@@ -326,7 +336,7 @@ _cmd_tick() {
     # Phase 2: Scan ambient for FEEDBACK kind=proposal events.
     echo "## Pending proposals (last ${PROPOSAL_WINDOW_HOURS}h)"
 
-    if [[ ! -f "$AMBIENT" ]]; then
+    if [[ ! -f "$(_consensus_src)" ]]; then
         echo "  [deliberator] ambient log not found at $AMBIENT" >&2
         return 3
     fi
@@ -445,7 +455,7 @@ _cmd_tick() {
             echo "    → EXTENDED — ${remaining}h until deadline"
         fi
 
-    done < "$AMBIENT"
+    done < "$(_consensus_src)"
 
     echo
     if (( proposals_found == 0 )); then
@@ -478,7 +488,7 @@ _cmd_audit() {
     fi
     echo
 
-    if [[ ! -f "$AMBIENT" ]]; then
+    if [[ ! -f "$(_consensus_src)" ]]; then
         echo "[deliberator] ambient log not found at $AMBIENT" >&2
         return 3
     fi
@@ -559,7 +569,7 @@ _cmd_audit() {
         fi
 
         found=1
-    done < "$AMBIENT"
+    done < "$(_consensus_src)"
 
     if (( found == 0 )); then
         echo "[deliberator] audit: no pending proposals found"
