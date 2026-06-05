@@ -1,0 +1,13 @@
+- id: RESILIENT-098
+  domain: RESILIENT
+  title: stuck-pr-filer auto-close blocked by INFRA-2423 auto-fetch gate — 23 stale zombies accumulated
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    scripts/ops/stuck-pr-filer.sh:261 calls 'chump gap ship <ID> --closed-pr N --update-yaml' inside auto_close_resolved_filings(). But 'chump gap ship' enforces INFRA-2423 auto-fetch gate: refuses when local main is N commits behind origin AND working tree dirty. Daemon runs from main worktree where one or both are usually true. Result: filer detects every resolved zombie, attempts ship, fails with 'cannot auto-pull with uncommitted changes', logs WARN, leaves gap open. Today's evidence: /tmp/chump-stuck-pr-filer.out.log has 23 consecutive 'WARN: chump gap ship XXX failed (PR #N MERGED/CLOSED)' lines from a single cycle. Compounding: filer ALSO exits early on disk_critical (legitimate), so for ~3 days zombies accumulated unaddressed. FIX: replace 'gap ship' call with 'gap set <ID> --status closed --add-note <msg> --closed-pr N' — state.db direct mutation, no auto-fetch needed. The auto-fetch gate protects HUMAN shippers from accidentally shipping over stale base. Daemon just wants to flip status; it's not actually merging anything. Rough shape: (a) edit scripts/ops/stuck-pr-filer.sh:255-269 case branch; (b) prefer 'gap set --status closed' over 'gap ship'; (c) update note to reflect auto-close action; (d) keep ambient kind=pr_auto_closed_for_respawn semantics. Pairs with RESILIENT-097 (trunk-sentinel sibling).
+  acceptance_criteria:
+    - stuck-pr-filer auto-close path succeeds when local main is behind origin AND working tree has changes (no auto-fetch precondition)
+    - "Test: simulate stale local main + open dirty file, call auto_close_resolved_filings() with a synthetic resolved-PR gap, assert gap moves to closed"
+    - scripts/ci/test-stuck-pr-filer.sh covers the dirty-main case
+
