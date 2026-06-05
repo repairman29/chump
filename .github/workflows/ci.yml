@@ -1130,6 +1130,14 @@ jobs:
         # gracefully without crashing the batch, (c) second tick does not double-emit.
         run: bash scripts/ci/test-deliberator-tick-emits.sh
 
+      # CREDIBLE-096: external verify-merge judge — 5-case synthetic matrix.
+      # Builds the chump binary, creates temp git fixtures, fake gh binary,
+      # and asserts MERGE / HELD verdicts across all 5 cases without any
+      # live network calls. Tier-D (requires gh binary stub + git worktrees
+      # that are not meaningful in a preflight-only context).
+      - name: external verify-merge judge — 5-case synthetic matrix (CREDIBLE-096)
+        run: bash scripts/ci/test-external-verify-merge.sh
+
       # docs/process/CI_GATES_INVENTORY.md OR allowlisted in
       # scripts/ci/preflight-ci-parity-exceptions.txt.
       # Exits non-zero on unmirrored + non-allowlisted gate; emits

@@ -981,3 +981,12 @@ CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED
 # CHUMP_ONBOARD_SCOUT_MODEL overrides the default capable model (claude-sonnet-4-5).
 # Useful for offline operation with a strong local model, e.g. "llama3.3:70b".
 CHUMP_ONBOARD_SCOUT_MODEL
+# CREDIBLE-096: external verify-merge judge env vars
+# CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED — Category-B kill-switch; disables the subcommand entirely
+# when set to 1 (operator escape hatch for incident response / gh API unavailability).
+CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED
+# CHUMP_EXTERNAL_VERIFY_FULL_SUITE — when set to 1, forces a local full test-suite run
+# on PR head for the no-regression gate instead of trusting CI (gate 1). Default: off (CoveredByCi).
+CHUMP_EXTERNAL_VERIFY_FULL_SUITE
+# CHUMP_GH_BIN — path to the gh binary; defaults to "gh". Override in tests to inject a fake stub.
+CHUMP_GH_BIN

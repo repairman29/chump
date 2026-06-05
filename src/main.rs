@@ -106,6 +106,7 @@ mod audit;
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
+mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -707,6 +708,8 @@ fn print_help() {
     println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
     println!("  ship <GAP-ID>   (alias: s)  shorthand for 'gap ship <GAP-ID>'");
     println!("  onboard <repo-url-or-path>  first-touch external-repo scanner (INFRA-2108)");
+    println!("  external verify-merge --pr <N> --repo <owner/repo> --gap <ID> [--clone-dir <path>] [--apply]");
+    println!("                              autonomous PR merge judge — 3-gate anti-cosmetic bar (CREDIBLE-096)");
     println!("  gen <task>         AI-driven single-shot coding task (offline-LLM)");
     println!();
     println!("FLEET");
@@ -1289,6 +1292,20 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("onboard") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(onboard::run(&sub_args));
+    }
+
+    // `chump external verify-merge` (CREDIBLE-096) — autonomous PR merge judge.
+    // Decides whether a PR on an external repo meets the bar for autonomous merge:
+    //   Gate 1: repo CI green (zero checks → HELD(no-gates))
+    //   Gate 2: anti-cosmetic — diff adds a test that fails-on-base, passes-on-head
+    //   Gate 3: no-regression (covered by CI gate 1 unless CHUMP_EXTERNAL_VERIFY_FULL_SUITE=1)
+    // Dry-run by default; --apply executes the merge.
+    // Kill-switch: CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED=1
+    if args.get(1).map(String::as_str) == Some("external")
+        && args.get(2).map(String::as_str) == Some("verify-merge")
+    {
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        std::process::exit(external_verify_merge::run(&sub_args));
     }
 
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
