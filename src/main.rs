@@ -8201,6 +8201,10 @@ async fn main() -> Result<()> {
                 let stack_on = flag("--stack-on");
                 // MISSION-008: optional --outcome <id> to assign gap to an outcome at reserve time.
                 let reserve_outcome_id = flag("--outcome");
+                // MISSION-041: optional --external-repo <owner/repo> to tag the gap
+                // with external_repo:<owner/repo> in skills_required at reserve time.
+                // Prevents recurrence of the data gap that caused BEAST routing to fail.
+                let reserve_external_repo = flag("--external-repo");
                 let force = args.iter().any(|a| a == "--force");
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
@@ -8743,6 +8747,25 @@ async fn main() -> Result<()> {
                                 if !quiet {
                                     eprintln!("warning: failed to set outcome_id: {e}");
                                 }
+                            }
+                        }
+
+                        // MISSION-041: set skills_required external_repo tag when
+                        // --external-repo <owner/repo> was passed. This prevents the
+                        // data gap that caused BEAST routing to fail (description text
+                        // is not parsed by the picker; skills_required is the routing key).
+                        if let Some(ref ext_repo) = reserve_external_repo {
+                            let tag = format!("external_repo:{ext_repo}");
+                            let update = gap_store::GapFieldUpdate {
+                                skills_required: Some(tag.clone()),
+                                ..Default::default()
+                            };
+                            if let Err(e) = store.set_fields(&id, update) {
+                                if !quiet {
+                                    eprintln!("warning: failed to set external_repo tag: {e}");
+                                }
+                            } else if !quiet {
+                                eprintln!("[reserve] tagged with {tag}");
                             }
                         }
 
@@ -13169,10 +13192,199 @@ async fn main() -> Result<()> {
                 }
                 unreachable!("mode selection should be exhaustive after guard above");
             }
+            // MISSION-041: `backfill-external-repo [--dry-run | --apply] [--owner-repo <o/r>]`
+            // One-shot backfill that scans all gaps and sets skills_required with
+            // external_repo:<owner/repo> tags based on title/description heuristics.
+            // Default is --dry-run. --apply commits changes. Idempotent.
+            "backfill-external-repo" => {
+                let dry_run = !args.iter().any(|a| a == "--apply");
+                let owner_repo_override = args
+                    .windows(2)
+                    .find(|w| w[0] == "--owner-repo")
+                    .and_then(|w| w.get(1))
+                    .cloned();
+
+                if dry_run {
+                    println!("[backfill-external-repo] DRY RUN — use --apply to commit changes");
+                }
+
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap backfill-external-repo: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Heuristics (applied in order; first match wins):
+                // 1. Title contains BEAST or BEAST-MODE (case-insensitive) → repairman29/BEAST-MODE
+                // 2. Description contains repairman29/BEAST-MODE or BEAST-MODE (case-insensitive) → repairman29/BEAST-MODE
+                // 3. Description contains literal external_repo:<owner>/<repo> → extract that
+                // 4. Default: skip
+
+                let extract_external_repo_from_gap = |gap: &gap_store::GapRow| -> Option<String> {
+                    // If --owner-repo override provided, apply it to all matched gaps.
+                    let title_uc = gap.title.to_uppercase();
+                    let desc_uc = gap.description.to_uppercase();
+
+                    // Heuristic 1: title has BEAST or BEAST-MODE.
+                    if title_uc.contains("BEAST") {
+                        return Some(
+                            owner_repo_override
+                                .clone()
+                                .unwrap_or_else(|| "repairman29/BEAST-MODE".to_string()),
+                        );
+                    }
+
+                    // Heuristic 2: description mentions BEAST-MODE or repairman29.
+                    if desc_uc.contains("BEAST-MODE") || desc_uc.contains("REPAIRMAN29") {
+                        return Some(
+                            owner_repo_override
+                                .clone()
+                                .unwrap_or_else(|| "repairman29/BEAST-MODE".to_string()),
+                        );
+                    }
+
+                    // Heuristic 3: description contains literal external_repo:<owner>/<repo>.
+                    // Scan the raw (un-uppercased) description for the tag.
+                    // Skip angle-bracket templates like external_repo:<owner>/<repo>.
+                    if let Some(pos) = gap.description.find("external_repo:") {
+                        let rest = &gap.description[pos + "external_repo:".len()..];
+                        // Extract <owner>/<repo> up to next whitespace or comma.
+                        let repo_str: String = rest
+                            .chars()
+                            .take_while(|c| !c.is_whitespace() && *c != ',' && *c != '"')
+                            .collect();
+                        // Reject angle-bracket templates and empty/invalid strings.
+                        if repo_str.contains('/')
+                            && !repo_str.is_empty()
+                            && !repo_str.starts_with('<')
+                        {
+                            return Some(owner_repo_override.clone().unwrap_or(repo_str));
+                        }
+                    }
+
+                    None
+                };
+
+                // Build the plan: for each gap, determine the tag to apply.
+                let mut plan: Vec<(String, String, bool)> = Vec::new(); // (gap_id, owner_repo, already_tagged)
+                let mut already_tagged = 0usize;
+                let mut unmatched = 0usize;
+                let mut by_repo: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+
+                for gap in &all_gaps {
+                    let target_repo = extract_external_repo_from_gap(gap);
+                    let expected_tag = target_repo.as_ref().map(|r| format!("external_repo:{r}"));
+
+                    // Check if already tagged with this specific tag.
+                    let already_has_tag = expected_tag
+                        .as_ref()
+                        .map(|tag| {
+                            gap.skills_required
+                                .split(',')
+                                .any(|s| s.trim() == tag.as_str())
+                        })
+                        .unwrap_or(false);
+
+                    match target_repo {
+                        Some(repo) if already_has_tag => {
+                            already_tagged += 1;
+                            let _ = already_has_tag; // suppress lint
+                                                     // Count in by_repo for idempotency reporting.
+                            *by_repo.entry(repo).or_default() += 0;
+                        }
+                        Some(repo) => {
+                            *by_repo.entry(repo.clone()).or_default() += 1;
+                            plan.push((gap.id.clone(), repo, false));
+                        }
+                        None => {
+                            unmatched += 1;
+                        }
+                    }
+                }
+
+                // Report plan.
+                if by_repo.is_empty() && plan.is_empty() {
+                    println!("[backfill-external-repo] all matched gaps already tagged (already_tagged={already_tagged}, unmatched={unmatched})");
+                } else {
+                    println!("Backfill plan:");
+                    let mut sorted_repos: Vec<_> = by_repo.iter().collect();
+                    sorted_repos.sort_by(|a, b| b.1.cmp(a.1));
+                    for (repo, cnt) in &sorted_repos {
+                        println!("  external_repo:{repo} ← {cnt} gap(s)");
+                    }
+                    println!("  already tagged: {already_tagged}");
+                    println!("  unmatched (skipped): {unmatched}");
+                    println!("  total to tag: {}", plan.len());
+                }
+
+                if dry_run {
+                    println!();
+                    println!("[dry-run] no changes written. Re-run with --apply to commit.");
+                    return Ok(());
+                }
+
+                // Apply: for each gap, append external_repo tag to skills_required.
+                let mut applied = 0usize;
+                let mut errors = 0usize;
+                for (gap_id, repo, _) in &plan {
+                    // Fetch current skills_required to do a CSV append.
+                    let current_skills = store
+                        .get(gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.skills_required)
+                        .unwrap_or_default();
+                    let tag = format!("external_repo:{repo}");
+                    let new_skills = if current_skills.trim().is_empty() {
+                        tag.clone()
+                    } else {
+                        format!("{},{tag}", current_skills.trim())
+                    };
+                    let update = gap_store::GapFieldUpdate {
+                        skills_required: Some(new_skills),
+                        ..Default::default()
+                    };
+                    match store.set_fields(gap_id, update) {
+                        Ok(()) => applied += 1,
+                        Err(e) => {
+                            eprintln!("  WARN: could not tag {gap_id}: {e}");
+                            errors += 1;
+                        }
+                    }
+                }
+                println!();
+                println!("applied {applied} tag(s), {errors} error(s)");
+                if applied > 0 {
+                    println!("  Tip: run `chump gap import` to refresh the repos table.");
+                }
+
+                // Emit ambient event.
+                {
+                    let lock_dir = repo_root.join(".chump-locks");
+                    let ambient = lock_dir.join("ambient.jsonl");
+                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    // scanner-anchor: gap_external_repo_backfilled (MISSION-041)
+                    let event = format!(
+                        r#"{{"ts":"{ts}","kind":"gap_external_repo_backfilled","linked_count":{applied},"errors":{errors},"already_tagged":{already_tagged},"skipped":{unmatched}}}"#,
+                    );
+                    let _ = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&ambient)
+                        .and_then(|mut f| {
+                            use std::io::Write;
+                            writeln!(f, "{}", event)
+                        });
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
-                eprintln!("  reserve          --domain D --title T [--priority P1] [--effort s]");
+                eprintln!("  reserve          --domain D --title T [--priority P1] [--effort s] [--external-repo owner/repo]");
                 eprintln!(
                     "                     (positional) D title…  — same as --domain / --title"
                 );
@@ -13209,6 +13421,8 @@ async fn main() -> Result<()> {
                 eprintln!("  requeue          <GAP-ID>                  # INFRA-2137: bisect_quarantined → ready_to_ship after operator review");
                 eprintln!("  sync             (--check | --pull | --push) [--dry-run] [--json] [--state-db PATH] [--gaps-dir PATH]");
                 eprintln!("                                # INFRA-2053: bidirectional YAML <-> state.db reconciliation");
+                eprintln!("  backfill-external-repo [--apply] [--owner-repo owner/repo]");
+                eprintln!("                                # MISSION-041: tag gaps with external_repo: in skills_required");
                 std::process::exit(2);
             }
         }
