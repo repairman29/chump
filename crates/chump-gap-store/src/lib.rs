@@ -96,6 +96,11 @@ pub struct GapRow {
     /// assigned to an outcome. NEVER used to gate gap-close — advisory only.
     #[serde(default)]
     pub outcome_id: Option<String>,
+    /// CREDIBLE-107: free-text evidence blob required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
+    /// Shape (informational, not validated): COMMAND / OUTPUT / THEORY / ALT sections.
+    /// NULL for gaps that predate this migration or lower-priority gaps.
+    #[serde(default)]
+    pub evidence: Option<String>,
 }
 
 /// MISSION-008: first-class Outcome object.
@@ -560,6 +565,13 @@ impl GapStore {
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN outcome_id TEXT", []);
 
+        // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
+        // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
+        // retroactively). New gaps in enforced domains must supply evidence at reserve time.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN evidence TEXT", []);
+
         // MISSION-033: first-class repos table + 3 indexes.
         // Derived index: auto-upserted on `chump gap import` for every
         // `external_repo:<owner>/<repo>` tag in gaps.skills_required.
@@ -659,6 +671,7 @@ impl GapStore {
                 required_model: row.get(20)?,
                 shipped_in: row.get(21)?,
                 outcome_id: row.get(22)?,
+                evidence: row.get(23)?,
             })
         };
         if let Some(s) = status_filter {
@@ -666,7 +679,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
+                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -676,7 +689,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
+                        preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -829,7 +842,7 @@ impl GapStore {
             "SELECT id,domain,title,description,priority,effort,status,
                     CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
+                    preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -858,6 +871,7 @@ impl GapStore {
                     required_model: row.get(20)?,
                     shipped_in: row.get(21)?,
                     outcome_id: row.get(22)?,
+                    evidence: row.get(23)?,
                 })
             })
             .optional()?;
@@ -870,7 +884,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                          CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
                          opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                         preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id
+                         preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
                   FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
             )?;
             // Collect up to 2 rows to detect ambiguity without borrow conflicts.
@@ -900,6 +914,7 @@ impl GapStore {
                         required_model: r.get(20)?,
                         shipped_in: r.get(21)?,
                         outcome_id: r.get(22)?,
+                        evidence: r.get(23)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1108,6 +1123,15 @@ impl GapStore {
         if let Some(v) = fields.outcome_id {
             sets.push("outcome_id=?");
             // Treat empty string as SQL NULL so the FK is truly nullable.
+            if v.is_empty() {
+                vals.push(Box::new(Option::<String>::None));
+            } else {
+                vals.push(Box::new(v));
+            }
+        }
+        // CREDIBLE-107: evidence blob (nullable TEXT). Empty string clears it.
+        if let Some(v) = fields.evidence {
+            sets.push("evidence=?");
             if v.is_empty() {
                 vals.push(Box::new(Option::<String>::None));
             } else {
@@ -2429,6 +2453,9 @@ pub struct GapFieldUpdate {
     pub required_model: Option<String>,
     /// MISSION-008: nullable FK into outcomes table. None leaves it unchanged.
     pub outcome_id: Option<String>,
+    /// CREDIBLE-107: evidence blob for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
+    /// None leaves unchanged; Some(text) stores the evidence; Some("") clears it.
+    pub evidence: Option<String>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -2527,6 +2554,14 @@ fn format_gap_yaml(g: &GapRow) -> String {
     if let Some(ref oid) = g.outcome_id {
         if !oid.is_empty() {
             s.push_str(&format!("  outcome_id: {}\n", yaml_scalar(oid)));
+        }
+    }
+    // CREDIBLE-107: emit evidence when set (P0/P1 RESILIENT/MISSION/CREDIBLE gate).
+    if let Some(ref ev) = g.evidence {
+        if !ev.is_empty() {
+            s.push_str("  evidence: ");
+            s.push_str(&yaml_block_scalar(ev, "  "));
+            s.push('\n');
         }
     }
     s.push('\n');
@@ -2811,6 +2846,9 @@ struct YamlGap {
     /// MISSION-008: nullable FK to outcomes table.
     #[serde(default)]
     outcome_id: Option<serde_yaml::Value>,
+    /// CREDIBLE-107: evidence blob (P0/P1 RESILIENT/MISSION/CREDIBLE gate).
+    #[serde(default)]
+    evidence: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -3208,14 +3246,20 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .filter(|s| !s.is_empty());
+            // CREDIBLE-107: evidence is nullable — None if absent in YAML.
+            let evidence: Option<String> = g
+                .evidence
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
             let created_at = unix_now();
 
             let changed = self.conn.execute(
                 "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,outcome_id)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
+                    preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
                 params![
                     g.id,
                     g.domain,
@@ -3238,6 +3282,7 @@ impl GapStore {
                     estimated_minutes,
                     required_model,
                     outcome_id,
+                    evidence,
                 ],
             )?;
             if changed > 0 {
@@ -3361,14 +3406,20 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .filter(|s| !s.is_empty());
+            // CREDIBLE-107: nullable evidence blob.
+            let evidence: Option<String> = g
+                .evidence
+                .as_ref()
+                .map(yaml_value_to_string)
+                .filter(|s| !s.is_empty());
             let created_at = unix_now();
 
             self.conn.execute(
                 "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,outcome_id)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
+                    preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
                 params![
                     g.id,
                     g.domain,
@@ -3391,6 +3442,7 @@ impl GapStore {
                     estimated_minutes,
                     required_model,
                     outcome_id,
+                    evidence,
                 ],
             )
             .with_context(|| format!("inserting gap {} during restore", g.id))?;
@@ -3933,6 +3985,11 @@ pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<O
         shipped_in: None,
         // MISSION-008: outcome_id from YAML; None if absent.
         outcome_id: yg.outcome_id.as_ref().and_then(|v| match v {
+            serde_yaml::Value::String(s) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        }),
+        // CREDIBLE-107: evidence from YAML; None if absent.
+        evidence: yg.evidence.as_ref().and_then(|v| match v {
             serde_yaml::Value::String(s) if !s.is_empty() => Some(s.clone()),
             _ => None,
         }),
