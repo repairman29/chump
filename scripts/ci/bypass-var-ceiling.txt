@@ -4,4 +4,8 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-233
+234
+
+# 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
+# as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
+# class is legitimate. Audit-trail via sccache_hit_rate_check_bypassed event.

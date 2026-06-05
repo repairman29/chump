@@ -7825,4 +7825,34 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, failure_class, intent, target_dir]
     # payload: {failure_class: str, intent: str, target_dir: str}
+  - kind: sccache_hit_rate_low
+    effect_metric: credible
+    emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)
+    # scanner-anchor: "kind":"sccache_hit_rate_low"
+    trigger: >
+      A CI build measured sccache cache hit rate below the threshold (default
+      10%). Strong signal of R2 substrate health regression — credentials
+      rotated, bucket unreachable, or sccache server misconfigured. Fires from
+      the post-build gate after cargo-test / clippy / check jobs. measured_pct
+      is the actual rate the gate observed; threshold_pct is the configured
+      minimum (CHUMP_SCCACHE_HIT_RATE_MIN). commit is GITHUB_SHA, job is
+      GITHUB_JOB. Cold-cache builds legitimately fire this — operator can
+      bypass with CHUMP_SCCACHE_HIT_RATE_CHECK=0.
+    consumers: [ops-audit, fleet-brief, substrate-health]
+    fields_required: [ts, kind, measured_pct, threshold_pct, commit, job]
+    # payload: {measured_pct: str, threshold_pct: str, commit: str, job: str}
+    status: stable
+
+  - kind: sccache_hit_rate_check_bypassed
+    effect_metric: credible
+    emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)
+    # scanner-anchor: "kind":"sccache_hit_rate_check_bypassed"
+    trigger: >
+      The sccache hit-rate gate was skipped via CHUMP_SCCACHE_HIT_RATE_CHECK=0.
+      Audited so the operator can see how often the bypass fires — frequent
+      use is a signal the threshold needs tuning or the cache is structurally
+      cold.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, reason]
+    # payload: {reason: str}
     status: stable

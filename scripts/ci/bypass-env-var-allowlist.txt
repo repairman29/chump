@@ -61,3 +61,11 @@ CHUMP_PREFLIGHT_SKIP_PRHYGIENE     # Bypass-Justification: pr-hygiene gate skip;
 CHUMP_PREFLIGHT_SKIP_PATHFILTER    # Bypass-Justification: path-filter-coverage gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_INSTALLMAP    # Bypass-Justification: install-manifest gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_DOCSDELTA     # Bypass-Justification: docs-delta-trailer gate skip; grandfathered  gap: INFRA-2422
+
+# CHUMP_SCCACHE_HIT_RATE_CHECK — cold-cache bypass for sccache hit-rate gate
+# (CREDIBLE-085). Brand-new branch or runner legitimately hits ~0% — operator
+# uses this to opt out with Sccache-Hit-Rate-Bypass: trailer (audited via
+# kind=sccache_hit_rate_check_bypassed event). Bypass-Justification: CREDIBLE-085 —
+# cold-cache class is legitimate, not regression. Deletion path: when sccache
+# warm-cache mode becomes universal we delete this bypass.
+CHUMP_SCCACHE_HIT_RATE_CHECK

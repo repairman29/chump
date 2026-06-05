@@ -720,3 +720,19 @@ scratch_cache_hit                # reason: INFRA-2534; emitted by chump-coord sc
 # the machine-readable allowlist entry.
 stale_rebase_blocked  # reason: INFRA-2628; emitted by scripts/git-hooks/pre-push Guard 6; git-hooks/ dir is outside PROD_PATHS grep scan
 scratch_cache_miss               # reason: INFRA-2534; emitted by chump-coord scratchpad layer (INFRA-1121 A2A Layer 3d); Rust struct serialization path not parsed by walker
+
+# CREDIBLE-085 — sccache hit-rate gate emits these from a scripts/ci/ path
+# which is excluded as test-fixture from the audit's PROD_PATHS scan. The
+# emit is real (post-build gate in CI), just not detectable by the regex.
+sccache_hit_rate_low
+sccache_hit_rate_check_bypassed
+
+# INFRA-2265 — chump bootstrap emits via crate::ambient_emit::emit() with Rust
+# struct-init `kind: "X".to_string()` syntax (colon, not equals). The audit's
+# Pattern 2 grep targets `kind = "X"` (equals/let form), so these orphans show
+# up as register-without-emit even though they emit fine at runtime. Reserved
+# until INFRA-NEXT generalizes the regex OR ambient_emit gains a scanner-anchor
+# comment convention. Real emit sites: src/commands/bootstrap.rs.
+bootstrap_initiated
+bootstrap_completed
+bootstrap_failed
