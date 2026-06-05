@@ -760,3 +760,6 @@ ci_triage_verdict
 # Pattern 2 grep (`kind = "X"` equals form) misses. Scanner-anchor present in source.
 # Reserved here to satisfy strict-mode register-without-emit until pattern is generalized.
 chump_bootstrap_complete
+
+# ── EFFECTIVE-029: inbox lane-discipline filter ───────────────────────────────
+inbox_lane_filtered  # reason: EFFECTIVE-029 emitted by scripts/coord/ambient-context-inject.sh INFRA-1150 block when CHUMP_INBOX_LANE_FILTER is on and ≥1 broadcast was hidden for the reader's lane; carries total/shown/session; scanner-anchor: "kind":"inbox_lane_filtered"

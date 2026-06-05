@@ -393,3 +393,4 @@ CI failure triage             # reason: Tier-D, post-build classifier (CREDIBLE-
 # until the broader broadcast.sh Rust port (INFRA-1998 Phase 2) lands; at that
 # point this test and its Rust equivalent will both run in preflight.
 test-broadcast-reply-to.sh  # reason: Tier-C coord-layer shell test; preflight mirror deferred to INFRA-1998 Rust-port gap (EFFECTIVE-028)
+test-inbox-lane-filter.sh     # reason: EFFECTIVE-029 lane-filter is SessionStart hook logic; test drives a Python inline block, not a cargo gate; hermetic shell+python, not preflight-shaped

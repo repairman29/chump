@@ -244,6 +244,15 @@ fi
 # burden — by surfacing peer broadcasts at session start so each agent
 # sees who is working on what.
 #
+# EFFECTIVE-029: lane-discipline filter — each role sees own-lane broadcasts +
+# cross-lane-tagged (urgent/operator/@all/addressed-to-me) + unrouted (no 'to').
+# The reader's lane is derived from the session-id prefix: a session ID of the
+# form  curator-opus-<lane>-<date>  (e.g. curator-opus-ci-audit-2026-05-30)
+# yields lane "ci-audit".  Non-curator sessions (no curator-opus- prefix) have
+# an undeterminable lane — they see ALL broadcasts (fail-open).
+# Lane filter is ON by default; set CHUMP_INBOX_LANE_FILTER=0 to disable (see all).
+# scanner-anchor: "kind":"inbox_lane_filtered"
+#
 # Bypass: CHUMP_A2A_INBOX_INJECT=0
 # Operator escape: CHUMP_A2A_COORD_DISABLE=1 (master switch from INFRA-1150 AC)
 _INBOX_INJECT_FILE=""
@@ -266,10 +275,65 @@ if [[ "$HOOK_EVENT" == "SessionStart" ]] \
             if [[ -n "$_INBOX_JSON" && "$_INBOX_JSON" != "[]" ]]; then
                 _INBOX_TMP="$(mktemp 2>/dev/null || echo "")"
                 if [[ -n "$_INBOX_TMP" ]]; then
-                    printf '%s' "$_INBOX_JSON" | python3 -c "
-import json, sys
+                    printf '%s' "$_INBOX_JSON" | \
+                        CHUMP_INBOX_LANE_FILTER="${CHUMP_INBOX_LANE_FILTER:-1}" \
+                        SESSION_ID="$SESSION_ID" python3 -c "
+import json, sys, os, re
 from pathlib import Path
 out_file = Path(sys.argv[1])
+session_id = os.environ.get('SESSION_ID', '')
+lane_filter_on = os.environ.get('CHUMP_INBOX_LANE_FILTER', '1') != '0'
+
+# Derive this reader's lane from session_id: curator-opus-<lane>-<date>
+# e.g. curator-opus-ci-audit-2026-05-30 -> 'ci-audit'
+# Fail-open: undeterminable lane (non-curator session) -> my_lane = None -> show all
+def extract_lane(sid):
+    m = re.match(r'^curator-opus-(.+)-\d{4}-\d{2}-\d{2}', sid or '')
+    if m:
+        return m.group(1)
+    # Also accept curator-opus-<lane> with no date suffix (test / synthetic IDs)
+    m2 = re.match(r'^curator-opus-(.+)$', sid or '')
+    if m2:
+        return m2.group(1)
+    return None
+
+my_lane = extract_lane(session_id)
+
+def is_visible(m):
+    '''EFFECTIVE-029 lane-discipline filter.
+    Show a broadcast when any of these hold:
+      (a) Lane filter is OFF (CHUMP_INBOX_LANE_FILTER=0)
+      (b) Reader lane is undeterminable (fail-open: show everything)
+      (c) Sender is on the same lane (sender session contains curator-opus-<my-lane>)
+      (d) Addressed to me (to field contains my session_id or my lane)
+      (e) Urgency >= WARN (urgent / operator signal)
+      (f) Not addressed to any lane (no 'to', or 'to' is fleet-wide/operator/all)
+    '''
+    if not lane_filter_on:
+        return True
+    if my_lane is None:
+        return True
+    # Extract fields
+    sender = m.get('session') or m.get('from') or ''
+    to_field = m.get('to') or ''
+    urgency = (m.get('urgency') or '').upper()
+    # (c) same-lane sender
+    if f'curator-opus-{my_lane}' in sender:
+        return True
+    # (d) addressed directly to me or my lane
+    if session_id and session_id in to_field:
+        return True
+    if my_lane and f'curator-opus-{my_lane}' in to_field:
+        return True
+    # (e) urgent / operator (WARN, CRIT, EMERGENCY) — always surface
+    if urgency in ('WARN', 'CRIT', 'EMERGENCY'):
+        return True
+    # (f) fleet-wide / operator / all / no-to (cross-lane broadcast)
+    cross_lane_targets = {'fleet-wide', 'all', '', 'operator'}
+    if not to_field or to_field.lower() in cross_lane_targets or to_field.startswith('operator-'):
+        return True
+    return False
+
 try:
     msgs = json.load(sys.stdin)
 except Exception:
@@ -279,7 +343,7 @@ if not isinstance(msgs, list) or not msgs:
 # Dedup by (kind, from, gap) — same broadcast from same sender about same
 # gap renders once even if repeated.
 seen = set()
-dedup = []
+dedup_all = []
 for m in msgs:
     k = (m.get('kind') or m.get('event') or '?',
          m.get('session') or m.get('from') or '?',
@@ -287,7 +351,11 @@ for m in msgs:
     if k in seen:
         continue
     seen.add(k)
-    dedup.append(m)
+    dedup_all.append(m)
+total_before_filter = len(dedup_all)
+# Apply lane filter
+dedup = [m for m in dedup_all if is_visible(m)]
+filtered_out = total_before_filter - len(dedup)
 # Cap at 10 to keep preamble readable.
 dedup = dedup[:10]
 lines = ['=== Pending broadcasts (INFRA-1150 a2a) ===']
@@ -299,18 +367,31 @@ for m in dedup:
     if len(note) > 80:
         note = note[:77] + '...'
     lines.append(f'[{ev}] {src} gap={gap} {note}')
-lines.append(f'(showing {len(dedup)} of {len(msgs)} pending; chump-inbox.sh read --since cursor to consume)')
+suffix = f'(showing {len(dedup)} of {len(msgs)} pending'
+if lane_filter_on and my_lane is not None and filtered_out > 0:
+    suffix += f'; {filtered_out} other-lane hidden — CHUMP_INBOX_LANE_FILTER=0 to see all'
+suffix += '; chump-inbox.sh read --since cursor to consume)'
+lines.append(suffix)
 out_file.write_text('\n'.join(lines))
 " "$_INBOX_TMP" 2>/dev/null || true
                     if [[ -s "$_INBOX_TMP" ]]; then
                         _INBOX_INJECT_FILE="$_INBOX_TMP"
                         date +%s > "$_INBOX_CACHE_FILE" 2>/dev/null || true
-                        # Emit telemetry
+                        # Emit telemetry: a2a_coord_inbox_consumed (total received)
+                        # and inbox_lane_filtered (when lane filter hid ≥1 broadcast).
                         _COUNT=$(printf '%s' "$_INBOX_JSON" | python3 -c \
                             "import json,sys; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo 0)
                         _TS="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
                         printf '{"ts":"%s","kind":"a2a_coord_inbox_consumed","source":"ambient-context-inject","messages":%s}\n' \
                             "$_TS" "$_COUNT" >> "$AMBIENT_LOG" 2>/dev/null || true
+                        # scanner-anchor: "kind":"inbox_lane_filtered"
+                        if [[ "${CHUMP_INBOX_LANE_FILTER:-1}" != "0" ]]; then
+                            _SHOWN=$(grep -c '^\[' "$_INBOX_TMP" 2>/dev/null || echo 0)
+                            if [[ "$_COUNT" -gt "$_SHOWN" ]] 2>/dev/null; then
+                                printf '{"ts":"%s","kind":"inbox_lane_filtered","source":"ambient-context-inject","total":%s,"shown":%s,"session":"%s"}\n' \
+                                    "$_TS" "$_COUNT" "$_SHOWN" "$SESSION_ID" >> "$AMBIENT_LOG" 2>/dev/null || true
+                            fi
+                        fi
                     else
                         rm -f "$_INBOX_TMP" 2>/dev/null || true
                     fi
