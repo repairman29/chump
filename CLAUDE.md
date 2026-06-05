@@ -9,6 +9,19 @@
 > Read order for Claude Code sessions: `AGENTS.md` first, then this file. (INFRA-1046)
 
 ## Mission
+
+> **The load-bearing mission of record lives in [`docs/MISSION.md`](./docs/MISSION.md)**
+> (MISSION-014). Canonical mission gap: **MISSION-010** (self-coordinating fleet, proof on
+> `repairman29/BEAST-MODE`). The Scoreboard in that doc is the one honest measure —
+> if a day's work didn't move it, it didn't count.
+>
+> Active mission pointer: `~/.chump/ACTIVE_MISSION` (currently `MISSION-010`).
+> Run the scoreboard anytime (read-only, safe): `bash scripts/dev/mission-scoreboard.sh`.
+
+The 4 pillars below are **how** we move toward the mission (the *qualities* every
+gap is graded on); the mission is **what** "done" looks like (the *outcome*
+every ship rolls up to). When in doubt, the mission wins.
+
 Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Waste**.
 Full pillar definitions and coordination docs: [`AGENTS.md`](./AGENTS.md) + [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md).
 Eval/research work also reads [`docs/process/RESEARCH_INTEGRITY.md`](./docs/process/RESEARCH_INTEGRITY.md).
@@ -59,6 +72,7 @@ chump gap list --status open                     # canonical .chump/state.db
 chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 bash scripts/coord/freshness-preamble.sh         # META-115: FRESH/STALE/CRITICAL_STALE session-start gate
+bash scripts/dev/mission-scoreboard.sh           # MISSION-014: did yesterday move docs/MISSION.md?
 ```
 
 **Freshness discipline** — before any "X is missing" claim, run [`verify-existence`](./.claude/skills/verify-existence/SKILL.md)
