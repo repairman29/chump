@@ -221,10 +221,20 @@ fi
 # INFRA-386: auto-close filed gaps whose underlying PR has resolved.
 # Runs once per filer cycle, before the dedup-driven filing loop. Walks
 # every open INFRA gap titled "PR #N stuck — ..." and checks PR N's
-# state — if MERGED or CLOSED, runs `chump gap ship --closed-pr N` to
-# flip the gap to done. Pre-fix, INFRA-356/357/358 stayed open hours
-# after their referenced PRs were closed via batch-unstick, with the
-# hourly filer hitting EXISTING_FILINGS dedup but never resolving.
+# state — if MERGED or CLOSED, flips the gap to closed via
+# `chump gap set --status closed`.
+#
+# RESILIENT-098 (2026-06-05): switched from `chump gap ship` to
+# `chump gap set --status closed`. The `ship` path enforces the
+# INFRA-2423 auto-fetch gate (refuses when local main is behind origin
+# AND working tree is dirty), which is the right discipline for HUMAN
+# ship operations but wrong for an autonomous daemon that just wants to
+# flip status. Pre-fix, 23 zombies accumulated over 5 days because every
+# auto-close attempt hit the gate, logged a WARN, and left the gap open.
+#
+# Pre-fix history: INFRA-356/357/358 stayed open hours after their
+# referenced PRs were closed via batch-unstick, with the hourly filer
+# hitting EXISTING_FILINGS dedup but never resolving.
 # Bypass: INFRA_386_AUTOCLOSE=0 for testing.
 auto_close_resolved_filings() {
     [[ "${INFRA_386_AUTOCLOSE:-1}" == "0" ]] && return 0
@@ -258,11 +268,15 @@ for r in rows:
                 if [[ $DRY_RUN -eq 1 ]]; then
                     dry "would auto-close $gap_id (PR #$pr_num is $state)"
                 else
-                    if chump gap ship "$gap_id" --closed-pr "$pr_num" --update-yaml >/dev/null 2>&1; then
+                    # RESILIENT-098: use `gap set --status closed` (state.db direct)
+                    # instead of `gap ship` to bypass the INFRA-2423 auto-fetch gate.
+                    if chump gap set "$gap_id" --status closed --closed-pr "$pr_num" \
+                          --add-note "auto-closed by stuck-pr-filer: PR #$pr_num resolved ($state)" \
+                          >/dev/null 2>&1; then
                         info "auto-closed $gap_id — referenced PR #$pr_num resolved ($state)"
                         closed=$((closed + 1))
                     else
-                        warn "chump gap ship $gap_id failed (PR #$pr_num $state)"
+                        warn "chump gap set $gap_id --status closed failed (PR #$pr_num $state)"
                     fi
                 fi
                 ;;

@@ -133,4 +133,41 @@ if [[ -f "$STATE_FILE" ]]; then
         || { echo "[test] FAIL: state file not reset after recovery (state=$state_after)"; exit 1; }
 fi
 
+# ── (h) RESILIENT-097 recovery via RED→AMBER→GREEN path ──────────────────────
+# Regression test for the 2026-06-05 leak: 23 trunk-red zombies accumulated
+# because the recover gate was `prev_state == TRUNK_RED`, which skipped
+# transitions where the sentinel briefly observed AMBER between the red
+# event and the recovery. The new gate fires whenever cur_state=GREEN AND
+# the persisted filed_gaps list is non-empty.
+#
+# Setup: drive state back to RED, transition to AMBER (in-progress run with
+# no conclusion yet), then GREEN; confirm trunk_recovered still fires.
+AMBER_FIXTURE="$WORK_DIR/run-amber.json"
+cat > "$AMBER_FIXTURE" <<'EOF'
+{"run_id":1004,"head_sha":"amb000","conclusion":"","status":"in_progress","created_at":"2026-05-31T00:20:00Z","html_url":"https://x","failing_jobs":""}
+EOF
+
+# Drive to RED with fixture B (new fp so file gate trips again)
+CHUMP_TRUNK_SENTINEL_MOCK_RUN_JSON="$RED_FIXTURE_B" "$DAEMON" tick 2>/dev/null \
+    || { echo "[test] FAIL: (h) RED tick non-zero"; exit 1; }
+state_at_red=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['state'])")
+[[ "$state_at_red" == "TRUNK_RED" ]] \
+    || { echo "[test] FAIL: (h) expected TRUNK_RED, got $state_at_red"; exit 1; }
+
+# Transition to AMBER (in_progress)
+CHUMP_TRUNK_SENTINEL_MOCK_RUN_JSON="$AMBER_FIXTURE" "$DAEMON" tick 2>/dev/null \
+    || { echo "[test] FAIL: (h) AMBER tick non-zero"; exit 1; }
+state_at_amber=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['state'])")
+[[ "$state_at_amber" == "TRUNK_AMBER" ]] \
+    || { echo "[test] FAIL: (h) expected TRUNK_AMBER, got $state_at_amber"; exit 1; }
+
+# Transition AMBER→GREEN; trunk_recovered MUST fire (pre-fix behavior skipped this)
+before_h=$(wc -l < "$AMBIENT")
+CHUMP_TRUNK_SENTINEL_MOCK_RUN_JSON="$GREEN_FIXTURE" "$DAEMON" tick 2>/dev/null \
+    || { echo "[test] FAIL: (h) GREEN-after-AMBER tick non-zero"; exit 1; }
+new_h=$(tail -n +"$((before_h + 1))" "$AMBIENT")
+echo "$new_h" | grep -q '"kind":"trunk_recovered"' \
+    || { echo "[test] FAIL: (h) RESILIENT-097 regressed — no trunk_recovered on RED→AMBER→GREEN"; exit 1; }
+echo "[test] (h) RESILIENT-097 RED→AMBER→GREEN recovery: OK"
+
 echo "[test-trunk-sentinel] PASS"
