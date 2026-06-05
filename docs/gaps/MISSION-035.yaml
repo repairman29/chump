@@ -1,0 +1,13 @@
+- id: MISSION-035
+  domain: MISSION
+  title: "MISSION P1 (MISSION-032 Phase-B Tier-1): external-clone-reaper daemon (LRU eviction; 14d untouched, 20 GB budget)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    MISSION-032 Phase-B Tier-1. ~/.chump/external/<owner>/<repo>/clone/ is a full git clone (BEAST = 318 MB today). 100 repos × 50 MB avg = 5 GB; 100 × heavy = 50 GB. No eviction. New scripts/ops/external-clone-reaper.sh + launchd plist: LRU by last_clone_at (from repos table, MISSION-033); reap clones not touched in 14d (env-tunable); re-clone on demand on next pick; operator-overridable disk budget (default 20 GB); emit kind=external_clone_reaped to ambient. Pairs with INFRA-2339 broad-scan reaper pattern (shipped today).
+  acceptance_criteria:
+    - scripts/ops/external-clone-reaper.sh + launchd plist installed (env CHUMP_EXTERNAL_CLONE_BUDGET_GB, CHUMP_EXTERNAL_CLONE_MAX_AGE_D)
+    - Reaps clones in LRU order by repos.last_clone_at when over budget
+    - Emits kind=external_clone_reaped; logged each reaping
+

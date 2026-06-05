@@ -1,0 +1,12 @@
+- id: MISSION-036
+  domain: MISSION
+  title: "MISSION P1 (MISSION-032 Phase-B Tier-1): onboard-scan rotation (keep latest 5 per repo, reap older)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    MISSION-032 Phase-B Tier-1. Each scout pass writes new ~/.chump/external/<owner>/<repo>/scans/onboard-scan-<ts>.json (BEAST already has 2). 100 repos × N scans accumulates unbounded. Keep latest 5 per repo; reap older. Same shape as INFRA-2339 broad-scan reaper. Small script + launchd plist.
+  acceptance_criteria:
+    - scripts/ops/external-scan-reaper.sh keeps latest 5 onboard-scan-*.json per repo
+    - launchd plist runs daily
+

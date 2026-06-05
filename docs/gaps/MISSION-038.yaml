@@ -1,0 +1,14 @@
+- id: MISSION-038
+  domain: MISSION
+  title: "MISSION P1 (MISSION-032 Phase-B Tier-1): chump-onboard-scheduler-daemon (scan stale repos on cadence, rate-limited)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    MISSION-032 Phase-B Tier-1. Onboard is operator-initiated today (chump onboard <repo-url>). For 100 repos manual triggering doesn't scale; for 10000 it's absurd. New chump-onboard-scheduler-daemon (launchd plist) reads repos table (MISSION-033), picks N stale-or-new per cadence (last_scan_at < 7d ago AND status='active'), rate-limited (default 5 scans/hour to avoid GitHub API exhaustion), emits kind=onboard_scan_scheduled, writes results to per-repo scans/. Operator manual chump onboard still works (push-pull model — operator can always force-schedule).
+  acceptance_criteria:
+    - chump-onboard-scheduler-daemon plist installed (env CHUMP_ONBOARD_SCHED_RATE_PER_HR, CHUMP_ONBOARD_SCHED_STALE_DAYS)
+    - Picks repos where last_scan_at < 7d ago AND status='active'
+    - Rate-limited; emits ambient event for each scheduled scan
+    - Operator can chump onboard <repo> at any time to force schedule
+
