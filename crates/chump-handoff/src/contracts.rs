@@ -437,13 +437,62 @@ Base branch     : {base_branch}
 Proposed change:
 {proposed_gap_description}
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MERGE BAR — your PR MUST satisfy ALL of the following or it
+will NOT be merged (EFFECTIVE-215 / CREDIBLE-096).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Gate 1 — CI green
+  The external repo's CI must be GREEN on your PR head commit.
+  Every non-advisory check-run on the head SHA must be SUCCESS
+  (or NEUTRAL/SKIPPED for intentional opt-outs).  A single
+  failing check-run → HELD(ci).  Zero check-runs → HELD(no-gates).
+
+Gate 2 — Anti-cosmetic: a test that FAILS on base and PASSES on head
+  This is the decisive gate.  Your PR diff MUST add or modify at
+  least one test file (heuristic: path contains `test`/`spec`, or
+  filename matches `*_test.*`, `test_*.*`, `*.test.*`, `*.spec.*`,
+  `__tests__/*`, etc.).  That test MUST:
+    • FAIL (non-zero exit) when run against the BASE commit, AND
+    • PASS (exit 0) when run against your HEAD commit.
+
+  A test that also passes on the base commit proves nothing —
+  HELD(unproven).  A PR with no changed test file at all →
+  HELD(cosmetic).
+
+  Therefore: identify a concrete, testable behavioral defect or
+  missing behavior your change addresses, write a test that
+  demonstrably FAILS before your change and PASSES after, and
+  include it.  If the proposed change is pure config/docs with no
+  testable behavior, reframe it as the underlying behavioral defect
+  and prove THAT with a test — do NOT open an unprovable PR.
+
+Gate 3 — No regression
+  The repo's FULL existing test suite MUST pass on your head commit.
+  If the repo's CI already runs the full test suite (Gate 1 covers
+  this), Gate 3 is satisfied by CI.  If CI only lints or builds,
+  run the full test suite locally on the head commit.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SELF-VERIFY — run ALL three checks BEFORE opening the PR:
+  1. Checkout the BASE commit; run your changed test → must FAIL.
+  2. Checkout your HEAD commit; run your changed test → must PASS.
+  3. Run the FULL test suite on HEAD → must be GREEN.
+  Only open the PR if all three hold.  If any check is wrong,
+  fix the implementation or the test before pushing.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 Steps:
 1. `cd {repo_local_path}`; confirm the clone is on a clean checkout of `{base_branch}`.
 2. Create a short descriptive branch name and check it out.
-3. Make the minimal change that satisfies the proposed description.
-4. `git add` + `git commit` (conventional-commit style message).
-5. Push the branch and open a PR against `{base_branch}` on `{external_repo}`.
-6. Emit a single fenced JSON block with the exact shape below — no other JSON, no extra commentary outside the block.
+3. Identify the behavioral defect or missing behavior to fix and write a test for it.
+4. Confirm the test FAILS on the base commit (self-verify step 1).
+5. Implement the change that makes the test pass.
+6. Confirm the test PASSES on your head commit (self-verify step 2).
+7. Confirm the full test suite is GREEN on your head commit (self-verify step 3).
+8. `git add` + `git commit` (conventional-commit style message).
+9. Push the branch and open a PR against `{base_branch}` on `{external_repo}`.
+10. Emit a single fenced JSON block with the exact shape below — no other JSON, no extra commentary outside the block.
 
 ```json
 {{
@@ -452,15 +501,16 @@ Steps:
   "base_ref": "{base_branch}",
   "files_touched": ["<repo-relative path>", ...],
   "commit_sha": "<full 40-char SHA>",
-  "notes": "<what you did and why>"
+  "notes": "<what you did and why, which test was added/changed, and how you confirmed it fails-on-base and passes-on-head>"
 }}
 ```
 
 Rules:
 - `pr_url` MUST be the real URL returned by `gh pr create` — do not fabricate it.
-- `files_touched` MUST list every file the diff modifies.
+- `files_touched` MUST list every file the diff modifies, including the test file.
 - `commit_sha` MUST be the full 40-character SHA of the head commit (`git rev-parse HEAD`).
-- Keep `notes` factual: what changed and why, no filler.
+- Keep `notes` factual: what changed and why, no filler.  Include which test was added/changed
+  and your self-verify result (test failed on base, passed on head, full suite green on head).
 "#,
             external_repo = input.external_repo,
             repo_local_path = input.repo_local_path,
@@ -1777,5 +1827,103 @@ mod arch_decision_tests {
             "intent missing from prompt"
         );
         assert!(p.contains("none"), "empty constraints should show 'none'");
+    }
+}
+
+// ── Unit tests: ExternalRepoContract prompt bar-awareness (EFFECTIVE-215) ──
+
+#[cfg(test)]
+mod external_repo_bar_aware_tests {
+    use super::*;
+    use crate::HandoffContract;
+
+    /// Build a minimal but valid ExternalRepoInput for prompt-content assertions.
+    fn sample_input() -> ExternalRepoInput {
+        ExternalRepoInput {
+            external_repo: "ehippy/derelict".to_string(),
+            repo_local_path: "/tmp/derelict".to_string(),
+            proposed_gap_description: "Add a health-check endpoint".to_string(),
+            base_branch: "main".to_string(),
+            fork_owner: Some("repairman29".to_string()),
+        }
+    }
+
+    /// Gate 1 — prompt must tell the agent that external repo CI must be GREEN.
+    #[test]
+    fn prompt_mentions_ci_green() {
+        let p = ExternalRepoContract::prompt(&sample_input());
+        // Both "CI" and "green" (or "GREEN") must appear in the MERGE BAR section.
+        let lower = p.to_ascii_lowercase();
+        assert!(
+            lower.contains("ci") && lower.contains("green"),
+            "prompt must mention CI and green; got:\n{p}"
+        );
+    }
+
+    /// Gate 2 — prompt must describe the fail-on-base / pass-on-head requirement.
+    #[test]
+    fn prompt_mentions_fail_on_base_pass_on_head() {
+        let p = ExternalRepoContract::prompt(&sample_input());
+        let lower = p.to_ascii_lowercase();
+        // "fail" (or "fails") on "base" and "pass" (or "passes") on "head" must appear.
+        assert!(
+            lower.contains("fail") && lower.contains("base"),
+            "prompt must state test FAILS on base; got:\n{p}"
+        );
+        assert!(
+            lower.contains("pass") && lower.contains("head"),
+            "prompt must state test PASSES on head; got:\n{p}"
+        );
+    }
+
+    /// Gate 2 — prompt must reject cosmetic PRs (no test file changed).
+    #[test]
+    fn prompt_mentions_cosmetic_rejection() {
+        let p = ExternalRepoContract::prompt(&sample_input());
+        let lower = p.to_ascii_lowercase();
+        // "cosmetic" or "no test" must appear to warn the agent about this class of held PRs.
+        assert!(
+            lower.contains("cosmetic") || lower.contains("no test"),
+            "prompt must warn about cosmetic (no-test) PRs; got:\n{p}"
+        );
+    }
+
+    /// Gate 3 — prompt must mention regression.
+    #[test]
+    fn prompt_mentions_regression() {
+        let p = ExternalRepoContract::prompt(&sample_input());
+        let lower = p.to_ascii_lowercase();
+        assert!(
+            lower.contains("regression"),
+            "prompt must mention regression gate; got:\n{p}"
+        );
+    }
+
+    /// Self-verify requirement — prompt must tell the agent to self-verify before opening.
+    #[test]
+    fn prompt_mentions_self_verify() {
+        let p = ExternalRepoContract::prompt(&sample_input());
+        let lower = p.to_ascii_lowercase();
+        assert!(
+            lower.contains("self-verify")
+                || lower.contains("self_verify")
+                || lower.contains("verify"),
+            "prompt must instruct the agent to self-verify; got:\n{p}"
+        );
+    }
+
+    /// Sanity: proposed_gap_description and external_repo are interpolated.
+    #[test]
+    fn prompt_interpolates_input_fields() {
+        let input = sample_input();
+        let p = ExternalRepoContract::prompt(&input);
+        assert!(
+            p.contains(&input.external_repo),
+            "external_repo missing from prompt"
+        );
+        assert!(
+            p.contains(&input.proposed_gap_description),
+            "proposed_gap_description missing from prompt"
+        );
     }
 }
