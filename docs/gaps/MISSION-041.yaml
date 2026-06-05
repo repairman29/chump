@@ -1,0 +1,25 @@
+- id: MISSION-041
+  domain: MISSION
+  title: "MISSION P0: backfill gap.skills_required with external_repo: tags — picker can't see BEAST gaps because the routing field is empty (description text doesn't route)"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    MISSION-018 (CHUMP_EXTERNAL_REPO_PICK_OK=1), MISSION-028 (picker mission-rank),
+    and MISSION-033 (repos table auto-populate) all reference
+    `gap.skills_required LIKE '%external_repo:%'` as their routing key.
+    But no gaps have that tag set in skills_required — the
+    `external_repo:repairman29/BEAST-MODE` string lives only in description text.
+    So all three substrate ships route ZERO gaps.
+
+    Rough shape:
+    (a) `chump gap backfill-external-repo [--dry-run | --apply] [--owner-repo <o/r>]`
+        scans all gaps, applies heuristics (title/desc BEAST match → external_repo:repairman29/BEAST-MODE),
+        CSV-appends to skills_required, emits gap_external_repo_backfilled event.
+    (b) `--external-repo <owner/repo>` flag on `chump gap reserve` for future gaps.
+  acceptance_criteria:
+    - "sqlite SELECT COUNT(*) FROM gaps WHERE skills_required LIKE '%external_repo:repairman29/BEAST-MODE%' AND status='open' returns >= 5"
+    - "chump repos list shows repairman29/BEAST-MODE with linked-gap count >= 5 (after chump gap import)"
+    - "chump gap reserve --external-repo repairman29/BEAST-MODE --title test produces a gap with skills_required containing external_repo:repairman29/BEAST-MODE"
+    - "chump gap backfill-external-repo --dry-run is idempotent — running twice gives identical 'would link 0' output the second time"
+  skills_required: "external_repo:repairman29/BEAST-MODE"
