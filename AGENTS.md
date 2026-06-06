@@ -381,6 +381,8 @@ When you broadcast a proposal and want votes, **wait for replies on the same NAT
 
 Both are observable to you within ~minutes via `chump-coord watch` or the next session's PreToolUse digest. Inbox DMs in response to a broadcast are a misroute — they reach exactly one recipient (you) instead of the whole conversation.
 
+**A2A consensus is always-on and mandatory (INFRA-2515, operator decision 2026-06-05).** The coordination layer must always be on AND in use: a proposal that dies at `NO_QUORUM` for lack of votes is a coordination failure (and after the grace window it needlessly pages the operator). Every curator/agent **votes on each open `FEEDBACK kind=proposal` in its inbox every cycle** — `chump vote <corr_id> +1|-1|0 --reason '<why>'` (abstain `0` on out-of-lane proposals; still counts toward quorum). Routine fleet decisions (priority/class re-rankings, scale, doctrine) go through a proposal, not a unilateral edit. The deliberator (`com.chump.deliberator`, every 30 min) re-surfaces starved proposals to inboxes to solicit votes, and `scripts/coord/fleet-doctor-strict.sh`'s `a2a-consensus` check **fails** when the recv-side flag (`CHUMP_FLEET_RECV_SIDE_V0`) is off or the tallier is down — keeping the layer on is a fleet-doctor invariant, not a suggestion.
+
 ### Reach asymmetry — Claude sessions vs bash daemons (INFRA-2263, 2026-05-30)
 
 **Not every fleet agent reads the wire the same way.** The fanout reaches different consumers at different cadences, and some consumers don't read it at all.

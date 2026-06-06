@@ -67,9 +67,11 @@
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
     <!-- gh + git + jq must be on PATH. -->
-    <!-- Uncomment to enable real tally work: -->
-    <!-- <key>CHUMP_FLEET_RECV_SIDE_V0</key> -->
-    <!-- <string>1</string> -->
+    <!-- INFRA-2515 (operator mandate 2026-06-05): A2A is ALWAYS-ON. The flag is
+         enabled here so the deliberator does real tally work independent of the
+         user-session env (belt-and-suspenders alongside the bootstrap setenv). -->
+    <key>CHUMP_FLEET_RECV_SIDE_V0</key>
+    <string>1</string>
   </dict>
 
   <key>ThrottleInterval</key>

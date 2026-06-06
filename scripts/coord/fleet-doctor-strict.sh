@@ -584,6 +584,60 @@ except Exception:
     fi
 }
 
+# ── Check 10 (INFRA-2515): A2A consensus liveness ──────────────────────────────
+# Operator mandate (2026-06-05): A2A coordination must ALWAYS be on. This check
+# FAILS fleet-doctor when the consensus layer is dormant — the recv-side flag is
+# off, or the deliberator (vote tallier) is unscheduled / wedged. Calibrated to
+# avoid false alarms: a fresh proposal sitting at 0 votes is NORMAL and does NOT
+# fail (the deliberator re-surfaces + escalates that). We fail ONLY on
+# unambiguous dormancy — the channel is OFF or the tallier is DEAD.
+check_a2a_consensus() {
+    # Only meaningful on macOS with launchctl (CI/Linux has no launchd daemons).
+    if ! command -v launchctl &>/dev/null || [[ "$(uname)" != "Darwin" ]]; then
+        register_check "a2a-consensus" "skip" \
+            "launchctl unavailable (non-macOS) — skipping A2A liveness scan" ""
+        return
+    fi
+
+    local stale_min="${A2A_DELIBERATOR_STALE_MIN:-75}"   # 2.5x the 30-min deliberator interval
+    local out_log="${A2A_DELIBERATOR_OUT_LOG:-/tmp/chump-deliberator.out.log}"
+
+    # 1. Recv-side channel must be ON (else voting + tally are no-ops).
+    local recv_flag
+    recv_flag="$(launchctl getenv CHUMP_FLEET_RECV_SIDE_V0 2>/dev/null || true)"
+    if [[ "$recv_flag" != "1" ]]; then
+        register_check "a2a-consensus" "fail" \
+            "A2A recv-side is OFF (CHUMP_FLEET_RECV_SIDE_V0='${recv_flag:-unset}') — curator voting + consensus tally are no-ops" \
+            "launchctl setenv CHUMP_FLEET_RECV_SIDE_V0 1; launchctl setenv CHUMP_A2A_LAYER 1; or re-run scripts/setup/chump-fleet-bootstrap.sh"
+        return
+    fi
+
+    # 2. The deliberator (vote tallier) must be scheduled.
+    if ! launchctl list 2>/dev/null | grep -q 'com\.chump\.deliberator'; then
+        register_check "a2a-consensus" "fail" \
+            "deliberator daemon (com.chump.deliberator) is NOT loaded — nobody tallies votes; proposals die at NO_QUORUM" \
+            "bash scripts/setup/install-deliberator-launchd.sh  # or chump-fleet-bootstrap.sh"
+        return
+    fi
+
+    # 3. The deliberator must have RUN recently (not wedged).
+    if [[ -f "$out_log" ]]; then
+        local now_ts log_ts age_min
+        now_ts="$(date -u +%s)"
+        log_ts="$(stat -f %m "$out_log" 2>/dev/null || echo "$now_ts")"
+        age_min=$(( (now_ts - log_ts) / 60 ))
+        if (( age_min > stale_min )); then
+            register_check "a2a-consensus" "fail" \
+                "deliberator loaded but has not ticked in ${age_min}m (threshold ${stale_min}m) — consensus tally wedged" \
+                "launchctl kickstart -k gui/\$(id -u)/com.chump.deliberator"
+            return
+        fi
+    fi
+
+    register_check "a2a-consensus" "pass" \
+        "A2A on (recv-side flag=1, deliberator scheduled + ticking)" ""
+}
+
 # ── Run all checks ─────────────────────────────────────────────────────────────
 check_binary
 check_leases
@@ -593,6 +647,7 @@ check_gap_drift
 check_p0_budget
 check_pillar_coverage
 check_silent_fleet_death
+check_a2a_consensus
 check_required_status_checks
 
 # ── Render output ──────────────────────────────────────────────────────────────
