@@ -88,6 +88,30 @@ broadcasts` header. Process + reply per
 `scripts/coord/broadcast.sh --to <session-id> WARN "..."`; read with
 `scripts/coord/chump-inbox.sh read`.
 
+## A2A consensus is always-on and mandatory (INFRA-2515, operator decision 2026-06-05)
+
+The agent-to-agent coordination layer (`FEEDBACK kind=proposal` → curator votes
+→ deliberator tally → `consensus_result`) must **always be on and always be in
+use**. A proposal that dies at `NO_QUORUM` because nobody voted is the fleet
+*failing to coordinate* — and after the grace window it needlessly pages the
+operator. So:
+
+- **Vote on every open proposal in your inbox, every cycle.** When the
+  SessionStart digest (or a `VOTE NEEDED` nudge) surfaces an open
+  `FEEDBACK kind=proposal`, cast `chump vote <corr_id> +1|-1|0 --reason '<why>'`
+  **before** picking up a gap. Abstain (`0`) with a reason if it's out of your
+  lane — that still counts toward quorum. Silence is not an option.
+- **Route routine fleet decisions through consensus, not unilaterally** —
+  priority/class re-rankings, scale changes, doctrine tweaks: broadcast a
+  proposal and let the fleet vote (this is the same reason `AskUserQuestion` is
+  a T1–T4-only tool, above).
+- **It self-enforces.** The deliberator (`com.chump.deliberator`, every 30 min)
+  re-surfaces starved proposals to your inbox to solicit votes, and
+  `fleet-doctor`'s `a2a-consensus` check turns **RED** if the recv-side flag is
+  off or the tallier is dead. Don't disable `CHUMP_FLEET_RECV_SIDE_V0` /
+  `CHUMP_A2A_LAYER` — the bootstrap sets them; the farmer/daemon team keeps the
+  deliberator scheduled.
+
 If `chump-fleet-bootstrap.sh --check` exits non-zero, run without `--check` to
 install missing launchd plists + git hooks. Without this, the productization
 layer (META-063 redundancy gate, META-064 Rust-first gate, META-065 curator,
@@ -240,6 +264,7 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 
 ## Hard rules
 
+- **A2A consensus is always-on (INFRA-2515).** Vote on every open `FEEDBACK kind=proposal` in your inbox each cycle — `chump vote <corr_id> +1|-1|0 --reason …` (abstain `0` on out-of-lane ones; still counts toward quorum). Route routine priority/class/scale decisions through a proposal, not unilaterally. Never disable `CHUMP_FLEET_RECV_SIDE_V0` / `CHUMP_A2A_LAYER`; `fleet-doctor` goes RED if consensus is dormant. See "A2A consensus is always-on" above.
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
 - **Default model: haiku for IDE sessions, sonnet for fleet workers.** Cost-sensitive sweeps: `FLEET_MODEL=haiku`. Opus is ~50× haiku per token.
 - **Never push directly to `main`.** See [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01).

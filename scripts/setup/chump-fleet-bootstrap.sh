@@ -88,6 +88,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ── INFRA-2515: A2A always-on — ensure the consensus flags are set ─────────────
+# Operator mandate (2026-06-05): the A2A coordination layer must ALWAYS be on.
+# Set the recv-side + subscribe-side flags in the launchd user-session domain so
+# every fleet daemon/worker spawned afterwards inherits them. Idempotent +
+# best-effort; runs on real bootstraps (not --check audits) and only where
+# launchctl exists (macOS). fleet-doctor's a2a-consensus check enforces this.
+if [[ "$MODE" != "check" ]] && command -v launchctl >/dev/null 2>&1; then
+    launchctl setenv CHUMP_FLEET_RECV_SIDE_V0 1 2>/dev/null || true
+    launchctl setenv CHUMP_A2A_LAYER 1 2>/dev/null || true
+    echo "[bootstrap] INFRA-2515: A2A flags set (CHUMP_FLEET_RECV_SIDE_V0=1, CHUMP_A2A_LAYER=1)"
+fi
+
 # Parse the manifest (YAML → tab-separated rows: id\tpriority\tinstall\tcheck).
 # We use python3 because awk + YAML is misery.
 parse_manifest() {

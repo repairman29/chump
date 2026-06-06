@@ -97,6 +97,34 @@ _emit_kind() {
     printf '%s\n' "$body" >> "$AMBIENT" 2>/dev/null || true
 }
 
+# INFRA-2515 (operator mandate 2026-06-05): A2A must always be IN USE, not just
+# on. A proposal that sits at NO_QUORUM is the fleet failing to sing — so instead
+# of waiting silently for the grace window to expire and paging the operator,
+# the deliberator actively RE-SURFACES the starved proposal to curator inboxes to
+# solicit votes. Rate-limited per corr_id via a stamp file so the 30-min cadence
+# never spams. Fully best-effort: every external call is absorbed so a nudge
+# failure can never break the tally loop.
+_nudge_curators_to_vote() {
+    local corr_id="$1" votes="$2" remaining_h="$3"
+    local cooldown_h="${CHUMP_A2A_NUDGE_COOLDOWN_HOURS:-6}"
+    local stamp="${LOCK_DIR}/.a2a-nudge-${corr_id//[^A-Za-z0-9_-]/_}.stamp"
+    if [[ -f "$stamp" ]]; then
+        local now_ts stamp_ts age_h
+        now_ts="$(_now_epoch)"
+        stamp_ts="$(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo "$now_ts")"
+        age_h=$(( (now_ts - stamp_ts) / 3600 ))
+        (( age_h < cooldown_h )) && return 0
+    fi
+    local bcast="$MAIN_REPO/scripts/coord/broadcast.sh"
+    if [[ -x "$bcast" ]]; then
+        CHUMP_FLEET_RECV_SIDE_V0=1 bash "$bcast" --to all-opus WARN \
+            "VOTE NEEDED — proposal ${corr_id} has only ${votes} vote(s); ${remaining_h}h until it escalates to the operator. Cast: chump vote ${corr_id} +1|-1|0 --reason '<why>'" \
+            >/dev/null 2>&1 || true
+    fi
+    mkdir -p "$LOCK_DIR" 2>/dev/null || true
+    : > "$stamp" 2>/dev/null || true
+}
+
 # Check if jq is available.
 _have_jq() { command -v jq >/dev/null 2>&1; }
 
@@ -448,6 +476,8 @@ _cmd_tick() {
             else
                 local remaining=$(( (grace_cutoff - now_epoch) / 3600 ))
                 echo "    → NO_QUORUM — grace window ${remaining}h remaining before escalation"
+                # INFRA-2515: don't wait silently — solicit votes from the fleet.
+                _nudge_curators_to_vote "$line_corr" "$total" "$remaining"
             fi
 
         elif [[ "$verdict" == "EXTENDED" ]]; then
@@ -464,10 +494,13 @@ _cmd_tick() {
         echo "[deliberator] tick: resolved=${resolved} escalated=${escalated}"
     fi
 
-    if (( actionable > 0 )); then
-        return 0
-    fi
-    return 1
+    # INFRA-2515: a successful tick exits 0 even when nothing was actionable
+    # (all proposals still in NO_QUORUM grace). The old `return 1` for that case
+    # made launchd record last-exit-code=1, polluting daemon-health scans
+    # (fleet-doctor silent-fleet-death + the new a2a-consensus check) and making
+    # a healthy tallier look dead. Real errors earlier in the tick (missing
+    # AMBIENT, bad args) still return non-zero before reaching here.
+    return 0
 }
 
 _cmd_audit() {
