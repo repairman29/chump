@@ -324,6 +324,7 @@ mod tests {
             required_model: String::new(),
             shipped_in: None,
             outcome_id: None,
+            evidence: None,
         }
     }
 
