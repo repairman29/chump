@@ -4391,14 +4391,17 @@ impl GapStore {
         Ok(true)
     }
 
-    /// Count gaps linked to a repo via `external_repo:<id>` tag in skills_required.
+    /// Count *open* gaps linked to a repo via `external_repo:<id>` tag in
+    /// skills_required. Counts open work only — done/closed/in_review gaps
+    /// are noise for the demo-target picker (EFFECTIVE-216).
     pub fn repo_gap_count(&self, repo_id: &str) -> Result<i64> {
-        // skills_required is a CSV; search with LIKE for the tag pattern.
-        // Two forms: tag at start, in middle, or at end of CSV.
+        // skills_required is a CSV; leading `%` lets the tag appear at start,
+        // middle, or end of the field.
         let pattern = format!("%external_repo:{}%", repo_id);
         self.conn
             .query_row(
-                "SELECT COUNT(*) FROM gaps WHERE skills_required LIKE ?1",
+                "SELECT COUNT(*) FROM gaps \
+                 WHERE skills_required LIKE ?1 AND status = 'open'",
                 params![pattern],
                 |r| r.get(0),
             )
@@ -7563,5 +7566,44 @@ mod quarantine_tests {
             "note must mention operator review; got: {:?}",
             row.notes
         );
+    }
+
+    // EFFECTIVE-216: repo_gap_count returns only open gaps tagged with
+    // external_repo:<owner>/<repo>, regardless of CSV position. Done /
+    // closed / in_review gaps tagged with the same repo must NOT count.
+    #[test]
+    fn repo_gap_count_open_only_and_csv_mid_string() {
+        let (store, _dir) = test_store();
+
+        // INFRA-402 guard requires closed_pr when flipping to done.
+        let make = |suffix: &str, status: &str, skills: &str, closed_pr: Option<i64>| {
+            let id = store
+                .reserve("INFRA", &format!("rgc-test-{suffix}"), "P1", "xs")
+                .unwrap();
+            store
+                .set_fields(
+                    &id,
+                    GapFieldUpdate {
+                        status: Some(status.to_string()),
+                        skills_required: Some(skills.to_string()),
+                        closed_pr,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+        };
+
+        // 2 open with tag at varying CSV positions — both must count.
+        make("a", "open", "external_repo:foo/bar", None);
+        make("b", "open", "rust,external_repo:foo/bar,sqlite", None);
+        // 2 non-open with the same tag — must NOT count (the bug being fixed).
+        // Use done (with closed_pr to satisfy INFRA-402) and in_review.
+        make("c", "done", "external_repo:foo/bar", Some(9001));
+        make("d", "in_review", "rust,external_repo:foo/bar", None);
+        // 1 open but a different repo — must NOT count.
+        make("e", "open", "external_repo:other/repo", None);
+
+        let count = store.repo_gap_count("foo/bar").unwrap();
+        assert_eq!(count, 2, "expected 2 (only open foo/bar gaps); got {count}");
     }
 }
