@@ -49,6 +49,17 @@ done
 REPO="${CHUMP_REPO_SLUG:-repairman29/chump}"
 FRESH_MIN="${CHUMP_RC_FRESH_MIN:-60}"
 
+# ---- auth-class guard (the #1 recurring false-positive): name the wrong probes ----
+if printf '%s' "$BELIEF" | grep -qiE 'auth|login|logged.?in|credential|token|401'; then
+  _ak="$(launchctl getenv ANTHROPIC_API_KEY 2>/dev/null)"
+  echo "  ⚠ AUTH-CLASS belief — these do NOT measure fleet auth (they mislead):"
+  echo "      • 'claude -p' in your shell   → tests YOUR interactive login, NOT the fleet's"
+  echo "        env auth. Fleet uses ANTHROPIC_API_KEY = $([ -n "$_ak" ] && echo SET || echo unset) (launchctl getenv)."
+  echo "      • 'chump fleet doctor' exit-0 → auth PRESENCE, not VALIDITY (RESILIENT-086)."
+  echo "      • fleet-brief '✓ healthy'     → does not check ship-rate."
+  echo "      The only proof of life is the recent-merge ground truth below."
+fi
+
 echo "=== reality-check (CREDIBLE-090) — a SIGNAL is not an OUTCOME ==="
 echo "  (1) BELIEF : $BELIEF"
 [ -n "$DETECTOR" ] && echo "      SIGNAL : detector=$DETECTOR"
