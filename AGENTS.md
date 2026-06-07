@@ -429,6 +429,24 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 | [`docs/process/EXTERNAL_REPO_USAGE.md`](./docs/process/EXTERNAL_REPO_USAGE.md) | Onboarding guide for non-Chump repos using Chump as a coordination platform (DOC-022) |
 
+## Reality-check before alarm-class beliefs — ship-check FIRST (CREDIBLE-090)
+
+> **A detector is a SIGNAL; the thing being broken is an OUTCOME. Verify the
+> outcome against ground truth before you broadcast / escalate / halt.**
+
+Run `scripts/dev/reality-check.sh "<belief>"` before any "X is down / dead /
+broken / halted / starved" statement. The decisive ground truth: **did
+`origin/main` merge in the last hour?** (`git log origin/main --since='1 hour ago'`).
+If yes, it is **NOT dead — stand down**, full stop.
+
+**Auth-dead / fleet-dead is the #1 false-positive** (mis-called 4× through
+2026-06-07, the fleet shipping each time). Three "proofs" that do **NOT** measure
+fleet auth: (a) **`claude -p` in your shell** tests *your* interactive login, not
+the fleet's `ANTHROPIC_API_KEY` env path (check `launchctl getenv ANTHROPIC_API_KEY`);
+(b) **`chump fleet doctor` exit-0** checks auth *presence*, not *validity*
+(RESILIENT-086); (c) the **fleet-brief `✓ healthy` banner** ignores ship-rate.
+The recent-merge check is the only proof of life.
+
 ## Durable-fix doctrine — no band-aids (CREDIBLE-105)
 
 > **Fix the thing that's broken — not your path around it.** A workaround that
