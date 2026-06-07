@@ -560,10 +560,14 @@ case "$EVENT" in
             JSON="$(_maybe_add_parent_corr_id "$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")")"
         fi
         # File-mode emit: still write to ambient.jsonl (audit trail) AND to the
-        # dedicated feedback.jsonl that the curator (INFRA-1272) reads.
+        # dedicated feedback.jsonl that the curator (INFRA-1272) + the deliberator
+        # tally read. CREDIBLE-122: honor CHUMP_FEEDBACK_LOG so the durable vote
+        # record is sandboxable in tests (matches deliberator/consensus-tally,
+        # which already respect it) and the e2e path can be verified end-to-end.
         emit_to_file "$JSON"
-        mkdir -p "$LOCK_DIR" 2>/dev/null || true
-        printf '%s\n' "$JSON" >> "$LOCK_DIR/feedback.jsonl"
+        _fb_log="${CHUMP_FEEDBACK_LOG:-$LOCK_DIR/feedback.jsonl}"
+        mkdir -p "$(dirname "$_fb_log")" 2>/dev/null || true
+        printf '%s\n' "$JSON" >> "$_fb_log"
         # META-158: fan-out FEEDBACK kinds to all live curator inboxes.
         # When --to is set, behave as before (single-recipient inbox write).
         # When --to is unset and CHUMP_FLEET_RECV_SIDE_V0=1 and --no-fanout is not set,
