@@ -584,58 +584,69 @@ except Exception:
     fi
 }
 
-# ── Check 10 (INFRA-2515): A2A consensus liveness ──────────────────────────────
-# Operator mandate (2026-06-05): A2A coordination must ALWAYS be on. This check
-# FAILS fleet-doctor when the consensus layer is dormant — the recv-side flag is
-# off, or the deliberator (vote tallier) is unscheduled / wedged. Calibrated to
-# avoid false alarms: a fresh proposal sitting at 0 votes is NORMAL and does NOT
-# fail (the deliberator re-surfaces + escalates that). We fail ONLY on
-# unambiguous dormancy — the channel is OFF or the tallier is DEAD.
+# ── Check 10 (CREDIBLE-122): A2A consensus OUTCOME ─────────────────────────────
+# Measure the OUTCOME — does the fleet actually reach decisions? — not the signal
+# (is a flag set). The previous signal-based check (INFRA-2515) glowed green
+# while consensus_result was 0 fleet-wide: a dashboard lie. This FAILS when an
+# open proposal has aged past the grace window with NO consensus_result for its
+# corr_id — i.e. the fleet was asked to decide and didn't. Cross-platform (reads
+# the logs, no launchctl dependency). A fresh proposal still inside its grace
+# window does NOT fail (no crying wolf on in-flight votes).
 check_a2a_consensus() {
-    # Only meaningful on macOS with launchctl (CI/Linux has no launchd daemons).
-    if ! command -v launchctl &>/dev/null || [[ "$(uname)" != "Darwin" ]]; then
-        register_check "a2a-consensus" "skip" \
-            "launchctl unavailable (non-macOS) — skipping A2A liveness scan" ""
+    if ! command -v python3 &>/dev/null; then
+        register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
+        return
+    fi
+    local grace_h="${A2A_PROPOSAL_GRACE_HOURS:-6}"
+    local window_h="${A2A_PROPOSAL_WINDOW_HOURS:-168}"   # 7d look-back
+    local fb="$REPO_ROOT/.chump-locks/feedback.jsonl"
+    local amb="$REPO_ROOT/.chump-locks/ambient.jsonl"
+    if [[ ! -f "$fb" && ! -f "$amb" ]]; then
+        register_check "a2a-consensus" "skip" "no consensus logs present — nothing to judge" ""
         return
     fi
 
-    local stale_min="${A2A_DELIBERATOR_STALE_MIN:-75}"   # 2.5x the 30-min deliberator interval
-    local out_log="${A2A_DELIBERATOR_OUT_LOG:-/tmp/chump-deliberator.out.log}"
+    local now_ts grace_cut window_cut
+    now_ts="$(date -u +%s)"
+    grace_cut=$(( now_ts - grace_h * 3600 ))
+    window_cut=$(( now_ts - window_h * 3600 ))
 
-    # 1. Recv-side channel must be ON (else voting + tally are no-ops).
-    local recv_flag
-    recv_flag="$(launchctl getenv CHUMP_FLEET_RECV_SIDE_V0 2>/dev/null || true)"
-    if [[ "$recv_flag" != "1" ]]; then
+    # A proposal is "starved" if it's within the look-back window, older than the
+    # grace window, and has NO consensus_result for its corr_id.
+    local starved
+    starved="$(cat "$fb" "$amb" 2>/dev/null | python3 -c '
+import sys, json, datetime
+grace, window = int(sys.argv[1]), int(sys.argv[2])
+def epoch(ts):
+    try: return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception: return 0
+prop={}; resolved=set()
+for line in sys.stdin:
+    try: d=json.loads(line)
+    except Exception: continue
+    c=d.get("corr_id"); k=d.get("kind")
+    if not c: continue
+    if k=="proposal":
+        e=epoch(d.get("ts",""))
+        if e>=window and (c not in prop or e<prop[c]): prop[c]=e
+    elif k=="consensus_result":
+        resolved.add(c)
+s=[c for c,e in prop.items() if e<grace and c not in resolved]
+print(len(s)); print(" ".join(s[:5]))
+' "$grace_cut" "$window_cut" 2>/dev/null)"
+
+    local n_starved which
+    n_starved="$(printf '%s' "$starved" | sed -n 1p)"; n_starved="${n_starved:-0}"
+    which="$(printf '%s' "$starved" | sed -n 2p)"
+
+    if [[ "$n_starved" =~ ^[0-9]+$ ]] && (( n_starved > 0 )); then
         register_check "a2a-consensus" "fail" \
-            "A2A recv-side is OFF (CHUMP_FLEET_RECV_SIDE_V0='${recv_flag:-unset}') — curator voting + consensus tally are no-ops" \
-            "launchctl setenv CHUMP_FLEET_RECV_SIDE_V0 1; launchctl setenv CHUMP_A2A_LAYER 1; or re-run scripts/setup/chump-fleet-bootstrap.sh"
+            "${n_starved} open proposal(s) aged >${grace_h}h with NO consensus_result — the fleet is not reaching decisions (e.g. ${which}). consensus_result is the OUTCOME; piling up proposals with 0 verdicts is the dashboard lie CREDIBLE-122 fixed." \
+            "run the deliberator (bash scripts/coord/deliberator-loop.sh tick); make curators vote (chump vote <corr_id> +1|-1|0 --reason ...)"
         return
     fi
-
-    # 2. The deliberator (vote tallier) must be scheduled.
-    if ! launchctl list 2>/dev/null | grep -q 'com\.chump\.deliberator'; then
-        register_check "a2a-consensus" "fail" \
-            "deliberator daemon (com.chump.deliberator) is NOT loaded — nobody tallies votes; proposals die at NO_QUORUM" \
-            "bash scripts/setup/install-deliberator-launchd.sh  # or chump-fleet-bootstrap.sh"
-        return
-    fi
-
-    # 3. The deliberator must have RUN recently (not wedged).
-    if [[ -f "$out_log" ]]; then
-        local now_ts log_ts age_min
-        now_ts="$(date -u +%s)"
-        log_ts="$(stat -f %m "$out_log" 2>/dev/null || echo "$now_ts")"
-        age_min=$(( (now_ts - log_ts) / 60 ))
-        if (( age_min > stale_min )); then
-            register_check "a2a-consensus" "fail" \
-                "deliberator loaded but has not ticked in ${age_min}m (threshold ${stale_min}m) — consensus tally wedged" \
-                "launchctl kickstart -k gui/\$(id -u)/com.chump.deliberator"
-            return
-        fi
-    fi
-
     register_check "a2a-consensus" "pass" \
-        "A2A on (recv-side flag=1, deliberator scheduled + ticking)" ""
+        "no starved proposals — every open proposal aged past ${grace_h}h has a consensus_result (fleet is deciding)" ""
 }
 
 # ── Run all checks ─────────────────────────────────────────────────────────────

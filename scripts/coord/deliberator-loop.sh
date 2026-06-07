@@ -249,78 +249,71 @@ _tally_corr_id() {
     local deadline_epoch="${2:-0}"
     local now_epoch
     now_epoch="$(_now_epoch)"
-
-    # Try chump consensus-tally if available (META-159).
-    if command -v chump >/dev/null 2>&1 \
-        && chump consensus-tally --help 2>&1 | grep -q "corr-id" 2>/dev/null; then
-        local tally_out
-        tally_out="$(CHUMP_FLEET_RECV_SIDE_V0=1 chump consensus-tally \
-            --corr-id "$corr_id" --since "${PROPOSAL_WINDOW_HOURS}h" 2>/dev/null || true)"
-        if [[ -n "$tally_out" ]]; then
-            printf '%s' "$tally_out"
-            return 0
-        fi
-    fi
-
-    # Inline fallback: scan ambient for FEEDBACK kind=vote events for this corr_id.
-    local yes=0 no=0 abstain=0 total=0
-    local voters=()
     local window_cutoff
     window_cutoff=$(( now_epoch - PROPOSAL_WINDOW_HOURS * 3600 ))
 
-    if [[ ! -f "$(_consensus_src)" ]]; then
+    # CREDIBLE-122: tally votes from BOTH the durable feedback.jsonl AND ambient.
+    # A vote cast via `chump vote` appears as kind=preference in feedback.jsonl
+    # (durable — survives ambient reaper pruning, RESILIENT-061) AND kind=vote in
+    # ambient.jsonl (fresh). Legacy/hand-written votes are kind=vote in either.
+    # Count vote-bearing FEEDBACK events (kind in {vote,preference} carrying a vote
+    # field) and DEDUP BY SESSION (one vote per voter, latest ts wins) so the two
+    # copies of one real vote count once. The old code counted only kind=vote from
+    # a single source, so real (kind=preference) votes were never tallied → 0
+    # consensus ever, fleet-wide. python3 (a hard dep) does the dedup portably (no
+    # bash associative arrays); reading both sources is double-count-safe via dedup.
+    local _srcs=()
+    [[ -f "$FEEDBACK_LOG" ]] && _srcs+=("$FEEDBACK_LOG")
+    [[ -f "$AMBIENT" && "$AMBIENT" != "$FEEDBACK_LOG" ]] && _srcs+=("$AMBIENT")
+    if (( ${#_srcs[@]} == 0 )); then
         printf '{"verdict":"NO_QUORUM","yes":0,"no":0,"abstain":0,"total":0,"voters":[]}'
         return 0
     fi
 
-    local line
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        # Parse all vote fields in a single jq call (RESILIENT-061 perf).
-        local _vf line_event line_kind line_corr line_ts vote_val voter
-        if _have_jq; then
-            IFS=$'\t' read -r line_event line_kind line_corr line_ts vote_val voter \
-                <<< "$(_jq_vote_fields "$line")"
-        else
-            line_event="$(_jq_field "$line" "event")"
-            line_kind="$(_jq_field "$line" "kind")"
-            line_corr="$(_jq_field "$line" "corr_id")"
-            line_ts="$(_jq_field "$line" "ts")"
-            vote_val="$(_jq_num "$line" "vote")"
-            voter="$(_jq_field "$line" "session")"
-        fi
-        [[ "$line_event" != "FEEDBACK" ]] && continue
-        [[ "$line_kind" != "vote" ]] && continue
-        [[ "$line_corr" != "$corr_id" ]] && continue
+    local _counts
+    _counts="$(cat "${_srcs[@]}" 2>/dev/null | python3 -c '
+import sys, json, datetime
+corr = sys.argv[1]
+cutoff = int(sys.argv[2])
+def epoch(ts):
+    try:
+        return int(datetime.datetime.strptime(ts.replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception:
+        return None
+latest = {}
+for line in sys.stdin:
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("event") != "FEEDBACK":
+        continue
+    if d.get("kind") not in ("vote", "preference"):
+        continue
+    if d.get("corr_id") != corr or "vote" not in d:
+        continue
+    e = epoch(d.get("ts", ""))
+    if e is None or e < cutoff:
+        continue
+    sess = d.get("session", "?")
+    if sess not in latest or e >= latest[sess][0]:
+        try:
+            latest[sess] = (e, int(d.get("vote", 0)))
+        except Exception:
+            pass
+yes = sum(1 for _, v in latest.values() if v > 0)
+no = sum(1 for _, v in latest.values() if v < 0)
+ab = sum(1 for _, v in latest.values() if v == 0)
+print("%d|%d|%d|%s" % (yes, no, ab, json.dumps(sorted(latest.keys()))))
+' "$corr_id" "$window_cutoff" 2>/dev/null)"
 
-        # Check timestamp is within window; guard epoch (RESILIENT-061).
-        local line_epoch
-        line_epoch="$(_iso_to_epoch "$line_ts")"
-        if ! _is_epoch "$line_epoch"; then
-            continue  # skip votes with unparseable ts
-        fi
-        (( line_epoch < window_cutoff )) && continue
-
-        if (( vote_val > 0 )); then
-            (( yes++ )) || true
-        elif (( vote_val < 0 )); then
-            (( no++ )) || true
-        else
-            (( abstain++ )) || true
-        fi
-        (( total++ )) || true
-        voters+=("\"${voter}\"")
-    done < "$(_consensus_src)"
+    local yes no abstain voters_json
+    IFS='|' read -r yes no abstain voters_json <<< "$_counts"
+    yes="${yes:-0}"; no="${no:-0}"; abstain="${abstain:-0}"; voters_json="${voters_json:-[]}"
+    local total=$(( yes + no + abstain ))
 
     local verdict
     verdict="$(_compute_verdict "$yes" "$no" "$total" "$deadline_epoch" "$now_epoch")"
-
-    local voters_json
-    if (( ${#voters[@]} == 0 )); then
-        voters_json="[]"
-    else
-        voters_json="[$(IFS=,; echo "${voters[*]}")]"
-    fi
 
     printf '{"verdict":"%s","yes":%d,"no":%d,"abstain":%d,"total":%d,"voters":%s}' \
         "$verdict" "$yes" "$no" "$abstain" "$total" "$voters_json"
