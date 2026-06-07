@@ -289,9 +289,17 @@ else
             _wt_path="${_wt_line#worktree }"
             _registered_wts="${_registered_wts}${_wt_path}"$'\n'
             # Add the /private/tmp ↔ /tmp symlink variant so macOS paths match either way.
+            # RESILIENT-118: must use variable-stored patterns. Inline literal
+            # backslash-escapes (e.g. `${var/\/tmp\//\/private\/tmp\/}`) are
+            # treated by bash as literal `\/`, producing strings like
+            # `\/tmp\/chump-foo` that never match the iteration candidates —
+            # so every active /tmp worktree on macOS got misidentified as
+            # orphaned and its target/ was reaped mid-build.
+            _tmp_pat='/tmp/'
+            _priv_pat='/private/tmp/'
             case "$_wt_path" in
-                /tmp/*)          _registered_wts="${_registered_wts}${_wt_path/\/tmp\//\/private\/tmp\/}"$'\n' ;;
-                /private/tmp/*)  _registered_wts="${_registered_wts}${_wt_path/\/private\/tmp\//\/tmp\/}"$'\n' ;;
+                /tmp/*)          _registered_wts="${_registered_wts}${_wt_path//$_tmp_pat/$_priv_pat}"$'\n' ;;
+                /private/tmp/*)  _registered_wts="${_registered_wts}${_wt_path//$_priv_pat/$_tmp_pat}"$'\n' ;;
             esac
         fi
     done <<< "$_wt_list_raw"
