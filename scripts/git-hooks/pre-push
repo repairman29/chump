@@ -1201,6 +1201,85 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     # -----------------------------------------------------------------------
+    # Guard 6a: Stale-base ancestry check (INFRA-2005)
+    #
+    # For any chump/<gap-id>-claim branch push, verify that HEAD's first-parent
+    # ancestry includes origin/main HEAD. This prevents force-pushing a stale base
+    # that would clobber recent changes landing on main in the interim.
+    #
+    # Catalyst: 2026-05-25 incident — Opus pushed stale chump/opus-shepherd-*
+    # HEAD (old main base) over chump/infra-1974-claim, auto-closing PR #2582.
+    #
+    # Only fires when:
+    #   1. Branch matches chump/<gap-id>-claim (case-insensitive)
+    #   2. This is a force-push (history rewrite, not new branch)
+    #   3. Bypass not set: CHUMP_FORCE_STALE_BASE=1 + trailer
+    # -----------------------------------------------------------------------
+    if [[ "${CHUMP_FORCE_STALE_BASE:-0}" == "0" ]] \
+        && [[ "$branch" =~ ^chump/[a-zA-Z]+-[0-9]+-claim$ ]] \
+        && [[ "$remote_sha" != "$ZERO_SHA" ]] \
+        && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        # This IS a force-push to a claim branch. Check if HEAD is stale.
+        git fetch origin main --quiet 2>/dev/null || true
+        _fsb_main_head="$(git rev-parse origin/main 2>/dev/null || echo "")"
+        _fsb_current_head="$(git rev-parse HEAD 2>/dev/null || echo "")"
+
+        if [[ -n "$_fsb_main_head" && -n "$_fsb_current_head" ]] \
+            && ! git merge-base --is-ancestor "$_fsb_main_head" "$_fsb_current_head" 2>/dev/null; then
+            # HEAD does NOT contain origin/main — stale base detected.
+            _fsb_head_short="$(git rev-parse --short HEAD 2>/dev/null || echo "$_fsb_current_head")"
+            _fsb_main_short="$(git rev-parse --short origin/main 2>/dev/null || echo "$_fsb_main_head")"
+
+            echo "" >&2
+            echo "[pre-push] BLOCKED: force-push would replace branch head with stale base (INFRA-2005)." >&2
+            echo "[pre-push]   HEAD:          $_fsb_head_short" >&2
+            echo "[pre-push]   origin/main:   $_fsb_main_short" >&2
+            echo "[pre-push] origin/main has moved since this branch's base. Rebasing would apply" >&2
+            echo "[pre-push] recent commits and prevent accidental clobber of new changes." >&2
+            echo "" >&2
+            echo "[pre-push] Fix: rebase and retry" >&2
+            echo "[pre-push]   git fetch origin main" >&2
+            echo "[pre-push]   git rebase origin/main" >&2
+            echo "[pre-push]   git push --force-with-lease  (Guard 3 will re-verify freshness)" >&2
+            echo "[pre-push] Bypass (operator-explicit override):" >&2
+            echo "[pre-push]   CHUMP_FORCE_STALE_BASE=1 git push" >&2
+            echo "[pre-push]   Add 'Force-Stale-Base-Bypass: <reason>' to HEAD commit body" >&2
+            echo "" >&2
+
+            # Emit ambient event for audit.
+            _fsb_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _fsb_wt_list="$(git worktree list --porcelain 2>/dev/null || true)"
+            _fsb_main_repo="$(awk '/^worktree / {print $2; exit}' <<<"$_fsb_wt_list")"
+            [[ -n "$_fsb_main_repo" && -d "$_fsb_main_repo/.chump-locks" ]] && _fsb_root="$_fsb_main_repo"
+            _fsb_ambient="${CHUMP_AMBIENT_LOG:-$_fsb_root/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_fsb_ambient")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"stale_base_blocked","branch":"%s","head":"%s","origin_main":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$_fsb_current_head" "$_fsb_main_head" \
+                >> "$_fsb_ambient" 2>/dev/null || true
+
+            exit 1
+        fi
+    elif [[ "${CHUMP_FORCE_STALE_BASE:-0}" == "1" ]] \
+        && [[ "$branch" =~ ^chump/[a-zA-Z]+-[0-9]+-claim$ ]]; then
+        # CHUMP_FORCE_STALE_BASE=1 is set — emit audit trailer.
+        _fsb_head_msg="$(git log -1 --pretty=%B 2>/dev/null || true)"
+        if grep -qE '^Force-Stale-Base-Bypass:' <<<"$_fsb_head_msg"; then
+            _fsb_bypass_reason="$(grep -E '^Force-Stale-Base-Bypass:' <<<"$_fsb_head_msg" \
+                | head -1 | sed -E 's/^Force-Stale-Base-Bypass:[[:space:]]*//')"
+            _fsb_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _fsb_wt_list="$(git worktree list --porcelain 2>/dev/null || true)"
+            _fsb_main_repo="$(awk '/^worktree / {print $2; exit}' <<<"$_fsb_wt_list")"
+            [[ -n "$_fsb_main_repo" && -d "$_fsb_main_repo/.chump-locks" ]] && _fsb_root="$_fsb_main_repo"
+            _fsb_ambient="${CHUMP_AMBIENT_LOG:-$_fsb_root/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_fsb_ambient")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"stale_base_bypassed","reason":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_fsb_bypass_reason" \
+                >> "$_fsb_ambient" 2>/dev/null || true
+            echo "[pre-push] INFRA-2005: stale-base check bypassed via CHUMP_FORCE_STALE_BASE=1 (reason: $_fsb_bypass_reason)" >&2
+        fi
+    fi
+
+    # -----------------------------------------------------------------------
     # Guard 1: Gap-preflight check
     # INFRA-368: skip when REBASE_DETECTED — the gap IDs in the rebased
     # commits are unchanged from the original push; preflight already ran.
