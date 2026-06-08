@@ -1,7 +1,7 @@
 - id: INFRA-797
   domain: INFRA
   title: "CREDIBLE: mission auto-grader — emit 4-pillar scorecard to ambient every 30 min unprompted, no operator prompt required"
-  status: open
+  status: shipped
   priority: P1
   effort: s
   description: |
