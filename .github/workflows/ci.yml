@@ -1150,6 +1150,14 @@ jobs:
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
             bash scripts/ci/test-chump-improve.sh
 
+      # INFRA-774 (sub-gap 6/6): end-to-end smoke test for Review-as-Handoff.
+      # Validates: comment template structure, ACL trust checks, author re-engagement,
+      # 15-min timeout window, all 5 telemetry events, and failure-mode mitigations.
+      # Synthesizes a fixture PR with deliberately-stale assert, verifies fix
+      # application, and confirms events emit to ambient.jsonl.
+      - name: review-as-handoff end-to-end smoke test (INFRA-774)
+        run: bash scripts/ci/test-review-handoff-smoke.sh
+
       # docs/process/CI_GATES_INVENTORY.md OR allowlisted in
       # scripts/ci/preflight-ci-parity-exceptions.txt.
       # Exits non-zero on unmirrored + non-allowlisted gate; emits
