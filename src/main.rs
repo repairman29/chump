@@ -1129,6 +1129,65 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump ambient rotate [--path PATH]` (INFRA-941) — rotate ambient.jsonl
+    // when it exceeds the threshold (default 50MB, override via CHUMP_AMBIENT_MAX_MB).
+    if args.get(1).map(String::as_str) == Some("ambient")
+        && args.get(2).map(String::as_str) == Some("rotate")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!(
+                "Usage: chump ambient rotate [--path PATH]\n\n\
+                 Rotate ambient.jsonl if it exceeds the threshold.\n\n\
+                 When ambient.jsonl exceeds the threshold (default 50MB, set via \n\
+                 CHUMP_AMBIENT_MAX_MB environment variable), it is renamed to \n\
+                 ambient.jsonl.1. A prior .1 becomes .2; a prior .2 is deleted. \n\
+                 At most 2 rotated files are kept.\n\n\
+                 If --path is not specified, the file is auto-discovered in \n\
+                 .chump-locks/ambient.jsonl relative to the current repo."
+            );
+            return Ok(());
+        }
+
+        let mut path_override: Option<std::path::PathBuf> = None;
+        let mut i = 3;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--path" => {
+                    if let Some(p) = args.get(i + 1) {
+                        path_override = Some(std::path::PathBuf::from(p));
+                        i += 2;
+                    } else {
+                        eprintln!("--path requires a value");
+                        std::process::exit(2);
+                    }
+                }
+                other => {
+                    eprintln!("chump ambient rotate: unknown flag '{other}'");
+                    eprintln!("Run `chump ambient rotate --help` for usage.");
+                    std::process::exit(2);
+                }
+            }
+        }
+
+        let ambient_path = path_override
+            .or_else(|| std::env::var("CHUMP_AMBIENT_LOG").ok().map(std::path::PathBuf::from))
+            .or_else(|| {
+                let repo_root = repo_root()?;
+                Ok(repo_root.join(".chump-locks/ambient.jsonl"))
+            })
+            .ok_or_else(|| anyhow::anyhow!(
+                "could not find ambient.jsonl: pass --path, set CHUMP_AMBIENT_LOG, \
+                 or run from inside a repo"
+            ))?;
+
+        if ambient_rotate::rotate_if_needed(&ambient_path) {
+            println!("Rotated {}", ambient_path.display());
+        } else {
+            println!("No rotation needed (below threshold)");
+        }
+        return Ok(());
+    }
+
     // `chump ship plan` (INFRA-1229 slice 1) — pure planner that decides
     // REBASE / ARM / WAIT / CONFLICT-RECOVER / etc. given a snapshot of
     // PR + branch state. Today's bot-merge.sh consumes the output as a
