@@ -1052,3 +1052,4 @@ CHUMP_FLEET_BOT_PROVISIONING
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_AUTH_MODE
+CHUMP_FLEET_BOT_SETUP
