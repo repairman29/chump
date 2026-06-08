@@ -1,7 +1,7 @@
 - id: INFRA-811
   domain: INFRA
   title: "RESILIENT: restart pr-watch and distill daemons — both silent 21h (last heartbeat 2026-05-09)"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -10,8 +10,10 @@
     then either. Neither process is running (pgrep confirms). Restart both and
     verify liveness.
   acceptance_criteria:
-    - "pgrep -f pr-watch returns a PID"
-    - "pgrep -f distill returns a PID"
-    - "/tmp/chump-distill.heartbeat mtime is within 5 min of now"
-    - "ambient.jsonl shows a pr_watch or distill kind event within 2 min of restart"
+    - pgrep -f pr-watch returns a PID
+    - pgrep -f distill returns a PID
+    - /tmp/chump-distill.heartbeat mtime is within 5 min of now
+    - ambient.jsonl shows a pr_watch or distill kind event within 2 min of restart
+  closed_date: '2026-06-08'
+  outcome_id: MISSION-010
 
