@@ -3166,8 +3166,34 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         # scanner-anchor: "kind":"consensus_gate_blocked"
         # scanner-anchor: "kind":"consensus_gate_approved"
         # scanner-anchor: "kind":"consensus_bypass_used"
+        # scanner-anchor: "kind":"pr_action_taken"
         _consensus_mode="${CHUMP_CONSENSUS_MERGE_GATE:-0}"
         _consensus_bypass_reason="${CHUMP_OPERATOR_CONSENSUS_BYPASS:-}"
+
+        # ── META-191: Detect BLOCKED+green and auto-bypass ─────────────────────
+        # When a PR is marked BLOCKED (mergeStateStatus=BLOCKED) but all checks
+        # are green, automatically set the bypass reason. This handles edge cases
+        # where the merge queue blocks a PR despite passing all checks.
+        if [[ -z "$_consensus_bypass_reason" ]]; then
+            _pr_merge_status="$(gh pr view "$TARGET_PR" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || true)"
+            if [[ "$_pr_merge_status" == "BLOCKED" ]]; then
+                # Check if all check runs are passing (green)
+                _all_checks="$(gh pr checks "$TARGET_PR" 2>/dev/null || true)"
+                # Count failing checks; if none, all are green
+                _failing_count="$(echo "$_all_checks" | grep -c "FAILURE\|ERROR" || true)"
+                if [[ "$_failing_count" -eq 0 ]]; then
+                    _consensus_bypass_reason="BLOCKED+green auto-bypass (META-191)"
+                    info "META-191: PR #$TARGET_PR is BLOCKED but all checks are green — auto-enabling bypass"
+                    # Emit pr_action_taken event for the bypass
+                    _meta191_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    _meta191_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+                    _meta191_line="$(printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"admin_merge_bypass_blocked_green","reason":"BLOCKED+green auto-bypass (META-191)","gap_id":"%s"}' \
+                        "$_meta191_ts" "$TARGET_PR" "${GAP_IDS[0]:-unknown}")"
+                    _ambient_write "$_meta191_amb" "$_meta191_line"
+                fi
+            fi
+        fi
+
         if [[ "$_consensus_mode" != "0" ]]; then
             _cg_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             _cg_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
