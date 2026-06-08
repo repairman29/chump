@@ -8,7 +8,7 @@
     Background timer task spawned by chump orchestrate that emits `kind=mission_grade`
     events to ambient.jsonl every 30 minutes, regardless of operator input activity.
     Ensures downstream tooling always has a recent scorecard snapshot.
-  pr: 1421
+  pr: 3116
   acceptance_criteria:
     - background tokio task emits kind=mission_grade to ambient.jsonl every 1800s
     - timer runs independently of operator input (no prompt required to trigger)
