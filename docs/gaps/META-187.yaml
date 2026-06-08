@@ -1,0 +1,14 @@
+- id: META-187
+  domain: META
+  title: "META: Implement trunk-red detection and safe-mode event emission (META-180 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Daemon detects `ambient kind=trunk_red` events within the last 30 minutes.
+    - Daemon logs entry into and exit from safe-mode.
+    - "`pr_shepherd_safe_mode_entered` and `pr_shepherd_safe_mode_cleared` events are emitted."
+  closed_date: '2026-06-08'
+  closed_pr: 3105
+  outcome_id: MISSION-010
+
