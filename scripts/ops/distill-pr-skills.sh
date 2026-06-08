@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # distill-pr-skills.sh — INFRA-195 v1 (2026-05-01)
+# INFRA-811: Daemon restarted 2026-06-08, both pr-watch and distill now running
 #
 # The infrastructure for cross-agent skill sharing already exists:
 #   - chump_reflections          (parent rows, episode-linked)
