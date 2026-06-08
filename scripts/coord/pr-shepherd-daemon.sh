@@ -56,6 +56,7 @@ FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
 # INFRA-2346: persistent per-PR state for flake-rerun cap and wedged-DM debounce.
 FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
 WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
+SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
 
 # Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
 # cache_query_open_prs instead of burning raw GraphQL quota.
@@ -315,6 +316,60 @@ _emit_pr_queue_skipped_trunk_red() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_queue_skipped_trunk_red","skipped_count":%d,"dry_run":%s}\n' \
     "$ts" "$skipped" "$dry" >> "$AMBIENT"
+}
+
+# _emit_pr_shepherd_safe_mode_entered — emit event when entering safe-mode (META-187)
+# scanner-anchor: kind=pr_shepherd_safe_mode_entered (META-187)
+_emit_pr_shepherd_safe_mode_entered() {
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_shepherd_safe_mode_entered","dry_run":%s}\n' \
+    "$ts" "$dry" >> "$AMBIENT"
+}
+
+# _emit_pr_shepherd_safe_mode_cleared — emit event when exiting safe-mode (META-187)
+# scanner-anchor: kind=pr_shepherd_safe_mode_cleared (META-187)
+_emit_pr_shepherd_safe_mode_cleared() {
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_shepherd_safe_mode_cleared","dry_run":%s}\n' \
+    "$ts" "$dry" >> "$AMBIENT"
+}
+
+# _is_safe_mode_active — read current safe-mode state from state file
+# Returns 0 (true) if in safe-mode, 1 (false) otherwise
+_is_safe_mode_active() {
+  [[ -f "$SAFE_MODE_STATE_FILE" ]] || return 1
+  python3 - "$SAFE_MODE_STATE_FILE" << 'PYEOF'
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+        if data.get('active'):
+            sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PYEOF
+}
+
+# _set_safe_mode — update safe-mode state in state file
+# Args: $1=active (true/false)
+_set_safe_mode() {
+  local active="$1"
+  mkdir -p "$(dirname "$SAFE_MODE_STATE_FILE")"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  python3 - "$SAFE_MODE_STATE_FILE" "$active" "$ts" << 'PYEOF'
+import json, sys
+path, active, ts = sys.argv[1], sys.argv[2] == 'true', sys.argv[3]
+data = {'active': active, 'ts': ts}
+with open(path, 'w') as f:
+    json.dump(data, f)
+PYEOF
 }
 
 # _emit_pr_wedged — emit wedged-PR signal
@@ -630,6 +685,34 @@ for p in prs:
   if _should_skip_trunk_red; then
     trunk_red_active=1
     echo "[pr-shepherd-daemon] trunk_red detected in last 30m — safe-mode, no rebases" >&2
+  fi
+
+  # META-187: safe-mode state tracking and event emission
+  local was_safe_mode_active=0
+  if _is_safe_mode_active; then
+    was_safe_mode_active=1
+  fi
+
+  # Detect state transitions and emit events
+  if [ "$trunk_red_active" -eq 1 ] && [ "$was_safe_mode_active" -eq 0 ]; then
+    # Entering safe-mode
+    echo "[pr-shepherd-daemon] entering safe-mode due to trunk_red detection" >&2
+    _emit_pr_shepherd_safe_mode_entered
+    _set_safe_mode "true"
+  elif [ "$trunk_red_active" -eq 0 ] && [ "$was_safe_mode_active" -eq 1 ]; then
+    # Exiting safe-mode
+    echo "[pr-shepherd-daemon] exiting safe-mode — no recent trunk_red detected" >&2
+    _emit_pr_shepherd_safe_mode_cleared
+    _set_safe_mode "false"
+  elif [ "$trunk_red_active" -eq 1 ] && [ "$was_safe_mode_active" -eq 1 ]; then
+    # Remaining in safe-mode
+    echo "[pr-shepherd-daemon] still in safe-mode" >&2
+  else
+    # Normal mode (no safe-mode)
+    if [ "$was_safe_mode_active" -eq 0 ]; then
+      # Stays in normal mode — no event needed
+      :
+    fi
   fi
 
   # Cascade Gate: read latest kind=trunk_state_change from ambient.jsonl.
