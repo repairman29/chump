@@ -1,23 +1,20 @@
 - id: INFRA-821
   domain: INFRA
   title: "RESILIENT: state.db empty on fresh clone — chump gap list returns [] until manual chump gap import"
-  status: open
+  status: done
   priority: P1
   effort: s
-  opened_date: '2026-05-11'
-  raised_by: cold-water
-  raised_in: RED_LETTER#6
   description: |
     On a fresh clone, state.db (canonical gap store per CLAUDE.md) contains zero rows.
     `chump gap list --status open --json` returns []. The 155 gaps in docs/gaps/*.yaml are
     invisible until operator manually runs `chump gap import` (without --yaml flag).
-
+    
     Observed 2026-05-11 in Cold Water audit sandbox:
       python3 sqlite3 state.db "SELECT COUNT(*) FROM gaps" → 0
       chump gap list --json → []
       chump gap import --yaml /abs/path → "0 inserted" (--yaml flag causes wrong root lookup)
       chump gap import → "155 inserted, 0 skipped"
-
+    
     CLAUDE.md preflight step 6 is `chump gap list --status open`. In a fresh sandbox this
     returns [] and misleads operator into thinking queue is empty. Any CI runner, sandboxed
     agent, or new contributor starts blind. The --yaml absolute-path footgun compounds the issue.
@@ -25,6 +22,10 @@
     - chump start or chump init auto-runs gap import if state.db gaps table is empty
     - OR scripts/setup/ entry point seeds state.db on fresh clone
     - chump gap import --yaml <absolute-path> errors clearly or correctly resolves repo root
-    - FTUE verification: fresh clone + chump gap list returns correct open count without manual step
     - scripts/ci/test-fresh-clone-gap-list.sh verifies on clean DB
+  opened_date: '2026-05-11'
+  closed_pr: 1862
+  outcome_id: MISSION-010
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
 
