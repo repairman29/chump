@@ -43,6 +43,10 @@ export CHUMP_HOME="$TMP"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
+# CREDIBLE-107: the new --evidence gate blocks P1 RESILIENT/MISSION/CREDIBLE
+# reserves without --evidence. Test fixtures aren't real gaps and don't
+# need real evidence; bypass the gate for the seeding loop only.
+export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── 3. Seed 5 synthetic gaps ──────────────────────────────────────────────────
 DOMAINS=(INFRA CREDIBLE RESILIENT EFFECTIVE ZERO-WASTE)
