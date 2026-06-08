@@ -457,6 +457,9 @@ This session burned operator attention on these. Don't re-burn:
 - [`CLAUDE.md` → Local CI discipline](../CLAUDE.md#local-ci-discipline-mandatory-infra-1673) — preflight discipline that prevents many of these classes
 - [`CLAUDE.md` → Cache-first reads](../CLAUDE.md#cache-first-reads-infra-1081-2026-05-14) — when you need PR data
 - [`AGENTS.md` → No-operator-escalation discipline](../../AGENTS.md#no-operator-escalation-discipline-operator-decision-of-record-2026-05-30) — when to ask vs broadcast FEEDBACK
+- [`CLAUDE_GOTCHAS.md`](./CLAUDE_GOTCHAS.md) — operational gotchas (chump binary hung, raw-YAML guard, fleet starved, syspolicyd wedge, rebase footgun, etc.)
+- [`FLEET_SLOS.md`](./FLEET_SLOS.md) — explicit per-layer health targets and escalation criteria
+- [`MISSION_YIELD.md`](../strategy/MISSION_YIELD.md) — yield measurement framework
 - [`docs/process/SUBAGENT_DISPATCH.md`](./SUBAGENT_DISPATCH.md) — Sonnet dispatch contract; epilogue + checklist
 - [`docs/process/SHEPHERD_AUTONOMY_LADDER.md`](./SHEPHERD_AUTONOMY_LADDER.md) — when an unwedging move is safe-without-asking
 - [`docs/process/KNOWN_FLAKES.yaml`](./KNOWN_FLAKES.yaml) — auto-retry catalog (INFRA-764)
