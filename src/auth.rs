@@ -662,7 +662,12 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    // Env var tests must be serialized — env is process-global.
+    // Env var tests must be serialized — env is process-global. The local
+    // ENV_LOCK serializes auth tests among themselves; the per-test
+    // #[serial_test::serial] below additionally serializes them against
+    // env-mutating tests in *other* modules (improve, external_verify_merge),
+    // since concurrent std::env::set_var across threads is UB in Rust 2024 and
+    // crashes the test binary unparseably (defeats flake-rerun). CREDIBLE-128.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_env<F: FnOnce()>(vars: &[(&str, &str)], cleared: &[&str], f: F) {
@@ -671,20 +676,40 @@ mod tests {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let saved: Vec<(String, Option<String>)> = vars
+
+        // Hermetic CHUMP_HOME (CREDIBLE-128): point config.toml / token-file
+        // resolution at a throwaway temp dir so the suite never reads the operator's
+        // real ~/.chump, which holds live creds on every fleet machine (control.sh
+        // refreshes it every 5 min). Without this, the no-creds assertions read
+        // $HOME/.chump/config.toml and panic on operator machines — green only in
+        // CI's clean env, RED on every operator-machine pre-push. A test that needs
+        // a specific CHUMP_HOME passes it via `vars`, which wins.
+        let test_owns_home = vars.iter().any(|(k, _)| *k == "CHUMP_HOME");
+        let tmp_home =
+            std::env::temp_dir().join(format!("chump-auth-test-home-{}", std::process::id()));
+
+        // Save every key we touch — incl. CHUMP_HOME so the redirect is restored.
+        let mut keys: Vec<String> = vars
             .iter()
-            .map(|(k, _)| (k.to_string(), std::env::var(k).ok()))
-            .chain(
-                cleared
-                    .iter()
-                    .map(|k| (k.to_string(), std::env::var(k).ok())),
-            )
+            .map(|(k, _)| k.to_string())
+            .chain(cleared.iter().map(|k| k.to_string()))
             .collect();
+        if !test_owns_home && !keys.iter().any(|k| k == "CHUMP_HOME") {
+            keys.push("CHUMP_HOME".to_string());
+        }
+        let saved: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.clone(), std::env::var(k).ok()))
+            .collect();
+
         for (k, v) in vars {
             std::env::set_var(k, v);
         }
         for k in cleared {
             std::env::remove_var(k);
+        }
+        if !test_owns_home {
+            std::env::set_var("CHUMP_HOME", &tmp_home);
         }
         f();
         for (k, v) in &saved {
@@ -698,6 +723,7 @@ mod tests {
     // ── Quadrant 1: API key only ────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn api_key_only_resolves_api_key_mode() {
         with_env(
             &[("ANTHROPIC_API_KEY", "sk-ant-key123")],
@@ -726,6 +752,7 @@ mod tests {
     // ── Quadrant 2: OAUTH only ─────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn oauth_only_resolves_oauth_mode() {
         with_env(
             &[("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-tok")],
@@ -754,6 +781,7 @@ mod tests {
     // ── Quadrant 3: both present — API key preferred in auto mode ──────────
 
     #[test]
+    #[serial_test::serial]
     fn both_present_auto_prefers_api_key() {
         with_env(
             &[
@@ -771,6 +799,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn both_present_mode_override_forces_oauth() {
         with_env(
             &[
@@ -789,6 +818,7 @@ mod tests {
     // ── Quadrant 4: neither present ────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn neither_present_resolves_none() {
         with_env(
             &[],
@@ -811,6 +841,7 @@ mod tests {
     // ── Fallback (401 handling) ─────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn api_key_fallback_to_oauth_on_401() {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
@@ -827,6 +858,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn oauth_fallback_to_api_key_on_401() {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
@@ -842,6 +874,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn no_fallback_when_only_one_cred() {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
@@ -858,6 +891,7 @@ mod tests {
     // ── OAuth token file ───────────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn reads_oauth_token_from_refresh_file() {
         let dir = tempfile::tempdir().unwrap();
         let tok_path = dir.path().join("oauth-token.json");
@@ -883,6 +917,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn config_toml_parsed_correctly() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = dir.path().join("config.toml");
@@ -897,6 +932,7 @@ mod tests {
     // ── JSON extractor ─────────────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn extract_json_string_basic() {
         let json = r#"{"token":"sk-ant-oat01-test","written_at":"2026-05-06"}"#;
         assert_eq!(
@@ -906,6 +942,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn extract_json_string_access_token() {
         let json = r#"{"access_token":"bearer-tok","expires_in":3600}"#;
         assert_eq!(
@@ -917,6 +954,7 @@ mod tests {
     // ── Fleet doctor ───────────────────────────────────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn fleet_doctor_warns_when_no_creds() {
         with_env(
             &[],
@@ -938,6 +976,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn fleet_doctor_clean_with_api_key() {
         with_env(
             &[("ANTHROPIC_API_KEY", "sk-ant-key")],
@@ -961,6 +1000,7 @@ mod tests {
     // ── EFFECTIVE-018: multi-provider credentials ──────────────────────────
 
     #[test]
+    #[serial_test::serial]
     fn provider_env_pattern_known_providers() {
         // Sanity: each known provider returns a non-empty pattern.
         for p in KNOWN_PROVIDERS {
@@ -974,6 +1014,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn detect_credentials_for_groq_reads_groq_api_key() {
         with_env(&[("GROQ_API_KEY", "gsk-test-fixture")], &[], || {
             let creds = detect_credentials_for("groq");
@@ -984,6 +1025,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn detect_credentials_for_openai_reads_base_url_too() {
         with_env(
             &[
@@ -1004,6 +1046,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn ollama_is_usable_without_api_key() {
         with_env(&[], &["OLLAMA_BASE_URL"], || {
             let creds = detect_credentials_for("ollama");
@@ -1015,6 +1058,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn ollama_carries_base_url_override_when_set() {
         with_env(
             &[("OLLAMA_BASE_URL", "http://192.168.1.10:11434")],
@@ -1027,6 +1071,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn unknown_provider_returns_empty_credentials() {
         with_env(&[], &[], || {
             let creds = detect_credentials_for("notreal");
@@ -1040,6 +1085,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn anthropic_provider_falls_back_to_legacy_chain() {
         // Existing config.toml / refresh-file paths must still work when
         // env vars are unset — backwards compat for Anthropic operators.
@@ -1066,6 +1112,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn fleet_doctor_validate_all_lists_every_known_provider() {
         with_env(&[], KNOWN_PROVIDERS, || {
             let report = fleet_doctor_validate_all();
@@ -1081,6 +1128,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn fleet_doctor_any_usable_true_when_one_provider_has_creds() {
         with_env(
             &[("GROQ_API_KEY", "gsk-only-groq-set")],

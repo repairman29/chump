@@ -1,0 +1,14 @@
+- id: CREDIBLE-128
+  domain: CREDIBLE
+  title: "CREDIBLE: env-mutating Rust tests must be sandboxed + serialized for reliable operator-machine pre-push"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Re-homes work first attempted under CREDIBLE-127 (that id collided with a gap closed on origin/main). Two pre-existing test-infra bugs make operator-machine cargo test --bin chump (the pre-push gate) fail while CI clean env passes: (1) auth::tests with_env() CLEARED CHUMP_HOME so chump_config_path() read the operators real ~/.chump/config.toml (live creds) and the no-creds assertions panicked — fix: redirect CHUMP_HOME to a throwaway temp dir; (2) auth + improve env-mutating tests shared no lock, so concurrent std::env::set_var (UB in Rust 2024) crashed the test binary unparseably and defeated flake-rerun — fix: #[serial_test::serial] on all env-mutating auth + improve tests, unifying with the existing external_verify_merge convention.
+  acceptance_criteria:
+    - with_env() redirects CHUMP_HOME to a unique throwaway temp dir (a test that sets CHUMP_HOME via vars wins)
+    - "all env-mutating auth + improve tests are #[serial_test::serial] so concurrent set_var cannot occur"
+    - cargo test --bin chump is green on an operator machine (populated env creds + real ~/.chump/config.toml) across repeated runs
+    - no auth/improve test reads the operators real $HOME/.chump
+
