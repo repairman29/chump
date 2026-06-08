@@ -1,0 +1,15 @@
+- id: RESILIENT-131
+  domain: RESILIENT
+  title: "RESILIENT: fleet cannot self-rescue — autonomous workers leave PRs BLOCKED on their own red CI + die mid-task; L6 (058/059/060) marked done but NOT load-bearing"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    VERIFIED 2026-06-08 (using the fleet's own record): autonomous claim→ship completion rate ≈ 0. Two failure modes: (A) worker implements + opens PR but it fails its OWN CI (trunk green) and the worker can't fix it → PR sits BLOCKED indefinitely (live: CREDIBLE-107 PR #3095, test/audit/fast-checks red, auto-merge armed but never fires, 2 days; gap stuck status=in_progress). (B) worker dies mid-task before committing → lease expires → status reverts to open, worktree leaks (live: RESILIENT-100, 1 uncommitted file, 0 commits). The promised fix (L6: RESILIENT-058 supervision / 059 durable-exec / 060 guardrail) is marked DONE but NOT load-bearing: 0 gap_supervisor_escalated events ever, no durable journal store/tables exist, none referenced in worker.sh/run-fleet.sh, and the failures they claim to handle still occur. The acute mode (worker fixes its own red CI) was never in any L6 AC. Real throughput today is manual/Opus bypass ships (opus-in-a-trench-coat). Rough shape (decompose at claim): (a) wire RESILIENT-058 supervisor into the worker path + verify it fires; (b) build/wire RESILIENT-059 durable journal + verify resume; (c) NEW CI-self-rescue loop — a worker (or rescue agent) iterates on its own red CI until green or escalates with a diagnosis; (d) the outcome test.
+  acceptance_criteria:
+    - "OUTCOME (the real DoD, not a signal): autonomous end-to-end completion rate > 0 — at least one gap goes claim→implement→CI-green→merge with NO human/Opus/bypass intervention, proven by a merged PR with NO Bot-Merge-Bypass trailer from an autonomous worker session."
+    - "CI-self-rescue: when a worker PR is BLOCKED on its OWN failing CI (trunk green), a loop diagnoses + fixes until checks pass, OR escalates with a concrete diagnosis and moves the gap to a real blocked state — it does NOT sit in_progress/BLOCKED indefinitely. Reproduce + clear the CREDIBLE-107 #3095 class."
+    - "RESILIENT-058 supervision is load-bearing: a retry-storm on a real gap emits gap_supervisor_escalated and sets status=blocked (currently 0 such events ever). Wired into worker.sh/run-fleet.sh."
+    - "RESILIENT-059 durable resume is load-bearing: the journal store exists and a worker killed mid-gap resumes from it (no revert+leak). Reproduce + clear the RESILIENT-100 class (no orphan worktree)."
+    - "The three L6 gaps (058/059/060) are reconciled: reopened or superseded by this gap, with their mechanisms verified firing — not left marked done while non-functional."
+
