@@ -1,0 +1,14 @@
+- id: RESILIENT-135
+  domain: RESILIENT
+  title: "RESILIENT: worker.sh timeout death-spiral — INFRA-1160 effort-scaling mutates global FLEET_TIMEOUT_S, compounding xs gaps 1800→...→0s; every claude -p killed rc=124, autonomous completion ~0"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    ROOT CAUSE of RESILIENT-131 (autonomous completion ~0), found by watching a live worker (chump-worker-3.log, 2026-06-08). worker.sh:851 'FLEET_TIMEOUT_S=$_scaled_timeout' overwrites the GLOBAL base timeout with the effort-scaled value. FLEET_TIMEOUT_S persists across the worker's cycle loop, so each cycle multiplies the ALREADY-scaled base by the effort fraction again. For repeated xs gaps (x0.5) it halves every cycle: 1800->...->14->7->3->1->0s. Downstream the claude -p spawn (worker.sh:864/866) and watchdog (876) read FLEET_TIMEOUT_S, so the implementation budget collapses to 0-7s. Every claude -p is killed (rc=124) before it can implement anything; a rescue commits an empty WIP; the worktree leaks. This is why ~14/15 recent ships are Opus-driven, not Sonnet workers. Base default (1800s) is fine — the mutation is the sole cause. Fix: keep FLEET_TIMEOUT_S immutable as the base (new FLEET_TIMEOUT_BASE_S), derive the per-cycle timeout from the base each cycle, add a floor so it can never collapse. Sibling bug (separate gap): worker.sh:703 mutates global FLEET_MODEL the same way (haiku sticks across cycles).
+  acceptance_criteria:
+    - worker.sh derives the per-cycle claude -p timeout from an IMMUTABLE base; running N consecutive xs gaps does NOT compound the multiplier (timeout stays at base*0.5, never 0).
+    - A floor (CHUMP_WORKER_TIMEOUT_MIN_S, default >=120s) guarantees the scaled timeout can never collapse below a workable implementation budget.
+    - "A BEHAVIORAL test (scripts/ci/test-worker-timeout-scale.sh) asserts: same base+effort yields the same result on repeated calls (non-compounding), effort multipliers (xs=0.5/s=1.0/m=1.5), max cap, and min floor — exercising the real scaling code, not a grep."
+    - After ship + worker restart, a live worker spawns claude -p with a minutes-scale timeout (not 0-7s) and worker_timeout_no_commit rate drops.
+

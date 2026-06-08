@@ -1209,6 +1209,19 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-mission-picker-worker.sh"],
             GateKind::Scripts,
         ));
+
+        // RESILIENT-135: worker timeout-scaler gate. Mirrors the audit.yml
+        // test-worker-timeout-scale.sh step — proves the effort-based per-cycle
+        // timeout derives from an IMMUTABLE base and cannot compound toward ~0s
+        // (the death-spiral that zeroed autonomous worker completion: a live
+        // worker was spawning claude -p with 0-7s budgets, killed rc=124 every
+        // cycle). Pure bash arithmetic over the sourced compute_scaled_timeout()
+        // helper: no network, no chump binary, <1s. Always-on, NO bypass env var.
+        steps.push(step(
+            "worker-timeout-scale",
+            &["bash", "scripts/ci/test-worker-timeout-scale.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {

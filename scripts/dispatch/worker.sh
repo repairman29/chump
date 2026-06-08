@@ -89,6 +89,15 @@ if [[ -z "${CHUMP_SESSION_ID:-}" ]]; then
 fi
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-default}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
+# RESILIENT-135: immutable base for per-cycle effort scaling. The scaler MUST
+# derive from THIS each cycle, never from the (already-scaled) FLEET_TIMEOUT_S —
+# otherwise consecutive xs gaps compound the x0.5 multiplier and collapse the
+# claude -p budget toward 0s (the timeout death-spiral that zeroed completion).
+FLEET_TIMEOUT_BASE_S="$FLEET_TIMEOUT_S"
+if [ -r "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh" ]; then
+    # shellcheck source=lib/worker-timeout.sh
+    source "$REPO_ROOT/scripts/dispatch/lib/worker-timeout.sh"
+fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
@@ -828,26 +837,22 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
 
-    # INFRA-1160: scale timeout by gap effort estimate.
-    # Multipliers: xs=0.5, s=1.0, m=1.5, l=2.0, xl=3.0 (capped at max).
+    # INFRA-1160 + RESILIENT-135: scale the per-cycle claude -p timeout by gap
+    # effort, derived from the IMMUTABLE base (FLEET_TIMEOUT_BASE_S) via the
+    # sourceable, unit-tested compute_scaled_timeout() helper. Deriving from the
+    # mutable FLEET_TIMEOUT_S here was the death-spiral bug: it compounded the
+    # multiplier every cycle and collapsed the budget to ~0s.
     _gap_effort="$(printf '%s' "$gap_json" | \
         python3 -c "import sys,json; d=json.load(sys.stdin); gs=d if isinstance(d,list) else [d]; g=next((x for x in gs if x.get('id')=='$GAP_ID'),{}); print(g.get('effort','') or '')" \
         2>/dev/null || true)"
-    case "${_gap_effort:-s}" in
-        xs) _effort_mult_n=5  _effort_mult_d=10 ;;  # 0.5×
-        s)  _effort_mult_n=10 _effort_mult_d=10 ;;  # 1.0×
-        m)  _effort_mult_n=15 _effort_mult_d=10 ;;  # 1.5×
-        l)  _effort_mult_n=20 _effort_mult_d=10 ;;  # 2.0×
-        xl) _effort_mult_n=30 _effort_mult_d=10 ;;  # 3.0×
-        *)  _effort_mult_n=10 _effort_mult_d=10 ;;  # 1.0× fallback
-    esac
-    _scaled_timeout=$(( FLEET_TIMEOUT_S * _effort_mult_n / _effort_mult_d ))
-    _max_timeout="${CHUMP_WORKER_TIMEOUT_MAX_S:-7200}"
-    if [ "$_scaled_timeout" -gt "$_max_timeout" ]; then
-        _scaled_timeout="$_max_timeout"
+    if command -v compute_scaled_timeout >/dev/null 2>&1; then
+        _scaled_timeout="$(compute_scaled_timeout "${FLEET_TIMEOUT_BASE_S:-$FLEET_TIMEOUT_S}" "${_gap_effort:-s}")"
+    else
+        # Defensive fallback if the lib is unavailable: use the base, never compound.
+        _scaled_timeout="${FLEET_TIMEOUT_BASE_S:-$FLEET_TIMEOUT_S}"
     fi
     if [ "$_scaled_timeout" -ne "$FLEET_TIMEOUT_S" ]; then
-        log "INFRA-1160: timeout scaled by effort=${_gap_effort:-s}: ${FLEET_TIMEOUT_S}s → ${_scaled_timeout}s"
+        log "INFRA-1160: timeout scaled by effort=${_gap_effort:-s}: base ${FLEET_TIMEOUT_BASE_S:-$FLEET_TIMEOUT_S}s → ${_scaled_timeout}s"
         FLEET_TIMEOUT_S="$_scaled_timeout"
     fi
     # Emit telemetry
@@ -855,7 +860,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         "$GAP_ID" \
         "${_gap_effort:-s}" \
-        "$(( FLEET_TIMEOUT_S ))" \
+        "$(( FLEET_TIMEOUT_BASE_S ))" \
         "$_scaled_timeout" \
         >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
 
