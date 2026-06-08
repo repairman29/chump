@@ -1,9 +1,10 @@
 - id: INFRA-1612
   domain: INFRA
   title: "RESILIENT: cargo-test-with-rerun.sh passes --skip without -- separator (blocks pre-push)"
-  status: open
+  status: closed_shipped
   priority: P1
   effort: xs
+  closed_pr: 2280
   acceptance_criteria:
     - "cargo-test-with-rerun.sh correctly preserves a second `--` in the CMD when called as `rerun.sh -- cargo test ... -- --skip NAME` — the second `--` must reach cargo test verbatim"
     - "Fix is the FIRST `--` check in the for-loop: only treat the first `--` as the script's separator (INFRA-1612 one-line condition guard)"
