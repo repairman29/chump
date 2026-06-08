@@ -1,0 +1,12 @@
+- id: META-252
+  domain: META
+  title: "META: Cross-link CLAUDE_GOTCHAS.md, MISSION_YIELD.md, FLEET_SLOS.md from PR_RESCUE_PROCEDURE.md §13 (META-247 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Update `PR_RESCUE_PROCEDURE.md` §13 to include correct markdown cross-links to `CLAUDE_GOTCHAS.md`, `MISSION_YIELD.md`, and `FLEET_SLOS.md`.
+    - Verify all added links are functional and point to the correct documents.
+  closed_pr: 3114
+  outcome_id: MISSION-010
+
