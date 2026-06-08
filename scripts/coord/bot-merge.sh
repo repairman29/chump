@@ -3146,6 +3146,63 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         TARGET_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
     fi
     if [[ -n "$TARGET_PR" ]]; then
+        # ── META-191: admin-merge bypass for BLOCKED+green PRs ─────────────────
+        # Detect when a PR has mergeStateStatus=BLOCKED but all required checks
+        # are actually green. In this case, automatically set the consensus bypass
+        # to allow the PR to merge without requiring curator votes.
+        if [[ -z "$_consensus_bypass_reason" ]]; then
+            _m191_merge_state=$(gh pr view "$TARGET_PR" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+            if [[ "$_m191_merge_state" == "BLOCKED" ]]; then
+                _m191_nwo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+                _m191_sha=$(gh api "repos/$_m191_nwo/pulls/$TARGET_PR" --jq '.head.sha' 2>/dev/null || true)
+                if [[ -n "$_m191_nwo" && -n "$_m191_sha" ]]; then
+                    _m191_checks=$(gh api "repos/$_m191_nwo/commits/$_m191_sha/check-runs" --paginate 2>/dev/null || true)
+                    if [[ -n "$_m191_checks" ]]; then
+                        _m191_counts=$(python3 -c '
+import sys, json
+required_raw = sys.argv[1] if len(sys.argv) > 1 else ""
+required_list = [r.strip() for r in required_raw.split(",") if r.strip()] if required_raw else []
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("0 0 0"); sys.exit(0)
+checks = data.get("check_runs", [])
+incomplete = failed = total = 0
+for c in checks:
+    conclusion = (c.get("conclusion") or "").lower()
+    if conclusion in ("skipped", "neutral", "cancelled"):
+        continue
+    name = c.get("name", "")
+    if required_list and not any(r in name for r in required_list):
+        continue
+    total += 1
+    status = (c.get("status") or "").lower()
+    if status != "completed":
+        incomplete += 1
+    elif conclusion != "success":
+        failed += 1
+print(f"{incomplete} {failed} {total}")
+' "$REQUIRED_CHECKS" <<< "$_m191_checks")
+                        _m191_incomplete=$(printf '%s' "$_m191_counts" | awk '{print $1}')
+                        _m191_failed=$(printf '%s' "$_m191_counts" | awk '{print $2}')
+                        _m191_total=$(printf '%s' "$_m191_counts" | awk '{print $3}')
+                        if [[ "${_m191_total:-0}" -gt 0 && \
+                              "${_m191_incomplete:-1}" -eq 0 && \
+                              "${_m191_failed:-1}" -eq 0 ]]; then
+                            _consensus_bypass_reason="META-191: BLOCKED+green admin-merge bypass"
+                            _m191_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                            _m191_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+                            mkdir -p "$(dirname "$_m191_amb")" 2>/dev/null || true
+                            printf '{"ts":"%s","kind":"pr_action_taken","pr":%d,"action":"admin_merge_bypass_triggered","reason":"BLOCKED+green","checks_verified":%d,"gap_id":"%s"}\n' \
+                                "$_m191_ts" "$TARGET_PR" "$_m191_total" "${GAP_IDS[0]:-unknown}" \
+                                >> "$_m191_amb" 2>/dev/null || true
+                            green "META-191: PR #$TARGET_PR is BLOCKED+green — admin-merge bypass enabled"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+
         # ── INFRA-2274 Consensus merge gate (shadow mode default) ────────────
         # Replaces the 2026-05-30 operator admin-merge bypass surface with
         # multi-curator consensus. Default mode is SHADOW: gate runs, logs
