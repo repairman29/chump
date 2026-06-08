@@ -10305,6 +10305,24 @@ async fn main() -> Result<()> {
                 } else {
                     println!("=== gap audit-priorities ===");
                     println!();
+
+                    // Run pillar-balance-check.sh and capture result (INFRA-902)
+                    let repo_root = repo_path::repo_root();
+                    let pbc_path = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    let pillar_balance_result = std::process::Command::new("bash")
+                        .arg(pbc_path.to_string_lossy().as_ref())
+                        .output();
+                    let pillar_balance_healthy = pillar_balance_result
+                        .as_ref()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false);
+                    if !pillar_balance_healthy {
+                        println!(
+                            "⚠ Pillar balance: ALERTS FIRED (check ambient.jsonl for details)"
+                        );
+                        println!();
+                    }
+
                     println!(
                         "P0 open gaps: {} ({} manual, {} auto-filed by pr-triage-bot)",
                         p0_count,
