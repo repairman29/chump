@@ -762,6 +762,12 @@ for p in prs:
       # AND also be a trusted-author admin-merge target. Run this BEFORE the
       # existing tiers so the merge happens before any rebase/rearm work.
       if [ "$is_clean_green" = "1" ] && _is_trusted_author "$author" && [ "$base_ref" = "main" ] && [ "$has_automerge" = "0" ]; then
+        # META-188: safe-mode gate (prevent admin-merge when in safe-mode due to trunk_red)
+        if _is_safe_mode_active; then
+          admin_merge_skipped_trunk_red=$((admin_merge_skipped_trunk_red + 1))
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "safe_mode" "$author" "$c"
+          continue
+        fi
         # Trunk-red gate (non-negotiable per gap spec)
         if [ "$trunk_red_active" -eq 1 ] || [ "$cascade_held" -eq 1 ]; then
           admin_merge_skipped_trunk_red=$((admin_merge_skipped_trunk_red + 1))

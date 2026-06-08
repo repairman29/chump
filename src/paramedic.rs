@@ -170,6 +170,12 @@ pub fn triage(repo_root: &Path, dry_run: bool) -> Result<ActionPlan> {
     let now = iso8601_now();
     let mut items: Vec<ActionItem> = Vec::new();
 
+    // META-188: check safe-mode state once per cycle
+    let safe_mode = is_safe_mode_active(repo_root);
+    if safe_mode {
+        info!("safe-mode active due to trunk_red; skipping auto-rebase actions");
+    }
+
     // Track failing-check distribution for FILE_CLUSTER_RESCUE.
     let mut check_fail_counts: std::collections::HashMap<String, Vec<u64>> =
         std::collections::HashMap::new();
@@ -183,12 +189,14 @@ pub fn triage(repo_root: &Path, dry_run: bool) -> Result<ActionPlan> {
         // INFRA-1429 added a TIME GATE (default 30min) so paramedic
         // doesn't waste API budget rebasing PRs that may merge as-is, plus
         // a `do-not-paramedic` label skip so operators can park PRs.
+        // META-188: skip auto-rebase when safe-mode is active due to trunk_red.
         let mss = pr
             .merge_state_status
             .as_deref()
             .or(pr.mergeable_state.as_deref())
             .unwrap_or("");
-        if (mss.eq_ignore_ascii_case("BEHIND") || mss.eq_ignore_ascii_case("behind"))
+        if !safe_mode
+            && (mss.eq_ignore_ascii_case("BEHIND") || mss.eq_ignore_ascii_case("behind"))
             && !has_do_not_paramedic_label(&pr.labels)
             && is_stale_by_age(
                 pr.updated_at.as_deref(),
@@ -1793,6 +1801,22 @@ pub(crate) fn has_do_not_paramedic_label(labels: &[String]) -> bool {
         let lo = l.to_lowercase();
         lo == "do-not-paramedic" || lo == "do_not_paramedic" || lo == "skip-paramedic"
     })
+}
+
+/// True when safe-mode is active due to trunk_red (META-188).
+/// Reads `.chump-locks/pr-shepherd-safe-mode.json` and checks the `active` boolean field.
+/// Missing file or parse error → false (safe default: allow rebase when state file unavailable).
+fn is_safe_mode_active(repo_root: &Path) -> bool {
+    let state_path = repo_root
+        .join(".chump-locks")
+        .join("pr-shepherd-safe-mode.json");
+    let Ok(bytes) = fs::read(&state_path) else {
+        return false;
+    };
+    let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return false;
+    };
+    val.get("active").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 // ── ambient emit ──────────────────────────────────────────────────────────────
