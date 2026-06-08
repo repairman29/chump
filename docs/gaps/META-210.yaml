@@ -1,0 +1,13 @@
+- id: META-210
+  domain: META
+  title: "META: Define AUTO_ADMIN_MERGE_POLICY.md (META-209 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - File `docs/process/AUTO_ADMIN_MERGE_POLICY.md` is created.
+    - "The policy document defines the conditions for auto-admin-merge: `IF (consensus_resolved with quorum>=3) AND (fix_class in allowlist) AND (no DIRTY conflict) AND (no T1-T4 trigger fired in last 30m) AND (no operator HOLD label on the PR)`."
+  closed_date: '2026-06-08'
+  closed_pr: 3111
+  outcome_id: MISSION-010
+
