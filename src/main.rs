@@ -7919,6 +7919,15 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             }
+                            // CREDIBLE-107: show evidence when present.
+                            if let Some(ref ev) = g.evidence {
+                                if !ev.trim().is_empty() {
+                                    println!("  evidence: |");
+                                    for line in ev.lines() {
+                                        println!("    {}", line);
+                                    }
+                                }
+                            }
                             // INFRA-1220: show cooldown status if active.
                             let cooldown_file = repo_root
                                 .join(".chump-locks/.gap-cooldown")
@@ -8264,6 +8273,9 @@ async fn main() -> Result<()> {
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
+                // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
+                let reserve_evidence = flag("--evidence");
+                let no_evidence_required = args.iter().any(|a| a == "--no-evidence-required");
                 // MISSION-008: optional --outcome <id> to assign gap to an outcome at reserve time.
                 let reserve_outcome_id = flag("--outcome");
                 // MISSION-041: optional --external-repo <owner/repo> to tag the gap
@@ -8774,6 +8786,71 @@ async fn main() -> Result<()> {
                 // Historical: INFRA-1607 placed the guard here; INFRA-2424 removes it.
                 // ── end INFRA-2424 ───────────────────────────────────────────────────
 
+                // ── CREDIBLE-107: evidence gate for P0/P1 RESILIENT/MISSION/CREDIBLE ──
+                // Agents routinely file P0/P1 substrate gaps based on 4 lines of source
+                // reading and a plausible-sounding theory without empirical verification.
+                // This gate makes the evidence a hard requirement for the highest-stakes
+                // gaps so the filing artifact carries the diagnosis, not just the theory.
+                {
+                    let enforce_domains = ["RESILIENT", "MISSION", "CREDIBLE"];
+                    let enforce_priorities = ["P0", "P1"];
+                    let domain_upper = domain.to_uppercase();
+                    let needs_evidence = enforce_domains.contains(&domain_upper.as_str())
+                        && enforce_priorities.contains(&priority.as_str());
+
+                    if needs_evidence {
+                        let bypass_env =
+                            std::env::var("CHUMP_GAP_RESERVE_NO_EVIDENCE").as_deref() == Ok("1");
+                        let evidence_text = reserve_evidence.as_deref().unwrap_or("").trim();
+
+                        if evidence_text.is_empty() && !no_evidence_required && !bypass_env {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 RESILIENT/MISSION/CREDIBLE gaps require --evidence (per CREDIBLE-106 hardening)."
+                            );
+                            eprintln!("Evidence must include: COMMAND, OUTPUT, THEORY, ALT.");
+                            eprintln!(
+                                "See docs/process/DURABLE_FIX_DOCTRINE.md §pre-workaround-test."
+                            );
+                            eprintln!(
+                                "Bypass: --no-evidence-required (adds audit trailer), or CHUMP_GAP_RESERVE_NO_EVIDENCE=1."
+                            );
+                            std::process::exit(1);
+                        }
+
+                        if (evidence_text.is_empty()) && (no_evidence_required || bypass_env) {
+                            // Bypass path — emit audit event so the pattern is visible.
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let bypass_reason = if no_evidence_required {
+                                "--no-evidence-required flag"
+                            } else {
+                                "CHUMP_GAP_RESERVE_NO_EVIDENCE=1"
+                            };
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"gap_reserved_no_evidence","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"{bypass_reason}"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: gap_reserved_no_evidence emitted (bypass={bypass_reason})"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end CREDIBLE-107 evidence gate ──────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -8811,6 +8888,22 @@ async fn main() -> Result<()> {
                             if let Err(e) = store.set_fields(&id, update) {
                                 if !quiet {
                                     eprintln!("warning: failed to set outcome_id: {e}");
+                                }
+                            }
+                        }
+
+                        // CREDIBLE-107: store evidence when provided (non-empty).
+                        if let Some(ref ev) = reserve_evidence {
+                            let ev = ev.trim();
+                            if !ev.is_empty() {
+                                let update = gap_store::GapFieldUpdate {
+                                    evidence: Some(ev.to_string()),
+                                    ..Default::default()
+                                };
+                                if let Err(e) = store.set_fields(&id, update) {
+                                    if !quiet {
+                                        eprintln!("warning: failed to store evidence: {e}");
+                                    }
                                 }
                             }
                         }
@@ -9674,6 +9767,8 @@ async fn main() -> Result<()> {
                     required_model: flag_local("--required-model"),
                     // MISSION-008: advisory FK to outcomes table; never gates close.
                     outcome_id: flag_local("--outcome"),
+                    // CREDIBLE-107: evidence blob for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
+                    evidence: flag_local("--evidence"),
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
@@ -10097,6 +10192,24 @@ async fn main() -> Result<()> {
                 // MISSION-030: --by-outcome flag — per-outcome gap counts + orphan rate.
                 let by_outcome = args.iter().any(|a| a == "--by-outcome");
 
+                // CREDIBLE-107: --flag-empty-evidence — list P0/P1 RESILIENT/MISSION/CREDIBLE
+                // gaps that have a NULL/empty evidence column (filed before the gate or via bypass).
+                let flag_empty_evidence = args.iter().any(|a| a == "--flag-empty-evidence");
+                let enforce_domains_ev = ["RESILIENT", "MISSION", "CREDIBLE"];
+                let enforce_priorities_ev = ["P0", "P1"];
+                let missing_evidence: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        g.status == "open"
+                            && enforce_priorities_ev.contains(&g.priority.as_str())
+                            && enforce_domains_ev.contains(&g.domain.to_uppercase().as_str())
+                            && g.evidence
+                                .as_deref()
+                                .map(|e| e.trim().is_empty())
+                                .unwrap_or(true)
+                    })
+                    .collect();
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10119,6 +10232,11 @@ async fn main() -> Result<()> {
                         "p0_outcomes_count": p0_outcomes.len(),
                         "p0_outcomes": p0_outcomes.iter().map(|o| {
                             serde_json::json!({"id": o.id, "title": o.title, "priority": o.priority})
+                        }).collect::<Vec<_>>(),
+                        // CREDIBLE-107: evidence audit
+                        "missing_evidence_count": missing_evidence.len(),
+                        "missing_evidence": missing_evidence.iter().take(5).map(|g| {
+                            serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
                         }).collect::<Vec<_>>(),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
@@ -10261,6 +10379,30 @@ async fn main() -> Result<()> {
                     println!("race-* test pollution (open): {}", race_pollution.len());
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);
+                    }
+                    // CREDIBLE-107: --flag-empty-evidence section.
+                    if flag_empty_evidence {
+                        println!();
+                        println!(
+                            "=== P0/P1 RESILIENT/MISSION/CREDIBLE gaps missing evidence (CREDIBLE-107) ==="
+                        );
+                        if missing_evidence.is_empty() {
+                            println!("  (all enforced gaps have evidence — good)");
+                        } else {
+                            println!(
+                                "Missing evidence: {} gap(s) (filed before gate or via bypass):",
+                                missing_evidence.len()
+                            );
+                            for g in missing_evidence.iter().take(5) {
+                                println!("  {} [{}] {} — {}", g.id, g.priority, g.domain, g.title);
+                            }
+                            if missing_evidence.len() > 5 {
+                                println!("  ... and {} more", missing_evidence.len() - 5);
+                            }
+                            println!(
+                                "  Backfill with: chump gap set <ID> --evidence \"COMMAND: ...\""
+                            );
+                        }
                     }
                     // MISSION-008: outcome-aware P0 budget view (advisory alongside per-gap checks).
                     println!();

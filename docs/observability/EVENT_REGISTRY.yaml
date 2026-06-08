@@ -4359,6 +4359,26 @@ events:
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, title, reason, hits]
 
+  # anchor: gap_reserved_no_evidence
+  - kind: gap_reserved_no_evidence
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (CREDIBLE-107)
+    trigger: >
+      chump gap reserve was called for a P0/P1 RESILIENT/MISSION/CREDIBLE gap
+      without providing --evidence, and the operator bypassed the gate via
+      --no-evidence-required or CHUMP_GAP_RESERVE_NO_EVIDENCE=1.
+      The reserve proceeds but the gap has no empirical diagnosis attached.
+    consumers: [fleet-brief, audit-log, kpi-report]
+    fields_required: [ts, kind, priority, domain, title, bypass_reason]
+    docs: |
+      Emitted when the diagnose-before-file gate (CREDIBLE-106/107) is bypassed.
+      priority and domain identify the gap class that should have evidence.
+      bypass_reason is one of "--no-evidence-required flag" or
+      "CHUMP_GAP_RESERVE_NO_EVIDENCE=1". Review these events in ambient.jsonl
+      to track diagnosis discipline: high frequency indicates systemic bypass.
+      Backfill evidence later with: chump gap set <ID> --evidence "COMMAND: ..."
+      # scanner-anchor: gap_reserved_no_evidence
+
   - kind: gap_dup_archived
     effect_metric: self
     emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)

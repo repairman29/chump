@@ -1030,3 +1030,5 @@ CHUMP_NPX_BIN
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_A2A_NUDGE_COOLDOWN_HOURS
+# CHUMP_GAP_RESERVE_NO_EVIDENCE — bypass the CREDIBLE-107 --evidence gate on P0/P1 RESILIENT/MISSION/CREDIBLE reserves; used by CI fixture seeders (test-gap-list-since-json-schema.sh) and operator escape hatch
+CHUMP_GAP_RESERVE_NO_EVIDENCE
