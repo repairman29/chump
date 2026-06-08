@@ -2018,3 +2018,43 @@ bypasses that mask CI state.
 **Related staleness layers** — same doc covers state.db ↔ YAML drift (`chump gap sync`, INFRA-2053), chump binary drift (`chump --rebuild-if-stale`, INFRA-2054), launchd plist drift (`chump cron health`, INFRA-2046).
 
 **Session-bound vs fleet-durable scheduling** — if a CronCreate or ScheduleWakeup is dying at session close when it should persist, you have a layer mismatch. See [`docs/process/SCHEDULING_LAYERS.md`](./SCHEDULING_LAYERS.md) for the decision rule, anti-pattern catalog, and migration guide (DOC-058).
+
+## GitHub Actions annotations: warnings vs errors (INFRA-1896)
+
+**Symptom**: repo-health.yml workflow emits `::warning` annotations for pre-existing findings, but the job is marked as FAILURE and blocks the PR.
+
+**Root cause**: GitHub Actions annotations require explicit distinction between `::warning` (non-blocking, informational) and `::error` (blocking). When a workflow emits only warnings but the job conclusion is marked FAILURE, it creates a false-positive PR blocker.
+
+**Fix**: In any GitHub Actions job that emits annotations:
+1. **Distinguish warning from error at emit time.** Parse findings and check a `severity` field (defaults to `"warning"`).
+2. **Emit warnings as `::warning` annotations** — these do NOT cause job failure.
+3. **Emit errors as `::error` annotations** — these DO cause a non-zero exit code.
+4. **Only fail the step if errors exist.** If only warnings are present, the step exits 0 and the job succeeds.
+
+**Example pattern** (from `repo-health.yml`):
+```bash
+error_count=0
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  severity=$(python3 -c 'import json,sys; o=json.loads(sys.stdin.read()); print(o.get("severity", "warning"))' <<< "$line")
+  if [ "$severity" = "error" ]; then
+    echo "::error title=Repo health::${title}"
+    ((error_count++))
+  else
+    echo "::warning title=Repo health::${title}"
+  fi
+done < findings.jsonl
+if [ "$error_count" -gt 0 ]; then
+  exit 1
+fi
+```
+
+**Acceptance criteria** (from INFRA-1896):
+1. Annotations emitted via `::warning` MUST NOT roll up to job FAILURE conclusion
+2. If only `##[warning]` outputs exist (no `##[error]`), step exits 0 AND job succeeds
+3. Test fixture: `scripts/ci/test-repo-health-warnings-only.sh` validates both warning-only and error-mixed cases
+
+**When pre-existing findings block PRs**: This is a **credibility hit** (false-positive PR blocks). Fix by:
+1. Backfilling new findings with `severity: "warning"` in the audit scripts
+2. Adding new, introduced issues as `severity: "error"`
+3. Once the repo is clean, change the workflow to fail on any errors (not just new ones)

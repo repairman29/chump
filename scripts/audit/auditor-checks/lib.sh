@@ -4,7 +4,7 @@
 # Each check script sources this and emits findings as one JSON object per line
 # on stdout. Logging goes to stderr. The file-findings.sh consumer reads stdin.
 #
-# Finding shape (all fields required):
+# Finding shape (all fields required unless noted):
 #   {
 #     "check":      "<check name, kebab-case>",
 #     "key":        "<stable dedup key — same finding -> same key>",
@@ -13,7 +13,8 @@
 #     "domain":     "<INFRA|EVAL|COG|MEM|DOC|FLEET|PRODUCT|RESEARCH|FRONTIER>",
 #     "priority":   "<P0|P1|P2>",     // P2 default; P1 only if blocking work
 #     "effort":     "<xs|s|m|l>",
-#     "evidence":   ["<file:line>", "<commit-sha>", ...]
+#     "evidence":   ["<file:line>", "<commit-sha>", ...],
+#     "severity":   "<error|warning>"  // Optional; defaults to warning
 #   }
 #
 # The 'key' field is the dedup primitive. Same problem -> same key across runs.

@@ -68,12 +68,22 @@ jobs:
       - name: Annotate findings
         if: steps.checks.outputs.count != '0'
         run: |
+          error_count=0
           while IFS= read -r line; do
             [ -z "$line" ] && continue
             title=$(echo "$line" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["title"])')
             evidence=$(echo "$line" | python3 -c 'import json,sys; print("; ".join(json.loads(sys.stdin.read())["evidence"]))')
-            echo "::warning title=Repo health::${title} (${evidence})"
+            is_error=$(echo "$line" | python3 -c 'import json,sys; o=json.loads(sys.stdin.read()); print("true" if o.get("severity") == "error" else "false")')
+            if [ "$is_error" = "true" ]; then
+              echo "::error title=Repo health::${title} (${evidence})"
+              ((error_count++))
+            else
+              echo "::warning title=Repo health::${title} (${evidence})"
+            fi
           done < .chump/pr-health-findings.jsonl
+          if [ "$error_count" -gt 0 ]; then
+            exit 1
+          fi
 
       - name: Upload findings artifact
         if: steps.checks.outputs.count != '0'
