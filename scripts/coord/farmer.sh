@@ -234,9 +234,36 @@ except Exception:
 # Writes a HALT-class recall to ambient.jsonl so the watchdog (RESILIENT-071)
 # pages the operator. Does NOT call scripts/dispatch/operator-recall.sh which
 # may itself be blocked.
+# CREDIBLE-090 enforcement: POSITIVE proof of fleet life. A merge to origin/main
+# in the last hour is the canonical "is the fleet alive" instrument (CLAUDE.md:
+# the recent-merge ground truth is the only proof of life). Cheap, local-ref, no
+# network, no chump binary. Overridable in tests.
+_fleet_shipped_recently() {
+    local _r
+    _r="$(git -C "$REPO_ROOT" log origin/main --since='1 hour ago' --oneline 2>/dev/null | head -1 || true)"
+    [[ -n "$_r" ]]
+}
+
 operator_page() {
     local reason="$1"
     local detail="${2:-}"
+    # CREDIBLE-090 — CHECK THE INSTRUMENT BEFORE PULLING THE ALARM. For
+    # fleet/auth aliveness halt-classes, a recent merge proves the fleet is
+    # alive, so the belief ("X is dead/broken/starved") is refuted — suppress
+    # the cry-wolf page instead of waking the operator. Detectors firing
+    # halt-class recalls without verifying outcomes are why the operator got
+    # paged ~6x/min on a false AUTH_DEAD (INFRA-2031). Fail-open: any error in
+    # the check leaves _r empty -> falls through to paging (never suppress a
+    # real outage on error).
+    case "$reason" in
+        AUTH_DEAD|CI_BROKEN|FLEET_DEAD|QUEUE_STARVE|NOTHING_SHIPPING)
+            if _fleet_shipped_recently; then
+                log "operator_page SUPPRESSED ($reason): origin/main shipped in last 1h — fleet provably alive, halt-class belief refuted"
+                emit "operator_recall_suppressed" "\"reason\":\"$reason\",\"suppressed_because\":\"recent_merge_proves_fleet_alive\",\"detail\":\"$detail\""
+                return
+            fi
+            ;;
+    esac
     log "OPERATOR PAGE: $reason $detail"
     emit "operator_recall" "\"reason\":\"$reason\",\"detail\":\"$detail\",\"class\":\"halt\""
 }
