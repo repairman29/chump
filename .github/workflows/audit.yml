@@ -531,6 +531,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-mission-picker-worker.sh
 
+      - name: worker timeout scaler — no death-spiral, derives from immutable base (RESILIENT-135)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-worker-timeout-scale.sh
+
       - name: chump fleet bootstrap orchestrator (META-066)
         if: matrix.shard == 3
         run: bash scripts/ci/test-fleet-bootstrap.sh
