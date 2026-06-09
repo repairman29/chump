@@ -1154,6 +1154,9 @@ jobs:
       # scripts/ci/preflight-ci-parity-exceptions.txt.
       # Exits non-zero on unmirrored + non-allowlisted gate; emits
       # kind=ci_parity_drift for each violating gate to ambient.jsonl.
+      - name: Review-as-Handoff end-to-end smoke test (INFRA-774)
+        run: bash scripts/ci/test-review-handoff-smoke.sh
+
       - name: preflight-vs-CI parity smoke (INFRA-1867)
         run: bash scripts/ci/test-preflight-ci-parity.sh
 
