@@ -193,15 +193,31 @@ _fleet_auth_path="none"
 # the env var is only populated when the parent app exports it. Sessions
 # that source .env into a fresh shell will see the file but not the var.
 _oauth_token_file="${HOME}/.chump/oauth-token.json"
-if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+# Operator decision 2026-06-08: OAuth-FIRST, API-key SECONDARY.
+# claude prefers ANTHROPIC_API_KEY when both are set, so "oauth first" requires
+# explicitly choosing OAuth and unsetting the key. CHUMP_AUTH_MODE=api-key forces
+# the key; otherwise prefer subscription/OAuth (env token, then oauth-token.json),
+# falling back to ANTHROPIC_API_KEY only when no OAuth credential is available.
+if [[ "${CHUMP_AUTH_MODE:-auto}" == "api-key" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
     _fleet_auth_mode="api_key"
     _fleet_auth_path="ANTHROPIC_API_KEY"
 elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
     _fleet_auth_mode="subscription"
     _fleet_auth_path="CLAUDE_CODE_OAUTH_TOKEN"
+    unset ANTHROPIC_API_KEY
 elif [[ -s "$_oauth_token_file" ]]; then
-    _fleet_auth_mode="subscription"
-    _fleet_auth_path="oauth-token.json"
+    export CLAUDE_CODE_OAUTH_TOKEN="$(_OTF="$_oauth_token_file" python3 -c 'import json,os,sys; sys.stdout.write(json.load(open(os.environ["_OTF"]))["token"])' 2>/dev/null)"
+    if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+        _fleet_auth_mode="subscription"
+        _fleet_auth_path="oauth-token.json"
+        unset ANTHROPIC_API_KEY
+    elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        _fleet_auth_mode="api_key"
+        _fleet_auth_path="ANTHROPIC_API_KEY"
+    fi
+elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    _fleet_auth_mode="api_key"
+    _fleet_auth_path="ANTHROPIC_API_KEY"
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
@@ -445,7 +461,7 @@ _auth_probe_error=""
 
 if [[ "$FLEET_BACKEND" == "claude" ]]; then
     echo "[run-fleet] INFRA-621: probing auth path ($_fleet_auth_path)..."
-    _probe_out=$(timeout 30 claude --once "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+    _probe_out=$(timeout 30 claude -p "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
 
     if [[ $_probe_rc -eq 0 ]]; then
         echo "[run-fleet] INFRA-621: auth probe succeeded"

@@ -66,7 +66,7 @@ _fleet_auth_path="none"
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && { _fleet_auth_mode="api_key"; _fleet_auth_path="ANTHROPIC_API_KEY"; }
 [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && { _fleet_auth_mode="subscription"; _fleet_auth_path="CLAUDE_CODE_OAUTH_TOKEN"; }
 
-_probe_out=$(claude --once "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+_probe_out=$(claude -p "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
 
 if [[ $_probe_rc -eq 0 ]]; then
     printf '{"ts":"%s","kind":"fleet_auth_verified","auth_mode":"%s","auth_path":"%s"}\n' \
