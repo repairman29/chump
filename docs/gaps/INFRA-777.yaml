@@ -1,9 +1,13 @@
 - id: INFRA-777
   domain: INFRA
   title: "RESILIENT: chump --version must not require Ollama — blocks FTUE CI"
-  status: open
+  status: done
   priority: P1
   effort: s
+  opened_date: '2026-05-08'
+  closed_date: '2026-06-08'
+  closed_pr: 1426
+  closed_interpretation: "Fixed by INFRA-148 (PR #767). chump --version short-circuits at src/main.rs:955 before any provider initialization. All AC verified: exits 0 when OPENAI_API_BASE points to non-listening port, prints version from embedded build metadata, FTUE test passes."
   acceptance_criteria: |
     `chump --version` currently initializes the full runtime, including
     attempting to connect to the local Ollama endpoint at
