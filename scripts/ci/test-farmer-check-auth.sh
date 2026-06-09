@@ -87,4 +87,22 @@ echo "$out" | grep -q '"kind":"farmer_auth_dead"' \
     || { echo "[test] FAIL (e) oauth-stale: expected farmer_auth_dead, got: $out"; exit 1; }
 echo "[test] (e) oauth-mode + stale token + no fallback → still pages: OK"
 
+# ── (f) INFRA-2031: oauth mode + stale token + api_key PRESENT → AUTH OK ──────
+# The exact false-positive this fix kills: in oauth mode the farmer paged
+# AUTH_DEAD on a stale token WITHOUT checking the api-key fallback (the fleet
+# falls back to ANTHROPIC_API_KEY on any oauth 401). With a valid api-key floor,
+# auth is NOT dead — the pilot must read the instrument before pulling the alarm.
+out=$(env -i PATH=/usr/bin:/bin HOME="$WORK/home" CHUMP_AUTH_MODE=oauth OAUTH_MAX_AGE_S=3600 \
+    ANTHROPIC_API_KEY=sk-ant-fake-floor \
+    CHUMP_REPO_ROOT="$FAUX_REPO" CHUMP_AMBIENT_LOG="$FAUX_REPO/.chump-locks/ambient.jsonl" \
+    bash -c "
+        cd '$FAUX_REPO' 2>/dev/null
+        source '$FARMER' 2>/dev/null
+        check_auth >/dev/null 2>&1
+        grep 'farmer_auth' '$FAUX_REPO/.chump-locks/ambient.jsonl' | tail -1
+    " 2>&1)
+echo "$out" | grep -q '"kind":"farmer_auth_ok".*"path":"api_key_fallback"' \
+    || { echo "[test] FAIL (f) oauth-stale+api-key: expected farmer_auth_ok api_key_fallback, got: $out"; exit 1; }
+echo "[test] (f) oauth-mode + stale token + api-key floor → AUTH OK (INFRA-2031): OK"
+
 echo "[test-farmer-check-auth] PASS"
