@@ -715,6 +715,15 @@ for p in prs:
     fi
   fi
 
+  # META-188: Update trunk_red_active to reflect the persistent safe-mode state.
+  # This ensures guards use the actual safe-mode state (from state file), not just
+  # the transient trunk_red event check, so destructive actions are truly restricted
+  # while in safe-mode (even after the 30-min trunk_red event window expires).
+  trunk_red_active=0
+  if _is_safe_mode_active; then
+    trunk_red_active=1
+  fi
+
   # Cascade Gate: read latest kind=trunk_state_change from ambient.jsonl.
   # When TRUNK_RED is the latest state, hold the rebase queue — every PR
   # rebased onto a broken main inherits the failure → wastes runners. Wait
