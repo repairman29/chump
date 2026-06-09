@@ -282,10 +282,21 @@ check_auth() {
     fi
 
     # ── Layer 2: OAuth path (CHUMP_AUTH_MODE=oauth, or auto+no-api-key) ──
+    # INFRA-2031 durable fix — CHECK THE INSTRUMENT BEFORE PULLING THE ALARM.
+    # The fleet falls back to ANTHROPIC_API_KEY on any OAuth 401 (CLAUDE.md
+    # §Auth modes), so a stale/absent OAuth token is NOT auth-death when an
+    # api-key floor exists. The prior code paged AUTH_DEAD here claiming "no
+    # ANTHROPIC_API_KEY fallback" without ever reading $api_key — a halt-class
+    # cry-wolf (274 false positives in 4h; then 6×/min in oauth mode). AUTH_DEAD
+    # may fire ONLY when there is genuinely NO working auth path.
+    if [[ -n "$api_key" ]]; then
+        emit "farmer_auth_ok" "\"path\":\"api_key_fallback\",\"mode\":\"${auth_mode}\",\"note\":\"oauth stale/absent but api-key floor present\""
+        return
+    fi
     local token_file="$HOME/.chump/oauth-token.json"
     [[ -f "$token_file" ]] || {
-        operator_page "AUTH_DEAD" "oauth-token.json absent (and no ANTHROPIC_API_KEY fallback)"
-        emit "farmer_auth_dead" "\"reason\":\"token_file_absent\",\"mode\":\"${auth_mode}\""
+        operator_page "AUTH_DEAD" "oauth-token.json absent AND no ANTHROPIC_API_KEY fallback"
+        emit "farmer_auth_dead" "\"reason\":\"token_file_absent_no_apikey\",\"mode\":\"${auth_mode}\""
         return
     }
     local mtime now age
@@ -293,9 +304,9 @@ check_auth() {
     now="$(_now)"
     age=$(( now - mtime ))
     if [[ "$age" -gt "$OAUTH_MAX_AGE_S" ]]; then
-        log "oauth token is ${age}s old (max ${OAUTH_MAX_AGE_S}s) — paging (no api-key fallback)"
-        operator_page "AUTH_DEAD" "oauth token ${age}s old, no ANTHROPIC_API_KEY fallback"
-        emit "farmer_auth_dead" "\"token_age_s\":$age,\"mode\":\"${auth_mode}\""
+        log "oauth token is ${age}s old (max ${OAUTH_MAX_AGE_S}s) AND no api-key fallback — paging"
+        operator_page "AUTH_DEAD" "oauth token ${age}s old AND no ANTHROPIC_API_KEY fallback"
+        emit "farmer_auth_dead" "\"token_age_s\":$age,\"mode\":\"${auth_mode}\",\"reason\":\"oauth_stale_no_apikey\""
     fi
 }
 
