@@ -1321,6 +1321,29 @@ events:
     fields_required: [ts, kind, skipped_count, dry_run]
     volume_estimate: "~0-1/tick during trunk-red incidents; 0 otherwise"
 
+  - kind: pr_shepherd_safe_mode_entered
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-187)
+    purpose: >
+      Signal that pr_shepherd has detected trunk_red events in the last 30 minutes
+      and is entering safe-mode. During safe-mode, the daemon skips rebases,
+      auto-arms, and gap filing to avoid propagating breakage.
+    trigger: emitted at the start of a tick when trunk_red detected but not in previous tick
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, dry_run]
+    volume_estimate: "~0-1 per incident window; transient spike only on trunk-red start"
+
+  - kind: pr_shepherd_safe_mode_cleared
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-187)
+    purpose: >
+      Signal that pr_shepherd is exiting safe-mode because no trunk_red events
+      have been detected in the last 30 minutes. Normal operations resume.
+    trigger: emitted at the start of a tick when trunk_red was active in prior tick but not now
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, dry_run]
+    volume_estimate: "~0-1 per incident window; transient spike only on trunk-red clear"
+
   - kind: pr_action_taken
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (META-184/META-186)
