@@ -61,6 +61,9 @@ run_hook() {
     # not the bypass-trailer validator (INFRA-2407). The fixture commit message must
     # not trigger the bypass-trailer sub-hook as a false positive.
     set +e
+    # CHUMP_FORCE_STALE_BASE=1 (INFRA-2827): this test isolates Guard 4; neutralize
+    # Guard 6a (stale-base ancestry, INFRA-2005) which otherwise trips Test 5
+    # ("expected exit 0, got 1") and reddens audit-shard fleet-wide.
     echo "$stdin_line" | env \
         CHUMP_GAP_CHECK=0 \
         CHUMP_FMT_CHECK=0 \
@@ -69,6 +72,7 @@ run_hook() {
         CHUMP_AUTOMERGE_OVERRIDE=1 \
         CHUMP_REBASE_DETECT=0 \
         CHUMP_BYPASS_TRAILER_CHECK=0 \
+        CHUMP_FORCE_STALE_BASE=1 \
         $env_cmd \
         bash "$HOOK" origin "git@github.com:example/repo.git" 2>/dev/null
     local rc=$?
