@@ -80,7 +80,7 @@ if [[ -n "$_api_key" && -z "${CHUMP_AUTH_STATUS_FAKE_APIKEY:-}" ]]; then
     _body="$(cat "$_tmp" 2>/dev/null)"; rm -f "$_tmp"
     case "$_code" in
         200) _apikey_state="valid" ;;
-        400) if printf '%s' "$_body" | grep -qi 'credit balance'; then _apikey_state="depleted"; else _apikey_state="valid"; fi ;;
+        400) if grep -qi 'credit balance' <<<"$_body"; then _apikey_state="depleted"; else _apikey_state="valid"; fi ;;
         401|403) _apikey_state="invalid" ;;
         *) _apikey_state="unknown" ;;
     esac
