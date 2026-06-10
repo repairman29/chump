@@ -401,9 +401,9 @@ dependencies = [
 
 [[package]]
 name = "async-nats"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "407486109ea5cfdf53fde05f46996dadf0547518a4d49f050d25f405ae31ed2d"
+checksum = "fad3cd6df81292728e2a8cb1f1dcb4d7e7a1ab59b80c14fbbcba2baf9d5cf86a"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -613,7 +613,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -1240,7 +1240,7 @@ checksum = "d38f2da7a0a2c4ccf0065be06397cc26a81f4e528be095826eee9d4adbb8c60f"
 dependencies = [
  "byteorder",
  "fnv",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -1292,9 +1292,9 @@ dependencies = [
 
 [[package]]
 name = "chrono"
-version = "0.4.44"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -1370,7 +1370,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "uuid 1.23.2",
+ "uuid 1.23.3",
  "wasi-common",
  "wasmtime",
  "wasmtime-wasi",
@@ -1390,7 +1390,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -1452,7 +1452,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -1634,7 +1634,7 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokio",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -1829,7 +1829,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -2792,7 +2792,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -3536,9 +3536,9 @@ dependencies = [
 
 [[package]]
 name = "fastembed"
-version = "5.15.0"
+version = "5.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c65faeb787d66e812248f992693268eee8a43a95e3e43e0c33547f1c8391ecce"
+checksum = "add59222e7bc3787285f993744b244cd454d78571845623606bdc45b22b23a4e"
 dependencies = [
  "anyhow",
  "hf-hub 0.5.0",
@@ -6328,7 +6328,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
- "uuid 1.23.2",
+ "uuid 1.23.3",
  "variantly",
  "vob",
 ]
@@ -6363,7 +6363,7 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tracing",
  "utoipa",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -8141,7 +8141,7 @@ checksum = "eb14dba8247a6a15b7fdbc7d389e2e6f03ee9f184f87117706d509c092dfe846"
 dependencies = [
  "r2d2",
  "rusqlite",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -8476,9 +8476,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.3"
+version = "1.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -8499,9 +8499,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reqwest"
@@ -9036,7 +9036,7 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
- "uuid 1.23.2",
+ "uuid 1.23.3",
 ]
 
 [[package]]
@@ -10555,7 +10555,7 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "url",
- "uuid 1.23.2",
+ "uuid 1.23.3",
  "walkdir",
 ]
 
@@ -10673,7 +10673,7 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "url",
  "urlpattern",
- "uuid 1.23.2",
+ "uuid 1.23.3",
  "walkdir",
 ]
 
@@ -11959,9 +11959,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.23.2"
+version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
+checksum = "144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
@@ -13750,7 +13750,7 @@ dependencies = [
  "serde_repr",
  "tracing",
  "uds_windows",
- "uuid 1.23.2",
+ "uuid 1.23.3",
  "windows-sys 0.61.2",
  "winnow 1.0.2",
  "zbus_macros",
