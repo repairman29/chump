@@ -1,0 +1,40 @@
+- id: META-274
+  domain: META
+  title: "ZERO-WASTE: CREDIBLE-122 fix PR merged (fbe4d11) but gap still status:open and test-a2a-consensus-e2e.sh is orphaned from CI — the fix is unverified in gate"
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-06-15'
+  raised_by: cold-water
+  raised_in: RED_LETTER#16
+  description: |
+    VERIFIED 2026-06-15 (Issue #16 Cold Water audit):
+
+    PR fbe4d11 (fix(CREDIBLE-122)) merged 2026-06-07 claiming to repair the deliberator
+    tally seam that made consensus_result structurally impossible. Evidence:
+    
+    (1) CREDIBLE-122 gap still status: open after the fix PR:
+    ```
+    grep 'status:' docs/gaps/CREDIBLE-122.yaml → status: open
+    ```
+
+    (2) scripts/ci/test-a2a-consensus-e2e.sh exists on disk but is NOT in CI:
+    ```
+    grep -r 'test-a2a-consensus-e2e' .github/workflows/ → (no matches)
+    ```
+    The script exists at scripts/ci/test-a2a-consensus-e2e.sh but is orphaned —
+    never invoked by any workflow.
+
+    (3) The end-to-end test was filed as acceptance criteria in CREDIBLE-122 but
+    the gap remains open and the test path is uncovered.
+
+    (4) feedback.jsonl on a fresh clone has 0 events; consensus_result count = 0.
+    This does not prove the fix is broken (fresh clone won't have live votes) but
+    confirms the mechanism is not self-evidently firing.
+
+    The pattern: fix PR merged → gap not closed → AC gate not wired into CI → no
+    one knows if the fix holds. This recurs across multiple gaps this cycle.
+  acceptance_criteria:
+    - "CREDIBLE-122 gap status = done or shipped in state.db: chump gap show CREDIBLE-122 | grep status → done"
+    - "test-a2a-consensus-e2e.sh is wired into CI: grep -r 'test-a2a-consensus-e2e' .github/workflows/ returns >= 1 match"
+    - "The CI gate passes on a synthetic fixture that exercises the real chump vote → deliberator-loop.sh tick → consensus_result emission path (not hand-written JSON)"
