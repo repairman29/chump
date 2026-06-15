@@ -1,3 +1,280 @@
+## Issue #16 — 2026-06-15
+
+> Audit window: commits since 2026-06-08 (Issue #15). 21 commits to `origin/main` (PRs #3103–#3124). Sandbox: fresh clone, chump binary built from source (14 min), ran successfully. `gap-doctor.py doctor` now passes cleanly — **INFRA-821 silently fixed** (auto_seed_if_empty in GapStore, no stand-alone commit), though gap still status:open (filed CREDIBLE-124). `chump gap list --json` returns 715 open gaps, 76 P0. 3 follow-up gaps filed: MISSION-042, META-274, CREDIBLE-124. `gh` CLI unavailable; GitHub MCP not used (all evidence from git + YAML + state.db).
+
+---
+
+### Status of Prior Issues (Issue #15)
+
+- **WORSE**: G1 — **Bot-Merge-Bypass rate: 43%** since Issue #15 (9 of 21 commits). All-time rate: 66% (33 of 50). Root cause RESILIENT-135 (timeout death-spiral) shipped as PR #3109 — bypass rate post-fix is 31% (4 of 13 commits). Pipeline is less dead but still failing. RESILIENT-131 (autonomous completion rate ≈ 0) still open, P1, 1 commit (gap file only).
+  ```
+  git log origin/main --since='2026-06-08' --format='%B' | grep -c 'Bot-Merge-Bypass:'
+  9
+  git log origin/main --since='2026-06-08' --oneline | wc -l
+  21
+  git log origin/main --format='%B' | grep -c 'Bot-Merge-Bypass:'
+  33   (all-time 50 commits)
+  # Post-RESILIENT-135-fix rate: 4/13 = 31%
+  ```
+- **PARTIALLY_FIXED (OPEN-BUT-LANDED)**: G2 — CREDIBLE-122 fix PR fbe4d11 merged 2026-06-07. But gap still `status: open`. And test-a2a-consensus-e2e.sh is NOT in CI. `feedback.jsonl` has 0 events on fresh clone. Filed META-274.
+  ```
+  grep 'status:' docs/gaps/CREDIBLE-122.yaml → status: open
+  grep -r 'test-a2a-consensus-e2e' .github/workflows/ → (no matches)
+  cat .chump-locks/feedback.jsonl → (no file)
+  ```
+- **SILENTLY_FIXED (OPEN-BUT-LANDED)**: O1 — INFRA-821 state.db auto-seed: crates/chump-gap-store/src/lib.rs:635 added `auto_seed_if_empty()` — `chump gap list` auto-imports from docs/gaps/ on first run. `gap-doctor.py doctor` now completes cleanly (975 rows in state.db). Gap still `status: open`. Filed CREDIBLE-124.
+  ```
+  python3 scripts/coord/gap-doctor.py doctor → Total gaps in DB: 975 / Total drift entries: 0
+  grep 'status:' docs/gaps/INFRA-821.yaml → status: open
+  # Fix tag: "[gap-list] state.db is empty — auto-importing from docs/gaps/ (INFRA-821)"
+  # appears in crates/chump-gap-store/src/lib.rs:635 but not in any standalone commit
+  ```
+- **BETTER**: O2 — OPEN-BUT-LANDED count: **23** (was 34 in Issue #15). Still significant: INFRA-2744 has 12 impl commits but status:open; RESILIENT-135 has 1 impl commit (its own fix PR) but status:open. INFRA-1610 (structural OBL fix gap) still 0 impl commits.
+  ```
+  OBL scan (excl. cold-water chore): 23 (was 34 in Issue #15)
+  git log origin/main --grep='INFRA-1610' --oneline → (empty)
+  ```
+- **WORSE**: C1 — P0 count: **76** (was 74, budget: 5). 72 of 76 have zero implementation commits. META-064 (P0 inflation fix gap) still 0 commits.
+  ```
+  find docs/gaps -name '*.yaml' | xargs grep -l 'status: open' | xargs grep -l 'priority: P0' | wc -l
+  76
+  # 72/76 with 0 impl commits (excl. cold-water chore)
+  git log origin/main --grep='META-064' --oneline → (empty)
+  ```
+- **PARTIALLY_FIXED**: G1-old — RESILIENT-135 (timeout death-spiral root cause of autonomous completion ≈ 0) fixed in PR #3109. But gap still `status: open` (OPEN-BUT-LANDED). Post-fix bypass rate 31% — better but not 0.
+  ```
+  git show 7ad6a2c --format='%s' → fix(RESILIENT-135): worker timeout death-spiral...
+  grep 'status:' docs/gaps/RESILIENT-135.yaml → status: open
+  ```
+- **STILL_OPEN_INACTIVE (6 cycles)**: INFRA-1620 — PWA SyntaxError at line 2244. Confirmed live.
+  ```
+  node --check web/v2/app.js → SyntaxError: Unexpected identifier 'ChumpViewFleetHealth' at line 2244
+  git log origin/main --grep='INFRA-1620' --oneline → (cold-water chore only)
+  ```
+- **STILL_OPEN_INACTIVE (6 cycles)**: EVAL-094 — naturalized-framing evaluation. 0 commits.
+  ```
+  git log origin/main --grep='EVAL-094' --oneline → (cold-water chore only)
+  ```
+- **STILL_OPEN_INACTIVE (6 cycles)**: FLEET-053 — NATS deployment. 0 commits.
+  ```
+  git log origin/main --grep='FLEET-053' --oneline → (cold-water chore only)
+  ```
+- **STILL_OPEN (first raised)**: CREDIBLE-123 — Prohibited Claims gate gaps (EVAL-043/035/042/041/030) still ALL MISSING.
+  ```
+  ls docs/gaps/EVAL-043.yaml docs/gaps/EVAL-035.yaml docs/gaps/EVAL-042.yaml docs/gaps/EVAL-041.yaml docs/gaps/EVAL-030.yaml
+  → all: No such file or directory
+  ```
+- **FIXED**: META-273 — RED_LETTER bundling defect. Issue #15 commit (807aa75) is a standalone `chore(cold-water)` commit, not bundled into an unrelated PR. Fixed for this cycle. META-273 gap still open (fix must hold for 3+ cycles).
+
+---
+
+### The Looming Ghost
+
+**[P0/High] G1 — Autonomous ship pipeline: bypass rate dropped from 90% to 43%, but still failing. RESILIENT-135 fix was real; the remaining bypasses trace to three distinct new failure classes**
+
+We are failing at building a reliable autonomous ship pipeline. The RESILIENT-135 fix (worker timeout death-spiral) was genuine — it identified a bug where consecutive xs-gap compounding collapsed the claude -p budget to 0s, explaining why "autonomous completion ≈ 0." The fix landed. The post-fix bypass rate is 31%. That is better than 90%, but still means 1 in 3 ships requires a human hand.
+
+The 4 post-fix bypasses break into distinct failure classes:
+1. **Claim collision**: "bot-merge.sh failed with live-claim collision" — concurrent workers race on the same gap (INFRA-2744 state.db vs .chump-locks JSON split-brain; 12 commits, still open)
+2. **Cargo fmt stall**: "bot-merge stalled after cargo fmt step (INFRA-1399)" — pre-merge fmt check hangs under fleet load
+3. **Gap already shipped**: "gap already shipped, just updating local state" — state synchronization lag after another worker merged
+4. **Manual gap closure**: "implementation already merged; gap closure-only commit" — gap closure committed manually
+
+Classes 1 and 2 are root causes that remain unpatched. Class 3 reveals a race where multiple workers claim after a gap ships. Class 4 is manual overhead.
+
+- evidence: `git log origin/main --since='2026-06-08T19:19:16' --format='%B' | grep 'Bot-Merge-Bypass:'` → 4 bypasses in 13 post-fix commits (31%)
+- evidence: INFRA-2744.yaml `status: open` with 12 referencing commits — the JSON-vs-state.db split-brain was noted as "shipped" in INFRA-2744.notes on 2026-06-05 but gap never closed
+- evidence: RESILIENT-131.yaml still `status: open, priority: P1` — overall autonomous completion AC ("at least one gap goes claim→implement→CI-green→merge with NO human/Opus/bypass intervention") is unmet
+
+*This finding is wrong if: every post-fix bypass was from a documentation-only or gap-closure commit (not Rust/test code), which would indicate autonomous Rust shipping is now 0% bypass. Not observed — three of the 4 bypass commits are non-doc PRs.*
+
+---
+
+**[P0/High] G2 — MISSION-010/011/012 are ghost gap IDs: the mission's canonical gap, picker mechanism, and THE MULTIPLIER are referenced by name in docs/MISSION.md but do not exist in the gap store or git history — the mission has no pickable gaps tracking its own completion**
+
+We are failing at credible mission tracking. `docs/MISSION.md` declares three foundational gap IDs as authoritative:
+
+```
+"Canonical mission gap: MISSION-010" (zero-human-touch fleet, proven on BEAST-MODE)
+"The picker (MISSION-011) reads ACTIVE_MISSION"
+"Current multiplier: MISSION-012 (self-deploy). Metric: manual deploy steps per ship = 0."
+"Filed as MISSION-014."
+```
+
+None exist:
+```
+ls docs/gaps/MISSION-010.yaml → No such file or directory
+ls docs/gaps/MISSION-011.yaml → No such file or directory
+ls docs/gaps/MISSION-012.yaml → No such file or directory
+ls docs/gaps/MISSION-014.yaml → No such file or directory
+
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('.chump/state.db')
+r = conn.execute(\"SELECT id FROM gaps WHERE id IN ('MISSION-010','MISSION-011','MISSION-012','MISSION-014')\").fetchall()
+print(r)
+" → []
+```
+
+The gap store jumps from MISSION-006 directly to MISSION-029. MISSION-007 through MISSION-028 are all absent. The 4 mission IDs that docs/MISSION.md declares as the operative proof targets are headless: nothing in the fleet picks them, nothing tracks their completion, and the mission scoreboard's ① binary ("zero-human-touch PR merged in BEAST-MODE this week? NO") has no actionable gap assigned to closing that binary to YES.
+
+MISSION-029 corroborates: `"MISSION: picker doesn't actually read ACTIVE_MISSION env var — docs/MISSION.md says it does, src/ grep finds zero refs"` — confirming that MISSION-011's promised feature (picker reads ACTIVE_MISSION) was never implemented.
+
+Filed MISSION-042.
+
+- evidence: `ls docs/gaps/MISSION-010.yaml docs/gaps/MISSION-011.yaml docs/gaps/MISSION-012.yaml docs/gaps/MISSION-014.yaml` → all absent
+- evidence: `python3 -c "sqlite3 state.db SELECT id WHERE id IN ..."` → empty
+- evidence: MISSION-029.yaml description: "grep -rn ACTIVE_MISSION src/ returns zero matches"
+- evidence: `bash scripts/dev/mission-scoreboard.sh` → "① THE BINARY: ❌ NO (BEAST merges last 7d: 0)"
+
+*This finding is wrong if: MISSION-010 through MISSION-014 exist in a private `chump-proprietary` or sub-module not checked into this repo, and the gap store used by the fleet reads from that location. No such note in docs/MISSION.md.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — EFFECTIVE-112 (chump can't clone private repos) has 0 implementation commits after 6+ weeks: it is a P0 gap and the entry gate to the canonical mission proof**
+
+We are failing to unblock the mission's only concrete proof. EFFECTIVE-112 (`chump onboard` fails on private repos with "Password authentication is not supported") blocks every step of the BEAST-MODE proof:
+
+```
+cat docs/gaps/EFFECTIVE-112.yaml | grep 'status:\|priority:' → status: open / priority: P0
+git log origin/main --grep='EFFECTIVE-112' --oneline → (empty — 0 implementation commits)
+```
+
+The gap was filed 2026-06-03 (7+ weeks ago when counting from project inception, verified via description "VERIFIED 2026-06-03 by RUNNING it"). The fix is a 10-line change in `src/onboard.rs`: inject `https://x-access-token:$GH_TOKEN@github.com/...` into the clone URL. The effort tag is `s`. BEAST-MODE is private. The fleet cannot clone it. MISSION-010 (which doesn't exist as a gap — see G2) would depend on this being fixed first.
+
+The mission scoreboard explicitly says ① is NO and cites MISSION-012 (self-deploy, also a ghost gap) as "THE MULTIPLIER." Even if self-deploy landed, the fleet can't reach BEAST-MODE to deploy anything.
+
+- evidence: `cat docs/gaps/EFFECTIVE-112.yaml` → `status: open, priority: P0, effort: s`
+- evidence: `git log origin/main --grep='EFFECTIVE-112' --oneline` → empty
+- evidence: `bash scripts/dev/mission-scoreboard.sh` → `① ❌ NO (BEAST merges last 7d: 0)`
+- evidence: EFFECTIVE-112.yaml description: "VERIFIED 2026-06-03 by RUNNING it: `chump onboard https://github.com/repairman29/BEAST-MODE` fails at clone with 'git clone exited exit status: 128'"
+
+*This finding is wrong if: BEAST-MODE has since been made public (no such update in EFFECTIVE-112.yaml or any commit message), OR EFFECTIVE-112 was fixed under a different gap ID (grep of all commits for "private repo clone" or "onboard.rs auth" returns nothing).*
+
+---
+
+**[P1/High] O2 — EVAL-094, FLEET-053, INFRA-1620: 6th consecutive cycle, 0 implementation commits each. The first two are research validity gaps; the third is a public-facing syntax error**
+
+We are failing at research credibility and basic code hygiene for the sixth consecutive cycle.
+
+```
+git log origin/main --grep='EVAL-094' --oneline → (cold-water chore only)
+git log origin/main --grep='FLEET-053' --oneline → (cold-water chore only)
+git log origin/main --grep='INFRA-1620' --oneline → (cold-water chore only)
+node --check web/v2/app.js
+→ SyntaxError: Unexpected identifier 'ChumpViewFleetHealth' at line 2244
+```
+
+EVAL-094 (naturalized-framing evaluation): docs/strategy/EVAL_AWARE_SANDBAGGING.md publicly states "the magnitude of every reported delta is at risk of inflation or deflation by evaluation-context confounding." RESEARCH_INTEGRITY.md §Required Methodology Standards: "Mechanism analysis for any delta > ±0.05 must explicitly consider evaluation-awareness as a candidate mechanism, and must cite either (a) a paired naturalized-framing comparison from the RESEARCH-026 / EVAL-094 result set." No such citation exists anywhere in the project — and EVAL-094 has never run (0 commits, 6 cycles).
+
+INFRA-1620: The public-facing PWA (web/v2/app.js) has had a syntax error since 2026-05-14 (41 days, confirmed this cycle). The North Star describes it as the product's front door. It does not parse.
+
+*This finding is wrong if: EVAL-094, FLEET-053, or INFRA-1620 have implementation commits in a branch not yet merged to main — `git branch -r | xargs git log --grep=<ID> --oneline` returns matches.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — P0 count: 76 (was 74, budget 5): 72 of 76 have zero implementation commits; INFRA-1610 (OBL fix) and META-064 (P0 budget fix) are themselves inactive**
+
+We are failing at the most basic property of a priority system for the sixth consecutive cycle. The gap that should fix P0 inflation (META-064) has 0 implementation commits. The gap that should fix OPEN-BUT-LANDED systematically (INFRA-1610) has 0 implementation commits. Neither is being worked.
+
+```
+find docs/gaps -name '*.yaml' | xargs grep -l 'status: open' | xargs grep -l 'priority: P0' | wc -l
+76
+
+git log origin/main --grep='META-064' --oneline → (empty)
+git log origin/main --grep='INFRA-1610' --oneline → (empty)
+```
+
+The P0 domain breakdown: 56 INFRA, 8 META, 5 RESILIENT, 4 MISSION, 1 FLEET, 1 EVAL, 1 EFFECTIVE. The 4 active P0s (with ≥1 impl commits): INFRA-2188, MISSION-041, RESILIENT-118, RESILIENT-135. RESILIENT-135 is OPEN-BUT-LANDED (fix merged, gap not closed).
+
+- evidence: `find docs/gaps ... | wc -l` → 76
+- evidence: `git log origin/main --grep='META-064' --oneline` → empty (6 cycles)
+- evidence: Issue trend: #12: 20 → #13: 29 → #14: 66 → #15: 74 → #16: 76
+
+*This finding is wrong if: more than 5 of the 76 P0 gaps are deliberate "always-P0" tracking artifacts per a written operator policy defining a different budget. No such policy found.*
+
+---
+
+### The Reality Check
+
+**[P1/Medium] R1 — CREDIBLE-122 is OPEN-BUT-LANDED: fix PR merged, gap not closed, end-to-end test orphaned from CI — the A2A consensus fix is unverified in any gate**
+
+We are failing at closing what we fix. CREDIBLE-122 fix (deliberator tally seam repair) merged in PR fbe4d11. But:
+
+1. `grep 'status:' docs/gaps/CREDIBLE-122.yaml` → `status: open` (gap not closed)
+2. `grep -r 'test-a2a-consensus-e2e' .github/workflows/` → (no matches)
+3. `feedback.jsonl` on a fresh clone: 0 events, 0 consensus_result events
+
+The test-a2a-consensus-e2e.sh script exists at `scripts/ci/test-a2a-consensus-e2e.sh` but has never been wired into any CI workflow. The fix was described as making the deliberator "can now tally real votes" — but there is no gate that exercises the real vote path (chump vote → deliberator tick → consensus_result) rather than a synthetic fixture.
+
+Filed META-274.
+
+- evidence: `grep 'status:' docs/gaps/CREDIBLE-122.yaml` → `status: open`
+- evidence: `grep -r 'test-a2a-consensus-e2e' .github/workflows/` → empty
+- evidence: `cat .chump-locks/feedback.jsonl` → file absent (0 events)
+
+*This finding is wrong if: a workflow other than the CI files in .github/workflows/ runs the e2e test (e.g. a Makefile target or scheduled job) — none found in the repo.*
+
+---
+
+### The Innovation Lag
+
+**[P1/High] I1 — The BEAST-MODE mission proof has never been attempted: EFFECTIVE-112 blocks the entry gate, MISSION-010 doesn't exist as a gap, and the scoreboard shows 0 zero-human-touch merges**
+
+We are failing to make progress toward the project's stated reason for existing.
+
+```
+bash scripts/dev/mission-scoreboard.sh
+→ ① THE BINARY: ❌ NO (BEAST merges last 7d: 0)
+→ VERDICT: 🔴 STALLED
+```
+
+Three layers of blocking:
+1. **Entry gate broken**: `chump onboard` can't clone private repos (EFFECTIVE-112, P0, s effort, 0 commits, 6+ weeks)
+2. **Mission tracker headless**: MISSION-010 (the canonical proof gap) doesn't exist; no gap in the fleet tracks "BEAST-MODE PR merged with zero human touch" as pickable work
+3. **Picker broken**: MISSION-029 confirms the picker doesn't actually read ACTIVE_MISSION; mission-linked gaps don't get priority preference despite MISSION.md claiming they do
+
+The mission scoreboard runs (MISSION-037 shipped), but it reports a signal with no actuator: there's no pickable gap in the fleet that closes ① to YES. The three fixes needed are all either P0-with-0-commits (EFFECTIVE-112) or ghost gaps (MISSION-010/012) or unimplemented doctrine (MISSION-011 picker, per MISSION-029).
+
+- evidence: `bash scripts/dev/mission-scoreboard.sh` → STALLED, ① NO, 0 BEAST merges
+- evidence: `ls docs/gaps/MISSION-010.yaml` → No such file
+- evidence: `git log origin/main --grep='EFFECTIVE-112' --oneline` → empty
+- evidence: MISSION-029.yaml: "grep -rn ACTIVE_MISSION src/ returns zero matches"
+
+*This finding is wrong if: BEAST-MODE was worked in the last 7 days from a repo where this sandbox's git fetch is blocked. Sandbox git fetch retrieved 21 commits; the scoreboard's own "0 BEAST merges" output is the ground truth.*
+
+---
+
+**THE ONE BIG THING:** [P0] We are failing to have a mission. docs/MISSION.md is the "one honest measure" of whether Chump is moving. It names MISSION-010 as the canonical proof, MISSION-012 as "THE MULTIPLIER," and MISSION-011 as the picker mechanism. None of these gap IDs exist. MISSION-029 reveals the picker doesn't read ACTIVE_MISSION. EFFECTIVE-112 (P0, s, 0 commits) blocks even reading BEAST-MODE. The RESILIENT-135 fix reduced bypass rate from 90% to 31% — real progress — but the fleet is now shipping at 31% bypass on Chump's own infrastructure gaps. The gap store has 76 open P0s (budget: 5), the PWA has been syntactically broken for 41 days, and the mission's own tracking artifacts are missing. The project is most precisely described as: well-instrumented fleet shipping fixes to its own fleet infrastructure, with no pickable gap assigned to the mission outcome the fleet was built to achieve. Filed MISSION-042 to start this chain.
+
+---
+
+### Follow-up Gaps Filed
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| MISSION-042 | MISSION-010/011/012 are ghost gap IDs — mission's own tracking is headless | P1 | s |
+| META-274 | CREDIBLE-122 fix merged, gap not closed, e2e test orphaned from CI | P1 | s |
+| CREDIBLE-124 | INFRA-821 silently fixed but gap still open — state discrepancy | P1 | xs |
+
+Pre-existing gaps covering remaining findings: EFFECTIVE-112, INFRA-1620, EVAL-094, FLEET-053, META-064, INFRA-1610, CREDIBLE-122, CREDIBLE-123, RESILIENT-131, INFRA-2744, MISSION-029.
+
+```
+ls docs/gaps/MISSION-042.yaml → exists
+ls docs/gaps/META-274.yaml → exists
+ls docs/gaps/CREDIBLE-124.yaml → exists
+
+git log origin/main --grep='MISSION-042' --oneline → (absent — new this cycle)
+git log origin/main --grep='META-274' --oneline → (absent — new this cycle)
+git log origin/main --grep='CREDIBLE-124' --oneline → (absent — new this cycle)
+```
+
+---
+
 ## Issue #15 — 2026-06-08
 
 > Audit window: commits since 2026-06-01 (Issue #14). 50 commits to `origin/main` (PRs #3063–#3102). Sandbox: fresh clone. `gap-doctor.py doctor` crashed with `no such table: gaps` on entry — **INFRA-821 confirmed live for the fifth consecutive cycle** (zero commits ever). `chump` binary still building from source at write time — **proposed-only mode**; SQLite verification deferred. `gh` CLI unavailable; GitHub MCP tools used for PR queries. 3 gap YAML files filed (CREDIBLE-123, META-273, EVAL-125) using manually-verified clean IDs (all confirmed absent from git history and docs/gaps/).
