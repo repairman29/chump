@@ -320,6 +320,25 @@ check_auth() {
         emit "farmer_auth_ok" "\"path\":\"api_key_fallback\",\"mode\":\"${auth_mode}\",\"note\":\"oauth stale/absent but api-key floor present\""
         return
     fi
+
+    # RESILIENT-147: VALIDITY over AGE. A long-lived token (e.g. `claude
+    # setup-token`, ~1yr) is valid regardless of file mtime; the legacy
+    # age>OAUTH_MAX_AGE_S heuristic below false-paged AUTH_DEAD on it — the
+    # fleet shipped fine on a 23h-old-but-valid token while the farmer cried
+    # AUTH_DEAD purely off file age (the 2026-06-15 multi-day false-outage).
+    # Prefer the auth-status.sh validity probe — "can the fleet actually
+    # transact?" — and fall back to the age heuristic only when the probe
+    # script isn't present on this checkout (backward compatible).
+    local probe="$REPO_ROOT/scripts/coord/auth-status.sh"
+    if [[ -x "$probe" ]]; then
+        if "$probe" --quiet >/dev/null 2>&1; then
+            emit "farmer_auth_ok" "\"path\":\"oauth\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
+        else
+            operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode})"
+            emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
+        fi
+        return
+    fi
     local token_file="$HOME/.chump/oauth-token.json"
     [[ -f "$token_file" ]] || {
         operator_page "AUTH_DEAD" "oauth-token.json absent AND no ANTHROPIC_API_KEY fallback"
