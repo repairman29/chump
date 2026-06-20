@@ -65,6 +65,7 @@ Check current vs. target at any time: `chump health --slo-check` (exits non-zero
 git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 bash scripts/setup/chump-fleet-bootstrap.sh --check  # META-066, must exit 0
+bash scripts/coord/auth-status.sh                    # RESILIENT-086: VALIDITY probe — "can the fleet transact?" Catches the trap where a depleted/stale credential outranks a valid one (exit 2) and prints the exact fix. Don't re-diagnose auth by hand — read this line.
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 scripts/coord/chump-inbox.sh read --no-advance   # INFRA-1115: peer DMs (per OPUS_MESSAGE_PROTOCOL.md)
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)

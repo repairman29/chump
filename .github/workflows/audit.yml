@@ -535,6 +535,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-worker-timeout-scale.sh
 
+      - name: auth-status validity probe — catches depleted-credential-wins-precedence trap (RESILIENT-086)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-auth-status.sh
+
       - name: chump fleet bootstrap orchestrator (META-066)
         if: matrix.shard == 3
         run: bash scripts/ci/test-fleet-bootstrap.sh

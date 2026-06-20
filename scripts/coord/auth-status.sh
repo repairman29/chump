@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# auth-status.sh — RESILIENT-086: the canonical fleet-auth VALIDITY check.
+#
+# WHY THIS EXISTS: every new agent re-pays the same tax. The fleet can hold a
+# valid oauth (subscription) token AND a depleted/invalid api-key at the same
+# time — and because `claude -p` prefers ANTHROPIC_API_KEY in auto mode, the
+# DEPLETED key silently wins precedence over the VALID oauth, so workers fail
+# while every presence-only check (farmer, `fleet doctor`) reports "auth set".
+# Presence != validity (RESILIENT-086). This probes the ACTUAL working path
+# with a real call and prints ONE unambiguous line, so no agent re-diagnoses.
+#
+# It specifically catches the PRECEDENCE TRAP: "the credential claude -p would
+# use is broken, but a different one is valid" — the #1 recurring confusion.
+#
+# Exit 0 = a usable auth path exists (workers can transact).
+# Exit 1 = no usable auth path (prints the exact fix).
+# Exit 2 = usable, but the precedence-winner is broken (prints the exact fix).
+#
+# Usage: auth-status.sh [--probe] [--quiet]
+#   default : use cached verdict if < CHUMP_AUTH_STATUS_TTL_S old, else probe.
+#   --probe : force a fresh probe.   --quiet: print only the one-line verdict.
+
+set -uo pipefail
+REPO_ROOT="${CHUMP_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)}"
+CACHE="${CHUMP_AUTH_STATUS_CACHE:-$HOME/.chump/auth-status-cache}"
+TTL="${CHUMP_AUTH_STATUS_TTL_S:-600}"
+FORCE=0; QUIET=0
+for a in "$@"; do case "$a" in --probe) FORCE=1 ;; --quiet) QUIET=1 ;; esac; done
+
+_now() { date +%s; }
+
+# ── cache: at most one real probe per TTL window ─────────────────────────────
+if [[ "$FORCE" -eq 0 && -f "$CACHE" ]]; then
+    _c_ts="$(sed -n '1p' "$CACHE" 2>/dev/null || echo 0)"
+    _c_rc="$(sed -n '2p' "$CACHE" 2>/dev/null || echo 1)"
+    _c_msg="$(sed -n '3,$p' "$CACHE" 2>/dev/null)"
+    if [[ "$_c_ts" =~ ^[0-9]+$ ]] && [ $(( $(_now) - _c_ts )) -lt "$TTL" ]; then
+        [ "$QUIET" -eq 0 ] && printf '%s (cached)\n' "$_c_msg" || printf '%s\n' "$_c_msg"
+        exit "$_c_rc"
+    fi
+fi
+
+# ── resolve credentials as the WORKERS see them ──────────────────────────────
+# launchd-spawned workers inherit the launchctl global env (macOS), so prefer
+# launchctl over THIS shell's (possibly stale/personal) env — that very mismatch
+# is a recurring source of "it works for me but not the fleet" confusion.
+_lc() { command -v launchctl >/dev/null 2>&1 && launchctl getenv "$1" 2>/dev/null || true; }
+_auth_mode="$(_lc CHUMP_AUTH_MODE)"; _auth_mode="${_auth_mode:-${CHUMP_AUTH_MODE:-auto}}"
+_api_key="$(_lc ANTHROPIC_API_KEY)"; _api_key="${_api_key:-${ANTHROPIC_API_KEY:-}}"
+if [[ -z "$_api_key" && -f "$REPO_ROOT/.env" ]]; then
+    _api_key="$(grep -E '^ANTHROPIC_API_KEY=' "$REPO_ROOT/.env" 2>/dev/null | head -1 \
+                | cut -d= -f2- | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//')"
+fi
+_oauth_tok="$(_lc CLAUDE_CODE_OAUTH_TOKEN)"; _oauth_tok="${_oauth_tok:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
+if [[ -z "$_oauth_tok" && -f "$HOME/.chump/oauth-token.json" ]]; then
+    _oauth_tok="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.chump/oauth-token.json'))).get('token',''))" 2>/dev/null || true)"
+fi
+
+# ── probe oauth (real claude -p call) ────────────────────────────────────────
+# valid | invalid | absent
+_oauth_state="absent"
+if [[ -n "$_oauth_tok" && -z "${CHUMP_AUTH_STATUS_FAKE_OAUTH:-}" ]] && command -v claude >/dev/null 2>&1; then
+    if (cd /tmp && CLAUDE_CODE_OAUTH_TOKEN="$_oauth_tok" ANTHROPIC_API_KEY= \
+            timeout "${CHUMP_AUTH_PROBE_TIMEOUT_S:-60}" claude -p "Reply with exactly: PONG" \
+            --model haiku 2>/dev/null | grep -q PONG); then
+        _oauth_state="valid"
+    else
+        _oauth_state="invalid"
+    fi
+fi
+
+# ── probe api-key (cheap REST call: distinguishes valid / depleted / invalid) ─
+_apikey_state="absent"
+if [[ -n "$_api_key" && -z "${CHUMP_AUTH_STATUS_FAKE_APIKEY:-}" ]]; then
+    _tmp="$(mktemp -t authprobe.XXXXXX)"
+    _code="$(curl -s -o "$_tmp" -w '%{http_code}' https://api.anthropic.com/v1/messages \
+        -H "x-api-key: $_api_key" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+        -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' \
+        2>/dev/null || echo 000)"
+    _body="$(cat "$_tmp" 2>/dev/null)"; rm -f "$_tmp"
+    case "$_code" in
+        200) _apikey_state="valid" ;;
+        400) if grep -qi 'credit balance' <<<"$_body"; then _apikey_state="depleted"; else _apikey_state="valid"; fi ;;
+        401|403) _apikey_state="invalid" ;;
+        *) _apikey_state="unknown" ;;
+    esac
+fi
+
+# ── test injection (CI only) — override probe results to exercise verdict logic ─
+[[ -n "${CHUMP_AUTH_STATUS_FAKE_OAUTH:-}" ]]  && _oauth_state="$CHUMP_AUTH_STATUS_FAKE_OAUTH"
+[[ -n "${CHUMP_AUTH_STATUS_FAKE_APIKEY:-}" ]] && _apikey_state="$CHUMP_AUTH_STATUS_FAKE_APIKEY"
+[[ -n "${CHUMP_AUTH_STATUS_FAKE_MODE:-}" ]]   && _auth_mode="$CHUMP_AUTH_STATUS_FAKE_MODE"
+
+# ── which path would `claude -p` actually use? (precedence model) ────────────
+# auto: api-key wins if present; else oauth.   oauth: oauth.   api-key: api-key.
+case "$_auth_mode" in
+    api-key) _effective="api-key" ;;
+    oauth)   _effective="oauth" ;;
+    *)       if [[ "$_apikey_state" != "absent" ]]; then _effective="api-key"; else _effective="oauth"; fi ;;
+esac
+_eff_state="$_apikey_state"; [[ "$_effective" == "oauth" ]] && _eff_state="$_oauth_state"
+
+# ── verdict ──────────────────────────────────────────────────────────────────
+RC=1; MSG=""
+if [[ "$_eff_state" == "valid" ]]; then
+    RC=0; MSG="AUTH ✓ OK — $_effective validated (mode=$_auth_mode); workers can transact."
+elif [[ "$_oauth_state" == "valid" || "$_apikey_state" == "valid" ]]; then
+    # A valid path EXISTS but the precedence-winner is broken — THE TRAP.
+    _good="oauth"; [[ "$_apikey_state" == "valid" ]] && _good="api-key"
+    RC=2
+    if [[ "$_effective" == "api-key" && "$_good" == "oauth" ]]; then
+        MSG="AUTH ⚠ TRAP — api-key is $_apikey_state but oauth is VALID, and claude -p prefers the api-key, so workers FAIL. FIX: retire the api-key for the fleet → 'launchctl unsetenv ANTHROPIC_API_KEY' + comment ANTHROPIC_API_KEY in .env (oauth then wins)."
+    else
+        MSG="AUTH ⚠ TRAP — $_effective is $_eff_state but $_good is VALID. FIX: set CHUMP_AUTH_MODE=$_good (or remove the broken credential) so claude -p uses the working path."
+    fi
+else
+    RC=1
+    if [[ "$_apikey_state" == "depleted" ]]; then
+        MSG="AUTH ✗ BROKEN — api-key OUT OF CREDITS and oauth $_oauth_state. FIX: add credits at console.anthropic.com/settings/billing, OR run 'claude setup-token' and ensure ~/.chump/oauth-token.json holds it (then CHUMP_AUTH_MODE=oauth)."
+    elif [[ "$_oauth_state" == "absent" && "$_apikey_state" == "absent" ]]; then
+        MSG="AUTH ✗ BROKEN — no credentials found. FIX: run 'claude setup-token' (subscription oauth) → save to ~/.chump/oauth-token.json, OR set ANTHROPIC_API_KEY."
+    else
+        MSG="AUTH ✗ BROKEN — oauth=$_oauth_state api-key=$_apikey_state, none usable. FIX: 'claude setup-token' for a fresh oauth token, or provide a funded ANTHROPIC_API_KEY."
+    fi
+fi
+
+# ── cache + emit ──────────────────────────────────────────────────────────────
+mkdir -p "$(dirname "$CACHE")" 2>/dev/null || true
+{ _now; printf '%s\n' "$RC"; printf '%s\n' "$MSG"; } > "$CACHE" 2>/dev/null || true
+printf '%s\n' "$MSG"
+exit "$RC"
