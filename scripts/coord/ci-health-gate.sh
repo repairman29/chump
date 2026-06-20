@@ -95,17 +95,42 @@ if [[ -f "$CACHE_LIB" ]]; then
 fi
 echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=$total_blocked blocked_pct=${blocked_pct}%"
 
-# ── SLO check ────────────────────────────────────────────────────────────────
+# ── SLO check (RESILIENT-146: halt only on L1 SAFETY breaches) ────────────────
+# Parse per-SLO breaches from --json. The fleet-pause gate must fire ONLY for
+# acute fleet-unsafe conditions — L1 safety SLOs + pipeline jams. Chronic L2
+# EFFICIENCY SLOs (waste %, ghost-gap count, P50 ship-time) are 7d-cumulative /
+# slow-moving metrics the halt itself cannot fix, so halting on them is
+# self-perpetuating (the 2026-06-15→20 5-day false outage: paused → 0 ships →
+# cumulative waste stays breached → re-pause forever). L2 breaches are
+# observable signals (file-a-gap), never halt-class.
+slo_json="$(chump health --slo-check --json 2>/dev/null || true)"
 slo_rc=0
-chump health --slo-check 2>/dev/null || slo_rc=$?
-echo "[ci-health-gate] slo-check rc=$slo_rc"
+printf '%s' "$slo_json" | grep -q '"breached":true' && slo_rc=1
+l1_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+print(",".join(s.get("id","") for s in d.get("slos",[]) if s.get("breached") and str(s.get("id","")).startswith("L1-")))
+' 2>/dev/null || true)"
+all_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+print(",".join(s.get("id","") for s in d.get("slos",[]) if s.get("breached")))
+' 2>/dev/null || true)"
+echo "[ci-health-gate] slo breaches: L1=[${l1_breached_ids}] all=[${all_breached_ids}] (halt on L1 only — RESILIENT-146)"
 
-# ── Determine breach ─────────────────────────────────────────────────────────
+# ── Determine breach (RESILIENT-146: L1 safety + acute jam only) ──────────────
 breach_reason=""
-if [[ $slo_rc -ne 0 ]]; then
-    breach_reason="slo_breach"
+if [[ -n "$l1_breached_ids" ]]; then
+    breach_reason="slo_breach"          # L1 safety breach → halt-class
 elif [[ $blocked_pct -ge $JAM_THRESHOLD ]]; then
     breach_reason="pipeline_jam"
+fi
+# Chronic L2-only breach (no L1, no jam): observable signal, NOT a halt.
+if [[ -z "$breach_reason" && -n "$all_breached_ids" ]]; then
+    echo "[ci-health-gate] chronic L2 breach (${all_breached_ids}) — NOT pausing (file-a-gap class, RESILIENT-146)"
+    _emit "slo_chronic_breach" '"slos":"'"${all_breached_ids}"'","note":"L2 efficiency SLO breached; observable not halt-class (RESILIENT-146)"'
 fi
 
 # ── Spike path: write fleet-paused ───────────────────────────────────────────
@@ -113,10 +138,10 @@ if [[ -n "$breach_reason" ]]; then
     echo "[ci-health-gate] BREACH: reason=$breach_reason — pausing fleet"
     mkdir -p "$(dirname "$PAUSE_FILE")"
     ts="$(_ts)"
-    # Determine which SLOs breached when slo_rc != 0
+    # Record the ACTUAL breached L1 SLO ids (was hardcoded ["L1-SLO-1"]).
     slos_breached="[]"
-    if [[ $slo_rc -ne 0 ]]; then
-        slos_breached='["L1-SLO-1"]'
+    if [[ -n "$l1_breached_ids" ]]; then
+        slos_breached="$(printf '%s' "$l1_breached_ids" | python3 -c 'import json,sys; print(json.dumps([x for x in sys.stdin.read().strip().split(",") if x]))' 2>/dev/null || echo "[]")"
     fi
     blocked_null="null"
     if [[ "$breach_reason" == "pipeline_jam" ]]; then

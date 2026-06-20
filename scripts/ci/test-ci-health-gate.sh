@@ -54,8 +54,11 @@ FAKE_BIN="$TMPDIR_LOCAL/bin"
 mkdir -p "$FAKE_BIN"
 cat > "$FAKE_BIN/chump" <<'STUB'
 #!/usr/bin/env bash
-# Stub: chump health --slo-check always fails
+# Stub: chump health --slo-check reports an L1 SAFETY breach (halt-class).
+# RESILIENT-146: the gate pauses only on L1 breaches, so the stub emits
+# L1-breach JSON (not just exit 1) to exercise the pause path.
 if [[ "$1" == "health" && "$2" == "--slo-check" ]]; then
+    echo '{"slo_breaches":1,"slos":[{"id":"L1-SLO-1","target":"silent_agent = 0/week","breached":true}]}'
     exit 1
 fi
 exit 0
@@ -70,6 +73,7 @@ export PATH="$FAKE_BIN:$PATH"
 CHUMP_FLEET_PAUSE_FILE="$PAUSE_FILE_3" \
     CHUMP_CI_HEALTH_CONSEC_FILE="$CONSEC_FILE_3" \
     CHUMP_AMBIENT_LOG="$TMPDIR_LOCAL/ambient-3.jsonl" \
+    CHUMP_CI_HEALTH_JAM_THRESHOLD=101 \
     bash "$SCRIPT" 2>/dev/null && rc3=0 || rc3=$?
 export PATH="$_saved_path"
 if [[ -f "$PAUSE_FILE_3" ]]; then
@@ -86,6 +90,39 @@ if [[ -f "$PAUSE_FILE_3" ]]; then
     fi
 else
     fail "SLO failure did not write fleet-paused (rc=$rc3)"
+fi
+
+# ── 3b. RESILIENT-146: L2-only (efficiency) breach must NOT pause ──────────────
+# Chronic L2 SLOs (waste %, ghost-gap count) are 7d-cumulative; halting on them
+# is self-perpetuating (the 2026-06-15→20 5-day false outage). The gate emits an
+# observable slo_chronic_breach signal but leaves the fleet RUNNING.
+cat > "$FAKE_BIN/chump" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "health" && "$2" == "--slo-check" ]]; then
+    echo '{"slo_breaches":2,"slos":[{"id":"L1-SLO-1","breached":false},{"id":"L2-SLO-2","target":"waste < 5%","breached":true},{"id":"L2-SLO-5","target":"ghost-gap < 2","breached":true}]}'
+    exit 1
+fi
+exit 0
+STUB
+chmod +x "$FAKE_BIN/chump"
+PAUSE_FILE_3B="$TMPDIR_LOCAL/fleet-paused-3b"
+AMBIENT_3B="$TMPDIR_LOCAL/ambient-3b.jsonl"
+export PATH="$FAKE_BIN:$PATH"
+CHUMP_FLEET_PAUSE_FILE="$PAUSE_FILE_3B" \
+    CHUMP_CI_HEALTH_CONSEC_FILE="$TMPDIR_LOCAL/ci-health-recovery-3b" \
+    CHUMP_AMBIENT_LOG="$AMBIENT_3B" \
+    CHUMP_CI_HEALTH_JAM_THRESHOLD=101 \
+    bash "$SCRIPT" 2>/dev/null || true
+export PATH="$_saved_path"
+if [[ -f "$PAUSE_FILE_3B" ]]; then
+    fail "RESILIENT-146: L2-only efficiency breach wrote fleet-paused (must NOT halt the fleet)"
+else
+    ok "RESILIENT-146: L2-only efficiency breach does NOT pause the fleet"
+fi
+if grep -q slo_chronic_breach "$AMBIENT_3B" 2>/dev/null; then
+    ok "RESILIENT-146: L2-only breach emits observable slo_chronic_breach"
+else
+    fail "RESILIENT-146: L2-only breach did not emit slo_chronic_breach"
 fi
 
 # ── 4. chump gap reserve SUCCEEDS even when fleet-paused exists (INFRA-2424) ──
