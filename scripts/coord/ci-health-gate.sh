@@ -105,7 +105,7 @@ echo "[ci-health-gate] pipeline-jam check: total_open=$total_open total_blocked=
 # observable signals (file-a-gap), never halt-class.
 slo_json="$(chump health --slo-check --json 2>/dev/null || true)"
 slo_rc=0
-printf '%s' "$slo_json" | grep -q '"breached":true' && slo_rc=1
+grep -q '"breached":true' <<<"$slo_json" && slo_rc=1   # here-string: no pipefail-race (INFRA-1658)
 l1_breached_ids="$(printf '%s' "$slo_json" | python3 -c '
 import json,sys
 try: d=json.load(sys.stdin)
