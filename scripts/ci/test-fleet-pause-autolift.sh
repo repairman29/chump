@@ -43,7 +43,16 @@ BIN="$TMP/bin"; mkdir -p "$BIN"
 cat > "$BIN/chump" << 'STUB_EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "health" && "${2:-}" == "--slo-check" ]]; then
-    exit "${CHUMP_TEST_SLO_RC:-0}"
+    # RESILIENT-146: the gate parses --json for L1 (safety) breaches, not just
+    # the exit code. Map the test's CHUMP_TEST_SLO_RC to an L1-breach payload
+    # (halt-class) when non-zero, else an all-pass payload.
+    rc="${CHUMP_TEST_SLO_RC:-0}"
+    if [[ "$rc" == "0" ]]; then
+        echo '{"slo_breaches":0,"slos":[{"id":"L1-SLO-1","breached":false}]}'
+    else
+        echo '{"slo_breaches":1,"slos":[{"id":"L1-SLO-1","breached":true}]}'
+    fi
+    exit "$rc"
 fi
 exit 0
 STUB_EOF
