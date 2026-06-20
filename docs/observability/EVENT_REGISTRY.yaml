@@ -878,6 +878,17 @@ events:
       blocked_pct is the integer % of open PRs in BLOCKED/BEHIND state at check time.
       slo_rc is the exit code from `chump health --slo-check` (0=pass, 1=breach).
 
+  - kind: slo_chronic_breach
+    effect_metric: self
+    emitter: scripts/coord/ci-health-gate.sh (RESILIENT-146)
+    trigger: ci-health-gate.sh observed a chronic L2 EFFICIENCY SLO breach
+      (waste %, ghost-gap count, P50 ship-time) with NO L1 safety breach and no
+      pipeline jam. Observable signal only — the fleet is NOT paused (halting on
+      cumulative L2 metrics is self-perpetuating; cause of the 2026-06-15..20
+      5-day false outage, RESILIENT-146)
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, slos, note]
+
   - kind: pager_notified
     effect_metric: self
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
