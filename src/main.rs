@@ -90,6 +90,7 @@ mod fleet_health;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
+mod fleet_self_rescue_conductor; // EFFECTIVE-088: self-rescue conductor (the empty chair)
 mod fleet_spec; // INFRA-1483: declarative chump.fleet.yaml (Marcus M-B)
 mod fleet_status;
 mod fleet_tool;
@@ -1251,6 +1252,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump self-rescue-loop [--execute] [--grace-secs N]` (EFFECTIVE-088) — the
+    // autonomous conductor: detect a wedged fleet → propose self-rescue on the
+    // consensus bus → objection window → act. Dry-run unless --execute. Obeys the
+    // autonomy dial + kill switch. Intended to run as a launchd daemon.
+    if args.get(1).map(String::as_str) == Some("self-rescue-loop") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(fleet_self_rescue_conductor::run(&sub_args));
     }
 
     // `chump session-summary` (INFRA-1437) — list merged + armed + filed PRs

@@ -889,6 +889,48 @@ events:
     consumers: [ops-audit, observability]
     fields_required: [ts, kind, slos, note]
 
+  # ── Self-rescue conductor (EFFECTIVE-088 — the empty chair) ──────────────────
+  - kind: conductor_tick
+    effect_metric: self
+    emitter: src/fleet_self_rescue_conductor.rs (EFFECTIVE-088)
+    trigger: one conductor tick assessed fleet health; state=healthy|halted
+      (halted = autonomy dial 0 / kill switch); no wedge → no action
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, state]
+
+  - kind: conductor_proposed
+    effect_metric: self
+    emitter: src/fleet_self_rescue_conductor.rs (EFFECTIVE-088)
+    trigger: conductor detected a wedged fleet (no merges + pickable gaps, or a
+      stale fleet-paused sentinel) and raised a self-rescue FEEDBACK proposal on
+      the consensus bus with an objection window
+    consumers: [ops-audit, deliberator, observability]
+    fields_required: [ts, kind, corr_id, reason]
+
+  - kind: conductor_dryrun
+    effect_metric: self
+    emitter: src/fleet_self_rescue_conductor.rs (EFFECTIVE-088)
+    trigger: conductor would self-rescue but is in dry-run (no --execute); logs
+      the action it would take without performing it
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, corr_id, would, reason]
+
+  - kind: conductor_standdown
+    effect_metric: self
+    emitter: src/fleet_self_rescue_conductor.rs (EFFECTIVE-088)
+    trigger: a -1 veto landed on the conductor's self-rescue proposal within the
+      objection window; the conductor stood down (veto respected)
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, corr_id, objections]
+
+  - kind: conductor_acted
+    effect_metric: self
+    emitter: src/fleet_self_rescue_conductor.rs (EFFECTIVE-088)
+    trigger: conductor executed a self-rescue (cleared stale fleet-paused + kicked
+      ci-health-gate) after the objection window passed with no veto (--execute)
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, corr_id, action, reason]
+
   - kind: pager_notified
     effect_metric: self
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
