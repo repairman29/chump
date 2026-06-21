@@ -1053,3 +1053,11 @@ CHUMP_FLEET_BOT_PROVISIONING
 # detected in: (standard input)
 CHUMP_AUTH_MODE
 CHUMP_FLEET_BOT_SETUP
+
+# ── EFFECTIVE-088 fleet self-rescue conductor (src/fleet_self_rescue_conductor.rs) ──
+# Tier 3: override path to the autonomy-dial file (default ~/.chump/autonomy_level);
+# conductor fail-closes when the dial reads 0. Set by tests / fleet harness.
+CHUMP_AUTONOMY_LEVEL_FILE
+# Tier 2: objection-window seconds the conductor waits before acting on a self-rescue
+# proposal (any -1 vote within the window vetoes). Advanced tunable, not for new operators.
+CHUMP_CONDUCTOR_GRACE_SECS
