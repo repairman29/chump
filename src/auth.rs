@@ -671,6 +671,12 @@ mod tests {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // CREDIBLE-133: hermetic config home. Unless a test sets CHUMP_HOME
+        // explicitly, point it at a fresh empty temp dir so credential detection
+        // (source 3 = ~/.chump/config.toml via chump_config_path) never reads the
+        // developer's REAL config — which on a live box holds real creds and breaks
+        // the "no creds" / "no oauth" assertions. CHUMP_HOME is always saved+restored.
+        let sets_chump_home = vars.iter().any(|(k, _)| *k == "CHUMP_HOME");
         let saved: Vec<(String, Option<String>)> = vars
             .iter()
             .map(|(k, _)| (k.to_string(), std::env::var(k).ok()))
@@ -679,6 +685,10 @@ mod tests {
                     .iter()
                     .map(|k| (k.to_string(), std::env::var(k).ok())),
             )
+            .chain(std::iter::once((
+                "CHUMP_HOME".to_string(),
+                std::env::var("CHUMP_HOME").ok(),
+            )))
             .collect();
         for (k, v) in vars {
             std::env::set_var(k, v);
@@ -686,12 +696,30 @@ mod tests {
         for k in cleared {
             std::env::remove_var(k);
         }
+        let temp_home = if sets_chump_home {
+            None
+        } else {
+            let d = std::env::temp_dir().join(format!(
+                "chump-auth-test-home-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|x| x.as_nanos())
+                    .unwrap_or(0)
+            ));
+            let _ = std::fs::create_dir_all(&d);
+            std::env::set_var("CHUMP_HOME", &d);
+            Some(d)
+        };
         f();
         for (k, v) in &saved {
             match v {
                 Some(val) => std::env::set_var(k, val),
                 None => std::env::remove_var(k),
             }
+        }
+        if let Some(d) = temp_home {
+            let _ = std::fs::remove_dir_all(&d);
         }
     }
 
