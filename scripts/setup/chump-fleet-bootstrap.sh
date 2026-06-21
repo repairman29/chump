@@ -48,6 +48,10 @@ REQUIRED_DAEMONS=(
     "com.chump.oauth-refresh|scripts/setup/install-oauth-refresh-launchd.sh"
     # META-162: deliberator — tallies fleet votes, emits consensus_result, escalates NO_QUORUM.
     "com.chump.deliberator|scripts/setup/install-deliberator-launchd.sh"
+    # EFFECTIVE-264 (EFFECTIVE-088 activation): conductor — autonomous proposer that
+    # detects a wedged fleet by ground truth + emits a self-rescue consensus proposal
+    # (dry-run by default; arm with CHUMP_CONDUCTOR_ACT=1). Pairs with the deliberator.
+    "com.chump.conductor|scripts/setup/install-conductor-launchd.sh"
     # INFRA-2239: Curator supervisor — L3 detection+file+dispatch+restart daemon.
     # Without this, silently failing curators go undetected (32-hour incident
     # 2026-05-30). Runs every 300s via StartInterval launchd, not KeepAlive.
