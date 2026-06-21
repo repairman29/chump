@@ -1906,6 +1906,81 @@ Auto-scoping mirrors the `changes:` path-filter section of
 `.github/workflows/ci.yml`. Unrecognized paths fall back to `--scope all`
 so we never ship a regression because an exotic path was misclassified.
 
+## GitHub Actions: warnings vs errors in annotations (INFRA-1896, 2026-06-21)
+
+**The trap:** emitting `::warning` annotations via a GitHub Actions workflow step can cause the *job* to conclude with FAILURE even when all steps exit successfully — if the step that emits annotations uses `set -e` (strict error checking) and a command fails silently.
+
+**Why it happens:**
+
+GitHub Actions shell steps use `bash -e` by default, which exits on any non-zero status. When you emit annotations by parsing JSON and extracting fields, a malformed JSON object or missing key can cause the parsing command to fail. Example:
+
+```bash
+# This fails if JSON is malformed or "title" key missing:
+title=$(echo "$line" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["title"])')
+echo "::warning title=Check::${title}"
+```
+
+If any line in the input is invalid JSON, the Python command fails with non-zero exit. Since the step runs with `set -e`, the **entire step fails**, which causes the **job to fail** — even though warnings alone should never fail a job.
+
+**The fix (three techniques):**
+
+**1. Wrap annotation parsing in a dedicated Python script** (preferred for robustness):
+
+```bash
+python3 - <input-file> <<'PYEOF'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                title = obj.get("title", "Unknown")
+                evidence = "; ".join(obj.get("evidence", []))
+                print(f"::warning title=Check::{title} ({evidence})")
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                print(f"::debug::Skipped malformed line: {e}", file=sys.stderr)
+except Exception as e:
+    print(f"::error::Failed to parse: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+```
+
+The key: use try-except blocks to catch parsing errors without failing the entire step.
+
+**2. Use `set +e` before the annotation loop** (simpler but less clean):
+
+```bash
+set +e
+while IFS= read -r line; do
+    title=$(echo "$line" | jq -r .title)
+    echo "::warning title=Check::${title}"
+done < findings.jsonl
+exit_code=$?
+set -e
+exit $exit_code
+```
+
+**3. Use `jq` instead of Python** (if available and parsing is simple):
+
+```bash
+jq -r '.title + " (" + (.evidence | join("; ")) + ")"' findings.jsonl | \
+    while IFS= read -r line; do
+        echo "::warning title=Check::${line}"
+    done
+```
+
+**Testing (INFRA-1896):**
+
+Run `scripts/ci/test-repo-health-warnings-only.sh` — it verifies that:
+1. The annotation parser handles malformed JSON gracefully
+2. Warnings-only steps exit with status 0 (success)
+3. Empty or invalid findings don't cause step failure
+
+**In repo-health.yml:** the "Annotate findings" step now uses technique 1 (dedicated Python with exception handling) so that `::warning` annotations are emitted without causing job failure, fixing the false-positive PR blocks that occurred when pre-existing repo state (e.g., broken md-links) was flagged as warnings.
+
 ## Claude Code hook output channels — PreToolUse vs PostToolUse (INFRA-2043, 2026-05-27)
 
 Claude Code hook types have **different stdout routing**:
