@@ -38,21 +38,19 @@ if [ ! -f "$MSG_FILE" ]; then
     exit 0
 fi
 
-MSG="$(cat "$MSG_FILE")"
-
-# ── Fast-path: does the commit body contain any bypass token? ─────────────────
-# Check case-insensitively for any word containing "Bypass" or "Bypass-".
-# Use `case` pattern — no pipefail race (INFRA-1658).
-MSG_UPPER="$(echo "$MSG" | tr '[:lower:]' '[:upper:]')"
-case "$MSG_UPPER" in
-    *BYPASS*)
-        # Fall through to validation below.
-        ;;
-    *)
-        # No bypass token → nothing to validate.
-        exit 0
-        ;;
-esac
+# ── Detection: does the commit USE the INFRA-2407 4-trailer schema? ──────────
+# RESILIENT-150: trigger the 4-trailer requirement ONLY on the schema's own
+# trailer keys (^Bypass-Tier/Class/Reason/Followup:), NOT any "bypass" substring.
+# The old *BYPASS* substring match false-fired on (a) prose merely mentioning
+# "bypass"/"bypasses" and (b) the 12 sanctioned single-line *-Bypass: trailers
+# (Rust-First-Bypass, Test-Gate-Bypass, Off-Rails-Bypass, Bot-Merge-Bypass, …)
+# which each carry their OWN one-line validators — none of which is the INFRA-2407
+# 4-trailer schema. If ANY of the 4 schema keys appears, ALL 4 are required +
+# validated below; otherwise there is nothing for THIS validator to check.
+# (grep in `if`, not piped — no pipefail race, INFRA-1658.)
+if ! grep -qiE '^[[:space:]]*Bypass-(Tier|Class|Reason|Followup):' "$MSG_FILE" 2>/dev/null; then
+    exit 0
+fi
 
 # ── Legacy grandfather check ─────────────────────────────────────────────────
 # If the current commit SHA (if available) is in the allowlist, skip.
