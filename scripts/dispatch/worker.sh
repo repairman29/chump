@@ -239,6 +239,13 @@ except Exception:
     fi
     if [[ -n "$tok" ]]; then
         export CLAUDE_CODE_OAUTH_TOKEN="$tok"
+        # CREDIBLE-137: a valid subscription token is present — drop any inherited
+        # ANTHROPIC_API_KEY so `claude -p` uses OAuth, not a key claude PREFERS but
+        # which may be depleted (api_error_status=400 "Credit balance is too low"
+        # → rc=1 → circuit-break). Operator pays a flat subscription, not metered
+        # API credits. Mirrors run-fleet.sh's OAuth-first unset (line ~207) at the
+        # per-spawn level, where the inherited launchd/tmux env still carries the key.
+        unset ANTHROPIC_API_KEY 2>/dev/null || true
         return 0
     fi
     # Token file missing or empty — fall back to ANTHROPIC_API_KEY if available.
