@@ -461,7 +461,11 @@ def main() -> int:
             p == "P0"
             and (g.get("domain") or "").upper() == "MISSION"
         )
-        if worker_model == "haiku" and e in ("m", "l", "xl"):
+        # MISSION-047: P0 mission gaps bypass the haiku m/l/xl gate too — symmetric
+        # with the sonnet-xs bypass below. Without this, a P0-MISSION effort>=m gap
+        # is invisible to every haiku worker (and routing makes workers haiku), so
+        # it starves forever — the literal mechanism of MISSION-026.
+        if worker_model == "haiku" and e in ("m", "l", "xl") and not _is_p0_mission:
             continue
         if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
             continue
