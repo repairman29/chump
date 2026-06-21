@@ -21,7 +21,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PREFS_JS="$REPO_ROOT/web/v2/prefs.js"
 APP_JS="$REPO_ROOT/web/v2/app.js"
-AV_JS="$REPO_ROOT/web/v2/ambient-viewer.js"
+# CREDIBLE-135: web/v2/ambient-viewer.js is a TOMBSTONE (INFRA-1332) — the
+# canonical <chump-ambient-viewer> was reimplemented in app.js. Check the real file.
+AV_JS="$REPO_ROOT/web/v2/app.js"
 INDEX_HTML="$REPO_ROOT/web/v2/index.html"
 
 PASS=0
@@ -89,13 +91,17 @@ check "ambient-viewer.js sets ambient-kind-filter pref" \
 # ── 12. index.html loads prefs.js ────────────────────────────────────────────
 check "index.html includes prefs.js" \
   "grep -q 'prefs.js' '$INDEX_HTML'"
+# CREDIBLE-135: a comment mentioning 'web/v2/app.js' precedes the prefs.js
+# <script> tag, so a bare substring find is wrong. Match the trailing quote of
+# the real src="...js" tags via chr(34) (the comment has no quote after app.js).
 check "prefs.js appears before app.js in index.html" \
   "python3 -c \"
 import sys
 html = open('$INDEX_HTML').read()
-pi = html.find('prefs.js')
-ai = html.find('app.js')
-sys.exit(0 if pi < ai and pi >= 0 else 1)
+q = chr(34)
+pi = html.find('prefs.js' + q)
+ai = html.find('app.js' + q)
+sys.exit(0 if pi >= 0 and ai >= 0 and pi < ai else 1)
 \""
 
 # ── 13. PRODUCT-098 referenced ────────────────────────────────────────────────
