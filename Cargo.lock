@@ -1343,6 +1343,7 @@ dependencies = [
  "mimalloc",
  "mime_guess",
  "mistralrs",
+ "ml-dsa",
  "notify",
  "once_cell",
  "patch",
