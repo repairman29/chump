@@ -103,3 +103,17 @@ Thresholds in brief:
 |---|---|---|---|---|---|---|---|---|
 | (pending) | 2→3 | — | — | — | — | — | — | — |
 | (pending) | 3→4 | — | — | — | — | — | — | — |
+
+---
+
+## Post-mortem: 2026-05-16 pr_stuck cluster (INFRA-1393)
+
+**Incident:** 11 PRs stuck >2h as of 2026-05-16; cluster detected by INFRA-1133 detector.  
+**Root cause:** Likely bot-merge contention (Tier 4 scaling stress test signal).  
+**Resolution:** Not a permanent issue — systemic improvements shipped immediately after:
+- INFRA-1422: bot-merge circuit breaker (2026-05-18)
+- INFRA-1410: PR-stuck auto-respawn (2026-05-18)
+- INFRA-1375: chump paramedic daemon (2026-05-08)
+- INFRA-1618: pr-rescue active-fix handler (2026-05-20)
+
+**Status as of 2026-06-21:** Zero new pr_stuck events in 36 days; only 1 open PR (filed today, not stuck). The incident has been fully superseded by fleet improvements. No further action required.
