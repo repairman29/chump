@@ -172,7 +172,7 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     if git rev-parse --verify "$REMOTE/$BASE" >/dev/null 2>&1; then
         warn "Could not fetch $REMOTE/$BASE — using cached local ref (offline mode)"
         _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        printf '{"ts":"%s","kind":"reaper_fetch_fallback","remote":"%s","base":"%s","reason":"offline"}\n' \
+        printf '{"ts":"%s","kind":"reaper_fetch_fallback","gap_id":null,"remote":"%s","base":"%s","reason":"offline"}\n' \
             "$_ts" "$REMOTE" "$BASE" >> "$REAPER_LOCK_DIR/ambient.jsonl"
     else
         red "Could not fetch $REMOTE/$BASE and no local ref — aborting."; exit 1
