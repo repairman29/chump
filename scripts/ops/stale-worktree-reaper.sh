@@ -602,8 +602,7 @@ process_worktree() {
     arch_dest="${arch_dest//\//_}"
     arch_dest="$ARCHIVE_DIR/$(basename "$arch_dest")"
     local has_artifacts=0
-    if compgen -G "$wt_path/logs/ab/*.summary.json" >/dev/null \
-       || compgen -G "$wt_path/logs/ab/*.jsonl" >/dev/null; then
+    if find "$wt_path/logs/ab" -maxdepth 1 \( -name '*.summary.json' -o -name '*.jsonl' \) 2>/dev/null | grep -q .; then
         has_artifacts=1
     fi
 
