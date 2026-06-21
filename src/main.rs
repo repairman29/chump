@@ -14329,6 +14329,7 @@ async fn main() -> Result<()> {
         // INFRA-843: read required_model from gap registry and override
         // FLEET_MODEL so execute_gap picks up the right model tier.
         // Falls back to FLEET_MODEL env then default sonnet if unset.
+        let mut external_repo_target: Option<String> = None;
         {
             let repo_root = repo_path::repo_root();
             if let Ok(store) = gap_store::GapStore::open(&repo_root) {
@@ -14342,8 +14343,22 @@ async fn main() -> Result<()> {
                             prev.as_deref().unwrap_or("unset")
                         );
                     }
+                    external_repo_target = external_repo_target_from_skills(&g.skills_required);
                 }
             }
+        }
+        // MISSION-046: a gap tagged `external_repo:OWNER/REPO` cannot be executed
+        // by the internal agent loop (it runs in the Chump worktree). Route to
+        // `chump improve OWNER/REPO --apply`, which clones the target, implements
+        // in the clone, opens a PR on the EXTERNAL repo, and verify-merges. Without
+        // this, the mesh-worker's `--execute-gap` silently runs the internal loop
+        // against the wrong repo — the #1 blocker to the first BEAST-MODE merge.
+        if let Some(owner_repo) = external_repo_target {
+            eprintln!(
+                "[execute-gap] MISSION-046: gap {gap_id} is external_repo:{owner_repo} -> routing to `chump improve {owner_repo} --apply`"
+            );
+            let code = improve::run(&[owner_repo, "--apply".to_string()]);
+            std::process::exit(code);
         }
         match execute_gap::execute_gap(gap_id).await {
             Ok(reply) => {
@@ -17609,6 +17624,17 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// MISSION-046: extract OWNER/REPO from a gap's `skills_required` if it carries an
+/// `external_repo:OWNER/REPO` tag (single tag or comma/space/tab-separated list).
+/// Returns None for internal gaps so `--execute-gap` keeps the internal loop.
+fn external_repo_target_from_skills(skills: &str) -> Option<String> {
+    skills
+        .split([',', ' ', '\t'])
+        .find_map(|tok| tok.trim().strip_prefix("external_repo:"))
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty() && s.contains('/'))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::agent_factory;
@@ -17716,6 +17742,29 @@ mod tests {
     // ── INFRA-2112: --external-repo flag unit tests ──────────────────────────
 
     /// Parse --external-repo owner/repo form and verify tag + path resolution.
+    #[test]
+    fn mission_046_external_repo_target_parses_single_tag() {
+        assert_eq!(
+            crate::external_repo_target_from_skills("external_repo:repairman29/BEAST-MODE"),
+            Some("repairman29/BEAST-MODE".to_string())
+        );
+    }
+    #[test]
+    fn mission_046_external_repo_target_parses_in_list() {
+        assert_eq!(
+            crate::external_repo_target_from_skills("rust, external_repo:owner/repo, git"),
+            Some("owner/repo".to_string())
+        );
+    }
+    #[test]
+    fn mission_046_internal_gap_returns_none() {
+        assert_eq!(
+            crate::external_repo_target_from_skills("rust,sqlite,coord"),
+            None
+        );
+        assert_eq!(crate::external_repo_target_from_skills(""), None);
+    }
+
     #[test]
     fn infra_2112_external_repo_ownerslashrepo_flag_parses() {
         let args: Vec<String> = vec![
