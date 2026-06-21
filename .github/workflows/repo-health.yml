@@ -68,12 +68,29 @@ jobs:
       - name: Annotate findings
         if: steps.checks.outputs.count != '0'
         run: |
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            title=$(echo "$line" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["title"])')
-            evidence=$(echo "$line" | python3 -c 'import json,sys; print("; ".join(json.loads(sys.stdin.read())["evidence"]))')
-            echo "::warning title=Repo health::${title} (${evidence})"
-          done < .chump/pr-health-findings.jsonl
+          set +e
+          python3 - .chump/pr-health-findings.jsonl <<'PYEOF'
+          import json, sys
+          try:
+              with open(sys.argv[1]) as f:
+                  for line in f:
+                      line = line.strip()
+                      if not line:
+                          continue
+                      try:
+                          obj = json.loads(line)
+                          title = obj.get("title", "Unknown finding")
+                          evidence = "; ".join(obj.get("evidence", []))
+                          print(f"::warning title=Repo health::{title} ({evidence})")
+                      except (json.JSONDecodeError, KeyError, ValueError) as e:
+                          print(f"::warning title=Repo health parse error::{e}", file=sys.stderr)
+          except Exception as e:
+              print(f"::error::Failed to annotate findings: {e}", file=sys.stderr)
+              sys.exit(1)
+          PYEOF
+          exit_code=$?
+          set -e
+          exit $exit_code
 
       - name: Upload findings artifact
         if: steps.checks.outputs.count != '0'
