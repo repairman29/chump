@@ -15816,6 +15816,27 @@ async fn main() -> Result<()> {
         .filter(|s| !s.is_empty());
 
     if let Some(msg) = single_message {
+        // CREDIBLE-134: a bare single-token arg reaching this catch-all is an
+        // unknown/typo'd subcommand — every real subcommand (and help/--help/
+        // --version) returned earlier. Error with usage + a non-zero exit
+        // instead of silently routing to the model (which printed a
+        // hallucinated "Response from Agent" reply and exited 0 — a scripting
+        // footgun: a typo'd `chump <cmd>` in any fleet script "succeeds").
+        // Freeform NL stays available as a quoted multi-word string.
+        if args.len() == 2
+            && !msg.contains(char::is_whitespace)
+            && msg.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && msg
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            eprintln!("chump: unknown subcommand '{msg}'");
+            eprintln!(
+                "Run `chump help` for available commands, or quote a full question \
+                 for a freeform query (e.g. chump \"summarize today's ships\")."
+            );
+            std::process::exit(2);
+        }
         if let Err(e) = limits::check_message_len(&msg) {
             eprintln!("{}", e);
             return Ok(());
