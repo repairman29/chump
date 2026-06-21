@@ -53,6 +53,14 @@ installers:
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.opus-curator.plist + 10-min run
 
+  - id: conductor-launchd
+    why: EFFECTIVE-264 (EFFECTIVE-088 activation) — fleet self-rescue conductor. Every 30 min detects a wedged fleet by ground truth (recent merges + pickable P0/P1 + fleet-paused sentinel) and emits a self-rescue consensus proposal (dry-run by default; arm with CHUMP_CONDUCTOR_ACT=1). The autonomous proposer that fills the empty consensus chair so "chump drives the loop" is a live daemon, not code-on-disk.
+    priority: P1
+    install: bash scripts/setup/install-conductor-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.conductor
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.conductor.plist + 30-min run
+
   - id: paramedic-launchd
     why: INFRA-1397 — chump paramedic daemon runs every 10min rescuing stuck PRs (REBASE_DIRTY, RERUN_FLAKE, etc.). Without this, PR rescue is manual-only.
     priority: P1
