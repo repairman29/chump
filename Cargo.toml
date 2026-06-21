@@ -168,6 +168,10 @@ mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
+# INFRA-815: pin transitive deps to prevent ml-dsa API break on `cargo install` without --locked.
+# superboring 0.1.11 + ml-dsa 0.1.0-rc.11 removed `.signing_key()` used by superboring 0.1.10.
+superboring = "=0.1.10"
+ml-dsa = "=0.1.0-rc.9"
 mimalloc = { version = "0.1", default-features = false }
 wasmtime = "45"
 wasmtime-wasi = "45"
