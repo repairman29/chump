@@ -393,6 +393,15 @@ events:
     consumers: [fleet-brief, waste_tally, watchdog]
     fields_required: [gap_id, agent_id, idle_s]
 
+  - kind: stall_deferred_build
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-157)
+    trigger: stall threshold reached BUT a cargo/rustc/clippy-driver/sccache build is
+      an active descendant of the claude -p pid — the cycle is compiling, not stuck, so
+      the INFRA-705 stall kill is deferred and the idle clock reset
+    consumers: [fleet-brief, waste_tally]
+    fields_required: [gap_id, agent_id, idle_s]
+
   - kind: worker_cooldown
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (FLEET-051)

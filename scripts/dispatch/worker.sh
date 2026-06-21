@@ -1241,6 +1241,30 @@ Operator or sibling worker can rescue this branch via:
                 # Complements the first-output watchdog: that one fires on zero
                 # initial output; this one fires on mid-cycle output stalls.
                 _stall_threshold="${CHUMP_STALL_THRESHOLD_S:-120}"
+                # RESILIENT-157: true (0) if a cargo/rustc/clippy-driver/sccache
+                # build is an ACTIVE DESCENDANT of $1 (the claude -p pid) — i.e.
+                # the cycle is silently COMPILING (a workspace clippy/build can run
+                # 3-5min streaming no output to claude stdout), not stuck. Walks the
+                # process tree breadth-first (claude → sh → cargo → rustc).
+                _has_build_descendant() {
+                    local frontier="$1" next pid kid cmd
+                    local -i depth=0
+                    while [[ -n "${frontier// /}" && $depth -lt 8 ]]; do
+                        next=""
+                        for pid in $frontier; do
+                            for kid in $(pgrep -P "$pid" 2>/dev/null); do
+                                cmd=$(ps -o comm= -p "$kid" 2>/dev/null)
+                                case "$cmd" in
+                                    *cargo*|*rustc*|*clippy-driver*|*sccache*) return 0 ;;
+                                esac
+                                next="$next $kid"
+                            done
+                        done
+                        frontier="$next"
+                        depth=$((depth+1))
+                    done
+                    return 1
+                }
                 (
                     _sd_last_sz=0
                     _sd_last_active=$SECONDS
@@ -1253,6 +1277,20 @@ Operator or sibling worker can rescue this branch via:
                         fi
                         _sd_idle=$(( SECONDS - _sd_last_active ))
                         if [[ $_sd_idle -ge $_stall_threshold ]]; then
+                            # RESILIENT-157: a clippy/cargo build streams no output
+                            # for minutes — that's compiling, not stalled. Defer the
+                            # kill while a build descendant is live; reset the idle
+                            # clock and re-check next interval. A genuinely-hung
+                            # claude has no active build child → still killed below.
+                            if _has_build_descendant "$_claude_pid"; then
+                                printf '{"ts":"%s","kind":"stall_deferred_build","gap_id":"%s","agent_id":"%s","idle_s":%d}\n' \
+                                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                                    "${GAP_ID:-unknown}" "${AGENT_ID:-unknown}" "$_sd_idle" \
+                                    >> "${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl" 2>/dev/null || true
+                                log "INFRA-705/RESILIENT-157: ${_sd_idle}s no-output but a cargo/rustc build is active — deferring stall kill (compiling, not stuck)"
+                                _sd_last_active=$SECONDS
+                                continue
+                            fi
                             printf '{"ts":"%s","kind":"cycle_stall_killed","gap_id":"%s","agent_id":"%s","idle_s":%d}\n' \
                                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                                 "${GAP_ID:-unknown}" \
