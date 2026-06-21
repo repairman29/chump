@@ -65,8 +65,8 @@ routes:
       - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-medium-fallback }
 
   - match: { effort: xs }
-    model_class: haiku
-    why: trivial codemod-class — fast cheap models suffice; sonnet workers skip these
+    model_class: sonnet
+    why: RESILIENT-154 — sonnet is the floor. Haiku stalled ~60% of cycles (runs cargo check on shell-only gaps, hesitates in --dangerously-skip-permissions) and saves $0 on a flat subscription.
     candidates:
       - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fast-cheap }
       - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-free-fallback }
@@ -75,8 +75,8 @@ routes:
   # default_candidates (which mixes free-tier + claude); explicit makes
   # the cascade-first intent visible to operators reading the table.
   - match: { effort: s }
-    model_class: haiku
-    why: small work — cascade-first with frontier fallback at default
+    model_class: sonnet
+    why: RESILIENT-154 — sonnet is the floor (haiku removed; it stalls and saves nothing on a flat subscription)
     candidates:
       - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-small }
       - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-small-fallback }
