@@ -4792,6 +4792,9 @@ class ChumpAmbientViewer extends HTMLElement {
   ];
 
   connectedCallback() {
+    // CREDIBLE-135: restore the operator's last kind filter (PRODUCT-098 chumpPrefs)
+    // so the ambient-viewer selection survives reloads.
+    this.#kindFilter = window.chumpPrefs?.get('ambient-kind-filter', '') || '';
     this.#renderShell();
     this.#subscribe();
   }
@@ -4816,6 +4819,7 @@ class ChumpAmbientViewer extends HTMLElement {
       <ol class="amb-list" tabindex="0" aria-label="Ambient event stream"></ol>
     `;
     const sel = this.querySelector('.amb-filter');
+    if (this.#kindFilter) sel.value = this.#kindFilter;
     sel.addEventListener('change', (e) => this.#changeFilter(e.target.value));
     const list = this.querySelector('.amb-list');
     list.addEventListener('scroll', () => this.#onScroll());
@@ -4913,6 +4917,8 @@ class ChumpAmbientViewer extends HTMLElement {
 
   #changeFilter(kind) {
     this.#kindFilter = kind || '';
+    // CREDIBLE-135: persist so the choice survives reloads (PRODUCT-098 chumpPrefs).
+    window.chumpPrefs?.set('ambient-kind-filter', this.#kindFilter);
     this.#buffer = [];
     this.#pendingNew = 0;
     const list = this.querySelector('.amb-list');
