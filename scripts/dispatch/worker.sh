@@ -733,6 +733,29 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
             FLEET_MODEL="$_gap_required_model"
         fi
     fi
+    # MISSION-048: P0-MISSION gaps with effort>=m must run on a capable model.
+    # The routing.yaml cost-downgrade (INFRA-471, above) sends them to haiku,
+    # which stalls on m+ effort (INFRA-705 stall-detector kills the cycle; 30-min
+    # timeouts) — so the picker now CLAIMS them (MISSION-047) but they never
+    # finish. Force sonnet for P0 + domain=MISSION + effort in m/l/xl when the
+    # resolution landed on haiku. Sibling of MISSION-047 (pickability vs capability).
+    if [[ "$FLEET_MODEL" == "haiku" ]]; then
+        _m048_override="$(printf '%s' "$gap_json" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+g = next((x for x in d.get('gaps', []) if x.get('id') == '$GAP_ID'), None) \
+    or next((x for x in [d] if x.get('id') == '$GAP_ID'), {})
+p = (g.get('priority') or '').upper()
+dom = (g.get('domain') or '').upper()
+e = (g.get('effort') or '').lower()
+print('1' if (p == 'P0' and dom == 'MISSION' and e in ('m', 'l', 'xl')) else '0')
+" 2>/dev/null || echo 0)"
+        if [[ "$_m048_override" == "1" ]]; then
+            log "MISSION-048: P0-MISSION gap=$GAP_ID effort>=m — forcing model haiku → sonnet (haiku stalls on m+ effort; mission work bypasses the cost-downgrade)"
+            FLEET_MODEL="sonnet"
+            _model_selected_reason="mission_048_capability_override"
+        fi
+    fi
     # Emit kind=model_selected for observability (INFRA-843)
     _amb_ms="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
     mkdir -p "$(dirname "$_amb_ms")" 2>/dev/null || true
