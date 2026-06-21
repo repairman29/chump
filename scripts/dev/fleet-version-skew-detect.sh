@@ -52,30 +52,35 @@ if ! git fetch origin main --quiet 2>/dev/null; then
   exit 0
 fi
 
-# ── 2. Commits that changed worker.sh in origin/main but not in HEAD ──────────
-LOCAL_SHA="$(git rev-parse HEAD 2>/dev/null || echo "")"
+# ── 2. RESILIENT-155: compare the WORKING-TREE worker.sh (what the fleet
+# actually executes) against origin/main — NOT HEAD. The main checkout's HEAD is
+# PERMANENTLY behind origin/main: the dirty tree (docs/gaps/*.yaml + state.db
+# mutate constantly) blocks `git pull`/ff-merge, so HEAD never advances.
+# RESILIENT-152 self-sync keeps the WORKING TREE current (via
+# `git checkout origin/main -- scripts/`) without advancing HEAD. A HEAD-based
+# check therefore reports skew FOREVER even when the working tree is current →
+# the autorestart daemon loops endlessly. Measure what the workers run.
 MAIN_SHA="$(git rev-parse origin/main 2>/dev/null || echo "")"
-
-if [[ -z "$LOCAL_SHA" || -z "$MAIN_SHA" ]]; then
-  log "could not resolve HEAD or origin/main SHA — skipping"
+if [[ -z "$MAIN_SHA" ]]; then
+  log "could not resolve origin/main SHA — skipping"
   exit 0
 fi
 
-if [[ "$LOCAL_SHA" = "$MAIN_SHA" ]]; then
-  log "HEAD == origin/main — no skew"
+# GATE: does the working-tree worker.sh differ from origin/main? If self-sync
+# has deployed the current version, this is clean → no skew (breaks the loop).
+if git diff --quiet "origin/main" -- "$WORKER_PATH" 2>/dev/null; then
+  log "working-tree worker.sh == origin/main — no skew (self-sync current)"
   exit 0
 fi
 
-# Count commits behind on the worker file specifically.
+# Informational only: how many origin/main commits since HEAD touched worker.sh
+# (context for the report — the GATE above is the working-tree diff, not this).
+LOCAL_SHA="$(git rev-parse HEAD 2>/dev/null || echo "")"
 COMMITS_BEHIND=$(git log --oneline "${LOCAL_SHA}..${MAIN_SHA}" -- "$WORKER_PATH" 2>/dev/null | wc -l | tr -d ' ')
+if [[ -z "$COMMITS_BEHIND" || "$COMMITS_BEHIND" -eq 0 ]]; then COMMITS_BEHIND=1; fi
 
-if [[ "$COMMITS_BEHIND" -eq 0 ]]; then
-  log "worker.sh unchanged in origin/main since HEAD — no skew"
-  exit 0
-fi
-
-# ── 3. Identify affected lines (changed hunks in worker.sh) ───────────────────
-DIFF_OUTPUT="$(git diff "${LOCAL_SHA}..${MAIN_SHA}" -- "$WORKER_PATH" 2>/dev/null || true)"
+# ── 3. Identify affected lines (working tree vs origin/main) ───────────────────
+DIFF_OUTPUT="$(git diff "origin/main" -- "$WORKER_PATH" 2>/dev/null || true)"
 
 # Extract only added/removed lines (not hunk headers).
 AFFECTED_LINES="$(printf '%s\n' "$DIFF_OUTPUT" \

@@ -230,6 +230,21 @@ _run_periodic_checks() {
         if ! "$_skew_script" --quiet --no-emit 2>/dev/null; then
             # Skew detected (exit 1)
             if _no_inflight_pr_for_skew; then
+                # RESILIENT-155: DEPLOY current scripts to the working tree
+                # BEFORE restarting. The skew detector (post-RESILIENT-155)
+                # reports skew when the working-tree worker.sh differs from
+                # origin/main — i.e. the running fleet is on stale code. A bare
+                # restart would relaunch on the SAME stale scripts → infinite
+                # loop. Deploying first (the same surgical checkout RESILIENT-152
+                # self-sync uses; never touches state.db/.chump-locks/docs/gaps)
+                # makes the next launch current → the detector clears → converges.
+                _log "coord-affecting version skew detected — deploying current scripts to working tree before restart"
+                if git -C "$REPO_ROOT" checkout origin/main -- scripts docs/dispatch/routing.yaml 2>/dev/null; then
+                    git -C "$REPO_ROOT" reset -q -- scripts docs/dispatch/routing.yaml 2>/dev/null || true
+                    _log "skew deploy: working-tree scripts updated to origin/main"
+                else
+                    _log "skew deploy: git checkout failed — restarting anyway (workers will retry)"
+                fi
                 _log "coord-affecting version skew detected — triggering skew restart"
                 _restart_with_grace "version_skew" \
                     "worker.sh behind origin/main on coord-affecting paths (INFRA-609)" &
