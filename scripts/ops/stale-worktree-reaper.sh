@@ -587,10 +587,10 @@ process_worktree() {
     else
         # Dry-run: just report what would happen.
         local _dr_uncommitted _dr_unpushed
-        _dr_uncommitted=$(git -C "$wt_path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        _dr_uncommitted=$(git -C "$wt_path" status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)
         _dr_unpushed=0
         if git -C "$wt_path" rev-parse @{u} >/dev/null 2>&1; then
-            _dr_unpushed=$(git -C "$wt_path" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ')
+            _dr_unpushed=$(git -C "$wt_path" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ' || echo 0)
         fi
         if [[ "$_dr_uncommitted" -gt 0 || "$_dr_unpushed" -gt 0 ]]; then
             info "  [dry-run] would stash uncommitted=$_dr_uncommitted / unpushed=$_dr_unpushed to wip/<gap>-<ts>"
