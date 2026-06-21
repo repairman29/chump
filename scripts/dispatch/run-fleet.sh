@@ -461,7 +461,32 @@ _auth_probe_error=""
 
 if [[ "$FLEET_BACKEND" == "claude" ]]; then
     echo "[run-fleet] INFRA-621: probing auth path ($_fleet_auth_path)..."
-    _probe_out=$(timeout 30 claude -p "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+    # CREDIBLE-138: the probe is a convenience pre-check — every worker
+    # re-validates its own auth before each claude -p spawn (worker.sh
+    # refresh_oauth_token, CREDIBLE-137). So a SINGLE transient probe failure
+    # (rate-limit / concurrent-claude contention at launch / cold-start beyond
+    # the old 30s budget) must NOT abort the entire fleet launch with 0 panes.
+    # Retry up to N attempts with a short backoff and succeed on the first green
+    # one. Two further hardenings vs the original `timeout 30 claude -p ok`:
+    #  - 90s timeout: claude -p cold-start under launch-moment load spikes past 30s.
+    #  - on the subscription path, probe with ANTHROPIC_API_KEY unset so we test
+    #    the OAuth credential workers actually use, never a key claude prefers but
+    #    that may be depleted ("Credit balance is too low") — same trap as worker.sh.
+    _probe_rc=1
+    _probe_out=""
+    _probe_attempts="${CHUMP_FLEET_PROBE_ATTEMPTS:-3}"
+    for _attempt in $(seq 1 "$_probe_attempts"); do
+        if [[ "$_fleet_auth_mode" == "subscription" ]]; then
+            _probe_out=$(env -u ANTHROPIC_API_KEY timeout 90 claude -p "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+        else
+            _probe_out=$(timeout 90 claude -p "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+        fi
+        [[ $_probe_rc -eq 0 ]] && break
+        if [[ "$_attempt" -lt "$_probe_attempts" ]]; then
+            echo "[run-fleet] INFRA-621: probe attempt $_attempt/$_probe_attempts failed (rc=$_probe_rc); retrying in 3s..." >&2
+            sleep 3
+        fi
+    done
 
     if [[ $_probe_rc -eq 0 ]]; then
         echo "[run-fleet] INFRA-621: auth probe succeeded"
