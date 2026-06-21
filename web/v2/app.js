@@ -2161,240 +2161,6 @@ class ChumpViewAudit extends HTMLElement {
     `;
     this.#wireToolbar();
     this.#load();
-
-// ── <chump-view-network-audit> (PRODUCT-112) ────────────────────────────────
-// Archetype 1 (offline solo dev) trust signal. The status footer air-gap
-// slot drills here. Renders a chronological list of outbound HTTP requests
-// Chump has made — sourced from /api/ambient/recent filtered to the
-// outbound-network event kinds (github_api_call, outbound_http_call,
-// bash_call with curl/wget).
-//
-// Behavior per docs/design/OPERATOR_CONSOLE_V2.md (archetype 1):
-//   - When air-gap mode is on AND any non-github row appears: red banner
-//     "WARN — air-gap claim violated by N outbound calls"
-//   - When air-gap mode is on AND ZERO non-github rows: empty state
-//     celebrates the win ("No outbound traffic. Air-gap claim holds.")
-//   - github.com is the documented exception (PR ship pipeline) — shown
-//     in a footnote, never triggers a violation banner
-//
-// Time window: last 10m / 1h / 24h / since-process-start. Defaults to 1h.
-class ChumpViewNetworkAudit extends HTMLElement {
-  #rows = [];
-  #airgap = null; // true | false | null
-  #window = '1h';
-  #pollTimer = null;
-
-  connectedCallback() {
-    this.#window = window.chumpPrefs?.get('network.window', '1h') || '1h';
-    this.innerHTML = `
-      <section class="view-header">
-        <h2>Network audit</h2>
-        <p class="view-subtitle">Outbound HTTP calls since process start — archetype-1 air-gap trust signal</p>
-      </section>
-      <section class="netaudit-banner" id="netaudit-banner" hidden></section>
-      <section class="netaudit-toolbar" role="toolbar" aria-label="Network audit window">
-        <div class="netaudit-chips" role="radiogroup" aria-label="Time window">
-          ${['10m', '1h', '24h', 'all'].map((w) => `
-            <button type="button" class="netaudit-chip" data-window="${w}"
-                    aria-pressed="${this.#window === w ? 'true' : 'false'}">${w}</button>
-          `).join('')}
-        </div>
-        <button type="button" class="netaudit-export" aria-label="Export visible rows as JSONL">Export JSONL</button>
-      </section>
-      <section class="netaudit-stats" id="netaudit-stats" aria-live="polite"></section>
-      <section class="netaudit-list" id="netaudit-list" aria-live="polite" aria-busy="true">
-        <p class="placeholder">Loading network audit…</p>
-      </section>
-      <footer class="netaudit-footnote">
-        Note: <code>github.com</code> / <code>api.github.com</code> are documented
-        exceptions for the PR ship pipeline. They do not violate the air-gap claim.
-      </footer>
-    `;
-    this.querySelectorAll('[data-window]').forEach((b) => {
-      b.addEventListener('click', () => { this.#window = b.dataset.window; window.chumpPrefs?.set('network.window', this.#window); this.#load(); });
-    });
-    this.querySelector('.netaudit-export')?.addEventListener('click', () => this.#export());
-    this.#load();
-    // Auto-refresh every 30s so a fresh outbound call appears quickly.
-    this.#pollTimer = setInterval(() => this.#load(), 30_000);
-    try {
-      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
-        kind: 'network_audit_viewed',
-        window: this.#window,
-        ts: new Date().toISOString(),
-
-// ── <chump-view-fleet-health> (INFRA-1203) ──────────────────────────────────
-// Fleet operator's morning "how is everything?" view. Per
-// docs/design/OPERATOR_CONSOLE_V2.md §footer: this view is the drill-in for
-// the 4 pillar grades + KPI strip + SLO breach list + GraphQL budget.
-//
-// Lives in AMBIENT cadence as 'health' sub-tab. The status footer
-// (PRODUCT-107) pillar slot click-drills here.
-//
-// Backend endpoint /api/fleet/health doesn't exist yet (file backend follow-up
-// gap). For the MVP this view composes existing endpoints:
-//   - /api/stack-status (rate_limit + cognitive_control fields)
-//   - /api/dashboard (fleet_status + last_heartbeat_iso + fleet_status_reason)
-//   - /api/telemetry/cost (cost burn)
-//   - chumpPrefs cost.thresholds (operator-tunable warn/red bands)
-//
-// Pillar grades use placeholder dashes today; when a real grading endpoint
-// ships (file as INFRA-NEW), the panel will wire to it. The structural shell
-// is here so the wiring is a 30-line addition rather than a new view.
-class ChumpViewFleetHealth extends HTMLElement {
-  #pollTimer = null;
-  #last = { stack: null, dashboard: null, cost: null };
-
-  connectedCallback() {
-    this.innerHTML = `
-      <section class="view-header">
-        <h2>Fleet health</h2>
-        <p class="view-subtitle">Pillars · KPIs · SLOs · API budget — the operator HUD drill-in</p>
-      </section>
-      <section class="fh-grid">
-        <article class="fh-panel fh-pillars">
-          <header class="fh-panel-header"><h3>🏛 Pillar grades</h3></header>
-          <div class="fh-pillar-quadrant" id="fh-pillar-quadrant">
-            ${['effective','credible','resilient','zero-waste'].map((p) => `
-              <div class="fh-pillar-cell fh-pillar-${p}" data-pillar="${p}">
-                <span class="fh-pillar-label">${p.toUpperCase()}</span>
-                <span class="fh-pillar-grade" id="fh-grade-${p}">—</span>
-                <span class="fh-pillar-trend" id="fh-trend-${p}"></span>
-              </div>
-            `).join('')}
-          </div>
-          <p class="fh-panel-footnote">
-            Live grading endpoint pending — placeholder shows the slot.
-            Run <code>chump mission-grade</code> in a terminal for current grades.
-          </p>
-        </article>
-        <article class="fh-panel fh-kpis">
-          <header class="fh-panel-header"><h3>📈 KPI strip</h3></header>
-          <div class="fh-kpis-grid">
-            <div class="fh-kpi">
-              <span class="fh-kpi-value" id="fh-kpi-fleet">—</span>
-              <span class="fh-kpi-label">fleet</span>
-            </div>
-            <div class="fh-kpi">
-              <span class="fh-kpi-value" id="fh-kpi-cost">$—</span>
-              <span class="fh-kpi-label">cost / session</span>
-            </div>
-            <div class="fh-kpi">
-              <span class="fh-kpi-value" id="fh-kpi-heartbeat">—</span>
-              <span class="fh-kpi-label">last heartbeat</span>
-            </div>
-            <div class="fh-kpi">
-              <span class="fh-kpi-value" id="fh-kpi-ships">—</span>
-              <span class="fh-kpi-label">ships (24h, rough)</span>
-            </div>
-          </div>
-        </article>
-        <article class="fh-panel fh-slos">
-          <header class="fh-panel-header"><h3>🎯 SLO status</h3></header>
-          <ul class="fh-slo-list" id="fh-slo-list">
-            <li class="placeholder">Loading SLO check…</li>
-          </ul>
-          <p class="fh-panel-footnote">
-            Sourced from <code>fleet_status_reason</code> on <code>/api/dashboard</code> (INFRA-1206). Click <a href="/v2/?view=settings">CONFIG → Settings</a> to tune thresholds.
-          </p>
-        </article>
-        <article class="fh-panel fh-budget">
-          <header class="fh-panel-header"><h3>🔋 GraphQL budget</h3></header>
-          <div class="fh-budget-gauge">
-            <div class="fh-budget-bar"><div class="fh-budget-fill" id="fh-budget-fill" style="width:0%"></div></div>
-            <span class="fh-budget-pct" id="fh-budget-pct">—</span>
-          </div>
-          <p class="fh-panel-footnote" id="fh-budget-footnote">
-            Loading rate-limit state…
-
-// ── <chump-view-coord> (INFRA-1204) ─────────────────────────────────────────
-// A2A coordination panel — inbox + INTENT board + PR-nudge log in one pane.
-// Surfaces the consumer side of INFRA-1115 (mailboxes), INFRA-1116 (INTENT
-// gate), INFRA-1117 (chump-pr-nudge) so operators can MONITOR multi-agent
-// coordination in real time + intervene (force-override an INTENT, mark
-// nudge as acked, peek at any session's inbox).
-//
-// Sits in AMBIENT cadence per docs/design/OPERATOR_CONSOLE_V2.md §canvas.
-//
-// Three panels stacked:
-//   1. INBOX     — /api/inbox/{session} for the operator's chosen session
-//                  + dropdown to pick from recently-active sessions
-//   2. INTENT    — /api/ambient/recent?kind=intent_announced (last 5min,
-//                  filtered to entries with no matching CLAIM within 60s)
-//   3. NUDGES    — /api/ambient/recent?kind=pr_nudge_emitted (last 24h)
-class ChumpViewCoord extends HTMLElement {
-  #pollTimer = null;
-  #selectedSession = null;
-  #sessions = [];      // [{id, last_event_ts}]
-  #inbox = [];
-  #intents = [];
-  #nudges = [];
-
-  connectedCallback() {
-    this.#selectedSession = window.chumpPrefs?.get('coord.session', null) || null;
-    this.innerHTML = `
-      <section class="view-header">
-        <h2>Coordination</h2>
-        <p class="view-subtitle">Inbox + INTENT board + PR-nudge log — the a2a consumption side</p>
-      </section>
-      <section class="coord-panels">
-        <article class="coord-panel coord-inbox">
-          <header class="coord-panel-header">
-            <h3>📬 Inbox</h3>
-            <label class="coord-session-picker">
-              session
-              <select id="coord-session-select" aria-label="Select inbox session"></select>
-            </label>
-            <span class="coord-stat" id="coord-inbox-count">…</span>
-          </header>
-          <ul class="coord-list" id="coord-inbox-list" aria-live="polite">
-            <li class="placeholder">Loading inbox…</li>
-          </ul>
-        </article>
-        <article class="coord-panel coord-intents">
-          <header class="coord-panel-header">
-            <h3>🎯 INTENT board</h3>
-            <span class="coord-stat" id="coord-intents-count">…</span>
-          </header>
-          <ul class="coord-list" id="coord-intents-list" aria-live="polite">
-            <li class="placeholder">Loading INTENT events…</li>
-          </ul>
-          <p class="coord-panel-footnote">
-            Recent INTENT announcements (last 5 min). Operators can override a stale INTENT via <code>scripts/coord/broadcast.sh</code>.
-          </p>
-        </article>
-        <article class="coord-panel coord-nudges">
-          <header class="coord-panel-header">
-            <h3>🔔 PR-nudge log</h3>
-            <span class="coord-stat" id="coord-nudges-count">…</span>
-          </header>
-          <ul class="coord-list" id="coord-nudges-list" aria-live="polite">
-            <li class="placeholder">Loading nudge log…</li>
-          </ul>
-          <p class="coord-panel-footnote">
-            chump-pr-nudge.sh history — 5 classes: dirty / blocked-ci / orphan-disarmed / base-modified / clean-not-merged.
-          </p>
-        </article>
-      </section>
-    `;
-    this.#load();
-    this.#pollTimer = setInterval(() => this.#load(), 30_000);
-    try {
-      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
-        kind: 'fleet_health_view_session', ts: new Date().toISOString(),
-
-    this.querySelector('#coord-session-select')?.addEventListener('change', (e) => {
-      this.#selectedSession = e.target.value || null;
-      window.chumpPrefs?.set('coord.session', this.#selectedSession);
-      this.#loadInbox();
-    });
-    this.#loadAll();
-    this.#pollTimer = setInterval(() => this.#loadAll(), 20_000);
-    try {
-      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
-        kind: 'coord_view_session', ts: new Date().toISOString(),
-      }));
-    } catch {}
   }
 
   disconnectedCallback() {
@@ -2468,28 +2234,6 @@ class ChumpViewCoord extends HTMLElement {
       this.#render();
     } catch (err) {
       if (list) list.innerHTML = `<p class="placeholder">Could not load audit feed: ${this.#esc(String(err))}</p>`;
-
-
-  async #load() {
-    const list = this.querySelector('#netaudit-list');
-    if (list) list.setAttribute('aria-busy', 'true');
-    try {
-      // Pull air-gap mode in parallel with the ambient tail.
-      const [stack, ambient] = await Promise.all([
-        fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
-        fetch(`/api/ambient/recent?n=500&kind=github_api_call,outbound_http_call`).then((r) => r.ok ? r.json() : null).catch(() => null),
-      ]);
-      this.#airgap = stack?.air_gap_mode === true;
-      const events = ambient?.events || ambient?.rows || ambient || [];
-      const sinceMs = this.#windowSinceMs();
-      this.#rows = events
-        .map((e) => this.#normalise(e))
-        .filter((r) => r.host)
-        .filter((r) => sinceMs == null || r.ts_ms >= sinceMs)
-        .sort((a, b) => b.ts_ms - a.ts_ms);
-      this.#render();
-    } catch (err) {
-      if (list) list.innerHTML = `<p class="placeholder">Could not load network audit: ${this.#esc(String(err))}</p>`;
     }
     if (list) list.setAttribute('aria-busy', 'false');
   }
@@ -2532,6 +2276,198 @@ class ChumpViewCoord extends HTMLElement {
         </thead>
         <tbody>
           ${this.#filtered.map((r, i) => this.#renderRow(r, i)).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  #renderRow(r, i) {
+    const rowId = `audit-row-${i}`;
+    const isExpanded = this.#expanded.has(rowId);
+    const outcomeClass = r.outcome === 'approved' ? 'audit-outcome-ok'
+                       : r.outcome === 'denied'   ? 'audit-outcome-bad'
+                       : 'audit-outcome-info';
+    return `
+      <tr class="audit-row" data-row-id="${rowId}" tabindex="0">
+        <td class="audit-cell-ts">${this.#fmtTs(r.ts)}</td>
+        <td class="audit-cell-kind"><span class="audit-kind audit-kind-${r.kind}">${r.kind}</span></td>
+        <td class="audit-cell-session"><button type="button" class="audit-pill" data-filter-session="${this.#escAttr(r.session_id)}">${this.#shortSession(r.session_id)}</button></td>
+        <td class="audit-cell-gap">${r.gap_id ? `<button type="button" class="audit-pill" data-filter-gap="${this.#escAttr(r.gap_id)}">${this.#esc(r.gap_id)}</button>` : '—'}</td>
+        <td class="audit-cell-summary">${this.#esc(r.summary).slice(0, 200)}</td>
+        <td class="audit-cell-outcome"><span class="audit-outcome ${outcomeClass}">${r.outcome}</span></td>
+      </tr>
+      ${isExpanded ? `<tr class="audit-row-expansion"><td colspan="6"><pre><code>${this.#esc(JSON.stringify(r.payload, null, 2))}</code></pre></td></tr>` : ''}
+    `;
+  }
+
+  #onRowClick(e) {
+    // Click on a session/gap pill → set filter.
+    const sessBtn = e.target.closest('[data-filter-session]');
+    if (sessBtn) {
+      this.#filters.session = sessBtn.dataset.filterSession;
+      this.#filters.gap = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.session;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    const gapBtn = e.target.closest('[data-filter-gap]');
+    if (gapBtn) {
+      this.#filters.gap = gapBtn.dataset.filterGap;
+      this.#filters.session = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.gap;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    // Click on the row body → toggle expansion.
+    const tr = e.target.closest('.audit-row');
+    if (!tr) return;
+    const id = tr.dataset.rowId;
+    if (this.#expanded.has(id)) this.#expanded.delete(id);
+    else this.#expanded.add(id);
+    this.#render();
+  }
+
+  #export() {
+    const jsonl = this.#filtered.map((r) => JSON.stringify(r.payload)).join('\n');
+    const blob = new Blob([jsonl], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `chump-audit-${stamp}.jsonl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'audit_view_session', action: 'exported',
+        rows_exported: this.#filtered.length,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  // helpers
+  #esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  #escAttr(s) { return this.#esc(s); }
+  #shortSession(sid) {
+    const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
+    return m ? m[1] : (String(sid).slice(0, 16) + (sid.length > 16 ? '…' : ''));
+  }
+  #fmtTs(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      // Relative for recent, absolute else
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60) return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    } catch { return ts; }
+  }
+}
+customElements.define('chump-view-audit', ChumpViewAudit);
+
+// ── <chump-view-network-audit> (PRODUCT-112) ────────────────────────────────
+// Archetype 1 (offline solo dev) trust signal. The status footer air-gap
+// slot drills here. Renders a chronological list of outbound HTTP requests
+// Chump has made — sourced from /api/ambient/recent filtered to the
+// outbound-network event kinds (github_api_call, outbound_http_call,
+// bash_call with curl/wget).
+//
+// Behavior per docs/design/OPERATOR_CONSOLE_V2.md (archetype 1):
+//   - When air-gap mode is on AND any non-github row appears: red banner
+//     "WARN — air-gap claim violated by N outbound calls"
+//   - When air-gap mode is on AND ZERO non-github rows: empty state
+//     celebrates the win ("No outbound traffic. Air-gap claim holds.")
+//   - github.com is the documented exception (PR ship pipeline) — shown
+//     in a footnote, never triggers a violation banner
+//
+// Time window: last 10m / 1h / 24h / since-process-start. Defaults to 1h.
+class ChumpViewNetworkAudit extends HTMLElement {
+  #rows = [];
+  #airgap = null; // true | false | null
+  #window = '1h';
+  #pollTimer = null;
+
+  connectedCallback() {
+    this.#window = window.chumpPrefs?.get('network.window', '1h') || '1h';
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Network audit</h2>
+        <p class="view-subtitle">Outbound HTTP calls since process start — archetype-1 air-gap trust signal</p>
+      </section>
+      <section class="netaudit-banner" id="netaudit-banner" hidden></section>
+      <section class="netaudit-toolbar" role="toolbar" aria-label="Network audit window">
+        <div class="netaudit-chips" role="radiogroup" aria-label="Time window">
+          ${['10m', '1h', '24h', 'all'].map((w) => `
+            <button type="button" class="netaudit-chip" data-window="${w}"
+                    aria-pressed="${this.#window === w ? 'true' : 'false'}">${w}</button>
+          `).join('')}
+        </div>
+        <button type="button" class="netaudit-export" aria-label="Export visible rows as JSONL">Export JSONL</button>
+      </section>
+      <section class="netaudit-stats" id="netaudit-stats" aria-live="polite"></section>
+      <section class="netaudit-list" id="netaudit-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading network audit…</p>
+      </section>
+      <footer class="netaudit-footnote">
+        Note: <code>github.com</code> / <code>api.github.com</code> are documented
+        exceptions for the PR ship pipeline. They do not violate the air-gap claim.
+      </footer>
+    `;
+    this.querySelectorAll('[data-window]').forEach((b) => {
+      b.addEventListener('click', () => { this.#window = b.dataset.window; window.chumpPrefs?.set('network.window', this.#window); this.#load(); });
+    });
+    this.querySelector('.netaudit-export')?.addEventListener('click', () => this.#export());
+    this.#load();
+    // Auto-refresh every 30s so a fresh outbound call appears quickly.
+    this.#pollTimer = setInterval(() => this.#load(), 30_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'network_audit_viewed',
+        window: this.#window,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+
+  async #load() {
+    const list = this.querySelector('#netaudit-list');
+    if (list) list.setAttribute('aria-busy', 'true');
+    try {
+      // Pull air-gap mode in parallel with the ambient tail.
+      const [stack, ambient] = await Promise.all([
+        fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+        fetch(`/api/ambient/recent?n=500&kind=github_api_call,outbound_http_call`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      this.#airgap = stack?.air_gap_mode === true;
+      const events = ambient?.events || ambient?.rows || ambient || [];
+      const sinceMs = this.#windowSinceMs();
+      this.#rows = events
+        .map((e) => this.#normalise(e))
+        .filter((r) => r.host)
+        .filter((r) => sinceMs == null || r.ts_ms >= sinceMs)
+        .sort((a, b) => b.ts_ms - a.ts_ms);
+      this.#render();
+    } catch (err) {
+      if (list) list.innerHTML = `<p class="placeholder">Could not load network audit: ${this.#esc(String(err))}</p>`;
+    }
+    if (list) list.setAttribute('aria-busy', 'false');
+  }
 
   #windowSinceMs() {
     const now = Date.now();
@@ -2625,59 +2561,6 @@ class ChumpViewCoord extends HTMLElement {
     `;
   }
 
-  #renderRow(r, i) {
-    const rowId = `audit-row-${i}`;
-    const isExpanded = this.#expanded.has(rowId);
-    const outcomeClass = r.outcome === 'approved' ? 'audit-outcome-ok'
-                       : r.outcome === 'denied'   ? 'audit-outcome-bad'
-                       : 'audit-outcome-info';
-    return `
-      <tr class="audit-row" data-row-id="${rowId}" tabindex="0">
-        <td class="audit-cell-ts">${this.#fmtTs(r.ts)}</td>
-        <td class="audit-cell-kind"><span class="audit-kind audit-kind-${r.kind}">${r.kind}</span></td>
-        <td class="audit-cell-session"><button type="button" class="audit-pill" data-filter-session="${this.#escAttr(r.session_id)}">${this.#shortSession(r.session_id)}</button></td>
-        <td class="audit-cell-gap">${r.gap_id ? `<button type="button" class="audit-pill" data-filter-gap="${this.#escAttr(r.gap_id)}">${this.#esc(r.gap_id)}</button>` : '—'}</td>
-        <td class="audit-cell-summary">${this.#esc(r.summary).slice(0, 200)}</td>
-        <td class="audit-cell-outcome"><span class="audit-outcome ${outcomeClass}">${r.outcome}</span></td>
-      </tr>
-      ${isExpanded ? `<tr class="audit-row-expansion"><td colspan="6"><pre><code>${this.#esc(JSON.stringify(r.payload, null, 2))}</code></pre></td></tr>` : ''}
-    `;
-  }
-
-  #onRowClick(e) {
-    // Click on a session/gap pill → set filter.
-    const sessBtn = e.target.closest('[data-filter-session]');
-    if (sessBtn) {
-      this.#filters.session = sessBtn.dataset.filterSession;
-      this.#filters.gap = '';
-      this.#persist();
-      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.session;
-      this.#render();
-      e.stopPropagation();
-      return;
-    }
-    const gapBtn = e.target.closest('[data-filter-gap]');
-    if (gapBtn) {
-      this.#filters.gap = gapBtn.dataset.filterGap;
-      this.#filters.session = '';
-      this.#persist();
-      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.gap;
-      this.#render();
-      e.stopPropagation();
-      return;
-    }
-    // Click on the row body → toggle expansion.
-    const tr = e.target.closest('.audit-row');
-    if (!tr) return;
-    const id = tr.dataset.rowId;
-    if (this.#expanded.has(id)) this.#expanded.delete(id);
-    else this.#expanded.add(id);
-    this.#render();
-  }
-
-  #export() {
-    const jsonl = this.#filtered.map((r) => JSON.stringify(r.payload)).join('\n');
-
   #renderRow(r) {
     const isGithub = /github\.com$/i.test(r.host);
     const exceptionTag = isGithub ? '<span class="netaudit-pill netaudit-pill-ok">exception</span>' : '';
@@ -2698,8 +2581,6 @@ class ChumpViewCoord extends HTMLElement {
     const a = document.createElement('a');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     a.href = url;
-    a.download = `chump-audit-${stamp}.jsonl`;
-
     a.download = `chump-network-audit-${stamp}.jsonl`;
     document.body.appendChild(a);
     a.click();
@@ -2707,66 +2588,316 @@ class ChumpViewCoord extends HTMLElement {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     try {
       navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
-        kind: 'audit_view_session', action: 'exported',
-        rows_exported: this.#filtered.length,
-
         kind: 'network_audit_exported',
         rows: this.#rows.length,
         window: this.#window,
         ts: new Date().toISOString(),
-
-// ── <chump-view-roadmap> (INFRA-1207, INFRA-1338) ───────────────────────────
-// Apex situational-awareness view per docs/design/OPERATOR_CONSOLE_V2.md
-// (archetype 2 fleet operator). Answers "where does today's gap fit in the
-// long arc?" — by rendering docs/ROADMAP.md milestones with completion %
-// and gap chips per milestone.
-//
-// Routes via 'roadmap' in LIBRARY cadence.
-//
-// Data: /api/roadmap (INFRA-1338 — server-side parser + 60s in-process
-// cache). The endpoint always returns 200 + JSON; on parse/IO failure the
-// response includes a `roadmap_error` string and an empty `milestones` array
-// so the UI degrades gracefully rather than disappearing.
-class ChumpViewRoadmap extends HTMLElement {
-  #data = null;
-
-  connectedCallback() {
-    this.innerHTML = `
-      <section class="view-header">
-        <h2>Roadmap</h2>
-        <p class="view-subtitle">Where today's gap fits in the long arc — milestone completion + blockers</p>
-      </section>
-      <section class="roadmap-toolbar" role="toolbar" aria-label="Roadmap filters">
-        <label class="roadmap-filter">
-          <input type="checkbox" id="roadmap-current-only" checked>
-          <span>Show only current milestone</span>
-        </label>
-      </section>
-      <section class="roadmap-list" id="roadmap-list" aria-live="polite" aria-busy="true">
-        <p class="placeholder">Loading roadmap…</p>
-      </section>
-    `;
-    this.querySelector('#roadmap-current-only')?.addEventListener('change', () => this.#render());
-    this.#load();
-    try {
-      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
-        kind: 'roadmap_view_session', ts: new Date().toISOString(),
       }));
     } catch {}
   }
 
-  // helpers
-  #esc(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  #fmtTs(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      // Relative for recent, absolute else
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60) return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    } catch { return ts; }
   }
-  #escAttr(s) { return this.#esc(s); }
-  #shortSession(sid) {
-    const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
-    return m ? m[1] : (String(sid).slice(0, 16) + (sid.length > 16 ? '…' : ''));
 
   #esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+}
+customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
 
+// ── <chump-view-fleet-health> (INFRA-1203) ──────────────────────────────────
+// Fleet operator's morning "how is everything?" view. Per
+// docs/design/OPERATOR_CONSOLE_V2.md §footer: this view is the drill-in for
+// the 4 pillar grades + KPI strip + SLO breach list + GraphQL budget.
+//
+// Lives in AMBIENT cadence as 'health' sub-tab. The status footer
+// (PRODUCT-107) pillar slot click-drills here.
+//
+// Backend endpoint /api/fleet/health doesn't exist yet (file backend follow-up
+// gap). For the MVP this view composes existing endpoints:
+//   - /api/stack-status (rate_limit + cognitive_control fields)
+//   - /api/dashboard (fleet_status + last_heartbeat_iso + fleet_status_reason)
+//   - /api/telemetry/cost (cost burn)
+//   - chumpPrefs cost.thresholds (operator-tunable warn/red bands)
+//
+// Pillar grades use placeholder dashes today; when a real grading endpoint
+// ships (file as INFRA-NEW), the panel will wire to it. The structural shell
+// is here so the wiring is a 30-line addition rather than a new view.
+class ChumpViewFleetHealth extends HTMLElement {
+  #pollTimer = null;
+  #last = { stack: null, dashboard: null, cost: null };
+
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Fleet health</h2>
+        <p class="view-subtitle">Pillars · KPIs · SLOs · API budget — the operator HUD drill-in</p>
+      </section>
+      <section class="fh-grid">
+        <article class="fh-panel fh-pillars">
+          <header class="fh-panel-header"><h3>🏛 Pillar grades</h3></header>
+          <div class="fh-pillar-quadrant" id="fh-pillar-quadrant">
+            ${['effective','credible','resilient','zero-waste'].map((p) => `
+              <div class="fh-pillar-cell fh-pillar-${p}" data-pillar="${p}">
+                <span class="fh-pillar-label">${p.toUpperCase()}</span>
+                <span class="fh-pillar-grade" id="fh-grade-${p}">—</span>
+                <span class="fh-pillar-trend" id="fh-trend-${p}"></span>
+              </div>
+            `).join('')}
+          </div>
+          <p class="fh-panel-footnote">
+            Live grading endpoint pending — placeholder shows the slot.
+            Run <code>chump mission-grade</code> in a terminal for current grades.
+          </p>
+        </article>
+        <article class="fh-panel fh-kpis">
+          <header class="fh-panel-header"><h3>📈 KPI strip</h3></header>
+          <div class="fh-kpis-grid">
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-fleet">—</span>
+              <span class="fh-kpi-label">fleet</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-cost">$—</span>
+              <span class="fh-kpi-label">cost / session</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-heartbeat">—</span>
+              <span class="fh-kpi-label">last heartbeat</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-ships">—</span>
+              <span class="fh-kpi-label">ships (24h, rough)</span>
+            </div>
+          </div>
+        </article>
+        <article class="fh-panel fh-slos">
+          <header class="fh-panel-header"><h3>🎯 SLO status</h3></header>
+          <ul class="fh-slo-list" id="fh-slo-list">
+            <li class="placeholder">Loading SLO check…</li>
+          </ul>
+          <p class="fh-panel-footnote">
+            Sourced from <code>fleet_status_reason</code> on <code>/api/dashboard</code> (INFRA-1206). Click <a href="/v2/?view=settings">CONFIG → Settings</a> to tune thresholds.
+          </p>
+        </article>
+        <article class="fh-panel fh-budget">
+          <header class="fh-panel-header"><h3>🔋 GraphQL budget</h3></header>
+          <div class="fh-budget-gauge">
+            <div class="fh-budget-bar"><div class="fh-budget-fill" id="fh-budget-fill" style="width:0%"></div></div>
+            <span class="fh-budget-pct" id="fh-budget-pct">—</span>
+          </div>
+          <p class="fh-panel-footnote" id="fh-budget-footnote">
+            Loading rate-limit state…
+          </p>
+        </article>
+      </section>
+    `;
+    this.#load();
+    this.#pollTimer = setInterval(() => this.#load(), 30_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'fleet_health_view_session', ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+
+  async #load() {
+    const [stack, dash, cost, fleet] = await Promise.all([
+      fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/dashboard').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/fleet-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    this.#last = { stack, dashboard: dash, cost, fleet };
+
+    // ── KPI strip ─────────────────────────────────────────────────────────
+    const fleetEl = this.querySelector('#fh-kpi-fleet');
+    if (fleetEl) {
+      const agents = Array.isArray(fleet?.agents) ? fleet.agents
+                  : Array.isArray(fleet?.sessions) ? fleet.sessions
+                  : Array.isArray(fleet) ? fleet : [];
+      fleetEl.textContent = agents.length === 0 ? '—' : `${agents.length}`;
+    }
+    const costEl = this.querySelector('#fh-kpi-cost');
+    if (costEl) {
+      const d = Number(cost?.session_cost_usd ?? cost?.total_cost_usd ?? 0);
+      costEl.textContent = '$' + d.toFixed(2);
+      const t = (window.chumpPrefs?.get('cost.thresholds', null)) || { warn: 0.5, red: 2.0 };
+      costEl.classList.toggle('fh-kpi-warn', d >= t.warn);
+      costEl.classList.toggle('fh-kpi-red',  d >= t.red);
+    }
+    const hbEl = this.querySelector('#fh-kpi-heartbeat');
+    if (hbEl) {
+      const hb = dash?.last_heartbeat_iso || '';
+      if (hb) {
+        try {
+          const dt = new Date(hb);
+          const ageS = (Date.now() - dt.getTime()) / 1000;
+          hbEl.textContent = ageS < 60 ? `${Math.round(ageS)}s` : ageS < 3600 ? `${Math.round(ageS/60)}m` : ageS < 86400 ? `${Math.round(ageS/3600)}h` : '>1d';
+        } catch { hbEl.textContent = '?'; }
+      } else hbEl.textContent = '—';
+    }
+    const shipsEl = this.querySelector('#fh-kpi-ships');
+    if (shipsEl) {
+      // Best-effort: count "Round … ok" lines in ship_log_tail (rough proxy).
+      const tail = dash?.ship_log_tail || [];
+      const rounds = Array.isArray(tail) ? tail.filter((l) => /Round.*\) ok/.test(String(l))).length : 0;
+      shipsEl.textContent = String(rounds);
+    }
+
+    // ── SLO list (from fleet_status + reason — INFRA-1206 surface) ────────
+    const sloList = this.querySelector('#fh-slo-list');
+    if (sloList) {
+      const status = dash?.fleet_status || 'unknown';
+      const reason = dash?.fleet_status_reason || null;
+      const items = [];
+      const colorCls = status === 'green' ? 'fh-slo-ok' : status === 'amber' || status === 'yellow' ? 'fh-slo-warn' : 'fh-slo-bad';
+      items.push(`<li class="fh-slo-row ${colorCls}">
+        <span class="fh-slo-name">overall</span>
+        <span class="fh-slo-status">${this.#esc(status)}</span>
+        ${reason ? `<span class="fh-slo-reason">${this.#esc(reason)}</span>` : ''}
+      </li>`);
+      // GraphQL budget as a synthetic SLO ("≥20% remaining")
+      const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        const cls = pct < 20 ? 'fh-slo-bad' : pct < 50 ? 'fh-slo-warn' : 'fh-slo-ok';
+        items.push(`<li class="fh-slo-row ${cls}">
+          <span class="fh-slo-name">github graphql ≥ 20%</span>
+          <span class="fh-slo-status">${pct}%</span>
+        </li>`);
+      }
+      sloList.innerHTML = items.join('');
+    }
+
+    // ── GraphQL budget gauge ──────────────────────────────────────────────
+    const fill = this.querySelector('#fh-budget-fill');
+    const pctEl = this.querySelector('#fh-budget-pct');
+    const fn = this.querySelector('#fh-budget-footnote');
+    const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
+    if (fill && pctEl) {
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        fill.style.width = pct + '%';
+        fill.classList.toggle('fh-bar-warn', pct < 50);
+        fill.classList.toggle('fh-bar-red',  pct < 20);
+        pctEl.textContent = pct + '%';
+        if (fn) fn.textContent = `Remaining: ${rl.graphql_remaining} / ${rl.graphql_limit}${rl.reset ? `, resets ${new Date(rl.reset * 1000).toLocaleTimeString()}` : ''}`;
+      } else {
+        pctEl.textContent = 'n/a';
+        if (fn) fn.textContent = 'Rate-limit state unavailable from /api/stack-status (gh_rate_limit field absent).';
+      }
+    }
+  }
+
+  #esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+}
+customElements.define('chump-view-fleet-health', ChumpViewFleetHealth);
+
+// ── <chump-view-coord> (INFRA-1204) ─────────────────────────────────────────
+// A2A coordination panel — inbox + INTENT board + PR-nudge log in one pane.
+// Surfaces the consumer side of INFRA-1115 (mailboxes), INFRA-1116 (INTENT
+// gate), INFRA-1117 (chump-pr-nudge) so operators can MONITOR multi-agent
+// coordination in real time + intervene (force-override an INTENT, mark
+// nudge as acked, peek at any session's inbox).
+//
+// Sits in AMBIENT cadence per docs/design/OPERATOR_CONSOLE_V2.md §canvas.
+//
+// Three panels stacked:
+//   1. INBOX     — /api/inbox/{session} for the operator's chosen session
+//                  + dropdown to pick from recently-active sessions
+//   2. INTENT    — /api/ambient/recent?kind=intent_announced (last 5min,
+//                  filtered to entries with no matching CLAIM within 60s)
+//   3. NUDGES    — /api/ambient/recent?kind=pr_nudge_emitted (last 24h)
+class ChumpViewCoord extends HTMLElement {
+  #pollTimer = null;
+  #selectedSession = null;
+  #sessions = [];      // [{id, last_event_ts}]
+  #inbox = [];
+  #intents = [];
+  #nudges = [];
+
+  connectedCallback() {
+    this.#selectedSession = window.chumpPrefs?.get('coord.session', null) || null;
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Coordination</h2>
+        <p class="view-subtitle">Inbox + INTENT board + PR-nudge log — the a2a consumption side</p>
+      </section>
+      <section class="coord-panels">
+        <article class="coord-panel coord-inbox">
+          <header class="coord-panel-header">
+            <h3>📬 Inbox</h3>
+            <label class="coord-session-picker">
+              session
+              <select id="coord-session-select" aria-label="Select inbox session"></select>
+            </label>
+            <span class="coord-stat" id="coord-inbox-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-inbox-list" aria-live="polite">
+            <li class="placeholder">Loading inbox…</li>
+          </ul>
+        </article>
+        <article class="coord-panel coord-intents">
+          <header class="coord-panel-header">
+            <h3>🎯 INTENT board</h3>
+            <span class="coord-stat" id="coord-intents-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-intents-list" aria-live="polite">
+            <li class="placeholder">Loading INTENT events…</li>
+          </ul>
+          <p class="coord-panel-footnote">
+            Recent INTENT announcements (last 5 min). Operators can override a stale INTENT via <code>scripts/coord/broadcast.sh</code>.
+          </p>
+        </article>
+        <article class="coord-panel coord-nudges">
+          <header class="coord-panel-header">
+            <h3>🔔 PR-nudge log</h3>
+            <span class="coord-stat" id="coord-nudges-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-nudges-list" aria-live="polite">
+            <li class="placeholder">Loading nudge log…</li>
+          </ul>
+          <p class="coord-panel-footnote">
+            chump-pr-nudge.sh history — 5 classes: dirty / blocked-ci / orphan-disarmed / base-modified / clean-not-merged.
+          </p>
+        </article>
+      </section>
+    `;
+    this.querySelector('#coord-session-select')?.addEventListener('change', (e) => {
+      this.#selectedSession = e.target.value || null;
+      window.chumpPrefs?.set('coord.session', this.#selectedSession);
+      this.#loadInbox();
+    });
+    this.#loadAll();
+    this.#pollTimer = setInterval(() => this.#loadAll(), 20_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'coord_view_session', ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
 
   async #loadAll() {
     await Promise.all([
@@ -2908,7 +3039,6 @@ class ChumpViewRoadmap extends HTMLElement {
     }
   }
 
-  // helpers
   #esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -2921,49 +3051,115 @@ class ChumpViewRoadmap extends HTMLElement {
     try {
       const d = new Date(ts);
       if (isNaN(d.getTime())) return ts;
-      // Relative for recent, absolute else
       const ageS = (Date.now() - d.getTime()) / 1000;
       if (ageS < 60) return `${Math.round(ageS)}s ago`;
       if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
-
-      const ageS = (Date.now() - d.getTime()) / 1000;
-      if (ageS < 60)    return `${Math.round(ageS)}s ago`;
-      if (ageS < 3600)  return `${Math.round(ageS / 60)}m ago`;
       if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
       return d.toISOString().slice(0, 16).replace('T', ' ');
     } catch { return ts; }
   }
 }
-customElements.define('chump-view-audit', ChumpViewAudit);
+customElements.define('chump-view-coord', ChumpViewCoord);
 
-customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
+// ── <chump-view-roadmap> (INFRA-1207) ───────────────────────────────────────
+// Apex situational-awareness view per docs/design/OPERATOR_CONSOLE_V2.md
+// (archetype 2 fleet operator). Answers "where does today's gap fit in the
+// long arc?" — by rendering docs/ROADMAP.md milestones with completion %
+// and gap chips per milestone.
+//
+// Routes via 'roadmap' in LIBRARY cadence.
+//
+// Data: /api/roadmap (endpoint not yet shipped — file backend follow-up).
+// MVP renders three states:
+//   1. Endpoint live + parsed → vertical timeline with milestone cards
+//   2. Endpoint 404 → manual fallback "open docs/ROADMAP.md" + raw file
+//      fetch from /docs/ROADMAP.md (served by chump --web static path)
+//   3. Both fail → friendly error
+class ChumpViewRoadmap extends HTMLElement {
+  #data = null;
+
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Roadmap</h2>
+        <p class="view-subtitle">Where today's gap fits in the long arc — milestone completion + blockers</p>
+      </section>
+      <section class="roadmap-toolbar" role="toolbar" aria-label="Roadmap filters">
+        <label class="roadmap-filter">
+          <input type="checkbox" id="roadmap-current-only" checked>
+          <span>Show only current milestone</span>
+        </label>
+      </section>
+      <section class="roadmap-list" id="roadmap-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading roadmap…</p>
+      </section>
+    `;
+    this.querySelector('#roadmap-current-only')?.addEventListener('change', () => this.#render());
+    this.#load();
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'roadmap_view_session', ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
 
   async #load() {
     const list = this.querySelector('#roadmap-list');
     if (!list) return;
     list.setAttribute('aria-busy', 'true');
     try {
-      // INFRA-1338: /api/roadmap is now the canonical structured endpoint.
-      // It always returns 200; on parse/IO failure the body includes
-      // `roadmap_error` + empty `milestones`. No client-side markdown
-      // parsing fallback — the server is the source of truth.
+      // First try the structured endpoint.
       const r = await fetch('/api/roadmap');
       if (r.ok) {
         this.#data = await r.json();
-        if (this.#data && this.#data.roadmap_error) {
-          list.innerHTML = `<p class="placeholder">Roadmap could not be parsed: ${this.#esc(String(this.#data.roadmap_error))}</p>`;
-          list.setAttribute('aria-busy', 'false');
-          return;
-        }
         this.#render();
-        list.setAttribute('aria-busy', 'false');
         return;
       }
-      list.innerHTML = `<p class="placeholder">Roadmap endpoint returned ${r.status}. Read the source: <a href="https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">docs/ROADMAP.md on GitHub</a>.</p>`;
+      // Fall back to raw markdown if the static dir serves it.
+      const raw = await fetch('/docs/ROADMAP.md').catch(() => null);
+      if (raw && raw.ok) {
+        const text = await raw.text();
+        this.#data = this.#parseMarkdown(text);
+        this.#render();
+        return;
+      }
+      list.innerHTML = `<p class="placeholder">
+        Roadmap endpoint pending (<code>/api/roadmap</code> not implemented yet).<br>
+        Read the source: <a href="https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">docs/ROADMAP.md on GitHub</a>
+        or run <code>chump roadmap-status</code> in a terminal.
+      </p>`;
     } catch (err) {
       list.innerHTML = `<p class="placeholder">Could not load roadmap: ${this.#esc(String(err))}</p>`;
     }
     list.setAttribute('aria-busy', 'false');
+  }
+
+  #parseMarkdown(text) {
+    // Minimal parser for ROADMAP.md milestones. Heuristic: each "## Milestone"
+    // heading starts a milestone block; "status:", "Gaps:", "Blockers:" are
+    // optional fields. This is good-enough for the MVP shell; the real
+    // /api/roadmap endpoint will do this server-side properly.
+    const milestones = [];
+    const lines = text.split('\n');
+    let current = null;
+    for (const line of lines) {
+      if (/^##\s+/.test(line)) {
+        if (current) milestones.push(current);
+        const m = line.match(/^##\s+(.+)$/);
+        current = { id: '', title: m ? m[1] : 'untitled', status: 'unknown', progress_pct: null, gaps: [], blockers: [], target_date: null };
+      } else if (current) {
+        if (/^status:\s*/i.test(line)) {
+          current.status = line.replace(/^status:\s*/i, '').trim().toLowerCase();
+        } else if (/^target[_ -]?date:\s*/i.test(line)) {
+          current.target_date = line.replace(/^target[_ -]?date:\s*/i, '').trim();
+        } else if (/^- ([A-Z]+-\d+)/.test(line)) {
+          const gm = line.match(/^- ([A-Z]+-\d+)\s*[—-]?\s*(.+)?$/);
+          if (gm) current.gaps.push({ id: gm[1], title: gm[2] || '' });
+        }
+      }
+    }
+    if (current) milestones.push(current);
+    return { milestones };
   }
 
   #render() {
@@ -3020,95 +3216,6 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
         ${blockersHtml}
       </article>
     `;
-
-
-  async #load() {
-    const [stack, dash, cost, fleet] = await Promise.all([
-      fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/dashboard').then((r) => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/fleet-status').then((r) => r.ok ? r.json() : null).catch(() => null),
-    ]);
-    this.#last = { stack, dashboard: dash, cost, fleet };
-
-    // ── KPI strip ─────────────────────────────────────────────────────────
-    const fleetEl = this.querySelector('#fh-kpi-fleet');
-    if (fleetEl) {
-      const agents = Array.isArray(fleet?.agents) ? fleet.agents
-                  : Array.isArray(fleet?.sessions) ? fleet.sessions
-                  : Array.isArray(fleet) ? fleet : [];
-      fleetEl.textContent = agents.length === 0 ? '—' : `${agents.length}`;
-    }
-    const costEl = this.querySelector('#fh-kpi-cost');
-    if (costEl) {
-      const d = Number(cost?.session_cost_usd ?? cost?.total_cost_usd ?? 0);
-      costEl.textContent = '$' + d.toFixed(2);
-      const t = (window.chumpPrefs?.get('cost.thresholds', null)) || { warn: 0.5, red: 2.0 };
-      costEl.classList.toggle('fh-kpi-warn', d >= t.warn);
-      costEl.classList.toggle('fh-kpi-red',  d >= t.red);
-    }
-    const hbEl = this.querySelector('#fh-kpi-heartbeat');
-    if (hbEl) {
-      const hb = dash?.last_heartbeat_iso || '';
-      if (hb) {
-        try {
-          const dt = new Date(hb);
-          const ageS = (Date.now() - dt.getTime()) / 1000;
-          hbEl.textContent = ageS < 60 ? `${Math.round(ageS)}s` : ageS < 3600 ? `${Math.round(ageS/60)}m` : ageS < 86400 ? `${Math.round(ageS/3600)}h` : '>1d';
-        } catch { hbEl.textContent = '?'; }
-      } else hbEl.textContent = '—';
-    }
-    const shipsEl = this.querySelector('#fh-kpi-ships');
-    if (shipsEl) {
-      // Best-effort: count "Round … ok" lines in ship_log_tail (rough proxy).
-      const tail = dash?.ship_log_tail || [];
-      const rounds = Array.isArray(tail) ? tail.filter((l) => /Round.*\) ok/.test(String(l))).length : 0;
-      shipsEl.textContent = String(rounds);
-    }
-
-    // ── SLO list (from fleet_status + reason — INFRA-1206 surface) ────────
-    const sloList = this.querySelector('#fh-slo-list');
-    if (sloList) {
-      const status = dash?.fleet_status || 'unknown';
-      const reason = dash?.fleet_status_reason || null;
-      const items = [];
-      const colorCls = status === 'green' ? 'fh-slo-ok' : status === 'amber' || status === 'yellow' ? 'fh-slo-warn' : 'fh-slo-bad';
-      items.push(`<li class="fh-slo-row ${colorCls}">
-        <span class="fh-slo-name">overall</span>
-        <span class="fh-slo-status">${this.#esc(status)}</span>
-        ${reason ? `<span class="fh-slo-reason">${this.#esc(reason)}</span>` : ''}
-      </li>`);
-      // GraphQL budget as a synthetic SLO ("≥20% remaining")
-      const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
-      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
-        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
-        const cls = pct < 20 ? 'fh-slo-bad' : pct < 50 ? 'fh-slo-warn' : 'fh-slo-ok';
-        items.push(`<li class="fh-slo-row ${cls}">
-          <span class="fh-slo-name">github graphql ≥ 20%</span>
-          <span class="fh-slo-status">${pct}%</span>
-        </li>`);
-      }
-      sloList.innerHTML = items.join('');
-    }
-
-    // ── GraphQL budget gauge ──────────────────────────────────────────────
-    const fill = this.querySelector('#fh-budget-fill');
-    const pctEl = this.querySelector('#fh-budget-pct');
-    const fn = this.querySelector('#fh-budget-footnote');
-    const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
-    if (fill && pctEl) {
-      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
-        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
-        fill.style.width = pct + '%';
-        fill.classList.toggle('fh-bar-warn', pct < 50);
-        fill.classList.toggle('fh-bar-red',  pct < 20);
-        pctEl.textContent = pct + '%';
-        if (fn) fn.textContent = `Remaining: ${rl.graphql_remaining} / ${rl.graphql_limit}${rl.reset ? `, resets ${new Date(rl.reset * 1000).toLocaleTimeString()}` : ''}`;
-      } else {
-        pctEl.textContent = 'n/a';
-        if (fn) fn.textContent = 'Rate-limit state unavailable from /api/stack-status (gh_rate_limit field absent).';
-      }
-    }
   }
 
   #esc(s) {
@@ -3116,18 +3223,6 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
   }
 }
 customElements.define('chump-view-roadmap', ChumpViewRoadmap);
-
-customElements.define('chump-view-fleet-health', ChumpViewFleetHealth);
-
-      const ageS = (Date.now() - d.getTime()) / 1000;
-      if (ageS < 60)    return `${Math.round(ageS)}s ago`;
-      if (ageS < 3600)  return `${Math.round(ageS / 60)}m ago`;
-      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
-      return d.toISOString().slice(11, 16);
-    } catch { return ts; }
-  }
-}
-customElements.define('chump-view-coord', ChumpViewCoord);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
