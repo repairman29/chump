@@ -3809,6 +3809,16 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, path, reason, branch]
 
+  - kind: fleet_self_sync
+    effect_metric: self
+    emitter: scripts/ops/github-webhook-receiver.py (RESILIENT-152, _self_sync_fleet_scripts)
+    trigger: a push to origin/main updated runtime scripts (scripts/ or
+      docs/dispatch/routing.yaml); the receiver surgically refreshed those paths in
+      the fleet's permanently-dirty main checkout via 'git checkout origin/main --
+      <path>' so the running fleet picks up merged fixes without a manual redeploy
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, paths, trigger]
+
   - kind: worktree_reaper_skipped_active
     emitter: >
       scripts/ops/stale-worktree-reaper.sh (_emit_reaper_skipped, INFRA-1074);
