@@ -127,18 +127,21 @@ resolve() {
         python3 "$RESOLVE_SCRIPT" 2>/dev/null || true
 }
 
+# RESILIENT-154 (#3146) flipped routing.yaml xs/s from haiku → sonnet ("remove
+# haiku from the fleet — sonnet is the floor"): haiku stalled ~60% of cycles and
+# saves $0 on a flat subscription. _resolve_model.py now returns sonnet for xs/s.
 m_for_xs="$(resolve TEST-XS xs INFRA)"
-if [[ "$m_for_xs" == "haiku" ]]; then
-    ok "resolve: effort=xs → haiku"
+if [[ "$m_for_xs" == "sonnet" ]]; then
+    ok "resolve: effort=xs → sonnet (RESILIENT-154: no haiku)"
 else
-    fail "resolve: effort=xs should → haiku, got: '$m_for_xs'"
+    fail "resolve: effort=xs should → sonnet, got: '$m_for_xs'"
 fi
 
 m_for_s="$(resolve TEST-S s INFRA)"
-if [[ "$m_for_s" == "haiku" ]]; then
-    ok "resolve: effort=s → haiku"
+if [[ "$m_for_s" == "sonnet" ]]; then
+    ok "resolve: effort=s → sonnet (RESILIENT-154: no haiku)"
 else
-    fail "resolve: effort=s should → haiku, got: '$m_for_s'"
+    fail "resolve: effort=s should → sonnet, got: '$m_for_s'"
 fi
 
 m_for_m="$(resolve TEST-M m INFRA)"
