@@ -345,6 +345,112 @@ def _auto_prune_worktree_on_merge(pr: dict, payload: dict) -> int:
     return 1
 
 
+# RESILIENT-152: runtime paths whose staleness in the fleet's main checkout
+# breaks autonomous shipping. Scoped TIGHTLY on purpose:
+#   - scripts/                  → the executable fleet surface (worker.sh,
+#                                 run-fleet.sh, bot-merge.sh, _pick_gap.py, …)
+#   - docs/dispatch/routing.yaml → the per-gap model routing table
+# DELIBERATELY EXCLUDED: src/ + crates/ (Rust — a stale .rs needs a *rebuild*,
+# not a file swap; hot-swapping source under a running binary fixes nothing and
+# is a separate concern), and ALL canonical state — .chump/ (state.db,
+# github_cache.db), .chump-locks/ (leases, ambient.jsonl), docs/gaps/*.yaml —
+# which the fleet mutates continuously and must NEVER be clobbered.
+_SELF_SYNC_PATHS = ("scripts", "docs/dispatch/routing.yaml")
+
+
+def _self_sync_fleet_scripts(payload: dict) -> int:
+    """RESILIENT-152: on a push to origin/main, surgically refresh the fleet's
+    runtime scripts in the main checkout so a merged script fix actually reaches
+    the RUNNING fleet — without a human hand running
+    'git checkout origin/main -- <script>'.
+
+    WHY this exists: the fleet mutates state.db / ambient.jsonl / docs/gaps/*.yaml
+    continuously, so the main checkout's working tree is PERMANENTLY dirty →
+    'git pull' refuses → merged script fixes land on origin/main but never deploy.
+    Proof (2026-06-21): after MISSION-047 merged, the running fleet kept using the
+    OLD picker until a human ran the checkout by hand. This closes that gap, which
+    is *why* nothing self-heals end-to-end. Sibling of the auto-flip / auto-release
+    handlers above — all are "the system getting its own updates to itself".
+
+    SAFETY (load-bearing — a bug here could clobber canonical state):
+      - Only the tightly-scoped _SELF_SYNC_PATHS are touched. State paths are
+        never in scope, so state.db / leases / gap YAMLs are never written.
+      - Uses 'git checkout origin/main -- <path>' (a working-tree update of the
+        NAMED paths only), then unstages. NEVER 'reset --hard', NEVER 'checkout .',
+        NEVER 'pull' — any full-tree op would destroy the dirty state files.
+      - Per-path diff guard ⇒ an unchanged path is a no-op, so the call is
+        idempotent and every push to main re-asserts "fleet scripts == origin/main"
+        (this self-heals a sync that was missed while the receiver was down).
+
+    Returns the number of runtime paths updated. Best-effort; never raises.
+
+    Intentionally ALWAYS-ON — no disable-flag env var. The operation is
+    scoped + idempotent + safe (proven by test-self-sync-fleet.sh), so there is
+    nothing to gate; and a per-feature kill-switch would add bypass-var debt
+    (EFFECTIVE-094 ceiling). To halt it in an emergency, stop the receiver daemon
+    (launchctl), which is the existing escape hatch for every receiver function.
+    """
+    if payload.get("ref") != "refs/heads/main":
+        return 0
+    repo_root = _repo_root()
+
+    # Bring origin/main up to date so the working tree can be compared against it.
+    try:
+        fetch = subprocess.run(
+            ["git", "-C", str(repo_root), "fetch", "origin", "main"],
+            check=False, capture_output=True, timeout=30,
+        )
+        if fetch.returncode != 0:
+            log.warning("RESILIENT-152: git fetch origin main failed rc=%s: %s",
+                        fetch.returncode,
+                        (fetch.stderr or b"").decode("utf-8", "replace")[:200])
+            return 0
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("RESILIENT-152: git fetch failed: %s", e)
+        return 0
+
+    updated = []
+    for path in _SELF_SYNC_PATHS:
+        try:
+            # Does the working tree differ from origin/main at this path?
+            differs = subprocess.run(
+                ["git", "-C", str(repo_root), "diff", "--quiet", "origin/main", "--", path],
+                check=False, capture_output=True, timeout=15,
+            ).returncode != 0
+            if not differs:
+                continue
+            co = subprocess.run(
+                ["git", "-C", str(repo_root), "checkout", "origin/main", "--", path],
+                check=False, capture_output=True, timeout=20,
+            )
+            if co.returncode != 0:
+                log.warning("RESILIENT-152: checkout of %s failed: %s", path,
+                            (co.stderr or b"").decode("utf-8", "replace")[:200])
+                continue
+            # Unstage: the main checkout never commits (work happens in worktrees);
+            # the running fleet only reads the working tree, so keep the index clean.
+            subprocess.run(
+                ["git", "-C", str(repo_root), "reset", "-q", "--", path],
+                check=False, capture_output=True, timeout=15,
+            )
+            updated.append(path)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            log.warning("RESILIENT-152: self-sync of %s failed: %s", path, e)
+            continue
+
+    if updated:
+        _emit_ambient({
+            "ts": _now_iso(),
+            "kind": "fleet_self_sync",
+            "paths": updated,
+            "trigger": "push_to_main_webhook",
+            "after": (payload.get("after") or "")[:12],
+        })
+        log.info("RESILIENT-152: self-synced %d runtime path(s) to origin/main: %s",
+                 len(updated), ", ".join(updated))
+    return len(updated)
+
+
 def _verify_signature(secret: str, payload: bytes, header: str | None) -> bool:
     """Verify GitHub's X-Hub-Signature-256 header. Constant-time compare."""
     if not secret or not header or not header.startswith("sha256="):
@@ -617,6 +723,13 @@ class Handler(BaseHTTPRequestHandler):
                 elif event_type == "push":
                     if payload.get("ref") == "refs/heads/main":
                         n = _mark_open_prs_stale(conn)
+                        # RESILIENT-152: a push to main may carry merged script
+                        # fixes that the running fleet (reading from this same
+                        # checkout) won't see until the working tree is updated.
+                        # Surgically sync runtime scripts now so cures auto-deploy.
+                        synced = _self_sync_fleet_scripts(payload)
+                        if synced > 0:
+                            log.info("RESILIENT-152: self-synced %d runtime path(s) on push to main", synced)
                         _emit_ambient({
                             "ts": _now_iso(),
                             "kind": "webhook_event_received",
