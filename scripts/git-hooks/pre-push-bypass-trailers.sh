@@ -90,17 +90,15 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
 
         # Get commit body (body = everything after the first blank line after subject).
         _body="$(git log -1 --format='%b' "$_commit_sha" 2>/dev/null || true)"
-        _body_upper="$(echo "$_body" | tr '[:lower:]' '[:upper:]')"
 
-        # Fast-path: no bypass token → skip.
-        case "$_body_upper" in
-            *BYPASS*)
-                # Fall through to validation.
-                ;;
-            *)
-                continue
-                ;;
-        esac
+        # RESILIENT-150: only validate commits that USE the INFRA-2407 4-trailer
+        # schema (^Bypass-Tier/Class/Reason/Followup:), not any "bypass" substring.
+        # Prose mentions + the 12 sanctioned single-line *-Bypass: trailers
+        # (Rust-First-Bypass, Test-Gate-Bypass, …) are not this validator's concern.
+        # here-string (no pipe) → no pipefail race (INFRA-1658).
+        if ! grep -qiE '^[[:space:]]*Bypass-(Tier|Class|Reason|Followup):' <<<"$_body"; then
+            continue
+        fi
 
         # Write commit message (subject + body) to a temp file and run the validator.
         _tmpfile="$(mktemp -t bypass-trailer-check.XXXXXX)"

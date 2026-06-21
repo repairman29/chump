@@ -6,13 +6,16 @@
 # allowlist at scripts/ci/legacy-bypass-trailer-allowlist.txt.
 #
 # Test matrix:
-#   T1  Obs-Bypass-Reason: only (missing other 3) → exit 1
+#   T1  Bypass-Reason: only (schema partially used, missing other 3) → exit 1
 #   T2  Full 4-trailer set → exit 0
 #   T3  Legacy allowlist SHA (synthetic) → exit 0
 #   T4  Bypass-Tier=T7 (invalid) → exit 1
 #   T5  Bypass-Followup=BAD-FORMAT → exit 1
 #   T6  No bypass token at all → exit 0
 #   T7  Bypass-Reason with fewer than 10 words → exit 1
+#   T8  prose merely mentions "bypass"/"bypasses", no schema key → exit 0  (RESILIENT-150)
+#   T9  sanctioned single-line Rust-First-Bypass: trailer → exit 0          (RESILIENT-150)
+#   T10 sanctioned single-line Test-Gate-Bypass: trailer → exit 0          (RESILIENT-150)
 
 set -euo pipefail
 
@@ -52,12 +55,12 @@ run_test() {
     fi
 }
 
-# ─── T1: Only one bypass token present, missing 3 other trailers → exit 1 ───
+# ─── T1: schema partially used (only Bypass-Reason:, missing 3) → exit 1 ───
 run_test "T1-partial-trailers" 1 "fix(INFRA-0001): some fix
 
 Applied workaround.
 
-Obs-Bypass-Reason: tooling was broken during trunk-red window"
+Bypass-Reason: tooling was broken during the trunk-red window so this gate had to be skipped"
 
 # ─── T2: Full valid 4-trailer set → exit 0 ───────────────────────────────────
 run_test "T2-full-valid-trailers" 0 "fix(INFRA-0002): rescue pre-push after fmt drift
@@ -141,6 +144,26 @@ Bypass-Tier: T2
 Bypass-Class: preflight-skip
 Bypass-Reason: tooling issue
 Bypass-Followup: INFRA-9999"
+
+# ─── T8: prose merely mentions "bypass"/"bypasses", no schema key → exit 0 ──
+# RESILIENT-150 regression guard: the old *BYPASS* substring matcher false-fired
+# on prose like this; the cure keys on ^Bypass-(Tier|Class|Reason|Followup): only.
+run_test "T8-prose-bypass-mention" 0 "fix(INFRA-0007): durable cure for over-matching
+
+This removes the substring matcher that forced the 4-trailer schema on any
+commit whose prose merely mentions bypass or bypasses in passing."
+
+# ─── T9: sanctioned single-line Rust-First-Bypass: trailer → exit 0 ─────────
+# Rust-First-Bypass has its OWN one-line validator; it is NOT the INFRA-2407
+# 4-trailer schema, so this validator must leave it alone.
+run_test "T9-rust-first-bypass-trailer" 0 "feat(META-064): add shell glue shim
+
+Rust-First-Bypass: 30-line gh+jq glue that legitimately does not need types"
+
+# ─── T10: sanctioned single-line Test-Gate-Bypass: trailer → exit 0 ─────────
+run_test "T10-test-gate-bypass-trailer" 0 "fix(INFRA-0008): rescue after flaky test gate
+
+Test-Gate-Bypass: pre-existing unrelated test failure tracked in INFRA-9999"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
