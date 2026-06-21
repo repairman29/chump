@@ -12,6 +12,8 @@
 # META-186: action paths for BLOCKED_GREEN + BLOCKED_REAL_FAIL:
 #           BLOCKED_GREEN     → gh pr merge --auto --squash (arm auto-merge)
 #           BLOCKED_REAL_FAIL → chump gap reserve (file follow-up gap with fingerprint dedup)
+# META-191: admin-merge bypass for BLOCKED_GREEN PRs when CHUMP_OPERATOR_CONSENSUS_BYPASS is set.
+#           Triggers via operator consensus override; emits audit trail.
 #
 # Skeleton for the relentless PR-shepherd daemon. This tick walks all open PRs,
 # classifies each, and (META-184+) acts on BEHIND PRs via rebase.
@@ -22,6 +24,7 @@
 #   CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK   — max rebases per tick (default 3)
 #   CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK      — max arm_auto_merge actions per tick (default 5)
 #   CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK      — max file_followup_gap actions per tick (default 2)
+#   CHUMP_OPERATOR_CONSENSUS_BYPASS          — bypass reason; triggers admin-merge for BLOCKED_GREEN PRs (META-191)
 #
 # Usage:
 #   bash scripts/coord/pr-shepherd-daemon.sh tick           # one tick
@@ -49,6 +52,8 @@ MAX_FLAKE_RERUNS_PER_PR="${CHUMP_PR_SHEPHERD_MAX_FLAKE_RERUNS_PER_PR:-2}"
 # INFRA-2346: Trust-list for auto-admin-merge. Comma-separated GH login names.
 # Conservative default; expand only via explicit env override.
 TRUST_AUTHORS="${TRUST_AUTHORS:-fleet-bot,dependabot[bot],claude-bot,repairman29}"
+# META-191: operator consensus bypass for BLOCKED_GREEN admin-merge. Non-empty enables the tier.
+CONSENSUS_BYPASS_REASON="${CHUMP_OPERATOR_CONSENSUS_BYPASS:-}"
 # INFRA-2346: KNOWN_FLAKES.yaml path (for check_flakes section).
 KNOWN_FLAKES_FILE="${CHUMP_KNOWN_FLAKES_FILE:-$REPO_ROOT/docs/process/KNOWN_FLAKES.yaml}"
 REBASE_DEBOUNCE_FILE="$REPO_ROOT/.chump/pr-shepherd-rebase-skipped.jsonl"
@@ -110,6 +115,18 @@ _emit_pr_action_taken_with_new_gap() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","new_gap_id":"%s","dry_run":%s}\n' \
     "$ts" "$pr_num" "$action" "$reason" "$gap_id" "$new_gap_id" "$dry" >> "$AMBIENT"
+}
+
+# _emit_admin_merge_consensus_bypass — emit audit trail for consensus bypass admin-merge (META-191)
+# Args: $1=pr_number $2=bypass_reason $3=operator_session_id (optional)
+# scanner-anchor: "kind":"admin_merge_consensus_bypass"
+_emit_admin_merge_consensus_bypass() {
+  local pr_num="$1" bypass_reason="$2" session_id="${3:-unknown}"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"admin_merge_consensus_bypass","pr_number":%d,"reason":"%s","operator_session_id":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$(printf '%s' "$bypass_reason" | sed 's/"/\\"/g')" "$session_id" "$dry" >> "$AMBIENT"
 }
 
 # _should_skip_trunk_red — returns 0 (true/skip) if a trunk_red event was emitted in last 30m
@@ -798,6 +815,44 @@ for p in prs:
             # transient or permanent — log and skip; next tick may retry transient
             _emit_pr_queue_auto_action "$pr_num" "admin_merge_failed" "gh_exit_${merge_exit}" "$author" "$c"
             echo "[pr-shepherd-daemon] admin-merge FAILED PR #${pr_num} (exit ${merge_exit})" >&2
+          fi
+        fi
+        # Don't run further actions for this PR this tick — it was merged (or attempted).
+        continue
+      fi
+
+      # ─── META-191: CONSENSUS_BYPASS tier — BLOCKED_GREEN → admin-merge via consensus bypass ────────
+      # Runs when CHUMP_OPERATOR_CONSENSUS_BYPASS is set, PR is BLOCKED_GREEN, base=main.
+      # Emits audit trail (admin_merge_consensus_bypass) + pr_action_taken.
+      if [ -n "$CONSENSUS_BYPASS_REASON" ] && [ "$c" = "BLOCKED_GREEN" ] && [ "$base_ref" = "main" ] && [ "$has_automerge" = "0" ]; then
+        # Trunk-red gate (non-negotiable per gap spec)
+        if [ "$trunk_red_active" -eq 1 ] || [ "$cascade_held" -eq 1 ]; then
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "trunk_red" "$author" "$c"
+          continue
+        fi
+        # Per-tick hard-cap (shared with tier A)
+        if [ "$admin_merge_count" -ge "$MAX_ADMIN_MERGES" ]; then
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "capped" "$author" "$c"
+          continue
+        fi
+        if [ -n "$DRY_RUN" ]; then
+          echo "[pr-shepherd-daemon] DRY_RUN: would admin-merge PR #${pr_num} via consensus bypass (${c})" >&2
+          _emit_admin_merge_consensus_bypass "$pr_num" "$CONSENSUS_BYPASS_REASON" "${CLAUDE_SESSION_ID:-unknown}"
+          _emit_pr_action_taken "$pr_num" "admin_merge" "consensus_bypass" "$gap_id"
+          admin_merge_count=$((admin_merge_count + 1))
+        else
+          echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} via consensus bypass (${c})" >&2
+          local merge_exit=0
+          gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
+          if [ "$merge_exit" -eq 0 ]; then
+            _emit_admin_merge_consensus_bypass "$pr_num" "$CONSENSUS_BYPASS_REASON" "${CLAUDE_SESSION_ID:-unknown}"
+            _emit_pr_action_taken "$pr_num" "admin_merge" "consensus_bypass" "$gap_id"
+            admin_merge_count=$((admin_merge_count + 1))
+            echo "[pr-shepherd-daemon] admin-merge OK (consensus bypass): PR #${pr_num}" >&2
+          else
+            # transient or permanent — log and skip; next tick may retry transient
+            _emit_pr_queue_auto_action "$pr_num" "admin_merge_failed" "gh_exit_${merge_exit}" "$author" "$c"
+            echo "[pr-shepherd-daemon] admin-merge FAILED (consensus bypass) PR #${pr_num} (exit ${merge_exit})" >&2
           fi
         fi
         # Don't run further actions for this PR this tick — it was merged (or attempted).

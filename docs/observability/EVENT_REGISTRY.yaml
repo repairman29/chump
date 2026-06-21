@@ -5992,6 +5992,18 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, pr, count, window_s, threshold, override_method]
 
+  # META-191: operator consensus bypass for BLOCKED+green PRs
+  - kind: admin_merge_consensus_bypass
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (META-191)
+    trigger: >
+      Audit trail for admin-merge of a BLOCKED_GREEN PR (all checks pass, but
+      branch protection blocks auto-merge) via CHUMP_OPERATOR_CONSENSUS_BYPASS.
+      Emitted when the consensus bypass is triggered for a BLOCKED+green PR.
+      Always paired with a pr_action_taken event (action=admin_merge, reason=consensus_bypass).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, pr_number, reason, operator_session_id, dry_run]
+
   # INFRA-1979: inbox jsonl rotation — emitted after each prune run
   - kind: inbox_pruned
     effect_metric: self
