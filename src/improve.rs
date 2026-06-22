@@ -308,6 +308,17 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
         return Ok(green);
     }
 
+    // Repo is green (or gh unavailable) — proceed to scan-based feature picking.
+    pick_gap_from_scan(opts, clone_dir)
+}
+
+/// Scan-based feature pick (pure, no network). The `--gap` override and the
+/// EFFECTIVE-288 GREEN-FIRST gate both run in `pick_gap` *before* this; this
+/// only reads the latest onboard scan and returns the highest-priority gap by
+/// the L1<L2<L3 doctrine order. Kept separate + unit-tested directly so the
+/// scan-pick tests never depend on live `gh` state (the green-first gh call
+/// lives only in `pick_gap`).
+fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
     // Read the latest onboard scan from the external-repo directory.
     // The scan lives at <external-repo-dir>/scans/onboard-scan-<ts>.json
     // where <external-repo-dir> is clone_dir's parent (the repo root, not /clone/).
@@ -1114,7 +1125,7 @@ mod tests {
             clone_dir: Some(clone_dir),
         };
 
-        let picked = pick_gap(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
+        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
         // Should pick the first (highest-confidence) gap.
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
     }
@@ -1320,7 +1331,7 @@ Some prose from the agent.
         };
 
         // Run just the pick stage + dedup logic without spawning any processes.
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
 
         // Dedup on an empty clone dir should pass (no code present).
@@ -1539,7 +1550,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L1: foundation gate unmet",
             "doctrine-order picking must select L1 first, even if it appears last in the scan"
@@ -1576,7 +1587,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L1 high-conf",
             "within L1, high-confidence gap must be picked before low-confidence"
@@ -1611,7 +1622,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L3 low-conf",
             "L3 (even low-confidence) must be picked before an untagged gap"
