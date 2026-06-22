@@ -827,6 +827,9 @@ jobs:
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
+      - name: pillar balance alerts — under-fed + overweight + schema (INFRA-902)
+        run: bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: supervision trees — per-gap + fleet restart-intensity (RESILIENT-058)
         run: bash scripts/ci/test-supervision-trees.sh
 
