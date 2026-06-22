@@ -10480,7 +10480,32 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar-balance-check.sh — run and include in audit output.
+                let pillar_balance_rc: i32 = {
+                    let repo_root = repo_path::repo_root();
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let mut cmd = std::process::Command::new("bash");
+                        cmd.arg(&script);
+                        if json_out {
+                            cmd.arg("--quiet");
+                        }
+                        match cmd.status() {
+                            Ok(s) => s.code().unwrap_or(1),
+                            Err(_) => 0, // script unavailable — non-fatal
+                        }
+                    } else {
+                        0 // script not present — skip silently
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_rc != 0 {
+                    fail_reasons.push(
+                        "pillar-balance-check: one or more pillars are under-fed or overweight (see above)"
+                            .to_string(),
+                    );
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(

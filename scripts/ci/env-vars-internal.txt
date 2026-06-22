@@ -877,6 +877,8 @@ CHUMP_MAIN_PREFLIGHT_WATCHDOG_MOCK
 # INFRA-2463: live GraphQL rate_limit threshold for bot-merge wedge guard stale-event check
 CHUMP_GRAPHQL_WEDGE_LIVE_THRESHOLD
 CHUMP_AMBIENT_OVERRIDE
+# INFRA-902: pillar-balance-check.sh floor override (default 2)
+PILLAR_FLOOR
 # detected in: (standard input)
 CHUMP_GH_EXHAUSTED_THRESHOLD
 # detected in: (standard input)
@@ -1066,3 +1068,8 @@ CHUMP_CONDUCTOR_GRACE_SECS
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ORPHAN_PR_FRESHNESS_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_HOME
