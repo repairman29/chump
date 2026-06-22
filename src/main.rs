@@ -10478,7 +10478,46 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    // INFRA-902: pillar-balance-check.sh section
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    let pb_script =
+                        repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if pb_script.exists() {
+                        match std::process::Command::new("bash").arg(&pb_script).output() {
+                            Ok(out) => {
+                                let stdout = String::from_utf8_lossy(&out.stdout);
+                                let stderr = String::from_utf8_lossy(&out.stderr);
+                                if !stdout.trim().is_empty() {
+                                    println!("{}", stdout.trim_end());
+                                }
+                                if !stderr.trim().is_empty() {
+                                    println!("{}", stderr.trim_end());
+                                }
+                            }
+                            Err(e) => {
+                                println!("  (pillar-balance-check unavailable: {e})");
+                            }
+                        }
+                    } else {
+                        println!("  (scripts/ops/pillar-balance-check.sh not found)");
+                    }
                 }
+
+                // INFRA-902: run pillar-balance-check for exit-code accounting
+                let pb_script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                let pillar_balance_failed = if pb_script.exists() {
+                    matches!(
+                        std::process::Command::new("bash")
+                            .arg(&pb_script)
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status(),
+                        Ok(s) if !s.success()
+                    )
+                } else {
+                    false
+                };
 
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
@@ -10503,6 +10542,13 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                // INFRA-902: pillar balance alert fired
+                if pillar_balance_failed {
+                    fail_reasons.push(
+                        "pillar balance alert fired (see === Pillar balance === section)"
+                            .to_string(),
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
