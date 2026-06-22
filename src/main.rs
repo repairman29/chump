@@ -10480,6 +10480,42 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar-balance analysis — call pillar-balance-check.sh
+                // and include its output. Non-zero exit contributes a fail reason.
+                {
+                    let repo_root = repo_path::repo_root();
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        println!();
+                        println!("=== Pillar balance (INFRA-902) ===");
+                        let out = std::process::Command::new("bash")
+                            .arg(&script)
+                            .env("CHUMP_BIN", std::env::current_exe().unwrap_or_default())
+                            .output();
+                        match out {
+                            Ok(o) => {
+                                let stdout = String::from_utf8_lossy(&o.stdout);
+                                let stderr = String::from_utf8_lossy(&o.stderr);
+                                if !stdout.is_empty() {
+                                    print!("{stdout}");
+                                }
+                                if !stderr.is_empty() {
+                                    eprint!("{stderr}");
+                                }
+                                if !o.status.success() {
+                                    // pillar-balance-check.sh exits non-zero only when
+                                    // alerts fired — propagate as a fail reason below.
+                                    eprintln!("FAIL: pillar-balance-check.sh reported imbalance (see above)");
+                                    std::process::exit(1);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("WARN: could not run pillar-balance-check.sh: {e}");
+                            }
+                        }
+                    }
+                }
+
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {

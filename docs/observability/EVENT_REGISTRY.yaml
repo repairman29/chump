@@ -4322,6 +4322,23 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-902: pillar-balance analyzer alerts ────────────────────────────
+  - kind: pillar_balance_alert
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: pickable gap count for a pillar falls below CHUMP_PILLAR_BALANCE_FLOOR
+      (default 2); fired by pillar-balance-check.sh and wired into chump gap audit-priorities
+    consumers: [fleet-brief, curator, orchestrator]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: pickable gap count for a pillar exceeds CHUMP_PILLAR_BALANCE_OVERWEIGHT_PCT
+      (default 50%) of total pickable pool; fired by pillar-balance-check.sh
+    consumers: [fleet-brief, curator, orchestrator]
+    fields_required: [ts, kind, pillar, count, pct, total, threshold]
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self
