@@ -1,7 +1,8 @@
 - id: INFRA-815
   domain: INFRA
   title: "RESILIENT: superboring ml_dsa signing_key API break blocks cargo install --bin chump"
-  status: open
+  status: shipped
+  closed_pr: 3154
   priority: P1
   effort: s
   description: |
@@ -15,4 +16,5 @@
     - cargo install --path . --bin chump --force completes successfully
     - chump --version reports a binary built from a post-fix commit
     - cargo clippy passes on main
+  outcome_id: MISSION-010
 
