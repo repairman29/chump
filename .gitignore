@@ -170,3 +170,7 @@ docs/gaps.yaml
 # https://github.com/repairman29/chump-proprietary (PRIVATE).
 proprietary/
 bin/chump.wedged-*
+
+# Founding customer PII — never commit
+docs/business/leads.csv
+docs/business/contracts/
