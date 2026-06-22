@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-merge-driver-coverage.sh — INFRA-1389
 #
-# Validates merge-driver coverage for the 5 hot shared files:
+# Validates merge-driver coverage for hot shared files:
 #  1. .gitattributes registers a driver for each hot file
 #  2. Every registered driver script exists and is executable
-#  3. install-merge-drivers.sh registers the 3 new INFRA-1389 aliases
-#  4. Synthetic append-only conflict on Cargo.toml → auto-resolved, no markers
-#  5. Synthetic append-only conflict on web/v2/app.js → auto-resolved, no markers
-#  6. Synthetic append-only conflict on src/main.rs → auto-resolved, no markers
+#  3. install-merge-drivers.sh registers the 2 active INFRA-1389 aliases
+#  4. INFRA-1526 regression guard: src/main.rs must NOT have a custom merge driver
+#  5. Synthetic append-only conflict on Cargo.toml → auto-resolved, no markers
+#  6. Synthetic append-only conflict on web/v2/app.js → auto-resolved, no markers
 #  7. Non-pure-append conflict → driver exits 1 (falls back to 3-way, expected)
 
 set -uo pipefail
@@ -24,13 +24,12 @@ echo
 
 GITATTRS="$REPO_ROOT/.gitattributes"
 
-# ── 1. .gitattributes contains all 5 hot files ──────────────────────────────
+# ── 1. .gitattributes contains all active hot files ─────────────────────────
 HOT_FILES=(
   ".github/workflows/ci.yml"
   "docs/observability/EVENT_REGISTRY.yaml"
   "Cargo.toml"
   "web/v2/app.js"
-  "src/main.rs"
 )
 for hf in "${HOT_FILES[@]}"; do
   if grep -qF "$hf" "$GITATTRS" 2>/dev/null; then
@@ -60,22 +59,36 @@ while IFS= read -r line; do
     ok "driver script executable: scripts/git/merge-driver-${alias}.sh"
   elif [[ -x "$script_no_prefix" ]]; then
     ok "driver script executable: scripts/git/merge-driver-${alias#chump-}.sh (alias=$alias)"
-  elif [[ -x "$generic" ]] && [[ "$alias" =~ (cargo-toml-append|js-append|rust-main-append) ]]; then
+  elif [[ -x "$generic" ]] && [[ "$alias" =~ (cargo-toml-append|js-append) ]]; then
     ok "driver script executable: merge-driver-append-only.sh (alias=$alias)"
   else
     fail "driver script missing or not executable for alias=$alias"
   fi
 done < "$GITATTRS"
 
-# ── 3. install-merge-drivers.sh registers INFRA-1389 aliases ────────────────
+# ── 3. install-merge-drivers.sh registers active INFRA-1389 aliases ─────────
 INSTALL_SCRIPT="$REPO_ROOT/scripts/setup/install-merge-drivers.sh"
-for alias in cargo-toml-append js-append rust-main-append; do
+for alias in cargo-toml-append js-append; do
   if grep -q "$alias" "$INSTALL_SCRIPT" 2>/dev/null; then
     ok "install-merge-drivers.sh registers $alias"
   else
     fail "install-merge-drivers.sh missing $alias registration"
   fi
 done
+
+# ── 4. INFRA-1526 regression guard: src/main.rs must NOT use a merge driver ──
+# rust-main-append was removed from .gitattributes on 2026-05-23 because its
+# fallback path silently dropped hunks instead of producing conflict markers.
+if grep -E "^src/main\.rs[[:space:]]+merge=" "$GITATTRS" 2>/dev/null | grep -qv "^#"; then
+  fail "INFRA-1526 regression: src/main.rs has a custom merge driver in .gitattributes — remove it"
+else
+  ok "src/main.rs has no custom merge driver (INFRA-1526 guard)"
+fi
+if grep -q 'git config.*merge\.rust-main-append\.name' "$INSTALL_SCRIPT" 2>/dev/null; then
+  fail "INFRA-1526 regression: install-merge-drivers.sh still registers rust-main-append driver"
+else
+  ok "install-merge-drivers.sh does not register rust-main-append (INFRA-1526 guard)"
+fi
 
 # ── 4–6. Synthetic append-only conflict simulations ─────────────────────────
 DRIVER="$REPO_ROOT/scripts/git/merge-driver-append-only.sh"
@@ -153,19 +166,6 @@ run_driver_test \
   "web/v2/app.js: two distinct additions" \
   "$JS_ANCESTOR" "$JS_OURS" "$JS_THEIRS" \
   "true" "branch B"
-
-# src/main.rs — two branches each add a new route
-RUST_ANCESTOR='fn main() {
-    let app = Router::new()
-        .route("/api/chat", get(chat_handler));
-}
-'
-RUST_OURS="${RUST_ANCESTOR}// new route A\n"
-RUST_THEIRS="${RUST_ANCESTOR}// new route B\n"
-run_driver_test \
-  "src/main.rs: two distinct route additions" \
-  "$RUST_ANCESTOR" "$RUST_OURS" "$RUST_THEIRS" \
-  "true" "new route B"
 
 # ── 7. Non-pure-append: one branch edited the shared prefix ─────────────────
 NON_APPEND_ANCESTOR='line1

@@ -4787,6 +4787,18 @@ events:
       indicate hot-file contention; should be addressed by merge drivers
     consumers: [fleet-brief, ops-audit, paramedic-daemon]
     fields_required: [ts, kind, branch, base, stage]
+  - kind: rebase_hunk_dropped
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    trigger: post-rebase verification detected a file that contributed >50 added
+      lines in the original branch commits but has 0 added lines in the rebased
+      result — strong signal of silent hunk loss by a merge driver fallback.
+      Emitted once per affected file. Callers (chump-rebase-and-push.sh,
+      pr-auto-rebase.sh, bot-merge.sh) abort before pushing when this fires.
+    effect_metric: rebase_hunk_drop_count{file=<path>} — persistent non-zero
+      count means a merge driver is misconfigured for that path; investigate
+      .gitattributes + install-merge-drivers.sh registrations.
+    consumers: [fleet-brief, ops-audit, infra-watcher]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
   - kind: gap_revert_pr_opened
     effect_metric: self
     emitter: src/revert_pr.rs via chump revert (INFRA-1443)

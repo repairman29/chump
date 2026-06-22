@@ -89,11 +89,10 @@ fi
 # Single driver script, three named aliases pointing at it.
 APPEND_DRIVER_SCRIPT_REL="scripts/git/merge-driver-append-only.sh"
 
-for alias_name in cargo-toml-append js-append rust-main-append; do
+for alias_name in cargo-toml-append js-append; do
   case "$alias_name" in
     cargo-toml-append) desc="Append-only merge for Cargo.toml dep/bin entries (INFRA-1389)" ;;
     js-append)         desc="Append-only merge for web/v2/app.js component/VIEWS additions (INFRA-1389)" ;;
-    rust-main-append)  desc="Append-only merge for src/main.rs route/arm additions (INFRA-1389)" ;;
   esac
   if [[ -x "$APPEND_DRIVER_SCRIPT_REL" ]]; then
     git config "merge.${alias_name}.name" "$desc"
@@ -104,15 +103,27 @@ for alias_name in cargo-toml-append js-append rust-main-append; do
   fi
 done
 
+# INFRA-1526: rust-main-append removed from .gitattributes (2026-05-23 P0 fix) because
+# the append-only driver's fallback path silently dropped hunks instead of producing
+# conflict markers. Unregister any stale .git/config entry from prior installs.
+if git config --get merge.rust-main-append.driver >/dev/null 2>&1; then
+    git config --remove-section merge.rust-main-append 2>/dev/null || true
+    echo "[install-merge-drivers] REMOVED: rust-main-append (INFRA-1526 — driver caused silent hunk drops)"
+fi
+
 # Verify .gitattributes wiring
 if [[ -f .gitattributes ]]; then
     echo "[install-merge-drivers] .gitattributes wiring check:"
     for pattern in ".chump/state.sql" ".github/workflows/ci.yml" "scripts/git-hooks/pre-commit" \
-                   "Cargo.toml" "web/v2/app.js" "src/main.rs"; do
+                   "Cargo.toml" "web/v2/app.js"; do
         if grep -qF "$pattern" .gitattributes 2>/dev/null; then
             echo "[install-merge-drivers]   ✓ $pattern configured"
         else
             echo "[install-merge-drivers]   ⚠ $pattern not found in .gitattributes" >&2
         fi
     done
+    # src/main.rs must NOT appear with a custom merge driver (INFRA-1526)
+    if grep -E "^src/main\.rs\s+merge=" .gitattributes 2>/dev/null | grep -qv "^#"; then
+        echo "[install-merge-drivers]   ✗ src/main.rs has a custom merge driver — INFRA-1526 regression!" >&2
+    fi
 fi

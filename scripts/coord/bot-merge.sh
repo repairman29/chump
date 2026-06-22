@@ -2173,6 +2173,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop check. Runs before push to catch the
+    # rust-main-append class of silent hunk loss. Emits kind=rebase_hunk_dropped.
+    _prv_script="${REPO_ROOT}/scripts/coord/post-rebase-verify.sh"
+    if [[ -x "$_prv_script" ]] && [[ "${CHUMP_SKIP_POST_REBASE_VERIFY:-0}" != "1" ]] && [[ "$DRY_RUN" -eq 0 ]]; then
+        if ! CHUMP_REPO_ROOT="$REPO_ROOT" bash "$_prv_script" --base "${REMOTE}/${BASE_BRANCH}"; then
+            _bm_fail "post_rebase_verify" 12 "rebase silently dropped hunks (kind=rebase_hunk_dropped emitted — check ambient.jsonl)"
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

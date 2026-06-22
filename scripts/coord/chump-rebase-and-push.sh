@@ -218,6 +218,20 @@ if [[ "$_rebase_rc" -eq 2 ]]; then
     exit 2
 fi
 
+# INFRA-1526: post-rebase hunk-drop check. Runs after every successful rebase,
+# before push. Exits 1 + emits kind=rebase_hunk_dropped if any file lost >50
+# added lines. Skip with CHUMP_SKIP_POST_REBASE_VERIFY=1 (audit-logged).
+if [[ "${CHUMP_SKIP_POST_REBASE_VERIFY:-0}" != "1" ]] && [[ "$DRY_RUN" != "1" ]]; then
+    _verify_script="${SCRIPT_DIR}/post-rebase-verify.sh"
+    if [[ -x "$_verify_script" ]]; then
+        if ! CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT_LOG" \
+             bash "$_verify_script" --base "$FULL_BASE"; then
+            _emit "rebase_and_push_failed" '"stage":"post_rebase_verify","reason":"hunk_drop_detected"'
+            exit 1
+        fi
+    fi
+fi
+
 _push_rc=0
 if ! _rap_push; then
     _push_rc=$?
@@ -232,6 +246,17 @@ if ! _rap_push; then
         _emit "rebase_and_push_failed" \
             '"stage":"rebase_retry","manual_files":"'"$(echo "$_MANUAL_FILES" | tr '\n' ',' | sed 's/,$//')"'"'
         exit 2
+    fi
+
+    if [[ "${CHUMP_SKIP_POST_REBASE_VERIFY:-0}" != "1" ]]; then
+        _verify_script="${SCRIPT_DIR}/post-rebase-verify.sh"
+        if [[ -x "$_verify_script" ]]; then
+            if ! CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT_LOG" \
+                 bash "$_verify_script" --base "$FULL_BASE"; then
+                _emit "rebase_and_push_failed" '"stage":"post_rebase_verify_retry","reason":"hunk_drop_detected"'
+                exit 1
+            fi
+        fi
     fi
 
     if ! _rap_push; then
