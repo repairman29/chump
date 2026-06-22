@@ -89,11 +89,13 @@ fi
 # Single driver script, three named aliases pointing at it.
 APPEND_DRIVER_SCRIPT_REL="scripts/git/merge-driver-append-only.sh"
 
-for alias_name in cargo-toml-append js-append rust-main-append; do
+# rust-main-append removed: .gitattributes no longer assigns merge=rust-main-append to
+# src/main.rs (INFRA-1526 / 2026-05-23 P0 fix). Registering the driver is harmless but
+# misleading — omit it so "merge drivers installed" output stays accurate.
+for alias_name in cargo-toml-append js-append; do
   case "$alias_name" in
     cargo-toml-append) desc="Append-only merge for Cargo.toml dep/bin entries (INFRA-1389)" ;;
     js-append)         desc="Append-only merge for web/v2/app.js component/VIEWS additions (INFRA-1389)" ;;
-    rust-main-append)  desc="Append-only merge for src/main.rs route/arm additions (INFRA-1389)" ;;
   esac
   if [[ -x "$APPEND_DRIVER_SCRIPT_REL" ]]; then
     git config "merge.${alias_name}.name" "$desc"
@@ -108,7 +110,7 @@ done
 if [[ -f .gitattributes ]]; then
     echo "[install-merge-drivers] .gitattributes wiring check:"
     for pattern in ".chump/state.sql" ".github/workflows/ci.yml" "scripts/git-hooks/pre-commit" \
-                   "Cargo.toml" "web/v2/app.js" "src/main.rs"; do
+                   "Cargo.toml" "web/v2/app.js"; do
         if grep -qF "$pattern" .gitattributes 2>/dev/null; then
             echo "[install-merge-drivers]   ✓ $pattern configured"
         else

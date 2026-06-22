@@ -2173,6 +2173,21 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Catches silent drops caused by merge drivers (e.g. rust-main-append, now removed)
+    # that discarded hunks while union-driver side-files (EVENT_REGISTRY, env-vars) survived,
+    # producing register-without-emit / emit-without-register orphans.
+    _hunk_verify="$REPO_ROOT/scripts/coord/rebase-hunk-verify.sh"
+    if [[ -x "$_hunk_verify" ]]; then
+        if ! CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+               GAP_ID="${GAP_IDS[0]:-${GAP_ID:-}}" \
+               "$_hunk_verify" --remote "$REMOTE" --base "$BASE_BRANCH"; then
+            red "INFRA-1526: post-rebase hunk-drop detected — rebased commit is missing content from original."
+            red "Check ambient.jsonl for kind=rebase_hunk_dropped to identify the affected file(s)."
+            _bm_fail "rebase" 11 "rebase hunk drop detected (INFRA-1526)"
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

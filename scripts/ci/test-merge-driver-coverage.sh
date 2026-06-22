@@ -60,7 +60,7 @@ while IFS= read -r line; do
     ok "driver script executable: scripts/git/merge-driver-${alias}.sh"
   elif [[ -x "$script_no_prefix" ]]; then
     ok "driver script executable: scripts/git/merge-driver-${alias#chump-}.sh (alias=$alias)"
-  elif [[ -x "$generic" ]] && [[ "$alias" =~ (cargo-toml-append|js-append|rust-main-append) ]]; then
+  elif [[ -x "$generic" ]] && [[ "$alias" =~ (cargo-toml-append|js-append) ]]; then
     ok "driver script executable: merge-driver-append-only.sh (alias=$alias)"
   else
     fail "driver script missing or not executable for alias=$alias"
@@ -69,13 +69,14 @@ done < "$GITATTRS"
 
 # ── 3. install-merge-drivers.sh registers INFRA-1389 aliases ────────────────
 INSTALL_SCRIPT="$REPO_ROOT/scripts/setup/install-merge-drivers.sh"
-for alias in cargo-toml-append js-append rust-main-append; do
+for alias in cargo-toml-append js-append; do
   if grep -q "$alias" "$INSTALL_SCRIPT" 2>/dev/null; then
     ok "install-merge-drivers.sh registers $alias"
   else
     fail "install-merge-drivers.sh missing $alias registration"
   fi
 done
+# rust-main-append intentionally omitted: removed from .gitattributes (INFRA-1526)
 
 # ── 4–6. Synthetic append-only conflict simulations ─────────────────────────
 DRIVER="$REPO_ROOT/scripts/git/merge-driver-append-only.sh"

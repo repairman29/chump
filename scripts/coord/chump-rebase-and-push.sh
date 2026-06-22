@@ -127,8 +127,8 @@ if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
         -c merge.gap-yaml-add-line.driver=
         -c merge.cargo-toml-append.driver=
         -c merge.js-append.driver=
-        -c merge.rust-main-append.driver=
     )
+    # rust-main-append intentionally omitted: removed from .gitattributes (INFRA-1526)
 fi
 
 # ── Step 1: fetch ─────────────────────────────────────────────────────────────
