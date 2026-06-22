@@ -2173,6 +2173,18 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop guard — catch silent data loss before push.
+    # Observed: PR #2216 lost 173-line src/main.rs block; PR #2173 lost EVENT_REGISTRY
+    # entry — both caused register-without-emit / emit-without-register CI failures.
+    if [[ $DRY_RUN -eq 0 ]]; then
+        _prv_script="${REPO_ROOT}/scripts/coord/post-rebase-verify.sh"
+        if [[ -x "$_prv_script" ]]; then
+            if ! bash "$_prv_script" --base "${REMOTE}/${BASE_BRANCH}"; then
+                _bm_fail "rebase" 11 "post-rebase hunk-drop detected — push aborted (INFRA-1526)"
+            fi
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

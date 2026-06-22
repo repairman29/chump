@@ -129,8 +129,22 @@ for p in json.load(sys.stdin):
             rm -rf "$wt" 2>/dev/null
             git fetch origin "$br" main --quiet 2>/dev/null
             if git worktree add "$wt" "origin/$br" >/dev/null 2>&1; then
-                if (cd "$wt" && git rebase -X theirs origin/main >/dev/null 2>&1); then
-                    if (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
+                # INFRA-1526: dropped -X theirs — that strategy silently discards
+                # feature-branch hunks in favour of main, causing register-without-emit
+                # and emit-without-register CI failures (observed PR #2216, #2173).
+                # Standard 3-way rebase produces conflict markers on ambiguous hunks
+                # so the operator can resolve explicitly.
+                if (cd "$wt" && git rebase origin/main 2>/dev/null); then
+                    # INFRA-1526: verify no hunks were silently dropped before push.
+                    # CHUMP_REPO_ROOT points to the main repo so ambient events land
+                    # in the real .chump-locks/ dir; cd into the worktree so git
+                    # commands resolve the rebased commits correctly.
+                    if ! (cd "$wt" && CHUMP_REPO_ROOT="$REPO_ROOT" \
+                            bash "$REPO_ROOT/scripts/coord/post-rebase-verify.sh" 2>&1); then
+                        log "    hunk-drop detected — aborting push for PR #$pr (see ambient rebase_hunk_dropped)"
+                        (cd "$wt" && git rebase --abort 2>/dev/null) || true
+                        truly_conflict=$((truly_conflict+1))
+                    elif (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
                         rebased=$((rebased+1))
                         log "    rebased + pushed"
                         emit_event wedge_recover step2 "\"action\":\"rebased\",\"pr\":$pr"

@@ -1597,6 +1597,35 @@ events:
     trigger: rerun cap (3 attempts) hit
     consumers: [operator-recall]
 
+  # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Post-rebase verification detected that a file had >50 changed lines
+      in the original commits but zero lines in the rebased result — a
+      silent hunk drop. Observed classes: (a) -X theirs strategy in
+      wedge-recover.sh discarding feature-branch hunks in favour of main;
+      (b) append-only merge driver falling back to standard 3-way merge
+      and dropping content near conflict boundaries. Emitted once per
+      affected file per rebase. push is aborted when this fires.
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable
+
+  - kind: post_rebase_verify_bypassed
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"post_rebase_verify_bypassed"
+    trigger: >
+      Operator set CHUMP_SKIP_POST_REBASE_VERIFY=1 to bypass the
+      post-rebase hunk-drop check. Emitted for audit visibility.
+    consumers: [audit-log]
+    fields_required: [ts, kind, reason]
+    status: stable
+
   - kind: cascade_rebase_triggered
     effect_metric: self
     emitter: .github/workflows/post-merge-cascade-rebase.yml (INFRA-670)
