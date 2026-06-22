@@ -4322,6 +4322,32 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-902: pillar balance periodic alert ──────────────────────────────
+  - kind: pillar_balance_alert
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_alert"
+    trigger: >
+      pillar-balance-check.sh detected a pillar with fewer than floor (default 2)
+      pickable gaps (P0|P1, xs|s|m effort, no TODO ACs, no blocked deps).
+      Called from 'chump gap audit-priorities'. Operator should refill the
+      starved pillar before claiming new work.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+    status: stable
+
+  - kind: pillar_balance_overweight
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_overweight"
+    trigger: >
+      pillar-balance-check.sh detected a pillar exceeding PILLAR_OVERWEIGHT_PCT
+      (default 50%) of the total pickable gap pool. Indicates backlog skew —
+      operator should demote or re-tag excess gaps to rebalance pillars.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct]
+    status: stable
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self

@@ -10480,6 +10480,40 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar balance check — call script and include result in output.
+                let pillar_script =
+                    repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                let pillar_alert_fired = if pillar_script.exists() {
+                    if !json_out {
+                        println!();
+                        println!("=== Pillar balance (INFRA-902) ===");
+                    }
+                    match std::process::Command::new("bash")
+                        .arg(&pillar_script)
+                        .output()
+                    {
+                        Ok(out) => {
+                            if !json_out {
+                                let txt = String::from_utf8_lossy(&out.stdout);
+                                if !txt.is_empty() {
+                                    print!("{txt}");
+                                }
+                                let err = String::from_utf8_lossy(&out.stderr);
+                                if !err.is_empty() {
+                                    eprint!("{err}");
+                                }
+                            }
+                            !out.status.success()
+                        }
+                        Err(e) => {
+                            eprintln!("pillar-balance-check.sh: {e}");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
@@ -10503,6 +10537,12 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                if pillar_alert_fired {
+                    fail_reasons.push(
+                        "pillar balance alert fired — refill starved pillar(s) (INFRA-902)"
+                            .to_string(),
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
