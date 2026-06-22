@@ -2110,6 +2110,9 @@ stage_done
 info "Fetched $REMOTE/$BASE_BRANCH."
 
 BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+# INFRA-918: track rebase status for bot_merge_rebase_before_test event
+_BM_COMMITS_BEHIND="$BEHIND"
+_BM_REBASED="false"
 
 # Hard abort if branch is extremely stale — rebase at 50+ commits is risky and
 # likely means the work has already landed on main via another agent.
@@ -2171,6 +2174,7 @@ if [[ "$BEHIND" -gt 0 ]]; then
         fi
     fi
     _grade_rebase_clean="true"
+    _BM_REBASED="true"
     stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
@@ -2408,16 +2412,62 @@ elif command -v cargo &>/dev/null; then
     green "clippy clean."
 fi
 
+# ── INFRA-918: emit bot_merge_rebase_before_test before cargo test ────────────
+# Emitted unconditionally (even when SKIP_TESTS=1) so monitors know whether a
+# rebase occurred before tests were attempted or skipped.
+{
+    _bm_rbt_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _bm_rbt_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    _bm_rbt_will_test="false"
+    [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null && _bm_rbt_will_test="true"
+    _bm_rbt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_rebase_before_test"
+    printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s,"gap":"%s","note":"INFRA-918"}\n' \
+        "$_bm_rbt_ts" "${_BM_REBASED:-false}" "${_BM_COMMITS_BEHIND:-0}" \
+        "$_bm_rbt_sha" "$_bm_rbt_will_test" "${GAP_IDS[0]:-unknown}" \
+        >> "$_bm_rbt_amb" 2>/dev/null || true
+}
+
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
-    if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+    # INFRA-918: capture output so we can classify failures (OOM vs logic bug)
+    # and emit bot_merge_test_failure with the correct failure_class.
+    _bm_test_log="$(mktemp)"
+    _bm_test_rc=0
+    set +e
+    run_timed_hb "cargo test" 1200 cargo test --bin chump --tests 2>&1 | tee -a "$_bm_test_log"
+    _bm_test_rc=${PIPESTATUS[0]}
+    set -e
+    # INFRA-1063: detect build-dir lock contention (mirrors _run_cargo_with_lock_detect)
+    if grep -q "Blocking waiting for file lock on build directory" "$_bm_test_log" 2>/dev/null; then
+        _ct_ambient="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        _ct_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _ambient_write "$_ct_ambient" \
+            "$(printf '{"ts":"%s","session":"bot-merge-%d","kind":"cargo_lock_wait","phase":"cargo test","gap_id":"%s","target_dir":"%s","note":"cargo build-dir lock contention (INFRA-1063)"}' \
+                "$_ct_now" "$_BM_PID" "${GAP_IDS[0]:-none}" "${CARGO_TARGET_DIR:-?}")"
+        warn "INFRA-1063: cargo build-dir lock wait detected on phase 'cargo test'"
+    fi
+    if [[ "$_bm_test_rc" -ne 0 ]]; then
+        # INFRA-918: classify — SIGTERM/OOM is transient; assertion/compile is permanent
+        _bm_test_failure_class="permanent_failure"
+        if grep -qE "signal: 15|SIGTERM|signal: 9|SIGKILL|memory allocation of .* bytes failed|cannot allocate memory" \
+                "$_bm_test_log" 2>/dev/null; then
+            _bm_test_failure_class="transient_oom"
+        fi
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        printf '{"ts":"%s","kind":"bot_merge_test_failure","failure_class":"%s","gap":"%s","note":"INFRA-918: transient_oom=SIGTERM/OOM, permanent_failure=logic bug"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_bm_test_failure_class" "${GAP_IDS[0]:-unknown}" \
+            >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+        rm -f "$_bm_test_log"
         red "Tests failed — fix them before merging."
-        info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
-        info "that is most likely OOM, not a real test failure. Try lowering"
-        info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        if [[ "$_bm_test_failure_class" == "transient_oom" ]]; then
+            info "Detected OOM/SIGTERM — transient memory pressure. Try lowering"
+            info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        fi
         _bm_fail "test" 14 "test suite failure"
     fi
+    rm -f "$_bm_test_log"
     stage_done
     green "Tests passed."
 else
