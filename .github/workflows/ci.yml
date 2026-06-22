@@ -884,6 +884,9 @@ jobs:
       - name: stale-pr-rebase-bot — 3-strike circuit-break (INFRA-2295)
         run: bash scripts/ci/test-stale-pr-rebase-bot.sh
 
+      - name: post-rebase hunk-drop detector (INFRA-1526)
+        run: bash scripts/ci/test-post-rebase-verify.sh
+
       - name: paramedic stale-branch auto-rebase (INFRA-1429)
         run: bash scripts/ci/test-stale-branch-rebase.sh
 

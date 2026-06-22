@@ -2173,6 +2173,20 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Catches silent content loss from buggy merge drivers (rust-main-append
+    # dropped 173 lines from PR #2216 on 2026-05-16 without conflict markers).
+    if [[ "${CHUMP_POST_REBASE_VERIFY:-1}" != "0" ]]; then
+        _post_rebase_script="${REPO_ROOT}/scripts/ci/post-rebase-verify.sh"
+        if [[ -x "$_post_rebase_script" ]]; then
+            if ! bash "$_post_rebase_script" --base "${REMOTE}/${BASE_BRANCH}"; then
+                red "Post-rebase hunk-drop detected — aborting push to prevent silent data loss."
+                red "See above for dropped files. Recover: git rebase --abort, then rebase manually."
+                _bm_fail "rebase" 11 "post-rebase hunk drop detected (INFRA-1526)"
+            fi
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"
