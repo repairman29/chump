@@ -1016,6 +1016,9 @@ jobs:
       - name: schema_version assert helper — unit tests for assert-schema.sh (INFRA-1978)
         run: bash scripts/ci/test-schema-version-assert.sh
 
+      - name: state.db schema-truth — no abandoned dead tables (INFRA-1551)
+        run: bash scripts/ci/test-schema-truth.sh
+
       - name: lease TTL file-based reaper (INFRA-115)
         run: bash scripts/ci/test-infra-115-lease-ttl-file.sh
 

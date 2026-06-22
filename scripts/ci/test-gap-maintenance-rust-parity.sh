@@ -137,9 +137,6 @@ CREATE TABLE gaps (
 CREATE TABLE leases (
     session_id TEXT, gap_id TEXT, worktree TEXT, expires_at INTEGER
 );
-CREATE TABLE intents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, payload TEXT, created_at INTEGER
-);
 INSERT INTO gaps VALUES
     ('INFRA-9001','INFRA','EFFECTIVE: clean test gap','desc','P1','s','open',
      '["acceptance criterion 1"]','[]','','docs/gaps.yaml',1700000000,NULL,
