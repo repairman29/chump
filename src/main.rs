@@ -10220,6 +10220,42 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: pillar-balance-check.sh — run before output so result
+                // can be included in both JSON and human paths.
+                let repo_root_ap = repo_path::repo_root();
+                let pb_script = repo_root_ap.join("scripts/ops/pillar-balance-check.sh");
+                let pb_script_args: &[&str] = if json_out { &["--json"] } else { &[] };
+                let pb_result: Option<(i32, String)> = if pb_script.exists() {
+                    let chump_bin_env =
+                        std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+                    match std::process::Command::new("bash")
+                        .arg(&pb_script)
+                        .args(pb_script_args)
+                        .env("CHUMP_BIN", &chump_bin_env)
+                        .output()
+                    {
+                        Ok(out) => {
+                            let code = out.status.code().unwrap_or(1);
+                            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+                            Some((code, stdout))
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                kind = "pillar_balance_check_error",
+                                err = %e,
+                                "pillar-balance-check.sh failed to launch"
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                let pb_alerts_fired = pb_result
+                    .as_ref()
+                    .map(|(code, _)| *code != 0)
+                    .unwrap_or(false);
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10304,6 +10340,20 @@ async fn main() -> Result<()> {
                                     "open_gaps_orphaned": total_open - linked_open,
                                     "mission_orphan_rate_pct": orphan_rate,
                                     "per_outcome": per_outcome,
+                                }),
+                            );
+                        }
+                    }
+                    // INFRA-902: inject pillar_balance result into JSON report.
+                    if let serde_json::Value::Object(ref mut map) = report {
+                        if let Some((code, ref stdout)) = pb_result {
+                            let pb_json: serde_json::Value =
+                                serde_json::from_str(stdout).unwrap_or(serde_json::Value::Null);
+                            map.insert(
+                                "pillar_balance".into(),
+                                serde_json::json!({
+                                    "alerts_fired": code != 0,
+                                    "result": pb_json,
                                 }),
                             );
                         }
@@ -10478,6 +10528,13 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    // INFRA-902: pillar-balance section.
+                    println!();
+                    println!("=== pillar balance (INFRA-902) ===");
+                    match &pb_result {
+                        Some((_code, stdout)) => print!("{}", stdout),
+                        None => println!("  (pillar-balance-check.sh not found — skipped)"),
+                    }
                 }
 
                 let mut fail_reasons: Vec<String> = Vec::new();
@@ -10503,6 +10560,12 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                // INFRA-902: pillar-balance alert.
+                if pb_alerts_fired {
+                    fail_reasons.push(
+                        "pillar balance alert fired — one or more pillars under-stocked or overweight (see pillar balance section above)".to_string()
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
