@@ -26,13 +26,12 @@
 //! Async polling uses `tokio::time::sleep` for the inter-tick gap so the
 //! orchestrator stays responsive to other work in the same runtime.
 
-use crate::dispatch::{task_class_for_gap_id, DispatchHandle};
+use crate::dispatch::DispatchHandle;
 use crate::reflect::{
     gap_domain, outcome_str, pr_number_of, DispatchReflection, NoopReflectionWriter,
     ReflectionWriter,
 };
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -380,121 +379,7 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
                 entry.handle.gap_id, reflection.outcome
             );
         }
-
-        // COG-036: append a routing-outcome row to .chump/state.db so the
-        // future Thompson-sampling router (COG-037) can self-learn from
-        // real dispatch outcomes. Best-effort — the dispatch already
-        // succeeded/failed; the scoreboard is observability and must never
-        // abort the monitor drain.
-        if let Err(e) = write_routing_outcome(&self.repo_root, entry, outcome, now_unix, duration_s)
-        {
-            eprintln!(
-                "[monitor] routing_outcome write failed for {} ({}): {e:#} (non-fatal)",
-                entry.handle.gap_id,
-                outcome_str(outcome),
-            );
-        }
     }
-}
-
-/// Append a row to `routing_outcomes` in `<repo_root>/.chump/state.db`.
-/// Resolves the DB path, creates the schema if absent, and inserts. Errors
-/// propagate to the caller, which is required by COG-036 to log + swallow.
-fn write_routing_outcome(
-    repo_root: &Path,
-    entry: &WatchEntry,
-    outcome: &DispatchOutcome,
-    now_unix: u64,
-    duration_s: u64,
-) -> Result<()> {
-    let db_path = repo_root.join(".chump").join("state.db");
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
-    }
-    let conn =
-        Connection::open(&db_path).with_context(|| format!("opening {}", db_path.display()))?;
-    // Use the same WAL/timeout pragmas as GapStore so we coexist with
-    // concurrent gap-store writers.
-    conn.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
-    )?;
-    // Defensive: if the GapStore migration hasn't run yet on this DB (e.g.
-    // a fresh checkout where dispatch terminates before any gap_store::open
-    // has happened), make sure the table is there. This duplicates the
-    // canonical schema in src/gap_store.rs — keep them in sync.
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS routing_outcomes (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            recorded_at   TEXT NOT NULL,
-            task_class    TEXT NOT NULL DEFAULT '',
-            priority      TEXT NOT NULL DEFAULT '',
-            effort        TEXT NOT NULL DEFAULT '',
-            backend       TEXT NOT NULL,
-            model         TEXT NOT NULL DEFAULT '',
-            provider_pfx  TEXT NOT NULL DEFAULT '',
-            gap_id        TEXT NOT NULL,
-            outcome       TEXT NOT NULL,
-            pr_number     INTEGER,
-            duration_s    INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS routing_outcomes_lookup
-            ON routing_outcomes(task_class, backend, model, provider_pfx);
-        CREATE INDEX IF NOT EXISTS routing_outcomes_recent
-            ON routing_outcomes(recorded_at);",
-    )?;
-
-    let task_class = task_class_for_gap_id(&entry.handle.gap_id).unwrap_or("");
-    // COG-038: prefer the handle's model/provider (carried from the
-    // chosen Candidate) so cascade-driven dispatches populate the
-    // scoreboard signature correctly. Env vars remain a back-compat
-    // fallback for callers that haven't migrated and for the env-override
-    // path in `resolve_route_for_gap`.
-    let model = entry
-        .handle
-        .model
-        .clone()
-        .unwrap_or_else(|| std::env::var("CHUMP_DISPATCH_MODEL").unwrap_or_default());
-    let provider_pfx = entry
-        .handle
-        .provider_pfx
-        .clone()
-        .unwrap_or_else(|| std::env::var("CHUMP_DISPATCH_PROVIDER_PFX").unwrap_or_default());
-    let outcome_label = outcome_str(outcome);
-    let pr_num = pr_number_of(outcome);
-    let recorded_at = unix_to_rfc3339(now_unix);
-
-    conn.execute(
-        "INSERT INTO routing_outcomes
-            (recorded_at, task_class, priority, effort, backend, model,
-             provider_pfx, gap_id, outcome, pr_number, duration_s)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-            recorded_at,
-            task_class,
-            entry.priority,
-            entry.effort,
-            entry.handle.backend.label(),
-            model,
-            provider_pfx,
-            entry.handle.gap_id,
-            outcome_label,
-            pr_num,
-            duration_s as i64,
-        ],
-    )
-    .context("insert routing_outcomes row")?;
-    Ok(())
-}
-
-/// RFC3339 UTC string, matching the format `record_routing_outcome` writes
-/// in tests (`"2026-04-27T12:00:00Z"`).
-fn unix_to_rfc3339(ts_secs: u64) -> String {
-    use chrono::{TimeZone, Utc};
-    Utc.timestamp_opt(ts_secs as i64, 0)
-        .single()
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-        .unwrap_or_default()
 }
 
 /// Try to reap the child without blocking. Returns the exit code if it has
@@ -938,125 +823,11 @@ mod tests {
         assert_eq!(out[0].1, DispatchOutcome::Shipped(7));
     }
 
-    // ── COG-036: routing-outcome write hook ─────────────────────────────
-
     #[test]
     fn outcome_str_table_covers_all_variants() {
         assert_eq!(outcome_str(&DispatchOutcome::Shipped(1)), "shipped");
         assert_eq!(outcome_str(&DispatchOutcome::Stalled), "stalled");
         assert_eq!(outcome_str(&DispatchOutcome::Killed("x".into())), "killed");
         assert_eq!(outcome_str(&DispatchOutcome::CiFailed(42)), "ci_failed");
-    }
-
-    #[test]
-    fn write_routing_outcome_is_best_effort_on_unwritable_path() {
-        // Pointing at a path that cannot be created (a non-directory file
-        // sitting where `.chump/` would go) must surface an Err so the
-        // caller can log + swallow. The contract is "non-fatal at the call
-        // site"; this test verifies the helper itself returns Err rather
-        // than panicking.
-        let dir = tempfile::TempDir::new().unwrap();
-        // Create a regular file at <root>/.chump so create_dir_all fails.
-        let blocker = dir.path().join(".chump");
-        std::fs::write(&blocker, b"not a dir").unwrap();
-
-        let h = handle("claude/blocked", "INFRA-001", unix_now());
-        let e = WatchEntry {
-            handle: h,
-            soft_deadline_secs: 600,
-            effort: "m".into(),
-            priority: "P1".into(),
-        };
-        let out = DispatchOutcome::Shipped(7);
-        let res = write_routing_outcome(dir.path(), &e, &out, unix_now(), 12);
-        assert!(
-            res.is_err(),
-            "expected Err when .chump path is a file, got {res:?}"
-        );
-        // Crucially: did NOT panic.
-    }
-
-    #[tokio::test]
-    async fn watch_writes_routing_outcome_row() {
-        // End-to-end: a monitor running with a tempdir repo_root should
-        // append one routing_outcomes row per terminal outcome. Verifies
-        // (a) the schema is created on demand, (b) the column values
-        // match what the entry+outcome carried in.
-        let dir = tempfile::TempDir::new().unwrap();
-        let mut scripts = Map::new();
-        scripts.insert("claude/a".to_string(), vec![Some(pr(101, "MERGED"))]);
-        scripts.insert("claude/b".to_string(), vec![Some(pr(202, "CLOSED"))]);
-        let provider = ScriptedProvider::new(scripts);
-
-        let entries = vec![
-            WatchEntry {
-                handle: handle("claude/a", "EVAL-1", unix_now()),
-                soft_deadline_secs: 600,
-                effort: "s".into(),
-                priority: "P1".into(),
-            },
-            WatchEntry {
-                handle: handle("claude/b", "INFRA-7", unix_now()),
-                soft_deadline_secs: 600,
-                effort: "m".into(),
-                priority: "P2".into(),
-            },
-        ];
-        let m = MonitorLoop::new(
-            entries,
-            dir.path().to_path_buf(),
-            Duration::from_millis(5),
-            &provider,
-        );
-        let _ = m.watch_until_done().await;
-
-        // Read back via raw rusqlite (avoids cross-crate dep on gap_store).
-        struct Row {
-            gap_id: String,
-            backend: String,
-            outcome: String,
-            pr_number: Option<i64>,
-            task_class: String,
-            priority: String,
-            effort: String,
-        }
-        let conn = Connection::open(dir.path().join(".chump").join("state.db")).unwrap();
-        let mut stmt = conn
-            .prepare(
-                "SELECT gap_id, backend, outcome, pr_number, task_class,
-                        priority, effort, duration_s
-                 FROM routing_outcomes ORDER BY gap_id",
-            )
-            .unwrap();
-        let rows: Vec<Row> = stmt
-            .query_map([], |r| {
-                Ok(Row {
-                    gap_id: r.get(0)?,
-                    backend: r.get(1)?,
-                    outcome: r.get(2)?,
-                    pr_number: r.get(3)?,
-                    task_class: r.get(4)?,
-                    priority: r.get(5)?,
-                    effort: r.get(6)?,
-                })
-            })
-            .unwrap()
-            .map(|r| r.unwrap())
-            .collect();
-        assert_eq!(rows.len(), 2, "one row per terminal outcome");
-        // EVAL-1 → shipped(101), task_class=research, effort=s, priority=P1
-        assert_eq!(rows[0].gap_id, "EVAL-1");
-        assert_eq!(rows[0].backend, "claude");
-        assert_eq!(rows[0].outcome, "shipped");
-        assert_eq!(rows[0].pr_number, Some(101));
-        assert_eq!(rows[0].task_class, "research");
-        assert_eq!(rows[0].priority, "P1");
-        assert_eq!(rows[0].effort, "s");
-        // INFRA-7 → ci_failed(202), task_class="" (no research prefix), priority=P2
-        assert_eq!(rows[1].gap_id, "INFRA-7");
-        assert_eq!(rows[1].outcome, "ci_failed");
-        assert_eq!(rows[1].pr_number, Some(202));
-        assert_eq!(rows[1].task_class, "");
-        assert_eq!(rows[1].priority, "P2");
     }
 }

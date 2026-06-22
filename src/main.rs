@@ -4529,7 +4529,7 @@ async fn main() -> Result<()> {
     // gap-id and routed through gap-preflight + bot-merge — making
     // `chump dispatch route INFRA-191` claim a phantom gap named "route"
     // instead of printing a routing cascade.
-    const DISPATCH_SUBCOMMANDS: &[&str] = &["route", "scoreboard", "simulate", "cost-report"];
+    const DISPATCH_SUBCOMMANDS: &[&str] = &["route", "simulate", "cost-report"];
     if args.get(1).map(String::as_str) == Some("dispatch")
         && !args
             .get(2)
@@ -13990,60 +13990,6 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // `chump dispatch scoreboard` (COG-036) — print aggregated dispatch
-    // outcomes per (task_class, backend, model, provider_pfx) route. Reads
-    // from `routing_outcomes` in `.chump/state.db`, which the orchestrator
-    // monitor appends to on every terminal DispatchOutcome.
-    if args.get(1).map(String::as_str) == Some("dispatch")
-        && args.get(2).map(String::as_str) == Some("scoreboard")
-    {
-        let repo_root = repo_path::repo_root();
-        let store = match gap_store::GapStore::open(&repo_root) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("chump dispatch scoreboard: cannot open state.db: {e:#}");
-                std::process::exit(1);
-            }
-        };
-        let entries = match store.routing_scoreboard() {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("chump dispatch scoreboard: query failed: {e:#}");
-                std::process::exit(1);
-            }
-        };
-        if entries.is_empty() {
-            println!("No routing outcomes recorded yet.");
-            return Ok(());
-        }
-        println!(
-            "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>8}{:>20}",
-            "class", "backend", "model", "provider", "succ", "fail", "rate%", "last_seen"
-        );
-        for e in &entries {
-            println!(
-                "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>7.1}%{:>20}",
-                if e.task_class.is_empty() {
-                    "-"
-                } else {
-                    &e.task_class
-                },
-                e.backend,
-                if e.model.is_empty() { "-" } else { &e.model },
-                if e.provider_pfx.is_empty() {
-                    "-"
-                } else {
-                    &e.provider_pfx
-                },
-                e.successes,
-                e.failures,
-                e.success_rate * 100.0,
-                e.last_seen
-            );
-        }
-        return Ok(());
-    }
-
     // `chump dispatch simulate <task_class> <count>` (COG-037) — sample
     // the Thompson-flag-enabled candidate cascade `count` times for a
     // synthetic gap of the given task_class and print a histogram of
@@ -14250,9 +14196,6 @@ async fn main() -> Result<()> {
         eprintln!("Usage: chump dispatch <subcommand>");
         eprintln!();
         eprintln!("  route       <GAP-ID>            print the candidate cascade for a gap");
-        eprintln!(
-            "  scoreboard                      aggregate dispatch outcomes (COG-036) by route"
-        );
         eprintln!(
             "  simulate    <task_class> <N>    sample the Thompson cascade N times (COG-037)"
         );
