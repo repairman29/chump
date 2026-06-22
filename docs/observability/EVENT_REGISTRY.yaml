@@ -1638,6 +1638,16 @@ events:
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, kind, pr, phase, error]
 
+  - kind: rebase_hunk_dropped
+    effect_metric: self
+    emitter: scripts/coord/wedge-recover.sh (INFRA-1526)
+    trigger: post-rebase verification detected a file with >50 added lines in the original
+      commit that has 0 additions in the rebased commit — silent hunk drop prevented;
+      push was aborted and operator must manually rebase the PR
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit, pr, branch]
+    expected_volume: "0/day (alarm if non-zero — indicates rebase strategy is silently dropping feature hunks)"
+
   # ── Cost / token tracking ─────────────────────────────────────────────────
   - kind: token_usage_partial
     effect_metric: self
