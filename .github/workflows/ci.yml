@@ -908,6 +908,9 @@ jobs:
       - name: bot-merge conflict-resolver wiring (INFRA-1657)
         run: bash scripts/ci/test-bot-merge-conflict-wiring.sh
 
+      - name: post-rebase hunk-drop detector (INFRA-1526)
+        run: bash scripts/ci/test-post-rebase-verify.sh
+
       - name: pipefail race sweep (INFRA-1658)
         run: bash scripts/ci/test-pipefail-race-sweep.sh
 

@@ -8170,3 +8170,21 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/ci/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      post-rebase-verify.sh detected that a file had more than
+      CHUMP_REBASE_DROP_LINES (default 50) added lines in the original
+      commits but 0 added lines in the rebased tip. Indicates a silent
+      hunk drop during git rebase — the kind that caused PR #2216
+      (INFRA-1418) to lose its 173-line src/main.rs offline-check block
+      while EVENT_REGISTRY.yaml entries survived intact. Emitted once per
+      dropped file. bot-merge.sh aborts before pushing on any such event.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable

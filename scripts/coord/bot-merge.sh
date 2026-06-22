@@ -2171,6 +2171,26 @@ if [[ "$BEHIND" -gt 0 ]]; then
         fi
     fi
     _grade_rebase_clean="true"
+
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Compares per-file addition counts before vs after the rebase.  If any
+    # file had >50 added lines in the original commits but 0 in the rebased
+    # tip, it was silently dropped (the pattern that bit PR #2216 / #2173).
+    # Aborts before push so the operator sees the error rather than a broken
+    # CI run with an orphan EVENT_REGISTRY entry.
+    _post_rebase_verify="${REPO_ROOT}/scripts/ci/post-rebase-verify.sh"
+    if [[ -x "$_post_rebase_verify" ]]; then
+        info "Running post-rebase hunk-drop verification (INFRA-1526) …"
+        _prv_ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+        if ! "$_post_rebase_verify" \
+                --base "${REMOTE}/${BASE_BRANCH}" \
+                --ambient "$_prv_ambient"; then
+            red "post-rebase-verify detected silent hunk drops — aborting before push."
+            red "Run: git diff \$(git merge-base ORIG_HEAD ${REMOTE}/${BASE_BRANCH}) ORIG_HEAD -- <file>"
+            red "Compare against: git diff ${REMOTE}/${BASE_BRANCH} HEAD -- <file>"
+            _bm_fail "post-rebase-verify" 12 "hunk drop detected — see stderr for affected files"
+        fi
+    fi
     stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
