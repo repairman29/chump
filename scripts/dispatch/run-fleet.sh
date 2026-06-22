@@ -243,6 +243,20 @@ else
 fi
 # INFRA-581: per-session PID file so teardown can cascade-kill orphaned workers.
 FLEET_PIDS_FILE="${FLEET_PIDS_FILE:-$HOME/.chump/fleet-pids-${FLEET_SESSION}.txt}"
+# RESILIENT-159: if run-fleet exits or is SIGTERM'd WITHOUT a live fleet session
+# (e.g. killed during setup, before the tmux session is created), reap the
+# background children we already spawned (token refresher, autorestart daemon)
+# so they don't orphan to PPID 1. A SUCCESSFUL launch leaves the session up, so
+# this is a no-op then — the children stay to support the running pool. Covers
+# the 0-300s window before the refresher's own self-exit check can fire.
+_reap_bg_if_no_fleet() {
+    tmux has-session -t "$FLEET_SESSION" 2>/dev/null && return 0
+    [[ -f "$FLEET_PIDS_FILE" ]] || return 0
+    while read -r _bgpid; do
+        [[ -n "$_bgpid" ]] && kill "$_bgpid" 2>/dev/null || true
+    done < "$FLEET_PIDS_FILE"
+}
+trap _reap_bg_if_no_fleet EXIT
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 # INFRA-738 + INFRA-1717: auto-detect backend based on any working claude auth.
 #   - Any auth path resolved (api_key | subscription via env | oauth-token.json file)
@@ -652,6 +666,13 @@ if [[ "$_fleet_auth_mode" == "subscription" ]]; then
         _amb="$_amb_log"
         while true; do
             sleep 300
+            # RESILIENT-159: self-exit when the fleet session is gone. Without this
+            # the refresher loops `sleep 300` FOREVER after the fleet dies or never
+            # comes up — orphaning to PPID 1 (this was the 49-orphan leak that the
+            # always-on keeper would have amplified). First check is 300s in, by
+            # which point a successful launch has created the session; revival is
+            # the fleet-autopilot keeper's job (RESILIENT-158), not this loop's.
+            tmux has-session -t "$FLEET_SESSION" 2>/dev/null || exit 0
             _refreshed=""
             # 1. Try macOS Keychain (service names used by claude CLI).
             for _svc in "Claude Code" "claude.ai" "Claude"; do
