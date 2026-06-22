@@ -293,6 +293,32 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
         });
     }
 
+    // EFFECTIVE-288 GREEN-FIRST doctrine (operator, 2026-06-22): before picking
+    // any NEW feature work, make the repo GREEN. If a CI check is failing across
+    // the repo's open PRs (a broken gate blocking every merge), fixing it is the
+    // forced top priority. "Step 1: make it green. Step 2: ship something new."
+    // Skipped when --gap is set (operator chose the work) — that returns above.
+    let gh_bin_gf = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
+    let failing = repo_failing_checks(&gh_bin_gf, &opts.owner_repo);
+    if let Some(green) = green_first_gap_from_failures(&failing) {
+        let top = failing.first().map(|(n, _)| n.as_str()).unwrap_or("?");
+        println!(
+            "[improve] GREEN-FIRST: repo not green ('{top}' failing across open PRs) — fixing before any new work"
+        );
+        return Ok(green);
+    }
+
+    // Repo is green (or gh unavailable) — proceed to scan-based feature picking.
+    pick_gap_from_scan(opts, clone_dir)
+}
+
+/// Scan-based feature pick (pure, no network). The `--gap` override and the
+/// EFFECTIVE-288 GREEN-FIRST gate both run in `pick_gap` *before* this; this
+/// only reads the latest onboard scan and returns the highest-priority gap by
+/// the L1<L2<L3 doctrine order. Kept separate + unit-tested directly so the
+/// scan-pick tests never depend on live `gh` state (the green-first gh call
+/// lives only in `pick_gap`).
+fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
     // Read the latest onboard scan from the external-repo directory.
     // The scan lives at <external-repo-dir>/scans/onboard-scan-<ts>.json
     // where <external-repo-dir> is clone_dir's parent (the repo root, not /clone/).
@@ -327,6 +353,75 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
     gaps.into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("onboard scan contains no proposed gaps"))
+}
+
+/// Gather failing CI checks across the target repo's open PRs, tallied by check
+/// name (most-failing first). Best-effort: a `gh` failure (offline, no auth,
+/// rate-limit) yields an empty vec → no false GREEN-FIRST block. EFFECTIVE-288.
+///
+/// A check failing on a SINGLE PR is likely that PR's own bug; a check failing
+/// across *multiple* open PRs is a broken gate blocking every merge — that's the
+/// signal `green_first_gap_from_failures` keys on.
+fn repo_failing_checks(gh_bin: &str, owner_repo: &str) -> Vec<(String, usize)> {
+    let out = Command::new(gh_bin)
+        .args([
+            "pr", "list", "--repo", owner_repo, "--state", "open", "--limit", "30", "--json",
+            "statusCheckRollup", "--jq",
+            // Emit one failing-check name per line across all open PRs. CheckRun
+            // uses .conclusion+.name; StatusContext uses .state+.context.
+            r#".[] | .statusCheckRollup[]? | select(.conclusion=="FAILURE" or .state=="FAILURE") | (.name // .context)"#,
+        ])
+        .output();
+    let stdout = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => return Vec::new(), // best-effort — never false-block on a gh error
+    };
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for name in stdout.lines().map(str::trim).filter(|s| !s.is_empty()) {
+        *counts.entry(name.to_string()).or_insert(0) += 1;
+    }
+    let mut v: Vec<(String, usize)> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0))); // most-failing first, stable
+    v
+}
+
+/// GREEN-FIRST doctrine: a CI check failing across >=2 open PRs is a broken gate
+/// blocking *every* merge — make the repo green before any new feature. Returns
+/// the forced top-priority pick when such a check exists, else `None` (repo is
+/// green enough → fall through to normal feature picking). Pure + unit-tested.
+/// EFFECTIVE-288 (operator doctrine 2026-06-22: "Step 1 make it green, step 2
+/// ship something new").
+fn green_first_gap_from_failures(failures: &[(String, usize)]) -> Option<ProposedGap> {
+    use chump_handoff::external_repo_schema::{Confidence, Effort, Priority, SourceOfEvidence};
+    let (check, count) = failures.iter().find(|(_, c)| *c >= 2)?;
+    Some(ProposedGap {
+        title: format!("GREEN-FIRST: fix the failing CI check '{check}' (blocks all merges)"),
+        domain: "RESILIENT".to_string(),
+        priority: Priority::P0, // a broken merge-gate is always top priority
+        effort: Effort::M,
+        confidence: Confidence::High,
+        source_of_evidence: SourceOfEvidence {
+            input_path: "gh pr list (open-PR check rollups)".to_string(),
+            section: "green-first doctrine".to_string(),
+            excerpt: format!(
+                "CI check '{check}' fails on {count} open PRs — a broken gate blocking every \
+                 merge; make the repo green before any new feature work"
+            ),
+        },
+        acceptance_criteria_draft: vec![
+            format!(
+                "Diagnose why '{check}' fails (broken/misconfigured check vs a real repo issue) \
+                 and fix the root cause"
+            ),
+            format!("The '{check}' check passes (green) on a fresh PR"),
+            "A previously-red PR can then go green and merge".to_string(),
+        ],
+        layer: Some("L1".to_string()), // green-first is foundation work
+        doctrine_justification: Some(
+            "green-first: make it green before shipping new (operator doctrine 2026-06-22)"
+                .to_string(),
+        ),
+    })
 }
 
 /// Map a doctrine layer string to a sort key (lower = picked first).
@@ -1030,7 +1125,7 @@ mod tests {
             clone_dir: Some(clone_dir),
         };
 
-        let picked = pick_gap(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
+        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
         // Should pick the first (highest-confidence) gap.
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
     }
@@ -1236,7 +1331,7 @@ Some prose from the agent.
         };
 
         // Run just the pick stage + dedup logic without spawning any processes.
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
 
         // Dedup on an empty clone dir should pass (no code present).
@@ -1455,7 +1550,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L1: foundation gate unmet",
             "doctrine-order picking must select L1 first, even if it appears last in the scan"
@@ -1492,7 +1587,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L1 high-conf",
             "within L1, high-confidence gap must be picked before low-confidence"
@@ -1527,7 +1622,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
         assert_eq!(
             picked.title, "L3 low-conf",
             "L3 (even low-confidence) must be picked before an untagged gap"
@@ -1826,6 +1921,76 @@ Some prose from the agent.
         assert!(
             matches!(result, DedupResult::NotRedundant),
             "gh failure must fail-open toward NotRedundant (verify-merge is the backstop)"
+        );
+    }
+
+    // ── EFFECTIVE-288 GREEN-FIRST doctrine ────────────────────────────────
+    // "Step 1: make it green. Step 2: ship something new."
+
+    #[test]
+    fn green_first_none_when_repo_is_green() {
+        // No failing checks at all → nothing to fix → fall through to features.
+        assert!(green_first_gap_from_failures(&[]).is_none());
+    }
+
+    #[test]
+    fn green_first_none_when_single_pr_fails() {
+        // A check failing on ONE PR is likely that PR's own bug, not a broken
+        // gate — must NOT hijack the pick away from feature work.
+        let failures = vec![("flaky-test".to_string(), 1)];
+        assert!(
+            green_first_gap_from_failures(&failures).is_none(),
+            "a 1-PR failure is per-PR, not a repo-wide broken gate"
+        );
+    }
+
+    #[test]
+    fn green_first_forces_fix_when_check_fails_across_prs() {
+        use chump_handoff::external_repo_schema::{Effort, Priority};
+        // "Code Quality Analysis" failing on 3 open PRs (the real BEAST-MODE
+        // case) is a broken gate blocking every merge → forced top-priority fix.
+        let failures = vec![("Code Quality Analysis".to_string(), 3)];
+        let gap = green_first_gap_from_failures(&failures)
+            .expect("a check failing across >=2 PRs must force a green-first pick");
+        assert!(
+            gap.title.contains("GREEN-FIRST") && gap.title.contains("Code Quality Analysis"),
+            "title names the doctrine + the failing check: {}",
+            gap.title
+        );
+        assert_eq!(
+            gap.priority,
+            Priority::P0,
+            "a broken merge-gate is top priority"
+        );
+        assert_eq!(gap.effort, Effort::M);
+        assert_eq!(
+            gap.layer.as_deref(),
+            Some("L1"),
+            "green-first is foundation work"
+        );
+        assert!(
+            gap.doctrine_justification
+                .as_deref()
+                .unwrap_or("")
+                .contains("green-first"),
+            "carries the green-first doctrine justification"
+        );
+    }
+
+    #[test]
+    fn green_first_picks_the_most_failing_check() {
+        // When several checks fail across PRs, the highest-count one is named
+        // first (repo_failing_checks sorts most-failing first; the pure fn keeps
+        // that order via `.find`).
+        let failures = vec![
+            ("widely-broken".to_string(), 5),
+            ("less-broken".to_string(), 2),
+        ];
+        let gap = green_first_gap_from_failures(&failures).expect("some failure crosses the bar");
+        assert!(
+            gap.title.contains("widely-broken"),
+            "names the most-failing gate first: {}",
+            gap.title
         );
     }
 }
