@@ -10480,7 +10480,61 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-902: pillar balance check ───────────────────────────────────
+                let pillar_balance_result: Option<(bool, String)> = {
+                    let script = repo_path::repo_root()
+                        .join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let out = std::process::Command::new("bash")
+                            .arg(&script)
+                            .output();
+                        match out {
+                            Ok(o) => {
+                                let summary = if o.status.success() {
+                                    "pillar balance: OK".to_string()
+                                } else {
+                                    let combined = format!(
+                                        "{}{}",
+                                        String::from_utf8_lossy(&o.stdout),
+                                        String::from_utf8_lossy(&o.stderr)
+                                    );
+                                    let detail = combined.trim();
+                                    if detail.is_empty() {
+                                        "pillar balance: ALERT (check ambient.jsonl)".to_string()
+                                    } else {
+                                        format!("pillar balance: ALERT — {}", detail)
+                                    }
+                                };
+                                Some((o.status.success(), summary))
+                            }
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
+                    }
+                };
+                if !as_json {
+                    println!();
+                    match &pillar_balance_result {
+                        Some((ok, msg)) => {
+                            if *ok {
+                                println!("{}", msg);
+                            } else {
+                                println!("{}", msg);
+                                println!("  (events emitted to ambient.jsonl)");
+                            }
+                        }
+                        None => println!("pillar balance: script not found (scripts/ops/pillar-balance-check.sh)"),
+                    }
+                }
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                // INFRA-902: pillar balance alert counts as a failure.
+                if let Some((ok, msg)) = &pillar_balance_result {
+                    if !ok {
+                        fail_reasons.push(msg.clone());
+                    }
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
