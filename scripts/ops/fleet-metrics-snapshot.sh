@@ -91,16 +91,22 @@ else:
 waste_rate = 0.0
 try:
     result = subprocess.run(
-        ["chump", "waste-tally", "--window", str(window_h), "--json"],
+        ["chump", "waste-tally", "--since", str(window_h) + "h", "--json"],
         capture_output=True, text=True, timeout=10
     )
     if result.returncode == 0 and result.stdout.strip():
         wdata = json.loads(result.stdout.strip())
-        waste_rate = float(wdata.get("waste_rate", 0.0))
+        # waste-tally JSON exposes total_incidents and total_events.
+        # Prefer explicit waste_rate field if present (e.g. test stubs).
+        if "waste_rate" in wdata:
+            waste_rate = float(wdata["waste_rate"])
+        else:
+            total_events = int(wdata.get("total_events", 0))
+            total_incidents = int(wdata.get("total_incidents", 0))
+            waste_rate = total_incidents / max(total_events, 1)
 except Exception:
-    # Fallback: count waste_logged events
+    # Fallback: count waste_logged events in ambient
     waste_events = [e for e in recent if e.get("kind") == "waste_logged"]
-    # Can't compute real waste_rate without total compute; report event count
     waste_rate = len(waste_events) / max(1, window_h)  # events/hour as proxy
 
 # ── cycle_time_p50_h: median (gap open → close) in hours ─────────────────────

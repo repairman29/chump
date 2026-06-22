@@ -138,6 +138,14 @@ else
     err "8: --json produced no fleet_metrics_snapshot output"
 fi
 
+# Test 9: main.rs has 'chump fleet metrics' arm (AC #2)
+MAIN_RS="$REPO_ROOT/src/main.rs"
+if grep -q '"metrics"' "$MAIN_RS" 2>/dev/null && grep -q "fleet-metrics-snapshot" "$MAIN_RS" 2>/dev/null; then
+    ok "9: main.rs has 'fleet metrics' subcommand wired to fleet-metrics-snapshot.sh"
+else
+    err "9: main.rs missing 'fleet metrics' subcommand (AC #2)"
+fi
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
