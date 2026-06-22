@@ -2408,16 +2408,51 @@ elif command -v cargo &>/dev/null; then
     green "clippy clean."
 fi
 
+# ── INFRA-918: rebase-before-test observability event ─────────────────────────
+# Emitted just before §4 so the fleet can verify tests run on rebased state.
+# head_sha records the post-rebase, post-fmt, post-clippy tree that cargo test
+# will actually build — not the pre-rebase stale state.
+# scanner-anchor: "kind":"bot_merge_rebase_before_test"
+_rbt_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+_rbt_head="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+_rbt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","gap":"%s","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s,"note":"INFRA-918: cargo test gated to run on rebased tree"}\n' \
+    "$_rbt_ts" "${GAP_IDS[0]:-unknown}" \
+    "$([ "${BEHIND:-0}" -gt 0 ] && echo true || echo false)" \
+    "${BEHIND:-0}" "$_rbt_head" \
+    "$([ "$SKIP_TESTS" -eq 0 ] && echo true || echo false)" \
+    >> "$_rbt_amb" 2>/dev/null || true
+
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
-    if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+    # INFRA-918: capture test output separately to enable failure-class taxonomy.
+    # Classifies failures as transient_oom (SIGTERM/OOM pressure) vs
+    # permanent_failure (logic bug) — lets callers decide whether to retry.
+    _test_out_918="$(mktemp)"
+    _test_rc_918=0
+    set +e
+    _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests 2>&1 | tee -a "$_test_out_918"
+    _test_rc_918="${PIPESTATUS[0]}"
+    set -e
+    if [[ "$_test_rc_918" -ne 0 ]]; then
         red "Tests failed — fix them before merging."
-        info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
-        info "that is most likely OOM, not a real test failure. Try lowering"
-        info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
-        _bm_fail "test" 14 "test suite failure"
+        # INFRA-918: classify failure to help callers distinguish retry-safe from permanent.
+        _test_failure_class="permanent_failure"
+        if grep -qE "signal: 15|SIGTERM|Killed" "$_test_out_918" 2>/dev/null; then
+            _test_failure_class="transient_oom"
+            info "Failure class: transient_oom (SIGTERM/OOM — not a logic failure)."
+            info "Try lowering CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        fi
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        printf '{"ts":"%s","kind":"bot_merge_test_failure","gap":"%s","failure_class":"%s","cargo_build_jobs":%s,"note":"INFRA-918: transient_oom=OOM/SIGTERM retry-safe; permanent_failure=logic bug needs fix"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-unknown}" \
+            "$_test_failure_class" "${CARGO_BUILD_JOBS:-4}" \
+            >> "$_rbt_amb" 2>/dev/null || true
+        rm -f "$_test_out_918" || true
+        _bm_fail "test" 14 "test suite failure (class: ${_test_failure_class})"
     fi
+    rm -f "$_test_out_918" || true
     stage_done
     green "Tests passed."
 else
