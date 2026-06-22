@@ -307,6 +307,19 @@ events:
       tighter scope definition.
       Scanner-anchor: "kind":"agent_dispatch_guardrail_blocked"
 
+  - kind: fleet_metrics_snapshot
+    effect_metric: credible
+    emitter: scripts/ops/fleet-metrics-snapshot.sh (INFRA-900)
+    # scanner-anchor: "kind":"fleet_metrics_snapshot"
+    trigger: >
+      Periodic metrics collection: ship_rate_24h (merged/opened PRs),
+      waste_rate_24h (waste incidents / total sessions), cycle_time_p50_h
+      (median gap open→close), active_gaps, p0_count. Run via
+      `chump fleet metrics` or directly as a shell script.
+    consumers: [velocity-tracker, ops-audit]
+    fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
+    status: stable
+
   - kind: fleet_snapshot
     effect_metric: self
     emitter: scripts/ops/fleet-snapshot.sh
