@@ -120,6 +120,94 @@
       font-size: 0.83rem;
       color: #888;
     }
+
+    .founding-offer {
+      margin-top: 2.5rem;
+      padding: 1.5rem 1.75rem;
+      background: #f9f6ff;
+      border: 1px solid #d4c6f0;
+      border-radius: 6px;
+    }
+
+    .founding-offer h2 {
+      border-bottom-color: #d4c6f0;
+      color: #3d1f8c;
+    }
+
+    .founding-offer .terms-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 0 0 1.25rem 0;
+    }
+
+    .founding-offer .terms-list li {
+      padding: 0.3rem 0;
+      border-bottom: 1px solid #ede8f8;
+      font-size: 0.95rem;
+    }
+
+    .founding-offer .terms-list li:last-child { border-bottom: none; }
+
+    .founding-offer .badge {
+      display: inline-block;
+      background: #3d1f8c;
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 0.15em 0.55em;
+      border-radius: 3px;
+      margin-right: 0.4em;
+      vertical-align: middle;
+    }
+
+    .signup-form {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .signup-form input[type="email"] {
+      flex: 1 1 220px;
+      padding: 0.55rem 0.85rem;
+      font-size: 0.95rem;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .signup-form input[type="email"]:focus {
+      border-color: #3d1f8c;
+      box-shadow: 0 0 0 2px rgba(61,31,140,0.12);
+    }
+
+    .signup-form button {
+      padding: 0.55rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      background: #3d1f8c;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .signup-form button:hover { background: #2e1769; }
+
+    .offer-gate {
+      margin-top: 1rem;
+      font-size: 0.87rem;
+      color: #666;
+    }
+
+    .seats-remaining {
+      font-weight: 600;
+      color: #3d1f8c;
+    }
   </style>
 </head>
 <body>
@@ -241,6 +329,39 @@ tail -f .chump-locks/ambient.jsonl | jq -r '.kind'   # live fleet event stream</
     experimental; it runs production workloads.
   </div>
 
+  <div class="founding-offer" id="founding-offer">
+    <h2>
+      <span class="badge">10 seats</span>
+      Founding Customer Offer
+    </h2>
+    <p>
+      We're opening <strong>10 founding-customer slots</strong> for teams that want
+      early access and are willing to share their experience. In exchange for a
+      short case study, you get:
+    </p>
+    <ul class="terms-list">
+      <li><strong>50% off</strong> the standard hosted-tier price, locked in for 12&nbsp;months</li>
+      <li><strong>Direct line</strong> to the maintainer — gaps you file jump the queue</li>
+      <li><strong>Named in the launch</strong> — your project cited at launch and in the case study</li>
+      <li><strong>No lock-in</strong> — cancel after month 3 with 30 days' notice</li>
+      <li><strong>Approval rights</strong> on the case study draft before anything publishes</li>
+    </ul>
+    <p>
+      Leave your email below and we'll send you the one-page terms sheet and a
+      demo link. Offer closes 14 days after launch or when all 10 slots fill,
+      whichever comes first.
+    </p>
+    <form class="signup-form" action="https://app.chump.dev/founding-signup" method="POST" onsubmit="handleFoundingSignup(event)">
+      <input type="email" name="email" placeholder="you@yourproject.dev" required autocomplete="email" />
+      <button type="submit">Request a slot</button>
+    </form>
+    <p class="offer-gate">
+      <span class="seats-remaining" id="seats-counter">10 slots</span> remaining &mdash;
+      coupon code <code>FOUNDING50</code> applied automatically at checkout &mdash;
+      full terms: <a href="../business/FOUNDING_CUSTOMER_OFFER.md">docs/business/FOUNDING_CUSTOMER_OFFER.md</a>
+    </p>
+  </div>
+
   <div class="links">
     <h2>Where to start</h2>
     <ul>
@@ -261,5 +382,32 @@ tail -f .chump-locks/ambient.jsonl | jq -r '.kind'   # live fleet event stream</
     <a href="https://github.com/repairman29/chump">github.com/repairman29/chump</a>
   </footer>
 </main>
+<script>
+  function handleFoundingSignup(e) {
+    e.preventDefault();
+    var form = e.target;
+    var email = form.querySelector('input[type="email"]').value;
+    var btn = form.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    fetch('https://app.chump.dev/founding-signup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, source: 'landing-page', offer: 'FOUNDING50'})
+    }).then(function(r) {
+      if (r.ok) {
+        form.innerHTML = '<p style="color:#3d1f8c;font-weight:600">Got it — check your inbox for the terms sheet and demo link.</p>';
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Request a slot';
+        alert('Something went wrong — email jeff@chump.dev directly.');
+      }
+    }).catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Request a slot';
+      alert('Network error — email jeff@chump.dev directly.');
+    });
+  }
+</script>
 </body>
 </html>
