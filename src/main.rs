@@ -10220,6 +10220,35 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: call pillar-balance-check.sh and capture output
+                let pillar_balance_result: (String, bool) = {
+                    let script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let mut cmd = std::process::Command::new("bash");
+                        cmd.arg(&script);
+                        // Forward current executable so the script skips binary discovery
+                        if let Ok(exe) = std::env::current_exe() {
+                            cmd.env("CHUMP_BIN", exe);
+                        }
+                        match cmd.output() {
+                            Ok(out) => {
+                                let stdout =
+                                    String::from_utf8_lossy(&out.stdout).trim().to_string();
+                                (stdout, out.status.success())
+                            }
+                            Err(e) => (
+                                format!("warn: pillar-balance-check.sh exec failed: {e}"),
+                                true,
+                            ),
+                        }
+                    } else {
+                        (
+                            "scripts/ops/pillar-balance-check.sh not found — skipping".to_string(),
+                            true,
+                        )
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10307,6 +10336,16 @@ async fn main() -> Result<()> {
                                 }),
                             );
                         }
+                    }
+                    // INFRA-902: inject pillar balance result into JSON
+                    if let serde_json::Value::Object(ref mut map) = report {
+                        map.insert(
+                            "pillar_balance".into(),
+                            serde_json::json!({
+                                "summary": pillar_balance_result.0,
+                                "ok": pillar_balance_result.1,
+                            }),
+                        );
                     }
                     println!(
                         "{}",
@@ -10478,6 +10517,10 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    // INFRA-902: print pillar balance result in human output
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    println!("{}", pillar_balance_result.0);
                 }
 
                 let mut fail_reasons: Vec<String> = Vec::new();
@@ -10503,6 +10546,13 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                // INFRA-902: pillar balance alerts
+                if !pillar_balance_result.1 {
+                    fail_reasons.push(
+                        "pillar balance alert fired — see kind=pillar_balance_alert in ambient.jsonl"
+                            .to_string(),
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
