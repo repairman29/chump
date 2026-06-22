@@ -10480,7 +10480,43 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: call pillar-balance-check.sh and include result.
+                let pillar_balance_alert = {
+                    let repo_root = repo_path::repo_root();
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        println!();
+                        println!("=== Pillar balance (INFRA-902) ===");
+                        let out = std::process::Command::new("bash")
+                            .arg(&script)
+                            .env("CHUMP_BIN", std::env::current_exe().unwrap_or_default())
+                            .output();
+                        match out {
+                            Ok(o) => {
+                                let stdout = String::from_utf8_lossy(&o.stdout);
+                                let stderr = String::from_utf8_lossy(&o.stderr);
+                                if !stdout.is_empty() {
+                                    print!("{}", stdout);
+                                }
+                                if !stderr.is_empty() {
+                                    eprint!("{}", stderr);
+                                }
+                                !o.status.success()
+                            }
+                            Err(e) => {
+                                eprintln!("pillar-balance-check.sh: {e}");
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_alert {
+                    fail_reasons.push("pillar balance alert(s) fired — see above".to_string());
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
