@@ -49,15 +49,36 @@ export CHUMP_RESERVE_NO_AUTOSTAGE=1
 export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── 3. Seed 5 synthetic gaps ──────────────────────────────────────────────────
+# CREDIBLE-144: this loop used to run `gap reserve ... --quiet 2>/dev/null || true`,
+# silently swallowing any reserve failure. Under CI resource pressure a transient
+# reserve failure then surfaced only as a confusing "expected ≥5; got N" with no
+# cause — false-failing unrelated PRs (e.g. #3167, #3155) that never touched the
+# reserve path. Now: capture stderr, retry each reserve, and on a short fixture
+# print the captured diagnostics so the *real* cause is visible in the CI log.
 DOMAINS=(INFRA CREDIBLE RESILIENT EFFECTIVE ZERO-WASTE)
+SEED_DIAG=""
 for domain in "${DOMAINS[@]}"; do
-    "$BIN" gap reserve \
-        --domain "$domain" \
-        --priority P1 \
-        --effort xs \
-        --title "credible-061-fixture-$(echo "$domain" | tr '[:upper:]' '[:lower:]')" \
-        --force-duplicate \
-        --quiet 2>/dev/null || true
+    title="credible-061-fixture-$(echo "$domain" | tr '[:upper:]' '[:lower:]')"
+    seeded=0
+    for attempt in 1 2 3; do
+        if err="$("$BIN" gap reserve \
+                    --domain "$domain" \
+                    --priority P1 \
+                    --effort xs \
+                    --title "$title" \
+                    --force-duplicate \
+                    --quiet 2>&1)"; then
+            seeded=1
+            break
+        fi
+        SEED_DIAG="${SEED_DIAG}
+    [$domain attempt $attempt] reserve exited non-zero: ${err:-<no output>}"
+        sleep 0.5
+    done
+    if [[ "$seeded" -ne 1 ]]; then
+        SEED_DIAG="${SEED_DIAG}
+    [$domain] FAILED to seed after 3 attempts"
+    fi
 done
 
 FIXTURE_COUNT=$("$BIN" gap list --json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
@@ -65,6 +86,8 @@ if [[ "$FIXTURE_COUNT" -ge 5 ]]; then
     ok "5 fixture gaps seeded (total=$FIXTURE_COUNT)"
 else
     fail "expected ≥5 fixture gaps; got $FIXTURE_COUNT"
+    printf '  seeding diagnostics (CREDIBLE-144):%s\n' "${SEED_DIAG:-
+    (no reserve errors captured — gaps created then vanished?)}" >&2
 fi
 
 # ── 4. JSON output: required fields present in every gap ─────────────────────
