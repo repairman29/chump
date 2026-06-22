@@ -932,6 +932,9 @@ jobs:
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 
+      - name: fleet metrics snapshot (INFRA-900)
+        run: bash scripts/ci/test-fleet-metrics-snapshot.sh
+
       - name: fleet brief subcommand (INFRA-721)
         run: |
           cargo build --bin chump 2>&1 | tail -3

@@ -7589,9 +7589,31 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-900: metrics collection snapshot — reads ambient.jsonl + state.db
+            // and emits kind=fleet_metrics_snapshot with ship_rate_24h, waste_rate_24h,
+            // cycle_time_p50_h, active_gaps, p0_count.
+            "metrics" => {
+                let script = repo_root.join("scripts/ops/fleet-metrics-snapshot.sh");
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&script);
+                if args.iter().any(|a| a == "--json") {
+                    cmd.arg("--json");
+                }
+                if args.iter().any(|a| a == "--dry-run") {
+                    cmd.arg("--dry-run");
+                }
+                if let Some(w) = flag("--window") {
+                    cmd.arg("--window").arg(w);
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet metrics: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|metrics>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
