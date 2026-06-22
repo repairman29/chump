@@ -1157,6 +1157,11 @@ jobs:
       - name: Review-as-Handoff end-to-end smoke test (INFRA-774)
         run: bash scripts/ci/test-review-handoff-smoke.sh
 
+      - name: pillar balance alerts (INFRA-902)
+        run: |
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
+            bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: preflight-vs-CI parity smoke (INFRA-1867)
         run: bash scripts/ci/test-preflight-ci-parity.sh
 

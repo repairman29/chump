@@ -4322,6 +4322,28 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-902: pillar balance health alerts ──────────────────────────────
+  - kind: pillar_balance_alert
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_alert"
+    trigger: >
+      pillar-balance-check.sh found a pickable-gap count < 2 for a pillar
+      (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE); fleet may bias toward one
+      dimension and starve others.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_overweight"
+    trigger: >
+      pillar-balance-check.sh found a pillar exceeding 50% of total pickable
+      gaps; gap-filing activity is concentrated in one pillar.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct]
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self
