@@ -2173,6 +2173,20 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop verification — runs while ORIG_HEAD is fresh.
+    # Catches merge drivers that silently discard hunks (the rust-main-append driver
+    # class that dropped 173 lines from PR #2216 without conflict markers).
+    _prv="${REPO_ROOT}/scripts/coord/post-rebase-verify.sh"
+    if [[ -x "$_prv" ]]; then
+        stage_start "post-rebase hunk-drop verify"
+        _prv_rc=0
+        "$_prv" --base "${REMOTE}/${BASE_BRANCH}" || _prv_rc=$?
+        if [[ "$_prv_rc" -eq 2 ]]; then
+            _bm_fail "post-rebase-verify" 11 "hunk drop detected — rebase silently discarded hunks"
+        fi
+        stage_done
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

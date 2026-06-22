@@ -4762,6 +4762,19 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      post-rebase-verify.sh detected that a file had >50 added lines in the
+      original branch commits but 0 added lines in the rebased commits. This
+      indicates a merge driver silently discarded hunks during git rebase
+      instead of producing conflict markers. Root cause: the now-removed
+      rust-main-append merge driver in .gitattributes (2026-05-23 P0 fix).
+      Emitted once per dropped file. Push is aborted after emission.
+    consumers: [fleet-brief, ops-audit, paramedic-daemon]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit, threshold]
   - kind: rebase_and_push_invoked
     emitter: scripts/coord/chump-rebase-and-push.sh (INFRA-1404)
     trigger: operator ran chump-rebase-and-push.sh; emitted on every successful

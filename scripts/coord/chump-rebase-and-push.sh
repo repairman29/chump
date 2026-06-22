@@ -191,6 +191,20 @@ _rap_rebase() {
         -- '.github/workflows/ci.yml' 'docs/observability/EVENT_REGISTRY.yaml' \
            'scripts/git-hooks/pre-commit' 'Cargo.toml' 'web/v2/app.js' 'src/main.rs' \
         2>/dev/null | head -20 || true)"
+
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Detects merge drivers silently discarding hunks (e.g. the rust-main-append
+    # driver that caused silent 173-line drops on PR #2216). Runs while ORIG_HEAD
+    # is still fresh. Exits 2 on detected drop — aborts before push.
+    _prv_script="${SCRIPT_DIR}/post-rebase-verify.sh"
+    if [[ -x "$_prv_script" ]]; then
+        _prv_args=(--base "$FULL_BASE")
+        [[ "$DRY_RUN" == "1" ]] && _prv_args+=(--dry-run)
+        if ! "$_prv_script" "${_prv_args[@]}"; then
+            red "post-rebase-verify detected hunk drops — aborting push (INFRA-1526)."
+            return 2
+        fi
+    fi
     return 0
 }
 
