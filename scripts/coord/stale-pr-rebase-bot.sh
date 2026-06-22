@@ -295,7 +295,20 @@ except Exception:
 
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
             if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
-                if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
+                # INFRA-1526: verify no hunks were silently dropped before pushing.
+                _ORIG_SHA="$(git -C "$WT" rev-parse ORIG_HEAD 2>/dev/null || true)"
+                _REBASED_SHA="$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)"
+                _verify_ok=1
+                if [[ -n "$_ORIG_SHA" && -n "$_REBASED_SHA" ]]; then
+                    if ! CHUMP_REPO_ROOT="$WT" bash "$SCRIPT_DIR/rebase-hunk-verify.sh" \
+                            "$_ORIG_SHA" "$_REBASED_SHA" "origin/main" "$AMBIENT"; then
+                        log "  ABORT #$PR — post-rebase hunk verification failed (INFRA-1526); push suppressed"
+                        emit "stale_pr_rebase_failed" "$PR" \
+                            "\"branch\":\"$BRANCH\",\"strikes\":$strikes,\"reason\":\"hunk_drop_detected\""
+                        _verify_ok=0
+                    fi
+                fi
+                if (( _verify_ok )) && (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
                     log "  OK #$PR — local-rebase fallback succeeded."
                     emit "stale_pr_auto_rebased" "$PR" \
                         "\"branch\":\"$BRANCH\",\"method\":\"local_rebase_fallback\",\"prior_strikes\":$strikes"

@@ -223,17 +223,32 @@ while IFS=$'\t' read -r PR STATE; do
         git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
             if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
-                if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
-                    echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
-                    emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""
-                    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                    printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
-                    REBASED=$((REBASED+1))
-                else
-                    echo "[pr-auto-rebase] FAIL #$PR — local rebase OK but push failed (lock contention?)"
-                    emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"push_failed\""
-                    FAILED=$((FAILED+1))
+                # INFRA-1526: verify no hunks were silently dropped before pushing.
+                _ORIG_SHA="$(git -C "$WT" rev-parse ORIG_HEAD 2>/dev/null || true)"
+                _REBASED_SHA="$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)"
+                _verify_ok=1
+                if [[ -n "$_ORIG_SHA" && -n "$_REBASED_SHA" ]]; then
+                    if ! CHUMP_REPO_ROOT="$WT" bash "$SCRIPT_DIR/rebase-hunk-verify.sh" \
+                            "$_ORIG_SHA" "$_REBASED_SHA" "origin/main" "$AMBIENT"; then
+                        echo "[pr-auto-rebase] ABORT #$PR — post-rebase hunk verification failed (INFRA-1526); push suppressed"
+                        emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"hunk_drop_detected\""
+                        _verify_ok=0
+                    fi
                 fi
+                if (( _verify_ok )); then
+                    if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
+                        echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
+                        emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""
+                        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                        printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
+                        REBASED=$((REBASED+1))
+                    else
+                        echo "[pr-auto-rebase] FAIL #$PR — local rebase OK but push failed (lock contention?)"
+                        emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"push_failed\""
+                        FAILED=$((FAILED+1))
+                    fi
+                fi
+                # hunk_drop path: FAILED already incremented above; skip push
             else
                 # Abort any in-progress rebase before removing worktree
                 (cd "$WT" && git rebase --abort >/dev/null 2>&1) || true

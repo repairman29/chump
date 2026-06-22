@@ -7117,6 +7117,29 @@ events:
     expected_volume: "once per 15-min cycle while trunk is RED"
     status: stable
 
+  # ── INFRA-1526: post-rebase hunk-drop guard ──────────────────────────────────
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/rebase-hunk-verify.sh (INFRA-1526)
+    trigger: >
+      Emitted once per affected file when post-rebase verification detects that
+      a file had >CHUMP_REBASE_VERIFY_THRESHOLD (default 50) insertions on the
+      original branch tip but 0 insertions on the rebased tip vs the same base.
+      This signals a silent hunk drop — content was present before rebase and
+      absent after, without any conflict markers. The push is suppressed; the
+      caller emits pr_auto_rebase_failed or stale_pr_rebase_failed with
+      reason=hunk_drop_detected to capture the PR context.
+      Root cause (2026-05-16): append-only merge driver (rust-main-append) for
+      src/main.rs fell back to 3-way merge on non-pure-append conflicts and
+      silently discarded content. Driver removed from .gitattributes 2026-05-23.
+      This event catches any recurrence or new driver regressions.
+    consumers: [fleet-brief, ops-audit, operator-digest]
+    fields_required: [ts, kind, file, original_commit, rebased_commit, base_ref, detail]
+    expected_volume: "should be 0/day; any non-zero is an incident"
+    status: stable
+    # payload: {ts, file, original_commit, rebased_commit, base_ref, detail}
+    # detail format: "orig+<N>->rebased+<M>"
+
   # ── INFRA-2274: consensus-merge-gate (replaces 2026-05-30 admin-merge bypass) ──
   - kind: consensus_gate_approved
     effect_metric: credible
