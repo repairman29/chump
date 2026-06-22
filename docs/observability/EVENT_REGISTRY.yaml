@@ -8170,3 +8170,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-1526: rebase hunk-drop detector ─────────────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Post-rebase verification detected that a file with >= THRESHOLD (default 50)
+      added lines in the original feature branch commits has 0 added lines after
+      git rebase origin/main. This is the failure mode that caused PR #2216
+      (INFRA-1418) to silently lose a 173-line src/main.rs block while its
+      EVENT_REGISTRY entry survived (orphan), and PR #2173 (INFRA-1434) to
+      lose its EVENT_REGISTRY entry while the src/main.rs hunk survived.
+      Root cause: git rebase -X theirs or a buggy append-only merge driver
+      resolving conflicts by discarding the feature side.
+    consumers: [fleet-brief, ops-audit, wedge-recover]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable

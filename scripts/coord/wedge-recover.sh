@@ -129,8 +129,27 @@ for p in json.load(sys.stdin):
             rm -rf "$wt" 2>/dev/null
             git fetch origin "$br" main --quiet 2>/dev/null
             if git worktree add "$wt" "origin/$br" >/dev/null 2>&1; then
-                if (cd "$wt" && git rebase -X theirs origin/main >/dev/null 2>&1); then
-                    if (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
+                # INFRA-1526: store pre-rebase tip for hunk-drop verification.
+                # Removed -X theirs: while that flag takes the feature-commits'
+                # version on conflict (not a direct drop risk), it silently
+                # discards main's changes and hides the conflict from the operator.
+                # Plain rebase fails explicitly on true conflicts so the operator
+                # can resolve, and allows post-rebase-verify.sh to catch any
+                # silent drops caused by custom merge drivers (e.g. the
+                # rust-main-append driver removed from .gitattributes per INFRA-1526).
+                pre_rebase_sha="$(cd "$wt" && git rev-parse HEAD 2>/dev/null || true)"
+                if (cd "$wt" && git rebase origin/main >/dev/null 2>&1); then
+                    # Post-rebase hunk-drop check (INFRA-1526).  Abort the push if
+                    # any file that had >=50 added lines before the rebase now has 0 —
+                    # that indicates a silent content drop, not a legitimate merge.
+                    _verify_script="$REPO_ROOT/scripts/coord/post-rebase-verify.sh"
+                    if [[ -x "$_verify_script" ]] && \
+                       ! (cd "$wt" && PRE_REBASE_SHA="$pre_rebase_sha" \
+                              CHUMP_REPO_ROOT="$REPO_ROOT" \
+                              bash "$_verify_script" >/dev/null 2>&1); then
+                        log "    HUNK_DROP detected on PR #$pr — aborting push (see ambient rebase_hunk_dropped event)"
+                        truly_conflict=$((truly_conflict+1))
+                    elif (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
                         rebased=$((rebased+1))
                         log "    rebased + pushed"
                         emit_event wedge_recover step2 "\"action\":\"rebased\",\"pr\":$pr"
