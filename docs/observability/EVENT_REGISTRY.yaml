@@ -4305,6 +4305,21 @@ events:
     trigger: weekly cron tallies closed-not-merged PRs by closure pattern
     consumers: [fleet-brief, waste-tally consumers]
     fields_required: [ts, kind, window_secs, total, by_category]
+  # ── INFRA-902: pillar-balance health check ───────────────────────────────
+  - kind: pillar_balance_alert
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pillar's pickable gap count falls below the floor of 2
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pillar's pickable gap count exceeds 50% of total pickable pool
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct]
+
   # ── INFRA-1152: pillar-balance guard at reserve time ─────────────────────
   - kind: pillar_balance_warn
     effect_metric: self

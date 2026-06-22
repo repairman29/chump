@@ -752,6 +752,9 @@ jobs:
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
         run: bash scripts/ci/test-chump-subcommand-help.sh
 
+      - name: pillar balance alerts + audit-priorities integration (INFRA-902)
+        run: bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
 
