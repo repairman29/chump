@@ -1610,6 +1610,20 @@ events:
     consumers: [audit-log]
     fields_required: [ts, kind, sha, triggered_by]
 
+  # ── INFRA-1526: post-rebase hunk-drop guard ───────────────────────────────
+  - kind: rebase_hunk_dropped  # scanner-anchor: "kind":"rebase_hunk_dropped"
+    effect_metric: resilient
+    emitter: scripts/ci/post-rebase-hunk-verify.sh (INFRA-1526), called by scripts/coord/bot-merge.sh
+    trigger: >
+      Post-rebase hunk-drop verification detected that a file with >50 added lines in
+      the original branch commit has 0 added lines in the rebased result. Root cause was
+      the append-only merge driver on src/main.rs (removed 2026-05-23 .gitattributes fix);
+      this event fires on any regression or similar driver mis-config.
+      Emitted once per affected file before the push so the operator can inspect and abort.
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit, gap_id]
+    status: stable
+
   - kind: dirty_pr_auto_resolved
     effect_metric: self
     emitter: scripts/coord/queue-driver.sh (INFRA-1137)

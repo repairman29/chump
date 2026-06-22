@@ -391,8 +391,9 @@ _bm_completed_emit() {
 #   12 — fmt-fail        (cargo fmt failed or timed out)
 #   13 — clippy-fail     (clippy lint errors)
 #   14 — test-fail       (cargo test suite failure)
-#   15 — push-fail       (force-with-lease rejected or network error)
-#   16 — pr-create-fail  (gh pr create failed or PR not visible after create)
+#   15 — push-fail            (force-with-lease rejected or network error)
+#   16 — pr-create-fail       (gh pr create failed or PR not visible after create)
+#   20 — rebase-hunk-drop     (post-rebase hunk-drop verification caught silent hunk loss — INFRA-1526)
 _bm_fail() {
     local step="${1:-unknown}" code="${2:-1}" msg="${3:-}"
     local ambient="${CHUMP_AMBIENT_LOG:-${CHUMP_REPO:-.chump-locks}/ambient.jsonl}"
@@ -2171,6 +2172,21 @@ if [[ "$BEHIND" -gt 0 ]]; then
         fi
     fi
     _grade_rebase_clean="true"
+
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Root cause (append-only merge driver on src/main.rs) was fixed 2026-05-23 in
+    # .gitattributes; this guard catches regressions and similar driver mis-configs.
+    _hunk_verify="${REPO_ROOT}/scripts/ci/post-rebase-hunk-verify.sh"
+    if [[ -x "$_hunk_verify" ]]; then
+        info "Post-rebase hunk-drop verification …"
+        if ! REMOTE="$REMOTE" BASE_BRANCH="$BASE_BRANCH" GAP_ID="${GAP_IDS[0]:-}" \
+                bash "$_hunk_verify"; then
+            red "Post-rebase hunk-drop detected — rebase silently dropped file hunks."
+            red "See kind=rebase_hunk_dropped in .chump-locks/ambient.jsonl for details."
+            _bm_fail "rebase_hunk_drop" 20 "post-rebase hunk-drop verification caught silent hunk loss"
+        fi
+    fi
+
     stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
