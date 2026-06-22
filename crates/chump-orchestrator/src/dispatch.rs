@@ -292,11 +292,9 @@ fn cog_037_enabled() -> bool {
         .unwrap_or(false)
 }
 
-/// Read the routing scoreboard from `<repo_root>/.chump/state.db` and
-/// project it down to a `signature -> ArmStats` map.
-///
-/// "Best-effort" by spec — if the DB doesn't exist, the schema isn't
-/// present, or any row is malformed, we log a warning to stderr and
+/// Returns an empty scoreboard. routing_outcomes was dropped in INFRA-1551
+/// (table was never populated in production). The COG-037 Thompson sampler
+/// falls back to a flat prior when the map is empty, preserving YAML ordering.
 /// return whatever we managed to read (empty map on a hard failure).
 /// **Never panics**: bad scoreboard data must not crash the dispatcher.
 ///
@@ -305,72 +303,8 @@ fn cog_037_enabled() -> bool {
 /// so this helper opens the DB directly via rusqlite. It mirrors the
 /// `routing_outcomes` schema set up in both `gap_store.rs` and
 /// `monitor::write_routing_outcome`.
-pub fn load_scoreboard_signatures(repo_root: &Path) -> HashMap<String, ArmStats> {
-    let db_path = repo_root.join(".chump").join("state.db");
-    if !db_path.exists() {
-        return HashMap::new();
-    }
-    let conn = match rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!(
-                "[dispatch] WARN cog_037 scoreboard load: cannot open {} ({e}); \
-                 falling back to YAML-only ordering",
-                db_path.display()
-            );
-            return HashMap::new();
-        }
-    };
-    let mut stmt = match conn.prepare(
-        "SELECT backend, model, provider_pfx,
-                SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
-                SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures
-         FROM routing_outcomes
-         GROUP BY backend, model, provider_pfx",
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!(
-                "[dispatch] WARN cog_037 scoreboard load: prepare failed ({e}); \
-                 falling back to YAML-only ordering"
-            );
-            return HashMap::new();
-        }
-    };
-
-    let rows = match stmt.query_map([], |r| {
-        let backend: String = r.get(0).unwrap_or_default();
-        let model: String = r.get(1).unwrap_or_default();
-        let provider_pfx: String = r.get(2).unwrap_or_default();
-        let successes: i64 = r.get(3).unwrap_or(0);
-        let failures: i64 = r.get(4).unwrap_or(0);
-        // Clamp negatives (shouldn't happen but defensive — SUMs of CASE
-        // WHEN are always non-negative, but a corrupted DB could surprise).
-        let succ_u = successes.max(0) as u64;
-        let fail_u = failures.max(0) as u64;
-        Ok((
-            format!("{backend}|{model}|{provider_pfx}"),
-            ArmStats {
-                successes: succ_u,
-                failures: fail_u,
-            },
-        ))
-    }) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[dispatch] WARN cog_037 scoreboard load: query failed ({e})");
-            return HashMap::new();
-        }
-    };
-
-    let mut out = HashMap::new();
-    for row in rows.flatten() {
-        out.insert(row.0, row.1);
-    }
-    out
+pub fn load_scoreboard_signatures(_repo_root: &Path) -> HashMap<String, ArmStats> {
+    HashMap::new()
 }
 
 /// INFRA-063 (M5) — rule-based backend selector for cost-routed dispatch.

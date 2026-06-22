@@ -18,3 +18,18 @@ CREATE INDEX IF NOT EXISTS idx_chump_tasks_depends_on ON chump_tasks(depends_on)
 
 -- Index for memory type filtering
 CREATE INDEX IF NOT EXISTS idx_chump_memory_memory_type ON chump_memory(memory_type);
+
+-- ── .chump/state.db schema culls (INFRA-1551) ─────────────────────────────
+-- These DROP TABLE statements clean up dead schema from .chump/state.db.
+-- Apply: sqlite3 .chump/state.db < schema_migration.sql
+-- Reversal: re-apply the CREATE TABLE statements from the ensure_schema
+--   delta in crates/chump-gap-store/src/lib.rs (git show HEAD~1:... | grep -A20 'routing_outcomes')
+
+-- routing_outcomes: COG-036 scoreboard table — write path removed (monitor.rs),
+-- read path removed (chump dispatch scoreboard CLI handler). COG-037 Thompson
+-- sampler now uses empty-ArmStats fast path in dispatch.rs.
+DROP TABLE IF EXISTS routing_outcomes;
+
+-- intents: never written; src/atomic_claim.rs reads intent_announced events
+-- from ambient.jsonl instead of this table.
+DROP TABLE IF EXISTS intents;
