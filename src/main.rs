@@ -7589,9 +7589,26 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-900: chump fleet metrics — invoke fleet-metrics-snapshot.sh
+            "metrics" => {
+                let script = repo_root.join("scripts/ops/fleet-metrics-snapshot.sh");
+                if !script.exists() {
+                    eprintln!(
+                        "chump fleet metrics: script not found: {}",
+                        script.display()
+                    );
+                    std::process::exit(1);
+                }
+                let status = std::process::Command::new("bash")
+                    .arg(&script)
+                    .args(&args)
+                    .status()
+                    .map_err(|e| anyhow::anyhow!("failed to run fleet-metrics-snapshot.sh: {e}"))?;
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|metrics>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
