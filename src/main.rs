@@ -10480,7 +10480,44 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: call pillar-balance-check.sh and include result in output.
+                let pillar_balance_failed = {
+                    let script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        if !as_json {
+                            println!("=== Pillar balance (INFRA-902) ===");
+                        }
+                        match std::process::Command::new("bash").arg(&script).status() {
+                            Ok(st) => {
+                                if !as_json {
+                                    if st.success() {
+                                        println!("  pillar balance: OK");
+                                    } else {
+                                        println!("  pillar balance: ALERT (see ambient.jsonl)");
+                                    }
+                                    println!();
+                                }
+                                !st.success()
+                            }
+                            Err(e) => {
+                                if !as_json {
+                                    println!("  pillar balance: script error — {e}");
+                                    println!();
+                                }
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_failed {
+                    fail_reasons.push(
+                        "pillar balance alert fired (pillar under-fed or overweight)".to_string(),
+                    );
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
