@@ -10308,6 +10308,22 @@ async fn main() -> Result<()> {
                             );
                         }
                     }
+                    // INFRA-902: pillar balance check
+                    let pillar_check_output = std::process::Command::new("bash")
+                        .arg("scripts/ops/pillar-balance-check.sh")
+                        .current_dir(&repo_path::repo_root())
+                        .output();
+                    let pillar_balance_healthy = pillar_check_output
+                        .as_ref()
+                        .ok()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false);
+                    if let serde_json::Value::Object(ref mut map) = report {
+                        map.insert(
+                            "pillar_balance_healthy".into(),
+                            serde_json::Value::Bool(pillar_balance_healthy),
+                        );
+                    }
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&report).unwrap_or_default()
@@ -10476,6 +10492,29 @@ async fn main() -> Result<()> {
                                     o.id, o.priority, o_open, o_done, o.title
                                 );
                             }
+                        }
+                    }
+                    // INFRA-902: pillar balance check
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    match std::process::Command::new("bash")
+                        .arg("scripts/ops/pillar-balance-check.sh")
+                        .current_dir(&repo_path::repo_root())
+                        .output()
+                    {
+                        Ok(output) => {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            if !stderr.is_empty() {
+                                print!("{}", stderr);
+                            }
+                            if output.status.success() {
+                                println!("  ✓ All pillars balanced");
+                            } else {
+                                println!("  ⚠ Pillar imbalance detected (see ambient.jsonl)");
+                            }
+                        }
+                        Err(e) => {
+                            println!("  Error running pillar-balance-check.sh: {e}");
                         }
                     }
                 }
