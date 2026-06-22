@@ -1,12 +1,11 @@
 - id: INFRA-918
   domain: INFRA
   title: "RESILIENT: bot-merge rebase-before-test — run cargo test on rebased branch, not pre-rebase stale state"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "1. kind=bot_merge_rebase_before_test emitted to ambient.jsonl before cargo test runs, with fields: rebased (bool), commits_behind (int), head_sha (str), will_test (bool)\n2. kind=bot_merge_test_failure emitted on cargo test failure with failure_class=transient_oom (SIGTERM/OOM detected) or failure_class=permanent_failure (logic bug); failure_class field visible in ambient stream\n3. test cost tracked via existing bot_merge_phase_duration event (phase=cargo test --bin chump --tests) — duration_ms available to fleet monitors at no extra cost\n4. smoke test: bash scripts/ci/test-bot-merge-rebase-before-test.sh exits 0"
+  closed_pr: 3157
+  outcome_id: MISSION-010
 
