@@ -1,19 +1,28 @@
 - id: INFRA-1379
   domain: INFRA
-  title: "ZERO-WASTE: split changes.code path filter into rust-only/web-only/scripts-only/docs-only lanes — docs-PRs (gap YAMLs) skip cargo-test/clippy via stub-passing shims"
-  status: open
+  title: 'ZERO-WASTE: split changes.code path filter into rust-only/web-only/scripts-only/docs-only lanes — docs-PRs (gap
+    YAMLs) skip cargo-test/clippy via stub-passing shims'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Today, the  path filter in ci.yml includes docs/** and scripts/** so a 4-line gap-YAML commit triggers cargo-test (~10min), clippy (~5min), full test umbrella. The half-implemented stub-pattern (clippy-stub/cargo-test-stub) needs full lane routing so required checks pass instantly when the lane is irrelevant. This is the cleanup of INFRA-272 (which forced docs/** into the code allowlist to avoid blocking PRs forever — fix the symptom by making required checks lane-aware instead of forcing the lane mismatch). Pairs with INFRA-1377/1378 — together kills the majority of wasted CI.
-  acceptance_criteria:
-    - "Add new outputs to the changes job in ci.yml: rust_code, web_code, scripts_only, docs_only, ci_config_only"
-    - rust_code matches src/**, crates/**, Cargo.{toml,lock}, chump-tool-macro/**, build.rs (NOT docs/scripts/web)
-    - web_code matches web/**, ChumpMenu/**
-    - scripts_only matches scripts/** (and no rust/web)
-    - docs_only matches docs/**, *.md and no other code path
-    - ci_config_only matches .github/workflows/** and no other path
-    - "For each REQUIRED check (test, audit, ACP), add a \"shim\" job that auto-passes when its lane is irrelevant — e.g. cargo-test-required passes immediately if rust_code=false and ci_config_only=false; same pattern for fast-checks-required, clippy-required, audit-required"
-    - "Validate end-to-end: docs-only PR (gap YAML) opens, only docs-lint + audit-required-shim run, total CI wall time <2 min"
-    - docs/process/CI_LANES.md (new) explains the lane model + how to add a new lane
+  description: 'Today, the  path filter in ci.yml includes docs/** and scripts/** so a 4-line gap-YAML commit triggers cargo-test
+    (~10min), clippy (~5min), full test umbrella. The half-implemented stub-pattern (clippy-stub/cargo-test-stub) needs full
+    lane routing so required checks pass instantly when the lane is irrelevant. This is the cleanup of INFRA-272 (which forced
+    docs/** into the code allowlist to avoid blocking PRs forever — fix the symptom by making required checks lane-aware instead
+    of forcing the lane mismatch). Pairs with INFRA-1377/1378 — together kills the majority of wasted CI.
 
+    '
+  acceptance_criteria:
+  - 'Add new outputs to the changes job in ci.yml: rust_code, web_code, scripts_only, docs_only, ci_config_only'
+  - rust_code matches src/**, crates/**, Cargo.{toml,lock}, chump-tool-macro/**, build.rs (NOT docs/scripts/web)
+  - web_code matches web/**, ChumpMenu/**
+  - scripts_only matches scripts/** (and no rust/web)
+  - docs_only matches docs/**, *.md and no other code path
+  - ci_config_only matches .github/workflows/** and no other path
+  - For each REQUIRED check (test, audit, ACP), add a "shim" job that auto-passes when its lane is irrelevant — e.g. cargo-test-required
+    passes immediately if rust_code=false and ci_config_only=false; same pattern for fast-checks-required, clippy-required,
+    audit-required
+  - 'Validate end-to-end: docs-only PR (gap YAML) opens, only docs-lint + audit-required-shim run, total CI wall time <2 min'
+  - docs/process/CI_LANES.md (new) explains the lane model + how to add a new lane
+  closed_date: '2026-05-16'
+  closed_pr: 2139

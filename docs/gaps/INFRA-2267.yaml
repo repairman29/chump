@@ -1,14 +1,18 @@
 - id: INFRA-2267
   domain: INFRA
-  title: "RESILIENT: chump-coord lib-test build broken — GapRow shipped_in field missing in assign.rs + worker/capability.rs (INFRA-2134 follow-up)"
-  status: open
+  title: 'RESILIENT: chump-coord lib-test build broken — GapRow shipped_in field missing in assign.rs + worker/capability.rs
+    (INFRA-2134 follow-up)'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Pre-existing build break introduced by INFRA-2134 (added shipped_in column to GapRow) but two test-only GapRow constructors in chump-coord were not updated. Blocks cargo clippy --all-targets and cargo test for chump-coord. Discovered while shipping INFRA-2247.
-  acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+  description: 'Pre-existing build break introduced by INFRA-2134 (added shipped_in column to GapRow) but two test-only GapRow
+    constructors in chump-coord were not updated. Blocks cargo clippy --all-targets and cargo test for chump-coord. Discovered
+    while shipping INFRA-2247.
 
+    '
+  acceptance_criteria:
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_pr: 2843

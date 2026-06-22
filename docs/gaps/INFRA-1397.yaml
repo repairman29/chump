@@ -1,18 +1,28 @@
 - id: INFRA-1397
   domain: INFRA
-  title: "RESILIENT: paramedic daemon supervision — launchd plist + NATS leader election (sibling to INFRA-1375)"
-  status: open
+  title: 'RESILIENT: paramedic daemon supervision — launchd plist + NATS leader election (sibling to INFRA-1375)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - scripts/setup/com.chump.paramedic.plist with KeepAlive=true RunAtLoad=true ThrottleInterval=10 StandardOutPath=~/Library/Logs/Chump/paramedic.log invoking 'chump paramedic daemon --interval-secs 600'
-    - "scripts/setup/install-paramedic.sh idempotent installer: copies plist to ~/Library/LaunchAgents/ runs launchctl bootstrap gui/UID; --uninstall flag for clean removal"
-    - chump-fleet-bootstrap.sh --check adds paramedic plist + heartbeat freshness to its check list (META-066 integration); non-zero exit if missing or stale
-    - "NATS-KV leader election: bucket chump_paramedic key leader value {machine,pid,started_at} TTL 30s renewed every 10s; first process to acquire wins losers emit kind=paramedic_standby every 60s"
-    - "Lockfile fallback when CHUMP_NATS_URL empty/unreachable: .chump-locks/paramedic.leader with same JSON shape flock(2) exclusive lock so two processes on same machine can't both lead"
-    - Leader emits kind=paramedic_heartbeat every iteration with {machine,pid,cycle_count,pr_count,last_action_count}; standby emits kind=paramedic_standby every 60s
-    - "chump health --slo-check adds paramedic-freshness rule: non-zero exit if no paramedic_heartbeat in last 15min AND a leader seen in last hour"
-    - "Leader failover: standby detects expired leader-key within 30s and acquires; smoke test scripts/ci/test-paramedic-leader-failover.sh covers solo/two-process-race/kill-leader/NATS-down-lockfile"
-    - docs/process/PARAMEDIC_SUPERVISION.md install + debug + manual force leader (CHUMP_PARAMEDIC_FORCE_LEADER=1)
-  depends_on: [INFRA-1375]
-
+  - scripts/setup/com.chump.paramedic.plist with KeepAlive=true RunAtLoad=true ThrottleInterval=10 StandardOutPath=~/Library/Logs/Chump/paramedic.log
+    invoking 'chump paramedic daemon --interval-secs 600'
+  - 'scripts/setup/install-paramedic.sh idempotent installer: copies plist to ~/Library/LaunchAgents/ runs launchctl bootstrap
+    gui/UID; --uninstall flag for clean removal'
+  - chump-fleet-bootstrap.sh --check adds paramedic plist + heartbeat freshness to its check list (META-066 integration);
+    non-zero exit if missing or stale
+  - 'NATS-KV leader election: bucket chump_paramedic key leader value {machine,pid,started_at} TTL 30s renewed every 10s;
+    first process to acquire wins losers emit kind=paramedic_standby every 60s'
+  - 'Lockfile fallback when CHUMP_NATS_URL empty/unreachable: .chump-locks/paramedic.leader with same JSON shape flock(2)
+    exclusive lock so two processes on same machine can''t both lead'
+  - Leader emits kind=paramedic_heartbeat every iteration with {machine,pid,cycle_count,pr_count,last_action_count}; standby
+    emits kind=paramedic_standby every 60s
+  - 'chump health --slo-check adds paramedic-freshness rule: non-zero exit if no paramedic_heartbeat in last 15min AND a leader
+    seen in last hour'
+  - 'Leader failover: standby detects expired leader-key within 30s and acquires; smoke test scripts/ci/test-paramedic-leader-failover.sh
+    covers solo/two-process-race/kill-leader/NATS-down-lockfile'
+  - docs/process/PARAMEDIC_SUPERVISION.md install + debug + manual force leader (CHUMP_PARAMEDIC_FORCE_LEADER=1)
+  depends_on:
+  - INFRA-1375
+  closed_date: '2026-05-16'
+  closed_pr: 2220

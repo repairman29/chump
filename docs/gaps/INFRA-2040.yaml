@@ -1,22 +1,40 @@
 - id: INFRA-2040
   domain: INFRA
-  title: "RESILIENT P1: fleet-doctor detect 0-ships-in-24h + auto-restart daemons exit=127"
-  status: open
+  title: 'RESILIENT P1: fleet-doctor detect 0-ships-in-24h + auto-restart daemons exit=127'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "chump fleet doctor / chump health adds check: last-merge-mtime; if >12h ago AND any chump.* launchd daemon has last_exit_code != 0 → emit kind=silent_fleet_death + ALERT"
-    - "Optional auto-heal: for each chump.* daemon with exit code 127 (command not found), check if the referenced script exists in main checkout; if missing OR readable from origin/main, attempt `git checkout origin/main -- <script-paths>` + bounce daemon. Default: ALERT only, autoheal opt-in via CHUMP_DOCTOR_AUTOHEAL=1"
-    - "Today's catalyst (2026-05-26 → 27): 5 floor daemons (wedge-state-machine, recovery-queue-service, inbox-injector, post-push-integrity, plus stale-pr-reaper class) exited 127 because operator's main checkout was on stale branch chump/opus-shepherd-productize-2026-05-24 and Sprint 1+2 scripts existed in origin/main but NOT in the working tree the daemons pointed at"
-    - "Fleet-brief lied: said 'No urgent actions — fleet looks healthy' while 24h-zero-ships + 9 daemon_silent/reaper_silent alerts fired. Underlying: brief used 24h rolling ship-count which masked the dead-since-yesterday reality. Pairs with INFRA-2013 last-1h indicator (already shipped)"
-    - "Smoke test scripts/ci/test-silent-fleet-death.sh: stub state where last-merge=20h-ago + 1 chump.* daemon exit=127 → assert silent_fleet_death event + ALERT"
-  description: |
-    Today's lesson: THE FLOOR's BUILD primitives + DRIVE primitive (still
+  - 'chump fleet doctor / chump health adds check: last-merge-mtime; if >12h ago AND any chump.* launchd daemon has last_exit_code
+    != 0 → emit kind=silent_fleet_death + ALERT'
+  - 'Optional auto-heal: for each chump.* daemon with exit code 127 (command not found), check if the referenced script exists
+    in main checkout; if missing OR readable from origin/main, attempt `git checkout origin/main -- <script-paths>` + bounce
+    daemon. Default: ALERT only, autoheal opt-in via CHUMP_DOCTOR_AUTOHEAL=1'
+  - 'Today''s catalyst (2026-05-26 → 27): 5 floor daemons (wedge-state-machine, recovery-queue-service, inbox-injector, post-push-integrity,
+    plus stale-pr-reaper class) exited 127 because operator''s main checkout was on stale branch chump/opus-shepherd-productize-2026-05-24
+    and Sprint 1+2 scripts existed in origin/main but NOT in the working tree the daemons pointed at'
+  - 'Fleet-brief lied: said ''No urgent actions — fleet looks healthy'' while 24h-zero-ships + 9 daemon_silent/reaper_silent
+    alerts fired. Underlying: brief used 24h rolling ship-count which masked the dead-since-yesterday reality. Pairs with
+    INFRA-2013 last-1h indicator (already shipped)'
+  - 'Smoke test scripts/ci/test-silent-fleet-death.sh: stub state where last-merge=20h-ago + 1 chump.* daemon exit=127 → assert
+    silent_fleet_death event + ALERT'
+  description: 'Today''s lesson: THE FLOOR''s BUILD primitives + DRIVE primitive (still
+
     missing per META-109) leaves a third hole — DETECT-DEATH primitive.
+
     Without a watchdog that NOTICES when the whole floor is dormant
+
     + acts to revive, the fleet can die silently and the brief still
+
     says "healthy" because all the per-daemon metrics are individually
+
     "fine."
-    
+
+
     Filed during Sprint 3 dispatch when wizard rebooted floor daemons
+
     after finding them all exit=127 from a stale main checkout.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2628

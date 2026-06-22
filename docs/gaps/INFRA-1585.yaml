@@ -1,37 +1,67 @@
 - id: INFRA-1585
   domain: INFRA
-  title: "RESILIENT: PWA onboarding consolidation — delete legacy chump-welcome modal + fold chump-ootb-wizard into chump-first-run-wizard (3 flows → 1)"
-  status: open
+  title: 'RESILIENT: PWA onboarding consolidation — delete legacy chump-welcome modal + fold chump-ootb-wizard into chump-first-run-wizard
+    (3 flows → 1)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Today the PWA ships THREE first-run flows that can plausibly fire on the same visit, all using different design tokens:
-    
-    1. <chump-welcome> (PRODUCT-082, web/v2/welcome.js, 282 LOC) — modal overlay, purple #7c83fd accent, --bg-primary tokens that don't exist elsewhere. Triggers when localStorage.chump_first_visit is unset.
-    2. <chump-first-run-wizard> (PRODUCT-108, defined inline in web/v2/app.js:836-1172) — golden-path checklist banner, accent-blue, uses canonical design tokens. Triggers when brain/repo/autopilot trio empty. This is the canonical surface per docs/design/OPERATOR_CONSOLE_V2.md §first-run.
-    3. <chump-ootb-wizard> (web/v2/ootb-wizard.js, 998 LOC) — Tauri-OOTB. Some triggers overlap with welcome.
-    
-    Per OPERATOR_CONSOLE_V2.md the canonical surface is chump-first-run-wizard. The other two are predecessor cruft. Cleanup never filed.
-    
-    Rough shape:
-    (a) Delete <chump-welcome> entirely — remove web/v2/welcome.js, drop the <script src="welcome.js"> tag and the <chump-welcome> body element in web/v2/index.html.
-    (b) Fold <chump-ootb-wizard> Tauri-specific steps into chump-first-run-wizard via a Tauri-detection branch (window.__TAURI__ present). If steps are unique-to-Tauri (system tray, native notif perms), they become new wizard rows that only render when Tauri is detected. Otherwise dedupe into existing wizard rows.
-    (c) Update localStorage migration: chump_first_visit / chump_first_visit_completed keys migrate to whichever first-run-wizard uses (chumpPrefs.first_run_seen or similar), so users who saw welcome don't see the new wizard again.
-    (d) Playwright test e2e/pwa-onboarding-consolidation.spec.ts: visit /v2/?welcome=force, assert exactly one [role=dialog] or [data-onboarding] element rendered; visit /v2/ on fresh localStorage, assert exactly one onboarding surface.
-    (e) Update docs/design/OPERATOR_CONSOLE_V2.md §first-run to note the consolidation and the localStorage migration.
-    
-    Differentiation vs adjacent gaps:
-    - PRODUCT-087 (PWA local-only onboarding wizard, ollama detection) — DIFFERENT scope: adds new functionality. This gap removes duplicates.
-    - PRODUCT-139 (first-run wizard browser parity, un-gate from Tauri-only) — DIFFERENT scope: parity between surfaces. This gap deletes the surfaces that shouldn't exist.
-    
-    When picked, run chump gap decompose <ID> to materialize current sub-steps against latest tree (some may already have shifted).
-  acceptance_criteria:
-    - web/v2/welcome.js deleted (or shrunk to <30 LOC stub that does nothing)
-    - <chump-welcome> body element removed from web/v2/index.html
-    - <chump-welcome> script tag removed from web/v2/index.html
-    - chump-ootb-wizard Tauri-specific steps folded into chump-first-run-wizard with Tauri-detection branch
-    - "localStorage migration: legacy chump_first_visit users do NOT see the consolidated wizard again"
-    - "Playwright e2e/pwa-onboarding-consolidation.spec.ts: forced first-visit renders exactly ONE onboarding surface"
-    - docs/design/OPERATOR_CONSOLE_V2.md §first-run section updated to note consolidation
-    - "No regression: chump-first-run-wizard still hides when trio (brain/repo/autopilot) is non-empty"
+  description: 'Today the PWA ships THREE first-run flows that can plausibly fire on the same visit, all using different design
+    tokens:
 
+
+    1. <chump-welcome> (PRODUCT-082, web/v2/welcome.js, 282 LOC) — modal overlay, purple #7c83fd accent, --bg-primary tokens
+    that don''t exist elsewhere. Triggers when localStorage.chump_first_visit is unset.
+
+    2. <chump-first-run-wizard> (PRODUCT-108, defined inline in web/v2/app.js:836-1172) — golden-path checklist banner, accent-blue,
+    uses canonical design tokens. Triggers when brain/repo/autopilot trio empty. This is the canonical surface per docs/design/OPERATOR_CONSOLE_V2.md
+    §first-run.
+
+    3. <chump-ootb-wizard> (web/v2/ootb-wizard.js, 998 LOC) — Tauri-OOTB. Some triggers overlap with welcome.
+
+
+    Per OPERATOR_CONSOLE_V2.md the canonical surface is chump-first-run-wizard. The other two are predecessor cruft. Cleanup
+    never filed.
+
+
+    Rough shape:
+
+    (a) Delete <chump-welcome> entirely — remove web/v2/welcome.js, drop the <script src="welcome.js"> tag and the <chump-welcome>
+    body element in web/v2/index.html.
+
+    (b) Fold <chump-ootb-wizard> Tauri-specific steps into chump-first-run-wizard via a Tauri-detection branch (window.__TAURI__
+    present). If steps are unique-to-Tauri (system tray, native notif perms), they become new wizard rows that only render
+    when Tauri is detected. Otherwise dedupe into existing wizard rows.
+
+    (c) Update localStorage migration: chump_first_visit / chump_first_visit_completed keys migrate to whichever first-run-wizard
+    uses (chumpPrefs.first_run_seen or similar), so users who saw welcome don''t see the new wizard again.
+
+    (d) Playwright test e2e/pwa-onboarding-consolidation.spec.ts: visit /v2/?welcome=force, assert exactly one [role=dialog]
+    or [data-onboarding] element rendered; visit /v2/ on fresh localStorage, assert exactly one onboarding surface.
+
+    (e) Update docs/design/OPERATOR_CONSOLE_V2.md §first-run to note the consolidation and the localStorage migration.
+
+
+    Differentiation vs adjacent gaps:
+
+    - PRODUCT-087 (PWA local-only onboarding wizard, ollama detection) — DIFFERENT scope: adds new functionality. This gap
+    removes duplicates.
+
+    - PRODUCT-139 (first-run wizard browser parity, un-gate from Tauri-only) — DIFFERENT scope: parity between surfaces. This
+    gap deletes the surfaces that shouldn''t exist.
+
+
+    When picked, run chump gap decompose <ID> to materialize current sub-steps against latest tree (some may already have
+    shifted).
+
+    '
+  acceptance_criteria:
+  - web/v2/welcome.js deleted (or shrunk to <30 LOC stub that does nothing)
+  - <chump-welcome> body element removed from web/v2/index.html
+  - <chump-welcome> script tag removed from web/v2/index.html
+  - chump-ootb-wizard Tauri-specific steps folded into chump-first-run-wizard with Tauri-detection branch
+  - 'localStorage migration: legacy chump_first_visit users do NOT see the consolidated wizard again'
+  - 'Playwright e2e/pwa-onboarding-consolidation.spec.ts: forced first-visit renders exactly ONE onboarding surface'
+  - docs/design/OPERATOR_CONSOLE_V2.md §first-run section updated to note consolidation
+  - 'No regression: chump-first-run-wizard still hides when trio (brain/repo/autopilot) is non-empty'
+  closed_date: '2026-05-23'
+  closed_pr: 2475

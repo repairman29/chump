@@ -1,18 +1,29 @@
 - id: INFRA-1489
   domain: INFRA
-  title: "EFFECTIVE: per-operator + per-repo auto-merge policy override"
-  status: open
+  title: 'EFFECTIVE: per-operator + per-repo auto-merge policy override'
+  status: done
   priority: P2
   effort: s
-  description: |
-    Audit miss from 2026-05-15 second pass. Persona-1 (Marcus) day-1 access controls (Q12): 'Zero Auto-Merge: The orchestrator can explore, run tests, and spin up isolated branches, but a high-context human must manually audit the final diff.' Today auto-merge is a binary fleet-wide default. Operators need per-operator and per-repo granularity: 'No auto-merge for any agent claiming under my session until I've manually reviewed 50 PRs in this repo.' This is the trust-cliff knob from the post-interview Q3.
-  acceptance_criteria:
-    - "Auto-merge policy configurable at three scopes: fleet-wide (existing default), per-operator (operator's claims have a policy), per-repo (this repo's claims have a policy)"
-    - "Policy fields: enabled (bool), require_human_review (bool), trust_threshold_pr_count (N — auto-merge enables only after operator has manually reviewed N PRs from this scope)"
-    - Most-restrictive policy wins when scopes overlap (per-operator + per-repo + fleet — most restrictive of the 3)
-    - Cockpit shows current policy per scope at the top of every fleet view (no surprise auto-merges)
-    - "Audit log: every auto-merge decision logs which policies applied and why"
-    - "CI test: 3 policy scopes configured, verify most-restrictive applies; verify trust_threshold counts upward correctly with hand-reviews; verify auto-merge enables at N+1"
-  notes: |
-    MARCUS M-E (trust polish). Promoted P3→P2 2026-05-16. Q12 trust-cliff knob: per-operator + per-repo auto-merge policy. Required for Marcus to onboard before he's reviewed 50 PRs in a repo.
+  description: 'Audit miss from 2026-05-15 second pass. Persona-1 (Marcus) day-1 access controls (Q12): ''Zero Auto-Merge:
+    The orchestrator can explore, run tests, and spin up isolated branches, but a high-context human must manually audit the
+    final diff.'' Today auto-merge is a binary fleet-wide default. Operators need per-operator and per-repo granularity: ''No
+    auto-merge for any agent claiming under my session until I''ve manually reviewed 50 PRs in this repo.'' This is the trust-cliff
+    knob from the post-interview Q3.
 
+    '
+  acceptance_criteria:
+  - 'Auto-merge policy configurable at three scopes: fleet-wide (existing default), per-operator (operator''s claims have
+    a policy), per-repo (this repo''s claims have a policy)'
+  - 'Policy fields: enabled (bool), require_human_review (bool), trust_threshold_pr_count (N — auto-merge enables only after
+    operator has manually reviewed N PRs from this scope)'
+  - Most-restrictive policy wins when scopes overlap (per-operator + per-repo + fleet — most restrictive of the 3)
+  - Cockpit shows current policy per scope at the top of every fleet view (no surprise auto-merges)
+  - 'Audit log: every auto-merge decision logs which policies applied and why'
+  - 'CI test: 3 policy scopes configured, verify most-restrictive applies; verify trust_threshold counts upward correctly
+    with hand-reviews; verify auto-merge enables at N+1'
+  notes: 'MARCUS M-E (trust polish). Promoted P3→P2 2026-05-16. Q12 trust-cliff knob: per-operator + per-repo auto-merge policy.
+    Required for Marcus to onboard before he''s reviewed 50 PRs in a repo.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2715

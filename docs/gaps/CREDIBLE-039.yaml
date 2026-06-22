@@ -1,15 +1,24 @@
 - id: CREDIBLE-039
   domain: CREDIBLE
-  title: "CREDIBLE: complete the launchd + audit + reverse-mode + auto-fix halves of CREDIBLE-028 (premature-closure detector)"
-  status: open
+  title: 'CREDIBLE: complete the launchd + audit + reverse-mode + auto-fix halves of CREDIBLE-028 (premature-closure detector)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Launchd plist dev.chump.premature-closure-watch (15-min interval, KeepAlive per INFRA-819 pattern) runs scripts/ci/test-gap-closure-consistency.sh --strict --emit-alert (script shipped in CREDIBLE-028 via #1458) so the check fires autonomously"
-    - "chump gap audit-priorities integration: incorporates premature-closure detection; non-zero exit on any premature-closure hit (joins the existing P0-budget, vague-pickable, double-encoded-depends-on checks)"
-    - "Reverse-mode check: PR is merged, PR title closes GAP-N (parsable via the existing CREDIBLE-026 title parser), but state.db still says status=open → fires ambient kind=stale_post_merge_gap. Same checker script handles both directions."
-    - "Self-heal mode --auto-fix (opt-in flag): for premature_gap_closure where the referenced PR is BLOCKED or DIRTY, flip state.db status back to in_progress using CHUMP_ALLOW_RECYCLE=1 internally; log the auto-fix to ambient kind=premature_closure_auto_fixed with old_status, new_status, pr"
-    - "docs/process/GAP_REGISTRY_INVARIANTS.md created (or updated if it now exists post-CANONICAL_STATE_CONTRACT) with this as invariant I-3 and reverse-mode as I-3b alongside existing 'no orphan closed_pr' rules"
-    - "Test fixture scripts/ci/test-premature-closure-auto-fix.sh: synthesize state.db with status=done + closed_pr=99999 (non-existent) → assert detector fires AND --auto-fix flips status back to in_progress with ambient log"
-    - "Integration with bot-merge.sh pre-ship guard: bot-merge.sh refuses to ship a gap whose state.db row says status=done + closed_pr=<not-yet-merged-PR> unless explicitly forced"
-
+  - 'Launchd plist dev.chump.premature-closure-watch (15-min interval, KeepAlive per INFRA-819 pattern) runs scripts/ci/test-gap-closure-consistency.sh
+    --strict --emit-alert (script shipped in CREDIBLE-028 via #1458) so the check fires autonomously'
+  - 'chump gap audit-priorities integration: incorporates premature-closure detection; non-zero exit on any premature-closure
+    hit (joins the existing P0-budget, vague-pickable, double-encoded-depends-on checks)'
+  - 'Reverse-mode check: PR is merged, PR title closes GAP-N (parsable via the existing CREDIBLE-026 title parser), but state.db
+    still says status=open → fires ambient kind=stale_post_merge_gap. Same checker script handles both directions.'
+  - 'Self-heal mode --auto-fix (opt-in flag): for premature_gap_closure where the referenced PR is BLOCKED or DIRTY, flip
+    state.db status back to in_progress using CHUMP_ALLOW_RECYCLE=1 internally; log the auto-fix to ambient kind=premature_closure_auto_fixed
+    with old_status, new_status, pr'
+  - docs/process/GAP_REGISTRY_INVARIANTS.md created (or updated if it now exists post-CANONICAL_STATE_CONTRACT) with this
+    as invariant I-3 and reverse-mode as I-3b alongside existing 'no orphan closed_pr' rules
+  - 'Test fixture scripts/ci/test-premature-closure-auto-fix.sh: synthesize state.db with status=done + closed_pr=99999 (non-existent)
+    → assert detector fires AND --auto-fix flips status back to in_progress with ambient log'
+  - 'Integration with bot-merge.sh pre-ship guard: bot-merge.sh refuses to ship a gap whose state.db row says status=done
+    + closed_pr=<not-yet-merged-PR> unless explicitly forced'
+  closed_date: '2026-05-11'
+  closed_pr: 1511

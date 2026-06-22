@@ -1,0 +1,13 @@
+- id: CREDIBLE-139
+  domain: CREDIBLE
+  title: "CREDIBLE: bypass-lint debt-ceiling is non-deterministic (grep -r counts untracked/build/temp files)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. test-no-new-bypass-env-vars.sh counts the ceiling via 'git grep -rhoE <same pattern> -- scripts src crates' (tracked-only), NOT 'grep -rhoE ... <abs paths>' (filesystem scan). 2. The count is deterministic: a regression test creates an untracked file under scripts/ containing a CHUMP_FOO_SKIP token + a .bak file, and asserts the counted total is UNCHANGED (untracked/build/temp files do not inflate it). 3. Re-baseline scripts/ci/bypass-var-ceiling.txt if the tracked-only count differs from the current 236. 4. Self-test (--self-test) cases still pass."
+  evidence: |
+    test-no-new-bypass-env-vars.sh line 55 counts distinct bypass vars via 'grep -rhoE ... $REPO_ROOT/scripts /src /crates' — a FILESYSTEM scan that includes untracked files, .bak backups, build artifacts under target/, and sibling-process temp files. Observed live 2026-06-21: the count flip-flopped 236<->237 in one worktree depending on transient files (a sed -i.bak dry-run added +1; a sibling fleet process added +1), while 'git grep' (tracked-only) was a stable 236. This made RESILIENT-152's audit-shard(4) appear to fail the ceiling locally when the tracked count was actually at-ceiling. A security/debt gate that is non-deterministic on worktree cruft can produce flaky CI failures for any audit-triggering PR and wastes investigation time. Fix: count tracked files only via 'git grep -rhoE <pattern> -- scripts src crates' (deterministic, ignores untracked/build/temp), keeping the same pattern + sort -u + ceiling compare.
+  evidence: |
+    test-no-new-bypass-env-vars.sh line 55 counts distinct bypass vars via 'grep -rhoE ... $REPO_ROOT/scripts /src /crates' — a FILESYSTEM scan that includes untracked files, .bak backups, build artifacts under target/, and sibling-process temp files. Observed live 2026-06-21: the count flip-flopped 236<->237 in one worktree depending on transient files (a sed -i.bak dry-run added +1; a sibling fleet process added +1), while 'git grep' (tracked-only) was a stable 236. This made RESILIENT-152's audit-shard(4) appear to fail the ceiling locally when the tracked count was actually at-ceiling. A security/debt gate that is non-deterministic on worktree cruft can produce flaky CI failures for any audit-triggering PR and wastes investigation time. Fix: count tracked files only via 'git grep -rhoE <pattern> -- scripts src crates' (deterministic, ignores untracked/build/temp), keeping the same pattern + sort -u + ceiling compare.
+

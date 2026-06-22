@@ -1,74 +1,48 @@
 - id: META-063
   domain: META
-  title: "MISSION: productize redundancy prevention — chump audit-redundancy subcommand + pre-add lint + weekly auto-filed gaps"
-  status: open
+  title: 'MISSION: productize redundancy prevention — chump audit-redundancy subcommand + pre-add lint + weekly auto-filed
+    gaps'
+  status: done
   priority: P1
   effort: l
-  description: |
-    MOTIVATION
-    
-    The 2026-05-14 redundancy audit found 8 distinct families of duplication across the codebase (filed as INFRA-1210 ... INFRA-1218). Looking at the AGE of the duplication:
-    - Worktree reapers: 7 files added incrementally over ~6 months. Each one was the "smallest reasonable script" at the time. None of them, individually, looked like a duplicate at filing time.
-    - gh wrappers: 4 layers, added one per quarter as throttle / criticality / shim concerns each got their own PR.
-    - CI tests grepping src/gap_store.rs: 8 tests added one per gap. Today (INFRA-693 extraction) all 8 broke in lockstep.
-    
-    The pattern: **each shipped gap incrementally adds a new file; the system has no mechanical preference for extending an existing file over creating a new one.** Audits are point-in-time and the rot resumes the next sprint. We need a productized prevention loop.
-    
-    PROPOSAL — three layers:
-    
-    ==== Layer 1: \`chump audit-redundancy\` Rust subcommand ====
-    
-    Catalogs scripts in scripts/coord/, scripts/ops/, scripts/dispatch/, scripts/dev/, scripts/ci/. For each pair, computes:
-    - Function-name overlap (regex \`^[a-z_]+\\(\\)\` extraction + intersection)
-    - Top-of-function content similarity (Levenshtein or n-gram on first 20 lines per function)
-    - Shared external commands (gh / jq / flock / grep counts)
-    - Imported library overlap (\`source \"scripts/lib/X.sh\"\`)
-    - Hardcoded path collisions (e.g. multiple scripts referencing scripts/coord/gap-claim.sh)
-    
-    Output: JSON report with per-pair similarity score + recommended consolidation target.
-    Subcommands:
-      chump audit-redundancy            — print pairs above threshold (default 0.6)
-      chump audit-redundancy --json     — machine-readable
-      chump audit-redundancy --file-gaps — auto-file P2 gaps for each cluster (with dedup against existing INFRA-12xx)
-      chump audit-redundancy --against <new-file>  — pre-add lint mode
-    
-    ==== Layer 2: Pre-add lint (CI gate) ====
-    
-    When a PR adds a new file in scripts/coord/, scripts/ops/, scripts/dispatch/, or scripts/ci/, fast-checks runs:
-      chump audit-redundancy --against <new-file>
-    If similarity > 0.7 to an existing file, fail with a directive: "extend <existing-file> or justify in commit body with 'Redundancy-OK: <reason>'."
-    
-    This is the forcing function. The fleet can't ship a 5th reaper without an explicit override.
-    
-    ==== Layer 3: Weekly auto-audit via launchd ====
-    
-    dev.chump.audit-redundancy.plist runs weekly:
-      chump audit-redundancy --file-gaps --since-last-run
-    File any new clusters as gaps tagged 'auto-redundancy-audit'. Curator agent picks them up next pillar cycle.
-    
-    ACCEPTANCE
-    
-    1. \`chump audit-redundancy\` Rust subcommand in src/audit_redundancy.rs; works against scripts/coord/, scripts/ops/, scripts/dispatch/, scripts/dev/, scripts/ci/.
-    2. CI gate in fast-checks: any PR adding a script in those dirs runs --against mode; fails on similarity > 0.7 unless commit body has 'Redundancy-OK:' trailer.
-    3. launchd plist installer + script for the weekly run.
-    4. The 2026-05-14 audit findings (INFRA-1210..1218) are detected by --json mode at the same cluster boundaries (regression test).
-    5. Operator playbook in docs/process/REDUNDANCY_PREVENTION.md: how to read the report, how to use --against pre-flight, how the override works.
-    
-    OUT OF SCOPE
-    
-    - Cross-language redundancy detection (Rust vs Shell vs Python) — start with shell-only; add Rust if effective.
-    - Auto-refactoring. The tool reports + files gaps; humans/Opus pick the consolidation target.
-    
-    WHY P1
-    
-    Today's audit took 10 min of Opus + 5 min of operator review = 1 cluster ~$. The fleet ships ~5 scripts/day; without a forcing function, the next audit will find 8+ MORE clusters in ~2 weeks. The amortized cost of one well-built linter is a few days; the recurring cost of doing audits manually is ~30 min/week of operator time forever, plus the cost of every duplicated implementation that ships.
-    
-    Source: 2026-05-14 redundancy audit; INFRA-1210 through INFRA-1218 are the trigger findings.
+  description: "MOTIVATION\n\nThe 2026-05-14 redundancy audit found 8 distinct families of duplication across the codebase\
+    \ (filed as INFRA-1210 ... INFRA-1218). Looking at the AGE of the duplication:\n- Worktree reapers: 7 files added incrementally\
+    \ over ~6 months. Each one was the \"smallest reasonable script\" at the time. None of them, individually, looked like\
+    \ a duplicate at filing time.\n- gh wrappers: 4 layers, added one per quarter as throttle / criticality / shim concerns\
+    \ each got their own PR.\n- CI tests grepping src/gap_store.rs: 8 tests added one per gap. Today (INFRA-693 extraction)\
+    \ all 8 broke in lockstep.\n\nThe pattern: **each shipped gap incrementally adds a new file; the system has no mechanical\
+    \ preference for extending an existing file over creating a new one.** Audits are point-in-time and the rot resumes the\
+    \ next sprint. We need a productized prevention loop.\n\nPROPOSAL — three layers:\n\n==== Layer 1: \\`chump audit-redundancy\\\
+    ` Rust subcommand ====\n\nCatalogs scripts in scripts/coord/, scripts/ops/, scripts/dispatch/, scripts/dev/, scripts/ci/.\
+    \ For each pair, computes:\n- Function-name overlap (regex \\`^[a-z_]+\\\\(\\\\)\\` extraction + intersection)\n- Top-of-function\
+    \ content similarity (Levenshtein or n-gram on first 20 lines per function)\n- Shared external commands (gh / jq / flock\
+    \ / grep counts)\n- Imported library overlap (\\`source \\\"scripts/lib/X.sh\\\"\\`)\n- Hardcoded path collisions (e.g.\
+    \ multiple scripts referencing scripts/coord/gap-claim.sh)\n\nOutput: JSON report with per-pair similarity score + recommended\
+    \ consolidation target.\nSubcommands:\n  chump audit-redundancy            — print pairs above threshold (default 0.6)\n\
+    \  chump audit-redundancy --json     — machine-readable\n  chump audit-redundancy --file-gaps — auto-file P2 gaps for\
+    \ each cluster (with dedup against existing INFRA-12xx)\n  chump audit-redundancy --against <new-file>  — pre-add lint\
+    \ mode\n\n==== Layer 2: Pre-add lint (CI gate) ====\n\nWhen a PR adds a new file in scripts/coord/, scripts/ops/, scripts/dispatch/,\
+    \ or scripts/ci/, fast-checks runs:\n  chump audit-redundancy --against <new-file>\nIf similarity > 0.7 to an existing\
+    \ file, fail with a directive: \"extend <existing-file> or justify in commit body with 'Redundancy-OK: <reason>'.\"\n\n\
+    This is the forcing function. The fleet can't ship a 5th reaper without an explicit override.\n\n==== Layer 3: Weekly\
+    \ auto-audit via launchd ====\n\ndev.chump.audit-redundancy.plist runs weekly:\n  chump audit-redundancy --file-gaps --since-last-run\n\
+    File any new clusters as gaps tagged 'auto-redundancy-audit'. Curator agent picks them up next pillar cycle.\n\nACCEPTANCE\n\
+    \n1. \\`chump audit-redundancy\\` Rust subcommand in src/audit_redundancy.rs; works against scripts/coord/, scripts/ops/,\
+    \ scripts/dispatch/, scripts/dev/, scripts/ci/.\n2. CI gate in fast-checks: any PR adding a script in those dirs runs\
+    \ --against mode; fails on similarity > 0.7 unless commit body has 'Redundancy-OK:' trailer.\n3. launchd plist installer\
+    \ + script for the weekly run.\n4. The 2026-05-14 audit findings (INFRA-1210..1218) are detected by --json mode at the\
+    \ same cluster boundaries (regression test).\n5. Operator playbook in docs/process/REDUNDANCY_PREVENTION.md: how to read\
+    \ the report, how to use --against pre-flight, how the override works.\n\nOUT OF SCOPE\n\n- Cross-language redundancy\
+    \ detection (Rust vs Shell vs Python) — start with shell-only; add Rust if effective.\n- Auto-refactoring. The tool reports\
+    \ + files gaps; humans/Opus pick the consolidation target.\n\nWHY P1\n\nToday's audit took 10 min of Opus + 5 min of operator\
+    \ review = 1 cluster ~$. The fleet ships ~5 scripts/day; without a forcing function, the next audit will find 8+ MORE\
+    \ clusters in ~2 weeks. The amortized cost of one well-built linter is a few days; the recurring cost of doing audits\
+    \ manually is ~30 min/week of operator time forever, plus the cost of every duplicated implementation that ships.\n\n\
+    Source: 2026-05-14 redundancy audit; INFRA-1210 through INFRA-1218 are the trigger findings.\n"
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
   closed_date: '2026-05-14'
   closed_pr: 1928
-

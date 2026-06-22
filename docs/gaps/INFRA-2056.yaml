@@ -1,14 +1,25 @@
 - id: INFRA-2056
   domain: INFRA
-  title: chump --execute-gap emits kind=subagent_heartbeat every 60s during execution — wizard-daemon can detect silent-death within 2min instead of inferring from PID checks
-  status: open
+  title: chump --execute-gap emits kind=subagent_heartbeat every 60s during execution — wizard-daemon can detect silent-death
+    within 2min instead of inferring from PID checks
+  status: done
   priority: P1
   effort: m
-  description: |
-    chump --execute-gap is a multi-minute mini-agent. Today's wizard-daemon trial showed 'process alive' is a weak signal — process can be ALIVE but stuck (network call hung), or recently dead (we don't know when it died). Strengthen with active heartbeat: every 60s, emit kind=subagent_heartbeat with fields {gap_id, pid, last_action, iter_count}. Wizard-daemon Step 4 outcome detection (INFRA-2051) gains: if heartbeat >120s stale → infer agent is dying/dead, escalate sooner than the 15min FAILED timeout. Pairs with INFRA-2055 (mandatory outcome emit on exit) — heartbeat handles the 'agent stuck but didn't crash' case, outcome-emit handles 'agent exited cleanly'.
-  acceptance_criteria:
-    - chump --execute-gap emits kind=subagent_heartbeat every 60s during execution with fields gap_id, pid, last_action (e.g. last tool name), iter_count (tool call count)
-    - Register kind in EVENT_REGISTRY.yaml + event-registry-reserved.txt
-    - "wizard-daemon Step 4 (INFRA-2051) gains heartbeat-staleness check: if last subagent_heartbeat for active dispatch is >120s old, infer agent dying, record outcome=STUCK + remove from active"
-    - "Smoke test scripts/ci/test-execute-gap-heartbeat.sh: synth a long-running execute-gap, assert heartbeats every ~60s in ambient.jsonl"
+  description: 'chump --execute-gap is a multi-minute mini-agent. Today''s wizard-daemon trial showed ''process alive'' is
+    a weak signal — process can be ALIVE but stuck (network call hung), or recently dead (we don''t know when it died). Strengthen
+    with active heartbeat: every 60s, emit kind=subagent_heartbeat with fields {gap_id, pid, last_action, iter_count}. Wizard-daemon
+    Step 4 outcome detection (INFRA-2051) gains: if heartbeat >120s stale → infer agent is dying/dead, escalate sooner than
+    the 15min FAILED timeout. Pairs with INFRA-2055 (mandatory outcome emit on exit) — heartbeat handles the ''agent stuck
+    but didn''t crash'' case, outcome-emit handles ''agent exited cleanly''.
 
+    '
+  acceptance_criteria:
+  - chump --execute-gap emits kind=subagent_heartbeat every 60s during execution with fields gap_id, pid, last_action (e.g.
+    last tool name), iter_count (tool call count)
+  - Register kind in EVENT_REGISTRY.yaml + event-registry-reserved.txt
+  - 'wizard-daemon Step 4 (INFRA-2051) gains heartbeat-staleness check: if last subagent_heartbeat for active dispatch is
+    >120s old, infer agent dying, record outcome=STUCK + remove from active'
+  - 'Smoke test scripts/ci/test-execute-gap-heartbeat.sh: synth a long-running execute-gap, assert heartbeats every ~60s in
+    ambient.jsonl'
+  closed_date: '2026-05-27'
+  closed_pr: 2648

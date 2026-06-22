@@ -1,9 +1,10 @@
 - id: INFRA-2221
   domain: INFRA
-  title: "EFFECTIVE P1: META-127/C3c curator-opus-velocity-tracker role — P50 ship-time + throughput + flake rate trends; surfaces regressions weekly"
-  status: open
+  title: 'EFFECTIVE P1: META-127/C3c curator-opus-velocity-tracker role — P50 ship-time + throughput + flake rate trends;
+    surfaces regressions weekly'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
-
+  - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
+  closed_pr: 2786

@@ -1,13 +1,19 @@
 - id: INFRA-1410
   domain: INFRA
-  title: "RESILIENT: PR-stuck SLO + auto-respawn — BLOCKED >2h with no progress → close + reclaim gap + new claim (replaces operator-attention-loop on convoy thrash)"
-  status: open
+  title: 'RESILIENT: PR-stuck SLO + auto-respawn — BLOCKED >2h with no progress → close + reclaim gap + new claim (replaces
+    operator-attention-loop on convoy thrash)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "stale-pr-reaper (existing launchd job) extended: when a PR has been mergeStateStatus=BLOCKED for >CHUMP_PR_STUCK_SLO_HRS (default 2h) AND no commits/comments in that window, attempt one INFRA-1404 chump rebase-and-push first"
-    - "If rebase fails or PR still stuck after another 30min, close the PR with comment \"auto-closed by stale-pr-reaper after 2h+30m BLOCKED; gap re-claimable\" and emit kind=pr_auto_closed_for_respawn"
-    - "stuck-pr-filer (existing) checks for these auto-closes and re-files the gap with notes (\"stuck cycle 1 → re-attempt\") for the picker"
-    - "Operator escape hatch: gh pr edit --add-label do-not-respawn permanently exempts the PR"
-    - "Measure: operator-attention events on stuck-PR rescue drop to near-zero; ambient kind=pr_auto_closed_for_respawn becomes the operator-facing signal"
-
+  - 'stale-pr-reaper (existing launchd job) extended: when a PR has been mergeStateStatus=BLOCKED for >CHUMP_PR_STUCK_SLO_HRS
+    (default 2h) AND no commits/comments in that window, attempt one INFRA-1404 chump rebase-and-push first'
+  - If rebase fails or PR still stuck after another 30min, close the PR with comment "auto-closed by stale-pr-reaper after
+    2h+30m BLOCKED; gap re-claimable" and emit kind=pr_auto_closed_for_respawn
+  - stuck-pr-filer (existing) checks for these auto-closes and re-files the gap with notes ("stuck cycle 1 → re-attempt")
+    for the picker
+  - 'Operator escape hatch: gh pr edit --add-label do-not-respawn permanently exempts the PR'
+  - 'Measure: operator-attention events on stuck-PR rescue drop to near-zero; ambient kind=pr_auto_closed_for_respawn becomes
+    the operator-facing signal'
+  closed_date: '2026-05-17'
+  closed_pr: 2260

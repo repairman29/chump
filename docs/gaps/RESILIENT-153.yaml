@@ -1,0 +1,14 @@
+- id: RESILIENT-153
+  domain: RESILIENT
+  title: "RESILIENT: remove haiku from the fleet — sonnet is the floor (haiku stalls ~60% of cycles; the cost-downgrade saves $0 on a flat subscription)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  evidence: |
+    Teardown 2026-06-21: docs/dispatch/routing.yaml routes effort xs+s to model_class=haiku. Haiku stalled ~60% of fleet cycles this session (INFRA-705 stall-detector kills + rc=124 timeouts) — it runs 'cargo check --workspace' on shell-only gaps and hesitates in --dangerously-skip-permissions. The cost rationale ('cheap models suffice') assumes per-token billing; the operator pays a FLAT subscription so haiku saves $0. Operator decision 2026-06-21: 'Sonnet is the downgrade. Get rid of haiku.' Also worker.sh INFRA-515 default-to-sonnet is a bash no-op once routing forces haiku.
+

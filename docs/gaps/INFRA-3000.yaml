@@ -1,0 +1,12 @@
+- id: INFRA-3000
+  domain: INFRA
+  title: "PR #3147 failing on audit-shard (4): https://github.com/repairman29/chump/actions/runs/2791629108"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

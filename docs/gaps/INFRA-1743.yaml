@@ -1,13 +1,17 @@
 - id: INFRA-1743
   domain: INFRA
-  title: "EFFECTIVE: docs/PITCH.md public-facing why-Chump doc — external-reviewer-readable surface (NORTH_STAR is operator-facing only; Marcus has nothing shareable)"
-  status: open
+  title: 'EFFECTIVE: docs/PITCH.md public-facing why-Chump doc — external-reviewer-readable surface (NORTH_STAR is operator-facing
+    only; Marcus has nothing shareable)'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "docs/PITCH.md exists, is 500-800 words, contains 6 sections (what/why-now/who/how-differs/shipped-vs-coming/where-to-start)"
-    - "No banned words (synergy/revolutionary/disruptive/paradigm/leverage/seamless/robust/world-class/cutting-edge/next-gen/game-changer/ecosystem/holistic) appear in PITCH.md"
-    - "docs/landing/index.html exists as static HTML with inline CSS, no build step required"
-    - "README.md top section contains a link to docs/PITCH.md labeled for collaborators or external reviewers"
-    - "scripts/README.md references docs/PITCH.md as the canonical public-facing docs surface"
-    - "2-3 real one-liner code snippets from the actual repo appear in PITCH.md (not pseudo-code)"
+  - docs/PITCH.md exists, is 500-800 words, contains 6 sections (what/why-now/who/how-differs/shipped-vs-coming/where-to-start)
+  - No banned words (synergy/revolutionary/disruptive/paradigm/leverage/seamless/robust/world-class/cutting-edge/next-gen/game-changer/ecosystem/holistic)
+    appear in PITCH.md
+  - docs/landing/index.html exists as static HTML with inline CSS, no build step required
+  - README.md top section contains a link to docs/PITCH.md labeled for collaborators or external reviewers
+  - scripts/README.md references docs/PITCH.md as the canonical public-facing docs surface
+  - 2-3 real one-liner code snippets from the actual repo appear in PITCH.md (not pseudo-code)
+  closed_date: '2026-05-24'
+  closed_pr: 2478

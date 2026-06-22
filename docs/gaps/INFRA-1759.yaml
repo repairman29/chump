@@ -1,14 +1,21 @@
 - id: INFRA-1759
   domain: INFRA
-  title: "EFFECTIVE: chump-coord call_rpc + serve_rpc API stubs + request_id dedup (META-061 Layer 2b slice 1/4, INFRA-1119 foundation)"
-  status: open
+  title: 'EFFECTIVE: chump-coord call_rpc + serve_rpc API stubs + request_id dedup (META-061 Layer 2b slice 1/4, INFRA-1119
+    foundation)'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "New pub async fn call_rpc(target_session, method, args (serde_json::Value), timeout_ms) -> Result<Response> in crates/chump-coord/src/rpc.rs (stub returns NotImplemented + emits ambient a2a_rpc_stub_called)"
-    - "New pub async fn serve_rpc(method, handler: Box<dyn Fn(Value) -> Result<Value> + Send>) -> Result<()> stub"
-    - "pub struct RpcRequest with fields request_id (String), method, args, sent_at — plus RpcResponse with request_id, result, error, latency_ms"
-    - "request_id is uuid v4; server-side dedup table is a tokio Mutex<HashMap<String, Instant>> with 60s expiry — implemented as in-memory stub here"
-    - "Register kind a2a_rpc_stub_called in EVENT_REGISTRY.yaml"
-    - "Integration test stub at crates/chump-coord/tests/a2a_layer2b.rs"
-    - "Sets up Layer 2b foundation; the 5 use-case wrappers (ask-eta/ask-overlap/ask-handoff/ask-progress/ask-capability) ship in slice 2"
+  - New pub async fn call_rpc(target_session, method, args (serde_json::Value), timeout_ms) -> Result<Response> in crates/chump-coord/src/rpc.rs
+    (stub returns NotImplemented + emits ambient a2a_rpc_stub_called)
+  - 'New pub async fn serve_rpc(method, handler: Box<dyn Fn(Value) -> Result<Value> + Send>) -> Result<()> stub'
+  - pub struct RpcRequest with fields request_id (String), method, args, sent_at — plus RpcResponse with request_id, result,
+    error, latency_ms
+  - request_id is uuid v4; server-side dedup table is a tokio Mutex<HashMap<String, Instant>> with 60s expiry — implemented
+    as in-memory stub here
+  - Register kind a2a_rpc_stub_called in EVENT_REGISTRY.yaml
+  - Integration test stub at crates/chump-coord/tests/a2a_layer2b.rs
+  - Sets up Layer 2b foundation; the 5 use-case wrappers (ask-eta/ask-overlap/ask-handoff/ask-progress/ask-capability) ship
+    in slice 2
+  closed_date: '2026-05-23'
+  closed_pr: 2379

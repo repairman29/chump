@@ -1,18 +1,36 @@
 - id: INFRA-2075
   domain: INFRA
-  title: "RESILIENT: no-revert-loop guard for wedge-fixer auto-dispatch (META-118 sub-gap 3 hardening) — per-signature retry cap (default 2) prevents infinite-fix-loop when a dispatch fails and the same signature re-fires"
-  status: open
+  title: 'RESILIENT: no-revert-loop guard for wedge-fixer auto-dispatch (META-118 sub-gap 3 hardening) — per-signature retry
+    cap (default 2) prevents infinite-fix-loop when a dispatch fails and the same signature re-fires'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - New file .chump-locks/wedge-fixer-attempt-history.json — persistent map signature_hash → {attempt_count, last_attempt_ts, last_pr_number, last_outcome ∈ {success, failed_ci, failed_review, abandoned}}; written atomically via tempfile+rename pattern
-    - "scripts/coord/wedge-fixer-dispatch.sh (INFRA-2069) reads attempt-history BEFORE dispatch: if signature_hash has attempt_count >= CHUMP_WEDGE_FIXER_MAX_RETRIES (default 2), refuse dispatch + emit kind=wedge_fixer_retry_cap_hit with fields signature_hash, attempt_count, last_pr_number, last_outcome; gap is auto-promoted to operator-required (status:open + operator_required:true note)"
-    - Increment attempt_count on EVERY dispatch (not on every success); decrement / clear on success-class outcome (PR merged); operator override via chump wedge-fixer reset <signature_hash> clears the counter manually
-    - "Per-signature back-off: even within retry cap, second attempt waits CHUMP_WEDGE_FIXER_RETRY_BACKOFF_S (default 1800s = 30min) after last_attempt_ts; third attempt waits 2x; this gives main time to settle between fix attempts"
-    - "Smoke test scripts/ci/test-wedge-fixer-no-revert-loop.sh: synth attempt-history with attempt_count=2 for signature X; attempt dispatch for X; assert refusal + kind=wedge_fixer_retry_cap_hit emit. Backoff case: synth attempt_count=1 + last_attempt_ts 5min ago; attempt dispatch; assert refusal until 30min back-off elapses"
-    - EVENT_REGISTRY.yaml entries kind=wedge_fixer_retry_cap_hit + (existing) kind=wedge_fixer_dispatched updated to include attempt_count field; allowlist entries
-    - "Operator audit surface: chump wedge-fixer history prints recent attempts (per-signature, per-PR, outcomes) — helps diagnose \"why did this signature keep getting dispatched\""
-  depends_on: [INFRA-2069]
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd as a hardening for INFRA-2069 (wedge-fixer auto-dispatch). INFRA-2069 has volume rate limit (3/hr) but NO per-signature retry cap. Worst case: a signature for which there is no valid fix template loops indefinitely until rate limit catches it (burning ~150K tokens/dispatch * 3/hr = 450K tokens/hr wasted). This gap caps it at attempt_count=2 then escalates to operator.
+  - New file .chump-locks/wedge-fixer-attempt-history.json — persistent map signature_hash → {attempt_count, last_attempt_ts,
+    last_pr_number, last_outcome ∈ {success, failed_ci, failed_review, abandoned}}; written atomically via tempfile+rename
+    pattern
+  - 'scripts/coord/wedge-fixer-dispatch.sh (INFRA-2069) reads attempt-history BEFORE dispatch: if signature_hash has attempt_count
+    >= CHUMP_WEDGE_FIXER_MAX_RETRIES (default 2), refuse dispatch + emit kind=wedge_fixer_retry_cap_hit with fields signature_hash,
+    attempt_count, last_pr_number, last_outcome; gap is auto-promoted to operator-required (status:open + operator_required:true
+    note)'
+  - Increment attempt_count on EVERY dispatch (not on every success); decrement / clear on success-class outcome (PR merged);
+    operator override via chump wedge-fixer reset <signature_hash> clears the counter manually
+  - 'Per-signature back-off: even within retry cap, second attempt waits CHUMP_WEDGE_FIXER_RETRY_BACKOFF_S (default 1800s
+    = 30min) after last_attempt_ts; third attempt waits 2x; this gives main time to settle between fix attempts'
+  - 'Smoke test scripts/ci/test-wedge-fixer-no-revert-loop.sh: synth attempt-history with attempt_count=2 for signature X;
+    attempt dispatch for X; assert refusal + kind=wedge_fixer_retry_cap_hit emit. Backoff case: synth attempt_count=1 + last_attempt_ts
+    5min ago; attempt dispatch; assert refusal until 30min back-off elapses'
+  - EVENT_REGISTRY.yaml entries kind=wedge_fixer_retry_cap_hit + (existing) kind=wedge_fixer_dispatched updated to include
+    attempt_count field; allowlist entries
+  - 'Operator audit surface: chump wedge-fixer history prints recent attempts (per-signature, per-PR, outcomes) — helps diagnose
+    "why did this signature keep getting dispatched"'
+  depends_on:
+  - INFRA-2069
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd as a hardening for INFRA-2069 (wedge-fixer auto-dispatch). INFRA-2069
+    has volume rate limit (3/hr) but NO per-signature retry cap. Worst case: a signature for which there is no valid fix template
+    loops indefinitely until rate limit catches it (burning ~150K tokens/dispatch * 3/hr = 450K tokens/hr wasted). This gap
+    caps it at attempt_count=2 then escalates to operator.
 
+    '
+  closed_date: '2026-06-05'
+  closed_pr: 2669

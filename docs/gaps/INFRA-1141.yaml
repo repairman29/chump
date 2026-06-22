@@ -1,16 +1,27 @@
 - id: INFRA-1141
   domain: INFRA
-  title: "RESILIENT: queue-driver resolve_dirty_pr — refetch before push (stale-info rejection) + don't mask push exit code with tail"
-  status: open
+  title: 'RESILIENT: queue-driver resolve_dirty_pr — refetch before push (stale-info rejection) + don''t mask push exit code
+    with tail'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    Discovered while validating INFRA-1137 (#1804) in production 2026-05-14. Bug 1: stale-info push rejection — resolve_dirty_pr pushes with --force-with-lease but doesn't refetch the branch first. After concurrent auto-merge attempts or sibling rescue runs, local view of origin/<branch> is stale; lease refused with "stale info". Rescue logic completed but push fails silently and PR stays DIRTY. Bug 2: masked push exit code — push piped to `tail -1` to keep output short, masks exit code. Function reports "✓ clean rebase pushed" even when push failed. queue-driver outer `if resolve_dirty_pr` treats failure as success. Real impact: #1751 reported success 3 consecutive runs while never landing push. Required manual fetch+retry. Fix shape: (a) `git fetch origin "$branch" --quiet || true` before push, (b) save push output to var, check $? before logging.
-  acceptance_criteria:
-    - resolve_dirty_pr in scripts/coord/queue-driver.sh runs `git fetch origin <branch>` before pushing to refresh lease
-    - Push exit code captured into variable; success path only taken when rc==0
-    - On push failure emit kind=dirty_pr_push_failed via chump ambient emit (INFRA-1048) with --field pr=N --field branch=X --field error_tail=Y and return 1; also retrofit existing direct-printf calls to use same CLI
-    - EVENT_REGISTRY.yaml registers dirty_pr_push_failed
-    - "Test scripts/ci/test-queue-driver-push-rescue.sh: stub failing git push; assert function returns non-zero and emits push_failed (not auto_resolved)"
-    - Both clean-rebase and merge-driver-resolution code paths get same treatment
+  description: 'Discovered while validating INFRA-1137 (#1804) in production 2026-05-14. Bug 1: stale-info push rejection
+    — resolve_dirty_pr pushes with --force-with-lease but doesn''t refetch the branch first. After concurrent auto-merge attempts
+    or sibling rescue runs, local view of origin/<branch> is stale; lease refused with "stale info". Rescue logic completed
+    but push fails silently and PR stays DIRTY. Bug 2: masked push exit code — push piped to `tail -1` to keep output short,
+    masks exit code. Function reports "✓ clean rebase pushed" even when push failed. queue-driver outer `if resolve_dirty_pr`
+    treats failure as success. Real impact: #1751 reported success 3 consecutive runs while never landing push. Required manual
+    fetch+retry. Fix shape: (a) `git fetch origin "$branch" --quiet || true` before push, (b) save push output to var, check
+    $? before logging.
 
+    '
+  acceptance_criteria:
+  - resolve_dirty_pr in scripts/coord/queue-driver.sh runs `git fetch origin <branch>` before pushing to refresh lease
+  - Push exit code captured into variable; success path only taken when rc==0
+  - On push failure emit kind=dirty_pr_push_failed via chump ambient emit (INFRA-1048) with --field pr=N --field branch=X
+    --field error_tail=Y and return 1; also retrofit existing direct-printf calls to use same CLI
+  - EVENT_REGISTRY.yaml registers dirty_pr_push_failed
+  - 'Test scripts/ci/test-queue-driver-push-rescue.sh: stub failing git push; assert function returns non-zero and emits push_failed
+    (not auto_resolved)'
+  - Both clean-rebase and merge-driver-resolution code paths get same treatment
+  closed_pr: 1828

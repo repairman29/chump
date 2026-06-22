@@ -1,0 +1,14 @@
+- id: INFRA-2998
+  domain: INFRA
+  title: "RESILIENT: all-sonnet fleet orphans xs gaps — sonnet refuses xs at _pick_gap.py:470, but flat subscription makes that gate invalid too (sibling of INFRA-2997)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Sibling of INFRA-2997. The picker gate at scripts/dispatch/_pick_gap.py:470 makes a sonnet worker REFUSE effort=xs gaps (unless P0-MISSION). That gate assumed a MIXED fleet where haiku workers handle xs/s. But run-fleet.sh:268 defaults FLEET_MODEL=sonnet (the L38 'default haiku' comment is stale), so the real fleet is all-sonnet — and INFRA-2997 removed the last path that put xs work on haiku. Net: regular (non-P0-MISSION) xs gaps now have NO worker. The same flat-subscription reasoning that voided the xs/s haiku routes (no per-token cost delta; sonnet ships, haiku stalls at 1/9 per INFRA-515) voids the 'don't burn frontier tokens on xs' rationale behind this gate. Fix: drop or flag-gate the sonnet-refuses-xs check so sonnet workers pick xs. Out of scope for INFRA-2997 (that PR was routing.yaml-only).
+  acceptance_criteria:
+    - scripts/dispatch/_pick_gap.py no longer makes sonnet workers unconditionally refuse effort=xs (gate removed or behind a mixed-fleet opt-in flag)
+    - A sonnet worker picks an xs gap in a default all-sonnet fleet (demonstrated via _pick_gap.py with FLEET_MODEL=sonnet on an xs fixture)
+    - scripts/ci/test-model-class-routing.sh sonnet-refuses-xs assertion updated to match the new behavior
+    - "run-fleet.sh:38 stale 'default haiku' comment corrected to reflect the sonnet default at L268"
+

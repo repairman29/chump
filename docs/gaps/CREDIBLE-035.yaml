@@ -1,16 +1,23 @@
 - id: CREDIBLE-035
   domain: CREDIBLE
-  title: "CREDIBLE: CLI integration tests for fleet + health + coord commands — chump health, fleet doctor, fleet status, claim, release, briefing (decomp of CREDIBLE-018 child 2/3)"
-  status: open
+  title: 'CREDIBLE: CLI integration tests for fleet + health + coord commands — chump health, fleet doctor, fleet status,
+    claim, release, briefing (decomp of CREDIBLE-018 child 2/3)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "tests/cli_fleet_coord.rs covers: chump health, chump health --slo-check, chump fleet doctor, chump fleet status, chump claim, chump release, chump --briefing"
-    - "Tests run against a tempdir .chump and a mocked .chump-locks/ (no real launchd interaction; lease files written directly to fixture dir)"
-    - "chump health --slo-check: synthesize state.db rows that trigger each SLO breach (waste rate >5%, silent_agent in last 7d, P0 >5) — assert non-zero exit and named SLO IDs in output"
-    - "chump claim/release: full lease cycle — claim emits .chump-locks/<session>.json, release removes it; double-claim fails with named error"
-    - "chump --briefing <ID>: outputs MEM-007-shaped briefing including AC, depends_on, recent-related-PRs; fails cleanly on unknown ID"
-    - "chump fleet doctor: covers both auth modes (api-key, oauth) per INFRA-622; assert exit 0 with valid credentials in env, exit non-zero when both missing"
-    - "scripts/ci/test-cli-fleet-coord.sh runs all tests; per-subcommand pass/fail reporting"
-    - "CI gate required for PRs modifying chump health, fleet doctor, claim, release, or briefing dispatch"
-
+  - 'tests/cli_fleet_coord.rs covers: chump health, chump health --slo-check, chump fleet doctor, chump fleet status, chump
+    claim, chump release, chump --briefing'
+  - Tests run against a tempdir .chump and a mocked .chump-locks/ (no real launchd interaction; lease files written directly
+    to fixture dir)
+  - 'chump health --slo-check: synthesize state.db rows that trigger each SLO breach (waste rate >5%, silent_agent in last
+    7d, P0 >5) — assert non-zero exit and named SLO IDs in output'
+  - 'chump claim/release: full lease cycle — claim emits .chump-locks/<session>.json, release removes it; double-claim fails
+    with named error'
+  - 'chump --briefing <ID>: outputs MEM-007-shaped briefing including AC, depends_on, recent-related-PRs; fails cleanly on
+    unknown ID'
+  - 'chump fleet doctor: covers both auth modes (api-key, oauth) per INFRA-622; assert exit 0 with valid credentials in env,
+    exit non-zero when both missing'
+  - scripts/ci/test-cli-fleet-coord.sh runs all tests; per-subcommand pass/fail reporting
+  - CI gate required for PRs modifying chump health, fleet doctor, claim, release, or briefing dispatch
+  closed_pr: 1749

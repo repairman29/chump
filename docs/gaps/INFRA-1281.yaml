@@ -1,17 +1,32 @@
 - id: INFRA-1281
   domain: INFRA
-  title: "EFFECTIVE: add layer + critical_path_days to chump-plan JSON output — enable tier-aware picker (INFRA-1257 follow-on)"
-  status: open
+  title: 'EFFECTIVE: add layer + critical_path_days to chump-plan JSON output — enable tier-aware picker (INFRA-1257 follow-on)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    chump-plan (INFRA-1257, merged) outputs gap-priority.json with score + unblocks_count but no topological layer or critical path. Without these fields the fleet picker (INFRA-1258) cannot enforce tier ordering — workers can pile onto tier-2 leaves while the tier-0 foundation (INFRA-988, INFRA-1116 etc.) sits unpicked. The unblocking_bonus×50 score signal partially compensates but cannot prevent two workers from simultaneously claiming sibling gaps that both block on the same unstarted parent.
-    
-    Add to each item in gap-priority.json:
-      layer: u32  — 0 = no deps (foundation), 1 = only layer-0 deps, N = longest dep chain depth. Computed as BFS depth from graph roots.
-      critical_path_days: f32 — longest chain of effort-days from this gap through all its transitive dependents to a leaf. Uses petgraph longest-path on the DAG with effort_to_days(effort) node weights.
-    
-    Source: petgraph DAG already built in crates/chump-planner/src/graph.rs; topo_order() and unblocks() are available. Layer = reverse BFS from roots. Critical path = single-source longest path (DAG so no cycles).
+  description: "chump-plan (INFRA-1257, merged) outputs gap-priority.json with score + unblocks_count but no topological layer\
+    \ or critical path. Without these fields the fleet picker (INFRA-1258) cannot enforce tier ordering — workers can pile\
+    \ onto tier-2 leaves while the tier-0 foundation (INFRA-988, INFRA-1116 etc.) sits unpicked. The unblocking_bonus×50 score\
+    \ signal partially compensates but cannot prevent two workers from simultaneously claiming sibling gaps that both block\
+    \ on the same unstarted parent.\n\nAdd to each item in gap-priority.json:\n  layer: u32  — 0 = no deps (foundation), 1\
+    \ = only layer-0 deps, N = longest dep chain depth. Computed as BFS depth from graph roots.\n  critical_path_days: f32\
+    \ — longest chain of effort-days from this gap through all its transitive dependents to a leaf. Uses petgraph longest-path\
+    \ on the DAG with effort_to_days(effort) node weights.\n\nSource: petgraph DAG already built in crates/chump-planner/src/graph.rs;\
+    \ topo_order() and unblocks() are available. Layer = reverse BFS from roots. Critical path = single-source longest path\
+    \ (DAG so no cycles).\n"
   acceptance_criteria:
-    - "1. chump-plan --format json output includes 'layer' (u32) and 'critical_path_days' (f32) for every item\n2. layer=0 for gaps with no dependencies; layer=N for gaps whose longest dep chain has N hops\n3. critical_path_days = sum of effort_to_days() along the longest forward chain (this gap + all transitive dependents to a leaf)\n4. gaps with layer=0 always have >= layer=1 score in the absence of other signals (layer itself does not penalise, but the layer field enables INFRA-1258 to enforce tier ordering)\n5. CI test: fixture DAG of 5 gaps (root, two layer-1, one layer-2, one isolated); verify layer values and critical_path_days monotonically longer toward root\n6. Schema doc in crates/chump-planner/src/output/json.rs updated with new fields"
+  - '1. chump-plan --format json output includes ''layer'' (u32) and ''critical_path_days'' (f32) for every item
 
+    2. layer=0 for gaps with no dependencies; layer=N for gaps whose longest dep chain has N hops
+
+    3. critical_path_days = sum of effort_to_days() along the longest forward chain (this gap + all transitive dependents
+    to a leaf)
+
+    4. gaps with layer=0 always have >= layer=1 score in the absence of other signals (layer itself does not penalise, but
+    the layer field enables INFRA-1258 to enforce tier ordering)
+
+    5. CI test: fixture DAG of 5 gaps (root, two layer-1, one layer-2, one isolated); verify layer values and critical_path_days
+    monotonically longer toward root
+
+    6. Schema doc in crates/chump-planner/src/output/json.rs updated with new fields'
+  closed_pr: 1962

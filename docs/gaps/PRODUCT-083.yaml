@@ -1,23 +1,34 @@
 - id: PRODUCT-083
   domain: PRODUCT
-  title: "PRODUCT: PWA verb-shaped navigation — quick-actions panel wrapping the 8 noun views"
-  status: open
+  title: 'PRODUCT: PWA verb-shaped navigation — quick-actions panel wrapping the 8 noun views'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Today PWA nav is 8 noun views (chat, agent, results, models, settings,
-    tasks, memory, decisions). Solo dev wants verbs: Start a task / Review
-    what shipped / See what's stuck / Configure for offline. This gap adds
-    a verb-shaped quick-actions panel without removing the existing nouns.
-  acceptance_criteria:
-    - "PWA top-of-page renders <chump-quick-actions> panel with 6 verb buttons: Start task / Review ships / See stuck / Configure / Brief me / Help"
-    - "Each button routes to existing view + (where needed) pre-applies a filter: 'Start task' → /agents with new-task dialog; 'Review ships' → /impact or /agents filtered to merged-today; 'See stuck' → /brief stuck-items section; 'Configure' → /settings; 'Brief me' → /brief; 'Help' → /welcome?welcome=force"
-    - Existing 8 noun views remain accessible via sidebar nav (no removal)
-    - "Visual hierarchy: quick-actions panel is the primary call-to-action above the sidebar/noun-nav; clear that verbs are the main path, nouns are the deep-dive"
-    - "Keyboard shortcuts: each verb has a 1-char shortcut (T = start Task, R = Review, S = Stuck, C = Configure, B = Brief, ? = Help) displayed in the button; works from any view"
-    - "scripts/ci/test-pwa-verb-nav.sh: assert each verb button routes correctly with filters applied"
-    - "Mobile-friendly: on narrow viewports, verbs collapse into a hamburger overlay; verb labels become icons + tooltip"
-    - Pairs with PRODUCT-082 (welcome) — quick-actions is the verb-vocabulary the welcome flow teaches
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  description: 'Today PWA nav is 8 noun views (chat, agent, results, models, settings,
 
+    tasks, memory, decisions). Solo dev wants verbs: Start a task / Review
+
+    what shipped / See what''s stuck / Configure for offline. This gap adds
+
+    a verb-shaped quick-actions panel without removing the existing nouns.
+
+    '
+  acceptance_criteria:
+  - 'PWA top-of-page renders <chump-quick-actions> panel with 6 verb buttons: Start task / Review ships / See stuck / Configure
+    / Brief me / Help'
+  - 'Each button routes to existing view + (where needed) pre-applies a filter: ''Start task'' → /agents with new-task dialog;
+    ''Review ships'' → /impact or /agents filtered to merged-today; ''See stuck'' → /brief stuck-items section; ''Configure''
+    → /settings; ''Brief me'' → /brief; ''Help'' → /welcome?welcome=force'
+  - Existing 8 noun views remain accessible via sidebar nav (no removal)
+  - 'Visual hierarchy: quick-actions panel is the primary call-to-action above the sidebar/noun-nav; clear that verbs are
+    the main path, nouns are the deep-dive'
+  - 'Keyboard shortcuts: each verb has a 1-char shortcut (T = start Task, R = Review, S = Stuck, C = Configure, B = Brief,
+    ? = Help) displayed in the button; works from any view'
+  - 'scripts/ci/test-pwa-verb-nav.sh: assert each verb button routes correctly with filters applied'
+  - 'Mobile-friendly: on narrow viewports, verbs collapse into a hamburger overlay; verb labels become icons + tooltip'
+  - Pairs with PRODUCT-082 (welcome) — quick-actions is the verb-vocabulary the welcome flow teaches
+  notes: '[2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+
+    '
+  closed_date: '2026-05-15'
+  closed_pr: 1867

@@ -1,12 +1,15 @@
 - id: INFRA-2297
   domain: INFRA
-  title: ZERO-WASTE P0 CI-KEYSTONE — fix test-pre-push-test-gate.sh injecting src/lib.rs that doesn't exist (chump crate has no lib.rs; cargo auto-detects + fails to compile; spurious fast-checks failure has been masking trunk-red as bigger than it is)
-  status: open
+  title: ZERO-WASTE P0 CI-KEYSTONE — fix test-pre-push-test-gate.sh injecting src/lib.rs that doesn't exist (chump crate has
+    no lib.rs; cargo auto-detects + fails to compile; spurious fast-checks failure has been masking trunk-red as bigger than
+    it is)
+  status: done
   priority: P0
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-30'
+  closed_pr: 2872

@@ -1,19 +1,18 @@
 - id: INFRA-796
   domain: INFRA
-  title: "EFFECTIVE: chump orchestrate — conversational Opus loop that drives the fleet from plain-English operator intent"
-  status: open
+  title: 'EFFECTIVE: chump orchestrate — conversational Opus loop that drives the fleet from plain-English operator intent'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Add telemetry, cost tracking, and failure taxonomy to the chump orchestrate loop. 
-    Each operator intent iteration emits a structured `kind=orchestrate_intent` event to ambient.jsonl
-    with duration, estimated token counts, tool count, and failure classification (transient vs permanent).
-    This gives operators and downstream tooling (waste-tally, fleet-health) visibility into orchestrator activity.
+  description: "Add telemetry, cost tracking, and failure taxonomy to the chump orchestrate loop. \nEach operator intent iteration\
+    \ emits a structured `kind=orchestrate_intent` event to ambient.jsonl\nwith duration, estimated token counts, tool count,\
+    \ and failure classification (transient vs permanent).\nThis gives operators and downstream tooling (waste-tally, fleet-health)\
+    \ visibility into orchestrator activity.\n"
   pr: 1421
   acceptance_criteria:
-    - orchestrate loop emits kind=orchestrate_intent event to ambient.jsonl each iteration
-    - event includes: intent text, status (success/failure), tool_count, est_input_tokens, est_output_tokens, elapsed_ms
-    - tool execution failures classified as transient (network/rate-limit) vs permanent (syntax/unknown-command)
-    - events observable via `tail -f .chump-locks/ambient.jsonl` during an orchestrate session
-    - "smoke test verifies ambient event emission: grep for kind=orchestrate_intent in ambient.jsonl after a stub session"
-
+  - orchestrate loop emits kind=orchestrate_intent event to ambient.jsonl each iteration
+  - event includes: intent text, status (success/failure), tool_count, est_input_tokens, est_output_tokens, elapsed_ms
+  - tool execution failures classified as transient (network/rate-limit) vs permanent (syntax/unknown-command)
+  - events observable via `tail -f .chump-locks/ambient.jsonl` during an orchestrate session
+  - 'smoke test verifies ambient event emission: grep for kind=orchestrate_intent in ambient.jsonl after a stub session'
+  closed_pr: 1582

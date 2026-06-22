@@ -1,15 +1,29 @@
 - id: INFRA-2077
   domain: INFRA
-  title: "RESILIENT P0 trunk-RED: dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure failing consistently on main HEAD — wizard flagged CI rot, confirmed; ambient log empty when test reads it; blocks every PR's natural CI"
-  status: open
+  title: 'RESILIENT P0 trunk-RED: dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure
+    failing consistently on main HEAD — wizard flagged CI rot, confirmed; ambient log empty when test reads it; blocks every
+    PR''s natural CI'
+  status: done
   priority: P0
   effort: xs
   acceptance_criteria:
-    - "Reproduce: cargo test --package chump --bin chump dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure -- --nocapture; expect FAILED with \"expected lease_release_failed event in ambient log, got: (empty)\""
-    - "Root-cause investigation: emit_lease_release_failed (src/dispatch.rs:891) reads CHUMP_AMBIENT_LOG env var; test sets it via std::env::set_var on line 1324; falls back to crate::repo_path::runtime_base().join(.chump-locks/ambient.jsonl) when env var unset. Suspect (a) env var read after some intermediate code clears it, OR (b) emit silently failing to open the temp path due to permissions on actions-runner, OR (c) thread-local race despite #[serial_test::serial(ambient_env)]"
-    - "Fix lands and src/dispatch.rs:1305..1354 test passes consistently — run scripts/ci/test-cargo-test.sh 3 times in row, all green"
-    - "No new flake: if the fix changes test setup, also add to docs/process/KNOWN_FLAKES.yaml ONLY IF the underlying behavior is provably non-deterministic (default assumption is REAL BUG; fixed by code change, not flake entry)"
-    - "Trunk-RED gate: after PR merges, run `gh run list --branch main --limit 5 --json conclusion --jq \".[] | select(.name == \\\"CI\\\")\"` should show success conclusion on the post-merge run"
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd after wizard flagged CI rot. Confirmed failing on sha 07f174b1 AND sha 94f1ecad (two consecutive main commits) — NOT a flake. Source: src/dispatch.rs:1305 test, src/dispatch.rs:891 emit fn. INFRA-1243 was the original feature ship; INFRA-1320 added serial_test annotation. P0 because main is currently RED on cargo-test + cargo-test-required, blocking every PR's natural CI.
+  - 'Reproduce: cargo test --package chump --bin chump dispatch::tests::release_with_retry_emits_ambient_event_and_propagates_on_double_failure
+    -- --nocapture; expect FAILED with "expected lease_release_failed event in ambient log, got: (empty)"'
+  - 'Root-cause investigation: emit_lease_release_failed (src/dispatch.rs:891) reads CHUMP_AMBIENT_LOG env var; test sets
+    it via std::env::set_var on line 1324; falls back to crate::repo_path::runtime_base().join(.chump-locks/ambient.jsonl)
+    when env var unset. Suspect (a) env var read after some intermediate code clears it, OR (b) emit silently failing to open
+    the temp path due to permissions on actions-runner, OR (c) thread-local race despite #[serial_test::serial(ambient_env)]'
+  - Fix lands and src/dispatch.rs:1305..1354 test passes consistently — run scripts/ci/test-cargo-test.sh 3 times in row,
+    all green
+  - 'No new flake: if the fix changes test setup, also add to docs/process/KNOWN_FLAKES.yaml ONLY IF the underlying behavior
+    is provably non-deterministic (default assumption is REAL BUG; fixed by code change, not flake entry)'
+  - 'Trunk-RED gate: after PR merges, run `gh run list --branch main --limit 5 --json conclusion --jq ".[] | select(.name
+    == \"CI\")"` should show success conclusion on the post-merge run'
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd after wizard flagged CI rot. Confirmed failing on sha 07f174b1 AND sha
+    94f1ecad (two consecutive main commits) — NOT a flake. Source: src/dispatch.rs:1305 test, src/dispatch.rs:891 emit fn.
+    INFRA-1243 was the original feature ship; INFRA-1320 added serial_test annotation. P0 because main is currently RED on
+    cargo-test + cargo-test-required, blocking every PR''s natural CI.
 
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2672

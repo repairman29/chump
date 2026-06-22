@@ -1,11 +1,13 @@
 - id: INFRA-1406
   domain: INFRA
-  title: "RESILIENT: pr-rebase-daemon — auto-rebase DIRTY PRs onto main when merge would conflict but rebase resolves cleanly"
-  status: open
+  title: 'RESILIENT: pr-rebase-daemon — auto-rebase DIRTY PRs onto main when merge would conflict but rebase resolves cleanly'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "[\"Surfaced 2026-05-15/16: every armed PR that gets mergeStateStatus=DIRTY today requires MANUAL rebase + force-push. Hit this on #2117, #2110, #2097, and the cockpit trilogy. Each adds 5-10 min operator time per PR. With auto-merge already armed, the rebase is the only blocker.\",\"scripts/ops/pr-rebase-daemon.sh: every 5 min (launchd plist), scan open PRs via gh pr list --search is:pr"
+  - '["Surfaced 2026-05-15/16: every armed PR that gets mergeStateStatus=DIRTY today requires MANUAL rebase + force-push.
+    Hit this on #2117, #2110, #2097, and the cockpit trilogy. Each adds 5-10 min operator time per PR. With auto-merge already
+    armed, the rebase is the only blocker.","scripts/ops/pr-rebase-daemon.sh: every 5 min (launchd plist), scan open PRs via
+    gh pr list --search is:pr'
   closed_date: '2026-05-16'
   closed_pr: 2162
-

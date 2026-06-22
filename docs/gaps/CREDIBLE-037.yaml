@@ -1,16 +1,23 @@
 - id: CREDIBLE-037
   domain: CREDIBLE
-  title: "CREDIBLE: complete the harness-tagging half of CREDIBLE-025 — ambient events tag harness (claude-code-ide / opencode-bigpickle / fleet-dispatcher / manual), fleet-status --by-harness, waste-tally --by-harness"
-  status: open
+  title: 'CREDIBLE: complete the harness-tagging half of CREDIBLE-025 — ambient events tag harness (claude-code-ide / opencode-bigpickle
+    / fleet-dispatcher / manual), fleet-status --by-harness, waste-tally --by-harness'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Every worker-emitted ambient.jsonl event includes BOTH `model` (already shipped in CREDIBLE-025) AND `harness` (new). Values: claude-code-ide / opencode / opencode-bigpickle / fleet-dispatcher / manual / unknown"
-    - "scripts/dev/ambient-emit.sh accepts --harness flag; falls back to CHUMP_AGENT_HARNESS env var; defaults to 'unknown' (with a one-shot kind=missing_attribution alert per session)"
-    - "scripts/coord/broadcast.sh (touched by CREDIBLE-025) includes harness field in INTENT and bash_call events"
-    - "scripts/dispatch/run-fleet.sh exports CHUMP_AGENT_HARNESS=fleet-dispatcher; opencode-bigpickle sessions export opencode-bigpickle; Claude Code IDE sessions export claude-code-ide (via the IDE's session-start hook or shell init)"
-    - "scripts/dispatch/model-ship-rate.sh gains --by-harness flag mirroring --by-model behavior; JSON output groups by harness"
-    - "chump waste-tally --by-harness and chump health --by-model (both already partially landed) produce parseable breakdown tables"
-    - "scripts/ci/test-harness-ship-rate.sh: 5 synthetic ambient events tagged across 3 harness values; assert --by-harness output groups them correctly; mirror CREDIBLE-025's existing test fixture"
-    - "Migration note: pre-CREDIBLE-037 events without harness field are tagged harness=legacy in any breakdown so historical comparisons stay honest"
-
+  - 'Every worker-emitted ambient.jsonl event includes BOTH `model` (already shipped in CREDIBLE-025) AND `harness` (new).
+    Values: claude-code-ide / opencode / opencode-bigpickle / fleet-dispatcher / manual / unknown'
+  - scripts/dev/ambient-emit.sh accepts --harness flag; falls back to CHUMP_AGENT_HARNESS env var; defaults to 'unknown' (with
+    a one-shot kind=missing_attribution alert per session)
+  - scripts/coord/broadcast.sh (touched by CREDIBLE-025) includes harness field in INTENT and bash_call events
+  - scripts/dispatch/run-fleet.sh exports CHUMP_AGENT_HARNESS=fleet-dispatcher; opencode-bigpickle sessions export opencode-bigpickle;
+    Claude Code IDE sessions export claude-code-ide (via the IDE's session-start hook or shell init)
+  - scripts/dispatch/model-ship-rate.sh gains --by-harness flag mirroring --by-model behavior; JSON output groups by harness
+  - chump waste-tally --by-harness and chump health --by-model (both already partially landed) produce parseable breakdown
+    tables
+  - 'scripts/ci/test-harness-ship-rate.sh: 5 synthetic ambient events tagged across 3 harness values; assert --by-harness
+    output groups them correctly; mirror CREDIBLE-025''s existing test fixture'
+  - 'Migration note: pre-CREDIBLE-037 events without harness field are tagged harness=legacy in any breakdown so historical
+    comparisons stay honest'
+  closed_pr: 1501

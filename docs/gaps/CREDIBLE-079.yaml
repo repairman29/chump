@@ -1,13 +1,18 @@
 - id: CREDIBLE-079
   domain: CREDIBLE
-  title: ci-audit-loop.sh audit scan misses kind=regression_attributed — blame-bot signal silently dropped, contributes to silent_agent SLO breach
-  status: open
+  title: ci-audit-loop.sh audit scan misses kind=regression_attributed — blame-bot signal silently dropped, contributes to
+    silent_agent SLO breach
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
-    - scripts/coord/ci-audit-loop.sh audit scans kind=regression_attributed events in last 200 ambient lines and reports them as a third bucket alongside pr_stuck and fleet_wedge
-    - When regression_attributed count > 0 in last 30 min, audit exits 0 (actionable) and prints suspect_commits + checks_attributed from the events
-    - When regression_attributed events all reference a green_sha older than HEAD by N>5 commits, audit prints a stale-green warning hint pointing at blame-bot.sh green_sha advancement (see sibling CREDIBLE-080)
-    - scripts/ci/test-ci-audit-loop.sh adds a fixture that writes 3 regression_attributed events to a temp ambient.jsonl, runs audit, expects exit 0 + bucket count >= 1
-    - Emits kind=ci_cluster_detected with bucket_type=regression_attributed field when the new bucket fires
-
+  - scripts/coord/ci-audit-loop.sh audit scans kind=regression_attributed events in last 200 ambient lines and reports them
+    as a third bucket alongside pr_stuck and fleet_wedge
+  - When regression_attributed count > 0 in last 30 min, audit exits 0 (actionable) and prints suspect_commits + checks_attributed
+    from the events
+  - When regression_attributed events all reference a green_sha older than HEAD by N>5 commits, audit prints a stale-green
+    warning hint pointing at blame-bot.sh green_sha advancement (see sibling CREDIBLE-080)
+  - scripts/ci/test-ci-audit-loop.sh adds a fixture that writes 3 regression_attributed events to a temp ambient.jsonl, runs
+    audit, expects exit 0 + bucket count >= 1
+  - Emits kind=ci_cluster_detected with bucket_type=regression_attributed field when the new bucket fires
+  closed_pr: 2798

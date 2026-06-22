@@ -109,3 +109,33 @@ or every hour for finer granularity; both work).
 | SQLite errors (last 500 lines) | 0 |
 | Largest logs | 20M vllm-mlx-8000.log;9.3M ollama-serve.log;8.8M farmer-brown-launchd.out.log; |
 
+
+### Checkpoint: 2026-06-21T15:45:41Z (T0+1187h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.6M |
+| WAL | 3.9M |
+| logs/ size | 520M |
+| sessions/ size | 8.9M |
+| Model server | web_ok |
+| Chump RSS | 13.7M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 40M vllm-mlx-8000.log;17M farmer-brown-launchd.out.log;14M farmer-brown.log; |
+
+
+### Checkpoint: 2026-06-21T19:45:53Z (T0+1191h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.6M |
+| WAL | 3.9M |
+| logs/ size | 519M |
+| sessions/ size | 8.9M |
+| Model server | web_ok |
+| Chump RSS | 13.0M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 40M vllm-mlx-8000.log;17M farmer-brown-launchd.out.log;14M farmer-brown.log; |
+

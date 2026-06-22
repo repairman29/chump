@@ -1,9 +1,17 @@
 - id: INFRA-2534
   domain: INFRA
-  title: "RESILIENT P0: test-cross-pr-contract.sh calls chump contract-scan THREE times — collapse to single call (3× O(N×M) → 1× O(N×M), audit-step time reduced from 20+ min)"
-  status: open
+  title: 'RESILIENT P0: test-cross-pr-contract.sh calls chump contract-scan THREE times — collapse to single call (3× O(N×M)
+    → 1× O(N×M), audit-step time reduced from 20+ min)'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "[\"test-cross-pr-contract.sh lines 162-180 currently call chump contract-scan --in-flight 3 times: once for progress stderr-to-terminal, once captured (but discarded), once captured for real (used)\", \"Each call walks 948 writers (32 python + 150 Rust + 766 ambient) — triples the audit-step wall-clock to ~20+ min, causing operator-cancellations and 4 substrate PRs (#2981/#2982/#2983/#2985) wedged in BLOCKED state\", \"Fix: collapse to single call. Run contract-scan once, capture both stdout and stderr to tempfile, print progress live via tee\", \"Document allowlist usage in scripts/ci/cross-pr-allowlist.txt header — entries are matched per writer/reader pair AFTER scan completes, allowlist does NOT speed scanning\", \"Regression test scripts/ci/test-cross-pr-contract-triple-call-guard.sh: count chump contract-scan invocations in the script; assert exactly 1\"]"
-
+  - '["test-cross-pr-contract.sh lines 162-180 currently call chump contract-scan --in-flight 3 times: once for progress stderr-to-terminal,
+    once captured (but discarded), once captured for real (used)", "Each call walks 948 writers (32 python + 150 Rust + 766
+    ambient) — triples the audit-step wall-clock to ~20+ min, causing operator-cancellations and 4 substrate PRs (#2981/#2982/#2983/#2985)
+    wedged in BLOCKED state", "Fix: collapse to single call. Run contract-scan once, capture both stdout and stderr to tempfile,
+    print progress live via tee", "Document allowlist usage in scripts/ci/cross-pr-allowlist.txt header — entries are matched
+    per writer/reader pair AFTER scan completes, allowlist does NOT speed scanning", "Regression test scripts/ci/test-cross-pr-contract-triple-call-guard.sh:
+    count chump contract-scan invocations in the script; assert exactly 1"]'
+  closed_date: '2026-06-05'
+  closed_pr: 2989

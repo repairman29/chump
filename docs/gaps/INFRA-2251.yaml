@@ -1,16 +1,25 @@
 - id: INFRA-2251
   domain: INFRA
-  title: "RESILIENT P0: local CI gate — scripts/ci/run-local-ci.sh runs all Rust + script tests with no network calls (referenced in OFFLINE_FIRST.md as INFRA-1320 but never filed; Phase 1 of INFRA-2246 offline-first roadmap)"
-  status: open
+  title: 'RESILIENT P0: local CI gate — scripts/ci/run-local-ci.sh runs all Rust + script tests with no network calls (referenced
+    in OFFLINE_FIRST.md as INFRA-1320 but never filed; Phase 1 of INFRA-2246 offline-first roadmap)'
+  status: done
   priority: P0
   effort: s
   acceptance_criteria:
-    - scripts/ci/run-local-ci.sh — single command that runs cargo fmt --check, cargo clippy --workspace --all-targets -- -D warnings, cargo check --workspace, cargo test --workspace, plus all scripts/ci/test-*.sh that DON'T need GitHub API
-    - GitHub-API-dependent checks go in a separate scripts/ci/run-remote-ci.sh (which can run in CI but is not in the offline path)
-    - Exit 0 = mergeable to local main; exit 1 = blocked with named failing check
-    - Runs cleanly on airplane mode (WiFi off) — smoke test asserts this by setting no_proxy + an unroutable proxy to force network failures, then asserts run-local-ci.sh still exits 0 on a clean tree
-    - Tier output (Tier 1 fast-checks under 30s, Tier 2 Rust under 2 min, Tier 3 integration under 5 min) per OFFLINE_FIRST.md design lines 80-112
-    - "Smoke test scripts/ci/test-run-local-ci.sh: dry-run mode + simulated unreachable network + asserts exit 0 on clean main"
-  notes: |
-    [2026-05-30T04:21:56Z] Filed by curator-opus-shepherd-2026-05-29 — operator question 'is offline-first in our roadmap' surfaced that OFFLINE_FIRST.md references INFRA-1320 as the gap ID for this work but the gap was never actually filed. This gap is the previously-mythical INFRA-1320. Today's sccache R2 incident is the proof: when remote CI dependencies hiccup, a local CI gate keeps the fleet shipping. Phase 1 of INFRA-2246 offline-first roadmap consolidation.
+  - scripts/ci/run-local-ci.sh — single command that runs cargo fmt --check, cargo clippy --workspace --all-targets -- -D
+    warnings, cargo check --workspace, cargo test --workspace, plus all scripts/ci/test-*.sh that DON'T need GitHub API
+  - GitHub-API-dependent checks go in a separate scripts/ci/run-remote-ci.sh (which can run in CI but is not in the offline
+    path)
+  - Exit 0 = mergeable to local main; exit 1 = blocked with named failing check
+  - Runs cleanly on airplane mode (WiFi off) — smoke test asserts this by setting no_proxy + an unroutable proxy to force
+    network failures, then asserts run-local-ci.sh still exits 0 on a clean tree
+  - Tier output (Tier 1 fast-checks under 30s, Tier 2 Rust under 2 min, Tier 3 integration under 5 min) per OFFLINE_FIRST.md
+    design lines 80-112
+  - 'Smoke test scripts/ci/test-run-local-ci.sh: dry-run mode + simulated unreachable network + asserts exit 0 on clean main'
+  notes: '[2026-05-30T04:21:56Z] Filed by curator-opus-shepherd-2026-05-29 — operator question ''is offline-first in our roadmap''
+    surfaced that OFFLINE_FIRST.md references INFRA-1320 as the gap ID for this work but the gap was never actually filed.
+    This gap is the previously-mythical INFRA-1320. Today''s sccache R2 incident is the proof: when remote CI dependencies
+    hiccup, a local CI gate keeps the fleet shipping. Phase 1 of INFRA-2246 offline-first roadmap consolidation.
 
+    '
+  closed_pr: 2811

@@ -1,0 +1,16 @@
+- id: MISSION-048
+  domain: MISSION
+  title: "MISSION: P0-MISSION effort>=m gaps must spawn claude on sonnet not haiku — worker.sh model override (sibling of MISSION-047; the picker now CLAIMS them but haiku times out = pick-then-timeout, a new rescue)"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "worker.sh: after the INFRA-471 routing model resolution (~L717 where _resolve_model.py may downgrade FLEET_MODEL to haiku), if the picked gap is priority=P0 AND domain=MISSION AND effort in (m,l,xl), set FLEET_MODEL=sonnet (override the cost-downgrade) and log the override"
+    - a P0+MISSION+effort=m gap spawns claude with model=sonnet, not haiku
+    - non-mission gaps and P0-MISSION xs/s gaps are unaffected (no over-spend)
+    - scripts/ci/test-worker-p0-mission-model-override.sh asserts the override fires for a P0-MISSION/m gap and does NOT fire for a P1/m gap or a P0-MISSION/xs gap
+  evidence: |
+    MISSION-047 fixed PICKABILITY (picker claims P0-MISSION m-gaps); this fixes CAPABILITY (they must RUN on a capable model). SEAM: scripts/dispatch/worker.sh, after the INFRA-471 routing model resolution (~line 717-719 where FLEET_MODEL is overridden by _resolve_model.py to haiku), add: if the picked gap is priority=P0 AND domain=MISSION AND effort in (m,l,xl), set FLEET_MODEL=sonnet (override the cost-downgrade) and log it. Get the gap's priority+domain via 'chump gap show $GAP_ID' or sqlite3 .chump/state.db. AC: (1) a P0+MISSION+effort=m gap spawns claude with model=sonnet, not haiku; (2) non-mission gaps + P0-MISSION xs/s gaps are unaffected (no over-spend); (3) scripts/ci/test-worker-p0-mission-model-override.sh asserts the override decision for a P0-MISSION/m gap vs a P1/m gap. Evidence the timeout is real: INFRA-815/902 (haiku, effort s/m) died rc=143/124 after 30min this session.
+  evidence: |
+    MISSION-047 fixed PICKABILITY (picker claims P0-MISSION m-gaps); this fixes CAPABILITY (they must RUN on a capable model). SEAM: scripts/dispatch/worker.sh, after the INFRA-471 routing model resolution (~line 717-719 where FLEET_MODEL is overridden by _resolve_model.py to haiku), add: if the picked gap is priority=P0 AND domain=MISSION AND effort in (m,l,xl), set FLEET_MODEL=sonnet (override the cost-downgrade) and log it. Get the gap's priority+domain via 'chump gap show $GAP_ID' or sqlite3 .chump/state.db. AC: (1) a P0+MISSION+effort=m gap spawns claude with model=sonnet, not haiku; (2) non-mission gaps + P0-MISSION xs/s gaps are unaffected (no over-spend); (3) scripts/ci/test-worker-p0-mission-model-override.sh asserts the override decision for a P0-MISSION/m gap vs a P1/m gap. Evidence the timeout is real: INFRA-815/902 (haiku, effort s/m) died rc=143/124 after 30min this session.
+

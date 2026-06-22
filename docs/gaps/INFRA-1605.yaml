@@ -1,40 +1,34 @@
 - id: INFRA-1605
   domain: INFRA
-  title: "CREDIBLE: PR-bot visual-diff comments on every PWA PR — GitHub Action runs INFRA-1591 snapshot suite + posts screenshot diffs as PR comment (audience: design collaborators / external reviewers like Marcus)"
-  status: open
+  title: 'CREDIBLE: PR-bot visual-diff comments on every PWA PR — GitHub Action runs INFRA-1591 snapshot suite + posts screenshot
+    diffs as PR comment (audience: design collaborators / external reviewers like Marcus)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Once INFRA-1591 lands the visual snapshot suite, the natural next step is to MAKE THE DIFFS VISIBLE in code review without the reviewer having to clone + run anything. The operator (Jeff) may not need to inspect every screenshot — but external collaborators (Marcus, future design reviewers, ultrareview operators) absolutely benefit from seeing the visual delta inline on the PR.
-    
-    Stitching pattern: bring the operator's eye to the PR, not the PR to the operator's eye.
-    
-    Rough shape:
-    (a) .github/workflows/pwa-visual-diff.yml — triggers on PRs touching web/v2/**.
-    (b) Runs INFRA-1591 snapshot suite against the PR branch.
-    (c) For each baseline that diffs > 0% (regardless of whether it crosses the CI-failure 0.5% threshold):
-        - Render a side-by-side image: baseline + PR-version + diff overlay
-        - Upload as a PR-attached artifact OR to a per-PR S3-like store (use GitHub's own pull-request comment attachment if available)
-    (d) Post a single PR comment via gh api with markdown table:
-        | View | Viewport | Pixel delta | Diff |
-        | NOW | 1440px | 2.3% | ![diff](url) |
-    (e) Update existing comment on subsequent PR pushes (don't spam).
-    (f) Comment includes a footer: 'Re-baseline locally: npx playwright test e2e/pwa-visual --update-snapshots. Visual review: <link to artifact bundle>'.
-    (g) Failure mode: if snapshot infra not yet wired (INFRA-1591 not landed), action no-ops with a warning comment ('Visual diff bot waiting on INFRA-1591').
-    (h) docs/process/PWA_VISUAL_DIFF_BOT.md describes the action + how to read the comment + how to add a new view to the diff set.
-    
-    Composes with INFRA-1591 (snapshots — strict dep). Pairs naturally with ultrareview workflow per CLAUDE.md (ultrareview is operator-triggered cloud review; this is automatic per-PR visual diff).
-    
-    When picked, run chump gap decompose <ID>.
-    
-    DEPENDS_ON: INFRA-1591 (snapshot suite must exist).
+  description: "Once INFRA-1591 lands the visual snapshot suite, the natural next step is to MAKE THE DIFFS VISIBLE in code\
+    \ review without the reviewer having to clone + run anything. The operator (Jeff) may not need to inspect every screenshot\
+    \ — but external collaborators (Marcus, future design reviewers, ultrareview operators) absolutely benefit from seeing\
+    \ the visual delta inline on the PR.\n\nStitching pattern: bring the operator's eye to the PR, not the PR to the operator's\
+    \ eye.\n\nRough shape:\n(a) .github/workflows/pwa-visual-diff.yml — triggers on PRs touching web/v2/**.\n(b) Runs INFRA-1591\
+    \ snapshot suite against the PR branch.\n(c) For each baseline that diffs > 0% (regardless of whether it crosses the CI-failure\
+    \ 0.5% threshold):\n    - Render a side-by-side image: baseline + PR-version + diff overlay\n    - Upload as a PR-attached\
+    \ artifact OR to a per-PR S3-like store (use GitHub's own pull-request comment attachment if available)\n(d) Post a single\
+    \ PR comment via gh api with markdown table:\n    | View | Viewport | Pixel delta | Diff |\n    | NOW | 1440px | 2.3%\
+    \ | ![diff](url) |\n(e) Update existing comment on subsequent PR pushes (don't spam).\n(f) Comment includes a footer:\
+    \ 'Re-baseline locally: npx playwright test e2e/pwa-visual --update-snapshots. Visual review: <link to artifact bundle>'.\n\
+    (g) Failure mode: if snapshot infra not yet wired (INFRA-1591 not landed), action no-ops with a warning comment ('Visual\
+    \ diff bot waiting on INFRA-1591').\n(h) docs/process/PWA_VISUAL_DIFF_BOT.md describes the action + how to read the comment\
+    \ + how to add a new view to the diff set.\n\nComposes with INFRA-1591 (snapshots — strict dep). Pairs naturally with\
+    \ ultrareview workflow per CLAUDE.md (ultrareview is operator-triggered cloud review; this is automatic per-PR visual\
+    \ diff).\n\nWhen picked, run chump gap decompose <ID>.\n\nDEPENDS_ON: INFRA-1591 (snapshot suite must exist).\n"
   acceptance_criteria:
-    - .github/workflows/pwa-visual-diff.yml triggers on PRs touching web/v2/**
-    - Action runs INFRA-1591 snapshot suite against PR branch
-    - Renders side-by-side baseline + PR-version + diff overlay images for each diff > 0%
-    - "Posts/updates a single PR comment (no spam) with markdown table: view / viewport / pixel delta / diff image"
-    - Comment footer includes re-baseline command + artifact link
-    - Graceful no-op with warning comment if INFRA-1591 not yet wired (forward-compatible)
-    - docs/process/PWA_VISUAL_DIFF_BOT.md documents action + reading the comment + adding views
-  depends_on: [INFRA-1591]
-
+  - .github/workflows/pwa-visual-diff.yml triggers on PRs touching web/v2/**
+  - Action runs INFRA-1591 snapshot suite against PR branch
+  - Renders side-by-side baseline + PR-version + diff overlay images for each diff > 0%
+  - 'Posts/updates a single PR comment (no spam) with markdown table: view / viewport / pixel delta / diff image'
+  - Comment footer includes re-baseline command + artifact link
+  - Graceful no-op with warning comment if INFRA-1591 not yet wired (forward-compatible)
+  - docs/process/PWA_VISUAL_DIFF_BOT.md documents action + reading the comment + adding views
+  depends_on:
+  - INFRA-1591
+  closed_pr: 2759

@@ -1,21 +1,41 @@
 - id: RESILIENT-118
   domain: RESILIENT
-  title: "cargo-target-reaper: bash quoting bug → every macOS /tmp worktree falsely declared orphaned, target/ reaped mid-build"
-  status: open
+  title: 'cargo-target-reaper: bash quoting bug → every macOS /tmp worktree falsely declared orphaned, target/ reaped mid-build'
+  status: done
   priority: P0
   effort: xs
   acceptance_criteria:
-    - "scripts/ops/cargo-target-reaper.sh section (d) /tmp ↔ /private/tmp variant generator must produce LITERAL paths (not backslash-escaped strings). Replace inline `${_wt_path/\\/tmp\\//\\/private\\/tmp\\/}` with variable-stored pattern: `_pat=/tmp/; _repl=/private/tmp/; ${_wt_path//$_pat/$_repl}` (verified working via repro)."
-    - "Unit test: scripts/ci/test-cargo-target-reaper-variant-quoting.sh asserts grep-match succeeds for both /tmp/x and /private/tmp/x forms after variant expansion."
-    - "Also defensive: honor `.chump-no-reap` marker file in cargo-target-reaper.sh (currently only active-target-reaper and stale-worktree-reaper honor it)."
-    - "After fix, kind=cargo_target_reaped with worktree_gone:true must not appear for paths that ARE in `git worktree list --porcelain` output."
-    - "Backfill: cross-check past 7d of cargo_target_reaped worktree_gone:true events vs git reflog of worktree add/remove — if any path was reaped while it was registered, it is a victim of this bug."
-  notes: |
-    Evidence: ambient.jsonl 2026-06-05T22:34:41Z, 22:45:12Z, 22:56:24Z — three reap attempts on /tmp/chump-effective-216/target with worktree_gone:true while git worktree list registered /private/tmp/chump-effective-216. Third attempt freed 2.5GB mid-cargo-build, causing chump preflight to fail 4× with 'No such file or directory' on .fingerprint/dep-graph/sccache rmeta files. Repro via:
-    bash -c 'v=/private/tmp/chump-effective-216; echo "buggy: ${v/\/private\/tmp\//\/tmp\/}"; p=/private/tmp/; r=/tmp/; echo "fixed: ${v//$p/$r}"'
-    Output:
-    buggy: \/tmp\/chump-effective-216
-    fixed: /tmp/chump-effective-216
-    The buggy form is what scripts/ops/cargo-target-reaper.sh:293-294 produces, then writes into _registered_wts, then grep -qxF can never match — so every macOS /tmp worktree is treated as orphaned.
-    [2026-06-07T21:23:28Z] session re-engagement 2026-06-07T21:25Z — YAML file was deleted (EFFECTIVE-219); regenerating via --update-yaml
+  - 'scripts/ops/cargo-target-reaper.sh section (d) /tmp ↔ /private/tmp variant generator must produce LITERAL paths (not
+    backslash-escaped strings). Replace inline `${_wt_path/\/tmp\//\/private\/tmp\/}` with variable-stored pattern: `_pat=/tmp/;
+    _repl=/private/tmp/; ${_wt_path//$_pat/$_repl}` (verified working via repro).'
+  - 'Unit test: scripts/ci/test-cargo-target-reaper-variant-quoting.sh asserts grep-match succeeds for both /tmp/x and /private/tmp/x
+    forms after variant expansion.'
+  - 'Also defensive: honor `.chump-no-reap` marker file in cargo-target-reaper.sh (currently only active-target-reaper and
+    stale-worktree-reaper honor it).'
+  - After fix, kind=cargo_target_reaped with worktree_gone:true must not appear for paths that ARE in `git worktree list --porcelain`
+    output.
+  - 'Backfill: cross-check past 7d of cargo_target_reaped worktree_gone:true events vs git reflog of worktree add/remove —
+    if any path was reaped while it was registered, it is a victim of this bug.'
+  notes: 'Evidence: ambient.jsonl 2026-06-05T22:34:41Z, 22:45:12Z, 22:56:24Z — three reap attempts on /tmp/chump-effective-216/target
+    with worktree_gone:true while git worktree list registered /private/tmp/chump-effective-216. Third attempt freed 2.5GB
+    mid-cargo-build, causing chump preflight to fail 4× with ''No such file or directory'' on .fingerprint/dep-graph/sccache
+    rmeta files. Repro via:
 
+    bash -c ''v=/private/tmp/chump-effective-216; echo "buggy: ${v/\/private\/tmp\//\/tmp\/}"; p=/private/tmp/; r=/tmp/; echo
+    "fixed: ${v//$p/$r}"''
+
+    Output:
+
+    buggy: \/tmp\/chump-effective-216
+
+    fixed: /tmp/chump-effective-216
+
+    The buggy form is what scripts/ops/cargo-target-reaper.sh:293-294 produces, then writes into _registered_wts, then grep
+    -qxF can never match — so every macOS /tmp worktree is treated as orphaned.
+
+    [2026-06-07T21:23:28Z] session re-engagement 2026-06-07T21:25Z — YAML file was deleted (EFFECTIVE-219); regenerating via
+    --update-yaml
+
+    '
+  closed_date: '2026-06-07'
+  closed_pr: 3097

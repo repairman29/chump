@@ -1,0 +1,18 @@
+- id: RESILIENT-154
+  domain: RESILIENT
+  title: "RESILIENT: remove haiku from the fleet — sonnet is the floor (haiku stalls ~60% of cycles; cost-downgrade saves $0 on flat subscription)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "docs/dispatch/routing.yaml has ZERO 'model_class: haiku' routes — the xs and s routes become sonnet (sonnet is the floor; opus stays for hard work)"
+    - scripts/dispatch/run-fleet.sh FLEET_MODEL default is sonnet not haiku
+    - scripts/ci/test-routing-no-haiku.sh asserts no haiku model_class remains in routing.yaml and the fleet default is sonnet
+  closed_pr: 3146
+  evidence: |
+    Teardown 2026-06-21: routing.yaml routes effort xs+s to model_class=haiku; haiku stalled ~60% of fleet cycles this session (INFRA-705 kills + rc=124 timeouts), runs cargo check --workspace on shell-only gaps. Cost rationale assumed per-token billing; operator pays a FLAT subscription so haiku saves $0. Operator decision: 'Sonnet is the downgrade. Get rid of haiku.'
+  evidence: |
+    Teardown 2026-06-21: routing.yaml routes effort xs+s to model_class=haiku; haiku stalled ~60% of fleet cycles this session (INFRA-705 kills + rc=124 timeouts), runs cargo check --workspace on shell-only gaps. Cost rationale assumed per-token billing; operator pays a FLAT subscription so haiku saves $0. Operator decision: 'Sonnet is the downgrade. Get rid of haiku.'
+  evidence: |
+    Teardown 2026-06-21: routing.yaml routes effort xs+s to model_class=haiku; haiku stalled ~60% of fleet cycles this session (INFRA-705 kills + rc=124 timeouts), runs cargo check --workspace on shell-only gaps. Cost rationale assumed per-token billing; operator pays a FLAT subscription so haiku saves $0. Operator decision: 'Sonnet is the downgrade. Get rid of haiku.'
+
