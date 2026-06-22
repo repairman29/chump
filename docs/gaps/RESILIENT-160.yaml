@@ -1,0 +1,37 @@
+- id: RESILIENT-160
+  domain: RESILIENT
+  title: "RESILIENT: chump binary dyld_start inode-wedge has no gap — INFRA-1399 pattern in 4 bypass trailers with no filed gap or AC"
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-06-22'
+  description: |
+    Four bot-merge bypass trailers in the 2026-06-15–22 audit window all cite a
+    chump binary wedge at dyld_start as the blocking failure. The trailers reference
+    "INFRA-1399 pattern" by name — but docs/gaps/INFRA-1399.yaml does not exist.
+    No gap, no acceptance criteria, no owner.
+
+    Evidence (Issue #17, 2026-06-22):
+      git log origin/main --since='2026-06-15' --format='%B' | grep 'Bot-Merge-Bypass:.*wedge\|dyld'
+      → 4 entries, all identical failure class: chump binary wedges on bot-merge.sh
+        invocation, CHUMP_DOCTOR_FORCE=1 unwedge self-heals, then immediately re-wedges.
+
+    INFRA-1218 (done, P3) was a cosmetic rename of chump-doctor.sh — not a fix to
+    the inode-busy deadlock. No other gap covers the dyld_start wedge.
+
+    The wedge consumes one operator recovery push per occurrence. At 4/cycle this is
+    the dominant non-resolved bypass class now that RESILIENT-135 fixed the timeout
+    death-spiral.
+
+    Fix path: diagnose why chump binary wedges immediately after an unwedge
+    (likely: multiple concurrent bot-merge.sh invocations race to rebuild; OR
+    a shared cache/target lock starves the binary after self-repair). Add a
+    bot-merge pre-check that detects a wedge-prone state and waits rather than
+    firing and failing. Consider adding a gap to gate bot-merge on chump binary
+    liveness probe.
+  acceptance_criteria:
+    - "The dyld_start inode-busy wedge root cause is identified and documented in the gap notes"
+    - "bot-merge.sh either (a) avoids triggering the wedge or (b) waits/retries rather than exiting with bypass"
+    - "Zero 'chump binary wedge' Bot-Merge-Bypass trailers in the subsequent 7-day window (verified by git log grep)"
+  raised_by: cold-water
+  raised_in: RED_LETTER#17
