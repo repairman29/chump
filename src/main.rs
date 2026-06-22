@@ -7589,9 +7589,28 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-900: fleet metrics snapshot subcommand
+            "metrics" => {
+                let script = repo_root.join("scripts/ops/fleet-metrics-snapshot.sh");
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&script);
+                // Forward flags (--json, --dry-run, --window N)
+                for a in args.iter().skip(2) {
+                    cmd.arg(a);
+                }
+                cmd.env("REPO_ROOT", &repo_root);
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("fleet metrics: failed to run script: {e}");
+                    std::process::exit(1);
+                });
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|metrics>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
@@ -7644,6 +7663,9 @@ async fn main() -> Result<()> {
                 );
                 eprintln!(
                     "              -- with --fixtures: serves web/fleet-scrubber/ locally, no server needed"
+                );
+                eprintln!(
+                    "  metrics     [--json] [--dry-run] [--window H]  -- emit fleet_metrics_snapshot (INFRA-900)"
                 );
                 std::process::exit(2);
             }
