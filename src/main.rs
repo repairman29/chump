@@ -7589,9 +7589,32 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-900: metrics snapshot subcommand — delegates to
+            // scripts/ops/fleet-metrics-snapshot.sh and forwards all args.
+            "metrics" => {
+                let metrics_sh = repo_root.join("scripts/ops/fleet-metrics-snapshot.sh");
+                if !metrics_sh.exists() {
+                    eprintln!(
+                        "chump fleet metrics: script not found at {}",
+                        metrics_sh.display()
+                    );
+                    std::process::exit(1);
+                }
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&metrics_sh);
+                // Forward any flags after `chump fleet metrics`
+                for arg in args.iter().skip(3) {
+                    cmd.arg(arg);
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet metrics: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|metrics>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
