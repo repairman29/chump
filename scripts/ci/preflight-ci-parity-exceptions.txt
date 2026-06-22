@@ -408,3 +408,4 @@ test-chump-improve.sh  # reason: Tier-C integration test; logic covered by cargo
 chump improve orchestrator  # reason: Tier-C integration test (test-chump-improve.sh); cargo test covers the logic in src/improve.rs; full shell mirror deferred (EFFECTIVE-177)
 test-review-handoff-smoke.sh       # reason: INFRA-774 end-to-end smoke (synthesize CI failure + simulate review --serve + telemetry assertions); needs the full CI fixture env, not a local preflight gate
 test-auth-status.sh       # reason: RESILIENT-086 auth validity probe; runs in audit shard with CI credential context (mirror in preflight is a follow-up)
+test-bot-merge-rebase-before-test.sh  # reason: INFRA-918 smoke; tests ambient event emission from bot-merge.sh shell stubs; no Rust code, no preflight mirror needed
