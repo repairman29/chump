@@ -1,7 +1,7 @@
 - id: INFRA-1506
   domain: INFRA
   title: "MISSION: License model decision doc — MIT vs dual-license vs source-available; operator + lawyer sign-off"
-  status: open
+  status: shipped
   priority: P1
   effort: s
   description: |
@@ -11,4 +11,6 @@
     - Operator (Jeff) sign-off on the chosen path
     - "If non-MIT chosen: file follow-up gap to migrate + notify existing contributors"
     - "If MIT retained: file companion gap to clarify commercial-use messaging"
+  closed_pr: 3161
+  outcome_id: MISSION-010
 
