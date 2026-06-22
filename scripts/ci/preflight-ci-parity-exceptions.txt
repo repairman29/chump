@@ -193,6 +193,7 @@ test-pick-and-claim-lockdir.sh
 # (entry removed)
 test-picker-priority.sh
 test-pillar-balance.sh
+test-pillar-balance-alerts.sh       # reason: needs live chump binary + state.db fixture; Tier-D (INFRA-902)
 # INFRA-2350: test-pipefail-race-sweep.sh now mirrored as Scripts-scope
 # always-on gate ("pipefail-race-sweep" in preflight.rs).
 # (entry removed)
