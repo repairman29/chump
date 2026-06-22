@@ -2327,7 +2327,11 @@ _run_cargo_with_lock_detect() {
     local _tmpout _rc
     _tmpout="$(mktemp)"
     set +e
-    run_timed_hb "$label" "$timeout_secs" cargo "$@" 2>&1 | tee -a "$_tmpout"
+    if [[ -n "${CHUMP_BM_EXTRA_CARGO_LOG:-}" ]]; then
+        run_timed_hb "$label" "$timeout_secs" cargo "$@" 2>&1 | tee -a "$_tmpout" "$CHUMP_BM_EXTRA_CARGO_LOG"
+    else
+        run_timed_hb "$label" "$timeout_secs" cargo "$@" 2>&1 | tee -a "$_tmpout"
+    fi
     _rc=${PIPESTATUS[0]}
     set -e
     if grep -q "Blocking waiting for file lock on build directory" "$_tmpout" 2>/dev/null; then
@@ -2408,16 +2412,48 @@ elif command -v cargo &>/dev/null; then
     green "clippy clean."
 fi
 
+# ── INFRA-918: emit rebase-before-test ambient signal ─────────────────────────
+# AC #1: kind=bot_merge_rebase_before_test with rebased/commits_behind/head_sha/will_test
+{
+    _rbt_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _rbt_sha="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+    _rbt_rebased="false"; [[ "${BEHIND:-0}" -gt 0 ]] && _rbt_rebased="true"
+    _rbt_will_test="false"
+    if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then _rbt_will_test="true"; fi
+    _rbt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    _ambient_write "$_rbt_amb" \
+        "$(printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","gap":"%s","branch":"%s","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s}' \
+            "$_rbt_ts" "${GAP_IDS[0]:-${GAP_ID:-unknown}}" "${BRANCH:-unknown}" \
+            "$_rbt_rebased" "${BEHIND:-0}" "$_rbt_sha" "$_rbt_will_test")"
+}
+
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
+    # INFRA-918: capture test output to classify OOM vs logic failure (AC #2)
+    _bm_test_log="$(mktemp)"
+    export CHUMP_BM_EXTRA_CARGO_LOG="$_bm_test_log"
     if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+        unset CHUMP_BM_EXTRA_CARGO_LOG
         red "Tests failed — fix them before merging."
-        info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
-        info "that is most likely OOM, not a real test failure. Try lowering"
-        info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        # INFRA-918 AC #2: classify transient_oom vs permanent_failure
+        _bm_tfc_class="permanent_failure"
+        if grep -qE "signal: 15, SIGTERM|Killed" "$_bm_test_log" 2>/dev/null; then
+            _bm_tfc_class="transient_oom"
+            info "OOM/SIGTERM detected — classified as transient_oom; lower CARGO_BUILD_JOBS and retry."
+        else
+            info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
+            info "that is most likely OOM, not a real test failure. Try lowering"
+            info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        fi
+        _ambient_write "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" \
+            "$(printf '{"ts":"%s","kind":"bot_merge_test_failure","gap":"%s","branch":"%s","failure_class":"%s"}' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-${GAP_ID:-unknown}}" "${BRANCH:-unknown}" "$_bm_tfc_class")"
+        rm -f "$_bm_test_log"
         _bm_fail "test" 14 "test suite failure"
     fi
+    unset CHUMP_BM_EXTRA_CARGO_LOG
+    rm -f "$_bm_test_log"
     stage_done
     green "Tests passed."
 else

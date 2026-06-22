@@ -4752,6 +4752,26 @@ events:
       indexes off the commit, not the worker run).
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, event, session, worktree, agent_id, gap_id]
+  - kind: bot_merge_rebase_before_test
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    # scanner-anchor: "kind":"bot_merge_rebase_before_test"
+    trigger: emitted immediately before cargo test runs, after any rebase.
+      Allows monitors to confirm tests always run on the rebased HEAD and
+      correlate test failures with rebase state.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap, branch, rebased, commits_behind, head_sha, will_test]
+    status: stable
+  - kind: bot_merge_test_failure
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    # scanner-anchor: "kind":"bot_merge_test_failure"
+    trigger: emitted when cargo test --bin chump --tests fails. failure_class
+      distinguishes transient_oom (SIGTERM/OOM from Jetsam/macOS memory pressure)
+      from permanent_failure (logic bug requiring a fix).
+    consumers: [fleet-brief, ops-audit, ci-audit]
+    fields_required: [ts, kind, gap, branch, failure_class]
+    status: stable
   - kind: bot_merge_phase_duration
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh::stage_done (INFRA-1067)
