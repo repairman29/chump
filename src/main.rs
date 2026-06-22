@@ -10480,7 +10480,59 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar-balance-check.sh — alert on starved/overweight pillars.
+                let pillar_balance_alert_fired: bool = {
+                    let pbc_script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if pbc_script.exists() {
+                        if !json_out {
+                            println!();
+                            println!("=== Pillar balance check (INFRA-902) ===");
+                        }
+                        let mut cmd = std::process::Command::new("bash");
+                        cmd.arg(&pbc_script);
+                        // Pass the current executable as CHUMP_BIN so the script uses
+                        // the same binary, not whatever chump is on PATH.
+                        if std::env::var_os("CHUMP_BIN").is_none() {
+                            if let Ok(exe) = std::env::current_exe() {
+                                cmd.env("CHUMP_BIN", exe);
+                            }
+                        }
+                        match cmd.output() {
+                            Ok(out) => {
+                                if !json_out {
+                                    let stdout = String::from_utf8_lossy(&out.stdout);
+                                    if !stdout.trim().is_empty() {
+                                        print!("{}", stdout);
+                                    }
+                                    let stderr = String::from_utf8_lossy(&out.stderr);
+                                    if !stderr.trim().is_empty() {
+                                        for line in stderr.lines() {
+                                            eprintln!("{}", line);
+                                        }
+                                    }
+                                }
+                                !out.status.success()
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    kind = "pillar_balance_check_error",
+                                    err = %e,
+                                    "pillar-balance-check.sh could not be executed"
+                                );
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_alert_fired {
+                    fail_reasons.push(
+                        "pillar-balance: one or more pillar alerts fired (see pillar_balance_alert / pillar_balance_overweight events in ambient.jsonl)".to_string()
+                    );
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
