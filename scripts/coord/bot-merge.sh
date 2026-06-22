@@ -2340,6 +2340,13 @@ _run_cargo_with_lock_detect() {
                 "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}")"
         warn "INFRA-1063: cargo build-dir lock wait detected on phase '${label}' — cargo_lock_wait emitted to ambient stream"
     fi
+    # INFRA-918: expose OOM signal so the cargo test failure path can classify
+    # the failure as transient_oom vs permanent_failure without re-reading output.
+    if grep -qE 'signal: 15|SIGTERM: termination signal' "$_tmpout" 2>/dev/null; then
+        _BM_LAST_CARGO_OOM_DETECTED=1
+    else
+        _BM_LAST_CARGO_OOM_DETECTED=0
+    fi
     rm -f "$_tmpout"
     return "$_rc"
 }
@@ -2409,9 +2416,34 @@ elif command -v cargo &>/dev/null; then
 fi
 
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
+# INFRA-918: emit before-test snapshot so the fleet knows whether tests ran
+# on the rebased HEAD or a stale pre-rebase state.  Emitted unconditionally
+# (even when SKIP_TESTS=1) with will_test reflecting the actual intent.
+_brt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+_brt_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+_brt_rebased="$([ "${BEHIND:-0}" -gt 0 ] && echo true || echo false)"
+_brt_will_test="$([ "${SKIP_TESTS:-1}" -eq 0 ] && command -v cargo &>/dev/null && echo true || echo false)"
+# scanner-anchor: "kind":"bot_merge_rebase_before_test"
+printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_brt_rebased" "${BEHIND:-0}" "$_brt_sha" "$_brt_will_test" \
+    >> "$_brt_amb" 2>/dev/null || true
+
+_BM_LAST_CARGO_OOM_DETECTED=0
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
     if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+        # INFRA-918: classify failure — transient_oom when rustc processes were
+        # SIGTERM'd by macOS Jetsam under memory pressure; permanent_failure otherwise.
+        if [[ "${_BM_LAST_CARGO_OOM_DETECTED:-0}" == "1" ]]; then
+            _btf_class="transient_oom"
+        else
+            _btf_class="permanent_failure"
+        fi
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        printf '{"ts":"%s","kind":"bot_merge_test_failure","failure_class":"%s","gap":"%s","branch":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_btf_class" \
+            "${GAP_IDS[0]:-unknown}" "${BRANCH:-unknown}" \
+            >> "$_brt_amb" 2>/dev/null || true
         red "Tests failed — fix them before merging."
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
