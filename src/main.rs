@@ -10220,6 +10220,21 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: pillar-balance-check.sh — run before output so both
+                // JSON and human-readable branches can reference the result.
+                let pillar_balance_script =
+                    repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                let pillar_balance_alert = if pillar_balance_script.exists() {
+                    let pb_status = std::process::Command::new("bash")
+                        .arg(&pillar_balance_script)
+                        .env("CHUMP_BIN", std::env::current_exe().unwrap_or_default())
+                        .status()
+                        .ok();
+                    !matches!(pb_status, Some(s) if s.success())
+                } else {
+                    false
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10248,6 +10263,8 @@ async fn main() -> Result<()> {
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
                         }).collect::<Vec<_>>(),
+                        // INFRA-902: pillar balance
+                        "pillar_balance_alert": pillar_balance_alert,
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
                     if by_outcome {
@@ -10478,9 +10495,26 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    // INFRA-902: pillar balance section
+                    println!();
+                    if pillar_balance_script.exists() {
+                        if pillar_balance_alert {
+                            println!("Pillar balance: ALERT fired (see ambient.jsonl for details)");
+                        } else {
+                            println!("Pillar balance: OK");
+                        }
+                    } else {
+                        println!("Pillar balance: script not found (scripts/ops/pillar-balance-check.sh)");
+                    }
                 }
 
                 let mut fail_reasons: Vec<String> = Vec::new();
+                // INFRA-902: pillar balance alert
+                if pillar_balance_alert {
+                    fail_reasons.push(
+                        "pillar balance alert fired (run scripts/ops/pillar-balance-check.sh for details)".to_string(),
+                    );
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
