@@ -8157,6 +8157,19 @@ events:
     fields_required: [ts, kind, path, mode]
   # ── RESILIENT-115: oauth-token-refresh short-circuit on api-key auth ──────
 
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/ci/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      post-rebase-verify.sh detected a file that had >= 50 lines added in the
+      original branch but 0 lines added after rebase — indicating silent hunk
+      loss (e.g. rust-main-append merge driver dropping 173 lines from PR #2216
+      on 2026-05-16). bot-merge.sh aborts before pushing the damaged state.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable
+
   - kind: oauth_refresh_not_applicable
     effect_metric: resilient
     emitter: scripts/coord/oauth-token-refresh.sh (RESILIENT-115)
