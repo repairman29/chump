@@ -218,6 +218,12 @@ fn run_inner(args: &[String]) -> Result<i32> {
         return Ok(0);
     }
 
+    // EFFECTIVE-291: refresh the persistent clone to the remote default branch
+    // BEFORE dedup + implement, so the PR branches from CURRENT main rather than
+    // a stale reused clone. Without this, every improve PR inherits months-old
+    // main and fails CI gates that were already fixed on real main.
+    refresh_clone(&clone_dir)?;
+
     // ── Stage 2: DEDUP ────────────────────────────────────────────────────
     println!("\n[improve] Stage 2: DEDUP — checking work isn't already done...");
 
@@ -880,6 +886,75 @@ fn resolve_clone_dir(opts: &Opts) -> PathBuf {
         .join("external")
         .join(opts.owner_repo.replace('/', std::path::MAIN_SEPARATOR_STR))
         .join("clone")
+}
+
+/// EFFECTIVE-291: refresh the persistent external-repo clone to the remote's
+/// default branch before implementing, so the PR branches from CURRENT main
+/// rather than a stale reused clone. Best-effort: a no-op if the clone isn't a
+/// git repo yet; a warning (not a hard error) if fetch fails (offline).
+fn refresh_clone(clone_dir: &Path) -> Result<()> {
+    if !clone_dir.join(".git").exists() {
+        return Ok(()); // not cloned yet — the scan/implement path reports that
+    }
+    let cd = clone_dir.to_string_lossy().to_string();
+    let fetched = Command::new("git")
+        .args(["-C", &cd, "fetch", "origin", "--quiet"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !fetched {
+        eprintln!(
+            "[improve] warning: git fetch failed in clone {cd}; using existing state (EFFECTIVE-291)"
+        );
+        return Ok(());
+    }
+    let branch = detect_default_branch(&cd);
+    // Hard-reset the working tree to the freshly-fetched default branch and drop
+    // any untracked leftovers from a prior run (prevents scope-crept PRs).
+    let _ = Command::new("git")
+        .args(["-C", &cd, "reset", "--hard", &format!("origin/{branch}")])
+        .status();
+    let _ = Command::new("git")
+        .args(["-C", &cd, "clean", "-fd"])
+        .status();
+    println!("[improve] clone refreshed to origin/{branch} (EFFECTIVE-291)");
+    Ok(())
+}
+
+/// Detect a clone's remote default branch: prefer `origin/HEAD`'s target, then
+/// fall back to `main`, then `master`.
+fn detect_default_branch(cd: &str) -> String {
+    if let Ok(out) = Command::new("git")
+        .args([
+            "-C",
+            cd,
+            "symbolic-ref",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .trim_start_matches("origin/")
+                .to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
+    }
+    for cand in ["main", "master"] {
+        let ok = Command::new("git")
+            .args(["-C", cd, "rev-parse", "--verify", &format!("origin/{cand}")])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            return cand.to_string();
+        }
+    }
+    "main".to_string()
 }
 
 /// Resolve the `chump` binary to use for `external verify-merge`.
@@ -1992,5 +2067,87 @@ Some prose from the agent.
             "names the most-failing gate first: {}",
             gap.title
         );
+    }
+
+    // ── EFFECTIVE-291: clone refresh ──────────────────────────────────────
+
+    /// Helper: run git in `cwd`, asserting success (commits get a fixed identity).
+    fn git_ok(cwd: &std::path::Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok, "git {:?} failed in {}", args, cwd.display());
+    }
+
+    fn rev_parse(dir: &std::path::Path, rev: &str) -> String {
+        let out = Command::new("git")
+            .args(["-C", &dir.to_string_lossy(), "rev-parse", rev])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "rev-parse {rev} failed");
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn refresh_clone_brings_stale_clone_to_origin_head() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let origin = root.join("origin.git");
+        let work = root.join("work"); // pushes commits into origin
+        let clone = root.join("clone"); // the persistent "improve clone" under test
+
+        // bare origin on `main`
+        assert!(Command::new("git")
+            .args(["init", "--bare", "-b", "main", &origin.to_string_lossy()])
+            .status()
+            .unwrap()
+            .success());
+        // work clone → commit c1 → push
+        assert!(Command::new("git")
+            .args(["clone", &origin.to_string_lossy(), &work.to_string_lossy()])
+            .status()
+            .unwrap()
+            .success());
+        fs::write(work.join("a.txt"), "v1").unwrap();
+        git_ok(&work, &["add", "."]);
+        git_ok(&work, &["commit", "-m", "c1"]);
+        git_ok(&work, &["push", "origin", "main"]);
+        // improve clone created now (sits at c1)
+        assert!(Command::new("git")
+            .args(["clone", &origin.to_string_lossy(), &clone.to_string_lossy()])
+            .status()
+            .unwrap()
+            .success());
+        // origin advances to c2 → the improve clone is now STALE (behind)
+        fs::write(work.join("a.txt"), "v2").unwrap();
+        git_ok(&work, &["add", "."]);
+        git_ok(&work, &["commit", "-m", "c2"]);
+        git_ok(&work, &["push", "origin", "main"]);
+        let clone_before = rev_parse(&clone, "HEAD");
+        let origin_head = rev_parse(&work, "origin/main");
+        assert_ne!(clone_before, origin_head, "precondition: clone is behind");
+
+        // refresh: the clone must come up to origin/main's HEAD
+        refresh_clone(&clone).unwrap();
+
+        assert_eq!(
+            rev_parse(&clone, "HEAD"),
+            origin_head,
+            "refresh_clone must fast-forward the clone to origin's default-branch HEAD"
+        );
+    }
+
+    #[test]
+    fn refresh_clone_noop_when_not_a_git_repo() {
+        let tmp = TempDir::new().unwrap();
+        // a non-git directory → no-op, no error
+        refresh_clone(tmp.path()).unwrap();
     }
 }
