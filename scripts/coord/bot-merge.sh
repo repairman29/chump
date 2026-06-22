@@ -2173,6 +2173,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop check — catches silent merge-driver or
+    # -X strategy data loss before pushing a damaged commit.
+    _verify="$REPO_ROOT/scripts/coord/post-rebase-verify.sh"
+    if [[ -x "$_verify" ]]; then
+        if ! bash "$_verify"; then
+            _bm_fail "post-rebase-verify" 12 "rebase hunk-drop detected — push aborted to prevent data loss"
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

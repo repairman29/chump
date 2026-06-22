@@ -129,7 +129,21 @@ for p in json.load(sys.stdin):
             rm -rf "$wt" 2>/dev/null
             git fetch origin "$br" main --quiet 2>/dev/null
             if git worktree add "$wt" "origin/$br" >/dev/null 2>&1; then
-                if (cd "$wt" && git rebase -X theirs origin/main >/dev/null 2>&1); then
+                # INFRA-1526: plain rebase — no -X theirs. -X theirs silently
+                # discards feature-branch hunks, causing orphan CI failures
+                # (PR #2216 lost 173 lines; PR #2173 lost EVENT_REGISTRY entry).
+                # The union/append merge drivers in .gitattributes handle
+                # mechanical conflicts (Cargo.lock, EVENT_REGISTRY, etc.) cleanly.
+                # Any remaining conflict needs manual resolution, not silent discard.
+                if (cd "$wt" && git rebase origin/main >/dev/null 2>&1); then
+                    # Verify no file lost all its substantial additions (INFRA-1526)
+                    VERIFY_SCRIPT="$REPO_ROOT/scripts/coord/post-rebase-verify.sh"
+                    if [[ -x "$VERIFY_SCRIPT" ]] && ! (cd "$wt" && AMBIENT="$AMBIENT" CHUMP_REPO_ROOT="$wt" bash "$VERIFY_SCRIPT" >/dev/null 2>&1); then
+                        log "    rebase succeeded but hunk-drop detected — aborting push (INFRA-1526)"
+                        emit_event wedge_recover step2 "\"action\":\"hunk_drop_blocked\",\"pr\":$pr"
+                        git worktree remove "$wt" --force >/dev/null 2>&1 || true
+                        continue
+                    fi
                     if (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
                         rebased=$((rebased+1))
                         log "    rebased + pushed"

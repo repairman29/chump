@@ -8170,3 +8170,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-1526: post-rebase hunk-drop detector ──────────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Emitted by post-rebase-verify.sh when a file that had more than 50
+      added lines in the original commits has 0 added lines in the rebased
+      result.  Indicates a merge driver (e.g. a faulty append-only driver)
+      or a rebase -X strategy silently discarded content instead of producing
+      conflict markers.  The push is aborted before the damaged commit reaches
+      GitHub.  Root cause context: src/main.rs merge=rust-main-append driver
+      dropped 173 lines from PR #2216; wedge-recover.sh -X theirs dropped
+      feature hunks on multiple PRs (both fixed by INFRA-1526).
+    consumers: [ops-audit, operator-recall]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable
