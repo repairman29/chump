@@ -7071,6 +7071,28 @@ events:
 
   # ── INFRA-2295: stale-pr-rebase-bot (SCALE-C safety net) ──────────────────
 
+  # ── INFRA-1526: post-rebase hunk-drop detector ────────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Emitted when post-rebase-verify.sh detects that a file with >50 added
+      lines in the original branch commits has 0 added lines in the rebased
+      commits. Root case: the rust-main-append merge driver silently dropped
+      173 lines of src/main.rs from PR #2216 (INFRA-1418). The driver was
+      removed from .gitattributes; this event fires if any future
+      merge-driver misconfiguration or git strategy regression causes the
+      same silent data loss. Push is aborted before the bad ref reaches
+      the remote. Pairs with pr_auto_rebase_failed (fallback=hunk_drop_detected).
+    consumers: [fleet-brief, ops-audit, operator-digest]
+    fields_required: [ts, kind, file, lines_lost, original_commit, rebased_commit, base]
+    expected_volume: "0 normally; any emission is a P0 signal requiring operator action"
+    status: stable
+
+  # ── INFRA-2295: stale-pr-rebase-bot (SCALE-C safety net) ──────────────────
+
   - kind: stale_pr_auto_rebased
     effect_metric: resilient
     emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)

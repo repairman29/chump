@@ -144,6 +144,7 @@ _rap_fetch() {
 # ── Step 2: rebase (returns 0=clean, 2=conflict) ──────────────────────────────
 _DRIVER_RESOLVED_FILES=""
 _MANUAL_FILES=""
+_PRE_REBASE_SHA=""  # captured before each rebase for post-rebase-verify.sh (INFRA-1526)
 
 _rap_rebase() {
     local behind
@@ -152,6 +153,8 @@ _rap_rebase() {
         info "Already up to date with $FULL_BASE — no rebase needed."
         return 0
     fi
+    # Capture pre-rebase HEAD so post-rebase-verify can compare before/after (INFRA-1526)
+    _PRE_REBASE_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
     info "Rebasing $BRANCH onto $FULL_BASE ($behind commit(s) behind) …"
     if [[ "$DRY_RUN" == "1" ]]; then
         info "[dry-run] git rebase ${_rebase_args[*]+"${_rebase_args[*]}"} $FULL_BASE"
@@ -191,6 +194,26 @@ _rap_rebase() {
         -- '.github/workflows/ci.yml' 'docs/observability/EVENT_REGISTRY.yaml' \
            'scripts/git-hooks/pre-commit' 'Cargo.toml' 'web/v2/app.js' 'src/main.rs' \
         2>/dev/null | head -20 || true)"
+
+    # INFRA-1526: post-rebase hunk-drop verification.
+    # Catches merge-driver misconfigurations that silently drop lines instead of
+    # producing conflict markers (root case: the rust-main-append driver on PR #2216).
+    # Runs before push so the operator can recover without a bad remote push.
+    if [[ -n "$_PRE_REBASE_SHA" ]] && [[ "${CHUMP_POST_REBASE_VERIFY_SKIP:-0}" != "1" ]]; then
+        local _verify_script="${SCRIPT_DIR}/post-rebase-verify.sh"
+        if [[ -x "$_verify_script" ]]; then
+            if ! bash "$_verify_script" \
+                    --base "$FULL_BASE" \
+                    --orig-head "$_PRE_REBASE_SHA" \
+                    --repo "$REPO_ROOT" \
+                    --ambient "$AMBIENT_LOG"; then
+                red "post-rebase-verify detected silent hunk drop(s) — aborting push (INFRA-1526)"
+                red "Bypass: CHUMP_POST_REBASE_VERIFY_SKIP=1 (emits off-rails audit event)"
+                return 2
+            fi
+        fi
+    fi
+
     return 0
 }
 

@@ -222,7 +222,25 @@ while IFS=$'\t' read -r PR STATE; do
         git -C "$REPO_ROOT" fetch origin "$BRANCH" --quiet 2>/dev/null || true
         git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
+            _PRE_REBASE_SHA_FB="$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)"
             if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
+                # INFRA-1526: verify no hunks were silently dropped by the rebase
+                _VERIFY_SCRIPT="$REPO_ROOT/scripts/coord/post-rebase-verify.sh"
+                if [[ -n "$_PRE_REBASE_SHA_FB" ]] && [[ -x "$_VERIFY_SCRIPT" ]] && \
+                        [[ "${CHUMP_POST_REBASE_VERIFY_SKIP:-0}" != "1" ]]; then
+                    if ! bash "$_VERIFY_SCRIPT" \
+                            --base "origin/main" \
+                            --orig-head "$_PRE_REBASE_SHA_FB" \
+                            --repo "$WT" \
+                            --ambient "$AMBIENT" >/dev/null 2>&1; then
+                        echo "[pr-auto-rebase] FAIL #$PR — post-rebase-verify detected silent hunk drop (INFRA-1526)"
+                        emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"hunk_drop_detected\""
+                        git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
+                        rm -rf "$WT" 2>/dev/null || true
+                        FAILED=$((FAILED+1))
+                        continue
+                    fi
+                fi
                 if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
                     echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
                     emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""
