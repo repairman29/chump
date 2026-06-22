@@ -1346,6 +1346,10 @@ source "$(dirname "$0")/lib/github.sh"
 # INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
 # shellcheck source=lib/ambient-write.sh
 source "$(dirname "$0")/lib/ambient-write.sh"
+# shellcheck source=lib/rebase-hunk-verify.sh disable=SC1091
+_RHV="${BASH_SOURCE[0]%/*}/lib/rebase-hunk-verify.sh"
+if [[ -f "$_RHV" ]]; then source "$_RHV"; else rebase_hunk_verify() { return 0; }; fi
+unset _RHV
 # shellcheck source=lib/github_cache.sh
 # INFRA-1130: cache_lookup_pr / cache_lookup_checks for zero-API CI polling.
 source "$(dirname "$0")/lib/github_cache.sh"

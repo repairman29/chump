@@ -43,6 +43,15 @@ fi
 
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
 
+# ── Source hunk-drop verifier (INFRA-1526) ────────────────────────────────────
+_RHV_LIB="${SCRIPT_DIR}/lib/rebase-hunk-verify.sh"
+if [[ -f "$_RHV_LIB" ]]; then
+    # shellcheck source=scripts/coord/lib/rebase-hunk-verify.sh disable=SC1091
+    source "$_RHV_LIB"
+else
+    rebase_hunk_verify() { return 0; }
+fi
+
 # ── Colour helpers ────────────────────────────────────────────────────────────
 _tty() { [[ -t 2 ]]; }
 red()  { _tty && printf '\033[0;31m%s\033[0m\n' "$*" >&2 || printf '%s\n' "$*" >&2; }
@@ -158,6 +167,10 @@ _rap_rebase() {
         return 0
     fi
 
+    # Capture HEAD before rebase for hunk-drop verification (INFRA-1526).
+    local _pre_rebase_head
+    _pre_rebase_head="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+
     # "${arr[@]+"${arr[@]}"}" is the bash-safe idiom for empty-array expansion
     # under set -u (nounset). Plain "${arr[@]}" fails when arr=() in bash <5.1.
     if ! git -C "$REPO_ROOT" rebase ${_rebase_args[@]+"${_rebase_args[@]}"} "$FULL_BASE"; then
@@ -191,6 +204,17 @@ _rap_rebase() {
         -- '.github/workflows/ci.yml' 'docs/observability/EVENT_REGISTRY.yaml' \
            'scripts/git-hooks/pre-commit' 'Cargo.toml' 'web/v2/app.js' 'src/main.rs' \
         2>/dev/null | head -20 || true)"
+
+    # Post-rebase hunk-drop check (INFRA-1526 AC#6).
+    # Runs inside the worktree root so git commands work without -C.
+    if [[ -n "$_pre_rebase_head" ]]; then
+        ( cd "$REPO_ROOT" && rebase_hunk_verify "$_pre_rebase_head" "$FULL_BASE" "$AMBIENT_LOG" ) || {
+            red "Hunk-drop detected: one or more files lost content during rebase."
+            red "Fix: restore the missing hunks, re-commit, then re-run this script."
+            _emit "rebase_and_push_failed" '"stage":"hunk_drop_check"'
+            exit 2
+        }
+    fi
     return 0
 }
 
