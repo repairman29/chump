@@ -193,6 +193,7 @@ test-pick-and-claim-lockdir.sh
 # (entry removed)
 test-picker-priority.sh
 test-pillar-balance.sh
+test-pillar-balance-alerts.sh       # reason: INFRA-902 pillar-balance alert checks; builds binary + fixture; can run locally but not yet mirrored in preflight.rs
 # INFRA-2350: test-pipefail-race-sweep.sh now mirrored as Scripts-scope
 # always-on gate ("pipefail-race-sweep" in preflight.rs).
 # (entry removed)
