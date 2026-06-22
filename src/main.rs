@@ -7061,6 +7061,24 @@ async fn main() -> Result<()> {
             // Aggregates floor_temp + fleet_hold + active leases + recent
             // wedge/admin-merge/alert/cluster events into one operator-readable
             // frame. Replaces the 5-surface query workflow.
+            "metrics" => {
+                // `chump fleet metrics` — INFRA-900
+                // Runs scripts/ops/fleet-metrics-snapshot.sh: reads ambient.jsonl
+                // + state.db and emits kind=fleet_metrics_snapshot with fields:
+                //   ts, ship_rate_24h, waste_rate_24h, cycle_time_p50_h,
+                //   active_gaps, p0_count
+                let metrics_sh = repo_root.join("scripts/ops/fleet-metrics-snapshot.sh");
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&metrics_sh);
+                for a in args.iter().skip(3) {
+                    cmd.arg(a);
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet metrics: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             "pulse" => {
                 let want_json = args.iter().any(|a| a == "--json");
                 let repo_root = repo_path::repo_root();
@@ -7591,7 +7609,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|metrics>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
