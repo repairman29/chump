@@ -8170,3 +8170,23 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+  # ── INFRA-1526: post-rebase hunk-drop detection ───────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-hunk-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Emitted when a file had ≥50 added lines in the original commits
+      (ORIG_HEAD) but 0 added lines in the rebased result (HEAD). This
+      indicates silent data loss during git rebase — typically caused by
+      a merge driver discarding content without producing conflict markers.
+      Root cause (INFRA-1526): merge-driver-append-only.sh dedup compared
+      lines against the full $OURS file (including shared ancestor prefix),
+      dropping common structural lines (`}`, blank lines) from theirs_tail.
+      PR #2216 lost a 173-line src/main.rs block this way. The verifier
+      is called by bot-merge.sh and chump-rebase-and-push.sh immediately
+      after git rebase exits 0, before any push.
+    consumers: [fleet-brief, ops-audit, ci-audit]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    status: stable

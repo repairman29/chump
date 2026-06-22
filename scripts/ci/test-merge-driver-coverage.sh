@@ -25,12 +25,14 @@ echo
 GITATTRS="$REPO_ROOT/.gitattributes"
 
 # ── 1. .gitattributes contains all 5 hot files ──────────────────────────────
+# src/main.rs was intentionally removed from the append-only driver (2026-05-23 P0
+# fix, INFRA-1526). Standard 3-way merge produces visible conflict markers instead
+# of silent hunk drops. Do NOT re-add it here without fixing the dedup root cause.
 HOT_FILES=(
   ".github/workflows/ci.yml"
   "docs/observability/EVENT_REGISTRY.yaml"
   "Cargo.toml"
   "web/v2/app.js"
-  "src/main.rs"
 )
 for hf in "${HOT_FILES[@]}"; do
   if grep -qF "$hf" "$GITATTRS" 2>/dev/null; then
@@ -154,18 +156,47 @@ run_driver_test \
   "$JS_ANCESTOR" "$JS_OURS" "$JS_THEIRS" \
   "true" "branch B"
 
-# src/main.rs — two branches each add a new route
-RUST_ANCESTOR='fn main() {
-    let app = Router::new()
-        .route("/api/chat", get(chat_handler));
+# INFRA-1526 regression: theirs adds a block containing lines that also exist
+# in the ancestor prefix (e.g., `}` closing braces, blank lines). The old
+# dedup code compared against the full $OURS, so those common lines were
+# silently dropped. The fix compares against ours_tail only.
+COMMON_LINES_ANCESTOR='fn init() {
+    setup();
+}
+
+fn main() {
+    run();
 }
 '
-RUST_OURS="${RUST_ANCESTOR}// new route A\n"
-RUST_THEIRS="${RUST_ANCESTOR}// new route B\n"
+COMMON_LINES_OURS="${COMMON_LINES_ANCESTOR}fn helper_a() {
+    let x = 1;
+}
+"
+# theirs adds a new function that contains `}` and a blank line —
+# lines that also appear in the ancestor. These must NOT be dropped.
+COMMON_LINES_THEIRS="${COMMON_LINES_ANCESTOR}fn helper_b() {
+    let y = 2;
+}
+"
 run_driver_test \
-  "src/main.rs: two distinct route additions" \
-  "$RUST_ANCESTOR" "$RUST_OURS" "$RUST_THEIRS" \
-  "true" "new route B"
+  "INFRA-1526: theirs tail with common structural lines preserved" \
+  "$COMMON_LINES_ANCESTOR" "$COMMON_LINES_OURS" "$COMMON_LINES_THEIRS" \
+  "true" "helper_b"
+
+# Verify the full block survived, not just the first line.
+_verify_full_block() {
+  local anc="$TMP/ancestor" ours="$TMP/ours" theirs="$TMP/theirs"
+  printf '%s' "$COMMON_LINES_ANCESTOR"  > "$anc"
+  printf '%s' "$COMMON_LINES_OURS"      > "$ours"
+  printf '%s' "$COMMON_LINES_THEIRS"    > "$theirs"
+  bash "$DRIVER" "$anc" "$ours" "$theirs" "7" >/dev/null 2>&1 || true
+  if grep -q "let y = 2;" "$ours" && grep -q "}" "$ours"; then
+    ok "INFRA-1526: full multi-line block from theirs preserved (closing brace + body intact)"
+  else
+    fail "INFRA-1526: dedup dropped lines from theirs multi-line block"
+  fi
+}
+_verify_full_block
 
 # ── 7. Non-pure-append: one branch edited the shared prefix ─────────────────
 NON_APPEND_ANCESTOR='line1

@@ -2173,6 +2173,16 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop guard. Compares per-file addition counts
+    # in the original commits vs the rebased commits; exits non-zero if any file
+    # had ≥50 added lines before but 0 after rebase (silent data loss pattern).
+    if [[ $DRY_RUN -eq 0 ]] && git rev-parse --verify ORIG_HEAD >/dev/null 2>&1; then
+        if ! BASE_BRANCH="$BASE_BRANCH" bash "${REPO_ROOT}/scripts/coord/post-rebase-hunk-verify.sh" --emit-ambient; then
+            red "INFRA-1526: post-rebase hunk-drop detected — aborting to prevent silent data loss."
+            _bm_fail "rebase" 11 "rebase_hunk_dropped: file lost ≥50 lines after rebase"
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

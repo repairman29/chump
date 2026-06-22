@@ -127,7 +127,6 @@ if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
         -c merge.gap-yaml-add-line.driver=
         -c merge.cargo-toml-append.driver=
         -c merge.js-append.driver=
-        -c merge.rust-main-append.driver=
     )
 fi
 
@@ -216,6 +215,15 @@ if [[ "$_rebase_rc" -eq 2 ]]; then
     _emit "rebase_and_push_failed" \
         '"stage":"rebase","manual_files":"'"$(echo "$_MANUAL_FILES" | tr '\n' ',' | sed 's/,$//')"'"'
     exit 2
+fi
+
+# INFRA-1526: post-rebase hunk-drop guard (blocks silent data loss before push).
+if [[ "$DRY_RUN" == "0" ]] && git rev-parse --verify ORIG_HEAD >/dev/null 2>&1; then
+    if ! BASE_BRANCH="$BASE_REF" bash "$(dirname "${BASH_SOURCE[0]}")/post-rebase-hunk-verify.sh" --emit-ambient; then
+        red "INFRA-1526: post-rebase hunk-drop detected — aborting push to prevent silent data loss."
+        _emit "rebase_and_push_failed" '"stage":"hunk_verify","reason":"rebase_hunk_dropped"'
+        exit 2
+    fi
 fi
 
 _push_rc=0

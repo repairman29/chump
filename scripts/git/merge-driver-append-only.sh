@@ -62,20 +62,23 @@ if [[ -z "$theirs_tail" ]]; then
   exit 0
 fi
 
-# Deduplicate: skip any theirs-tail lines already present in ours.
-# This prevents double-registration when both branches added the same entry
-# (e.g., two PRs each adding `serde = { version = "1", features = ["derive"] }`).
-unique_tail=$(comm -23 \
-  <(echo "$theirs_tail" | sort) \
-  <(cat "$OURS" | sort) \
-  | sort -n 2>/dev/null || echo "$theirs_tail")
+# Extract lines ours appended beyond the shared ancestor.
+ours_tail="$(tail -n +"$((ancestor_lines + 1))" "$OURS")"
 
-# Restore original order (comm output is sorted; we want original append order).
-# Strategy: filter theirs_tail to only lines not already in ours, preserving order.
+# Deduplicate: skip theirs-tail lines already in ours-tail.
+# This prevents double-registration when both branches independently added
+# the same entry (e.g., two PRs each adding `serde = "1"` to Cargo.toml).
+#
+# INFRA-1526 fix: compare against ours_tail ONLY, not the full $OURS file.
+# The old code (`grep -qxF "$line" "$OURS"`) matched common structural lines
+# (`}`, blank lines, etc.) against the shared ancestor prefix in $OURS,
+# silently dropping them from theirs_tail and corrupting the merged result.
+# Example: PR #2216 lost a 173-line src/main.rs block this way.
 ordered_unique_tail=""
 while IFS= read -r line; do
-  # Skip empty lines that are already handled by ours.
-  if ! grep -qxF "$line" "$OURS" 2>/dev/null; then
+  if [[ -n "$ours_tail" ]] && grep -qxF -- "$line" <<< "$ours_tail" 2>/dev/null; then
+    : # already in ours additions — skip
+  else
     ordered_unique_tail="${ordered_unique_tail}${line}"$'\n'
   fi
 done <<< "$theirs_tail"
