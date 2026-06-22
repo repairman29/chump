@@ -452,6 +452,52 @@ cmd_status() {
     fi
 }
 
+# RESILIENT-158: durable owner for the run-fleet WORKER POOL. The control plane
+# (curators + launchd daemons) was already durably supervised; the gap-working
+# worker pool was NOT — run-fleet was session-launched and died with its
+# launcher's process group (SIGTERM on teardown), with nothing to revive it.
+# This heartbeat now ENSURES the pool the same way it ensures curators: if the
+# chump-fleet tmux session is missing or has too few live worker panes, relaunch
+# run-fleet. tmux's process-independent server provides durability; the next
+# heartbeat re-ensures after any death. Idempotent (never double-launches a
+# healthy pool).
+#
+# OPERATOR KILL-SWITCH (both checked every tick):
+#   touch ~/.chump/FLEET_KEEPER_OFF        -> keeper stops relaunching (persists)
+#   export CHUMP_FLEET_KEEPER_DISABLE=1    -> same, via launchd env
+# Control + health surface: scripts/coord/fleet-keeper-ctl.sh {status,stop,start,kill}
+_keeper_off_flag() { printf '%s/.chump/FLEET_KEEPER_OFF' "$HOME"; }
+
+# Extracted so tests can stub the actual launch. Detached so it outlives the
+# heartbeat process + the launchd StartInterval cycle (tmux server owns the pool).
+_keeper_launch_fleet() {
+    local repo_root="$1" target="$2"
+    ( cd "$repo_root" && FLEET_SIZE="$target" CHUMP_AUTH_MODE=oauth nohup \
+        scripts/dispatch/run-fleet.sh >/tmp/chump-fleet-keeper.log 2>&1 </dev/null & )
+}
+
+ensure_worker_pool() {
+    if [[ "${CHUMP_FLEET_KEEPER_DISABLE:-0}" == "1" ]]; then return 0; fi
+    if [[ -f "$(_keeper_off_flag)" ]]; then
+        log "RESILIENT-158: keeper OFF ($(_keeper_off_flag) present) — not launching worker pool"
+        return 0
+    fi
+    local target="${CHUMP_FLEET_TARGET_SIZE:-2}"
+    local repo_root; repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    local live=0
+    if tmux has-session -t chump-fleet 2>/dev/null; then
+        live="$(tmux list-panes -t chump-fleet -F '#{pane_dead}' 2>/dev/null | grep -c '^0$' || true)"
+    fi
+    # Healthy = control pane + >= target live worker panes.
+    if [[ "${live:-0}" -ge "$((target + 1))" ]]; then
+        return 0
+    fi
+    tmux kill-session -t chump-fleet 2>/dev/null || true   # clear any husk first
+    emit fleet_scale_change "\"from\":0,\"to\":$target,\"rationale\":\"RESILIENT-158 worker-pool keeper: ${live:-0} live panes < target, relaunching\""
+    log "RESILIENT-158: worker pool down (${live:-0} live panes) — relaunching run-fleet (size $target)"
+    _keeper_launch_fleet "$repo_root" "$target"
+}
+
 cmd_heartbeat() {
     # Internal: called by the launchd cron every 5 min.
     local loaded=0
@@ -476,6 +522,8 @@ cmd_heartbeat() {
     fi
     # META-122: respawn any dead curator windows.
     curator_check_and_respawn
+    # RESILIENT-158: ensure the run-fleet worker pool is up (durable owner).
+    ensure_worker_pool
 }
 
 cmd_restart() {
