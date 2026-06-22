@@ -116,6 +116,8 @@ _BM_CLEANUP_DONE=0
 __STAGE_BUDGET_PID=""
 # META-156 AC#6: budget-warn watchdog PID.
 _BM_BUDGET_WARN_PID=""
+# INFRA-918: last cargo invocation output path (caller reads, then rm's).
+_BM_CARGO_TMPOUT=""
 
 # ── INFRA-2272: per-step progress ledger + gtimeout wrapper ──────────────────
 # See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4
@@ -2233,6 +2235,21 @@ if [[ -n "$_changed_files" ]]; then
     fi
 fi
 
+# INFRA-918: emit rebase-before-test context so fleet monitors know which SHA
+# cargo test ran on and whether a rebase preceded it.
+# scanner-anchor: "kind":"bot_merge_rebase_before_test"
+{
+    _rbrt_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _rbrt_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    _rbrt_rebased=$( [[ "${BEHIND:-0}" -gt 0 ]] && echo true || echo false )
+    _rbrt_will_test=$( [[ "${SKIP_TESTS:-0}" -eq 0 ]] && echo true || echo false )
+    _rbrt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s,"gap":"%s","note":"INFRA-918 AC#1"}\n' \
+        "$_rbrt_ts" "$_rbrt_rebased" "${BEHIND:-0}" "$_rbrt_sha" "$_rbrt_will_test" \
+        "${GAP_IDS[0]:-unknown}" \
+        >> "$_rbrt_amb" 2>/dev/null || true
+}
+
 # ── 2. cargo fmt ──────────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
     stage_start "cargo fmt"
@@ -2340,7 +2357,8 @@ _run_cargo_with_lock_detect() {
                 "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}")"
         warn "INFRA-1063: cargo build-dir lock wait detected on phase '${label}' — cargo_lock_wait emitted to ambient stream"
     fi
-    rm -f "$_tmpout"
+    # INFRA-918: expose tmpout path so callers can classify failures before rm.
+    _BM_CARGO_TMPOUT="$_tmpout"
     return "$_rc"
 }
 
@@ -2412,12 +2430,29 @@ fi
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
     if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+        # INFRA-918 AC#2: classify transient OOM vs permanent logic failure.
+        _btf_class="permanent_failure"
+        if [[ -n "${_BM_CARGO_TMPOUT:-}" ]] && \
+           grep -qE "(signal: 15, SIGTERM|Killed|memory allocation of|out of memory)" \
+               "$_BM_CARGO_TMPOUT" 2>/dev/null; then
+            _btf_class="transient_oom"
+        fi
+        rm -f "${_BM_CARGO_TMPOUT:-}" 2>/dev/null || true
+        _BM_CARGO_TMPOUT=""
+        _btf_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        printf '{"ts":"%s","kind":"bot_merge_test_failure","failure_class":"%s","gap":"%s","branch":"%s","note":"INFRA-918 AC#2"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_btf_class" \
+            "${GAP_IDS[0]:-unknown}" "${BRANCH:-unknown}" \
+            >> "$_btf_amb" 2>/dev/null || true
         red "Tests failed — fix them before merging."
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
         info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
         _bm_fail "test" 14 "test suite failure"
     fi
+    rm -f "${_BM_CARGO_TMPOUT:-}" 2>/dev/null || true
+    _BM_CARGO_TMPOUT=""
     stage_done
     green "Tests passed."
 else

@@ -1912,6 +1912,20 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, gap_id, branch, note]
 
+  - kind: bot_merge_rebase_before_test
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    trigger: emitted after rebase + doc-only detection, just before cargo fmt/clippy/test phases begin; records whether a rebase occurred and which HEAD SHA will be tested
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, rebased, commits_behind, head_sha, will_test, gap]
+
+  - kind: bot_merge_test_failure
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    trigger: emitted when cargo test --bin chump --tests exits non-zero; failure_class=transient_oom when SIGTERM/OOM signals detected in output, failure_class=permanent_failure otherwise
+    consumers: [fleet-brief, ops-audit, ci-audit]
+    fields_required: [ts, kind, failure_class, gap, branch]
+
   - kind: bot_merge_hot_file
     effect_metric: self
     emitter: scripts/ops/bot-merge-watch.sh
