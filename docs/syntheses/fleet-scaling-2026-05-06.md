@@ -103,3 +103,17 @@ Thresholds in brief:
 |---|---|---|---|---|---|---|---|---|
 | (pending) | 2→3 | — | — | — | — | — | — | — |
 | (pending) | 3→4 | — | — | — | — | — | — | — |
+
+---
+
+## Post-mortem: 2026-05-16 PR-stuck cluster (INFRA-1393)
+
+**Cluster**: 11 PRs blocked 14–19h on 2026-05-16 (PRs #2150–2182).
+**Cause**: `ci_flake` — audit CI job failed on unallowlisted orphan event kinds
+introduced by the rebase-daemon (INFRA-1403/1406). Every open PR touching
+audited paths was blocked until the allowlist was patched.
+**Resolution**: Three fix PRs landed in sequence (#2178, #2197, #2209); all
+11 PRs subsequently merged.
+**Durable fix**: INFRA-1410 (PR-stuck SLO + auto-respawn, merged PR #2260
+2026-05-16T17:09Z) — prevents recurrence by auto-restarting wedged PRs and
+alerting when a cluster forms. Audit allowlist now enforced by CI gate.
