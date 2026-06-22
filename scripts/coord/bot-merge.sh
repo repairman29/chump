@@ -2173,6 +2173,19 @@ if [[ "$BEHIND" -gt 0 ]]; then
     _grade_rebase_clean="true"
     stage_done
 
+    # INFRA-1526: post-rebase hunk-drop guard — catches silent data loss from
+    # merge drivers or -X theirs strategies before we push the damaged commit.
+    _hv_orig="$(git rev-parse ORIG_HEAD 2>/dev/null || true)"
+    _hv_rebased="$(git rev-parse HEAD 2>/dev/null || true)"
+    _hv_script="$REPO_ROOT/scripts/coord/rebase-hunk-verify.sh"
+    if [[ -x "$_hv_script" && -n "$_hv_orig" && -n "$_hv_rebased" ]]; then
+        if ! "$_hv_script" --ambient "$REPO_ROOT/.chump-locks/ambient.jsonl" \
+            "$_hv_orig" "$_hv_rebased" "${REMOTE}/${BASE_BRANCH}" 2>&1 | grep -v "^$"; then
+            red "[bot-merge] Rebase silently dropped hunks — aborting. Check ambient.jsonl for kind=rebase_hunk_dropped."
+            _bm_fail "hunk-verify" 12 "rebase dropped hunks"
+        fi
+    fi
+
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"

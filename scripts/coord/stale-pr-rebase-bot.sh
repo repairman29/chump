@@ -294,7 +294,23 @@ except Exception:
         git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
 
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
+            _srb_orig="$(cd "$WT" && git rev-parse HEAD 2>/dev/null || true)"
             if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
+                # INFRA-1526: verify no hunks dropped silently before pushing
+                _srb_rebased="$(cd "$WT" && git rev-parse HEAD 2>/dev/null || true)"
+                _srb_verify="$REPO_ROOT/scripts/coord/rebase-hunk-verify.sh"
+                if [[ -x "$_srb_verify" && -n "$_srb_orig" && -n "$_srb_rebased" ]]; then
+                    if ! (cd "$WT" && "$_srb_verify" --ambient "$AMBIENT" \
+                        "$_srb_orig" "$_srb_rebased" "origin/main") 2>/dev/null; then
+                        log "  WARN #$PR — hunk drop detected post-rebase, skipping push"
+                        emit "stale_pr_rebase_failed" "$PR" \
+                            "\"branch\":\"$BRANCH\",\"reason\":\"hunk_drop_detected\",\"prior_strikes\":$strikes"
+                        local_ok=0
+                        git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
+                        rm -rf "$WT" 2>/dev/null || true
+                        continue
+                    fi
+                fi
                 if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
                     log "  OK #$PR — local-rebase fallback succeeded."
                     emit "stale_pr_auto_rebased" "$PR" \

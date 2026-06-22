@@ -7091,6 +7091,26 @@ events:
     expected_volume: "0-N per 15-min cadence; bursts during merge conflicts"
     status: stable
 
+  # ── INFRA-1526: post-rebase hunk-drop detector ────────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/rebase-hunk-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      Post-rebase verification detected that a file with >50 added lines in the
+      original feature commits has 0 added lines after rebase — meaning the rebase
+      silently discarded code. Root-cause classes: (a) git rebase -X theirs
+      (wedge-recover.sh used this before INFRA-1526 fix); (b) a broken append-only
+      merge driver falling back to standard 3-way merge and losing hunks near a
+      conflict boundary (src/main.rs driver removed 2026-05-23). Emitted by
+      rebase-hunk-verify.sh from bot-merge.sh, pr-auto-rebase.sh, and
+      stale-pr-rebase-bot.sh after every successful rebase, before push.
+    consumers: [fleet-brief, ops-audit, operator-digest]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    expected_volume: "0 per day (should never fire after INFRA-1526 fix)"
+    status: stable
+
   - kind: stale_pr_unrebaseable
     effect_metric: resilient
     emitter: scripts/coord/stale-pr-rebase-bot.sh (INFRA-2295)

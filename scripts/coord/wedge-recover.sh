@@ -129,7 +129,7 @@ for p in json.load(sys.stdin):
             rm -rf "$wt" 2>/dev/null
             git fetch origin "$br" main --quiet 2>/dev/null
             if git worktree add "$wt" "origin/$br" >/dev/null 2>&1; then
-                if (cd "$wt" && git rebase -X theirs origin/main >/dev/null 2>&1); then
+                if (cd "$wt" && git rebase origin/main >/dev/null 2>&1); then
                     if (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
                         rebased=$((rebased+1))
                         log "    rebased + pushed"
