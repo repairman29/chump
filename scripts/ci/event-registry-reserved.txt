@@ -774,3 +774,9 @@ external_merge_held      # reason: CREDIBLE-096 emitted by src/external_verify_m
 # Reserved here so the register-without-emit coverage gate does not flag these.
 improve_cycle_complete   # reason: EFFECTIVE-177 emitted at end of every improve cycle (dry-run or apply); fields: repo, gap, verdict, pr
 redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage decided the work is already in the target repo; fields: repo, gap, reason
+
+# ── INFRA-918: bot-merge rebase-before-test observability ─────────────────────
+# Emitted by scripts/coord/bot-merge.sh via variable-assembled printf.
+# Scanner-anchor comments present in source ("scanner-anchor: kind=X").
+bot_merge_rebase_before_test  # reason: INFRA-918 emitted just before cargo test; fields: rebased(bool), commits_behind(int), head_sha(str), will_test(bool)
+bot_merge_test_failure        # reason: INFRA-918 emitted on cargo test failure; fields: failure_class(transient_oom|permanent_failure), head_sha, rebased, commits_behind

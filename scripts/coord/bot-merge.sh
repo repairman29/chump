@@ -2409,15 +2409,63 @@ elif command -v cargo &>/dev/null; then
 fi
 
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
+# INFRA-918: emit kind=bot_merge_rebase_before_test so the fleet knows whether
+# tests ran on the rebased branch (not stale pre-rebase state).
+# scanner-anchor: "kind":"bot_merge_rebase_before_test"
+_bm_rebase_before_test_emit() {
+    local rebased_val commits_behind_val head_sha_val will_test_val
+    rebased_val="$1"; commits_behind_val="$2"; head_sha_val="$3"; will_test_val="$4"
+    local ts gap_label ambient
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","gap":"%s","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":%s,"note":"INFRA-918: rebase-state snapshot immediately before cargo test"}\n' \
+        "$ts" "$gap_label" "$rebased_val" "$commits_behind_val" "$head_sha_val" "$will_test_val" \
+        >> "$ambient" 2>/dev/null || true
+}
+_bm_head_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+_bm_rebased_flag="false"
+[[ "$BEHIND" -gt 0 ]] && _bm_rebased_flag="true"
+_bm_will_test="false"
+if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
+    _bm_will_test="true"
+fi
+_bm_rebase_before_test_emit "$_bm_rebased_flag" "$BEHIND" "$_bm_head_sha" "$_bm_will_test"
+
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
-    if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
+    _bm_test_out="$(mktemp)"
+    _bm_test_rc=0
+    # Capture output so we can classify transient OOM vs permanent failure.
+    # Use set +e / PIPESTATUS pattern (mirrors _run_cargo_with_lock_detect internals)
+    # to reliably capture the cargo exit code independent of tee's exit code.
+    set +e
+    _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests 2>&1 | tee "$_bm_test_out"
+    _bm_test_rc=${PIPESTATUS[0]}
+    set -e
+    if [[ "$_bm_test_rc" -ne 0 ]]; then
+        # INFRA-918 AC#2: classify failure and emit kind=bot_merge_test_failure.
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        _bm_fail_class="permanent_failure"
+        if grep -qE "signal: 15|SIGTERM|signal: 9|killed by signal|Jetsam" "$_bm_test_out" 2>/dev/null; then
+            _bm_fail_class="transient_oom"
+        fi
+        _bm_tf_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _bm_tf_gap="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+        _bm_tf_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"bot_merge_test_failure","gap":"%s","failure_class":"%s","head_sha":"%s","rebased":%s,"commits_behind":%d,"note":"INFRA-918"}\n' \
+            "$_bm_tf_ts" "$_bm_tf_gap" "$_bm_fail_class" "$_bm_head_sha" \
+            "$_bm_rebased_flag" "$BEHIND" \
+            >> "$_bm_tf_amb" 2>/dev/null || true
+        rm -f "$_bm_test_out"
         red "Tests failed — fix them before merging."
-        info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
-        info "that is most likely OOM, not a real test failure. Try lowering"
-        info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
-        _bm_fail "test" 14 "test suite failure"
+        if [[ "$_bm_fail_class" == "transient_oom" ]]; then
+            info "Failure classified as transient_oom (SIGTERM/OOM detected)."
+            info "Try lowering CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
+        fi
+        _bm_fail "test" 14 "test suite failure (failure_class=${_bm_fail_class})"
     fi
+    rm -f "$_bm_test_out"
     stage_done
     green "Tests passed."
 else
