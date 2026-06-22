@@ -4762,6 +4762,23 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: bot_merge_rebase_before_test
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    trigger: emitted immediately before cargo test runs, recording whether
+      the branch was rebased onto origin/main in this bot-merge invocation
+      and the exact HEAD sha that will be tested.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap, rebased, commits_behind, head_sha, will_test]
+  - kind: bot_merge_test_failure
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-918)
+    trigger: emitted when cargo test --bin chump --tests exits non-zero.
+      failure_class distinguishes macOS Jetsam OOM kills (transient_oom,
+      safe to retry with lower CARGO_BUILD_JOBS) from real logic bugs
+      (permanent_failure, must be fixed before retrying).
+    consumers: [fleet-brief, ops-audit, ci-audit]
+    fields_required: [ts, kind, gap, failure_class, head_sha]
   - kind: rebase_and_push_invoked
     emitter: scripts/coord/chump-rebase-and-push.sh (INFRA-1404)
     trigger: operator ran chump-rebase-and-push.sh; emitted on every successful

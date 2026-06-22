@@ -102,6 +102,12 @@ set -euo pipefail
 # INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
 export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
 
+# ── INFRA-918: SIGTERM/OOM indicator set by _run_cargo_with_lock_detect ──────
+# 1 = "signal: 15" or "SIGTERM: termination signal" appeared in cargo output
+# (indicates macOS Jetsam OOM kill, not a logic bug). Reset to 0 before each
+# cargo invocation so stale state from a prior phase doesn't pollute test classification.
+_BM_CARGO_SIGTERM=0
+
 # ── INFRA-119: health-file globals + cleanup traps ───────────────────────────
 _BM_PID=$$
 _BM_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -2340,6 +2346,15 @@ _run_cargo_with_lock_detect() {
                 "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}")"
         warn "INFRA-1063: cargo build-dir lock wait detected on phase '${label}' — cargo_lock_wait emitted to ambient stream"
     fi
+    # INFRA-918: detect OOM/SIGTERM markers for cargo test failure classification.
+    # "signal: 15" appears when macOS Jetsam kills a rustc subprocess under memory
+    # pressure — it is NOT a logic bug. Expose via _BM_CARGO_SIGTERM so the
+    # cargo test failure handler can set failure_class=transient_oom.
+    if grep -qE '"signal: 15"|SIGTERM: termination signal' "$_tmpout" 2>/dev/null; then
+        _BM_CARGO_SIGTERM=1
+    else
+        _BM_CARGO_SIGTERM=0
+    fi
     rm -f "$_tmpout"
     return "$_rc"
 }
@@ -2410,9 +2425,34 @@ fi
 
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
+    # INFRA-918: emit rebase-state signal BEFORE running tests so the fleet knows
+    # we are about to test a rebased (or already-current) HEAD.
+    # scanner-anchor: "kind":"bot_merge_rebase_before_test"
+    _bm_rbt_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    _bm_rbt_sha="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+    _bm_rbt_rebased="false"; [[ "${BEHIND:-0}" -gt 0 ]] && _bm_rbt_rebased="true"
+    _ambient_write "$_bm_rbt_amb" \
+        "$(printf '{"ts":"%s","kind":"bot_merge_rebase_before_test","gap":"%s","rebased":%s,"commits_behind":%d,"head_sha":"%s","will_test":true}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-${GAP_ID:-unknown}}" \
+            "$_bm_rbt_rebased" "${BEHIND:-0}" "$_bm_rbt_sha")"
+
+    _BM_CARGO_SIGTERM=0
     stage_start "cargo test --bin chump --tests"
     if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
         red "Tests failed — fix them before merging."
+        # INFRA-918: classify failure and emit kind=bot_merge_test_failure.
+        # transient_oom  — rustc SIGTERM'd by macOS Jetsam under memory pressure
+        # permanent_failure — logic bug; fix before retrying
+        # scanner-anchor: "kind":"bot_merge_test_failure"
+        _bm_tf_class="permanent_failure"
+        [[ "${_BM_CARGO_SIGTERM:-0}" -eq 1 ]] && _bm_tf_class="transient_oom"
+        _ambient_write "$_bm_rbt_amb" \
+            "$(printf '{"ts":"%s","kind":"bot_merge_test_failure","gap":"%s","failure_class":"%s","head_sha":"%s","note":"INFRA-918"}' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-${GAP_ID:-unknown}}" \
+                "$_bm_tf_class" "$_bm_rbt_sha")"
+        if [[ "$_bm_tf_class" = "transient_oom" ]]; then
+            info "failure_class=transient_oom: SIGTERM/OOM detected — likely macOS Jetsam memory pressure."
+        fi
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
         info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
