@@ -26,7 +26,7 @@ jobs:
     runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         if: runner.os == 'Linux'
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Battle sim suite (no web / no LLM)
         env:
@@ -76,7 +76,7 @@ jobs:
     runs-on: ${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         if: runner.os == 'Linux'
@@ -128,7 +128,7 @@ jobs:
     continue-on-error: true
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         if: runner.os == 'Linux'

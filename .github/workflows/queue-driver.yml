@@ -51,7 +51,7 @@ jobs:
           app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
           private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           token: ${{ steps.app-token.outputs.token }}
 
