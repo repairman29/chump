@@ -1062,6 +1062,11 @@ jobs:
           export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"
           bash scripts/ci/test-gap-reserve-padding.sh
 
+      - name: pillar-balance alerts + audit-priorities wiring (INFRA-902)
+        run: |
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
+            bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: gap-ID cross-session collision prevention (CREDIBLE-052)
         run: |
           export PATH="${CARGO_TARGET_DIR:-$(pwd)/target}/debug:$PATH"

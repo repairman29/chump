@@ -621,6 +621,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // writes Cargo.toml + src/main.rs + README.md + .gitignore, inits git, and passes
         // cargo check. Scoped to src/commands/bootstrap.rs. SKIPs cleanly if cargo not on PATH.
         "scripts/ci/test-chump-bootstrap-rust.sh",
+        // INFRA-902: pillar-balance-alerts — verifies pillar_balance_alert / pillar_balance_overweight
+        // ambient events fire correctly and audit-priorities wiring works. Pure shell + fixture db.
+        "scripts/ci/test-pillar-balance-alerts.sh",
     ];
     candidates
         .iter()

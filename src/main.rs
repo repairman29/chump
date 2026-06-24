@@ -10480,6 +10480,34 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar balance check wired into audit-priorities (AC5).
+                let pillar_balance_failed = {
+                    let script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        if !json_out {
+                            println!();
+                            println!("=== Pillar balance (INFRA-902) ===");
+                        }
+                        let status = std::process::Command::new("bash")
+                            .arg(&script)
+                            .stderr(std::process::Stdio::inherit())
+                            .status()
+                            .ok()
+                            .and_then(|s| s.code())
+                            .unwrap_or(0);
+                        if !json_out {
+                            if status == 0 {
+                                println!("  All pillars healthy.");
+                            } else {
+                                println!("  Alerts fired — see ambient.jsonl for pillar_balance_alert / pillar_balance_overweight");
+                            }
+                        }
+                        status != 0
+                    } else {
+                        false
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
@@ -10503,6 +10531,13 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                if pillar_balance_failed {
+                    fail_reasons.push(
+                        "pillar balance alerts fired (check ambient.jsonl for \
+                         kind=pillar_balance_alert / kind=pillar_balance_overweight)"
+                            .to_string(),
+                    );
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());
