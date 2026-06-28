@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!-- css-token-clean.html — INFRA-1590 test fixture
+     This file is clean: all colors are defined via canonical var() calls
+     with correct :root fallbacks. The linter must exit 0 on this file. -->
+<html lang="en">
+<head>
+  <style>
+    /* Canonical token definitions in :root — hex here is allowed (Rule 1 exempt) */
+    :root {
+      --bg:           #0a0a0a;
+      --bg-surface:   #141414;
+      --text:         #f0f0f0;
+      --text-secondary: #8a8a8e;
+      --accent:       #0a84ff;
+      --success:      #30d158;
+      --warn:         #ff9f0a;
+      --error:        #ff453a;
+      --border:       rgba(255,255,255,0.08);
+    }
+
+    /* Uses only canonical var() references with correct fallbacks */
+    .card {
+      background: var(--bg-surface, #141414);
+      color: var(--text, #f0f0f0);
+      border: 1px solid var(--border, rgba(255,255,255,0.08));
+    }
+
+    .label {
+      color: var(--text-secondary, #8a8a8e);
+    }
+
+    .cta {
+      background: var(--accent, #0a84ff);
+    }
+  </style>
+</head>
+<body>
+  <p>Fixture for css-token-discipline lint test — clean, no violations.</p>
+</body>
+</html>

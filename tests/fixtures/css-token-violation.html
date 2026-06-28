@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- css-token-violation.html — INFRA-1590 test fixture
+     This file intentionally violates all four token-discipline rules.
+     The CI test (test-css-token-discipline.sh) asserts the linter exits non-zero on it. -->
+<html lang="en">
+<head>
+  <style>
+    /* VIOLATION: Rule 2 — defines --bg-primary alias (not in canonical list) */
+    :root {
+      --bg-primary: #7c83fd;
+    }
+
+    /* VIOLATION: Rule 1 — raw hex outside :root or var() context */
+    .card {
+      background: #deadbe;
+      color: #abcdef;
+    }
+
+    /* VIOLATION: Rule 3 — var(--bg, #0d0d0f) but :root says #0a0a0a */
+    .panel {
+      background: var(--bg, #0d0d0f);
+      border: 1px solid var(--border, #ffffff);
+    }
+  </style>
+</head>
+<body>
+  <p>Fixture for css-token-discipline lint test — violations only.</p>
+</body>
+</html>
