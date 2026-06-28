@@ -14330,6 +14330,9 @@ async fn main() -> Result<()> {
         // FLEET_MODEL so execute_gap picks up the right model tier.
         // Falls back to FLEET_MODEL env then default sonnet if unset.
         let mut external_repo_target: Option<String> = None;
+        // INFRA-1551: capture priority/effort for routing_outcomes row written below.
+        let mut routing_priority = String::new();
+        let mut routing_effort = String::new();
         {
             let repo_root = repo_path::repo_root();
             if let Ok(store) = gap_store::GapStore::open(&repo_root) {
@@ -14344,6 +14347,8 @@ async fn main() -> Result<()> {
                         );
                     }
                     external_repo_target = external_repo_target_from_skills(&g.skills_required);
+                    routing_priority = g.priority.clone();
+                    routing_effort = g.effort.clone();
                 }
             }
         }
@@ -14360,19 +14365,51 @@ async fn main() -> Result<()> {
             let code = improve::run(&[owner_repo, "--apply".to_string()]);
             std::process::exit(code);
         }
+        let dispatch_started = std::time::Instant::now();
         match execute_gap::execute_gap(gap_id).await {
             Ok(reply) => {
                 print!("{reply}");
                 // INFRA-2055: emit gap_shipped on every clean exit so wizard-daemon
                 // gets an explicit signal instead of heuristic-guessing from PID death.
                 // Parse the PR number from the agent reply (best-effort; empty = not found).
-                let pr_number = execute_gap::parse_pr_number_from_reply(&reply);
+                let pr_number_str = execute_gap::parse_pr_number_from_reply(&reply);
+                let pr_number: Option<u32> = pr_number_str.parse().ok();
                 let commit_sha = execute_gap::current_head_sha();
                 execute_gap::emit_terminal_outcome(&execute_gap::ExecuteGapOutcome::Shipped {
                     gap_id: gap_id.to_string(),
-                    pr_number,
+                    pr_number: pr_number_str,
                     commit_sha,
                 });
+                // INFRA-1551 (AC1): populate routing_outcomes so COG-037 Thompson
+                // sampler has real dispatch data. Best-effort — failure must not
+                // prevent exit(0) for an already-shipped gap.
+                {
+                    let repo_root = repo_path::repo_root();
+                    if let Ok(store) = gap_store::GapStore::open(&repo_root) {
+                        let backend = std::env::var("CHUMP_DISPATCH_BACKEND")
+                            .unwrap_or_else(|_| "claude".into());
+                        let model = std::env::var("FLEET_MODEL").unwrap_or_default();
+                        let task_class =
+                            chump_orchestrator::dispatch::task_class_for_gap_id(gap_id)
+                                .unwrap_or("")
+                                .to_string();
+                        let row = gap_store::RoutingOutcomeRow {
+                            recorded_at: chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                            task_class,
+                            priority: routing_priority.clone(),
+                            effort: routing_effort.clone(),
+                            backend,
+                            model,
+                            provider_pfx: String::new(),
+                            gap_id: gap_id.to_string(),
+                            outcome: "shipped".into(),
+                            pr_number,
+                            duration_s: dispatch_started.elapsed().as_secs() as i64,
+                        };
+                        let _ = store.record_routing_outcome(&row);
+                    }
+                }
                 return Ok(());
             }
             Err(e) => {
@@ -14401,6 +14438,38 @@ async fn main() -> Result<()> {
                     reason,
                     recoverable_by: recoverable_by.to_string(),
                 });
+                // INFRA-1551 (AC1): record failure outcome in routing_outcomes.
+                {
+                    let repo_root = repo_path::repo_root();
+                    if let Ok(store) = gap_store::GapStore::open(&repo_root) {
+                        let backend = std::env::var("CHUMP_DISPATCH_BACKEND")
+                            .unwrap_or_else(|_| "claude".into());
+                        let model = std::env::var("FLEET_MODEL").unwrap_or_default();
+                        let task_class =
+                            chump_orchestrator::dispatch::task_class_for_gap_id(gap_id)
+                                .unwrap_or("")
+                                .to_string();
+                        let outcome = match kind {
+                            execute_gap::ExecuteGapErrorKind::BillingExhausted => "killed",
+                            _ => "stalled",
+                        };
+                        let row = gap_store::RoutingOutcomeRow {
+                            recorded_at: chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                            task_class,
+                            priority: routing_priority,
+                            effort: routing_effort,
+                            backend,
+                            model,
+                            provider_pfx: String::new(),
+                            gap_id: gap_id.to_string(),
+                            outcome: outcome.into(),
+                            pr_number: None,
+                            duration_s: dispatch_started.elapsed().as_secs() as i64,
+                        };
+                        let _ = store.record_routing_outcome(&row);
+                    }
+                }
                 std::process::exit(kind.exit_code());
             }
         }

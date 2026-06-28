@@ -28,7 +28,7 @@ in the repo; one is the GitHub remote.
 
 | # | Store | Path | Schema | Role |
 |---|---|---|---|---|
-| 1 | **state.db** | `.chump/state.db` | SQLite (gaps, leases, intents, gap_counters, routing_outcomes) | **Canonical live state.** All writes go here first. |
+| 1 | **state.db** | `.chump/state.db` | SQLite (gaps, leases, gap_counters, routing_outcomes) | **Canonical live state.** All writes go here first. |
 | 2 | **state.sql** | `.chump/state.sql` | SQL dump of state.db | **Tracked mirror.** Committed; the rebuild source if state.db is corrupt. |
 | 3 | **per-gap YAMLs** | `docs/gaps/<ID>.yaml` | YAML, one file per gap | **Human-readable mirror.** Reviewed in PRs; what PR authors edit. |
 | 4 | **legacy monolith** | `docs/gaps.yaml` | YAML, all gaps in one file | **Deprecated mirror.** Still read by some CI scripts for backward compat. |
@@ -41,7 +41,6 @@ in the repo; one is the GitHub remote.
 |---|---|---|
 | `gaps` | One row per gap with id, domain, title, status, AC, etc. | All gap content |
 | `leases` | Active claims (session → gap) with expires_at | Who's working on what right now |
-| `intents` | History of declared file-touch intents per (session, gap) | Conflict detection across sibling sessions |
 | `gap_counters` | Per-domain next-free ID counters (e.g., INFRA=826) | ID allocation |
 | `routing_outcomes` | Worker-dispatch outcomes (success / fail / waste) | Fleet-quality telemetry |
 

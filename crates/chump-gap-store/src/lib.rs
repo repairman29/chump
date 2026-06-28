@@ -367,13 +367,6 @@ impl GapStore {
                 expires_at  INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS intents (
-                ts          INTEGER NOT NULL,
-                session_id  TEXT NOT NULL,
-                gap_id      TEXT NOT NULL,
-                files       TEXT NOT NULL DEFAULT ''
-            );
-
             CREATE INDEX IF NOT EXISTS leases_gap ON leases(gap_id);
             CREATE INDEX IF NOT EXISTS gaps_status ON gaps(status);
             CREATE INDEX IF NOT EXISTS gaps_domain ON gaps(domain);
@@ -401,6 +394,11 @@ impl GapStore {
                 ON routing_outcomes(recorded_at);
         ",
         )?;
+        // INFRA-1551: drop the intents table — it was never written to;
+        // read_live_intents() reads from ambient.jsonl instead.
+        // Reversal: re-add CREATE TABLE intents(...) to the batch above.
+        let _ = self.conn.execute("DROP TABLE IF EXISTS intents", []);
+
         // M1 (INFRA-059): add ISO-date columns alongside existing unix timestamps.
         // The YAML uses author-provided date strings (`opened_date: '2026-04-25'`);
         // round-trip preserves them verbatim instead of reformatting from unix ts.
