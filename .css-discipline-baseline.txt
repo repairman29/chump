@@ -1,0 +1,44 @@
+# .css-discipline-baseline.txt — INFRA-1590
+#
+# Whitelists existing PWA violations so CI passes at install time.
+# Cleanup of these violations happens via separate gaps.
+#
+# Format:
+#   Each non-comment line is a substring matched against the violation context.
+#   Context shape: "<file>:<violation content>" for file violations
+#                  "drift:<hex_literal>" for Rule 4 drift detections
+#
+# Removing an entry here means future commits to that file will be checked.
+# Adding a new entry must cite the gap that will clean it up.
+#
+# ── File-level exemptions (existing violations pre-INFRA-1590) ─────────────
+#
+# cockpit.js: uses --bg-secondary / --bg-tertiary (not canonical) and
+#   var(--bg, #0d0d0f) with wrong fallback (#0a0a0a in :root).
+#   Cleanup: file a follow-up gap after INFRA-1590 ships.
+web/v2/cockpit.js
+
+# app.js: raw hex in stream-status color map and canvas sparkline calls.
+#   e.g. '#1f4d2a', '#9be3a9' for live/offline status indicators.
+#   Cleanup: convert to CSS custom properties on a follow-up gap.
+web/v2/app.js
+
+# autopilot-toggle.js: raw hex in JS status→color lookup object.
+#   e.g. running: '#30d158', stopped: '#6c6c70'.
+#   Cleanup: convert to var(--success) etc. on a follow-up gap.
+web/v2/autopilot-toggle.js
+
+# ── Drift exemptions (Rule 4 — canonical tokens that appear in many files) ─
+#
+# These are the canonical :root tokens. They legitimately appear across many
+# files as var() fallbacks. They are NOT drift — they ARE the system.
+drift:#0a84ff
+drift:#30d158
+drift:#ff9f0a
+drift:#ff453a
+drift:#8a8a8e
+drift:#f0f0f0
+drift:#0a0a0a
+drift:#141414
+drift:#1e1e1e
+drift:#6c6c70
