@@ -384,6 +384,7 @@ external verify-merge judge    # reason: CREDIBLE-096 — step-name fragment for
 # substrate-health signal, not a code-correctness signal. Bypass is
 # CHUMP_SCCACHE_HIT_RATE_CHECK=0 which exists for this exact case.
 check-sccache-hit-rate.sh  # reason: Tier-D, CI-env-specific (CREDIBLE-085)
+test-pillar-balance-alerts.sh  # reason: Tier-C integration test; requires built chump binary + live state.db fixture; alert threshold + ambient schema coverage not suitable for preflight (INFRA-902)
 
 # CREDIBLE-013 — CI failure triage step. Tier-D: this is a CI-environment
 # post-build classifier that reads cargo test output captured by the cargo-test

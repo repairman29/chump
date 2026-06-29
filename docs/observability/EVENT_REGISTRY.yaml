@@ -8177,3 +8177,31 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-902: pillar-balance alerts ─────────────────────────────────────
+
+  - kind: pillar_balance_alert
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_alert"
+    trigger: >
+      A pillar (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE) has fewer than
+      CHUMP_PILLAR_BALANCE_FLOOR (default 2) pickable open gaps. Fired by
+      pillar-balance-check.sh, which is called from `chump gap audit-priorities`.
+      Pickable = P0|P1, effort xs|s|m, non-empty AC (no TODO/TBD), no open deps.
+    consumers: [fleet-brief, audit-priorities, ops-audit]
+    fields_required: [ts, kind, pillar, count, floor]
+    status: stable
+
+  - kind: pillar_balance_overweight
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_overweight"
+    trigger: >
+      A single pillar exceeds CHUMP_PILLAR_BALANCE_OVERWEIGHT_PCT (default 50%)
+      of the total pickable open gap pool. Indicates the registry is skewed
+      toward one pillar — curator should file gaps for starved pillars or
+      demote overweight ones to P2. Fired by pillar-balance-check.sh.
+    consumers: [fleet-brief, audit-priorities, ops-audit]
+    fields_required: [ts, kind, pillar, count, pct, total]
+    status: stable

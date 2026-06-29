@@ -10480,7 +10480,44 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-902: pillar-balance-check ──────────────────────────────────
+                // Run scripts/ops/pillar-balance-check.sh and include result.
+                let pillar_balance_summary: Option<(String, bool)> = {
+                    let repo = repo_path::repo_root();
+                    let script = repo.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let out = std::process::Command::new("bash")
+                            .arg(&script)
+                            .env("CHUMP_BIN", std::env::current_exe().unwrap_or_default())
+                            .output();
+                        match out {
+                            Ok(o) => {
+                                let text = String::from_utf8_lossy(&o.stdout).to_string();
+                                let ok = o.status.success();
+                                Some((text, ok))
+                            }
+                            Err(e) => {
+                                Some((format!("[pillar-balance-check] could not run: {e}"), true))
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                };
+                if !json_out {
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    match &pillar_balance_summary {
+                        Some((text, _)) => print!("{text}"),
+                        None => println!("  (scripts/ops/pillar-balance-check.sh not found)"),
+                    }
+                }
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                // INFRA-902: pillar-balance failure is advisory in audit-priorities (non-blocking exit).
+                if let Some((_, false)) = &pillar_balance_summary {
+                    fail_reasons.push("pillar balance alert(s) fired — run scripts/ops/pillar-balance-check.sh for details".to_string());
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
