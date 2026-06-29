@@ -39,7 +39,7 @@ jobs:
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # ── Step 1: brew tap + install ────────────────────────────────────────
       - name: brew tap + install chump
