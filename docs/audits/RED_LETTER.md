@@ -1,6 +1,6 @@
 ## Issue #18 — 2026-06-29
 
-> Audit window: commits since 2026-06-22 (Issue #17). **5 commits to `origin/main`** (PRs #3168–#3172), all on 2026-06-22 — then **zero commits for 7 days**. Sandbox: fresh worktree on main, chump binary not built (cargo still running). All evidence from git log, YAML file reads, and bash scripts. Bypass rate: 3/5 non-cold-water commits (60%). P0 count: 77 (budget: 5). 4 ghost gap IDs shipped. Follow-up gaps proposed at bottom.
+> Audit window: commits since 2026-06-22 (Issue #17). **5 commits to `origin/main`** (PRs #3168–#3172), all on 2026-06-22 — then **zero commits for 7 days**. Sandbox: fresh worktree on main, chump binary not built (cargo still running). All evidence from git log, YAML file reads, and bash scripts. Bypass rate: 3/5 non-cold-water commits (60%). P0 count: 77 (budget: 5). 4 ghost gap IDs shipped. **3 follow-up gaps filed: CREDIBLE-126, RESILIENT-167, EFFECTIVE-293** (gap YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
 
 ---
 
@@ -197,15 +197,23 @@ ls docs/gaps/MISSION-010.yaml → No such file
 
 ---
 
-### Follow-up Gaps Proposed
+### Follow-up Gaps Filed
 
-(chump binary unavailable in this sandbox — filing via `chump gap reserve` was not possible. Proposed gaps for operator or next agent to file:)
+(Gap `.yaml` files written manually — chump binary unavailable for `state.db` import. Operator must run `chump gap import` to sync YAML into state.db before these appear in `chump gap list`.)
 
-| Proposed ID | Title | Domain | Priority | Effort |
-|---|---|---|---|---|
-| CREDIBLE-126 | CREDIBLE: 4 commits shipped this cycle referencing gap IDs with no .yaml file (CREDIBLE-144, RESILIENT-166, META-298, MISSION-050) — ghost commit hygiene failure | CREDIBLE | P1 | xs |
-| RESILIENT-167 | RESILIENT: INFRA-1434 (title-similarity bot-merge wedge) promised "filed as follow-up" in bypass trailer 2026-06-22 — never filed; bypass lied | RESILIENT | P1 | xs |
-| EFFECTIVE-293 | EFFECTIVE: 7-day main-branch silence (2026-06-23 to 2026-06-29) — root-cause investigation and fleet restart | EFFECTIVE | P0 | s |
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| CREDIBLE-126 | CREDIBLE: 4 commits shipped this cycle referencing gap IDs with no .yaml file — ghost commit hygiene failure | P1 | xs |
+| RESILIENT-167 | RESILIENT: INFRA-1434 promised "filed as follow-up" in bypass trailer — never filed; bypass trailers are lying | P1 | xs |
+| EFFECTIVE-293 | EFFECTIVE: 7-day main-branch silence (2026-06-23–2026-06-29) — root-cause and fleet restart | P0 | s |
+
+```
+# Verification (run after chump gap import):
+ls docs/gaps/CREDIBLE-126.yaml docs/gaps/RESILIENT-167.yaml docs/gaps/EFFECTIVE-293.yaml
+# → all three exist (verified at write time)
+# chump gap list --json | python3 -c "import json,sys; ids={g['id'] for g in json.load(sys.stdin)}; print({x for x in ['CREDIBLE-126','RESILIENT-167','EFFECTIVE-293'] if x in ids})"
+# → run after chump gap import to confirm state.db sync
+```
 
 Pre-existing gaps covering other findings: MISSION-043 (BEAST-MODE merge loop, P0/m, 0 impl commits), RESILIENT-160 (dyld_start wedge, P1/s, 0 impl commits), EVAL-094 (8 cycles inactive), FLEET-053 (8 cycles inactive), MISSION-042 (ghost gap IDs MISSION-010/011/012, 3 cycles inactive), META-064 (P0 inflation, 0 impl commits), INFRA-1610 (OBL structural fix, 0 impl commits).
 
