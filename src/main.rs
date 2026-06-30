@@ -10220,6 +10220,23 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: pillar balance check — shell out to
+                // scripts/ops/pillar-balance-check.sh which reads gap list,
+                // emits kind=pillar_balance_alert / kind=pillar_balance_overweight
+                // to ambient.jsonl, and exits non-zero if any alert fired.
+                let pillar_balance_ok: Option<bool> = {
+                    let script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        std::process::Command::new("bash")
+                            .arg(&script)
+                            .status()
+                            .ok()
+                            .map(|s| s.success())
+                    } else {
+                        None
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10248,6 +10265,8 @@ async fn main() -> Result<()> {
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
                         }).collect::<Vec<_>>(),
+                        // INFRA-902: pillar balance result
+                        "pillar_balance_ok": pillar_balance_ok.unwrap_or(true),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
                     if by_outcome {
@@ -10478,6 +10497,18 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    // INFRA-902: pillar balance summary line.
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    match pillar_balance_ok {
+                        Some(true) => println!("  OK — all pillars within healthy range"),
+                        Some(false) => println!(
+                            "  ALERTS FIRED — see ambient.jsonl for pillar_balance_alert / pillar_balance_overweight"
+                        ),
+                        None => println!(
+                            "  (scripts/ops/pillar-balance-check.sh not found — skipped)"
+                        ),
+                    }
                 }
 
                 let mut fail_reasons: Vec<String> = Vec::new();
@@ -10503,6 +10534,11 @@ async fn main() -> Result<()> {
                         "{} done gap(s) with closed_pr set — review closure consistency",
                         done_with_closed_pr.len()
                     ));
+                }
+                // INFRA-902: pillar balance alerts
+                if pillar_balance_ok == Some(false) {
+                    fail_reasons
+                        .push("pillar balance alerts fired (see ambient.jsonl)".to_string());
                 }
                 if fail_reasons.is_empty() {
                     return Ok(());

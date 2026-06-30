@@ -299,6 +299,10 @@ jobs:
         if: matrix.shard == 1
         run: bash scripts/ci/test-pillar-balance.sh
 
+      - name: gap pillar-balance alerts — under-fed/overweight checks (INFRA-902)
+        if: matrix.shard == 1
+        run: bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         if: matrix.shard == 1
         run: bash scripts/ci/test-gap-quality-gate.sh
