@@ -8177,3 +8177,19 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-1590: CSS token discipline bypass ─────────────────────────────
+
+  - kind: token_discipline_bypass
+    effect_metric: resilient
+    emitter: scripts/lint/css-token-discipline.sh (INFRA-1590)
+    # scanner-anchor: "kind":"token_discipline_bypass"
+    trigger: >
+      A commit included 'Token-Discipline-Bypass: <reason>' in its body,
+      bypassing the CSS design-token discipline gate. The gate normally rejects
+      raw color literals outside :root, non-canonical --*-primary/secondary
+      var definitions, var() fallback mismatches, and colors appearing in >3
+      files. Bypass is audited so the fleet can track token drift exceptions.
+    consumers: [ops-audit, fresh-eyes]
+    fields_required: [ts, kind, commit_sha, reason, files]
+    status: stable

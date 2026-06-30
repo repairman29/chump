@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- css-token-violation.html — fixture for test-css-token-discipline.sh
+     Every block below should trigger at least one lint violation. -->
+<html>
+<head>
+<style>
+  /* rule1: raw hex outside :root */
+  .bad-component {
+    background: #7c83fd;
+    color: rgb(240, 240, 240);
+  }
+
+  /* rule2: non-canonical variable definition */
+  :root {
+    --bg-primary: #0a0a0a;
+    --text-primary: #f0f0f0;
+  }
+
+  /* rule3: var fallback mismatch */
+  .another {
+    background: var(--bg, #0d0d0f);
+    color: var(--text, #cccccc);
+  }
+</style>
+</head>
+<body></body>
+</html>

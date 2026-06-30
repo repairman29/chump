@@ -1823,6 +1823,23 @@ if [ -x "$RUST_FIRST_HOOK" ]; then
     fi
 fi
 
+# 15b. CSS token discipline (INFRA-1590, 2026-06-29)
+# ------------------------------------------------------------------
+# Rejects staged web/**/*.{js,html,css} that use raw color literals
+# outside :root, define non-canonical --*-primary/secondary vars, use
+# var() fallbacks mismatched from :root values, or repeat a color in >3
+# files. Mirrors the META-064 bypass-trailer pattern.
+# Bypass: 'Token-Discipline-Bypass: <reason>' trailer in commit body.
+# Baseline: .css-discipline-baseline.txt grandfathers existing violations.
+# Disable: CHUMP_TOKEN_DISCIPLINE_CHECK=0
+
+CSS_TOKEN_HOOK="$REPO_ROOT/scripts/lint/css-token-discipline.sh"
+if [ -x "$CSS_TOKEN_HOOK" ]; then
+    if ! "$CSS_TOKEN_HOOK"; then
+        exit 1
+    fi
+fi
+
 # 16. Main-worktree config guard (INFRA-1060, 2026-05-13)
 # ------------------------------------------------------------------
 # Detects and auto-removes stray core.worktree from the main .git/config.

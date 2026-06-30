@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<!-- css-token-clean.html — fixture for test-css-token-discipline.sh
+     All color usage goes through var(); no raw literals outside :root. -->
+<html>
+<head>
+<style>
+  /* Token definitions are allowed in :root */
+  :root {
+    --bg:            #0a0a0a;
+    --bg-surface:    #141414;
+    --bg-elevated:   #1e1e1e;
+    --text:          #f0f0f0;
+    --text-secondary:#8a8a8e;
+    --accent:        #0a84ff;
+    --accent-dim:    rgba(10, 132, 255, 0.15);
+    --border:        rgba(255,255,255,0.08);
+    --success:       #30d158;
+    --warn:          #ff9f0a;
+    --error:         #ff453a;
+    --radius:        10px;
+    --radius-sm:     6px;
+  }
+
+  /* All uses go through var() — no raw colors */
+  .good-component {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .good-accent {
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* var() with correct fallback values matching :root */
+  .with-fallback {
+    background: var(--bg, #0a0a0a);
+    color: var(--text, #f0f0f0);
+  }
+</style>
+</head>
+<body></body>
+</html>

@@ -1,0 +1,27 @@
+# css-discipline-baseline.txt — INFRA-1590
+#
+# Files grandfathered from css-token-discipline enforcement.
+# Existing violations were present at lint install time (2026-06-29).
+# Remove a file from this list once its violations are cleaned up.
+# Related cleanup gap: file follow-up gaps per component when cleaning.
+#
+# Format: one path or basename per line. Basenames match any path.
+
+web/v2/autopilot-toggle.js
+web/v2/cockpit.js
+web/v2/config-dials.js
+web/v2/daemon-set-panel.js
+web/v2/fleet-message.js
+web/v2/fleet-sidebar.js
+web/v2/gap-list.js
+web/v2/impact.js
+web/v2/inbox-notifications.js
+web/v2/notification-center.js
+web/v2/ootb-wizard.js
+web/v2/operator-attention.js
+web/v2/pillar-health.js
+web/v2/pr-diff.js
+web/v2/pr-list.js
+web/v2/quick-actions.js
+web/v2/stuck-items.js
+web/v2/wedge-watch.js
