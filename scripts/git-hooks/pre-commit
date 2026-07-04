@@ -1901,4 +1901,25 @@ fi
 # committed source — removed. Acceptance-criteria is enforced where it belongs:
 # the gap-tooling layer (`chump gap reserve/set` reject empty/TODO acceptance_
 # criteria) and CI. It does not belong in a local pre-commit block.
+
+# ------------------------------------------------------------------
+# 19. CSS token discipline gate (INFRA-1590, 2026-07-04)
+# ------------------------------------------------------------------
+# Rejects raw hex/rgb/hsl colors in CSS property values, non-canonical
+# --*-primary / --*-secondary variable definitions, mismatched var()
+# fallbacks vs :root values, and non-canonical hex spreading across >3
+# web files. Fires only when staged files match web/**/*.{js,html,css}.
+# Bypass: 'Token-Discipline-Bypass: <reason>' commit trailer.
+# Emits kind=token_discipline_bypass to ambient.jsonl for audit.
+# Disable: CHUMP_CSS_TOKEN_CHECK=0
+if [ "${CHUMP_CSS_TOKEN_CHECK:-1}" != "0" ]; then
+    CSS_TOKEN_HOOK="$REPO_ROOT/scripts/lint/css-token-discipline.sh"
+    if [ -x "$CSS_TOKEN_HOOK" ]; then
+        if ! CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+             "$CSS_TOKEN_HOOK"; then
+            exit 1
+        fi
+    fi
+fi
+
 exit 0

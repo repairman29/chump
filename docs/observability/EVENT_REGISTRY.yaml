@@ -776,6 +776,21 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, files, reason]
 
+  - kind: token_discipline_bypass
+    effect_metric: credible
+    emitter: scripts/lint/css-token-discipline.sh (INFRA-1590)
+    # scanner-anchor: "kind":"token_discipline_bypass"
+    trigger: >
+      CSS token discipline pre-commit gate (INFRA-1590) detected design token
+      violations in staged web/**/*.{js,html,css} files, but the commit body
+      contained a 'Token-Discipline-Bypass: <reason>' trailer — bypass
+      accepted and logged for audit. Mirrors the Rust-First-Bypass pattern
+      (META-064). Downstream consumers can track bypass frequency to judge
+      whether the gate is too strict or the codebase needs cleanup gaps.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, commit_sha, reason, files]
+    status: stable
+
   - kind: fleet_paused_disk_critical
     effect_metric: self
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)

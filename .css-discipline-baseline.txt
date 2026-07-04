@@ -1,0 +1,18 @@
+# CSS token discipline baseline (INFRA-1590)
+# Files listed here are exempt from the lint gate — they contain pre-existing
+# token violations that predate the gate. Remove a file once its violations
+# are cleaned up (file separate cleanup gaps per INFRA-1590 description).
+#
+# Last updated: 2026-07-04 (install-time snapshot)
+# Format: one relative file path per line (relative to repo root)
+
+# Rule 1 violations: raw hex in CSS property values (not mediated by var())
+web/v2/chat.js
+web/v2/config-dials.js
+web/v2/daily-brief.js
+web/v2/index.html
+web/v2/notification-center.js
+web/v2/ootb-wizard.js
+web/v2/operator-attention.js
+web/v2/stuck-items.js
+web/v2/wedge-watch.js

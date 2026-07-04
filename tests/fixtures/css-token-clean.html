@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!-- CSS token discipline test fixture — CLEAN (should pass lint) INFRA-1590 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-surface: #141414;
+      --bg-elevated: #1e1e1e;
+      --text: #f0f0f0;
+      --text-secondary: #8a8a8e;
+      --accent: #0a84ff;
+      --accent-dim: rgba(10, 132, 255, 0.15);
+      --border: rgba(255,255,255,0.08);
+      --success: #30d158;
+      --warn: #ff9f0a;
+      --error: #ff453a;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    html[data-theme="light"] {
+      --bg: #fafafa;
+      --text: #1a1a1a;
+    }
+
+    /* Correct: all property values use canonical var() tokens */
+    .good-component {
+      background: var(--bg-surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    /* Correct: var() with matching fallback */
+    .good-fallback {
+      color: var(--text-secondary, #8a8a8e);
+      background: var(--accent, #0a84ff);
+    }
+
+    /* Correct: --text-secondary is the one canonical *-secondary token */
+    .uses-text-secondary {
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div class="good-component">I use canonical tokens correctly</div>
+  <div class="good-fallback">I use correct var() fallbacks</div>
+</body>
+</html>
