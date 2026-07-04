@@ -621,6 +621,19 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // writes Cargo.toml + src/main.rs + README.md + .gitignore, inits git, and passes
         // cargo check. Scoped to src/commands/bootstrap.rs. SKIPs cleanly if cargo not on PATH.
         "scripts/ci/test-chump-bootstrap-rust.sh",
+        // MISSION-036: external-scan-reaper smoke — asserts the per-repo
+        // onboard-scan rotation daemon (scripts/ops/external-scan-reaper.sh)
+        // honors --keep N, --dry-run, exit codes on bad args, per-repo
+        // independence, and emits kind=external_scan_reaped to ambient.
+        // Pure local (tmp dir + ambient fixture); no network; runs in ~1s.
+        "scripts/ci/test-external-scan-reaper.sh",
+        // MISSION-038: onboard-scout-scheduler smoke — asserts the periodic
+        // stale-repo scan daemon (scripts/ops/onboard-scout-scheduler.sh)
+        // respects --rate-per-hr, skips active-lease repos, is idempotent
+        // within the stale window, and emits onboard_scan_scheduled +
+        // onboard_scan_batch_complete. Pure local (SQLite fixture + chump
+        // PATH stub); no network; runs in ~2s.
+        "scripts/ci/test-onboard-scout-scheduler.sh",
     ];
     candidates
         .iter()

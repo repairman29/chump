@@ -1,0 +1,13 @@
+- id: RESILIENT-110
+  domain: RESILIENT
+  title: "RESILIENT: mirror MISSION-036 external-scan-reaper + MISSION-038 onboard-scout-scheduler test scripts in chump preflight (parity follow-up)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - src/preflight.rs discover_test_scripts() candidates array includes scripts/ci/test-external-scan-reaper.sh
+    - src/preflight.rs discover_test_scripts() candidates array includes scripts/ci/test-onboard-scout-scheduler.sh
+    - Each entry has a comment block citing the MISSION ID and one-line description of what the test asserts
+    - cargo check --workspace --all-targets passes clean
+    - bash scripts/ci/test-preflight-ci-parity.sh exits 0 (Mirrored count up by 2)
+    - Both scripts are pure-local (tmp dir + ambient fixture / sqlite + chump-stub on PATH) — no network, no GitHub API
