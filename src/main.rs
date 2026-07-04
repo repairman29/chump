@@ -10220,6 +10220,29 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: run pillar-balance-check.sh and capture result.
+                let pillar_balance_out: Option<(String, bool)> = {
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let self_bin = std::env::current_exe().unwrap_or_default();
+                        match std::process::Command::new("bash")
+                            .arg(&script)
+                            .env("CHUMP_BIN", &self_bin)
+                            .env("CHUMP_REPO", &repo_root)
+                            .env("CHUMP_HOME", &repo_root)
+                            .output()
+                        {
+                            Ok(o) => {
+                                let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                                Some((text, o.status.success()))
+                            }
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10306,6 +10329,24 @@ async fn main() -> Result<()> {
                                     "per_outcome": per_outcome,
                                 }),
                             );
+                        }
+                    }
+                    // INFRA-902: include pillar balance result in JSON output.
+                    if let serde_json::Value::Object(ref mut map) = report {
+                        match &pillar_balance_out {
+                            Some((text, ok)) => {
+                                map.insert(
+                                    "pillar_balance_summary".into(),
+                                    serde_json::Value::String(text.clone()),
+                                );
+                                map.insert(
+                                    "pillar_balance_ok".into(),
+                                    serde_json::Value::Bool(*ok),
+                                );
+                            }
+                            None => {
+                                map.insert("pillar_balance_ok".into(), serde_json::Value::Null);
+                            }
                         }
                     }
                     println!(
@@ -10476,6 +10517,21 @@ async fn main() -> Result<()> {
                                     o.id, o.priority, o_open, o_done, o.title
                                 );
                             }
+                        }
+                    }
+                    // INFRA-902: pillar balance section in human output.
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    match &pillar_balance_out {
+                        Some((text, _ok)) => {
+                            if text.is_empty() {
+                                println!("  (no output from pillar-balance-check.sh)");
+                            } else {
+                                println!("{}", text);
+                            }
+                        }
+                        None => {
+                            println!("  (scripts/ops/pillar-balance-check.sh not found — skipping)")
                         }
                     }
                 }

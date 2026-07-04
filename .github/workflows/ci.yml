@@ -1157,6 +1157,14 @@ jobs:
       - name: Review-as-Handoff end-to-end smoke test (INFRA-774)
         run: bash scripts/ci/test-review-handoff-smoke.sh
 
+      # INFRA-902: pillar balance analyzer + alerts smoke test.
+      # Tier-C (fully local after cargo build). Verifies pillar-balance-check.sh
+      # alert schema, thresholds, and exit codes (12 tests).
+      - name: pillar balance alerts — schema, thresholds, exit codes (INFRA-902)
+        run: |
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" \
+            bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: preflight-vs-CI parity smoke (INFRA-1867)
         run: bash scripts/ci/test-preflight-ci-parity.sh
 

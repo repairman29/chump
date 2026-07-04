@@ -408,3 +408,9 @@ test-chump-improve.sh  # reason: Tier-C integration test; logic covered by cargo
 chump improve orchestrator  # reason: Tier-C integration test (test-chump-improve.sh); cargo test covers the logic in src/improve.rs; full shell mirror deferred (EFFECTIVE-177)
 test-review-handoff-smoke.sh       # reason: INFRA-774 end-to-end smoke (synthesize CI failure + simulate review --serve + telemetry assertions); needs the full CI fixture env, not a local preflight gate
 test-auth-status.sh       # reason: RESILIENT-086 auth validity probe; runs in audit shard with CI credential context (mirror in preflight is a follow-up)
+
+# INFRA-902: pillar balance alerts integration test.
+# Tier-C (fully local after cargo build). Logic covered by scripts/ops/pillar-balance-check.sh
+# Python inline; preflight mirror deferred until pillar-balance lands in src/preflight.rs.
+test-pillar-balance-alerts.sh  # reason: Tier-C integration test; uses fixture DB + chump binary; mirror deferred (INFRA-902)
+pillar balance alerts           # reason: Tier-C step name match for test-pillar-balance-alerts.sh (INFRA-902)
