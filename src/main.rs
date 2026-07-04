@@ -10220,6 +10220,40 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: call pillar-balance-check.sh and capture result.
+                let (pillar_balance_output, pillar_balance_alerts) = {
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        match std::process::Command::new("bash")
+                            .arg(&script)
+                            .env(
+                                "CHUMP_BIN",
+                                std::env::current_exe()
+                                    .unwrap_or_else(|_| std::path::PathBuf::from("chump")),
+                            )
+                            .env("CHUMP_REPO", &repo_root)
+                            .output()
+                        {
+                            Ok(out) => {
+                                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                                let combined = if stderr.is_empty() {
+                                    stdout
+                                } else {
+                                    format!("{}{}", stdout, stderr)
+                                };
+                                (!out.status.success(), combined)
+                            }
+                            Err(e) => (false, format!("(pillar-balance-check failed: {e})")),
+                        }
+                    } else {
+                        (
+                            false,
+                            "(scripts/ops/pillar-balance-check.sh not found)".to_string(),
+                        )
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
@@ -10248,6 +10282,9 @@ async fn main() -> Result<()> {
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
                         }).collect::<Vec<_>>(),
+                        // INFRA-902: pillar balance
+                        "pillar_balance_alerts": pillar_balance_alerts,
+                        "pillar_balance_output": pillar_balance_output.trim(),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
                     if by_outcome {
