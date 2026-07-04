@@ -19,6 +19,13 @@ ignore = [
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0049",
+
+    # RESILIENT-170: aes 0.9.0 is YANKED (not an exploitable vuln — a yanked-crate warning).
+    # Chain: chump -> superboring 0.1.11 -> aes-keywrap 0.9.0 -> aes =0.9.0 (pinned upstream).
+    # Cannot bump locally; aes-keywrap requires exactly 0.9.0. This yank was blocking the
+    # REQUIRED `audit` gate on every PR fleet-wide (trunk frozen 5 days).
+    # Durable fix: drop this ignore once superboring/aes-keywrap ship a non-yanked aes.
+    "RUSTSEC-2026-0186",
 ]
 
 [bans]
