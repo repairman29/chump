@@ -10480,7 +10480,55 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: run pillar-balance-check.sh and include result in output.
+                let pillar_balance_ok = {
+                    let repo_root = repo_path::repo_root();
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let out = std::process::Command::new("bash").arg(&script).output();
+                        match out {
+                            Ok(o) => {
+                                let stdout = String::from_utf8_lossy(&o.stdout);
+                                let stderr = String::from_utf8_lossy(&o.stderr);
+                                if !json_out {
+                                    println!();
+                                    println!("=== Pillar balance (INFRA-902) ===");
+                                    if !stdout.trim().is_empty() {
+                                        println!("{}", stdout.trim());
+                                    }
+                                    if !stderr.trim().is_empty() {
+                                        for line in stderr.lines() {
+                                            println!("  {}", line);
+                                        }
+                                    }
+                                }
+                                o.status.success()
+                            }
+                            Err(e) => {
+                                if !json_out {
+                                    println!();
+                                    println!(
+                                        "=== Pillar balance (INFRA-902) ===\n  (script error: {})",
+                                        e
+                                    );
+                                }
+                                true // don't fail audit if script is missing/broken
+                            }
+                        }
+                    } else {
+                        if !json_out {
+                            println!();
+                            println!("=== Pillar balance (INFRA-902) ===\n  (script not found — skipping)");
+                        }
+                        true
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if !pillar_balance_ok {
+                    fail_reasons
+                        .push("pillar-balance-check.sh reported imbalance (see above)".into());
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
