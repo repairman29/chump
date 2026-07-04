@@ -10480,6 +10480,34 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar balance check — shell out to scripts/ops/pillar-balance-check.sh.
+                // Best-effort: if the script is absent or fails to exec, emit a warning and continue
+                // so audit-priorities remains useful even in stripped envs (CI bootstrap, worktrees).
+                {
+                    let repo_root = repo_path::repo_root();
+                    let script = repo_root.join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        if !json_out {
+                            println!();
+                            println!("=== Pillar balance (INFRA-902) ===");
+                        }
+                        let pb_status = std::process::Command::new("bash")
+                            .arg(&script)
+                            .status();
+                        match pb_status {
+                            Ok(s) if !s.success() => {
+                                if json_out {
+                                    eprintln!("pillar-balance-check: alerts fired (see ambient.jsonl)");
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("pillar-balance-check: could not run script: {e}");
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
