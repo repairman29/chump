@@ -62,6 +62,18 @@ pub fn snapshot(repo_root: &Path) -> FleetStatus {
                 continue;
             }
             let contents = std::fs::read_to_string(&path).unwrap_or_default();
+            // CREDIBLE-149: count only real leases. A lease JSON carries an
+            // `expires_at` field (schema: session_id/gap_id/taken_at/expires_at/
+            // purpose). Curator decision-log ledgers (curator-filed-*.json →
+            // {decision,gap_id,ts}) and *-state.json control files do NOT — and
+            // must not inflate active_leases/fleet_workers_alive (they poisoned
+            // the count ~180x: 189 reported vs ~1 real).
+            if extract_field(&contents, "expires_at")
+                .filter(|s| !s.is_empty())
+                .is_none()
+            {
+                continue;
+            }
             let gap_id = extract_field(&contents, "gap_id").unwrap_or_default();
             let age_minutes = if let Ok(meta) = std::fs::metadata(&path) {
                 if let Ok(modified) = meta.modified() {
@@ -348,7 +360,12 @@ mod tests {
         let lock_dir = tmp.join(".chump-locks");
         std::fs::create_dir_all(&lock_dir).unwrap();
         let lease = lock_dir.join("test-session.json");
-        std::fs::write(&lease, r#"{"gap_id":"INFRA-99"}"#).unwrap();
+        // Real lease shape carries expires_at (CREDIBLE-149).
+        std::fs::write(
+            &lease,
+            r#"{"gap_id":"INFRA-99","expires_at":"2026-05-05T19:00:00Z"}"#,
+        )
+        .unwrap();
         // Backdate the file mtime by ~7h.
         let _ = std::process::Command::new("touch")
             .args(["-t", "202605051200", lease.to_str().unwrap()])
@@ -358,6 +375,47 @@ mod tests {
         let lease_summary = &status.active_leases[0];
         assert_eq!(lease_summary.session_id, "test-session");
         assert_eq!(lease_summary.gap_id, "INFRA-99");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible149_only_real_leases_counted() {
+        // A lease has `expires_at`; curator decision-log ledgers and *-state
+        // control files do not, and must not inflate the lease count.
+        let tmp = tempdir();
+        let lock_dir = tmp.join(".chump-locks");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+        // 1 real lease.
+        std::fs::write(
+            lock_dir.join("fleet-agent7.json"),
+            r#"{"session_id":"fleet-agent7","gap_id":"INFRA-1","taken_at":"2026-07-04T10:00:00Z","expires_at":"2026-07-04T14:00:00Z","purpose":"fleet:pick_and_claim"}"#,
+        )
+        .unwrap();
+        // 2 curator decision-log ledgers (no expires_at).
+        std::fs::write(
+            lock_dir.join("curator-filed-balance_restock_CREDIBLE-2026-05-25.json"),
+            r#"{"decision":"balance_restock_CREDIBLE","gap_id":"INFRA-1149","ts":"2026-05-25T15:54:07Z"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            lock_dir.join("curator-filed-pr_unstick-2026-06-28.json"),
+            r#"{"decision":"pr_unstick","ts":"2026-06-28T00:00:00Z"}"#,
+        )
+        .unwrap();
+        // 1 state control file (no expires_at).
+        std::fs::write(
+            lock_dir.join("gap-priority.json"),
+            r#"{"weights":{"P0":10},"updated":"2026-07-04T00:00:00Z"}"#,
+        )
+        .unwrap();
+        let status = snapshot(&tmp);
+        assert_eq!(
+            status.active_leases.len(),
+            1,
+            "only the expires_at-bearing lease should count; got {:?}",
+            status.active_leases
+        );
+        assert_eq!(status.active_leases[0].gap_id, "INFRA-1");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
