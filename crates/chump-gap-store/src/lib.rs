@@ -1,6 +1,6 @@
 //! SQLite-backed gap store — INFRA-023.
 //!
-//! Wraps `gaps`, `leases`, and `intents` tables in `.chump/state.db`.
+//! Wraps `gaps` and `leases` tables in `.chump/state.db`.
 //! All mutations are single-transaction so concurrent agents get atomic IDs.
 //!
 //! DATABASE: `<repo_root>/.chump/state.db`
@@ -367,13 +367,6 @@ impl GapStore {
                 expires_at  INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS intents (
-                ts          INTEGER NOT NULL,
-                session_id  TEXT NOT NULL,
-                gap_id      TEXT NOT NULL,
-                files       TEXT NOT NULL DEFAULT ''
-            );
-
             CREATE INDEX IF NOT EXISTS leases_gap ON leases(gap_id);
             CREATE INDEX IF NOT EXISTS gaps_status ON gaps(status);
             CREATE INDEX IF NOT EXISTS gaps_domain ON gaps(domain);
@@ -537,6 +530,20 @@ impl GapStore {
                ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review');
             ",
         );
+
+        // INFRA-1551 (ZERO-WASTE): drop the `intents` table — it was schema'd
+        // but never written to.  src/atomic_claim.rs::read_live_intents reads
+        // `intent_announced` events from ambient.jsonl instead; the SQL table
+        // is an orphaned corpse.  DROP TABLE IF EXISTS is idempotent — safe on
+        // DBs that never had the table and on fresh checkouts.
+        //
+        // Reversal: CREATE TABLE IF NOT EXISTS intents (
+        //     ts          INTEGER NOT NULL,
+        //     session_id  TEXT NOT NULL,
+        //     gap_id      TEXT NOT NULL,
+        //     files       TEXT NOT NULL DEFAULT ''
+        // );
+        let _ = self.conn.execute("DROP TABLE IF EXISTS intents", []);
 
         // MISSION-008: additive, non-destructive migrations for first-class
         // Outcome objects. Two changes:
