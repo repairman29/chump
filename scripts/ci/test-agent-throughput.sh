@@ -22,7 +22,7 @@ echo
 
 TRACKER="$REPO_ROOT/scripts/ops/agent-throughput-tracker.sh"
 KPI_RS="$REPO_ROOT/src/kpi_report.rs"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 # 1. tracker script exists and is executable
 if [[ -x "$TRACKER" ]]; then

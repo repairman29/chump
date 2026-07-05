@@ -24,7 +24,7 @@ echo
 
 # ── Static wiring checks ──────────────────────────────────────────────────────
 
-if grep -q '"repos"' "$REPO_ROOT/src/main.rs"; then
+if grep -q '"repos"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "repos command arm in main.rs"
 else
     fail "repos command arm missing from main.rs"

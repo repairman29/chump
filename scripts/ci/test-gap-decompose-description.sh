@@ -33,35 +33,35 @@ echo
 # ── Static source checks ─────────────────────────────────────────────────────
 
 # 1. --dry-run flag wired in usage string
-if grep -q '\-\-dry-run.*decompose\|decompose.*\-\-dry-run' "$REPO_ROOT/src/main.rs"; then
+if grep -q '\-\-dry-run.*decompose\|decompose.*\-\-dry-run' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--dry-run mentioned in decompose usage string"
 else
     fail "--dry-run missing from decompose usage string in main.rs"
 fi
 
 # 2. --no-description flag wired in usage string
-if grep -q '\-\-no-description' "$REPO_ROOT/src/main.rs"; then
+if grep -q '\-\-no-description' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--no-description mentioned in main.rs"
 else
     fail "--no-description missing from main.rs"
 fi
 
 # 3. description_block variable constructed in main.rs
-if grep -q 'description_block' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'description_block' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "description_block variable present in main.rs"
 else
     fail "description_block variable missing from main.rs"
 fi
 
 # 4. "Additional context from filing agent:" string in main.rs
-if grep -q 'Additional context from filing agent' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Additional context from filing agent' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "'Additional context from filing agent' string in main.rs"
 else
     fail "'Additional context from filing agent' string missing from main.rs"
 fi
 
 # 5. dry_run guard present before LLM call
-if grep -q 'if dry_run' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'if dry_run' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "dry_run guard present in main.rs"
 else
     fail "dry_run guard missing from main.rs"

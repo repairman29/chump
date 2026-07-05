@@ -23,14 +23,14 @@ echo "=== INFRA-604 pillar-balance test ==="
 echo
 
 # 1. Subcommand wired in main.rs.
-if grep -q '"pillar-balance"' "$REPO_ROOT/src/main.rs"; then
+if grep -q '"pillar-balance"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "pillar-balance arm in main.rs"
 else
     fail "pillar-balance arm missing from main.rs"
 fi
 
 # 2. Help text updated.
-if grep -q 'pillar-balance' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'pillar-balance' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "pillar-balance mentioned in main.rs"
 else
     fail "pillar-balance not mentioned in main.rs"

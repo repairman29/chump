@@ -20,7 +20,7 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SRC="$REPO_ROOT/src/main.rs"
+SRC="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 echo "=== INFRA-827 fleet prune-worktrees test ==="
 echo

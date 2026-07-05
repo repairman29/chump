@@ -235,7 +235,7 @@ echo
 echo "[5. Static: revert_pr.rs tests pass]"
 # The unit tests in revert_pr.rs cover extract_gap_id, extract_slug_from_remote, parse_opts
 # These run via cargo test — confirm the functions are named correctly in binary
-if grep -q "revert_pr" "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q "revert_pr" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "revert_pr module wired in main.rs"
 else
     fail "revert_pr module not in main.rs"

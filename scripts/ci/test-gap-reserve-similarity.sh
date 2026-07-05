@@ -103,7 +103,7 @@ if grep -q "INFRA-1149" "$REPO_ROOT/src/gap_store.rs" 2>/dev/null; then
 else
     fail "INFRA-1149 marker missing from src/gap_store.rs"
 fi
-if grep -q "INFRA-1149" "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q "INFRA-1149" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "INFRA-1149 marker in src/main.rs"
 else
     fail "INFRA-1149 marker missing from src/main.rs"

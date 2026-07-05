@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$(dirname "$0")/lib/discover-chump-bin.sh"
 REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 echo "=== INFRA-615 fleet auto-widen tests ==="
 echo

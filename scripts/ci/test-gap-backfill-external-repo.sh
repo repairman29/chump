@@ -24,19 +24,19 @@ echo
 
 # (a) Executable check — source wiring in main.rs.
 echo "--- (a) source wiring check ---"
-if grep -q '"backfill-external-repo"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"backfill-external-repo"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "backfill-external-repo arm present in main.rs"
 else
     fail "backfill-external-repo arm missing from main.rs"
 fi
 
-if grep -q 'reserve_external_repo' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'reserve_external_repo' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "--external-repo flag wired in gap reserve"
 else
     fail "--external-repo flag not found in main.rs"
 fi
 
-if grep -q 'gap_external_repo_backfilled' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'gap_external_repo_backfilled' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "gap_external_repo_backfilled ambient event emitted in main.rs"
 else
     fail "gap_external_repo_backfilled emit site missing from main.rs"

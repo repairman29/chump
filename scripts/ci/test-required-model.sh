@@ -20,7 +20,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKER="$REPO_ROOT/scripts/dispatch/worker.sh"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 # INFRA-1214: use source-grep.sh library instead of inline if/else
 source "$(dirname "$0")/lib/source-grep.sh"
 GAP_STORE=$(find_gap_store_path)

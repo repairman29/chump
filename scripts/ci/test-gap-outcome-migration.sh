@@ -22,14 +22,14 @@ echo "=== MISSION-008 gap outcome migration test ==="
 echo
 
 # 1. Binary wiring checks (static).
-if grep -q '"outcome"' "$REPO_ROOT/src/main.rs"; then
+if grep -q '"outcome"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "outcome command arm in main.rs"
 else
     fail "outcome command arm missing from main.rs"
 fi
 
-if grep -q 'chump outcome' "$REPO_ROOT/src/main.rs" || \
-   grep -q '"outcome"' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'chump outcome' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" || \
+   grep -q '"outcome"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "outcome command referenced in main.rs"
 else
     fail "outcome command not in main.rs"
@@ -56,7 +56,7 @@ else
     fail "outcome_id not referenced in gap store"
 fi
 
-if grep -q 'list_p0_outcomes\|p0_outcomes' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'list_p0_outcomes\|p0_outcomes' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "outcome-aware P0 budget view in audit-priorities"
 else
     fail "outcome-aware P0 budget view missing from audit-priorities"

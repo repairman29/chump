@@ -7,7 +7,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MAIN="$REPO_ROOT/src/main.rs"
+MAIN="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 COMPLETION="$REPO_ROOT/src/completion.rs"
 
 PASS=0; FAIL=0

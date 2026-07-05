@@ -24,37 +24,37 @@ echo "=== MISSION-030 chump outcome test ==="
 echo
 
 # 1. Source wiring checks (fast — no binary required).
-if grep -q '"bootstrap"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"bootstrap"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "bootstrap arm in outcome match block"
 else
     fail "bootstrap arm missing from main.rs"
 fi
 
-if grep -q '"backfill"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"backfill"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "backfill arm in outcome match block"
 else
     fail "backfill arm missing from main.rs"
 fi
 
-if grep -q '"link"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"link"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "link arm in outcome match block"
 else
     fail "link arm missing from main.rs"
 fi
 
-if grep -q '"unlink"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"unlink"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "unlink arm in outcome match block"
 else
     fail "unlink arm missing from main.rs"
 fi
 
-if grep -q '"show"' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '"show"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "show arm in outcome match block"
 else
     fail "show arm missing from main.rs"
 fi
 
-if grep -q 'by.outcome\|by_outcome' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'by.outcome\|by_outcome' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "--by-outcome flag wired in audit-priorities"
 else
     fail "--by-outcome flag not found in main.rs"
@@ -330,16 +330,16 @@ echo
 echo "--- (i) MISSION-043: heuristic 7 — domain-prefix backfill links pillar gaps ---"
 
 # Source-code guard: heuristic 7 block must be present in main.rs.
-if grep -q 'Heuristic 7' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'Heuristic 7' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "heuristic 7 block present in main.rs"
 else
     fail "heuristic 7 block NOT found in main.rs"
 fi
 
-if grep -q 'CREDIBLE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
-    && grep -q 'EFFECTIVE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
-    && grep -q 'RESILIENT-000' "$REPO_ROOT/src/main.rs" 2>/dev/null \
-    && grep -q 'ZERO-WASTE-000' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'CREDIBLE-000' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null \
+    && grep -q 'EFFECTIVE-000' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null \
+    && grep -q 'RESILIENT-000' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null \
+    && grep -q 'ZERO-WASTE-000' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "all 4 pillar outcome IDs referenced in backfill heuristic"
 else
     fail "one or more pillar outcome IDs missing from backfill heuristic"

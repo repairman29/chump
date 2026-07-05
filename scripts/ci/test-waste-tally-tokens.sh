@@ -44,13 +44,13 @@ else
 fi
 
 # (d) --tokens flag wired in main.rs
-if grep -q 'want_tokens' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'want_tokens' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--tokens flag wired in main.rs"
 else
     fail "--tokens not wired in main.rs"
 fi
 
-if grep -q 'render_text_tokens' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'render_text_tokens' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "render_text_tokens called from main.rs"
 else
     fail "render_text_tokens not called from main.rs"

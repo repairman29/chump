@@ -21,7 +21,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 source "$(dirname "$0")/lib/discover-chump-bin.sh"
 echo "=== CREDIBLE-015 CLI help system consistency ==="
 echo

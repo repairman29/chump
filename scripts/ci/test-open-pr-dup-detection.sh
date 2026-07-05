@@ -18,7 +18,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SRC="$REPO_ROOT/src/atomic_claim.rs"
-MAIN="$REPO_ROOT/src/main.rs"
+MAIN="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 
 echo "=== INFRA-1982 open-PR dedup detection tests ==="

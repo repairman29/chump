@@ -25,7 +25,7 @@ for fn in emit_session_start emit_session_end session_stats_for_domain; do
     fi
 done
 
-if grep -q 'Some("session-track")' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Some("session-track")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "chump session-track subcommand wired in main.rs"
 else
     fail "session-track subcommand missing"

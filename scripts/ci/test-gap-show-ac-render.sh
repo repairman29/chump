@@ -145,7 +145,7 @@ fi
 
 echo
 echo "[7. CREDIBLE-033 referenced in source]"
-if grep -r "CREDIBLE-033" "$REPO_ROOT/src/main.rs" 2>/dev/null | grep -q "CREDIBLE-033"; then
+if grep -r "CREDIBLE-033" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null | grep -q "CREDIBLE-033"; then
   ok "CREDIBLE-033 referenced in src/main.rs"
 else
   fail "CREDIBLE-033 not found in src/main.rs"

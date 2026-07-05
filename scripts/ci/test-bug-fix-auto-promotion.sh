@@ -40,13 +40,13 @@ else
 fi
 
 # 2. audit-priorities source recognizes the auto-filed marker.
-if grep -q 'auto-filed by pr-triage-bot' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'auto-filed by pr-triage-bot' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs audit-priorities references auto-filed marker"
 else
     fail "main.rs audit-priorities missing auto-filed marker"
 fi
 
-if grep -q 'p0_manual_count\|p0_auto_filed' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'p0_manual_count\|p0_auto_filed' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs tracks auto-filed vs manual P0 counts separately"
 else
     fail "main.rs missing p0_manual_count / p0_auto_filed split"

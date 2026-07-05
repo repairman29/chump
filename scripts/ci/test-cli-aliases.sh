@@ -13,7 +13,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 [[ -x "$CHUMP" ]] || fail "chump binary not built — run cargo build --bin chump first"
 
 # ── 1: expand_aliases defined in source ──────────────────────────────────────
-grep -q 'fn expand_aliases' "$REPO_ROOT/src/main.rs" \
+grep -q 'fn expand_aliases' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" \
     || fail "expand_aliases function not found in src/main.rs"
 pass "expand_aliases present in main.rs"
 
@@ -21,20 +21,20 @@ pass "expand_aliases present in main.rs"
 for alias_pair in '"g"→gap' '"c"→claim' '"f"→fleet' '"d"→dispatch' '"h"→health'; do
     alias="${alias_pair%%→*}"
     target="${alias_pair##*→}"
-    grep -q "\"${alias//\"/}\"" "$REPO_ROOT/src/main.rs" \
+    grep -q "\"${alias//\"/}\"" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" \
         || fail "alias $alias not found in main.rs"
 done
 pass "g,c,f,d,h aliases all present in main.rs"
 
 # ── 3: 's' compound alias (gap ship) ─────────────────────────────────────────
-grep -q '"s"' "$REPO_ROOT/src/main.rs" \
+grep -q '"s"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" \
     || fail "alias 's' not found in main.rs"
-grep -q 'insert.*"ship"' "$REPO_ROOT/src/main.rs" \
+grep -q 'insert.*"ship"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" \
     || fail "compound alias 's' does not insert 'ship'"
 pass "compound alias 's' = 'gap ship' wired"
 
 # ── 4: 'cs' alias (cost-watch) ───────────────────────────────────────────────
-grep -q '"cs"' "$REPO_ROOT/src/main.rs" \
+grep -q '"cs"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" \
     || fail "alias 'cs' not found in main.rs"
 pass "alias 'cs' = cost-watch wired"
 

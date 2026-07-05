@@ -18,6 +18,7 @@ pub mod consensus_tally;
 pub mod contract_scan;
 pub mod dispatch_authoring;
 pub mod dispatch_external;
+pub mod dispatch_gap;
 pub mod durable_execution;
 pub mod durable_execution_journal;
 pub mod durable_resume;

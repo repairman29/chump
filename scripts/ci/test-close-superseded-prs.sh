@@ -18,7 +18,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HELPER="$REPO_ROOT/scripts/coord/close-superseded-prs.sh"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 PASS=0
 FAIL=0

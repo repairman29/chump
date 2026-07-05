@@ -41,7 +41,7 @@ else
 fi
 
 # --- 2. main.rs has reflect-delta subcommand ---
-if grep -q 'Some("reflect-delta")' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Some("reflect-delta")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "chump reflect-delta subcommand wired"
 else
     fail "reflect-delta subcommand missing"

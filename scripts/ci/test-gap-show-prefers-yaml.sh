@@ -30,7 +30,7 @@ else
 fi
 
 # Test 3: main.rs gap show path references gap_show_stale_db_repaired event kind.
-if grep -q "gap_show_stale_db_repaired" "$REPO_ROOT/src/main.rs"; then
+if grep -q "gap_show_stale_db_repaired" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     echo "PASS: kind=gap_show_stale_db_repaired emitted in main.rs"
     PASS=$((PASS+1))
 else
@@ -39,7 +39,7 @@ else
 fi
 
 # Test 4: YAML fallback branch present in the gap show arm of main.rs.
-if grep -q "load_gap_from_yaml" "$REPO_ROOT/src/main.rs"; then
+if grep -q "load_gap_from_yaml" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     echo "PASS: load_gap_from_yaml called from main.rs gap show path"
     PASS=$((PASS+1))
 else

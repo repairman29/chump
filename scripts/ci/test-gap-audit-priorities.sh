@@ -21,14 +21,14 @@ echo "=== INFRA-586 gap audit-priorities test ==="
 echo
 
 # 1. Subcommand wired in main.rs.
-if grep -q '"audit-priorities"' "$REPO_ROOT/src/main.rs"; then
+if grep -q '"audit-priorities"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "audit-priorities arm in main.rs"
 else
     fail "audit-priorities arm missing from main.rs"
 fi
 
 # 2. Help text lists audit-priorities.
-if grep -q 'audit-priorities' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'audit-priorities' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "audit-priorities mentioned in help/match"
 else
     fail "audit-priorities not mentioned in main.rs"

@@ -19,7 +19,7 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 echo "=== INFRA-2173 gap decompose truncation test ==="
 echo ""

@@ -33,12 +33,12 @@ for sym in \
 done
 
 # main.rs wiring
-if grep -q "^mod rollup_cmd;" "$REPO_ROOT/src/main.rs"; then
+if grep -q "^mod rollup_cmd;" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs declares mod rollup_cmd"
 else
     fail "main.rs missing mod rollup_cmd"
 fi
-if grep -q 'Some("rollup")' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Some("rollup")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs dispatches 'chump rollup' subcommand"
 else
     fail "main.rs missing 'rollup' dispatch"

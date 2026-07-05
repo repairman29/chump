@@ -44,14 +44,14 @@ else
 fi
 
 # 4. Subcommand wired in main.rs.
-if grep -q 'Some("waste-tally")' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Some("waste-tally")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "chump waste-tally subcommand in main.rs"
 else
     fail "subcommand not wired"
 fi
 
 # 5. parse_duration_to_secs helper exists.
-if grep -q 'fn parse_duration_to_secs' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'fn parse_duration_to_secs' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "parse_duration_to_secs helper present"
 else
     fail "parse_duration_to_secs missing"

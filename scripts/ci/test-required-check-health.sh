@@ -32,7 +32,7 @@ echo
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 MODULE="$REPO_ROOT/src/required_check_health.rs"
-MAIN="$REPO_ROOT/src/main.rs"
+MAIN="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 # ── (0) source-contract: module exists with expected surface ──
 [[ -f "$MODULE" ]] && ok "module file exists" || { fail "missing $MODULE"; exit 1; }

@@ -40,13 +40,13 @@ else
 fi
 
 # (b) --by-domain wired in main.rs.
-if grep -q 'by.domain' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'by.domain' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--by-domain flag wired in main.rs"
 else
     fail "--by-domain not wired in main.rs"
 fi
 
-if grep -q 'build_domain_report' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'build_domain_report' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "build_domain_report called from main.rs"
 else
     fail "build_domain_report not called from main.rs"

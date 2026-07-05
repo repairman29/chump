@@ -34,7 +34,7 @@ fi
 # ── 2. Module is declared in main.rs ─────────────────────────────────────────
 echo
 echo "[2. github_rate_limit declared in main.rs]"
-if grep -q "mod github_rate_limit" "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q "mod github_rate_limit" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
   ok "mod github_rate_limit found in main.rs"
 else
   fail "mod github_rate_limit not found in main.rs"

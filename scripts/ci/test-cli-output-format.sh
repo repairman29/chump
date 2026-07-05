@@ -197,7 +197,7 @@ fi
 
 # ── Test 8: EFFECTIVE-008 reference in main.rs ───────────────────────────────
 echo "--- 8. EFFECTIVE-008 reference in source"
-if grep -q 'EFFECTIVE-008' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'EFFECTIVE-008' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
   ok "EFFECTIVE-008 referenced in src/main.rs"
 else
   fail "EFFECTIVE-008 reference missing from src/main.rs"

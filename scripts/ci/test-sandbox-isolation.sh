@@ -43,7 +43,7 @@ for sym in \
 done
 
 # main.rs wiring
-if grep -q "^mod sandbox;" "$REPO_ROOT/src/main.rs"; then
+if grep -q "^mod sandbox;" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs declares mod sandbox"
 else
     fail "main.rs missing mod sandbox"

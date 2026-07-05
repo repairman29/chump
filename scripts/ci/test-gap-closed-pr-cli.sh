@@ -39,7 +39,7 @@ echo
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 # INFRA-1214: use source-grep.sh library instead of inline if/else
 source "$SCRIPT_DIR/lib/source-grep.sh"
 GAP_STORE_RS=$(find_gap_store_path)

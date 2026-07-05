@@ -45,11 +45,11 @@ pass "override_env_recognized (src/version.rs unit test)"
 # ── Test 2: main.rs wires fail_if_stale_for_destructive into the two paths ──
 # Grep is sufficient (the binary's behavior on a fresh build can't be a stale
 # fixture — the binary's baked SHA IS HEAD by construction in CI).
-if ! grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/main.rs"; then
+if ! grep -q "fail_if_stale_for_destructive" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     fail "src/main.rs does not call fail_if_stale_for_destructive — INFRA-825 wiring missing"
 fi
-gap_ship_count=$(grep -c "gap ship --update-yaml" "$REPO_ROOT/src/main.rs" || echo 0)
-gap_dump_count=$(grep -c "gap dump --per-file" "$REPO_ROOT/src/main.rs" || echo 0)
+gap_ship_count=$(cat "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null | grep -c "gap ship --update-yaml" || echo 0)
+gap_dump_count=$(cat "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null | grep -c "gap dump --per-file" || echo 0)
 if [[ "$gap_ship_count" -lt 1 ]]; then
     fail "src/main.rs: gap ship --update-yaml is not guarded by fail_if_stale_for_destructive"
 fi

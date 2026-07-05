@@ -24,12 +24,12 @@ for sym in \
     if grep -q "$sym" "$SRC"; then ok "exports $sym"; else fail "missing $sym"; fi
 done
 
-if grep -q "^mod pr_explain;" "$REPO_ROOT/src/main.rs"; then
+if grep -q "^mod pr_explain;" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs declares mod pr_explain"
 else
     fail "main.rs missing pr_explain"
 fi
-if grep -q 'Some("explain-block")' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'Some("explain-block")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs dispatches pr explain-block"
 else
     fail "main.rs missing explain-block dispatch"

@@ -46,14 +46,14 @@ else
 fi
 
 # 4. Subcommand wired in main.rs.
-if grep -q 'Some("health")' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'Some("health")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "chump health subcommand in main.rs"
 else
     fail "health subcommand not wired in main.rs"
 fi
 
 # 5. mod fleet_health declared in main.rs.
-if grep -q '^mod fleet_health;' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '^mod fleet_health;' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "mod fleet_health declared in main.rs"
 else
     fail "mod fleet_health missing from main.rs"
@@ -71,7 +71,7 @@ done
 
 # 7. --json and --watch flags handled.
 for flag in '"--json"' '"--watch"'; do
-    if grep -q "$flag" "$REPO_ROOT/src/fleet_health.rs" "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+    if grep -q "$flag" "$REPO_ROOT/src/fleet_health.rs" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
         ok "  flag $flag handled"
     else
         fail "  flag $flag not handled"

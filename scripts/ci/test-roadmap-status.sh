@@ -51,14 +51,14 @@ for s in RoadmapStatusReport WeekOutcome RoadmapGap; do
 done
 
 # 4. Subcommand wired in main.rs.
-if grep -q 'Some("roadmap-status")' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'Some("roadmap-status")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "chump roadmap-status subcommand in main.rs"
 else
     fail "roadmap-status subcommand not wired in main.rs"
 fi
 
 # 5. mod roadmap_status declared in main.rs.
-if grep -q '^mod roadmap_status;' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '^mod roadmap_status;' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "mod roadmap_status declared in main.rs"
 else
     fail "mod roadmap_status missing from main.rs"
@@ -83,7 +83,7 @@ for icon in "🟢" "🟡" "🔴"; do
 done
 
 # 8. --json flag handled in main.rs dispatch.
-if grep -A8 'Some("roadmap-status")' "$REPO_ROOT/src/main.rs" 2>/dev/null | grep -q 'json'; then
+if grep -A8 'Some("roadmap-status")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null | grep -q 'json'; then
     ok "--json flag handled in main.rs dispatch"
 else
     fail "--json flag missing from roadmap-status dispatch in main.rs"

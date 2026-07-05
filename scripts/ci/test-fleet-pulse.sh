@@ -22,7 +22,7 @@ echo
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 MODULE="$REPO_ROOT/src/fleet_pulse.rs"
-MAIN="$REPO_ROOT/src/main.rs"
+MAIN="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 unset CHUMP_REPO CHUMP_LOCK_DIR
 

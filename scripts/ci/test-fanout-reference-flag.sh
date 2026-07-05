@@ -27,7 +27,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FANOUT_SRC="$REPO_ROOT/src/fleet_fanout.rs"
-MAIN_SRC="$REPO_ROOT/src/main.rs"
+MAIN_SRC="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 PROMPT_TPL="$REPO_ROOT/scripts/dispatch/fanout-agent-prompt.md"
 
 echo "=== INFRA-1935 fanout --reference flag smoke tests ==="

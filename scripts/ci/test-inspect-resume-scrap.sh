@@ -68,14 +68,14 @@ done
 
 # main.rs wiring
 for m in "^mod inspect_cmd;" "^mod resume_cmd;" "^mod scrap_cmd;"; do
-    if grep -q "$m" "$REPO_ROOT/src/main.rs"; then
+    if grep -q "$m" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
         ok "main.rs declares $m"
     else
         fail "main.rs missing $m"
     fi
 done
 for arm in '"inspect"' '"resume"' '"scrap"'; do
-    if grep -q "$arm" "$REPO_ROOT/src/main.rs"; then
+    if grep -q "$arm" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
         ok "main.rs dispatches $arm"
     else
         fail "main.rs missing $arm dispatch"

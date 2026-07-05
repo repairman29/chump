@@ -33,14 +33,14 @@ for sym in "pub struct FleetSpec" "pub struct FleetParam" "pub struct PlannedGap
 done
 
 # main.rs wiring (module + subcommand dispatch)
-if grep -q "^mod fleet_spec;" "$REPO_ROOT/src/main.rs"; then
+if grep -q "^mod fleet_spec;" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "main.rs declares mod fleet_spec"
 else
     fail "main.rs missing fleet_spec module declaration"
 fi
 
 for arm in '"plan" =>' '"apply" =>' '"spec-status" =>'; do
-    if grep -q "$arm" "$REPO_ROOT/src/main.rs"; then
+    if grep -q "$arm" "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
         ok "main.rs dispatches $arm"
     else
         fail "main.rs missing dispatch arm $arm"

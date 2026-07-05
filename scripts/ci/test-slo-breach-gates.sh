@@ -25,7 +25,7 @@ echo
 # ── 1. src/main.rs does NOT call std::env::var("CHUMP_IGNORE_WASTE_PAUSE") ───
 # Comments mentioning the var for historical context are acceptable; the
 # live env::var call must be gone.
-if grep -q 'env::var.*CHUMP_IGNORE_WASTE_PAUSE\|CHUMP_IGNORE_WASTE_PAUSE.*env::var' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'env::var.*CHUMP_IGNORE_WASTE_PAUSE\|CHUMP_IGNORE_WASTE_PAUSE.*env::var' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     fail "src/main.rs still calls env::var(CHUMP_IGNORE_WASTE_PAUSE) — reserve guard not deleted"
 else
     ok "src/main.rs: CHUMP_IGNORE_WASTE_PAUSE env::var call removed (comments OK)"

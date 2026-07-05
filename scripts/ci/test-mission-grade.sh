@@ -56,14 +56,14 @@ for prefix in "EFFECTIVE:" "CREDIBLE:" "RESILIENT:" "ZERO-WASTE:"; do
 done
 
 # 5. Subcommand wired in main.rs.
-if grep -q 'Some("mission-grade")' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q 'Some("mission-grade")' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "chump mission-grade subcommand in main.rs"
 else
     fail "mission-grade subcommand not wired in main.rs"
 fi
 
 # 6. mod mission_grade declared in main.rs.
-if grep -q '^mod mission_grade;' "$REPO_ROOT/src/main.rs" 2>/dev/null; then
+if grep -q '^mod mission_grade;' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs" 2>/dev/null; then
     ok "mod mission_grade declared in main.rs"
 else
     fail "mod mission_grade missing from main.rs"

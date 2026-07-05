@@ -24,14 +24,14 @@ echo "=== INFRA-942 gap triage test ==="
 echo
 
 # 1. Subcommand wired in main.rs.
-if grep -q '"triage"' "$REPO_ROOT/src/main.rs"; then
+if grep -q '"triage"' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "triage arm in main.rs"
 else
     fail "triage arm missing from main.rs"
 fi
 
 # 2. Help text lists triage.
-if grep -q 'triage' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'triage' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "triage mentioned in help/match"
 else
     fail "triage not mentioned in main.rs"

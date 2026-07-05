@@ -26,7 +26,7 @@ echo
 
 # ── Source checks (static, no binary needed) ──────────────────────────────────
 
-if grep -q 'gap_reserved_no_evidence' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'gap_reserved_no_evidence' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "gap_reserved_no_evidence emitted in main.rs"
 else
     fail "gap_reserved_no_evidence not found in main.rs"
@@ -38,19 +38,19 @@ else
     fail "gap_reserved_no_evidence missing from EVENT_REGISTRY.yaml"
 fi
 
-if grep -q '\-\-evidence' "$REPO_ROOT/src/main.rs"; then
+if grep -q '\-\-evidence' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--evidence flag wired in main.rs"
 else
     fail "--evidence flag not found in main.rs"
 fi
 
-if grep -q 'CHUMP_GAP_RESERVE_NO_EVIDENCE' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'CHUMP_GAP_RESERVE_NO_EVIDENCE' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "CHUMP_GAP_RESERVE_NO_EVIDENCE bypass env wired in main.rs"
 else
     fail "CHUMP_GAP_RESERVE_NO_EVIDENCE env not found in main.rs"
 fi
 
-if grep -q 'flag-empty-evidence' "$REPO_ROOT/src/main.rs"; then
+if grep -q 'flag-empty-evidence' "$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"; then
     ok "--flag-empty-evidence wired in audit-priorities"
 else
     fail "--flag-empty-evidence not found in main.rs"

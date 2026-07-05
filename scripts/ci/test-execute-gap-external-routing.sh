@@ -55,7 +55,7 @@ done
 echo ""
 echo "-- (b) Structural wiring in src/main.rs --"
 
-MAIN_RS="$REPO_ROOT/src/main.rs"
+MAIN_RS="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 
 if grep -q "external_repo_target_from_skills" "$MAIN_RS"; then
     ok "external_repo_target_from_skills present in src/main.rs"

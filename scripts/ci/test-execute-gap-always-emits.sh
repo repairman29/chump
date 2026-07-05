@@ -114,7 +114,7 @@ else
 fi
 
 # S6: main.rs --execute-gap arm calls emit_terminal_outcome on both Ok and Err paths
-MAIN_SRC="$REPO_ROOT/src/main.rs"
+MAIN_SRC="$REPO_ROOT/src/main.rs" "$REPO_ROOT/src/commands/dispatch_gap.rs"
 ok_emits=$(grep -c 'emit_terminal_outcome.*Shipped' "$MAIN_SRC" 2>/dev/null || echo 0)
 err_emits=$(grep -c 'emit_terminal_outcome.*Blocked' "$MAIN_SRC" 2>/dev/null || echo 0)
 if [[ "$ok_emits" -ge 1 && "$err_emits" -ge 1 ]]; then
