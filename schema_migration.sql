@@ -1,5 +1,21 @@
--- Schema migration script for chump_memory.db
--- Adds performance indexes and optimizes queries
+-- Schema migration script for chump_memory.db and .chump/state.db
+-- Adds performance indexes and records destructive schema deltas.
+--
+-- NOTE: state.db migrations are applied automatically by GapStore::migrate()
+-- in crates/chump-gap-store/src/lib.rs on every DB open. The deltas below
+-- are the authoritative record; the Rust code is the execution path.
+
+-- ─── state.db deltas (INFRA-1551) ────────────────────────────────────────────
+-- Drop the `intents` table — schema corpse. src/atomic_claim.rs::read_live_intents
+-- reads intent_announced events from ambient.jsonl (INFRA-1116); no INSERT path
+-- ever wrote to this table.
+--
+-- Applied by: GapStore::migrate() — DROP TABLE IF EXISTS intents
+-- REVERSAL: re-add CREATE TABLE intents(...) in GapStore initial execute_batch
+--           and remove the DROP TABLE call in migrate().
+--
+-- DROP TABLE IF EXISTS intents;
+-- ─────────────────────────────────────────────────────────────────────────────
 
 -- Index for faster task status lookups
 CREATE INDEX IF NOT EXISTS idx_chump_tasks_status ON chump_tasks(status);
