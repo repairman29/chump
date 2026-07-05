@@ -10480,7 +10480,52 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar-balance check — call external script so the
+                // logic stays in one place (shell + Rust both use the same file).
+                let pb_script = repo_path::repo_root()
+                    .join("scripts/ops/pillar-balance-check.sh");
+                let pillar_balance_failed = if pb_script.exists() {
+                    let pb_flag = if json_out { "--json" } else { "--dry-run" };
+                    match std::process::Command::new("bash")
+                        .arg(&pb_script)
+                        .arg(pb_flag)
+                        .output()
+                    {
+                        Ok(out) => {
+                            let stdout = String::from_utf8_lossy(&out.stdout);
+                            if json_out {
+                                // Merge pillar_balance key into the report below.
+                                // We surface it as a nested object; parse leniently.
+                                if let Ok(pb_val) =
+                                    serde_json::from_str::<serde_json::Value>(stdout.trim())
+                                {
+                                    // Will be injected into the JSON report below.
+                                    Some(pb_val)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                println!();
+                                println!("=== pillar balance ===");
+                                print!("{}", stdout);
+                                None
+                            };
+                            !out.status.success()
+                        }
+                        Err(e) => {
+                            eprintln!("pillar-balance-check: {e}");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_failed {
+                    fail_reasons
+                        .push("pillar balance alerts fired — run scripts/ops/pillar-balance-check.sh for details".to_string());
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(

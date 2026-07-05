@@ -4329,6 +4329,30 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-902: pillar-balance periodic health check ───────────────────────
+  - kind: pillar_balance_alert
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_alert"
+    trigger: >
+      pillar-balance-check.sh found a pillar with fewer than FLOOR (default 2)
+      pickable gaps (P0|P1, xs|s effort, non-empty AC, no blocking deps).
+      Called by 'chump gap audit-priorities'. Floor breach means the fleet has
+      too few actionable gaps in that pillar to maintain continuous throughput.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: credible
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    # scanner-anchor: "kind":"pillar_balance_overweight"
+    trigger: >
+      pillar-balance-check.sh found a pillar whose pickable gap count exceeds
+      50% of the total pickable pool. Signals that new gap filing is too
+      concentrated in one pillar; curator should demote or redistribute.
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct, total]
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self
