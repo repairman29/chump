@@ -174,3 +174,6 @@ bin/chump.wedged-*
 # Founding customer PII — never commit
 docs/business/leads.csv
 docs/business/contracts/
+
+# custom out-of-band cargo target dirs (INFRA-3289)
+.cargo-*-target/
