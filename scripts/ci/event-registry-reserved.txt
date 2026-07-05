@@ -781,3 +781,5 @@ redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage de
 bot_merge_rebase_before_test  # reason: INFRA-918 snapshot before cargo test; fields: rebased (bool), commits_behind (int), head_sha (str), will_test (bool)
 # scanner-anchor: "kind":"bot_merge_test_failure"
 bot_merge_test_failure        # reason: INFRA-918 emitted on cargo test failure; failure_class=transient_oom (SIGTERM/OOM) or permanent_failure (logic bug)
+pillar_balance_alert                      # reason: INFRA-902 emitter scripts/ops/pillar-balance-check.sh; fields: pillar, count, floor=2; fires when pillar pickable count < 2
+pillar_balance_overweight                 # reason: INFRA-902 emitter scripts/ops/pillar-balance-check.sh; fields: pillar, count, pct; fires when pillar pickable count > 50% of pool

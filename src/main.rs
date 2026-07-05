@@ -10480,7 +10480,44 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: pillar balance check — call external script and surface result.
+                let pillar_balance_failed = {
+                    let script = repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script.exists() {
+                        let pb_out = std::process::Command::new("bash").arg(&script).output();
+                        match pb_out {
+                            Ok(o) => {
+                                let stdout = String::from_utf8_lossy(&o.stdout);
+                                let stderr = String::from_utf8_lossy(&o.stderr);
+                                if !json_out {
+                                    println!();
+                                    println!("=== Pillar balance (INFRA-902) ===");
+                                    if !stdout.trim().is_empty() {
+                                        print!("{}", stdout);
+                                    }
+                                    if !stderr.trim().is_empty() {
+                                        eprint!("{}", stderr);
+                                    }
+                                    if o.status.success() {
+                                        println!("  (all pillars within bounds)");
+                                    }
+                                }
+                                !o.status.success()
+                            }
+                            Err(_) => false,
+                        }
+                    } else {
+                        false
+                    }
+                };
+
                 let mut fail_reasons: Vec<String> = Vec::new();
+                if pillar_balance_failed {
+                    fail_reasons.push(
+                        "pillar balance alert fired (see pillar-balance-check.sh output)"
+                            .to_string(),
+                    );
+                }
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {
                     fail_reasons.push(format!(
