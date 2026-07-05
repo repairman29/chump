@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<!-- css-token-violation.html — fixture for scripts/ci/test-css-token-discipline.sh
+     This file intentionally contains design-token violations. Do NOT fix them. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* VIOLATION: rule1-hex — raw hex outside :root */
+    .my-component {
+      background: #7c83fd;
+      color: #ffffff;
+    }
+
+    /* VIOLATION: rule1-fn — rgb() outside :root */
+    .another-component {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* VIOLATION: rule2-alias — non-canonical --*-primary token */
+    :root {
+      --bg-primary: #0d0d0f;
+      --text-primary: #f0f0f0;
+    }
+
+    /* VIOLATION: rule3-fallback — wrong fallback value */
+    .third-component {
+      background: var(--bg, #ffffff);
+      color: var(--text, #000000);
+    }
+  </style>
+</head>
+<body>
+  <div class="my-component">Hello</div>
+</body>
+</html>

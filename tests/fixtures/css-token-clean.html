@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!-- css-token-clean.html — fixture for scripts/ci/test-css-token-discipline.sh
+     This file is a correctly-written component that should pass the linter. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* Correct: hex values are only inside :root */
+    :root {
+      --bg:         #0a0a0a;
+      --bg-surface: #141414;
+      --text:       #f0f0f0;
+      --accent:     #0a84ff;
+      --border:     rgba(255,255,255,0.08);
+    }
+
+    /* Correct: components use var() references, no raw literals */
+    .my-component {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* Correct: canonical token names (no --*-primary / --*-secondary) */
+    .accent-button {
+      background: var(--accent);
+      color: var(--text);
+    }
+
+    /* Correct: var() with no fallback */
+    .surface-card {
+      background: var(--bg-surface);
+    }
+  </style>
+</head>
+<body>
+  <div class="my-component">
+    <button class="accent-button">OK</button>
+    <div class="surface-card">Card</div>
+  </div>
+</body>
+</html>
