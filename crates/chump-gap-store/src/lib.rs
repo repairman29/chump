@@ -1,6 +1,6 @@
 //! SQLite-backed gap store — INFRA-023.
 //!
-//! Wraps `gaps`, `leases`, and `intents` tables in `.chump/state.db`.
+//! Wraps `gaps`, `leases`, and `routing_outcomes` tables in `.chump/state.db`.
 //! All mutations are single-transaction so concurrent agents get atomic IDs.
 //!
 //! DATABASE: `<repo_root>/.chump/state.db`
@@ -367,13 +367,6 @@ impl GapStore {
                 expires_at  INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS intents (
-                ts          INTEGER NOT NULL,
-                session_id  TEXT NOT NULL,
-                gap_id      TEXT NOT NULL,
-                files       TEXT NOT NULL DEFAULT ''
-            );
-
             CREATE INDEX IF NOT EXISTS leases_gap ON leases(gap_id);
             CREATE INDEX IF NOT EXISTS gaps_status ON gaps(status);
             CREATE INDEX IF NOT EXISTS gaps_domain ON gaps(domain);
@@ -594,6 +587,16 @@ impl GapStore {
              CREATE INDEX IF NOT EXISTS repos_last_clone_at ON repos(last_clone_at);
             ",
         );
+
+        // INFRA-1551: intents table was never written to in production —
+        // read_live_intents (src/atomic_claim.rs) reads intent_announced events
+        // from ambient.jsonl directly, bypassing the DB table entirely.
+        // Reversal: re-add `CREATE TABLE IF NOT EXISTS intents (ts INTEGER NOT NULL,
+        //   session_id TEXT NOT NULL, gap_id TEXT NOT NULL, files TEXT NOT NULL DEFAULT '')`
+        //   to GapStore::create_schema() and remove this DROP.
+        let _ = self
+            .conn
+            .execute("DROP TABLE IF EXISTS intents", []);
 
         Ok(())
     }
