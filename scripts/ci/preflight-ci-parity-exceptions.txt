@@ -253,6 +253,7 @@ test-merge-driver-ci-yml-add-row.sh
 test-edit-replay.sh
 test-pwa-auth-toast-stream.sh
 test-pillar-balance-guard.sh
+test-pillar-balance-alerts.sh
 test-cargo-mutex-isolation.sh
 test-system-integration.sh
 test-gap-consolidate.sh

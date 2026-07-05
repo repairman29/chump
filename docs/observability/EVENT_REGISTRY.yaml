@@ -4329,6 +4329,21 @@ events:
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
 
+  # ── INFRA-902: pillar balance health check (scripts/ops/pillar-balance-check.sh) ──
+  - kind: pillar_balance_alert
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pickable pillar has fewer than 2 open gaps (floor=2); fires per under-fed pillar
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: self
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pillar exceeds 50% of total pickable open gaps; fires per overweight pillar
+    consumers: [fleet-brief, curator, audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct]
+
   # ── INFRA-988: PWA settings panel ────────────────────────────────────────
   - kind: pwa_setting_changed
     effect_metric: self

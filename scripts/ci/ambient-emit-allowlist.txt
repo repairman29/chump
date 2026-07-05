@@ -36,3 +36,4 @@ scripts/coord/bot-merge-watchdog.sh
 scripts/ops/auto-arm-sweeper.sh
 scripts/coord/gap-supervisor.sh    # reason: printf fallback only when ambient-emit.sh fails (flock unavailable); RESILIENT-058
 scripts/coord/fleet-supervisor.sh  # reason: printf fallback only when ambient-emit.sh fails (flock unavailable); RESILIENT-058
+scripts/ops/pillar-balance-check.sh  # reason: inline printf required for integer-typed JSON fields (count, floor, pct); chump ambient emit --field emits all values as strings, breaking downstream jq integer comparisons (INFRA-902)
