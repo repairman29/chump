@@ -10414,6 +10414,21 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-902: call pillar-balance-check.sh and include result.
+                {
+                    let script_path =
+                        repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    if script_path.exists() {
+                        if !json_out {
+                            println!();
+                            println!("=== Pillar balance (INFRA-902) ===");
+                        }
+                        let _ = std::process::Command::new("bash")
+                            .arg(&script_path)
+                            .status();
+                    }
+                }
+
                 let mut fail_reasons: Vec<String> = Vec::new();
                 // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
                 if p0_manual_count > 5 {

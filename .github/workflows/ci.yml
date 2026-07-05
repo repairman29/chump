@@ -797,6 +797,9 @@ jobs:
       - name: pr-terminal-state helper — mergedAt-validated (INFRA-1981)
         run: bash scripts/ci/test-pr-terminal-state.sh
 
+      - name: pillar-balance-check alerts — floor/overweight/schema (INFRA-902)
+        run: CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-pillar-balance-alerts.sh
+
       - name: subagent budget kill — parent-enforced SIGTERM+grace+SIGKILL (INFRA-1972)
         run: bash scripts/ci/test-subagent-budget-kill.sh
 
