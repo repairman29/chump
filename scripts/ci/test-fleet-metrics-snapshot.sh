@@ -119,23 +119,30 @@ else
     err "7: --dry-run still wrote to ambient.jsonl"
 fi
 
-# Test 8: --json outputs JSON to stdout with required fields
+# Test 8: --json outputs valid JSON to stdout with all required fields
 JSON_OUT=$(REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$TMP/json-ambient.jsonl" \
-    bash "$SCRIPT" --json 2>/dev/null | grep "fleet_metrics_snapshot" | tail -1)
-if [[ -n "$JSON_OUT" ]]; then
-    _ok=1
-    for field in ts kind ship_rate_24h waste_rate_24h cycle_time_p50_h active_gaps p0_count; do
-        if ! echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert '$field' in d" 2>/dev/null; then
-            _ok=0
-        fi
-    done
-    if [[ "$_ok" -eq 1 ]]; then
-        ok "8: --json outputs valid JSON with all required fields"
-    else
-        err "8: --json output missing required fields"
-    fi
+    bash "$SCRIPT" --json 2>/dev/null)
+_json_ok=$(echo "$JSON_OUT" | python3 -c "
+import json, sys
+try:
+    text = sys.stdin.read()
+    # handle both compact and pretty-printed output
+    d = json.loads(text)
+    required = ['ts','kind','ship_rate_24h','waste_rate_24h','cycle_time_p50_h','active_gaps','p0_count']
+    missing = [f for f in required if f not in d]
+    if d.get('kind') != 'fleet_metrics_snapshot':
+        print('bad-kind')
+    elif missing:
+        print('missing:' + ','.join(missing))
+    else:
+        print('ok')
+except Exception as e:
+    print(f'parse-error:{e}')
+" 2>/dev/null || echo "error")
+if [[ "$_json_ok" == "ok" ]]; then
+    ok "8: --json outputs valid JSON with all required fields"
 else
-    err "8: --json produced no fleet_metrics_snapshot output"
+    err "8: --json check failed: $_json_ok"
 fi
 
 echo ""

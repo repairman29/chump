@@ -1,210 +1,190 @@
 #!/usr/bin/env bash
-# fleet-metrics-snapshot.sh — INFRA-900
+# scripts/ops/fleet-metrics-snapshot.sh — INFRA-900
 #
 # Reads ambient.jsonl + state.db and emits kind=fleet_metrics_snapshot with:
-#   ts, ship_rate_24h, waste_rate_24h, cycle_time_p50_h,
-#   active_gaps, p0_count
+#   ts, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count
 #
 # Usage:
-#   fleet-metrics-snapshot.sh [--window HOURS] [--dry-run] [--json]
+#   fleet-metrics-snapshot.sh [--json] [--dry-run] [--window HOURS]
+#   chump fleet metrics [--json] [--dry-run] [--window HOURS]
 #
 # Options:
-#   --window HOURS    Look-back window for PR/event stats (default: 24)
-#   --dry-run         Print computed metrics, do NOT emit to ambient.jsonl
-#   --json            Output JSON to stdout (in addition to ambient emit)
+#   --json          Print the emitted JSON to stdout
+#   --dry-run       Compute and print metrics; do NOT append to ambient.jsonl
+#   --window HOURS  Look-back window (default: 24)
 #
 # Environment:
-#   REPO_ROOT             Repo root (default: auto-detected)
-#   CHUMP_AMBIENT_LOG     Path to ambient.jsonl
-#   DRY_RUN               If "1", suppress ambient write (same as --dry-run)
+#   CHUMP_AMBIENT_LOG   Override path to ambient.jsonl
+#   CHUMP_STATE_DB      Override path to state.db
 
-set -euo pipefail
+set -uo pipefail
 
-REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-AMB="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
-WINDOW_HOURS=24
-DRY_RUN="${DRY_RUN:-0}"
-JSON_OUT=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+STATE_DB="${CHUMP_STATE_DB:-$REPO_ROOT/.chump/state.db}"
+WINDOW_H=24
+WANT_JSON=0
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --window)  WINDOW_HOURS="$2"; shift 2 ;;
+        --json)    WANT_JSON=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
-        --json)    JSON_OUT=1; shift ;;
+        --window)  WINDOW_H="$2"; shift 2 ;;
         -h|--help)
-            grep '^#' "$0" | head -20 | sed 's/^# \?//'
+            grep '^#' "$0" | head -20 | sed 's/^# \?//; 1d'
             exit 0 ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) echo "fleet-metrics-snapshot: unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-_ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-
-# ── Compute metrics via python3 ───────────────────────────────────────────────
-METRICS=$(python3 - <<PYEOF
-import json, os, sys, subprocess, re
+python3 - "$AMBIENT" "$STATE_DB" "$WINDOW_H" "$WANT_JSON" "$DRY_RUN" "$REPO_ROOT" <<'PYEOF'
+import sys, json, os, sqlite3
 from datetime import datetime, timezone, timedelta
 
-repo_root  = "$REPO_ROOT"
-amb_path   = "$AMB"
-window_h   = int("$WINDOW_HOURS")
-now        = datetime.now(timezone.utc)
-cutoff     = now - timedelta(hours=window_h)
+ambient_path = sys.argv[1]
+state_db     = sys.argv[2]
+window_h     = int(sys.argv[3])
+want_json    = sys.argv[4] == "1"
+dry_run      = sys.argv[5] == "1"
+repo_root    = sys.argv[6]
 
-# ── Helper: parse ISO timestamp ───────────────────────────────────────────────
+now    = datetime.now(timezone.utc)
+cutoff = now - timedelta(hours=window_h)
+ts_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
 def parse_ts(s):
+    if not s:
+        return None
     try:
-        s = s.rstrip("Z")
-        return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
-    except Exception:
+        return datetime.fromisoformat(s.rstrip("Z")).replace(tzinfo=timezone.utc)
+    except (ValueError, AttributeError):
         return None
 
-# ── Read ambient.jsonl ────────────────────────────────────────────────────────
-events = []
-if os.path.exists(amb_path):
-    with open(amb_path) as f:
+# ── ship_rate_24h: gap_shipped events / pr_opened in window ──────────────────
+pr_opened = 0
+pr_merged = 0
+try:
+    with open(ambient_path) as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
                 ev = json.loads(line)
-                ts = parse_ts(ev.get("ts", ""))
-                if ts:
-                    ev["_ts"] = ts
-                    events.append(ev)
-            except Exception:
-                pass
-
-recent = [e for e in events if e.get("_ts") and e["_ts"] >= cutoff]
-
-# ── ship_rate_24h: merged PRs / opened PRs in window ─────────────────────────
-pr_opened  = sum(1 for e in recent if e.get("kind") == "pr_opened")
-pr_merged  = sum(1 for e in recent if e.get("kind") in ("pr_merged", "gap_shipped"))
-if pr_opened > 0:
-    ship_rate = round(pr_merged / pr_opened, 3)
-else:
-    # Fall back to counting gap_shipped events only
-    ship_rate = min(1.0, pr_merged / max(1, pr_merged)) if pr_merged > 0 else 0.0
-
-# ── waste_rate_24h: try chump waste-tally, fallback to ambient ────────────────
-waste_rate = 0.0
-try:
-    result = subprocess.run(
-        ["chump", "waste-tally", "--window", str(window_h), "--json"],
-        capture_output=True, text=True, timeout=10
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        wdata = json.loads(result.stdout.strip())
-        waste_rate = float(wdata.get("waste_rate", 0.0))
-except Exception:
-    # Fallback: count waste_logged events
-    waste_events = [e for e in recent if e.get("kind") == "waste_logged"]
-    # Can't compute real waste_rate without total compute; report event count
-    waste_rate = len(waste_events) / max(1, window_h)  # events/hour as proxy
-
-# ── cycle_time_p50_h: median (gap open → close) in hours ─────────────────────
-cycle_times = []
-gap_open_ts = {}  # gap_id -> open ts
-
-for e in events:  # full history, not just recent
-    kind = e.get("kind", "")
-    gid  = e.get("gap_id") or e.get("id", "")
-    ts   = e.get("_ts")
-    if not ts:
-        continue
-    if kind in ("gap_claimed", "gap_opened") and gid:
-        gap_open_ts.setdefault(gid, ts)
-    elif kind in ("gap_shipped", "pr_merged") and gid:
-        if gid in gap_open_ts:
-            dt_h = (ts - gap_open_ts[gid]).total_seconds() / 3600.0
-            if dt_h > 0:
-                cycle_times.append(dt_h)
-
-if cycle_times:
-    cycle_times.sort()
-    mid = len(cycle_times) // 2
-    cycle_time_p50 = round(cycle_times[mid], 2)
-else:
-    cycle_time_p50 = 0.0
-
-# ── active_gaps + p0_count from chump gap list ────────────────────────────────
-active_gaps = 0
-p0_count    = 0
-try:
-    result = subprocess.run(
-        ["chump", "gap", "list", "--status", "open"],
-        capture_output=True, text=True, timeout=15
-    )
-    if result.returncode == 0:
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("[open]") or line.startswith("[claimed]"):
-                active_gaps += 1
-                if "(P0/" in line:
-                    p0_count += 1
-except Exception:
+            except json.JSONDecodeError:
+                continue
+            ev_ts = parse_ts(ev.get("ts", ""))
+            if ev_ts is None or ev_ts < cutoff:
+                continue
+            kind = ev.get("kind", "")
+            if kind == "pr_opened":
+                pr_opened += 1
+            elif kind in ("gap_shipped", "pr_merged", "ship_landed"):
+                pr_merged += 1
+except FileNotFoundError:
     pass
 
-# ── Output JSON ───────────────────────────────────────────────────────────────
-result = {
-    "ship_rate_24h":    ship_rate,
-    "waste_rate_24h":   waste_rate,
-    "cycle_time_p50_h": cycle_time_p50,
+if pr_opened > 0:
+    ship_rate_24h = round(pr_merged / pr_opened, 3)
+elif pr_merged > 0:
+    ship_rate_24h = 1.0
+else:
+    ship_rate_24h = 0.0
+
+# ── waste_rate_24h: try chump waste-tally --window Nh --json ─────────────────
+waste_rate_24h = 0.0
+import subprocess, shutil
+chump_bin = os.path.join(repo_root, "target/debug/chump")
+if not os.path.isfile(chump_bin):
+    chump_bin = shutil.which("chump") or ""
+if chump_bin and os.path.isfile(chump_bin):
+    try:
+        r = subprocess.run(
+            [chump_bin, "waste-tally", "--window", f"{window_h}h", "--json"],
+            capture_output=True, text=True, timeout=20, cwd=repo_root,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            wdata = json.loads(r.stdout)
+            if "waste_rate" in wdata:
+                waste_rate_24h = round(float(wdata["waste_rate"]), 3)
+    except Exception:
+        pass
+
+# ── cycle_time_p50_h: median open→closed from state.db ───────────────────────
+cycle_time_p50_h = 0.0
+if os.path.isfile(state_db):
+    try:
+        conn = sqlite3.connect(f"file:{state_db}?mode=ro", uri=True)
+        rows = conn.execute("""
+            SELECT (julianday(closed_at) - julianday(created_at)) * 24.0
+            FROM gaps
+            WHERE status IN ('shipped','closed')
+              AND closed_at IS NOT NULL
+              AND created_at IS NOT NULL
+              AND closed_at >= datetime('now', ?)
+        """, (f"-{window_h} hours",)).fetchall()
+        conn.close()
+        vals = sorted(r[0] for r in rows if r[0] is not None and r[0] >= 0)
+        if vals:
+            n   = len(vals)
+            mid = n // 2
+            cycle_time_p50_h = round(
+                (vals[mid - 1] + vals[mid]) / 2.0 if n % 2 == 0 else vals[mid], 2
+            )
+    except Exception:
+        pass
+
+# ── active_gaps + p0_count from state.db ─────────────────────────────────────
+active_gaps = 0
+p0_count    = 0
+if os.path.isfile(state_db):
+    try:
+        conn = sqlite3.connect(f"file:{state_db}?mode=ro", uri=True)
+        active_gaps = conn.execute(
+            "SELECT COUNT(*) FROM gaps WHERE status = 'open'"
+        ).fetchone()[0]
+        p0_count = conn.execute(
+            "SELECT COUNT(*) FROM gaps WHERE status = 'open' AND priority = 'P0'"
+        ).fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+
+# ── assemble event ────────────────────────────────────────────────────────────
+event = {
+    "ts":               ts_str,
+    "kind":             "fleet_metrics_snapshot",
+    "ship_rate_24h":    ship_rate_24h,
+    "waste_rate_24h":   waste_rate_24h,
+    "cycle_time_p50_h": cycle_time_p50_h,
     "active_gaps":      active_gaps,
     "p0_count":         p0_count,
 }
-print(json.dumps(result))
+line = json.dumps(event, separators=(",", ":"))
+
+# ── emit to ambient.jsonl ─────────────────────────────────────────────────────
+if not dry_run:
+    os.makedirs(os.path.dirname(ambient_path), exist_ok=True)
+    try:
+        with open(ambient_path, "a") as f:
+            f.write(line + "\n")
+    except OSError as e:
+        print(f"warn: could not append to ambient.jsonl: {e}", file=sys.stderr)
+
+# ── output ────────────────────────────────────────────────────────────────────
+if want_json or dry_run:
+    print(json.dumps(event, indent=2))
+else:
+    sr = f"{event['ship_rate_24h']:.1%}"
+    wr = f"{event['waste_rate_24h']:.3f}"
+    ct = f"{event['cycle_time_p50_h']:.2f}h"
+    print(f"fleet metrics snapshot  ts={ts_str}  window={window_h}h")
+    print(f"  ship_rate_24h    = {sr}")
+    print(f"  waste_rate_24h   = {wr}")
+    print(f"  cycle_time_p50_h = {ct}")
+    print(f"  active_gaps      = {event['active_gaps']}")
+    print(f"  p0_count         = {event['p0_count']}")
 PYEOF
-)
-
-if [[ -z "$METRICS" ]]; then
-    echo "Error: failed to compute metrics" >&2
-    exit 1
-fi
-
-# ── Build ambient event ───────────────────────────────────────────────────────
-TS="$(_ts)"
-HOST="${HOSTNAME:-$(hostname 2>/dev/null || echo unknown)}"
-
-EVENT=$(python3 - <<PYEOF
-import json
-m = $METRICS
-ev = {
-    "ts":               "$TS",
-    "kind":             "fleet_metrics_snapshot",
-    "ship_rate_24h":    m["ship_rate_24h"],
-    "waste_rate_24h":   m["waste_rate_24h"],
-    "cycle_time_p50_h": m["cycle_time_p50_h"],
-    "active_gaps":      m["active_gaps"],
-    "p0_count":         m["p0_count"],
-    "window_h":         $WINDOW_HOURS,
-    "host":             "$HOST",
-}
-print(json.dumps(ev))
-PYEOF
-)
-
-# ── Emit to ambient.jsonl ─────────────────────────────────────────────────────
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "[dry-run] would emit: $EVENT" >&2
-else
-    mkdir -p "$(dirname "$AMB")"
-    printf '%s\n' "$EVENT" >> "$AMB"
-fi
-
-# ── JSON output to stdout ─────────────────────────────────────────────────────
-if [[ "$JSON_OUT" -eq 1 ]]; then
-    printf '%s\n' "$EVENT"
-else
-    python3 - <<PYEOF
-import json
-m = $METRICS
-print(f"fleet metrics snapshot (window={int('$WINDOW_HOURS')}h):")
-print(f"  ship_rate_24h    = {m['ship_rate_24h']:.1%}")
-print(f"  waste_rate_24h   = {m['waste_rate_24h']:.3f}")
-print(f"  cycle_time_p50_h = {m['cycle_time_p50_h']:.1f}h")
-print(f"  active_gaps      = {m['active_gaps']}")
-print(f"  p0_count         = {m['p0_count']}")
-PYEOF
-fi
