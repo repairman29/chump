@@ -78,7 +78,7 @@ impl Tool for FleetTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["register", "list", "dispatch", "status", "propose_merge", "heartbeat", "exchange_workspace", "merge_workspace", "split_workspace"],
+                    "enum": ["register", "list", "dispatch", "status", "propose_merge", "heartbeat", "exchange_workspace", "merge_workspace", "split_workspace", "metrics"],
                     "description": "Action to perform"
                 },
                 "peer_id": {
@@ -165,12 +165,13 @@ impl Tool for FleetTool {
             "exchange_workspace" => handle_exchange_workspace(obj).await,
             "merge_workspace" => handle_merge_workspace(obj).await,
             "split_workspace" => handle_split_workspace(),
+            "metrics" => handle_metrics(obj),
             "" => Ok(
-                "fleet requires 'action' (register | list | dispatch | status | propose_merge | heartbeat | exchange_workspace | merge_workspace | split_workspace)."
+                "fleet requires 'action' (register | list | dispatch | status | propose_merge | heartbeat | exchange_workspace | merge_workspace | split_workspace | metrics)."
                     .to_string(),
             ),
             other => Ok(format!(
-                "Unknown action '{}'. Valid: register, list, dispatch, status, propose_merge, heartbeat, exchange_workspace, merge_workspace, split_workspace.",
+                "Unknown action '{}'. Valid: register, list, dispatch, status, propose_merge, heartbeat, exchange_workspace, merge_workspace, split_workspace, metrics.",
                 other
             )),
         }
@@ -523,6 +524,55 @@ fn handle_split_workspace() -> Result<String> {
             state.peer_id,
         )),
         None => Ok("split_workspace: no active merge session to end.".to_string()),
+    }
+}
+
+/// INFRA-900: invoke fleet-metrics-snapshot.sh and return the snapshot output.
+fn handle_metrics(obj: &serde_json::Map<String, Value>) -> Result<String> {
+    let dry_run = obj
+        .get("dry_run")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let window = obj.get("window_h").and_then(|v| v.as_u64()).unwrap_or(24);
+
+    let script = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.push("scripts/ops/fleet-metrics-snapshot.sh");
+        p
+    };
+
+    if !script.exists() {
+        return Ok(format!(
+            "fleet metrics: script not found at {}",
+            script.display()
+        ));
+    }
+
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg(&script)
+        .arg("--json")
+        .arg("--window")
+        .arg(window.to_string());
+    if dry_run {
+        cmd.arg("--dry-run");
+    }
+
+    match cmd.output() {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if out.status.success() {
+                Ok(stdout.trim().to_string())
+            } else {
+                Ok(format!(
+                    "fleet metrics: script exited {}\nstdout: {}\nstderr: {}",
+                    out.status.code().unwrap_or(-1),
+                    stdout.trim(),
+                    stderr.trim()
+                ))
+            }
+        }
+        Err(e) => Ok(format!("fleet metrics: failed to run script: {e}")),
     }
 }
 
