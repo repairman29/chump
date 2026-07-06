@@ -1,3 +1,323 @@
+## Issue #19 — 2026-07-06
+
+> Audit window: commits since 2026-06-29 (Issue #18). **9 non-cold-water commits** to `origin/main` (PRs #3175–#3187). Sandbox: fresh clone, chump binary build did not complete before evidence gathering (proposed-only mode; SQLite verification skipped). All evidence from git log, YAML file reads, and bash scripts. **Initial clone was stale — fetched after preflight revealed this.** Bypass rate: 0/9 non-cold-water commits (0% — improvement from 60% last cycle). P0 count: 78 (budget: 5, up from 77). Ghost gap IDs: 5 new this cycle (22 all-time). **2 follow-up gaps filed: RESILIENT-168, CREDIBLE-127** (YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
+
+---
+
+### Status of Prior Issues (Issue #18)
+
+- **STILL_OPEN_INACTIVE (2 cycles)**: RESILIENT-160 — chump binary dyld_start inode-wedge.
+  ```
+  git log origin/main --grep='RESILIENT-160' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 2 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (2 cycles)**: MISSION-043 — BEAST-MODE merge loop, 0 merged.
+  ```
+  git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 2 cycles since filing)
+  ```
+  Mission scoreboard ① still NO. 9th consecutive audit cycle. No BEAST-MODE PRs merged.
+
+- **STILL_OPEN_INACTIVE (9 cycles)**: EVAL-094 — naturalized-framing evaluation. 0 implementation commits ever.
+  ```
+  git log origin/main --grep='EVAL-094' --oneline | grep -v cold-water
+  (empty — 9 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (9 cycles)**: FLEET-053 — NATS deployment. 0 implementation commits ever.
+  ```
+  git log origin/main --grep='FLEET-053' --oneline | grep -v cold-water
+  (empty — 9 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (4 cycles)**: MISSION-042 — MISSION-010/011/012 ghost gap IDs.
+  ```
+  git log origin/main --grep='MISSION-042' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 4 cycles)
+  ls docs/gaps/MISSION-010.yaml → No such file or directory (still)
+  ```
+  Commits still reference `MISSION-010` in commit bodies. The ghost is still the north star.
+
+- **STILL_OPEN_INACTIVE (2 cycles)**: EFFECTIVE-293 — 7-day silence root-cause.
+  ```
+  git log origin/main --grep='EFFECTIVE-293' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 2 cycles)
+  ```
+  AC4 still unmet: no post-mortem filed. CREDIBLE-146 this cycle likely IS the root cause (see G1). Filed CREDIBLE-127.
+
+- **STILL_OPEN_INACTIVE (1 cycle)**: CREDIBLE-126 — ghost commit hygiene failure tracker.
+  ```
+  git log origin/main --grep='CREDIBLE-126' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 1 cycle)
+  ```
+  5 more ghost gap IDs shipped this cycle despite this gap being open.
+
+- **STILL_OPEN_INACTIVE (1 cycle)**: RESILIENT-167 — bypass trailers promising follow-ups that never land.
+  ```
+  git log origin/main --grep='RESILIENT-167' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 1 cycle)
+  ```
+
+- **WORSE**: C1 — **P0 count: 78** (was 77 Issue #18, 76 Issues #16-17, budget: 5 max). Up by 1. META-064 (P0 inflation fix) still at 0 implementation commits (1 mention-only commit in INFRA-1543).
+
+- **BETTER**: G1 — **Bot-merge bypass rate: 0%** (0 of 9 non-cold-water commits). Down from 60% in Issue #18. This is the first 0% bypass cycle in the audit's history. Causality uncertain: may reflect CREDIBLE-146 fix unblocking auth, or simply low commit volume.
+
+- **FIXED**: G1/Issue #18 — The 7-day fleet silence ended. The fleet resumed shipping dep bumps on 2026-06-29 and CREDIBLE fixes on 2026-07-04. The root cause (auth-status stale cache — CREDIBLE-146) was fixed this cycle. EFFECTIVE-293 AC4 (post-mortem) remains unmet.
+
+- **NO_GAP filed this cycle**: RESILIENT-168 (wip/ remote branch accumulation, 324 branches, no cleanup mechanism).
+
+---
+
+### The Looming Ghost
+
+**[P1/High] G1 — CREDIBLE-146 (auth-status stale-cache) is the probable cause of Issue #18's 7-day fleet silence — this was never documented, and EFFECTIVE-293's post-mortem AC remains unmet**
+
+We are failing to close our own incident investigations. CREDIBLE-146 (PR #3182, 2026-07-04) fixed a 600-second TTL cache in `auth-status.sh` that served a cached BROKEN verdict blindly: "a cached BROKEN kept the farmer paging AUTH_DEAD while the oauth token was valid, silently freezing the fleet for days." The timeline matches the Issue #18 silence exactly:
+
+```
+git show ec6321f1 --format="%ai %s"
+2026-06-20 17:46:09 -0500  feat(RESILIENT-086): auth-status validity probe in preflight (#3125)
+  ↑ introduces 600s cache
+
+git log origin/main --since="2026-06-22" --until="2026-07-03" --oneline | wc -l
+0  ← fleet silent 11 days while cache could serve BROKEN
+
+git show 796856bf --format="%ai %s"
+2026-07-04 20:18:19 -0500  fix(CREDIBLE-146): never serve a stale/bad auth-status cache (#3182)
+  ↑ fix lands; fleet resumes same day
+```
+
+EFFECTIVE-293 (Issue #18's root-cause gap) hypothesized a CI cascade but never identified the auth cache. With CREDIBLE-146 now in hand, the link is clear. Yet:
+
+```
+git log origin/main --grep='EFFECTIVE-293' --oneline | grep -v cold-water
+(empty — 0 impl commits, 2 cycles open)
+```
+
+EFFECTIVE-293 AC4 — "a post-mortem commit or ambient event documents the actual root cause" — remains unmet. Filed CREDIBLE-127.
+
+- evidence 1: `git show 796856bf --format='%B'` → "silently freezing the fleet for days" — the exact symptom of Issue #18
+- evidence 2: RESILIENT-086 introduced the cache 2026-06-20; silence started 2026-06-22; CREDIBLE-146 fixed it 2026-07-04; fleet resumed same day
+- evidence 3: `git log origin/main --grep='EFFECTIVE-293' --oneline | grep -v cold-water` → empty — 0 post-mortem commits in 2 cycles
+
+*This finding is wrong if: the fleet resumed on 2026-06-29 (dep bumps) independently of CREDIBLE-146 (which landed 2026-07-04). The dep bumps are Dependabot automation — not fleet workers — and the fleet's manual work (CREDIBLE-146, CREDIBLE-149, refactors) resumed only on 2026-07-04 after the auth cache fix.*
+
+---
+
+### The Opportunity Cost
+
+**[P0/Critical] O1 — MISSION scoreboard ① still NO for 9th consecutive audit cycle; MISSION-043 (P0) filed 2 cycles ago, 0 impl commits; this cycle shipped 0 BEAST-MODE-advancing commits**
+
+We are failing to move the mission. This cycle (2026-06-29 to 2026-07-06) shipped: 3 automated dep bumps, 2 CREDIBLE auth/metric fixes, 2 internal dispatch refactors, 1 documentation doc (CODEBASE_REALITY_MAP). Zero commits advance the external-repo merge pipeline.
+
+```
+git log origin/main --since="2026-06-29" --format='%s' | grep -v "cold-water\|chore(deps)"
+docs(DOC-068): CODEBASE_REALITY_MAP — cross-cutting capability synthesis for future agents
+refactor(INFRA-3298): extract author-time helpers to dispatch_authoring
+refactor(INFRA-3289): extract external-repo commands to dispatch_external
+fix(CREDIBLE-146): never serve a stale/bad auth-status cache
+fix(CREDIBLE-149): count only real leases in fleet_status
+
+git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water
+(empty — 0 impl commits, 2 cycles)
+```
+
+MISSION-043 was filed in Issue #17 (2026-06-22) to track "11 BEAST-MODE PRs opened, 0 merged." Two cycles later: still 0 implementation commits, still P0, still open. The scoreboard ① reports NO for the ninth consecutive audit. The "Outward Flywheel" strategy doc (Issue #18's I1 finding — MISSION-050, still a ghost ID) describes exactly what to do. The work isn't being done.
+
+- evidence 1: `git log origin/main --since="2026-06-29" --format='%s'` → 0 BEAST-advancing commits
+- evidence 2: `git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water` → empty (2 cycles)
+- evidence 3: `docs/MISSION.md` reports scoreboard ① = NO, operative since Issue #11
+
+*This finding is wrong if: BEAST-MODE PRs merged via a path not captured in chump/main (e.g. direct push to repairman29/BEAST-MODE). The mission-scoreboard.sh script fetches BEAST-MODE directly — if that repo's auth is broken the scoreboard could false-report. Without gh CLI in sandbox, the scoreboard output cannot be verified this cycle; the git log evidence stands.*
+
+---
+
+**[P1/High] O2 — EVAL-094, FLEET-053: 9th consecutive cycle, 0 implementation commits**
+
+We are failing at research credibility and distributed coordination for the ninth consecutive cycle. EVAL-094 (naturalized-framing evaluation, n=50/cell) has never run. FLEET-053 (NATS production deployment) has never been attempted. RESEARCH_INTEGRITY.md §Mechanism Analysis requires naturalized-framing results from EVAL-094 before any delta >±0.05 can be claimed; this requirement has been unfulfillable for 9 weeks.
+
+```
+git log origin/main --grep='EVAL-094' --oneline | grep -v cold-water
+(empty — 9 cycles)
+
+git log origin/main --grep='FLEET-053' --oneline | grep -v cold-water
+(empty — 9 cycles)
+
+git branch -r | grep -E "EVAL-094|FLEET-053"
+(empty — no in-flight branches)
+```
+
+*This finding is wrong if: EVAL-094 or FLEET-053 work is underway in an unpushed branch or private fork. No remote branches found for either.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — 5 more ghost gap IDs this cycle (22 all-time); CREDIBLE-126 (ghost hygiene gap) has 0 impl commits after 1 cycle; the ghost rate is structurally unchecked**
+
+We are failing at basic gap hygiene for the second consecutive cycle. This cycle shipped 5 commits referencing gap IDs with no `.yaml` file and no `state.sql` entry:
+
+```
+ls docs/gaps/CREDIBLE-146.yaml  → No such file or directory
+ls docs/gaps/CREDIBLE-149.yaml  → No such file or directory
+ls docs/gaps/DOC-068.yaml       → No such file or directory
+ls docs/gaps/INFRA-3289.yaml    → No such file or directory
+ls docs/gaps/INFRA-3298.yaml    → No such file or directory
+grep "CREDIBLE-146\|CREDIBLE-149\|DOC-068\|INFRA-3289\|INFRA-3298" .chump/state.sql
+(empty — not in canonical store either)
+```
+
+CREDIBLE-126 was filed in Issue #18 to track exactly this. Zero implementation commits:
+
+```
+git log origin/main --grep='CREDIBLE-126' --oneline | grep -v cold-water
+(empty — 0 impl commits, 1 cycle)
+```
+
+All-time ghost count: 22 gap IDs committed to main but traceable to no YAML file and no state.sql row. Ghost rate: ~5 per short cycle. The pre-commit hook validates gap IDs against the store — but only if the store has the IDs loaded. When bot-merge is bypassed or the chump binary wedges during preflight, this check fails open.
+
+- evidence 1: `ls docs/gaps/CREDIBLE-146.yaml docs/gaps/CREDIBLE-149.yaml docs/gaps/DOC-068.yaml` → all missing
+- evidence 2: `grep "CREDIBLE-146" .chump/state.sql` → empty (not in canonical store)
+- evidence 3: `git log origin/main --grep='CREDIBLE-126' --oneline | grep -v cold-water` → empty (ghost hygiene gap untouched)
+
+*This finding is wrong if: the gap store is managed exclusively in `state.db` (not exported to YAML) and state.db has these IDs. The chump binary failed to build in this sandbox; state.db is absent. state.sql (the SQL dump) does not contain these IDs.*
+
+---
+
+**[P2/High] C2 — 324 remote wip/ branches accumulating with no cleanup; newest from 2026-07-05; stale-worktree-reaper creates them but never deletes them**
+
+We are failing to clean up after our own tooling. RESILIENT-029 added stash-before-reap to `scripts/ops/stale-worktree-reaper.sh` — before deleting a worktree, uncommitted work is pushed to a `wip/<gap>-<ts>` branch. This is correct. But the branches are never deleted:
+
+```
+git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l
+324
+
+git ls-remote --heads origin | grep "refs/heads/wip/" | tail -1
+0fb9ccd...   refs/heads/wip/unknown-1783285544
+# timestamp → 2026-07-05 21:05:44 UTC
+
+grep -n "git push.*delete\|git push origin :.*wip\|prune.*wip" scripts/ops/stale-worktree-reaper.sh
+(empty — no cleanup code)
+
+git ls-remote --heads origin | wc -l
+412  ← total branches; 324/412 = 79% are abandoned stash branches
+```
+
+- evidence 1: `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` → 324
+- evidence 2: `grep "delete.*wip\|wip.*prune" scripts/ops/stale-worktree-reaper.sh` → empty
+- evidence 3: newest wip branch: 2026-07-05 21:05 UTC — fleet is actively creating them right now
+
+Filed RESILIENT-168.
+
+*This finding is wrong if: a separate cron script prunes wip/ branches — `grep -r "wip.*prune\|prune.*wip" scripts/` returns non-empty. Not found.*
+
+---
+
+### The Reality Check
+
+**[P0/Critical] R1 — P0 count: 78 (budget: 5, 15.6× over); 76 of 78 open P0s have ZERO implementation commits; META-064 (P0 inflation fix) still has 0 impl commits after 3 cycles**
+
+We are failing at P0 budget discipline for the longest sustained stretch in this audit's history. The P0 count has risen from 74 (Issue #15) → 76 → 76 → 77 → 78. It has never decreased. META-064 (the gap tasked with fixing this) has 0 implementation commits:
+
+```
+git log origin/main --grep='META-064' --oneline | grep -v cold-water
+b3b39f0e feat(INFRA-1543): Pi mesh actions-runner provisioner...  ← mention only, not impl
+
+# P0 audit (YAML):
+python3 -c "import glob; p=[f for f in glob.glob('docs/gaps/*.yaml') if 'priority: P0' in open(f).read() and 'status: open' in open(f).read()]; print(len(p))"
+78
+
+# P0 gaps with zero impl commits:
+76 of 78 (the 2 with commits are OPEN-BUT-LANDED: EVAL-125 and INFRA-1620, both same PR #3135)
+```
+
+The two P0 gaps with "impl commits" are both OBL (Open-But-Landed) from the same PR (#3135, 2026-06-20). Neither has been closed. The budget enforcement mechanism (`scripts/ci/test-p0-budget.sh`) is itself a gap in progress — it doesn't run in CI because META-064 has never shipped.
+
+- evidence 1: YAML census → 78 open P0 gaps (budget: 5 per CLAUDE.md)
+- evidence 2: 76/78 P0 gaps have zero non-cold-water git log entries
+- evidence 3: `git log origin/main --grep='META-064' --oneline | grep -v cold-water` → 0 implementation commits (3 cycles since filing)
+
+*This finding is wrong if: the P0 budget limit was relaxed by operator decision and CLAUDE.md was updated. CLAUDE.md §Mission Driver still reads "P0 budget = 5 max."*
+
+---
+
+**[P1/High] R2 — Fleet metrics reported 189 workers vs ~1 real (180×) for 26 days; CREDIBLE-149 fixed this but no post-mortem; all prior fleet health assessments in that window are untrustworthy**
+
+We are failing at credible self-measurement. `fleet_status.rs` (introduced 2026-06-08, PR #3124 INFRA-774) globbed ALL `.json` files in `.chump-locks/` to count "active leases" — including 178 curator decision-log ledgers and state files that are NOT leases. The fleet dashboard, mission_grade, and fleet scaling-gate all consumed this count. The count read ~189; real active workers: ~1.
+
+```
+git show dde830ef --format="%B" | head -10
+fix(CREDIBLE-149): count only real leases (expires_at) in fleet_status (#3181)
+active_leases/fleet_workers_alive globbed every .chump-locks/*.json — so
+178 curator decision-log ledgers + state files inflated the count ~180x
+(reported 189 vs ~1 real lease). Poisoned fleet status, web dashboard,
+fleet_health, mission_grade, and the scaling-gate input.
+
+# Duration of false metrics:
+git log --follow --format="%ai" -- src/fleet_status.rs | head -2
+2026-07-04 14:57:32  ← fixed
+2026-06-08 23:05:10  ← introduced
+# 26 days of ~180x inflated fleet health data
+```
+
+The scaling-gate criteria (CLAUDE.md §Fleet scaling gate) include `fleet_workers_alive` as an input. Every scaling decision for 26 days was based on a metric 180× over reality. No post-mortem was filed. No prior cold-water issue caught this — the gap CREDIBLE-149 itself is a ghost (no YAML file).
+
+- evidence 1: commit body states "reported 189 vs ~1 real" — 180× inflation
+- evidence 2: `git log --follow --format="%ai" -- src/fleet_status.rs` → bug lived 2026-06-08 to 2026-07-04 = 26 days
+- evidence 3: `CLAUDE.md §Fleet scaling gate` lists `fleet_workers_alive` as a scaling-gate input; the scaling gate is fed false data for 26 days
+
+*This finding is wrong if: the scaling-gate never ran during this period (fleet stayed at same size). This cycle's evidence shows PR activity throughout — scaling decisions were being made.*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] I1 — EVAL-094 is now in its 9th inactive cycle while the evaluation-aware sandbagging literature it references has reached ICLR-2026 publication status; the methodology obligation is increasingly remote from best practice**
+
+We are failing to track external evaluation methodology as it matures. The RESEARCH_INTEGRITY.md §Mechanism Analysis requirement cites arXiv:2508.00943 (ICLR 2026, "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought Monitoring") as justification for the EVAL-094 naturalized-framing requirement. That paper is now published. The requirement remains. EVAL-094 has 0 implementation commits across 9 cycles.
+
+`docs/strategy/EVAL_AWARE_SANDBAGGING.md` was last audited 2026-05-22. It states the risk is "partially mitigated and load-bearing-unfixed at the magnitude level." That assessment is 45 days stale. The CODEBASE_REALITY_MAP (DOC-068, shipped this cycle) documents: "the flagship external-repo loop has not met its own exit bar (≥3 merged PRs in one overnight `chump improve` run)." The gap between claimed and verified capability is the same evaluation-awareness risk EVAL-094 was supposed to measure — except now the risk includes the fleet's self-assessment of its own shipping capability (CREDIBLE-149's 180× inflation, CREDIBLE-146's stale auth cache).
+
+External baseline (not required to web-search; citing the paper already in RESEARCH_INTEGRITY.md): arXiv:2508.00943 — 16–36% monitor-bypass on Claude-class models. Chump uses Claude-class models as both agents and judges. Nine cycles of EVAL-094 inactivity means nine cycles of mechanism claims the project cannot defend.
+
+*This finding is wrong if: EVAL-094 ran in a private fork and results are in the private companion repo. No evidence of this. RESEARCH_INTEGRITY.md standing caveat applies: "the direction of the principal finding is stable; the magnitudes are subject to ongoing methodological scrutiny."*
+
+---
+
+**THE ONE BIG THING:** [P0] We are failing to measure our own fleet honestly, and we have been doing so for at least 26 days. The CREDIBLE-149 fix this cycle revealed that every fleet health dashboard, mission grade, and scaling-gate input was lying by 180× — reporting ~189 active workers while ~1 was real — from 2026-06-08 through 2026-07-04. The CREDIBLE-146 fix, also this cycle, revealed that the auth-status probe cached BROKEN verdicts for 10 minutes and served them blindly, which is the probable cause of Issue #18's 7-day fleet silence. Both gaps are ghost IDs (no YAML, no state.sql entry). Both fixes shipped without post-mortems. The CODEBASE_REALITY_MAP (DOC-068) itself says: "the fleet has gone silently dark for days while every dashboard read 'healthy.'" That is not a historical observation — it describes Issue #18. The fixes landed this cycle. The post-mortems did not. EFFECTIVE-293 (root-cause gap) and CREDIBLE-127 (post-mortem obligation) both have 0 implementation commits. The mission scoreboard reads ① NO for the ninth consecutive cycle. The issue is not that the fleet cannot ship — it shipped 9 commits this cycle with 0 bypasses, the cleanest bypass rate ever. The issue is that the fleet cannot honestly measure whether what it ships is working. Gap ID for the measurement failure: CREDIBLE-127.
+
+---
+
+### Follow-up Gaps Filed
+
+(Gap `.yaml` files written manually — chump binary unavailable for `state.db` import. Operator must run `chump gap import` to sync YAML into state.db before these appear in `chump gap list`.)
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| RESILIENT-168 | RESILIENT: stale-worktree-reaper creates wip/ branches but never deletes them — 324 remote branches accumulating | P2 | xs |
+| CREDIBLE-127 | CREDIBLE: EFFECTIVE-293 root cause identified (CREDIBLE-146 auth cache) but post-mortem never filed — AC4 unmet | P1 | xs |
+
+```
+# Verification (run after chump gap import):
+ls docs/gaps/RESILIENT-168.yaml docs/gaps/CREDIBLE-127.yaml
+# → both exist (verified at write time)
+# chump gap list --json | python3 -c "import json,sys; ids={g['id'] for g in json.load(sys.stdin)}; print({x for x in ['RESILIENT-168','CREDIBLE-127'] if x in ids})"
+# → run after chump gap import to confirm state.db sync
+```
+
+Pre-existing gaps covering other findings:
+- MISSION-043 (BEAST-MODE merge loop, P0/m, 0 impl commits — 2 cycles)
+- EVAL-094 (9 cycles inactive), FLEET-053 (9 cycles inactive)
+- MISSION-042 (ghost gap IDs MISSION-010/011/012, 4 cycles inactive)
+- META-064 (P0 inflation fix, 0 impl commits — 3 cycles)
+- CREDIBLE-126 (ghost commit hygiene, 0 impl commits — 1 cycle)
+- RESILIENT-167 (bypass trailers lying, 0 impl commits — 1 cycle)
+- EFFECTIVE-293 (7-day silence root-cause, AC4 unmet — 2 cycles)
+- RESILIENT-160 (dyld_start wedge, 0 impl commits — 2 cycles)
+
+---
+
 ## Issue #18 — 2026-06-29
 
 > Audit window: commits since 2026-06-22 (Issue #17). **5 commits to `origin/main`** (PRs #3168–#3172), all on 2026-06-22 — then **zero commits for 7 days**. Sandbox: fresh worktree on main, chump binary not built (cargo still running). All evidence from git log, YAML file reads, and bash scripts. Bypass rate: 3/5 non-cold-water commits (60%). P0 count: 77 (budget: 5). 4 ghost gap IDs shipped. **3 follow-up gaps filed: CREDIBLE-126, RESILIENT-167, EFFECTIVE-293** (gap YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
