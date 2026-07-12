@@ -1,6 +1,6 @@
 [package]
 name = "chump-perception"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Structured perception layer for LLM agents: rule-based extraction of entities, constraints, risk indicators, ambiguity score, and task type from raw user input. No LLM calls — fast pattern matching only."
 repository = "https://github.com/repairman29/chump"

@@ -1,6 +1,6 @@
 [package]
 name = "chump-messaging"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Platform-agnostic messaging trait for LLM agents: MessagingAdapter contract for Telegram/Slack/Matrix/Discord/web adapters PLUS Broker trait for agent-to-agent inbox messaging (FileBroker concrete impl matches Chump's .chump-locks/inbox/<SESSION>.jsonl semantics with atomic-cursor writes)."
 repository = "https://github.com/repairman29/chump"

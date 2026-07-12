@@ -1,6 +1,6 @@
 [package]
 name = "chump-cost-tracker"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Per-session cost visibility for LLM agents: atomic per-provider call counts, token tallies (input/output), and Tavily credit tracking. Optional session-budget warnings via env vars. Zero external dependencies — pure std."
 repository = "https://github.com/repairman29/chump"
