@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "NATS-backed atomic coordination layer for multi-agent Chump sessions. Phase 1: KV claim store + JetStream event bus alongside the existing file-based lease system."
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "coordination", "nats", "multi-agent", "lease"]
 categories = ["concurrency", "development-tools"]
 

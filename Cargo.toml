@@ -45,7 +45,7 @@ edition = "2021"
 description = "Self-hosted Rust agent: OpenAI-compatible inference, rich tools, SQLite state, optional web PWA and Discord"
 repository = "https://github.com/repairman29/chump"
 homepage = "https://repairman29.github.io/chump/"
-license = "MIT"
+license = "AGPL-3.0-only"
 readme = "README.md"
 
 [[bin]]
