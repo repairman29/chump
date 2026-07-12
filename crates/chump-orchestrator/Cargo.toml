@@ -1,10 +1,10 @@
 [package]
 name = "chump-orchestrator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "AUTO-013 — Chump self-dispatching orchestrator. MVP steps 1-4: gap-picker, subprocess spawn, monitor loop, reflection writes per dispatch outcome."
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "orchestrator", "dispatch", "multi-agent"]
 categories = ["development-tools"]
 
