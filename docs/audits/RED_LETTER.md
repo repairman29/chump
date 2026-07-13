@@ -1,3 +1,322 @@
+## Issue #20 — 2026-07-13
+
+> Audit window: commits since 2026-07-06 (Issue #19). **6 commits to `origin/main`** (PRs #3189–#3190 plus 4 direct commits). Sandbox: fresh remote clone, chump binary build still in progress (proposed-only mode; SQLite verification skipped). All evidence from git log, YAML file reads, bash scripts, and mcp__github__list_pull_requests. Bypass rate: 0/6 non-cold-water commits (0% — second consecutive 0% cycle). P0 count: 78 (budget: 5, unchanged). New ghost gap IDs: CP-018, CP-019 (no YAML, this cycle's commits). **2 follow-up gaps filed: CREDIBLE-128, RESILIENT-169** (YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
+
+---
+
+### Status of Prior Issues (Issue #19)
+
+- **STILL_OPEN_INACTIVE (3 cycles)**: RESILIENT-160 — chump binary dyld_start inode-wedge. 9 stranded PRs cite this as root cause.
+  ```
+  git log origin/main --grep='RESILIENT-160' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 3 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (3 cycles)**: MISSION-043 — BEAST-MODE merge loop, 0 merged. Mission scoreboard ① = NO for 10th consecutive audit cycle.
+  ```
+  git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 3 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (10 cycles)**: EVAL-094 — naturalized-framing evaluation. 0 implementation commits ever.
+  ```
+  git log origin/main --grep='EVAL-094' --oneline | grep -v cold-water
+  (empty — 10 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (10 cycles)**: FLEET-053 — NATS deployment. 0 implementation commits ever.
+  ```
+  git log origin/main --grep='FLEET-053' --oneline | grep -v cold-water
+  (empty — 10 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (5 cycles)**: MISSION-042 — MISSION-010/011/012 ghost gap IDs. `docs/MISSION.md` still references them. `ls docs/gaps/MISSION-010.yaml` → No such file (still).
+  ```
+  git log origin/main --grep='MISSION-042' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 5 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (3 cycles)**: EFFECTIVE-293 — 7-day silence root-cause, post-mortem AC4 unmet.
+  ```
+  git log origin/main --grep='EFFECTIVE-293' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 3 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (2 cycles)**: CREDIBLE-126 — ghost commit hygiene tracker.
+  ```
+  git log origin/main --grep='CREDIBLE-126' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 2 cycles)
+  ```
+  2 more ghost gap IDs (CP-018, CP-019) shipped this cycle despite this gap being open.
+
+- **STILL_OPEN_INACTIVE (2 cycles)**: RESILIENT-167 — bypass trailers promising follow-ups that never land.
+  ```
+  git log origin/main --grep='RESILIENT-167' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 2 cycles)
+  ```
+
+- **STILL_OPEN_INACTIVE (mention-only, 3 cycles)**: META-064 — P0 inflation fix. 1 mention-only commit (INFRA-1543 body), 0 implementation commits.
+  ```
+  git log origin/main --grep='META-064' --oneline | grep -v cold-water
+  b3b39f0 feat(INFRA-1543): Pi mesh actions-runner provisioner...  ← mention only, not impl
+  ```
+
+- **STILL_OPEN_INACTIVE (1 cycle)**: RESILIENT-168 — wip/ branch accumulation (324 branches). 0 impl commits.
+  ```
+  git log origin/main --grep='RESILIENT-168' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 1 cycle)
+  ```
+  Branch count: 324 wip/ branches — unchanged from Issue #19.
+
+- **STILL_OPEN_INACTIVE (1 cycle)**: CREDIBLE-127 — EFFECTIVE-293 post-mortem (AC4 unmet). 0 impl commits.
+  ```
+  git log origin/main --grep='CREDIBLE-127' --oneline | grep -v cold-water
+  (empty — 0 impl commits, 1 cycle)
+  ```
+
+- **UNCHANGED**: P0 count: 78 (budget: 5, 15.6× over). Not worse, not better. META-064 (P0 inflation fix) at 0 impl commits across 3 cycles.
+
+- **BETTER**: Bypass rate: 0% for second consecutive cycle (6 of 6 non-cold-water commits had no bypass trailer).
+
+- **NO_GAP filed this cycle**: CREDIBLE-128 (AGPLv3 relicense shipped while INFRA-1506 open, AC3/4/5 unmet), RESILIENT-169 (9 stranded PRs, dyld_start root cause unfixed 3 cycles).
+
+---
+
+### The Looming Ghost
+
+**[P1/High] G1 — AGPLv3 relicense shipped (PR #3189, 2026-07-12) while INFRA-1506 (P1, "license model decision") remains status:open with three unmet acceptance criteria; LICENSE_STRATEGY.md still reads "DECISION PENDING" and "Current license: MIT"**
+
+We are failing at license governance. A business-critical decision — changing from MIT to AGPLv3+Apache-2.0 across 12 crates — shipped without satisfying the controlling P1 gap. Three acceptance criteria of INFRA-1506 are unmet as of this audit:
+
+```
+# AC3 unmet: "If non-MIT chosen: file follow-up gap to migrate + notify existing contributors"
+grep -r "contributor.*notify\|notify.*contributor" docs/gaps/*.yaml | wc -l
+0
+
+# STATUS_STALE: LICENSE_STRATEGY.md was NOT updated after the relicense
+grep "Status:\|Current license:\|Last updated:" docs/business/LICENSE_STRATEGY.md
+Status: DECISION PENDING — operator sign-off required before any payment infrastructure ships
+Current license: MIT
+Last updated: 2026-06-22
+
+# INFRA-1506 not closed
+grep "status:" docs/gaps/INFRA-1506.yaml
+  status: open
+
+# Republish untracked
+git show 56a59c9 --format='%B' | grep -i "gap\|track\|follow"
+"Republish (cargo publish, needs owner token) is a separate step."  ← no gap filed
+```
+
+The commit body (56a59c9) states: "Verified: no Apache lib depends on an AGPL crate (compatible direction). Old MIT versions on crates.io keep their grant; this applies going forward. Republish (cargo publish, needs owner token) is a separate step." The republish is untracked. INFRA-1506 AC requirement "Any path: INFRA-NEW: Legal review of chosen license before INFRA-1337 ships" — no legal review gap filed.
+
+- evidence 1: `cat docs/gaps/INFRA-1506.yaml | grep "status:"` → `status: open` (controlling P1 gap unresolved)
+- evidence 2: `grep "Status:" docs/business/LICENSE_STRATEGY.md` → "DECISION PENDING" / "Current license: MIT" (stale; actual license is now AGPLv3/Apache-2.0)
+- evidence 3: `git show 56a59c9 --format='%B' | grep -iE "close|resolv|INFRA-1506"` → no closure reference
+
+*This finding is wrong if: a separate commit or PR between 2026-07-12 and 2026-07-13 closed INFRA-1506 and filed the notification gap. No such commit found in `git log origin/main --since="2026-07-06" --oneline`.*
+
+---
+
+### The Opportunity Cost
+
+**[P0/Critical] O1 — MISSION-043 (BEAST-MODE merge loop): 3rd consecutive cycle inactive; scoreboard ① = NO for 10th consecutive audit; 0 mission-advancing commits this cycle**
+
+We are failing to advance the mission for the tenth consecutive audit cycle. This cycle shipped: 2 cross-pollination doctrine docs (CP-018, CP-019), 1 AGPLv3 relicense, 1 version bump. Zero commits advance the external-repo merge pipeline.
+
+```
+git log origin/main --since="2026-07-06" --format='%s' | grep -v "cold-water"
+docs(cross-pollination): add CP-019-mythseeker2-cascade-convergent
+docs(cross-pollination): add CP-018-smugglers-context-pipeline
+chore: minor version bump all 12 published crates for the license republish
+license: relicense MIT -> AGPLv3 (apps) + Apache-2.0 (libraries)
+
+git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water
+(empty — 0 impl commits, 3 cycles)
+```
+
+The pattern: this is cycle 10 of the scoreboard reading ① NO. MISSION-043 was filed in Issue #17 (2026-06-22) specifically to track "11 BEAST-MODE PRs opened, 0 merged." Three cycles later: still 0 implementation commits. The cross-pollination docs are research artifacts, not product output. The license change is an external-facing governance action but produces no product capability.
+
+- evidence 1: `git log origin/main --since="2026-07-06" --format='%s'` → 0 BEAST-advancing commits
+- evidence 2: `git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water` → empty (3 cycles)
+- evidence 3: `docs/MISSION.md` scoreboard ① = NO, operative since Issue #11 per prior audit records
+
+*This finding is wrong if: BEAST-MODE PRs merged via direct push to repairman29/BEAST-MODE not captured in chump/main. BEAST-MODE is out of scope for this session's MCP access; the git log evidence is what's available.*
+
+---
+
+**[P1/High] O2 — 9 open PRs stranded (8 non-Dependabot); oldest 21 days; INFRA-1526 is a ghost gap driving 3 duplicate PRs; INFRA-918 has 3 duplicate PRs after already landing on main with TODO ACs**
+
+We are failing to merge our own PRs. 9 PRs sit open in repairman29/chump. 8 are non-Dependabot. 6 of 8 carry `Bot-Merge-Bypass:` trailers citing dyld_start wedge. RESILIENT-160 (the dyld_start fix gap) has 0 impl commits across 3 cycles — the root cause is unfixed.
+
+```
+# INFRA-1526 ghost: 3 PRs (#3163, #3173, #3174) for a gap that was never filed
+ls docs/gaps/INFRA-1526.yaml
+ls: cannot access 'docs/gaps/INFRA-1526.yaml': No such file or directory
+
+# INFRA-918 triplicate after OBL: already merged once (4a028fe), 3 more PRs open
+git log origin/main --grep='INFRA-918' --oneline | grep -v cold-water
+4a028fe feat(INFRA-918): bot-merge rebase-before-test telemetry (#3168)
+# Then 3 more PRs opened same day: #3155, #3156, #3157 — all unmerged 21 days later
+
+# PR #3183 (INFRA-1590): opened 2026-07-05 — after CREDIBLE-146 auth fix
+# Still unmerged 8 days later. A new failure class post-fix.
+
+# RESILIENT-160: still 0 impl commits (3 cycles)
+git log origin/main --grep='RESILIENT-160' --oneline | grep -v cold-water
+(empty — 3 cycles)
+```
+
+- evidence 1: mcp__github__list_pull_requests → 9 open PRs, oldest #3155 (2026-06-22 = 21 days)
+- evidence 2: `ls docs/gaps/INFRA-1526.yaml` → no such file (ghost gap)
+- evidence 3: `git log origin/main --grep='RESILIENT-160' --oneline | grep -v cold-water` → empty (3 cycles, 0 impl commits)
+
+*This finding is wrong if: all 9 open PRs were closed or merged between 2026-07-13 and the next audit. Checked at time of writing.*
+
+---
+
+### The Complexity Trap
+
+**[P2/High] C1 — 2 more ghost gap IDs this cycle (CP-018, CP-019); 15 of 17 cross-pollination docs are "proposed" with no implementation gap; CP-001 has been proposed since 2026-05-23 (51 days) with no gap ID at all**
+
+We are failing to convert research artifacts into actionable work. Two cross-pollination doctrine docs (CP-018 for smugglers context pipeline, CP-019 for mythseeker2 cascade) shipped this cycle with no implementation gap IDs — they reference the MINE_MANIFEST but no gap store entry. CP-001 (neural-farm gateway, proposed 2026-05-23) has had no implementation gap for 51 days.
+
+```
+# CP docs with no gap ID in body:
+# CP-001: no gap ref at all (51 days since proposed)
+# CP-018: no gap ref (filed today)
+# CP-019: no gap ref (filed today)
+
+# CP proposed vs shipped:
+Total: 17 CP docs
+Proposed/stuck: 15
+Shipped: 1 (CP-008, partially)
+Investigation complete: 1 (CP-002)
+
+# Ghost IDs from commits this cycle:
+git log origin/main --since='2026-07-06' --format='%s' | grep -oE '[A-Z]+-[0-9]+' | sort -u
+CP-018  → ls docs/gaps/CP-018.yaml → No such file or directory
+CP-019  → ls docs/gaps/CP-019.yaml → No such file or directory
+```
+
+Cross-pollination docs that propose patterns but file no implementation gap are doc-for-doc's-sake. They contribute to the CP archive (17 docs) while the implementation queue stays untouched.
+
+- evidence 1: CP-018, CP-019 commit subjects contain gap-ID-format strings with no corresponding YAML
+- evidence 2: `grep -h "Status:" docs/arsenal/cross-pollination/CP-*.md | sort | uniq -c` → 15 "proposed", 1 "shipped", 1 "complete"
+- evidence 3: `grep -oE '(INFRA|META|FLEET|...)-[0-9]+' docs/arsenal/cross-pollination/CP-001-*.md` → empty (51 days, no impl gap)
+
+*This finding is wrong if: the CP docs intentionally have no gap IDs and a separate system tracks implementation. No such system found; all other CP docs that are progressing reference gap IDs.*
+
+---
+
+**[P1/High] C2 — INFRA-918 gap has TODO acceptance criteria; shipped to main (PR #3168, 4a028fe); status still open; 3 duplicate PRs opened same day as the merge**
+
+We are failing at the gap lifecycle. INFRA-918 ("bot-merge rebase-before-test telemetry") was shipped to main on 2026-06-22 (PR #3168, 4a028fe). Its AC are four TODO placeholders. Its status was never changed to shipped. Three additional PRs were then opened for the same gap the same day — the fleet's gap picker saw the gap still open, picked it three more times in parallel, and produced three duplicate implementations that have sat unmerged for 21 days.
+
+```
+cat docs/gaps/INFRA-918.yaml | grep -A6 "acceptance_criteria:"
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
+git log origin/main --grep='INFRA-918' --oneline | grep -v cold-water
+4a028fe feat(INFRA-918): bot-merge rebase-before-test telemetry (#3168)  ← merged 2026-06-22
+
+# 3 more open PRs for the same gap:
+# PR #3155, #3156, #3157 — all opened 2026-06-22, all unmerged
+```
+
+- evidence 1: `docs/gaps/INFRA-918.yaml` → 4 TODO ACs, status: open
+- evidence 2: `git log origin/main --grep='INFRA-918'` → 4a028fe (already landed)
+- evidence 3: mcp__github__list_pull_requests → PRs #3155, #3156, #3157 all reference INFRA-918, all state "open"
+
+*This finding is wrong if: the 3 open PRs are superseding the landed PR (4a028fe was reverted). No revert commit found in git log.*
+
+---
+
+### The Reality Check
+
+**[P0/Critical] R1 — P0 count: 78 (budget: 5, 15.6× over); META-064 (P0 inflation fix) at 0 impl commits for 3 cycles; count has never decreased across 10 audit cycles**
+
+We are failing at P0 budget discipline for the longest sustained stretch in this audit's history. P0 count trajectory: 74 (Issue #15) → 76 → 76 → 77 → 78 → 78. It has never decreased. META-064 (the gap tasked with fixing this) has 0 implementation commits:
+
+```
+git log origin/main --grep='META-064' --oneline | grep -v cold-water
+b3b39f0e feat(INFRA-1543): Pi mesh actions-runner provisioner...  ← mention only, not impl
+
+python3 -c "
+import glob, re
+p0 = [f for f in glob.glob('docs/gaps/*.yaml')
+      if re.search(r'^\s*priority: P0', open(f).read(), re.M)
+      and re.search(r'^\s*status: open', open(f).read(), re.M)]
+print(len(p0))
+"
+78
+
+# Budget ceiling per CLAUDE.md §Mission Driver: "P0 budget = 5 max."
+```
+
+78 ÷ 5 = 15.6× over budget. The enforcement mechanism (scripts/ci/test-p0-budget.sh from META-064) does not run in CI because META-064 has never shipped.
+
+- evidence 1: YAML census → 78 open P0 gaps (confirmed with exact Python regex, not `in` substring)
+- evidence 2: `git log origin/main --grep='META-064' --oneline | grep -v cold-water` → 0 impl commits (3 cycles)
+- evidence 3: `CLAUDE.md §Mission Driver` reads "P0 budget = 5 max." (budget unchanged, count 15.6× over)
+
+*This finding is wrong if: the P0 budget was relaxed via operator decision and CLAUDE.md updated. CLAUDE.md still reads "P0 budget = 5 max."*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] I1 — EVAL-094 enters 10th inactive cycle while the 15/17 CP docs it feeds remain unimplemented; the harvest-without-act pattern is now self-referential**
+
+We are failing to close the loop between research and action. This cycle added CP-018 and CP-019 — harvesting two more external-repo patterns for future use — while 15 of 17 prior CP docs remain "proposed" with no implementation. EVAL-094 (the naturalized-framing evaluation that would validate the cognitive architecture the CP docs are meant to feed) has been inactive for 10 cycles. The harvester is running; the implementation queue is frozen.
+
+The 2026-07-12 license change (AGPLv3) is the one outward-facing action this cycle — it reflects a business posture shift — but it was not paired with the downstream actions the strategy doc required (legal review gap, contributor notification, crates.io republish). The harvest-without-implementation pattern now applies to governance decisions too, not just technical research.
+
+External anchor (already cited in RESEARCH_INTEGRITY.md): arXiv:2508.00943 (ICLR 2026) — 16–36% monitor-bypass on Claude-class models. Chump uses Claude-class models as both agents and judges. 10 cycles of EVAL-094 inactivity means 10 cycles without the mechanism data that RESEARCH_INTEGRITY.md §Mechanism Analysis requires before any delta >±0.05 claim.
+
+*This finding is wrong if: EVAL-094 ran in a private fork and results are in the companion repo. No remote branch or public commit evidence of this.*
+
+---
+
+**THE ONE BIG THING:** [P1/compound] We are failing to merge our own work. The stranded-PR graveyard (9 open PRs, 8 non-Dependabot, oldest 21 days) is the clearest symptom of a structural failure that spans three traceable gaps: RESILIENT-160 (dyld_start wedge, 0 impl commits for 3 cycles — the mechanism that created the graveyard), INFRA-1526 (a ghost gap ID that drove 3 duplicate PRs for work that may not have been properly scoped to begin with), and INFRA-918 (already shipped to main with TODO ACs, then picked three more times and opened as 3 more duplicate PRs). The fleet wrote 6 commits to main this cycle — a license change and two CP docs — while 8 working implementations sat unmerged. The root cause (RESILIENT-160, dyld_start wedge) was filed Issue #17, has 0 implementation commits across 3 cycles, and is the stated reason for `Bot-Merge-Bypass:` trailers on 6 of the 9 open PRs. The bypass-creates-orphan pattern that RESILIENT-167 was supposed to track (also 0 impl commits, 2 cycles) is now visible in the open PR list: each bypassed push created a stranded PR that the next picker tried to re-implement. Filed RESILIENT-169 and CREDIBLE-128 this cycle. Pre-existing gap tracking the root cause: RESILIENT-160 (P1, 3 cycles inactive).
+
+---
+
+### Follow-up Gaps Filed
+
+(Gap `.yaml` files written manually — chump binary build did not complete in sandbox. Operator must run `chump gap import` to sync YAML into state.db before these appear in `chump gap list`.)
+
+| Gap ID | Title | Priority | Effort |
+|---|---|---|---|
+| CREDIBLE-128 | AGPLv3 relicense shipped (PR #3189) while INFRA-1506 open — AC3/4/5 unmet | P1 | s |
+| RESILIENT-169 | 9 stranded PRs (oldest 21d); INFRA-1526 ghost gap; INFRA-918 triplicate; RESILIENT-160 root cause 3 cycles inactive | P1 | m |
+
+```bash
+# Verification (run after chump gap import):
+ls docs/gaps/CREDIBLE-128.yaml docs/gaps/RESILIENT-169.yaml
+# → both exist (written 2026-07-13)
+# chump gap list --json | python3 -c "import json,sys; ids={g['id'] for g in json.load(sys.stdin)}; print({x for x in ['CREDIBLE-128','RESILIENT-169'] if x in ids})"
+# → run after chump gap import to confirm state.db sync
+```
+
+Pre-existing gaps covering other findings:
+- MISSION-043 (BEAST-MODE merge loop, P0, 0 impl commits — 3 cycles)
+- EVAL-094 (10 cycles inactive), FLEET-053 (10 cycles inactive)
+- MISSION-042 (ghost gap IDs MISSION-010/011/012, 5 cycles inactive)
+- META-064 (P0 inflation fix, 0 impl commits — 3 cycles)
+- CREDIBLE-126 (ghost commit hygiene, 0 impl commits — 2 cycles)
+- RESILIENT-167 (bypass trailers lying, 0 impl commits — 2 cycles)
+- EFFECTIVE-293 (7-day silence root-cause, AC4 unmet — 3 cycles)
+- RESILIENT-160 (dyld_start wedge, 0 impl commits — 3 cycles; root cause of stranded PR graveyard)
+- RESILIENT-168 (wip/ branch accumulation, 0 impl commits — 1 cycle)
+- CREDIBLE-127 (post-mortem obligation, 0 impl commits — 1 cycle)
+
+---
+
 ## Issue #19 — 2026-07-06
 
 > Audit window: commits since 2026-06-29 (Issue #18). **9 non-cold-water commits** to `origin/main` (PRs #3175–#3187). Sandbox: fresh clone, chump binary build did not complete before evidence gathering (proposed-only mode; SQLite verification skipped). All evidence from git log, YAML file reads, and bash scripts. **Initial clone was stale — fetched after preflight revealed this.** Bypass rate: 0/9 non-cold-water commits (0% — improvement from 60% last cycle). P0 count: 78 (budget: 5, up from 77). Ghost gap IDs: 5 new this cycle (22 all-time). **2 follow-up gaps filed: RESILIENT-168, CREDIBLE-127** (YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
