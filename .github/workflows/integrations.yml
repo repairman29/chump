@@ -376,7 +376,7 @@ jobs:
           key: ollama-models-${{ runner.os }}-v1
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -458,7 +458,7 @@ jobs:
 
       - name: Setup Node (only if wired)
         if: steps.detect.outputs.wired == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
