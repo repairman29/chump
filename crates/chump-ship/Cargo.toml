@@ -5,7 +5,7 @@ edition = "2021"
 description = "Ship trait + ManualShipPath for Chump's ship pipeline (INFRA-1229 planner + INFRA-2001 Phase 2 executor); concrete impl with PID-locked single-instance fixing INFRA-1532 by construction"
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-ship"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["ship", "github", "pull-request", "chump", "merge"]
 categories = ["development-tools", "command-line-utilities"]
 

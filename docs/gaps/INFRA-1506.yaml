@@ -1,7 +1,7 @@
 - id: INFRA-1506
   domain: INFRA
   title: "MISSION: License model decision doc — MIT vs dual-license vs source-available; operator + lawyer sign-off"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -11,4 +11,9 @@
     - Operator (Jeff) sign-off on the chosen path
     - "If non-MIT chosen: file follow-up gap to migrate + notify existing contributors"
     - "If MIT retained: file companion gap to clarify commercial-use messaging"
+  notes: |
+    Closed per CREDIBLE-128/PR #3192: decision recorded in LICENSE_STRATEGY.md (AGPLv3 apps + Apache-2.0 libs, operator sign-off 2026-07-18); migration executed PR #3189 + #3192 sweep; contributor notification waived (sole human copyright holder, rationale in doc); legal review filed as INFRA-3337; crates.io republish filed as INFRA-3336.
+  closed_date: '2026-07-18'
+  closed_pr: 3192
+  outcome_id: MISSION-010
 

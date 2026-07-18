@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "META-124 integration daemon: batches ready-to-ship gaps through preflight before committing to SHIP. Phase 1 dry-run only."
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "integration", "ci", "ship", "batching"]
 categories = ["development-tools"]
 

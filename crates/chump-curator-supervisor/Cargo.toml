@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "L3 curator supervision daemon — detect silent failures, file gaps, dispatch Sonnet, auto-restart (INFRA-2239)"
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "curator", "supervisor", "fleet", "resilience"]
 categories = ["development-tools"]
 

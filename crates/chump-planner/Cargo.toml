@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Rank, graph, and recommend the chump gap backlog. Turns '151 open gaps' into 'here are the N you should dispatch next, in this order, and here's why'."
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "planner", "scheduling", "dependency-graph", "chump"]
 categories = ["development-tools"]
 
