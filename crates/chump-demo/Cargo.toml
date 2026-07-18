@@ -3,7 +3,7 @@ name = "chump-demo"
 version = "0.1.0"
 edition = "2021"
 description = "META-072: chump fleet demo-loop CLI — operationalize today's autonomy-cascade evidence into a repeatable 60-min demonstration"
-license = "MIT"
+license = "AGPL-3.0-only"
 
 [[bin]]
 name = "chump-demo"

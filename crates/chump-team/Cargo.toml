@@ -3,7 +3,7 @@ name = "chump-team"
 version = "0.1.0"
 edition = "2021"
 description = "INFRA-1665: thin client for the Chump team-shared substrate (Supabase-backed)."
-license = "MIT"
+license = "AGPL-3.0-only"
 
 [dependencies]
 # Explicit versions (matching workspace convention; this workspace doesn't use
