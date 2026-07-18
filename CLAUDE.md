@@ -619,6 +619,7 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 
 ## On-demand docs (read only when you hit the failure surface)
 
+- **Orientation — read once to understand what this repo *actually is*** (cross-cutting capability synthesis, the credibility discipline of claimed-vs-verified, the negative space bucketed scans miss, and the keystone that unlocks productization): [`docs/CODEBASE_REALITY_MAP.md`](./docs/CODEBASE_REALITY_MAP.md) (DOC-068)
 - Ship-assist playbook — wedge taxonomy (7 classes), tooling inventory, decision flow for picking the right rescue tool, top-3 highest-leverage missing gaps, reliability lessons: [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](./docs/process/SHIP_ASSIST_PLAYBOOK.md) (INFRA-2256)
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
 - Subagent dispatch: model defaults, no-clarifying-questions directive, shipping epilogue, WIP-rescue: [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)

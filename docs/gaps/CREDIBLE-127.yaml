@@ -1,0 +1,43 @@
+- id: CREDIBLE-127
+  domain: CREDIBLE
+  title: "CREDIBLE: EFFECTIVE-293 root cause identified (CREDIBLE-146 auth cache) but post-mortem never filed — AC4 of EFFECTIVE-293 still unmet"
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-07-06'
+  raised_by: cold-water
+  raised_in: RED_LETTER#19
+  description: |
+    VERIFIED 2026-07-06 (Issue #19 Cold Water audit):
+
+    EFFECTIVE-293 was filed in Issue #18 to investigate the 7-day fleet silence
+    (2026-06-22 to 2026-06-29). Its AC4 requires: "a post-mortem commit or ambient
+    event documents the actual root cause of the silence."
+
+    This cycle, CREDIBLE-146 (PR #3182, 2026-07-04) fixed the auth-status.sh cache:
+    "The auth-status validity probe cached its verdict for a 600s TTL and served it
+    blindly — so a cached BROKEN kept the farmer paging AUTH_DEAD while the oauth
+    token was valid, silently freezing the fleet for days."
+
+    Timeline correlation:
+    - 2026-06-20: RESILIENT-086 introduced auth-status.sh with 600s cache (PR #3125)
+    - 2026-06-22: Fleet goes silent (Issue #18's "7-day silence")
+    - 2026-07-04: CREDIBLE-146 fixes stale-cache bug (PR #3182)
+    - After fix: fleet resumes shipping
+
+    The CREDIBLE-146 commit body says "silently freezing the fleet for days" — this IS
+    the root cause of EFFECTIVE-293's silence. But EFFECTIVE-293 remains open and AC4
+    has not been satisfied: no post-mortem was committed. EFFECTIVE-293 will never close
+    without an explicit post-mortem that cites CREDIBLE-146 as the root cause and
+    RESILIENT-086 as the introducing commit.
+
+    git log origin/main --grep='EFFECTIVE-293' --oneline | grep -v cold-water
+    → (empty — zero implementation commits)
+
+    Falsifying condition: a post-mortem commit exists that explicitly cites CREDIBLE-146
+    as the root cause of the Issue #18 silence — not found.
+  acceptance_criteria:
+    - "A post-mortem commit (or docs/syntheses/ entry) explicitly connects CREDIBLE-146 stale-cache bug to the 2026-06-22 fleet silence"
+    - "EFFECTIVE-293 AC4 is satisfied: the post-mortem is cited in the EFFECTIVE-293 gap description or linked from it"
+    - "EFFECTIVE-293 is closed as done after the post-mortem lands"
+    - "A retroactive test for auth-status --force correctness is added to test-auth-status.sh (or confirmed already in CREDIBLE-146's test additions)"

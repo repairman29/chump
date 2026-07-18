@@ -1,11 +1,11 @@
 [package]
 name = "chump-gap-store"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "SQLite-backed gap registry: status tracking, dependency graph, blame lineage, per-file YAML mirrors. Canonical store for the Chump fleet's coordination state. Zero internal deps on the chump binary."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-gap-store"
-license = "MIT"
+license = "Apache-2.0"
 keywords = ["gap", "registry", "sqlite", "agent", "coordination"]
 categories = ["development-tools", "database"]
 readme = "README.md"
