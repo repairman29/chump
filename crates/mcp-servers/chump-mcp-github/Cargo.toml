@@ -1,11 +1,11 @@
 [package]
 name = "chump-mcp-github"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "MCP server for GitHub operations — JSON-RPC over stdio"
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/mcp-servers/chump-mcp-github"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["mcp", "github", "agent", "llm", "json-rpc"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"

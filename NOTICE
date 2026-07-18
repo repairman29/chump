@@ -1,0 +1,18 @@
+# Chump — licensing
+
+Chump is dual-structured under the "owned and protected commons" model:
+
+- **Applications you run → GNU AGPLv3** (`LICENSE-AGPL`). Run a modified version as a network
+  service and you must share your changes. This closes the host-it-and-re-rent loophole.
+  Crates: `chump`, `chump-coord`, `chump-mcp-github`, `chump-orchestrator`.
+
+- **Reusable library crates → Apache-2.0** (`LICENSE-APACHE`). Depend on them freely; the
+  patent grant and contributor terms come along. These are the substrate others build on.
+  Crates: `chump-cost-tracker`, `chump-agent-lease`, `chump-cancel-registry`,
+  `chump-mcp-lifecycle`, `chump-messaging`, `chump-perception`, `chump-tool-macro`,
+  `chump-gap-store`.
+
+Each crate's `Cargo.toml` `license` field is authoritative. Versions published to crates.io
+before this change remain under their original MIT grant (irrevocable); this applies going forward.
+
+Copyright (C) 2026 Jeff Adkins (repairman29).

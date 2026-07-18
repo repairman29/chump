@@ -40,12 +40,12 @@ resolver = "2"
 
 [package]
 name = "chump"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 description = "Self-hosted Rust agent: OpenAI-compatible inference, rich tools, SQLite state, optional web PWA and Discord"
 repository = "https://github.com/repairman29/chump"
 homepage = "https://repairman29.github.io/chump/"
-license = "MIT"
+license = "AGPL-3.0-only"
 readme = "README.md"
 
 [[bin]]
@@ -106,23 +106,23 @@ console-subscriber = { version = "0.5", optional = true }
 dhat = { version = "0.3", optional = true }
 # `version` is required for `cargo publish` on the root crate once these crates
 # exist on crates.io at the pinned versions; workspace builds still use `path`.
-chump-tool-macro = { path = "chump-tool-macro", version = "0.1.0" }
-chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.2.0" }
-chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.1.0" }
+chump-tool-macro = { path = "chump-tool-macro", version = "0.2.0" }
+chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.3.0" }
+chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.2.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
 chump-ship = { path = "crates/chump-ship", version = "0.2.0" }
-chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.1.1" }
-chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.1.0" }
-chump-perception = { path = "crates/chump-perception", version = "0.1.0" }
-chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.1.0" }
-chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0" }
-chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
+chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.2.0" }
+chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.2.0" }
+chump-perception = { path = "crates/chump-perception", version = "0.2.0" }
+chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.2.0" }
+chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0" }
+chump-messaging = { path = "crates/chump-messaging", version = "0.2.0" }
 chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
-chump-coord = { path = "crates/chump-coord", version = "0.1.0" }
+chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
 async-nats = "0.49"
 inventory = "0.3"
 axonerai = "0.1"
@@ -198,7 +198,7 @@ serial_test = "3"
 tempfile = "3"
 # INFRA-693: enable the `test-helpers` feature so briefing/kpi_report tests
 # can keep calling `store.conn_for_test()` to seed synthetic gaps.
-chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0", features = ["test-helpers"] }
+chump-gap-store = { path = "crates/chump-gap-store", version = "0.2.0", features = ["test-helpers"] }
 
 ## Note: this repo previously used a local reqwest patch to force rustls.
 ## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
