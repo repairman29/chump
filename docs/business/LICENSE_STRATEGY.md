@@ -1,9 +1,9 @@
 # Chump License Strategy
 
-**Status:** DECISION PENDING — operator sign-off required before any payment infrastructure ships  
-**Gap:** INFRA-1506  
-**Current license:** MIT  
-**Last updated:** 2026-06-22
+**Status:** DECIDED — AGPLv3 (applications, workspace default) + Apache-2.0 (named library crates); operator signed off 2026-07-18  
+**Gap:** INFRA-1506 (closed) · follow-ups: INFRA-3336 (crates.io republish), INFRA-3337 (legal review before INFRA-1337)  
+**Current license:** AGPL-3.0-only default across the workspace; 8 library crates Apache-2.0 — see [NOTICE](../../NOTICE); each crate's `Cargo.toml` is authoritative  
+**Last updated:** 2026-07-18
 
 ---
 
@@ -114,26 +114,41 @@ Reasoning:
 
 ## Operator Sign-Off
 
-**Jeff, please record your decision here before any payment infrastructure ships:**
-
 ```
-DECISION: [ MIT / Apache-2 / Dual MIT+Commercial / BSL ]
-DATE:
-NOTES:
+DECISION: AGPLv3 (applications, workspace default) + Apache-2.0 (8 named library crates)
+DATE: 2026-07-18
+NOTES: Operator direction: "I don't want others making money off our stuff."
+       AGPL closes the host-it-and-re-rent loophole (network copyleft) while the
+       Apache library tier keeps the reusable substrate adoptable. This is a
+       fifth option ("owned and protected commons") relative to the A-D table
+       above — it shipped in PR #3189 (12 crates) and was completed under
+       CREDIBLE-128 (remaining 22 crates flipped MIT -> AGPL-3.0-only).
+       Honest caveat, recorded: AGPL does not prohibit commercial use outright;
+       it forces anyone offering Chump as a service to publish their changes,
+       which removes the free-rider commercialization path. A stricter
+       noncommercial restriction (PolyForm-NC / BSL) remains available later
+       via INFRA-3337's review, since the operator holds all the copyright.
 ```
 
-After sign-off:
-- **If non-MIT chosen:** a follow-up gap will be filed to migrate the LICENSE file, add a CLA process (if dual-license), and notify existing contributors.
-- **If MIT retained:** a companion gap will be filed to clarify commercial-use messaging (what Jeff's company offers vs. what the community may build).
+Migration + notification status:
+- **Migration:** executed (PR #3189 + CREDIBLE-128 completion sweep, 2026-07-18).
+- **Contributor notification:** waived with rationale — every human commit is the
+  operator under aliased identities (repairman29 / "Your Name" / local-machine);
+  remaining authors are bots (dependabot, github-actions, agent harnesses) acting
+  as tools of the operator. No third-party human copyright holders exist to
+  notify. Versions already published to crates.io under MIT remain MIT
+  (irrevocable) — republish tracked in INFRA-3336.
+- **CLA:** not required for the AGPL/Apache split (no dual commercial tier yet);
+  revisit if INFRA-1337/1338 introduce a commercial license tier.
 
 ---
 
-## Follow-Up Gaps (auto-filed by fleet)
+## Follow-Up Gaps
 
-These will be filed once the decision is recorded:
+Filed 2026-07-18 alongside the sign-off (per CREDIBLE-128):
 
-| Trigger | Gap to file |
+| Trigger | Gap |
 |---|---|
-| Non-MIT chosen | `INFRA-NEW: Migrate LICENSE + CLA process + contributor notification` |
-| MIT retained | `INFRA-NEW: Clarify commercial-use messaging for hosted tier` |
-| Any path | `INFRA-NEW: Legal review of chosen license before INFRA-1337 ships` |
+| Non-MIT chosen — migrate + notify | Executed in-tree (PR #3189 + this PR); notification waived, see above |
+| crates.io still hosts MIT versions | INFRA-3336 — republish all crates under the new licenses (operator token) |
+| Any path — legal review | INFRA-3337 — legal review of the AGPL/Apache split before INFRA-1337 ships |
