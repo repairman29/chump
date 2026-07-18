@@ -5,7 +5,7 @@ edition = "2021"
 description = "Fleet visualization HTTP + WebSocket query server (INFRA-2175 / INFRA-2164 sub-slice b). Reads from .chump/fleet_events.db and serves events, derived agent_segments, and a WS live-tail endpoint."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-fleet-server"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["chump", "fleet", "visualization", "axum", "websocket"]
 categories = ["web-programming::http-server"]
 

@@ -5,7 +5,7 @@ edition = "2021"
 description = "Deterministic tree-sitter AST crawler producing structured codebase shape (symbols, imports) for LLM-prompt input. Replaces subprocess-walk codebase-context with typed, cacheable, token-cheap output."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/ast-crawler"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["ast", "tree-sitter", "code-analysis", "llm", "agent"]
 categories = ["development-tools", "parser-implementations"]
 

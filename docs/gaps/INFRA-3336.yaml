@@ -1,0 +1,13 @@
+- id: INFRA-3336
+  domain: INFRA
+  title: Republish relicensed crates to crates.io under AGPL/Apache (operator token required)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    PR #3189 relicensed 12 crates and CREDIBLE-128 completes the remaining 22; crates.io still hosts versions published under MIT. Republishing needs the operator's cargo owner token. Prior MIT versions remain MIT (irrevocable); this is forward-protection only. Fleet can prep version bumps + changelogs; operator runs the publish.
+  acceptance_criteria:
+    - Every workspace crate published to crates.io has a latest version whose license field matches its Cargo.toml (AGPL-3.0-only or Apache-2.0)
+    - cargo publish dry-run passes for all publishable crates
+    - NOTICE crate lists verified against published metadata
+
