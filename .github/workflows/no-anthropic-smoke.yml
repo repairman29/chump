@@ -41,7 +41,7 @@ jobs:
       CLAUDE_CODE_OAUTH_TOKEN: ""
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 

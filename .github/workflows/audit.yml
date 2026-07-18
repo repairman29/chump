@@ -83,7 +83,7 @@ jobs:
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
     steps:
       # ── 8 shared setup steps (replicated in every shard) ────────────────────
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Linux packages for chump-desktop (workspace member)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
@@ -779,7 +779,7 @@ jobs:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify audit passed or was appropriately skipped
         run: |
           result="${{ needs.audit.result }}"

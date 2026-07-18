@@ -62,6 +62,7 @@ install-runner-autoscale.sh
 install-sccache.sh
 install-self-doctor.sh
 install-self-hosted-runner-cache.sh
+install-self-hosted-runner-pi.sh
 install-self-hosted-runner.sh
 install-self-hosted-runners-all-local.sh
 install-smee-tunnel-launchd.sh

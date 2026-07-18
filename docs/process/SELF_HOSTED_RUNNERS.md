@@ -563,3 +563,146 @@ Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
 predicated on local compute being load-bearing. Every day the M4 lanes
 are off is a day the runner-cost migration value is lost. Treat
 INFRA-1655 as a P1 unblocker, not a parking-lot item.
+
+---
+
+## Pi mesh provisioner (INFRA-1543)
+
+Each Raspberry Pi (Linux ARM64) in the mesh runs one runner labeled
+`[self-hosted, Linux, ARM64, linux-arm64, chump-fleet-pi]`. Lightweight
+workflows (docs build, lint, smoke tests) run well on Pi 5; heavy Rust
+compiles stay on M4.
+
+### Physical setup
+
+1. **SD card image** — flash Raspberry Pi OS Lite (64-bit) or Ubuntu
+   Server 24.04 LTS ARM64. Either works; Ubuntu preferred for 6+ months
+   of security updates on the same LTS.
+2. **Boot config** — enable SSH at flash time (`ssh` file in `/boot`),
+   or via `raspi-config` on first boot.
+3. **Network** — static IP or DNS-stable hostname recommended so the
+   runner registration survives IP changes. On a home LAN: assign a
+   DHCP reservation via your router using the Pi's MAC address.
+4. **User** — create a non-root user (e.g. `runner`) and add to
+   `sudo` group: `usermod -aG sudo runner`.
+
+### Software prerequisites (on each Pi)
+
+```bash
+sudo apt-get update && sudo apt-get install -y git curl jq
+# gh CLI (required for token fetch + --check)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
+  https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt-get update && sudo apt-get install -y gh
+gh auth login   # authenticate once; credentials persist
+```
+
+### Register a Pi on first boot
+
+Run from the Pi (must be cloned or scp'd from the Chump repo):
+
+```bash
+# Interactive (fetches registration token via gh API automatically)
+scripts/setup/install-self-hosted-runner-pi.sh
+
+# Non-interactive with explicit token
+scripts/setup/install-self-hosted-runner-pi.sh --token <TOKEN>
+```
+
+Get a registration token manually:
+1. Visit `https://github.com/repairman29/chump/settings/actions/runners/new`
+2. Copy the token shown (valid 60 min)
+3. Pass with `--token`
+
+### Verify
+
+```bash
+# On the Pi — queries GH API for linux-arm64 runners:
+scripts/setup/install-self-hosted-runner-pi.sh --check
+
+# From any machine with gh:
+gh api /repos/repairman29/chump/actions/runners \
+  --jq '.runners[] | select(.labels[].name=="linux-arm64") | "\(.name) [\(.status)]"'
+```
+
+### Offline / air-gapped install
+
+For Pis with restricted or no outbound internet access:
+
+```bash
+# Step 1: Download the tarball to the cache (do once, on a connected machine)
+scripts/setup/install-self-hosted-runner-pi.sh --cache-only
+# Tarball lands in ~/.cache/chump-runner/pi-tarball/
+
+# Step 2: Copy the cache dir to each air-gapped Pi
+scp -r ~/.cache/chump-runner/pi-tarball/ runner@pi-hostname:~/runner-cache/
+
+# Step 3: On the air-gapped Pi, point the installer at the local cache
+CHUMP_PI_TARBALL_CACHE=~/runner-cache \
+  scripts/setup/install-self-hosted-runner-pi.sh --token <TOKEN>
+# or use --from-cache if the tarball lives in a specific directory:
+scripts/setup/install-self-hosted-runner-pi.sh --from-cache ~/runner-cache --token <TOKEN>
+```
+
+The cache is keyed by runner version filename
+(`actions-runner-linux-arm64-<version>.tar.gz`). Adding a second Pi
+when the cache is warm requires no internet access.
+
+### Uninstall / de-register
+
+```bash
+scripts/setup/install-self-hosted-runner-pi.sh --uninstall
+# or with explicit token to de-register from GitHub too:
+scripts/setup/install-self-hosted-runner-pi.sh --uninstall --token <TOKEN>
+```
+
+### Maintenance
+
+| Operation | Command |
+|---|---|
+| Status | `sudo systemctl status chump-actions-runner-pi` |
+| Logs | `sudo journalctl -u chump-actions-runner-pi -f` |
+| Restart | `sudo systemctl restart chump-actions-runner-pi` |
+| List Pi runners | `gh api /repos/repairman29/chump/actions/runners --jq '.runners[] \| select(.labels[].name=="linux-arm64")'` |
+
+### Label scheme for Pi runners
+
+| Label | Meaning |
+|---|---|
+| `self-hosted` | Any of our machines |
+| `Linux` | Linux OS (GH API canonical casing) |
+| `ARM64` | ARM64 arch (GH API canonical casing) |
+| `linux-arm64` | Compound selector used in workflow `runs-on:` |
+| `chump-fleet-pi` | Distinguishes Pi nodes from M4 nodes |
+
+Workflows route to Pi mesh via:
+
+```yaml
+runs-on: [self-hosted, linux-arm64, chump-fleet-pi]
+```
+
+### CI routing (INFRA-1540 Phase 2)
+
+Once at least one Pi runner is online and `--check` passes, the Phase 2
+ci.yml jobs (clippy, cargo-test, audit, coverage, e2e-*) can route to
+Pi mesh for Linux runs via:
+
+```bash
+gh variable set RUNNER_CLIPPY    --body '["self-hosted","linux-arm64","chump-fleet-pi"]'
+gh variable set RUNNER_CARGO_TEST --body '["self-hosted","linux-arm64","chump-fleet-pi"]'
+```
+
+Follow the one-lane canary protocol (§ Current state — degraded
+ubuntu-only mode) before flipping all lanes.
+
+### Smoke test
+
+```bash
+bash scripts/ci/test-pi-mesh-installer-shape.sh
+```
+
+Checks: installer syntax, required labels, systemd unit emission,
+offline cache path, platform guard, META-064 bypass trailer.

@@ -68,7 +68,7 @@ jobs:
 
       - name: Checkout
         if: steps.extract.outputs.gap_id != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Need write to push the YAML mirror update.
           token: ${{ secrets.GITHUB_TOKEN }}

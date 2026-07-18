@@ -25,16 +25,34 @@ REPO_ROOT="${CHUMP_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev
 CACHE="${CHUMP_AUTH_STATUS_CACHE:-$HOME/.chump/auth-status-cache}"
 TTL="${CHUMP_AUTH_STATUS_TTL_S:-600}"
 FORCE=0; QUIET=0
-for a in "$@"; do case "$a" in --probe) FORCE=1 ;; --quiet) QUIET=1 ;; esac; done
+# --force/-f are intuitive aliases of --probe (CREDIBLE-146: operators reached
+# for --force to bust a stale verdict; it silently fell through and served cache).
+for a in "$@"; do case "$a" in --probe|--force|-f) FORCE=1 ;; --quiet|-q) QUIET=1 ;; esac; done
 
 _now() { date +%s; }
 
 # ── cache: at most one real probe per TTL window ─────────────────────────────
+# CREDIBLE-146 hardening — a stale/bad cache silently froze the fleet for days
+# (a cached BROKEN kept the farmer paging AUTH_DEAD while the credential was
+# valid). Three rules so that can't recur:
+#   (a) NEVER serve a cached BROKEN/TRAP verdict — any non-zero rc is re-probed
+#       fresh, so a valid credential is never masked by a stale failure;
+#   (b) auto-invalidate when a credential source (oauth token or .env) is newer
+#       than the cache — a just-refreshed token busts the stale verdict;
+#   (c) --force/-f (aliases of --probe, above) skip the cache entirely.
 if [[ "$FORCE" -eq 0 && -f "$CACHE" ]]; then
     _c_ts="$(sed -n '1p' "$CACHE" 2>/dev/null || echo 0)"
     _c_rc="$(sed -n '2p' "$CACHE" 2>/dev/null || echo 1)"
     _c_msg="$(sed -n '3,$p' "$CACHE" 2>/dev/null)"
-    if [[ "$_c_ts" =~ ^[0-9]+$ ]] && [ $(( $(_now) - _c_ts )) -lt "$TTL" ]; then
+    # (b) any credential file newer than the cache invalidates the cached verdict.
+    _cred_fresh=0
+    for _cred in "$HOME/.chump/oauth-token.json" "$REPO_ROOT/.env"; do
+        [ -f "$_cred" ] && [ "$_cred" -nt "$CACHE" ] && _cred_fresh=1
+    done
+    if [[ "$_c_ts" =~ ^[0-9]+$ ]] \
+       && [ "$_c_rc" -eq 0 ] \
+       && [ "$_cred_fresh" -eq 0 ] \
+       && [ $(( $(_now) - _c_ts )) -lt "$TTL" ]; then
         [ "$QUIET" -eq 0 ] && printf '%s (cached)\n' "$_c_msg" || printf '%s\n' "$_c_msg"
         exit "$_c_rc"
     fi
