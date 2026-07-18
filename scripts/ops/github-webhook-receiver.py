@@ -251,12 +251,12 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
 
     Only fires on action=closed AND merged=true. Idempotent: re-flipping an
     already-done gap is harmless (a non-zero rc is logged, not raised). Emits
-    kind=gap_flipped_done_on_merge per flip. Bypass: CHUMP_NO_AUTO_FLIP=1.
+    kind=gap_flipped_done_on_merge per flip. To disable, stop the receiver
+    (no env escape hatch on purpose — the EFFECTIVE-094 bypass-var ceiling
+    ratchets down, and stopping the local receiver is the same lever).
 
     Returns the count of gaps flipped to done.
     """
-    if os.environ.get("CHUMP_NO_AUTO_FLIP") == "1":
-        return 0
     if payload.get("action") != "closed" or not pr.get("merged"):
         return 0
     gap_ids = _extract_gap_ids(pr)
