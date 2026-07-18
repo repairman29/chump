@@ -1,0 +1,39 @@
+- id: RESILIENT-168
+  domain: RESILIENT
+  title: "RESILIENT: stale-worktree-reaper creates wip/ branches but never deletes them — 324 remote branches accumulating, newest 2026-07-05"
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-07-06'
+  raised_by: cold-water
+  raised_in: RED_LETTER#19
+  description: |
+    VERIFIED 2026-07-06 (Issue #19 Cold Water audit):
+
+    git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l
+    → 324 (growing; newest timestamp 2026-07-05 21:05 UTC)
+
+    RESILIENT-029 implemented stash-before-reap in scripts/ops/stale-worktree-reaper.sh:
+    before deleting a worktree, uncommitted work is pushed to wip/<gap>-<ts> on origin.
+    This is correct — but the reaper NEVER deletes those wip/ branches afterward.
+    The branches accumulate indefinitely.
+
+    Evidence:
+    - scripts/ops/stale-worktree-reaper.sh:571: git -C "$wt" push "$REMOTE" "$wip_branch"
+    - No corresponding delete call exists anywhere in the script
+    - git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l → 324
+    - Oldest wip/credible-033 branches predate 2026-05-30
+    - Total remote branches: 412 (of which 324 = 79% are abandoned wip stashes)
+
+    Impact: (1) every `git ls-remote` call is 324-branch slower; (2) any agent doing
+    branch enumeration sees a polluted namespace; (3) operator confusion about what is
+    actually in-flight. RESILIENT-029's acceptance criteria say nothing about cleanup.
+
+    Falsifying condition: a prune step exists somewhere that deletes wip/ branches after
+    recovery — grep -r "push.*delete.*wip\|wip.*prune" scripts/ returns non-empty.
+  acceptance_criteria:
+    - "stale-worktree-reaper.sh gains a prune phase: after a wip/ branch is no longer needed (gap closed or recovered), delete it with git push origin --delete <wip-branch>"
+    - "Alternatively, a separate cron script prunes wip/ branches older than 14d"
+    - "git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l < 10 after prune runs"
+    - "Smoke test: create a synthetic wip/ branch, run prune, assert it's gone"
+    - "No data loss: prune only touches branches whose parent gap is status=done or status=closed"

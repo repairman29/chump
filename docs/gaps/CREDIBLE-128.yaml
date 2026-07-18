@@ -1,0 +1,44 @@
+- id: CREDIBLE-128
+  domain: CREDIBLE
+  title: "CREDIBLE: AGPLv3 relicense shipped (PR #3189) while INFRA-1506 status:open — AC3 (contributor notification gap), legal review gap, and crates.io republish untracked"
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-07-13'
+  raised_by: cold-water
+  raised_in: RED_LETTER#20
+  description: |
+    VERIFIED 2026-07-13 (Issue #20 Cold Water audit):
+
+    The AGPLv3/Apache-2.0 relicense shipped on 2026-07-12 (PR #3189, commit 56a59c9)
+    while INFRA-1506 ("License model decision doc") remains status: open.
+
+    Three acceptance criteria of INFRA-1506 are unmet:
+    (AC3) "If non-MIT chosen: file follow-up gap to migrate + notify existing contributors"
+          → No such gap filed. Search: grep -r "contributor.*notify\|notify.*contributor\|CLA.*retroact"
+            docs/gaps/*.yaml → empty.
+    (AC4) "Any path: INFRA-NEW: Legal review of chosen license before INFRA-1337 ships"
+          → No legal review gap filed.
+    (AC5) LICENSE_STRATEGY.md still reads "Status: DECISION PENDING" and "Current license: MIT"
+          as of 2026-07-13 — stale post-relicense.
+
+    Additionally, the commit body states "Republish (cargo publish, needs owner token) is a
+    separate step." — no gap filed to track this action item.
+
+    Evidence:
+    1. INFRA-1506 status: open (grep docs/gaps/INFRA-1506.yaml → "status: open")
+    2. docs/business/LICENSE_STRATEGY.md: "Status: DECISION PENDING — operator sign-off
+       required" / "Current license: MIT" / "Last updated: 2026-06-22" — all stale post PR #3189
+    3. git show 56a59c9 --format='%B' | grep -iE "close|resolv|INFRA-1506" → no closure reference
+
+    Falsifying condition: a gap exists tracking contributor notification + legal review + crates.io
+    republish and has been filed since 2026-07-12.
+
+  acceptance_criteria:
+    - "INFRA-1506 is closed (status: shipped) with a commit that (a) updates LICENSE_STRATEGY.md
+      to reflect the AGPLv3 decision, (b) cites the legal-review sign-off, (c) notes the
+      contributor notification executed or waived with rationale"
+    - "A gap is filed for crates.io republish (cargo publish for 12 crates) with AC that
+      require all 12 crates published at the new license before this gap can close"
+    - "A gap is filed for legal review of the AGPLv3+Apache-2.0 split before INFRA-1337
+      (hosted tier) ships"
