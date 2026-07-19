@@ -1,7 +1,7 @@
 - id: META-092
   domain: META
   title: "CREDIBLE: opus-shepherd operator digest must forecast not describe — predict queue-exhaustion / sibling-takeover-triggers / session-budget-burn / ship-rate-vs-fleet-baseline; changes digest from log into decision input"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13,4 +13,8 @@
     - "6. Bypass: CHUMP_OPUS_DIGEST_FORECAST=0 falls back to descriptive-only"
     - 7. Documented in OPUS_SHEPHERD_PLAYBOOK.md (META-094)
     - "8. Baseline 2026-05-24 session2: digests were pure logs — operator had to derive trajectory themselves; this gap shifts that work from operator-side to shepherd-side"
+  notes: |
+    [2026-07-19T22:25:09Z] Ghost gap: work already shipped in PR #2503 (merged 2026-05-24) — script scripts/coord/opus-digest-forecast.sh, test scripts/ci/test-opus-digest-forecast.sh, and OPUS_SHEPHERD_PLAYBOOK.md doc all confirmed present on main with all AC satisfied. Closed via gap set (ship blocked by INFRA-2423 dirty-main collision from sibling sessions).
+  closed_pr: 2503
+  outcome_id: MISSION-010
 
