@@ -1638,6 +1638,16 @@ events:
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, kind, pr, phase, error]
 
+  - kind: rebase_hunk_dropped
+    effect_metric: self
+    emitter: scripts/coord/wedge-recover.sh (INFRA-1526)
+    trigger: post-rebase verification detected a file with >50 added lines in the original
+      commit that has 0 additions in the rebased commit — silent hunk drop prevented;
+      push was aborted and operator must manually rebase the PR
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit, pr, branch]
+    expected_volume: "0/day (alarm if non-zero — indicates rebase strategy is silently dropping feature hunks)"
+
   # ── Cost / token tracking ─────────────────────────────────────────────────
   - kind: token_usage_partial
     effect_metric: self
@@ -8191,3 +8201,21 @@ events:
     consumers: [fleet-brief, ops-audit, waste-tally]
     fields_required: [ts, kind, gap_id, pr_number]
     status: stable
+  # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      post-rebase-verify.sh detected that a file had >50 added lines in the
+      original commit stack but 0 lines touched in the rebased stack — a
+      strong signal that a merge driver silently discarded content instead of
+      producing conflict markers. Root cause (2026-05-16/23): the
+      rust-main-append append-only driver on src/main.rs dropped hunks on
+      PRs #2216 and #2350-#2356; the driver was removed from .gitattributes
+      (2026-05-23 P0 fix). This event fires if any future regression
+      reintroduces silent drops on any file.
+    consumers: [fleet-brief, ci-audit, ops-audit]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    fields_optional: [threshold]

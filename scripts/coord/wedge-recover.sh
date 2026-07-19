@@ -129,8 +129,37 @@ for p in json.load(sys.stdin):
             rm -rf "$wt" 2>/dev/null
             git fetch origin "$br" main --quiet 2>/dev/null
             if git worktree add "$wt" "origin/$br" >/dev/null 2>&1; then
-                if (cd "$wt" && git rebase -X theirs origin/main >/dev/null 2>&1); then
-                    if (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
+                # Capture pre-rebase state for hunk-drop verification (INFRA-1526 AC#6)
+                orig_sha=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || true
+                orig_base=$(git -C "$wt" merge-base HEAD origin/main 2>/dev/null) || true
+                # Rebase without -X theirs: surfaces conflicts as markers instead of
+                # silently dropping feature-branch hunks (INFRA-1526 AC#7)
+                if (cd "$wt" && git rebase origin/main >/dev/null 2>&1); then
+                    new_head=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || true
+                    # Post-rebase hunk-drop check: any file with >50 added lines in
+                    # original that has 0 additions after rebase is a silent drop (AC#6)
+                    hunk_drop_file=""
+                    hunk_drop_lines=0
+                    if [[ -n "$orig_sha" && -n "$orig_base" && -n "$new_head" ]]; then
+                        while IFS=$'\t' read -r adds _dels fname; do
+                            [[ "$adds" =~ ^[0-9]+$ ]] || continue
+                            [[ "$adds" -le 50 ]] && continue
+                            post_adds=$(git -C "$wt" diff --numstat "origin/main..${new_head}" 2>/dev/null \
+                                | awk -v f="$fname" '$3==f{print $1}' | head -1)
+                            [[ -z "$post_adds" ]] && post_adds=0
+                            if [[ "$post_adds" -eq 0 ]]; then
+                                hunk_drop_file="$fname"
+                                hunk_drop_lines="$adds"
+                                break
+                            fi
+                        done < <(git -C "$wt" diff --numstat "${orig_base}..${orig_sha}" 2>/dev/null)
+                    fi
+                    if [[ -n "$hunk_drop_file" ]]; then
+                        log "    hunk-drop detected: $hunk_drop_file lost $hunk_drop_lines lines — skipping push"
+                        # scanner-anchor: "kind":"rebase_hunk_dropped" (emit_event builds the JSON dynamically; INFRA-1237 scanner needs the literal)
+                        emit_event rebase_hunk_dropped step2 "\"file\":\"$hunk_drop_file\",\"lines_dropped\":$hunk_drop_lines,\"original_commit\":\"$orig_sha\",\"rebased_commit\":\"$new_head\",\"pr\":$pr,\"branch\":\"$br\""
+                        truly_conflict=$((truly_conflict+1))
+                    elif (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
                         rebased=$((rebased+1))
                         log "    rebased + pushed"
                         emit_event wedge_recover step2 "\"action\":\"rebased\",\"pr\":$pr"
