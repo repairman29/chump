@@ -781,6 +781,11 @@ redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage de
 bot_merge_rebase_before_test  # reason: INFRA-918 snapshot before cargo test; fields: rebased (bool), commits_behind (int), head_sha (str), will_test (bool)
 # scanner-anchor: "kind":"bot_merge_test_failure"
 bot_merge_test_failure        # reason: INFRA-918 emitted on cargo test failure; failure_class=transient_oom (SIGTERM/OOM) or permanent_failure (logic bug)
+# Emitted by scripts/git-hooks/pre-commit-css-token-discipline.sh — git-hooks/
+# is outside the INFRA-1237 scanner's PROD_PATHS, so the literal emit there
+# is invisible to the audit; reserved entry per handoff doctrine (INFRA-1590).
+# scanner-anchor: "kind":"token_discipline_bypass"
+token_discipline_bypass       # reason: INFRA-1590 CSS token-discipline trailer bypass audit; fields: commit_sha, reason, files
 
 # Emitted by scripts/coord/post-rebase-verify.sh when a rebase silently drops file content.
 # scanner-anchor: "kind":"rebase_hunk_dropped"

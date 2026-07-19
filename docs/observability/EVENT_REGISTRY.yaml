@@ -734,6 +734,12 @@ events:
     consumers: [fleet-brief, audit-log, mission-grade]
     fields_required: [ts, kind, gap_id, active_mission, worker_id]
 
+  - kind: token_discipline_bypass
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-css-token-discipline.sh (INFRA-1590)
+    trigger: CSS token-discipline pre-commit gate found violations but commit
+      body had 'Token-Discipline-Bypass:' trailer — bypass logged with
+      {commit_sha, reason, files} for audit.
   - kind: rust_first_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)
