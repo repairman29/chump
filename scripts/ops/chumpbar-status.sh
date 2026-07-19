@@ -3,14 +3,15 @@
 #
 # Emits one line of JSON. Honest signals only (CREDIBLE-090 discipline):
 #   ships_24h / last_merge_min  — from origin/main git history (the only proof of life)
-#   workers                     — running worker.sh processes
-#   p0_open                     — open P0 count from canonical state.db
+#   workers / workers_detail    — AGENT_ID launcher processes + last picked gap per agent log
+#   recent_ships                — last 3 merged subjects on origin/main
+#   p0_open / open_gaps         — canonical state.db
 #   mode                        — ~/.chump/fleet-mode (chump-mode dial)
-#   icon                        — 🟢 shipping · 🟡 workers up, nothing merged recently
+#   icon                        — 🟢 shipping · 🟡 workers up, no merge in 2h
 #                                 🔴 mode wants workers but none running · ⚫ off
 #
 # Network: at most one background `git fetch` per FETCH_TTL_S (default 300s);
-# every other call is pure-local (<100ms). Safe to poll every 60s.
+# every other call is pure-local. Safe to poll every 60s.
 
 set -uo pipefail
 
@@ -39,6 +40,31 @@ p0_open=$(sqlite3 .chump/state.db \
 open_gaps=$(sqlite3 .chump/state.db \
     "SELECT COUNT(*) FROM gaps WHERE status='open'" 2>/dev/null || echo "?")
 
+# Per-worker: last picked gap from the newest fleet-launch log dir + its title.
+# Log lines look like: [worker:1 15:10:19] picked gap INFRA-1730
+worker_lines=()
+fleet_dir=$(ls -td /tmp/chump-fleet-*/ 2>/dev/null | head -1)
+if [[ -n "$fleet_dir" ]]; then
+    for log in "$fleet_dir"/agent-[0-9].log; do
+        [[ -f "$log" ]] || continue
+        agent=$(basename "$log" .log | sed 's/agent-//')
+        gap=$(grep -o 'picked gap [A-Z-]*-[0-9]*' "$log" 2>/dev/null | tail -1 | awk '{print $3}')
+        if [[ -n "$gap" ]]; then
+            title=$(sqlite3 .chump/state.db \
+                "SELECT substr(title,1,48) FROM gaps WHERE id='$gap'" 2>/dev/null)
+            # idle if the log hasn't moved in 10 min
+            log_age=$(( now - $(stat -f %m "$log" 2>/dev/null || echo 0) ))
+            marker="⚙"
+            (( log_age > 600 )) && marker="💤"
+            worker_lines+=("W${agent} ${marker} ${gap}: ${title}")
+        else
+            worker_lines+=("W${agent} ⚙ warming up")
+        fi
+    done
+fi
+
+recent_ships=$(git log origin/main -3 --format='%s' 2>/dev/null | cut -c1-60)
+
 if [[ "$mode" == "off" ]]; then
     icon="⚫"
 elif (( workers == 0 )); then
@@ -49,5 +75,21 @@ else
     icon="🟡"
 fi
 
-printf '{"icon":"%s","mode":"%s","workers":%s,"ships_24h":%s,"last_merge_min":%s,"p0_open":"%s","open_gaps":"%s"}\n' \
-    "$icon" "$mode" "$workers" "$ships_24h" "$last_merge_min" "$p0_open" "$open_gaps"
+# python3 assembles valid JSON regardless of quotes/emoji in titles
+ICON="$icon" MODE="$mode" WORKERS="$workers" SHIPS="$ships_24h" \
+LAST_MIN="$last_merge_min" P0="$p0_open" OPEN="$open_gaps" \
+WORKER_LINES="$(printf '%s\n' "${worker_lines[@]:-}")" \
+RECENT_SHIPS="$recent_ships" \
+python3 - <<'PY'
+import json, os
+def lines(k): return [l for l in os.environ.get(k, "").splitlines() if l.strip()]
+print(json.dumps({
+    "icon": os.environ["ICON"], "mode": os.environ["MODE"],
+    "workers": int(os.environ["WORKERS"] or 0),
+    "ships_24h": int(os.environ["SHIPS"] or 0),
+    "last_merge_min": int(os.environ["LAST_MIN"] or 0),
+    "p0_open": os.environ["P0"], "open_gaps": os.environ["OPEN"],
+    "workers_detail": lines("WORKER_LINES"),
+    "recent_ships": lines("RECENT_SHIPS"),
+}, ensure_ascii=False))
+PY

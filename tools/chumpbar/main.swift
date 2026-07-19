@@ -68,6 +68,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "Shipped 24h: \(ships)   Last merge: \(mins)m ago",
                     "P0 open: \(p0)   Gaps open: \(open)",
                 ]
+                if let wd = obj["workers_detail"] as? [String], !wd.isEmpty {
+                    detail.append("─ working on ─")
+                    detail.append(contentsOf: wd)
+                }
+                if let rs = obj["recent_ships"] as? [String], !rs.isEmpty {
+                    detail.append("─ recent ships ─")
+                    detail.append(contentsOf: rs)
+                }
             }
             DispatchQueue.main.async {
                 self.statusItem.button?.title = title
