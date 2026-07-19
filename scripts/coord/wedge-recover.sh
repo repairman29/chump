@@ -156,6 +156,7 @@ for p in json.load(sys.stdin):
                     fi
                     if [[ -n "$hunk_drop_file" ]]; then
                         log "    hunk-drop detected: $hunk_drop_file lost $hunk_drop_lines lines — skipping push"
+                        # scanner-anchor: "kind":"rebase_hunk_dropped" (emit_event builds the JSON dynamically; INFRA-1237 scanner needs the literal)
                         emit_event rebase_hunk_dropped step2 "\"file\":\"$hunk_drop_file\",\"lines_dropped\":$hunk_drop_lines,\"original_commit\":\"$orig_sha\",\"rebased_commit\":\"$new_head\",\"pr\":$pr,\"branch\":\"$br\""
                         truly_conflict=$((truly_conflict+1))
                     elif (cd "$wt" && git push origin "HEAD:$br" --force-with-lease >/dev/null 2>&1); then
