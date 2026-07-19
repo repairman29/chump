@@ -76,6 +76,13 @@ pub struct ClaimArgs {
     /// Emits `force_recover_wip_discarded` instead of `force_recover_wip_loss`.
     /// Use only when the uncommitted state is intentionally abandoned.
     pub discard_wip: bool,
+    /// INFRA-1730: when the claim branch already exists on the remote AND it
+    /// belongs to a CLOSED (not merged) PR — an orphan branch left behind by
+    /// an abandoned session — archive the old remote branch to
+    /// `<branch>-orphaned-<epoch>` and proceed with a fresh claim instead of
+    /// bailing. Distinct from `--resume` (which continues the old work);
+    /// `--rename` starts over.
+    pub rename: bool,
 }
 
 impl ClaimArgs {
@@ -96,6 +103,7 @@ impl ClaimArgs {
                        --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --rename         Archive an orphan remote branch (closed, unmerged PR) and start fresh (INFRA-1730)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -123,6 +131,7 @@ impl ClaimArgs {
         let mut check_only = false;
         let mut json = false;
         let mut discard_wip = false;
+        let mut rename = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -183,6 +192,10 @@ impl ClaimArgs {
                     discard_wip = true;
                     i += 1;
                 }
+                "--rename" => {
+                    rename = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -211,6 +224,7 @@ impl ClaimArgs {
             check_only,
             json,
             discard_wip,
+            rename,
         })
     }
 }
@@ -1113,8 +1127,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     };
 
-    // 6c. INFRA-1025 AC6: detect existing remote branch. If --resume, reset
-    // HEAD to the remote tip and continue; otherwise abort with guidance.
+    // 6c. INFRA-1025 AC6 + INFRA-1730: detect existing remote branch. If
+    // --resume, reset HEAD to the remote tip and continue. If --rename,
+    // archive the old remote branch and proceed with a fresh one. Otherwise
+    // abort with guidance — auto-detecting orphan branches (closed,
+    // unmerged PR) along the way so the operator doesn't have to go check
+    // gh manually (hit 3x in session 2026-05-22).
     let remote_has_branch = remote_branch_exists(&args.repo_root, &args.remote, &branch);
     if remote_has_branch {
         if args.resume {
@@ -1136,14 +1154,93 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 "[claim] --resume: reset HEAD to {}/{} (existing remote branch)",
                 args.remote, branch
             );
+        } else if args.rename {
+            // INFRA-1730: archive the old remote branch under a timestamped
+            // name (push new ref, delete old ref) so the original branch
+            // name is free again. The local branch created above by
+            // `git worktree add -b <branch> ... <remote>/<base>` already
+            // starts fresh from base — nothing to reset.
+            let epoch = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let archived_branch = format!("{branch}-orphaned-{epoch}");
+            // Fetch the branch tip explicitly (its remote-tracking ref may
+            // not be locally cached) so FETCH_HEAD can be pushed under the
+            // archived name.
+            if let Err(e) = run_git(&args.repo_root, &["fetch", &args.remote, &branch]) {
+                rollback_wt(&format!("--rename: fetch old branch failed: {e}"));
+                bail!("--rename: failed to fetch old branch {}: {}", branch, e);
+            }
+            if let Err(e) = run_git(
+                &args.repo_root,
+                &[
+                    "push",
+                    &args.remote,
+                    &format!("FETCH_HEAD:refs/heads/{}", archived_branch),
+                ],
+            ) {
+                rollback_wt(&format!("--rename: archive push failed: {e}"));
+                bail!(
+                    "--rename: failed to archive old branch {} to {}: {}",
+                    branch,
+                    archived_branch,
+                    e
+                );
+            }
+            if let Err(e) = run_git(
+                &args.repo_root,
+                &["push", &args.remote, "--delete", &branch],
+            ) {
+                rollback_wt(&format!("--rename: delete old branch failed: {e}"));
+                bail!(
+                    "--rename: archived to {} but failed to delete old branch {}: {}",
+                    archived_branch,
+                    branch,
+                    e
+                );
+            }
+            eprintln!(
+                "[claim] --rename: archived orphan branch {} -> {} (starting fresh)",
+                branch, archived_branch
+            );
+            emit_claim_orphan_branch_renamed(
+                &args.repo_root,
+                &args.gap_id,
+                &branch,
+                &archived_branch,
+            );
         } else {
+            let closed = closed_pr_info(&args.repo_root, &branch);
+            let orphan_hint = match closed {
+                Some((pr_num, false)) => {
+                    emit_claim_orphan_branch_detected(
+                        &args.repo_root,
+                        &args.gap_id,
+                        &branch,
+                        pr_num,
+                    );
+                    format!(
+                        "\n  This looks like an ORPHAN branch: PR #{pr_num} on `{branch}` was \
+                         closed WITHOUT merging (INFRA-1730).\n  \
+                         --resume continues that abandoned work; --rename archives it and starts fresh."
+                    )
+                }
+                Some((pr_num, true)) => format!(
+                    "\n  PR #{pr_num} on `{branch}` was already MERGED — the remote ref likely \
+                     just wasn't pruned yet. --rename is safe to start fresh."
+                ),
+                None => String::new(),
+            };
             rollback_wt("");
             bail!(
-                "branch {} already exists on {}.\n  \
+                "branch {} already exists on {}.{}\n  \
                  Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
+                 Pass --rename to archive the old branch and start fresh (INFRA-1730).\n  \
                  Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
                 branch,
                 args.remote,
+                orphan_hint,
                 branch
             );
         }
@@ -1399,6 +1496,50 @@ pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, Strin
     let num = parts.next()?.parse::<u64>().ok()?;
     let author = parts.next().unwrap_or("").to_string();
     Some((num, author))
+}
+
+/// INFRA-1730: Returns `Some((pr_number, merged))` for the most recently
+/// CLOSED PR with `<branch>` as its head. An orphan branch — one whose
+/// remote ref still exists but whose PR was closed WITHOUT merging — is the
+/// class of stale state `chump claim` used to only offer `--resume` for
+/// (which is wrong: resuming continues an abandoned direction). Detecting
+/// `merged == false` here is what lets the claim flow tell "abandoned,
+/// start fresh" apart from "merged, remote ref just wasn't pruned yet".
+///
+/// Best-effort: any `gh` failure (no auth, no network, gh not on PATH)
+/// returns `None` — falls back to the pre-INFRA-1730 generic bail message.
+pub(crate) fn closed_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, bool)> {
+    let owner_repo = gh_owner_repo(repo_root)?;
+    let owner = owner_repo.split('/').next()?;
+    let head = format!("{}:{}", owner, branch);
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!(
+                "repos/{}/pulls?state=closed&head={}&per_page=1&sort=updated&direction=desc",
+                owner_repo, head
+            ),
+            "--jq",
+            // tab-separated number\tmerged (1/0); empty if no closed PR found
+            r#".[0] | if . == null then empty else "\(.number)\t\(if .merged_at then "1" else "0" end)" end"#,
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.splitn(2, '\t');
+    let num = parts.next()?.parse::<u64>().ok()?;
+    let merged = parts.next().unwrap_or("0") == "1";
+    Some((num, merged))
 }
 
 /// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
@@ -1659,6 +1800,71 @@ fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, action
         json_escape(gap_id),
         json_escape(branch),
         json_escape(actions),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1730: emit kind=claim_orphan_branch_detected to ambient.jsonl.
+/// Fired when the claim branch already exists remotely AND belongs to a
+/// closed, unmerged PR, but neither --resume nor --rename was passed —
+/// signals the diagnostic was surfaced (not yet a `--rename` action).
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_claim_orphan_branch_detected(repo_root: &Path, gap_id: &str, branch: &str, pr_num: u64) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_orphan_branch_detected\",\
+         \"gap_id\":\"{}\",\"branch\":\"{}\",\"closed_pr\":{}}}\n",
+        json_escape(gap_id),
+        json_escape(branch),
+        pr_num,
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-1730: emit kind=claim_orphan_branch_renamed to ambient.jsonl.
+/// Fired when `--rename` archives an orphan remote branch (old ref renamed
+/// to `<branch>-orphaned-<epoch>`) so the claim can proceed with a fresh
+/// branch of the original name. Best-effort — silently no-ops if the file
+/// isn't writable.
+fn emit_claim_orphan_branch_renamed(
+    repo_root: &Path,
+    gap_id: &str,
+    branch: &str,
+    archived_branch: &str,
+) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_orphan_branch_renamed\",\
+         \"gap_id\":\"{}\",\"branch\":\"{}\",\"archived_branch\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(branch),
+        json_escape(archived_branch),
     );
     let _ = std::fs::OpenOptions::new()
         .create(true)

@@ -512,6 +512,25 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, files_lost_count, first_paths]
 
+  - kind: claim_orphan_branch_detected
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_orphan_branch_detected (INFRA-1730)
+    trigger: chump claim found the target branch already exists on the remote AND
+      belongs to a CLOSED, unmerged PR (an orphan branch left by an abandoned
+      session) but neither --resume nor --rename was passed. The bail message
+      surfaces both options; closed_pr names the PR number that was found.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, branch, closed_pr]
+
+  - kind: claim_orphan_branch_renamed
+    effect_metric: waste_prevented
+    emitter: src/atomic_claim.rs emit_claim_orphan_branch_renamed (INFRA-1730)
+    trigger: chump claim --rename archived an orphan remote branch (closed,
+      unmerged PR) to `<branch>-orphaned-<epoch>` and proceeded with a fresh
+      claim under the original branch name.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, branch, archived_branch]
+
   - kind: claim_aborted_pr_in_flight
     effect_metric: waste_prevented
     emitter: src/atomic_claim.rs emit_claim_aborted_pr_in_flight_event (INFRA-1503)
