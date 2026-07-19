@@ -1,7 +1,7 @@
 - id: META-091
   domain: META
   title: "EFFECTIVE: opus-shepherd session-start structured triage pass — ghost-sweep + ambient signature stats + sibling-lease inventory + written game-plan, replaces poll-and-react with plan-and-execute (productize from session2 retrospective where 49-ghost-reconcile windfall was discovered at tick 40 instead of tick 1)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13,4 +13,6 @@
     - "6. Bypass: CHUMP_OPUS_SHEPHERD_TRIAGE=0 disables; emit kind=opus_shepherd_triage_skipped"
     - 7. Documented in OPUS_SHEPHERD_PLAYBOOK.md (META-094)
     - "8. Baseline 2026-05-24 session2: 49-ghost reconcile windfall discovered at tick 40 instead of tick 1 — would have saved ~3hr of poll-and-react cycles"
+  closed_pr: 2503
+  outcome_id: MISSION-010
 
