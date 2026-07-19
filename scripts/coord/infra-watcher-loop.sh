@@ -113,7 +113,7 @@ cmd_audit_daemon_health() {
         local label
         label="$(basename "$plist" .plist)"
 
-        if printf '%s' "$disabled_list" | grep -q "\"${label}\" => disabled"; then
+        if grep -q "\"${label}\" => disabled" <<< "$disabled_list"; then
             findings=$((findings + 1))
             _emit_finding "daemon_disabled" "critical" \
                 "${label} is DISABLED in launchd override DB — survives reinstalls; fix: launchctl enable gui/${uid_n}/${label} && launchctl bootstrap gui/${uid_n} ${plist}"
