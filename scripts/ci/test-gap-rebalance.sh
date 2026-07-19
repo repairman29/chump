@@ -55,6 +55,13 @@ export CHUMP_HOME="$(mktemp -d)"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
+# EFFECTIVE-294: default AC are now concrete (no TODO placeholders), which
+# makes fixture gaps *pickable* — so the INFRA-1152 pillar-balance gate fires
+# inside these synthetic DBs (2nd same-pillar reserve = 100% of pool →
+# blocked; under set -e the script dies mid-seed). Fixtures aren't real
+# pillar inventory; disable the gate, same as test-gap-list-since-json-schema.
+export CHUMP_PILLAR_BALANCE_DISABLE=1
+export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── Scenario 1: over-budget P0 (>5) ─────────────────────────────────────────
 echo "[scenario 1: over-budget P0]"
