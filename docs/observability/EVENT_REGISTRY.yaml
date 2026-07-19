@@ -8196,13 +8196,3 @@ events:
     consumers: [fleet-brief, ci-audit, ops-audit]
     fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
     fields_optional: [threshold]
-
-  - kind: rebase_hunk_verify_bypassed
-    effect_metric: resilient
-    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
-    # scanner-anchor: "kind":"rebase_hunk_verify_bypassed"
-    trigger: >
-      CHUMP_POST_REBASE_VERIFY_SKIP=1 was set; post-rebase hunk-drop
-      verification was skipped. Audit log for bypass tracking.
-    consumers: [ops-audit]
-    fields_required: [ts, kind, reason]

@@ -32,7 +32,8 @@
 #   1 — one or more files with hunk drops detected; events emitted
 #   2 — usage / git state error (ORIG_HEAD not found, not in a git repo)
 #
-# Bypass: set CHUMP_POST_REBASE_VERIFY_SKIP=1 to skip (emits bypassed event).
+# No env bypass on purpose: the EFFECTIVE-094 bypass-var ceiling ratchets
+# down; callers that must skip verification simply don't invoke this script.
 
 set -uo pipefail
 
@@ -54,13 +55,6 @@ emit() {
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '{"ts":"%s","kind":"%s",%s}\n' "$ts" "$kind" "$fields" >> "$AMBIENT"
 }
-
-# ── Bypass ────────────────────────────────────────────────────────────────────
-if [[ "${CHUMP_POST_REBASE_VERIFY_SKIP:-0}" == "1" ]]; then
-    echo "[post-rebase-verify] skipped (CHUMP_POST_REBASE_VERIFY_SKIP=1)"
-    emit "rebase_hunk_verify_bypassed" '"reason":"CHUMP_POST_REBASE_VERIFY_SKIP"'
-    exit 0
-fi
 
 # ── Resolve ORIG_HEAD ─────────────────────────────────────────────────────────
 ORIG_HEAD="${1:-}"
@@ -128,7 +122,6 @@ if (( DROPS > 0 )); then
     echo "[post-rebase-verify] FAIL — $DROPS file(s) with hunk drops detected (see ambient.jsonl for rebase_hunk_dropped events)" >&2
     echo "[post-rebase-verify] Likely cause: merge driver on one of the affected files discarded content." >&2
     echo "[post-rebase-verify] Check .gitattributes for merge= on: $(git diff --name-only "$OLD_BASE..$ORIG_HEAD" | head -5 | tr '\n' ' ')" >&2
-    echo "[post-rebase-verify] Bypass: CHUMP_POST_REBASE_VERIFY_SKIP=1" >&2
     exit 1
 fi
 

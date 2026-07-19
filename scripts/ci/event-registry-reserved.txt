@@ -785,5 +785,3 @@ bot_merge_test_failure        # reason: INFRA-918 emitted on cargo test failure;
 # Emitted by scripts/coord/post-rebase-verify.sh when a rebase silently drops file content.
 # scanner-anchor: "kind":"rebase_hunk_dropped"
 rebase_hunk_dropped           # reason: INFRA-1526 post-rebase hunk-drop detector; fields: file, lines_dropped, original_commit, rebased_commit
-# scanner-anchor: "kind":"rebase_hunk_verify_bypassed"
-rebase_hunk_verify_bypassed   # reason: INFRA-1526 bypass audit; field: reason
