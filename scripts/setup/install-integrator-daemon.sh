@@ -20,6 +20,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# RESILIENT-168: refuse to bake a temp-clone path into a persistent plist.
+# The June outage's merge-queue-monitor pointed at /private/tmp/chump-install/
+# which evaporated on reboot (exit 78 forever). Override: CHUMP_INSTALL_ALLOW_TMP=1.
+case "$REPO_ROOT" in
+    /tmp/*|/private/tmp/*|/var/folders/*)
+        if [[ "${CHUMP_INSTALL_ALLOW_TMP:-0}" != "1" ]]; then
+            echo "ERROR: refusing to install a persistent daemon from temp path $REPO_ROOT" >&2
+            echo "  (plists baked from temp clones die on cleanup — run from the canonical checkout," >&2
+            echo "   or set CHUMP_INSTALL_ALLOW_TMP=1 if you really mean it)" >&2
+            exit 1
+        fi
+        ;;
+esac
+
 PLIST_TEMPLATE="$REPO_ROOT/.chump/launchd/com.chump.integrator-daemon.plist"
 LABEL="com.chump.integrator-daemon"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
@@ -60,6 +75,10 @@ _is_loaded() {
 }
 
 _load_plist() {
+    # RESILIENT-168: a service disabled in launchd's override DB survives every
+    # reinstall — bootstrap silently fails (rc=5) and the daemon stays dead
+    # through months of "fixes". Enable first, always.
+    launchctl enable "$_lctl_svc" 2>/dev/null || true
     launchctl bootstrap "$_lctl_domain" "$INSTALLED_PLIST" 2>/dev/null || true
 }
 

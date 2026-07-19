@@ -19,6 +19,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# RESILIENT-168: refuse to bake a temp-clone path into a persistent plist.
+# This exact installer once ran from /private/tmp/chump-install/ — the plist
+# survived, the clone didn't, and the monitor sat at exit 78 for weeks.
+case "$REPO_ROOT" in
+    /tmp/*|/private/tmp/*|/var/folders/*)
+        if [[ "${CHUMP_INSTALL_ALLOW_TMP:-0}" != "1" ]]; then
+            echo "ERROR: refusing to install a persistent daemon from temp path $REPO_ROOT" >&2
+            echo "  (run from the canonical checkout, or CHUMP_INSTALL_ALLOW_TMP=1 to override)" >&2
+            exit 1
+        fi
+        ;;
+esac
+
 MONITOR_SCRIPT="$REPO_ROOT/scripts/coord/monitor-merge-queue.sh"
 PLIST_LABEL="com.chump.merge-queue-monitor"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
@@ -79,6 +93,9 @@ PLIST
 # on. Try bootout first (newer) then fall back to unload.
 launchctl bootout "gui/$(id -u)/${PLIST_LABEL}" 2>/dev/null || \
     launchctl unload "$PLIST_PATH" 2>/dev/null || true
+# RESILIENT-168: clear any disabled-override first — a disabled service makes
+# bootstrap fail rc=5 forever, silently, across every reinstall.
+launchctl enable "gui/$(id -u)/${PLIST_LABEL}" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH" 2>/dev/null || \
     launchctl load "$PLIST_PATH"
 
