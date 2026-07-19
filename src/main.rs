@@ -1382,6 +1382,16 @@ async fn main() -> Result<()> {
         std::process::exit(commands::bootstrap::run(&sub_args));
     }
 
+    // `chump ingest <repo-path> [--confirm-mutations]` (INFRA-1780, phase 1a of
+    // INFRA-1746) — existing-repo takeover entrypoint. This slice validates the
+    // target (exists, is a directory, is a git repo) and enforces the read-only
+    // safety gate; the analysis phases (INFRA-1781 through INFRA-1784) build on
+    // top of the validated target.
+    if args.get(1).map(String::as_str) == Some("ingest") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(commands::ingest::run(&sub_args));
+    }
+
     // INFRA-2399 author-time helper commands (add-env-var / emit-event /
     // install-daemon / add-path-filter / add-raw-gh-allowlist).
     // Extracted to commands::dispatch_authoring (INFRA-3298, slice 2 of INFRA-3287).

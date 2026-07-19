@@ -7995,6 +7995,55 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, failure_class, intent, target_dir]
     # payload: {failure_class: str, intent: str, target_dir: str}
+
+  # ── INFRA-1780: chump ingest existing-repo takeover entrypoint (phase 1a) ──
+
+  - kind: ingest_initiated
+    effect_metric: effective
+    emitter: src/commands/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_initiated"
+    trigger: >
+      `chump ingest <repo-path>` begins execution. Fires immediately after CLI
+      args are parsed and before any validation or filesystem access. Fields:
+      target_repo_path (as given, not yet validated), confirm_mutations
+      (whether --confirm-mutations was passed), session_id.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo_path, confirm_mutations, session_id]
+    # payload: {target_repo_path: str, confirm_mutations: bool, session_id: str}
+    status: stable
+
+  - kind: ingest_validated
+    effect_metric: effective
+    emitter: src/commands/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_validated"
+    trigger: >
+      `chump ingest <repo-path>` confirmed the target exists, is a directory,
+      and is a git repository. mode is read_only (default; no writes will
+      occur) or mutations_confirmed (operator passed --confirm-mutations;
+      recorded as consent for later phases — this phase writes nothing
+      itself). Fields: target_repo_path, mode, duration_ms.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target_repo_path, mode, duration_ms]
+    # payload: {target_repo_path: str, mode: str, duration_ms: int}
+    status: stable
+
+  - kind: ingest_failed
+    effect_metric: effective
+    emitter: src/commands/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_failed"
+    trigger: >
+      `chump ingest <repo-path>` failed validation. failure_class is one of:
+      path_not_found (permanent — target path doesn't exist),
+      not_a_directory (permanent — target path is a file, not a dir),
+      not_a_git_repo (permanent — target has no git working tree),
+      git_invocation_failed (transient — `git` could not be spawned; retry
+      once the environment has git on PATH). Fields: failure_class,
+      target_repo_path, duration_ms.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, failure_class, target_repo_path, duration_ms]
+    # payload: {failure_class: str, target_repo_path: str, duration_ms: int}
+    status: stable
+
   - kind: sccache_hit_rate_low
     effect_metric: credible
     emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)

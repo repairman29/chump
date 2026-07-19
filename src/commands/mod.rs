@@ -8,6 +8,7 @@
 //! INFRA-2405: contract-scan — detect cross-PR state-file/IPC schema mismatch (anti-Bug-1).
 //! RESILIENT-059: durable-execution — SQLite-journaled activity wrapper + resume CLI.
 //! INFRA-2265: bootstrap — net-new product bootstrap entrypoint (empty dir → first commit + gap).
+//! INFRA-1780: ingest — existing-repo takeover entrypoint, phase 1a (CLI + validation + read-only safety).
 
 pub mod add_env_var;
 pub mod add_path_filter;
@@ -22,6 +23,7 @@ pub mod durable_execution;
 pub mod durable_execution_journal;
 pub mod durable_resume;
 pub mod emit_event;
+pub mod ingest;
 pub mod install_daemon;
 pub mod inventory;
 pub mod sibling_status;
