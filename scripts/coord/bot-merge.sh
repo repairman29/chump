@@ -1069,9 +1069,33 @@ heartbeat_begin() {
             # INFRA-2272: keep last_progress_ts current so stall monitors can
             # distinguish "subprocess running" from "process wedged silently".
             _bm_progress_write "$label" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
+            # INFRA-1732: also push the heartbeat onto ambient.jsonl. The
+            # progress-file write above only helps a watcher that is already
+            # polling this one process's local file by elapsed wall-time; an
+            # ambient event lets any fleet-wide consumer (siblings, curators,
+            # a stall detector) notice a phase is alive — or notice it went
+            # quiet — from the shared event stream instead.
+            _bm_emit_step_heartbeat "$label" "$elapsed"
         done
     ) &
     __HEARTBEAT_PID=$!
+}
+
+# INFRA-1732: emit kind=bot_merge_step_heartbeat to ambient.jsonl on every
+# heartbeat tick (~30s) of a long-running phase, so stalls can be detected
+# from the shared ambient stream (N missed ticks) rather than only by a
+# local watcher polling elapsed time against this process's progress file.
+_bm_emit_step_heartbeat() {
+    local step="${1:-unknown}" elapsed_s="${2:-0}"
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    local ts gap_label ambient
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    # scanner-anchor: "kind":"bot_merge_step_heartbeat"
+    printf '{"ts":"%s","kind":"bot_merge_step_heartbeat","gap_id":"%s","step_name":"%s","elapsed_seconds":%d,"pid":%d,"note":"INFRA-1732: periodic phase-progress heartbeat, distinct from timeout-only stall detection"}\n' \
+        "$ts" "$gap_label" "$step" "$elapsed_s" "$_BM_PID" \
+        >> "$ambient" 2>/dev/null || true
 }
 
 run_timed_hb() {
