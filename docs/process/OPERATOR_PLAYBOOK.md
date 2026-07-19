@@ -51,7 +51,10 @@ graph TD
   only Opus can synthesize. Today's 2-min cron loop; post-retirement: 4h
   Oracle-refresh cadence.
 - **Curators** (6 Opus sessions, role-tagged): claim gaps from their lane,
-  decide self-implement vs Sonnet-delegate, ship PRs. Always running.
+  decide self-implement vs Sonnet-delegate, ship PRs. Always running. Each
+  curator owns one primary pillar with no overlap — see
+  [`CURATOR_PILLAR_MATRIX.md`](./CURATOR_PILLAR_MATRIX.md) for the canonical
+  role → pillar table.
 - **Sub-agents** (Sonnet, one-per-gap): implement Rust/tests/>150 LOC of
   code. Spawned by curator via `Agent` tool, ship clean per pre-push
   checklist, exit.

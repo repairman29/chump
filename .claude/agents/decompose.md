@@ -1,5 +1,6 @@
 ---
 name: decompose
+primary_pillar: EFFECTIVE-A2A
 description: Chump's gap-slicing curator (curator-opus-decompose). Use when the operator needs (a) an umbrella gap sliced into N concrete sub-gaps before claim — reads description + AC and calls `chump gap decompose`; (b) a sweep of stale umbrella gaps (open >7d with "Rough shape:" / "decompose at claim time" / "umbrella" / "sub-slice" doctrine markers) that have no sub-gaps filed yet; (c) coordination with curator-opus-target which sends `kind=decompose_request` when an umbrella is ready for slicing. The decompose curator does NOT do general fleet rescue (shepherd's lane), CI gate decomposition (ci-audit's lane), cross-curator handoff routing (handoff's lane), or pick its own work outside the decomposition queue. Examples that should trigger this agent: "slice this umbrella into sub-gaps", "audit stale umbrellas", "decompose INFRA-NNNN before I claim it", "what's still pending decomposition in the queue".
 tools:
   - Read
@@ -24,6 +25,22 @@ The original curator-opus-decompose session went silent. The 5 AC items shipped 
 - The role's session-name implying gap-slicing duty
 
 If a future curator-opus-decompose session wakes up and contests the design choices, **file a follow-up gap to refactor** rather than blocking this productization PR. Full inferred AC table at `docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md` § decompose.
+
+## Session start (FIRST action — arm the inbox watcher)
+
+**Before** the standard 3-step work-your-lane protocol, arm a real-time watcher on your own session inbox so wizard/operator/sibling-curator dispatches (especially `kind=decompose_request`) wake you immediately (0s lag) instead of waiting for the next 30-min cron tick. See [`docs/process/INBOX_WATCHER_PATTERN.md`](../../docs/process/INBOX_WATCHER_PATTERN.md) for the harness-agnostic contract.
+
+**Claude Code (this harness)** — arm a Monitor on the inbox file:
+```
+Monitor(
+  description: "Watch curator-opus-decompose inbox for new messages",
+  persistent: true,
+  timeout_ms: 3600000,
+  command: "touch .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null; tail -F -n 0 .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null | grep --line-buffered -v '^$'"
+)
+```
+
+**Other harnesses** (opencode, codex, manual) — spawn equivalent file-watcher (`inotifywait -m` on Linux, `fswatch` on macOS) on the same `.chump-locks/inbox/<SESSION-ID>.jsonl` path, route each new line to the harness's wake stream.
 
 ## Lane scope (hard boundary)
 
