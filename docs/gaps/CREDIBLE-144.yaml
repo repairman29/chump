@@ -11,6 +11,4 @@
   closed_pr: 3171
   evidence: |
     2026-06-22: PR #3167 (EFFECTIVE-294, an AC-content-only change to src/main.rs) and PR #3155 (unrelated) both fail audit-shard(1) with 'FAIL: expected >=5 fixture gaps; got 1' while main's binary passes the same test 5/5 locally. #3167's change is provably downstream of reserve-success (it only formats AC strings; unwrap_or_else makes it infallible) so it cannot affect FIXTURE_COUNT — the failure is environmental flakiness in the seeding loop, which swallows reserve failures and gives no diagnostic. Two unrelated PRs failing identically + main passing 5/5 = flaky test, not PR bugs.
-  evidence: |
-    2026-06-22: PR #3167 (EFFECTIVE-294, an AC-content-only change to src/main.rs) and PR #3155 (unrelated) both fail audit-shard(1) with 'FAIL: expected >=5 fixture gaps; got 1' while main's binary passes the same test 5/5 locally. #3167's change is provably downstream of reserve-success (it only formats AC strings; unwrap_or_else makes it infallible) so it cannot affect FIXTURE_COUNT — the failure is environmental flakiness in the seeding loop, which swallows reserve failures and gives no diagnostic. Two unrelated PRs failing identically + main passing 5/5 = flaky test, not PR bugs.
 

@@ -9,6 +9,4 @@
   closed_pr: 3172
   evidence: |
     2026-06-22: audit-shard(2) [scripts/ci/test-event-registry-coverage.sh] fails on every fresh PR (#3171 et al.) with 'emit-without-register: 2' — fleet_self_sync (webhook-receiver.py:444, since RESILIENT-152 #3147) + stall_deferred_build (worker.sh:1286, since RESILIENT-157 #3150) emitted but never registered. audit-required red => fleet-wide merge stall (0 merges/64min). Deterministic, not flake; confirmed by running the gate locally.
-  evidence: |
-    2026-06-22: audit-shard(2) [scripts/ci/test-event-registry-coverage.sh] fails on every fresh PR (#3171 et al.) with 'emit-without-register: 2' — fleet_self_sync (webhook-receiver.py:444, since RESILIENT-152 #3147) + stall_deferred_build (worker.sh:1286, since RESILIENT-157 #3150) emitted but never registered. audit-required red => fleet-wide merge stall (0 merges/64min). Deterministic, not flake; confirmed by running the gate locally.
 
