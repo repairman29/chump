@@ -159,3 +159,38 @@ lease_session_from_statedb() {
     [[ -f "$db" ]] || return 0
     sqlite3 "$db" "SELECT session_id FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
 }
+
+# lease_worktree_from_statedb <gap_id> [<state_db_path>]
+#   Echoes the worktree path holding <gap_id>'s lease (empty if none / no
+#   sqlite3). Same db-resolution rules as lease_session_from_statedb. Read-only.
+#   INFRA-1901: used by bot-merge.sh to detect "we are already inside the
+#   claimed worktree" before attempting a re-claim.
+lease_worktree_from_statedb() {
+    local gap_id="$1" db="${2:-}"
+    [[ "$gap_id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    if [[ -z "$db" ]]; then
+        local repo gitdir
+        gitdir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        if [[ -n "$gitdir" ]]; then repo="$(dirname "$gitdir")"; else repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
+        db="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+    fi
+    [[ -f "$db" ]] || return 0
+    sqlite3 "$db" "SELECT worktree FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
+}
+
+# lease_path_is_within <candidate_path> <worktree_path>
+#   Return 0 iff <candidate_path> resolves (symlinks included, e.g. macOS
+#   /tmp -> /private/tmp) to <worktree_path> or a descendant of it.
+#   INFRA-1901: comparing raw strings misses the /private/tmp case; both
+#   sides must go through the same realpath resolution.
+lease_path_is_within() {
+    local candidate="$1" worktree="$2"
+    [[ -n "$candidate" && -n "$worktree" ]] || return 1
+    [[ -d "$candidate" && -d "$worktree" ]] || return 1
+    local real_candidate real_worktree
+    real_candidate="$(realpath "$candidate" 2>/dev/null)" || return 1
+    real_worktree="$(realpath "$worktree" 2>/dev/null)" || return 1
+    [[ -n "$real_candidate" && -n "$real_worktree" ]] || return 1
+    [[ "$real_candidate" == "$real_worktree" || "$real_candidate" == "$real_worktree"/* ]]
+}

@@ -1941,6 +1941,13 @@ events:
     trigger: many bot-merges touching same file
     consumers: [audit-log]
 
+  - kind: bot_merge_skip_claim_lax
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1901 CHUMP_BOT_MERGE_SKIP_CLAIM=1)
+    trigger: debug bypass forced the unconditional chump claim re-invocation instead of the already-in-worktree detection
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap, reason]
+
   # ── INFRA-2119: webhook-cache MERGED wait ─────────────────────────────────
   - kind: bot_merge_webhook_hit
     effect_metric: self
