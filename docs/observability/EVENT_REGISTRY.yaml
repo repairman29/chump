@@ -2002,6 +2002,7 @@ events:
     trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
     consumers: [waste-tally, fleet-brief, watchdog]
     fields_required: [ts, kind, count]
+    docs: "Full lifecycle taxonomy, cost tracking, and smoke test: docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md (INFRA-1749)"
 
   - kind: fleet_auth_fallback
     effect_metric: self
