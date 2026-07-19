@@ -42,8 +42,8 @@ chmod +x "$FAKEBIN/sysctl"
 # We can't reasonably stub `ls /dev/ttys???` via PATH (ls is bash builtin
 # resolution). Instead, the reaper reads the count via wc. We rely on the
 # real /dev/ttys??? for the below-threshold check (this host has ~127, well
-# under 80% of 511) and on FAKE_PTMX_MAX=200 for the above-threshold check
-# (127/200 = 63% NOT pressure; 127/150 = 84% IS pressure).
+# under the 65% default threshold of 511) and on FAKE_PTMX_MAX=150 for the
+# above-threshold check (127/150 = 84% IS pressure, INFRA-1930).
 
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }

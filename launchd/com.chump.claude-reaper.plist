@@ -6,8 +6,15 @@
   (/loop, ScheduleWakeup, CronCreate). Cron 6249a56f leaked 354 wedged
   subprocesses over 60h on 2026-05-20→22.
 
-  Runs scripts/ops/reap-orphan-claude-procs.sh every 5 minutes (300s).
+  Runs scripts/ops/reap-orphan-claude-procs.sh every 2 minutes (120s).
   Emits kind=orphan_subprocess_reaped to ambient.jsonl on each sweep.
+
+  INFRA-1930: cadence tightened from 300s -> 120s. At 300s, the PTY-pressure
+  urgent mode (see reap-orphan-claude-procs.sh) was firing reactively —
+  95 reaper_pty_pressure events/24h, i.e. the sweep kept discovering
+  pressure already past the 80% threshold instead of catching it climbing.
+  A tighter cadence gives the reaper more chances per hour to catch rising
+  allocation before it saturates.
 
   INSTALLATION:
     scripts/setup/install-claude-reaper.sh
@@ -42,10 +49,10 @@
   <key>WorkingDirectory</key>
   <string>/path/to/Chump</string>
 
-  <!-- Run every 5 minutes (300s). Short cadence is fine: the script is
-       idempotent and cheap (one ps call, in-memory walk). -->
+  <!-- Run every 2 minutes (120s, INFRA-1930). Short cadence is fine: the
+       script is idempotent and cheap (one ps call, in-memory walk). -->
   <key>StartInterval</key>
-  <integer>300</integer>
+  <integer>120</integer>
 
   <!-- Guard against rapid restarts if the watchdog crashes. -->
   <key>ThrottleInterval</key>
