@@ -93,6 +93,60 @@ cmd_audit_daemons() {
     return 0
 }
 
+# ── audit-daemon-health ───────────────────────────────────────────────────────
+# RESILIENT-168: plist-key audits above can't see RUNTIME state. The June
+# merge-queue outage hid behind three runtime failures no check covered:
+# (a) service disabled in launchd's override DB (survives every reinstall),
+# (b) plist present but service never loaded, (c) loaded but repeatedly
+# exiting non-zero (integrator exit=127 for ~32h). Check all three.
+cmd_audit_daemon_health() {
+    _header "audit-daemon-health"
+    local plist_dir="${HOME}/Library/LaunchAgents"
+    local findings=0
+    local uid_n
+    uid_n="$(id -u)"
+
+    local disabled_list
+    disabled_list="$(launchctl print-disabled "gui/${uid_n}" 2>/dev/null || true)"
+
+    while IFS= read -r -d '' plist; do
+        local label
+        label="$(basename "$plist" .plist)"
+
+        if grep -q "\"${label}\" => disabled" <<< "$disabled_list"; then
+            findings=$((findings + 1))
+            _emit_finding "daemon_disabled" "critical" \
+                "${label} is DISABLED in launchd override DB — survives reinstalls; fix: launchctl enable gui/${uid_n}/${label} && launchctl bootstrap gui/${uid_n} ${plist}"
+            continue
+        fi
+
+        local row
+        row="$(launchctl list 2>/dev/null | awk -v l="$label" '$3 == l {print $1, $2}')"
+        if [[ -z "$row" ]]; then
+            findings=$((findings + 1))
+            _emit_finding "daemon_not_loaded" "critical" \
+                "${label} plist exists but service is not loaded — fix: launchctl bootstrap gui/${uid_n} ${plist}"
+            continue
+        fi
+
+        local pid exit_code
+        pid="${row%% *}"
+        exit_code="${row##* }"
+        if [[ "$pid" == "-" && "$exit_code" != "0" ]]; then
+            findings=$((findings + 1))
+            _emit_finding "daemon_failing" "critical" \
+                "${label} last exit=${exit_code} (not running) — exit 127 means ProgramArguments binary missing; exit 78 means script path gone (stale temp-clone plist)"
+        fi
+    done < <(find "$plist_dir" -maxdepth 1 \
+                  \( -name "com.chump.*.plist" -o -name "dev.chump.*.plist" \) \
+                  -print0 2>/dev/null)
+
+    if [[ "$findings" -eq 0 ]]; then
+        printf '[infra-watcher] audit-daemon-health: all loaded, enabled, exit-0\n'
+    fi
+    return 0
+}
+
 # ── check-runners ─────────────────────────────────────────────────────────────
 # Detect ghost-online: ≥1 job queued >5min AND ≥1 runner online+idle.
 # Invokes META-100 detection script if it exists.
@@ -481,6 +535,7 @@ cmd_tick() {
     ts="$(_ts)"
     printf '[infra-watcher] tick start ts=%s\n' "$ts"
     cmd_audit_daemons
+    cmd_audit_daemon_health
     cmd_check_runners
     cmd_check_disk
     cmd_check_procs
@@ -496,6 +551,7 @@ shift || true
 case "$CMD" in
     tick)                    cmd_tick "$@" ;;
     audit-daemons)           cmd_audit_daemons "$@" ;;
+    audit-daemon-health)     cmd_audit_daemon_health "$@" ;;
     check-runners)           cmd_check_runners "$@" ;;
     check-disk)              cmd_check_disk "$@" ;;
     check-procs)             cmd_check_procs "$@" ;;

@@ -229,7 +229,7 @@ FLEET_SIZE="${FLEET_SIZE:-8}"
 # 600-900 LoC via WIP checkpoint but couldn't finish. 900s catches
 # finish-line kills without wasting much more on true stalls (shipped gaps
 # avg 200s, max 460s — plenty of headroom).
-FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-900}"
+FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
