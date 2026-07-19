@@ -1,15 +1,30 @@
 - id: META-097
   domain: META
-  title: "MISSION P1: productize remaining 5 curator roles per target.md template (INFRA-1918 sibling pattern) — handoff/ci-audit/shepherd/decompose/md-links each need .claude/agents/<role>.md + .claude/skills/<role>/SKILL.md"
-  status: open
+  title: 'MISSION P1: productize remaining 5 curator roles per target.md template (INFRA-1918 sibling pattern) — handoff/ci-audit/shepherd/decompose/md-links
+    each need .claude/agents/<role>.md + .claude/skills/<role>/SKILL.md'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Background — INFRA-1918 shipped at 15:17Z 2026-05-24 the target curator as a checked-in Claude Code subagent (.claude/agents/target.md + .claude/skills/target/SKILL.md). Pattern is clean: 7.6KB agent .md with lane scope + 5-step work-your-lane protocol + discipline rules + META-069 dispatch protocol + babysit/surgical-rescue protocol. The other 5 curators (handoff, ci-audit, shepherd, decompose, md-links) need the same treatment so wizard's A2A discipline shifts from broadcast.sh DMs to direct Skill/Agent invocation"
-    - "Decompose into 5 sub-gaps INFRA-1922 through INFRA-1926 (one per role) OR build all 5 in one PR. Recommended: one PR (single reviewer pass, ensure consistency)"
-    - Per role — copy target.md structure, fill in lane scope (handoff = cross-curator routing; ci-audit = CI gate decomposition; shepherd = general fleet rescue; decompose = umbrella decomposition; md-links = markdown-intra-doc-links audit + retirement gap follow-up), preserve the 5-step protocol, preserve the discipline rules section, preserve the META-069 dispatch protocol, preserve the babysit/surgical-rescue protocol
-    - Lane scope content — for each role read its current curator-wake template at scripts/coord/curator-wake.sh (INFRA-1908) to extract lane-specific patterns, and the SUBAGENT_DISPATCH.md role assignments
-    - Smoke — bash check that all 6 .claude/agents/*.md files exist + parse as valid YAML frontmatter + each describes a distinct lane (no role-mix in descriptions)
-    - Wizard playbook follow-up — META-098 (filed separately) updates OPERATOR_PLAYBOOK.md §1 Hierarchy to reference the checked-in agents via Skill() invocation pattern rather than broadcast.sh DM-only
-    - Done definition — 5 new agent .md files in .claude/agents/, 5 new SKILL.md files in .claude/skills/<role>/, all parse as valid Claude Code subagent definitions, smoke test exits 0; the 5 new skills appear in Skill tool list for subsequent sessions
-
+  - 'Background — INFRA-1918 shipped at 15:17Z 2026-05-24 the target curator as a checked-in Claude Code subagent (.claude/agents/target.md
+    + .claude/skills/target/SKILL.md). Pattern is clean: 7.6KB agent .md with lane scope + 5-step work-your-lane protocol
+    + discipline rules + META-069 dispatch protocol + babysit/surgical-rescue protocol. The other 5 curators (handoff, ci-audit,
+    shepherd, decompose, md-links) need the same treatment so wizard''s A2A discipline shifts from broadcast.sh DMs to direct
+    Skill/Agent invocation'
+  - 'Decompose into 5 sub-gaps INFRA-1922 through INFRA-1926 (one per role) OR build all 5 in one PR. Recommended: one PR
+    (single reviewer pass, ensure consistency)'
+  - Per role — copy target.md structure, fill in lane scope (handoff = cross-curator routing; ci-audit = CI gate decomposition;
+    shepherd = general fleet rescue; decompose = umbrella decomposition; md-links = markdown-intra-doc-links audit + retirement
+    gap follow-up), preserve the 5-step protocol, preserve the discipline rules section, preserve the META-069 dispatch protocol,
+    preserve the babysit/surgical-rescue protocol
+  - Lane scope content — for each role read its current curator-wake template at scripts/coord/curator-wake.sh (INFRA-1908)
+    to extract lane-specific patterns, and the SUBAGENT_DISPATCH.md role assignments
+  - Smoke — bash check that all 6 .claude/agents/*.md files exist + parse as valid YAML frontmatter + each describes a distinct
+    lane (no role-mix in descriptions)
+  - Wizard playbook follow-up — META-098 (filed separately) updates OPERATOR_PLAYBOOK.md §1 Hierarchy to reference the checked-in
+    agents via Skill() invocation pattern rather than broadcast.sh DM-only
+  - Done definition — 5 new agent .md files in .claude/agents/, 5 new SKILL.md files in .claude/skills/<role>/, all parse
+    as valid Claude Code subagent definitions, smoke test exits 0; the 5 new skills appear in Skill tool list for subsequent
+    sessions
+  closed_date: '2026-05-29'
+  closed_pr: 2507

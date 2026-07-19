@@ -1,16 +1,29 @@
 - id: INFRA-2071
   domain: INFRA
-  title: "RESILIENT: admin-merge-cycle frequency circuit-breaker (META-118 sub-gap 5) — when admin-merge runs >N times in window W → emit operator_action_needed kind=admin_merge_burst, pause further bypass; forces stop-and-triage"
-  status: open
+  title: 'RESILIENT: admin-merge-cycle frequency circuit-breaker (META-118 sub-gap 5) — when admin-merge runs >N times in
+    window W → emit operator_action_needed kind=admin_merge_burst, pause further bypass; forces stop-and-triage'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "Modify scripts/ops/admin-merge-cycle.sh (per RESILIENT-031, shipped #2651) — add at start: read CHUMP_ADMIN_MERGE_BURST_THRESHOLD (default 3), CHUMP_ADMIN_MERGE_BURST_WINDOW_S (default 3600s); count admin_merge_cycle_run events in window from .chump-locks/ambient.jsonl"
-    - "When count >= threshold: emit kind=admin_merge_burst with fields count, window_s, threshold, operator_action_needed=true; exit non-zero unless CHUMP_ADMIN_MERGE_FORCE=1 OR --force-admin flag (already exists per RESILIENT-031); print operator message \"admin-merge burst detected: N cycles in past Wh exceeds threshold T; pause to triage root cause OR re-run with --force-admin to override\""
-    - Per-cycle invocation now emits kind=admin_merge_cycle_run (in addition to existing semantics) with fields pr_number, reason, operator_session_id; this is the counter the threshold counts against
-    - "Operator override path: --force-admin OR CHUMP_ADMIN_MERGE_FORCE=1 bypasses circuit-breaker BUT still emits kind=admin_merge_burst_overridden (separate kind for audit) so the burst pattern is visible in retrospectives"
-    - "Smoke test scripts/ci/test-admin-merge-burst.sh: synth 3 admin_merge_cycle_run events in past 3600s; run admin-merge-cycle.sh; assert exit non-zero + kind=admin_merge_burst emit. Override case: same setup + CHUMP_ADMIN_MERGE_FORCE=1; assert exit 0 + kind=admin_merge_burst_overridden emit (NOT admin_merge_burst alone)"
-    - EVENT_REGISTRY.yaml entries kind=admin_merge_cycle_run + kind=admin_merge_burst + kind=admin_merge_burst_overridden; allowlist entries in scripts/ci/event-registry-reserved.txt
-  notes: |
-    Sub-gap 5 of META-118. INDEPENDENT — does not depend on the other 4 sub-gaps (can be picked up in parallel). Closes the today's anti-pattern: admin-merge accumulated 10+ uses without operator noticing the underlying CI debt.
+  - 'Modify scripts/ops/admin-merge-cycle.sh (per RESILIENT-031, shipped #2651) — add at start: read CHUMP_ADMIN_MERGE_BURST_THRESHOLD
+    (default 3), CHUMP_ADMIN_MERGE_BURST_WINDOW_S (default 3600s); count admin_merge_cycle_run events in window from .chump-locks/ambient.jsonl'
+  - 'When count >= threshold: emit kind=admin_merge_burst with fields count, window_s, threshold, operator_action_needed=true;
+    exit non-zero unless CHUMP_ADMIN_MERGE_FORCE=1 OR --force-admin flag (already exists per RESILIENT-031); print operator
+    message "admin-merge burst detected: N cycles in past Wh exceeds threshold T; pause to triage root cause OR re-run with
+    --force-admin to override"'
+  - Per-cycle invocation now emits kind=admin_merge_cycle_run (in addition to existing semantics) with fields pr_number, reason,
+    operator_session_id; this is the counter the threshold counts against
+  - 'Operator override path: --force-admin OR CHUMP_ADMIN_MERGE_FORCE=1 bypasses circuit-breaker BUT still emits kind=admin_merge_burst_overridden
+    (separate kind for audit) so the burst pattern is visible in retrospectives'
+  - 'Smoke test scripts/ci/test-admin-merge-burst.sh: synth 3 admin_merge_cycle_run events in past 3600s; run admin-merge-cycle.sh;
+    assert exit non-zero + kind=admin_merge_burst emit. Override case: same setup + CHUMP_ADMIN_MERGE_FORCE=1; assert exit
+    0 + kind=admin_merge_burst_overridden emit (NOT admin_merge_burst alone)'
+  - EVENT_REGISTRY.yaml entries kind=admin_merge_cycle_run + kind=admin_merge_burst + kind=admin_merge_burst_overridden; allowlist
+    entries in scripts/ci/event-registry-reserved.txt
+  notes: 'Sub-gap 5 of META-118. INDEPENDENT — does not depend on the other 4 sub-gaps (can be picked up in parallel). Closes
+    the today''s anti-pattern: admin-merge accumulated 10+ uses without operator noticing the underlying CI debt.
 
+    '
+  closed_date: '2026-05-30'
+  closed_pr: 2807

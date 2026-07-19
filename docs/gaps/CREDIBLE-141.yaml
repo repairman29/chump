@@ -1,0 +1,13 @@
+- id: CREDIBLE-141
+  domain: CREDIBLE
+  title: "CREDIBLE: chump improve verify-merge step fails to merge a verified-good PR (no --auto, premature merge, file-overlay pathspec error)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. verify-merge arms 'gh pr merge --auto --squash' (merge when green) instead of an immediate merge. 2. Remove/repair the file-overlay step that throws the pathspec error. 3. On CONFLICTING/DIRTY, surface clearly and skip the merge. 4. Test: a verdict-verified PR with pending CI gets auto-merge armed, not a failed immediate merge."
+  evidence: |
+    2026-06-22 BEAST PR #11: verify-merge reached verdict=verified (fix judged sound) but the MERGE failed: 'warning: could not overlay tests/test-rls-recursion-fix.js from head (skipping)' + 'error: pathspec tests/rls-recursion-fix.test.js did not match any file(s)' + 'not mergeable: the merge commit cannot be cleanly created. To have the pull request merged after all the requirements have been met, add the --auto flag.' ROOT CAUSES: (a) it issues an immediate merge instead of arming --auto, so it fails while CI is still pending; (b) a buggy git file-overlay step references a renamed/nonexistent test path. AC: verify-merge arms gh pr merge --auto --squash (let GitHub merge when green) rather than an immediate merge; remove/repair the file-overlay logic; on CONFLICTING/DIRTY, surface that clearly. Verdict-verified PRs should actually land.
+  evidence: |
+    2026-06-22 BEAST PR #11: verify-merge reached verdict=verified (fix judged sound) but the MERGE failed: 'warning: could not overlay tests/test-rls-recursion-fix.js from head (skipping)' + 'error: pathspec tests/rls-recursion-fix.test.js did not match any file(s)' + 'not mergeable: the merge commit cannot be cleanly created. To have the pull request merged after all the requirements have been met, add the --auto flag.' ROOT CAUSES: (a) it issues an immediate merge instead of arming --auto, so it fails while CI is still pending; (b) a buggy git file-overlay step references a renamed/nonexistent test path. AC: verify-merge arms gh pr merge --auto --squash (let GitHub merge when green) rather than an immediate merge; remove/repair the file-overlay logic; on CONFLICTING/DIRTY, surface that clearly. Verdict-verified PRs should actually land.
+

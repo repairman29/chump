@@ -1,0 +1,9 @@
+- id: INFRA-3309
+  domain: INFRA
+  title: "CREDIBLE: meas-a"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify meas-a
+

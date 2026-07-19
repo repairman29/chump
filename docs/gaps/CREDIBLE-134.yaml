@@ -1,0 +1,19 @@
+- id: CREDIBLE-134
+  domain: CREDIBLE
+  title: "CREDIBLE: chump unknown-subcommand routes to brain LLM and exits 0 (scripting footgun + hallucinated output); must print usage + exit non-zero"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump <unknown-subcommand> (e.g. chump zzznotacommand) prints a usage/error message listing valid subcommands and exits NON-ZERO
+    - the brain/LLM natural-language fallback is gated behind an explicit opt-in (dedicated subcommand like chump ask, or a flag/config) so a bare typo'd token never silently invokes the LLM
+    - "CI smoke test asserts: chump <bogus-token> exits non-zero AND stdout does not contain 'Response from Agent'"
+    - all real subcommands and their --help paths continue to work unchanged
+  closed_pr: 3138
+  evidence: |
+    COMMAND: chump zzznotacommand (also: chump proposals list). OUTPUT: prints 'chump config: enabled=[discord,...,brain]' then 'Response from Agent: ...It seems like you've entered something that doesn't appear to be a command... If you're feeling sleepy (given the zzz)...' — a conversational LLM hallucination — and exits 0. THEORY: unrecognized subcommands fall through to the brain/discord agent dispatch instead of the clap unknown-subcommand error path, and the agent path returns exit 0. ALT: brain-fallback for natural-language queries may be intentional, but it must NOT swallow obviously-typo'd subcommand tokens and must NEVER exit 0 on unrecognized CLI input — a fleet script with a typo'd chump subcommand currently 'succeeds' silently.
+  evidence: |
+    COMMAND: chump zzznotacommand (also: chump proposals list). OUTPUT: prints 'chump config: enabled=[discord,...,brain]' then 'Response from Agent: ...It seems like you've entered something that doesn't appear to be a command... If you're feeling sleepy (given the zzz)...' — a conversational LLM hallucination — and exits 0. THEORY: unrecognized subcommands fall through to the brain/discord agent dispatch instead of the clap unknown-subcommand error path, and the agent path returns exit 0. ALT: brain-fallback for natural-language queries may be intentional, but it must NOT swallow obviously-typo'd subcommand tokens and must NEVER exit 0 on unrecognized CLI input — a fleet script with a typo'd chump subcommand currently 'succeeds' silently.
+  evidence: |
+    COMMAND: chump zzznotacommand (also: chump proposals list). OUTPUT: prints 'chump config: enabled=[discord,...,brain]' then 'Response from Agent: ...It seems like you've entered something that doesn't appear to be a command... If you're feeling sleepy (given the zzz)...' — a conversational LLM hallucination — and exits 0. THEORY: unrecognized subcommands fall through to the brain/discord agent dispatch instead of the clap unknown-subcommand error path, and the agent path returns exit 0. ALT: brain-fallback for natural-language queries may be intentional, but it must NOT swallow obviously-typo'd subcommand tokens and must NEVER exit 0 on unrecognized CLI input — a fleet script with a typo'd chump subcommand currently 'succeeds' silently.
+

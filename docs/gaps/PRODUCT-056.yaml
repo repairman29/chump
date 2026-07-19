@@ -1,14 +1,15 @@
 - id: PRODUCT-056
   domain: PRODUCT
-  title: "EFFECTIVE: VS Code ext — scaffold extension + launch chump --acp as stdio backend (PRODUCT-048 slice 1)"
-  status: open
+  title: 'EFFECTIVE: VS Code ext — scaffold extension + launch chump --acp as stdio backend (PRODUCT-048 slice 1)'
+  status: done
   priority: P1
   effort: s
   depends_on: []
   acceptance_criteria:
-    - "VS Code extension project in vscode-ext/ with package.json, tsconfig, activation entry point"
-    - "Extension activates on command 'chump.start' and spawns chump --acp as a child process"
-    - "stdio transport: extension sends JSON-RPC to chump stdin, reads from stdout"
-    - "ACP initialize handshake completes and extension logs capabilities"
-    - "Extension deactivation kills the chump process cleanly"
-    - "Installable via .vsix sideload"
+  - VS Code extension project in vscode-ext/ with package.json, tsconfig, activation entry point
+  - Extension activates on command 'chump.start' and spawns chump --acp as a child process
+  - 'stdio transport: extension sends JSON-RPC to chump stdin, reads from stdout'
+  - ACP initialize handshake completes and extension logs capabilities
+  - Extension deactivation kills the chump process cleanly
+  - Installable via .vsix sideload
+  closed_pr: 1493

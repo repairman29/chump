@@ -1,14 +1,22 @@
 - id: INFRA-1522
   domain: INFRA
-  title: "CREDIBLE: required-check health gate — chump fleet doctor refuses 'up' if any required status check has flake history >20% or recent SKIPPED conclusion"
-  status: open
+  title: 'CREDIBLE: required-check health gate — chump fleet doctor refuses ''up'' if any required status check has flake
+    history >20% or recent SKIPPED conclusion'
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
-    - "chump fleet doctor checks each required-status-check in repo ruleset against last 50 runs: if conclusion=FAILURE rate > 20% OR last 5 runs include conclusion=SKIPPED for non-tauri-path PRs, exit non-zero"
-    - chump fleet up --force flag to bypass for emergency boot; default behavior refuses with actionable message 'tauri-cowork-e2e flake rate 67% — remove from required or fix root cause'
-    - Auto-suggest via kind=required_check_health_warn ambient event with proposed_action embedded (gh api PUT ruleset rules ... removing offending check)
-    - "Today's signal: tauri-cowork-e2e was REQUIRED in ruleset 15133729 despite being a known-broken Selenium 'chump-chat' test (INFRA-1425/INFRA-1433). With INFRA-1432 narrow filter, non-tauri PRs got SKIPPED on it — SKIPPED doesn't satisfy required → ENTIRE FLEET STALLED for 12+ hours"
-    - This single misconfiguration cost ~50 PRs of throughput. Health gate would have caught it on first fleet up
-    - "Smoke test scripts/ci/test-required-check-health.sh: stub gh api with 67% failure rate, assert doctor exits 1 with the right error"
-
+  - 'chump fleet doctor checks each required-status-check in repo ruleset against last 50 runs: if conclusion=FAILURE rate
+    > 20% OR last 5 runs include conclusion=SKIPPED for non-tauri-path PRs, exit non-zero'
+  - chump fleet up --force flag to bypass for emergency boot; default behavior refuses with actionable message 'tauri-cowork-e2e
+    flake rate 67% — remove from required or fix root cause'
+  - Auto-suggest via kind=required_check_health_warn ambient event with proposed_action embedded (gh api PUT ruleset rules
+    ... removing offending check)
+  - 'Today''s signal: tauri-cowork-e2e was REQUIRED in ruleset 15133729 despite being a known-broken Selenium ''chump-chat''
+    test (INFRA-1425/INFRA-1433). With INFRA-1432 narrow filter, non-tauri PRs got SKIPPED on it — SKIPPED doesn''t satisfy
+    required → ENTIRE FLEET STALLED for 12+ hours'
+  - This single misconfiguration cost ~50 PRs of throughput. Health gate would have caught it on first fleet up
+  - 'Smoke test scripts/ci/test-required-check-health.sh: stub gh api with 67% failure rate, assert doctor exits 1 with the
+    right error'
+  closed_date: '2026-05-25'
+  closed_pr: 2580

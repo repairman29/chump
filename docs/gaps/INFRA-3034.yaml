@@ -1,0 +1,9 @@
+- id: INFRA-3034
+  domain: INFRA
+  title: "CREDIBLE: balance-b"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+

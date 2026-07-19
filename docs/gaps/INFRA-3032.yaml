@@ -1,0 +1,9 @@
+- id: INFRA-3032
+  domain: INFRA
+  title: "EFFECTIVE: balance-b"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+

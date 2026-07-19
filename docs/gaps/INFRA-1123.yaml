@@ -2,17 +2,20 @@
   domain: INFRA
   title: "CREDIBLE: A2A Layer 4f — signed provenance with key rotation + revocation + trust anchor (META-061)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "`chump init-session-key` generates an ED25519 keypair at session start; private key stored at `.chump-locks/keys/<session-id>.priv` (0600 permissions); public key published in capability manifest `pubkey_b64` field (Layer 2c)"
     - "Every `broadcast.sh` invocation and every NATS publish appends `sig: <base64>` covering `{event, session, ts, gap, files, body}` (signature excludes the `sig` field itself); signing overhead < 5ms p99 (benchmarked in `benches/a2a_signing.rs`)"
-    - "Verifier reads pubkey from current manifest for the emitting session; signature mismatch → event dropped and `kind=sig_verification_failed` emitted; revoked key → `kind=sig_verification_revoked` emitted"
+    - Verifier reads pubkey from current manifest for the emitting session; signature mismatch → event dropped and `kind=sig_verification_failed` emitted; revoked key → `kind=sig_verification_revoked` emitted
     - "`chump revoke-key <session_id> --reason <text>` persists revocation to scratchpad key `keys.revoked`; revocation is effective fleet-wide within 30s (verified in CI chaos test)"
-    - "Old pubkeys archived 30 days in `.chump-locks/keys-archive/<yyyy-mm>/<session-id>.pub` for retroactive audit"
+    - Old pubkeys archived 30 days in `.chump-locks/keys-archive/<yyyy-mm>/<session-id>.pub` for retroactive audit
     - "CI chaos test `scripts/ci/test-a2a-layer4f-revocation.sh`: revoke a session key mid-cycle, assert all subsequent events from that session are dropped within 30s"
     - "Trust model documented: in-fleet sessions on same machine trust each other; cross-host requires operator-signed `trust-anchor.pub` config; `CHUMP_A2A_LAYER=4` enables verify-required mode (warn-only during transition)"
     - "Threat model doc `docs/design/A2A_SECURITY.md` covers: compromised agent, prompt injection, replay attacks, cross-fleet impersonation, equivocation; reviewed by ≥ 2 external reviewers before merge"
-    - "EVENT_REGISTRY.yaml entries for `sig_verification_failed`, `sig_verification_revoked`, `session_key_rotated` present before code ships"
+    - EVENT_REGISTRY.yaml entries for `sig_verification_failed`, `sig_verification_revoked`, `session_key_rotated` present before code ships
     - "Release gate: all six A2A layers running under signed-event mode for 7 days with `CHUMP_A2A_LAYER=4`; one chaos test for key revocation; < 0.5 CPU overhead at 32 workers × 100 events/min"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

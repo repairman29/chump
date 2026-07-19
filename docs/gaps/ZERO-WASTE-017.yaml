@@ -1,0 +1,25 @@
+- id: ZERO-WASTE-017
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: R2 lifecycle script+docs reference non-existent chump-sccache-ci bucket"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/ops/r2-sccache-lifecycle.sh default BUCKETS list drops chump-sccache-ci (verified non-existent via wrangler r2 bucket list 2026-06-28 — only chump-sccache exists); script no longer returns rc=1 on a clean run"
+    - "docs/process/SCCACHE_R2_CACHE.md and docs/process/PROCEDURES/rotate-sccache-r2.md updated to reference a single bucket (chump-sccache), not a chump-sccache+chump-sccache-ci pair"
+    - "Cost-model section notes the live eviction policy actually applied: sccache-expire-7d object-expiry rule (set 2026-06-28), not the doc's unapplied 30d default"
+    - "test-r2-sccache-lifecycle.sh updated so its bucket-name assertions match the single-bucket reality"
+  notes: |
+    Discovered 2026-06-28 while applying the eviction fix the cost-model section
+    flagged but that had never been applied. Live state via wrangler (CF API token
+    from ~/.chump/r2-rotation.env, Workers R2 Storage:Edit scope):
+      - Only ONE bucket exists: chump-sccache (chump-sccache-ci does NOT exist).
+      - Before fix: only the Default Multipart Abort Rule was set; NO object-expiry
+        rule → 522 GB / 471k objects (2026-06-02 dashboard) growing unbounded.
+      - Fix applied: `wrangler r2 bucket lifecycle add chump-sccache sccache-expire-7d
+        --expire-days 7 --force`. Rule enabled + verified. 7d (not 30d) chosen because
+        fleet is near-idle (~1 ship/24h) and operator wants minimal cost until ramp;
+        rolling 7d working set fully covers active dev, cache regenerates, egress free.
+    This gap is the doc/script cleanup so the runbook matches reality. The cost leak
+    itself is already fixed on the live bucket.
+

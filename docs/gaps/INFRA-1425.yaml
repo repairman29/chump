@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: tauri-cowork-e2e root-cause replace (INFRA-1342 papered over with continue-on-error; check is still flaky and required INFRA-1353 bulk-rebase of 5 PRs today)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - tauri-cowork-e2e test passes deterministically 5/5 runs OR is removed
@@ -10,4 +10,7 @@
     - "If removed: replace with a narrower assertion that catches what tauri-cowork-e2e was meant to (likely a unit/integration test in src/acp_server.rs)"
     - Remove continue-on-error from .github/workflows/*.yml — the check should be strict
     - Document root cause + fix in docs/process/CLAUDE_GOTCHAS.md under 'CI pipeline'
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

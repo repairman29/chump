@@ -1,0 +1,9 @@
+- id: INFRA-3270
+  domain: INFRA
+  title: "EFFECTIVE: combo-10"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+

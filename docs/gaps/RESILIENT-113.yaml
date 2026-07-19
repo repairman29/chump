@@ -1,0 +1,16 @@
+- id: RESILIENT-113
+  domain: RESILIENT
+  title: "RESILIENT P1: farmer.sh AUTH_DEAD detector is shallow — only checks oauth token age, ignores valid ANTHROPIC_API_KEY fallback (false-positive class, ~274 spam events in 4h today)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    VERIFIED 2026-06-05 22:37Z (operator called out the false-positive class). scripts/coord/farmer.sh:255-258 emits operator_recall AUTH_DEAD when ~/.chump/oauth-token.json age > FARMER_OAUTH_MAX_AGE_S (default 3600s). Operator does NOT need oauth-refresh daemon running because .env has ANTHROPIC_API_KEY which is a valid fallback (per CHUMP_AUTH_MODE=auto in CLAUDE.md). Result: the farmer pages AUTH_DEAD every cycle (~1.1 events/min, 274 in last 4h) even though auth IS working — fleet ships, 6+ sibling claims active, gh pr list responds. ROOT CAUSE: farmer's auth check is shallow (oauth file age only); doesn't validate API-key floor or call chump fleet doctor first. FIX: before paging AUTH_DEAD, farmer should check: (1) does $HOME/Projects/Chump/.env contain ANTHROPIC_API_KEY or CHUMP_AUTH_MODE? (2) does 'chump fleet doctor' exit 0? Only page if BOTH oauth stale AND no API-key fallback AND fleet doctor non-zero. Probably 5-10 LOC patch in farmer.sh:255 area.
+  acceptance_criteria:
+    - farmer.sh AUTH_DEAD page-and-emit suppressed when ANTHROPIC_API_KEY is set in env OR .env or chump fleet doctor exits 0
+    - "Local test: oauth-token.json age >> threshold + ANTHROPIC_API_KEY set → no AUTH_DEAD emit"
+    - "After ship: operator_recall AUTH_DEAD events drop from ~1.1/min to ~0/hour in normal-auth-config sessions"
+  notes: |
+    [2026-06-05T22:48:40Z] FULL INVESTIGATION 22:48Z (after operator-called-out laziness): (1) farmer.sh check_auth lines 245-260: ONLY checks ~/.chump/oauth-token.json age, never validates ANTHROPIC_API_KEY fallback. (2) operator's .env has ANTHROPIC_API_KEY=<set>. (3) oauth-token.json IS 62059s old (17.2h). (4) oauth-refresh daemon plist exists at ~/Library/LaunchAgents/com.chump.oauth-refresh.plist but NOT loaded in launchctl list — and even when triggered, fails with 'keychain_miss' because operator's macOS Keychain has no 'Claude Code-credentials' entry. (5) Operator is on API-key auth path which works (fleet shipped #3086, 6 sibling claims active). FIX shape: farmer.sh check_auth should test fallbacks (ANTHROPIC_API_KEY env, .env file) before paging AUTH_DEAD. Suggested code: '[[ -n "${ANTHROPIC_API_KEY:-}" ]] && return 0' OR call 'chump fleet doctor --auth-only' (once that flag exists, see Bug B / new gap RESILIENT-114).
+    [2026-06-05T22:50:24Z] ACTUAL ROOT CAUSE FOUND 22:52Z: Keychain entry exists at svce='Claude Safe Storage' (verified via 'security dump-keychain | grep -i claude'). chump's oauth-token-refresh.sh:37 has the WRONG default service name 'Claude Code-credentials'. Refresh fails every 5 min for 17h on that mismatch — operator's AUTH IS fine, refresh daemon is just looking at the wrong key. RESILIENT-113 (farmer.sh shallow check) is still valid but downgrade-and-defer. The acute fix is the service-name correction (filed as RESILIENT-115).
+

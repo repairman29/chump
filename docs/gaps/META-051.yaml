@@ -2,12 +2,9 @@
   domain: META
   title: "MISSION: 'fix one wave, meta-step back' rule encoded in CLAUDE.md Mission Driver doctrine — when 3+ PRs hit the same failure pattern within 1h, STOP manual rescue and propose the structural fix instead. Today: 8 PRs all failed clippy 1.95 doc_list_item_overindented; manual rescue ran 4-5 rounds (~3h elapsed) before the structural fix (workspace clippy lint relax) shipped. The doctrine is mechanical: when chump waste-tally --tokens shows N>=3 same-class failures within 1h, emit kind=systemic_pattern_detected ambient + a candidate structural-fix gap auto-filed. AC: src/pattern_detector.rs aggregates failure types from PR check_run events; CLAUDE.md adds 'Pattern detection' subsection in Mission Driver; auto-files a gap via INFRA-627 logic; test scripts/ci/test-pattern-detection.sh on fixture failure-stream."
   status: open
-  priority: P1
+  priority: P2
   effort: m
-  acceptance_criteria: |
-    Criterion 1: `src/pattern_detector.rs` aggregates failure types from PR `check_run` events and surfaces clusters with N≥3 same-class failures within 1 hour
-    Criterion 2: CLAUDE.md adds a "Pattern detection" subsection under the Mission Driver doctrine documenting the stop-and-fix rule
-    Criterion 3: When a pattern is detected, an ambient event with `kind=systemic_pattern_detected` is emitted
-    Criterion 4: A candidate structural-fix gap is auto-filed using the INFRA-627 gap-filing logic
-    Criterion 5: `scripts/ci/test-pattern-detection.sh` tests the detector against a fixture failure-stream
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

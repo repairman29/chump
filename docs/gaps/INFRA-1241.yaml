@@ -1,11 +1,13 @@
 - id: INFRA-1241
   domain: INFRA
-  title: "CREDIBLE: bot-merge.sh has ambient.jsonl writes with '2>/dev/null || true' — silently drops events on disk-full / perm error"
-  status: open
+  title: 'CREDIBLE: bot-merge.sh has ambient.jsonl writes with ''2>/dev/null || true'' — silently drops events on disk-full
+    / perm error'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "Replace raw printf >> ambient.jsonl patterns in scripts/coord/ with _ambient_write helper (ambient-write.sh)"
-    - "Helper emits to stderr on append failure instead of silently discarding"
-    - "CI lint: grep -rn '>> .*ambient' scripts/coord/ returns 0 hits after ship"
-    - "bash scripts/ci/test-ambient-emit-coverage.sh passes"
+  - Replace raw printf >> ambient.jsonl patterns in scripts/coord/ with _ambient_write helper (ambient-write.sh)
+  - Helper emits to stderr on append failure instead of silently discarding
+  - 'CI lint: grep -rn ''>> .*ambient'' scripts/coord/ returns 0 hits after ship'
+  - bash scripts/ci/test-ambient-emit-coverage.sh passes
+  closed_pr: 2044

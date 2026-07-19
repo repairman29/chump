@@ -2,7 +2,7 @@
   domain: INFRA
   title: "release-plz: missing glib-2.0 system dependency causes CI failure"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   description: |
     release-plz.yml CI workflow consistently fails because it runs `cargo test` 
@@ -27,4 +27,7 @@
     - " apt-get install libglib2.0-dev step added to release-plz.yml setup "
     - " yes "
     - ""
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

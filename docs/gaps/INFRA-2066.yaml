@@ -1,17 +1,36 @@
 - id: INFRA-2066
   domain: INFRA
-  title: "ZERO-WASTE: pr_stuck_cluster auto-mitigation — detect cluster pattern + auto-rebase against latest main + relaunch CI (today's top waste class ~55m/67m total daily; INFRA-2012 cluster-v2 detection alone is insufficient)"
-  status: open
+  title: 'ZERO-WASTE: pr_stuck_cluster auto-mitigation — detect cluster pattern + auto-rebase against latest main + relaunch
+    CI (today''s top waste class ~55m/67m total daily; INFRA-2012 cluster-v2 detection alone is insufficient)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Detector phase: scripts/coord/pr-stuck-cluster-detector.sh scans open PR queue every 5min via launchd plist; emits ambient kind=pr_stuck_cluster_detected with fields cluster_pr_numbers (csv), shared_failing_check, age_minutes, suspected_cause; triggers when ≥3 PRs share an identical failing check >30min OR ≥3 PRs share BEHIND mergeStateStatus >45min"
-    - "Mitigator phase: when CHUMP_PR_STUCK_MITIGATE=1 (default 1), detector dispatches scripts/coord/pr-stuck-cluster-mitigate.sh for each detected cluster; mitigator does (a) git fetch origin main, (b) for each PR: gh pr checkout, git rebase origin/main, git push --force-with-lease, (c) re-arms auto-merge if PR was previously armed"
-    - "Safety: mitigator refuses to act on PRs where (i) operator has commented in last 30min, (ii) PR has CHUMP_HOLD label, (iii) PR base != main, (iv) rebase produces conflict (operator-required); per-PR safety failure emits kind=pr_stuck_mitigate_skipped with reason"
-    - "Smoke test scripts/ci/test-pr-stuck-cluster-mitigate.sh: synthesizes a 3-PR cluster all BEHIND on main (via gh API or fixture), runs detector, asserts detection emit; runs mitigator with --dry-run, asserts rebase plan output; covers refuse-when-operator-recent + refuse-when-conflict cases"
-    - "Observability: chump waste-tally pr_stuck_cluster count expected to drop from 11/24h (today 2026-05-27) to <3/24h within 7 days of detector+mitigator landing; success criterion in PR description; if no drop after 7d, mitigator design is wrong and we file a follow-up gap with refreshed empirical data"
-    - "Event registry: pr_stuck_cluster_detected + pr_stuck_mitigate_skipped added to scripts/ci/event-registry-reserved.txt allowlist in this PR; full EVENT_REGISTRY.yaml entries deferred until first runtime fire reveals actual emit shape (mirrors INFRA-2054 + META-119 treatment)"
-  depends_on: [INFRA-2012]
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd after chump waste-tally surfaced 11 pr_stuck_cluster incidents/24h (~55m / 67m total waste = 82% of daily waste). INFRA-2012 (cluster-v2 SHARED-SUSPECT-COMMIT detector, P1/s open) is the detection upgrade; this gap is the MITIGATION half — detection alone doesn't unstick PRs. Pairs with INFRA-2005 (operator session worktree-base self-check), which addresses the manual-rescue side of the same class.
+  - 'Detector phase: scripts/coord/pr-stuck-cluster-detector.sh scans open PR queue every 5min via launchd plist; emits ambient
+    kind=pr_stuck_cluster_detected with fields cluster_pr_numbers (csv), shared_failing_check, age_minutes, suspected_cause;
+    triggers when ≥3 PRs share an identical failing check >30min OR ≥3 PRs share BEHIND mergeStateStatus >45min'
+  - 'Mitigator phase: when CHUMP_PR_STUCK_MITIGATE=1 (default 1), detector dispatches scripts/coord/pr-stuck-cluster-mitigate.sh
+    for each detected cluster; mitigator does (a) git fetch origin main, (b) for each PR: gh pr checkout, git rebase origin/main,
+    git push --force-with-lease, (c) re-arms auto-merge if PR was previously armed'
+  - 'Safety: mitigator refuses to act on PRs where (i) operator has commented in last 30min, (ii) PR has CHUMP_HOLD label,
+    (iii) PR base != main, (iv) rebase produces conflict (operator-required); per-PR safety failure emits kind=pr_stuck_mitigate_skipped
+    with reason'
+  - 'Smoke test scripts/ci/test-pr-stuck-cluster-mitigate.sh: synthesizes a 3-PR cluster all BEHIND on main (via gh API or
+    fixture), runs detector, asserts detection emit; runs mitigator with --dry-run, asserts rebase plan output; covers refuse-when-operator-recent
+    + refuse-when-conflict cases'
+  - 'Observability: chump waste-tally pr_stuck_cluster count expected to drop from 11/24h (today 2026-05-27) to <3/24h within
+    7 days of detector+mitigator landing; success criterion in PR description; if no drop after 7d, mitigator design is wrong
+    and we file a follow-up gap with refreshed empirical data'
+  - 'Event registry: pr_stuck_cluster_detected + pr_stuck_mitigate_skipped added to scripts/ci/event-registry-reserved.txt
+    allowlist in this PR; full EVENT_REGISTRY.yaml entries deferred until first runtime fire reveals actual emit shape (mirrors
+    INFRA-2054 + META-119 treatment)'
+  depends_on:
+  - INFRA-2012
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd after chump waste-tally surfaced 11 pr_stuck_cluster incidents/24h (~55m
+    / 67m total waste = 82% of daily waste). INFRA-2012 (cluster-v2 SHARED-SUSPECT-COMMIT detector, P1/s open) is the detection
+    upgrade; this gap is the MITIGATION half — detection alone doesn''t unstick PRs. Pairs with INFRA-2005 (operator session
+    worktree-base self-check), which addresses the manual-rescue side of the same class.
 
+    '
+  closed_date: '2026-06-05'
+  closed_pr: 2667

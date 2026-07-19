@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: paramedic rule CARGO_FMT_AUTOFIX — detect 'Diff in ... ' in fast-checks log, run cargo fmt + push to same branch"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Paramedic daemon (INFRA-1375) new action CARGO_FMT_AUTOFIX: when fast-checks fails with regex 'Diff in .*src/.*\\.rs:[0-9]+:', clone PR branch + run cargo fmt + commit 'fix: cargo fmt autofix (paramedic)' + push --force-with-lease"
@@ -11,4 +11,7 @@
     - "Today's signal: #2110 (RESILIENT-011) sat 18h failing fast-checks on circuit_breaker module ordering — 1-line fmt fix that took 30 seconds inline; rule engine should catch this in <90s of CI failure"
     - Rate-limit 3 autofix PRs per branch (avoid loops if a worker keeps re-introducing drift)
     - "Class-aware: only fires on cargo fmt diffs, not on clippy errors or test failures (those need real code work)"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

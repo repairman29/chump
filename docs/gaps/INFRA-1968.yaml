@@ -1,9 +1,12 @@
 - id: INFRA-1968
   domain: INFRA
-  title: "CRITICAL: graphql_exhausted self-amplifying loop — per-process bucket emits cascade alerts (critique C5)"
-  status: open
+  title: 'CRITICAL: graphql_exhausted self-amplifying loop — per-process bucket emits cascade alerts (critique C5)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "Failure: chump_gh shim (scripts/coord/lib/gh-shim/gh) checks rate-limit bucket per-process. When remaining_graphql <= 100, emits kind=graphql_exhausted to ambient.jsonl. Debounce breaks when resets_at:unknown — observed 6 emits in 60s on 2026-05-24 17:16-17:18Z."
-
+  - 'Failure: chump_gh shim (scripts/coord/lib/gh-shim/gh) checks rate-limit bucket per-process. When remaining_graphql <=
+    100, emits kind=graphql_exhausted to ambient.jsonl. Debounce breaks when resets_at:unknown — observed 6 emits in 60s on
+    2026-05-24 17:16-17:18Z.'
+  closed_date: '2026-05-25'
+  closed_pr: 2583

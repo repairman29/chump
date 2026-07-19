@@ -1,22 +1,42 @@
 - id: INFRA-1074
   domain: INFRA
-  title: "RESILIENT: active-target-reaper sweeps in-flight chump-claim worktrees under /tmp — destroys uncommitted work"
-  status: open
+  title: 'RESILIENT: active-target-reaper sweeps in-flight chump-claim worktrees under /tmp — destroys uncommitted work'
+  status: done
   priority: P1
   effort: s
-  description: |
-    TODAY'S incident: while I was committing INFRA-1053 (CHUMP_WORKTREE_BASE wiring) in worktree /private/tmp/chump-infra-1053, the worktree was force-removed mid-commit by a daemon — losing the committed work. Worktree /private/tmp/chump-product-099 was also nuked. The likely culprit is scripts/ops/active-target-reaper.sh (or sibling) running on launchd schedule (~hourly), scanning /tmp/chump-* as a candidate, and force-removing on its own staleness heuristic. The presence of a lease file in .chump-locks/ + active git index activity should have been the "in flight" signal — but the reaper didn't check.
-    
-    Symptom evidence: commit task showed exit 0 BUT the resulting worktree dir was gone immediately after and no commit ended up on the branch ref. git fsck --unreachable showed no orphan with the INFRA-1053 commit message; the entire commit chain was nuked along with the worktree.
-    
-    Acceptance:
-    1. active-target-reaper.sh + stale-worktree-reaper.sh + worktree-prune.sh must SKIP any worktree whose .chump-locks/<session>.json lease file shows heartbeat_at within last 15 min OR whose .git/index has been touched within last 5 min OR whose git status shows pending uncommitted/unpushed work.
-    2. Add ambient emit kind=worktree_reaper_skipped_active when a reaper decides to skip a worktree for one of the reasons above (so we have evidence the protection fired).
-    3. Test: create a worktree with an active lease, run the reapers in --execute mode, assert the worktree survives.
-    4. Hit by INFRA-1053 commit today — full chain destroyed mid-flight; only recoverable because the diff was small enough to redo from memory.
-  acceptance_criteria:
-    - active-target-reaper.sh + stale-worktree-reaper.sh + worktree-prune.sh must SKIP any worktree whose .chump-locks/<session>.json lease shows heartbeat_at within last 15 min OR whose .git/index was touched within last 5 min OR whose git status shows pending uncommitted/unpushed work
-    - emit kind=worktree_reaper_skipped_active to ambient.jsonl when a reaper skips an active worktree so the protection can be audited
-    - "test: create worktree with active lease, run reapers in --execute mode, assert worktree survives"
-    - add CHUMP_REAPER_SAFETY_CHECK=0 bypass env var for testing the reaper itself
+  description: 'TODAY''S incident: while I was committing INFRA-1053 (CHUMP_WORKTREE_BASE wiring) in worktree /private/tmp/chump-infra-1053,
+    the worktree was force-removed mid-commit by a daemon — losing the committed work. Worktree /private/tmp/chump-product-099
+    was also nuked. The likely culprit is scripts/ops/active-target-reaper.sh (or sibling) running on launchd schedule (~hourly),
+    scanning /tmp/chump-* as a candidate, and force-removing on its own staleness heuristic. The presence of a lease file
+    in .chump-locks/ + active git index activity should have been the "in flight" signal — but the reaper didn''t check.
 
+
+    Symptom evidence: commit task showed exit 0 BUT the resulting worktree dir was gone immediately after and no commit ended
+    up on the branch ref. git fsck --unreachable showed no orphan with the INFRA-1053 commit message; the entire commit chain
+    was nuked along with the worktree.
+
+
+    Acceptance:
+
+    1. active-target-reaper.sh + stale-worktree-reaper.sh + worktree-prune.sh must SKIP any worktree whose .chump-locks/<session>.json
+    lease file shows heartbeat_at within last 15 min OR whose .git/index has been touched within last 5 min OR whose git status
+    shows pending uncommitted/unpushed work.
+
+    2. Add ambient emit kind=worktree_reaper_skipped_active when a reaper decides to skip a worktree for one of the reasons
+    above (so we have evidence the protection fired).
+
+    3. Test: create a worktree with an active lease, run the reapers in --execute mode, assert the worktree survives.
+
+    4. Hit by INFRA-1053 commit today — full chain destroyed mid-flight; only recoverable because the diff was small enough
+    to redo from memory.
+
+    '
+  acceptance_criteria:
+  - active-target-reaper.sh + stale-worktree-reaper.sh + worktree-prune.sh must SKIP any worktree whose .chump-locks/<session>.json
+    lease shows heartbeat_at within last 15 min OR whose .git/index was touched within last 5 min OR whose git status shows
+    pending uncommitted/unpushed work
+  - emit kind=worktree_reaper_skipped_active to ambient.jsonl when a reaper skips an active worktree so the protection can
+    be audited
+  - 'test: create worktree with active lease, run reapers in --execute mode, assert worktree survives'
+  - add CHUMP_REAPER_SAFETY_CHECK=0 bypass env var for testing the reaper itself
+  closed_pr: 3041

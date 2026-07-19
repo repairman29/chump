@@ -1,14 +1,16 @@
 - id: INFRA-1412
   domain: INFRA
-  title: "RESILIENT: chump claim genuine cross-session atomicity — PRODUCT-127 had TWO live leases concurrently"
-  status: open
+  title: 'RESILIENT: chump claim genuine cross-session atomicity — PRODUCT-127 had TWO live leases concurrently'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Surfaced 2026-05-16: double-claim race on PRODUCT-127 - two sessions both believed they had exclusive ownership"
-    - "Fix: src/atomic_claim.rs adds final read-after-write verification: after writing lease file, re-read .chump-locks/ and verify EXACTLY ONE *.json names this gap_id with TTL > now; if >1 found, log warning + release + return claim-failed"
-    - Add kind=claim_race_detected ambient event when post-write read finds >1 active claim on same gap_id
-    - "Integration test scripts/ci/test-claim-race-detection.sh: create two synthetic lease files for same gap, assert claim returns error and emits claim_race_detected"
-    - Register kind=claim_race_detected in EVENT_REGISTRY.yaml
+  - 'Surfaced 2026-05-16: double-claim race on PRODUCT-127 - two sessions both believed they had exclusive ownership'
+  - 'Fix: src/atomic_claim.rs adds final read-after-write verification: after writing lease file, re-read .chump-locks/ and
+    verify EXACTLY ONE *.json names this gap_id with TTL > now; if >1 found, log warning + release + return claim-failed'
+  - Add kind=claim_race_detected ambient event when post-write read finds >1 active claim on same gap_id
+  - 'Integration test scripts/ci/test-claim-race-detection.sh: create two synthetic lease files for same gap, assert claim
+    returns error and emits claim_race_detected'
+  - Register kind=claim_race_detected in EVENT_REGISTRY.yaml
   closed_pr: 2283
-
+  closed_date: '2026-05-24'

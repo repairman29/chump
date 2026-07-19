@@ -2,8 +2,10 @@
   domain: INFRA
   title: "CREDIBLE: Pillar balance analysis + alerts"
   status: open
-  priority: P1
+  priority: P2
   effort: s
+  description: |
+    CREDIBLE: pillar-balance analyzer + alerts, wired into 'chump gap audit-priorities'. Prior attempt PR #3117 (CLOSED; branch chump/infra-902-fleet-sa-1-20260608-164632 has partial fixes) reached 6/16 tests then closed for rework. RE-IMPL CHECKLIST (conductor diagnosis 2026-06-09): BLOCKER(1) scripts/ops/pillar-balance-check.sh line ~38 uses 'declare -A' (Bash 4+); the fleet runs macOS Bash 3.2 so 'chump gap audit-priorities' (Command::new bash) FAILS on the target platform — make it Bash-3.2 compatible (no declare -A/-n/mapfile/readarray) OR guard+document. (2) script must mkdir -p dirname(AMBIENT) before '>> AMBIENT' (line ~81/90); .chump-locks/ may not exist. ALREADY-FIXED on closed branch (re-apply): (3) test 'grep -c ... || echo 0' yields '0\n0' arithmetic error — use grep count + ${var:-0}. (4) test must 'export CHUMP_BIN' so the script uses the fixture binary not PATH chump (global state). (5) test binary path must honor 'cargo metadata' target_directory (INFRA-481 shares target-dir; $REPO_ROOT/target empty in worktrees). (6) fixture must 'export CHUMP_GAP_RESERVE_NO_SIMILARITY=1' (INFRA-1149 blocks 2nd+ gap → empty pillars → all alert assertions fail). VERIFY on a Bash-3.2 shell (macOS /bin/bash) AND Linux CI before shipping.
   acceptance_criteria:
     - 1. scripts/ops/pillar-balance-check.sh reads state.db via 'chump gap list --status open', counts pickable (P0
     - P1 xs
@@ -12,4 +14,7 @@
     - CREDIBLE
     - RESILIENT
     - "ZERO-WASTE). 2. When any pillar count < 2, emits kind=pillar_balance_alert to ambient.jsonl with fields: pillar, count, floor=2. 3. When any pillar count > 50% of total pickable pool, emits kind=pillar_balance_overweight with pillar, count, pct. 4. Script exits non-zero if any alert fired. 5. 'chump gap audit-priorities' calls pillar-balance-check.sh and includes result in output. 6. scripts/ci/test-pillar-balance-alerts.sh: 8+ tests verifying alert schema, thresholds, exit codes."
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

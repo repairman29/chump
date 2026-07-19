@@ -1,14 +1,28 @@
 - id: INFRA-1926
   domain: INFRA
-  title: "RESILIENT P1: add stale-branch-reaper + pr-watch-shepherd + distill-pr-skills launchd installers to bootstrap-manifest.yaml — operator hit 3 daemon_silent ALERTs today (META-066 missed these in initial seed)"
-  status: open
+  title: 'RESILIENT P1: add stale-branch-reaper + pr-watch-shepherd + distill-pr-skills launchd installers to bootstrap-manifest.yaml
+    — operator hit 3 daemon_silent ALERTs today (META-066 missed these in initial seed)'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "Background — 2026-05-24 session surfaced 3 ALERTs of class daemon_silent / reaper_silent: branch reaper (heartbeat file missing), pr-watch (last heartbeat 30min ago), distill-pr-skills (heartbeat file missing). All 3 have install scripts in scripts/setup/install-*-launchd.sh but the META-066 bootstrap-manifest.yaml doesn't reference them, so chump-fleet-bootstrap.sh never installs them on a fresh host. Result: silent fleet-incomplete state for any new operator install"
-    - "Locate the missing installer scripts — scripts/setup/install-stale-branch-reaper-launchd.sh, scripts/setup/install-pr-watch-shepherd-launchd.sh, and check whether install-distill-pr-skills-launchd.sh exists (file if missing as a separate gap)"
-    - "Add entries to scripts/setup/bootstrap-manifest.yaml — for each daemon: id, priority (P1 for stale-branch-reaper + pr-watch-shepherd as queue-throughput-critical; P2 for distill if it's a telemetry-only consumer), check command (launchctl list | grep com.chump.<label>), install command (bash scripts/setup/install-<name>-launchd.sh), description (one line per daemon)"
-    - "Verify — bash scripts/setup/chump-fleet-bootstrap.sh --check; output should now include 3 new entries; if any --check fails on a fresh host, bash scripts/setup/chump-fleet-bootstrap.sh should install them; verify launchctl list | grep com.chump.{stale-branch-reaper,pr-watch,distill} shows the new entries"
-    - "Smoke — bash scripts/ci/test-bootstrap-manifest-coverage.sh (file if missing) confirms every install-*-launchd.sh in scripts/setup/ either has a manifest entry or is explicitly marked deprecated"
-    - "Done definition — fresh operator install (chump-fleet-bootstrap.sh) silences the 3 specific ALERTs that fired today; CI gate prevents future installers from being added without manifest entries"
-  notes: filed 15:42Z 2026-05-24 by wizard after 3 daemon_silent ALERTs surfaced in iter-12; structural fix preventing recurrence on every fresh operator install
+  - 'Background — 2026-05-24 session surfaced 3 ALERTs of class daemon_silent / reaper_silent: branch reaper (heartbeat file
+    missing), pr-watch (last heartbeat 30min ago), distill-pr-skills (heartbeat file missing). All 3 have install scripts
+    in scripts/setup/install-*-launchd.sh but the META-066 bootstrap-manifest.yaml doesn''t reference them, so chump-fleet-bootstrap.sh
+    never installs them on a fresh host. Result: silent fleet-incomplete state for any new operator install'
+  - Locate the missing installer scripts — scripts/setup/install-stale-branch-reaper-launchd.sh, scripts/setup/install-pr-watch-shepherd-launchd.sh,
+    and check whether install-distill-pr-skills-launchd.sh exists (file if missing as a separate gap)
+  - 'Add entries to scripts/setup/bootstrap-manifest.yaml — for each daemon: id, priority (P1 for stale-branch-reaper + pr-watch-shepherd
+    as queue-throughput-critical; P2 for distill if it''s a telemetry-only consumer), check command (launchctl list | grep
+    com.chump.<label>), install command (bash scripts/setup/install-<name>-launchd.sh), description (one line per daemon)'
+  - Verify — bash scripts/setup/chump-fleet-bootstrap.sh --check; output should now include 3 new entries; if any --check
+    fails on a fresh host, bash scripts/setup/chump-fleet-bootstrap.sh should install them; verify launchctl list | grep com.chump.{stale-branch-reaper,pr-watch,distill}
+    shows the new entries
+  - Smoke — bash scripts/ci/test-bootstrap-manifest-coverage.sh (file if missing) confirms every install-*-launchd.sh in scripts/setup/
+    either has a manifest entry or is explicitly marked deprecated
+  - Done definition — fresh operator install (chump-fleet-bootstrap.sh) silences the 3 specific ALERTs that fired today; CI
+    gate prevents future installers from being added without manifest entries
+  notes: filed 15:42Z 2026-05-24 by wizard after 3 daemon_silent ALERTs surfaced in iter-12; structural fix preventing recurrence
+    on every fresh operator install
+  closed_date: '2026-05-29'
+  closed_pr: 2512

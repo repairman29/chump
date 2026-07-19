@@ -2,8 +2,18 @@
   domain: PRODUCT
   title: "EFFECTIVE: first-run wizard browser parity — un-gate the operator console from Tauri-only"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "[\"Backlog-promoted 2026-05-16: PRODUCT-108 shipped the Tauri-desktop first-run wizard (detect+init checklist: brain / autopilot / repo / model). Browser visitors to chump --web see an empty Dashboard — no onboarding. The persona kit (docs/strategy/commercial/PERSONAS_VALIDATION.md) literally points evaluators at github.com/repairman29/chump with no marketing site; the in-browser wizard IS the marketing site.\",\"Reuse the same 4-stage checklist (brain, autopilot, repo, model) from PRODUCT-108 but render in the PWA at /onboard route. State management identical (chump-init backend endpoints already exist).\",\"Browser-equivalent for Tauri-only steps: (a) detect repo → operator pastes git remote URL OR uploads .git/config; (b) install runner → instruction page with copy-paste command (\\\"bash scripts/setup/install-self-hosted-runner.sh\\\") + verification poll on /api/fleet/runners; (c) provision OAuth → standard browser OAuth flow through chump backend acting as relay.\",\"Steps that genuinely cant work in browser (e.g. write launchd plist) become inline \\\"do this in your terminal\\\" code blocks with a verify-button that re-polls when done.\",\"Replace empty Dashboard for fresh visits: if no .chump/initialized=true cookie, redirect to /onboard.\",\"Telemetry: emit kind=onboarding_step_completed {step, duration_s, browser_only:true} per stage. operator can correlate drop-off.\",\"CI smoke test scripts/ci/test-onboarding-browser-wizard.sh: dev server, hit /onboard, assert HTTP 200 + DOM contains all 4 stage cards + verify-button data-attributes.\",\"SHIPS AFTER Marcus M-B canonical demo lands. v1 priority is internal operator (Jeff); browser parity is for external evaluators which we are not yet pushing volume to.\",\"Out of scope: full marketing-site polish, demo-data sandbox mode.\"]"
+    - "Backlog-promoted 2026-05-16: PRODUCT-108 shipped the Tauri-desktop first-run wizard (detect+init checklist: brain / autopilot / repo / model). Browser visitors to chump --web see an empty Dashboard — no onboarding. The persona kit (docs/strategy/commercial/PERSONAS_VALIDATION.md) literally points evaluators at github.com/repairman29/chump with no marketing site; the in-browser wizard IS the marketing site."
+    - Reuse the same 4-stage checklist (brain, autopilot, repo, model) from PRODUCT-108 but render in the PWA at /onboard route. State management identical (chump-init backend endpoints already exist).
+    - "Browser-equivalent for Tauri-only steps: (a) detect repo → operator pastes git remote URL OR uploads .git/config; (b) install runner → instruction page with copy-paste command (\"bash scripts/setup/install-self-hosted-runner.sh\") + verification poll on /api/fleet/runners; (c) provision OAuth → standard browser OAuth flow through chump backend acting as relay."
+    - "Steps that genuinely cant work in browser (e.g. write launchd plist) become inline \"do this in your terminal\" code blocks with a verify-button that re-polls when done."
+    - "Replace empty Dashboard for fresh visits: if no .chump/initialized=true cookie, redirect to /onboard."
+    - "Telemetry: emit kind=onboarding_step_completed {step, duration_s, browser_only:true} per stage. operator can correlate drop-off."
+    - "CI smoke test scripts/ci/test-onboarding-browser-wizard.sh: dev server, hit /onboard, assert HTTP 200 + DOM contains all 4 stage cards + verify-button data-attributes."
+    - SHIPS AFTER Marcus M-B canonical demo lands. v1 priority is internal operator (Jeff); browser parity is for external evaluators which we are not yet pushing volume to.
+    - "Out of scope: full marketing-site polish, demo-data sandbox mode."
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
 

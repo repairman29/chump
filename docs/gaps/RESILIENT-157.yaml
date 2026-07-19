@@ -1,0 +1,32 @@
+- id: RESILIENT-157
+  domain: RESILIENT
+  title: 'RESILIENT: INFRA-705 stall-detector false-positives on legit cargo builds — kills worker cycles mid-clippy (silent
+    != stuck)'
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+  - 1. The INFRA-705 stall-detector in scripts/dispatch/worker.sh, before killing a cycle on 'no output >= CHUMP_STALL_THRESHOLD_S',
+    checks whether a build process (cargo
+  - rustc
+  - clippy-driver
+  - 'sccache) is an ACTIVE DESCENDANT of the claude -p PID (process-tree walk via pgrep -P or ps). If an active build is found
+    → the cycle is progressing (compiling), so RESET the stall timer / skip the kill this interval (emit kind=stall_deferred_build
+    with the build pid+cmd for audit). 2. A genuine stall (no output AND no active build descendant) still kills at the threshold
+    (no regression of real-stall detection). 3. Test (scripts/ci/test-stall-detector-build-aware.sh): a fixture where a long
+    no-output window has a live ''cargo''/''sleep''-named descendant → assert NOT killed; same window with NO build descendant
+    → assert killed. 4. Complement (optional, same or follow-up PR): warm the build cache at fleet launch (rebuild chump /
+    shared cargo target) since the 21h-stale binary + 27-crate/446-file workspace make cold clippy 3-5min. 5. Emit/document
+    the new kind=stall_deferred_build in EVENT_REGISTRY.yaml.'
+  evidence: 'OBSERVED 2026-06-21 23:23: worker 2 cycle on INFRA-900 killed by ''INFRA-705 stall-detector firing (no output
+    for 123s >= 120s)''. But the agent log (/tmp/chump-fleet-*/agent-2-cycle1-INFRA-900.log) proves it was a FALSE POSITIVE:
+    claude was actively working (33 turns, editing src/main.rs), said ''Let me wait for clippy to finish'' / ''Clippy is still
+    running'', and COMPLETED SUCCESSFULLY (result: success, duration_ms=357937 ~6min). It ran ''cargo clippy --workspace''
+    which on this codebase (27 crates, 446 .rs files, 21h-stale build cache) compiles 3-5+ min streaming NO output to claude
+    stdout → the 120s no-output detector mistook busy-compiling for stuck. ROOT: worker.sh stall-detector (CHUMP_STALL_THRESHOLD_S=120)
+    watches only claude stdout idle time; it has NO build-awareness. Cost: wasted cycle + the gap left incomplete + re-pick
+    churn on every Rust-heavy gap (the fleet''s core work). This is the ''sonnet-mid-task-stall'' VOA class — but the cause
+    is the MONITOR, not the model.
+
+    '
+  closed_pr: 3150

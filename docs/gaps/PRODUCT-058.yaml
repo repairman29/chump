@@ -2,12 +2,15 @@
   domain: PRODUCT
   title: "EFFECTIVE: VS Code ext — tool approval prompts as VS Code quickpick + file edits via editor API (PRODUCT-048 slice 3)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
-  depends_on: [PRODUCT-057]
   acceptance_criteria:
-    - "When agent requests tool approval, VS Code shows a quickpick with approve/deny/always-approve"
-    - "File read tools open the file in the editor for inspection"
-    - "File write/patch tools apply edits via vscode.workspace.applyEdit (shows diff in editor)"
-    - "run_cli tool shows terminal output in VS Code integrated terminal"
-    - "Approval responses sent back to chump --acp via the ACP protocol"
+    - When agent requests tool approval, VS Code shows a quickpick with approve/deny/always-approve
+    - File read tools open the file in the editor for inspection
+    - File write/patch tools apply edits via vscode.workspace.applyEdit (shows diff in editor)
+    - run_cli tool shows terminal output in VS Code integrated terminal
+    - Approval responses sent back to chump --acp via the ACP protocol
+  depends_on: [PRODUCT-057]
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+

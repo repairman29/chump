@@ -1,0 +1,12 @@
+- id: RESILIENT-149
+  domain: RESILIENT
+  title: "RESILIENT: fleet daemons run STALE scripts — main checkout drifts behind origin/main, forcing manual surgical deploy after every fix"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Fleet daemons (ci-health-gate, farmer, etc.) run the CURRENT merged version of their scripts without manual deploy — via post-merge hook that updates the main checkout, daemons pull/checkout before run, OR run from an auto-synced location.
+    - "After a fix merges to origin/main, the running daemon picks it up within N minutes with NO human 'git show origin/main:script > file' + kickstart."
+    - The main checkout cannot silently drift >K commits behind origin/main (auto-reconcile or alert).
+    - "Precedent: the 2026-06-15..20 outage required manually deploying ci-health-gate.sh + farmer.sh + auth-status.sh to the main checkout because the daemons ran stale code."
+

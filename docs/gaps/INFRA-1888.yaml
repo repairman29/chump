@@ -1,13 +1,20 @@
 - id: INFRA-1888
   domain: INFRA
-  title: "RESILIENT: detect-gap-failure detector skips status=done gaps — kills ~30% of stalled-noise from 24h log-triage scan (3 of top-10 most-failed gaps were already shipped: INFRA-1787/1788/1789)"
-  status: open
+  title: 'RESILIENT: detect-gap-failure detector skips status=done gaps — kills ~30% of stalled-noise from 24h log-triage
+    scan (3 of top-10 most-failed gaps were already shipped: INFRA-1787/1788/1789)'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - 1. scripts/dispatch/detect-gap-failure.sh (or Rust equivalent) queries each candidate gap's status from .chump/state.db before emitting kind=gap_failed
-    - 2. If status != open (i.e. done/merged/wontfix/whatever non-open value) → skip emission silently (no error, no log spam)
-    - "3. Unit test scripts/ci/test-detect-gap-failure-status-filter.sh: seed state.db with two stalled gaps (one status=open, one status=done), run detector, assert exactly one gap_failed event emitted (the open one)"
-    - "4. Bypass: CHUMP_DETECT_GAP_FAILURE_INCLUDE_DONE=1 env restores old behavior for debugging the detector itself; emit kind=detect_gap_failure_lax when bypass is in effect"
-    - "5. Validate via 24h retrospective after merge: tail .chump-locks/ambient.jsonl for kind=gap_failed events, group by gap_id, cross-ref with chump gap show, assert 0 of the top-10 most-failed gaps are status=done (baseline 2026-05-23: 3 of 10 were done — INFRA-1787/1788/1789)"
-
+  - 1. scripts/dispatch/detect-gap-failure.sh (or Rust equivalent) queries each candidate gap's status from .chump/state.db
+    before emitting kind=gap_failed
+  - 2. If status != open (i.e. done/merged/wontfix/whatever non-open value) → skip emission silently (no error, no log spam)
+  - '3. Unit test scripts/ci/test-detect-gap-failure-status-filter.sh: seed state.db with two stalled gaps (one status=open,
+    one status=done), run detector, assert exactly one gap_failed event emitted (the open one)'
+  - '4. Bypass: CHUMP_DETECT_GAP_FAILURE_INCLUDE_DONE=1 env restores old behavior for debugging the detector itself; emit
+    kind=detect_gap_failure_lax when bypass is in effect'
+  - '5. Validate via 24h retrospective after merge: tail .chump-locks/ambient.jsonl for kind=gap_failed events, group by gap_id,
+    cross-ref with chump gap show, assert 0 of the top-10 most-failed gaps are status=done (baseline 2026-05-23: 3 of 10 were
+    done — INFRA-1787/1788/1789)'
+  closed_date: '2026-05-24'
+  closed_pr: 2501

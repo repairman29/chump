@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: PWA AMBIENT cadence live-diff stream panel — last N commits with semantic-aware diff summaries, real-time SSE feed; the fleet becomes visible to the operator"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     The fleet currently ships 80+ PRs/24h. The operator can see this in git log, gh pr list, the ambient.jsonl stream, the bot-merge logs — but nowhere in the PWA. Each surface is a different shape: git log is hashes, gh pr list is metadata, ambient is events. None is 'here is the codebase EVOLVING, right now.'
@@ -37,4 +37,7 @@
     - Animations respect prefers-reduced-motion
     - "scripts/ci/test-pwa-codebase-stream.sh: 5 synthetic PRs round-tripped through SSE → PWA render → filter chip"
     - Visual snapshot baseline added to INFRA-1591 suite
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

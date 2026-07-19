@@ -1,16 +1,29 @@
 - id: INFRA-1366
   domain: INFRA
-  title: "RESILIENT: chump orchestrate --resume <session-id> — recover from crashed orchestrator session by replaying last N ambient events to rebuild intent state (Phase 3 robustness)"
-  status: open
+  title: 'RESILIENT: chump orchestrate --resume <session-id> — recover from crashed orchestrator session by replaying last
+    N ambient events to rebuild intent state (Phase 3 robustness)'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Phase 3 reliability follow-up. Today if a chump orchestrate session crashes mid-flow (Ctrl+C, kernel kill, LLM 503 cascade), the operator loses all in-flight intent state and must restart from zero. The roadmap demo (5-min video, clean Mac) needs to be robust to fluky network or LLM glitches. Pairs with INFRA-1364 (timeout exit_reason=timeout) — a timed-out session should be resumable. Pairs with INFRA-1363 (summary emit) — resume relies on knowing exit_reason to decide whether to allow.
-  acceptance_criteria:
-    - New CLI subcommand `chump orchestrate --resume <session-id>` loads the last 200 ambient events filtered by session_id and reconstructs intent-stack state
-    - "If the session was clean-exited (exit_reason=clean), refuse with \"session N already completed — start a fresh session\""
-    - "If session was crash/timeout/user_quit, replay the intent stack: re-pose last unanswered intent to operator with one-line context summary (\"Last intent: ‘spawn the fleet on infra p0/p1, size 4’ — completed routing, awaiting confirmation when session crashed\")"
-    - Emit kind=orchestrate_session_resumed to ambient.jsonl with {ts, kind, session_id, events_replayed, resume_attempts (cumulative)}
-    - Refuse to resume the same session more than CHUMP_ORCHESTRATE_MAX_RESUMES (default 3) times — prevents infinite resume loops on a poison session
-    - "CI test scripts/ci/test-orchestrate-resume.sh: seed 5 fake events to ambient for session=S; invoke `chump orchestrate --resume S`; assert orchestrate_session_resumed emitted with events_replayed=5; second invocation increments resume_attempts; 4th resume rejected with non-zero exit"
+  description: 'Phase 3 reliability follow-up. Today if a chump orchestrate session crashes mid-flow (Ctrl+C, kernel kill,
+    LLM 503 cascade), the operator loses all in-flight intent state and must restart from zero. The roadmap demo (5-min video,
+    clean Mac) needs to be robust to fluky network or LLM glitches. Pairs with INFRA-1364 (timeout exit_reason=timeout) —
+    a timed-out session should be resumable. Pairs with INFRA-1363 (summary emit) — resume relies on knowing exit_reason to
+    decide whether to allow.
 
+    '
+  acceptance_criteria:
+  - New CLI subcommand `chump orchestrate --resume <session-id>` loads the last 200 ambient events filtered by session_id
+    and reconstructs intent-stack state
+  - If the session was clean-exited (exit_reason=clean), refuse with "session N already completed — start a fresh session"
+  - 'If session was crash/timeout/user_quit, replay the intent stack: re-pose last unanswered intent to operator with one-line
+    context summary ("Last intent: ‘spawn the fleet on infra p0/p1, size 4’ — completed routing, awaiting confirmation when
+    session crashed")'
+  - Emit kind=orchestrate_session_resumed to ambient.jsonl with {ts, kind, session_id, events_replayed, resume_attempts (cumulative)}
+  - Refuse to resume the same session more than CHUMP_ORCHESTRATE_MAX_RESUMES (default 3) times — prevents infinite resume
+    loops on a poison session
+  - 'CI test scripts/ci/test-orchestrate-resume.sh: seed 5 fake events to ambient for session=S; invoke `chump orchestrate
+    --resume S`; assert orchestrate_session_resumed emitted with events_replayed=5; second invocation increments resume_attempts;
+    4th resume rejected with non-zero exit'
+  closed_date: '2026-05-16'
+  closed_pr: 2132

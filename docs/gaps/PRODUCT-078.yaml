@@ -1,24 +1,36 @@
 - id: PRODUCT-078
   domain: PRODUCT
-  title: "PRODUCT: PWA Daily Brief — 'while you were away' surface aggregating ships/stalls/needs-judgment since last visit"
-  status: open
+  title: 'PRODUCT: PWA Daily Brief — ''while you were away'' surface aggregating ships/stalls/needs-judgment since last visit'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Solo dev returns to PWA after hours away. Today they see live fleet
-    state but have to actively investigate "what happened? what needs me?"
-    Daily Brief proactively answers both. Highest-leverage operator-presence
-    gap from the 2026-05-11 PWA 50k-foot review.
-  acceptance_criteria:
-    - "New PWA view /brief (or top-banner widget on /) renders on operator return-to-tab: 'since you last looked (Nh ago): N PRs merged, N PRs blocked-on-you, N gaps stuck, N alerts'"
-    - "Backend: src/web_server.rs adds /api/brief endpoint returning a structured summary keyed off ambient.jsonl + git log --since=<last-visit> + chump gap audit-priorities + .chump-locks state"
-    - Last-visit timestamp persisted per-operator in ~/.chump/last-pwa-visit (or browser localStorage if better); updated on every PWA tab focus
-    - "Brief categorizes items into 3 buckets: (1) Done while you were away — informational; (2) Needs your judgment — actionable links to PR/gap; (3) Fleet alerts — operator-actionable warnings (stuck PRs, silent agents, disk pressure)"
-    - Each item links to the relevant PWA view or external URL (GitHub PR)
-    - Dismiss button per-item; dismissals persist across reloads but reset at midnight local time
-    - "scripts/ci/test-pwa-daily-brief.sh: synthesize ambient events + PR mergedAt timestamps over a fake 8h window; assert brief output groups them correctly"
-    - Pairs with PRODUCT-079 (Needs your judgment), PRODUCT-080 (Stuck items), PRODUCT-081 (Outcome dashboard) — Brief is the entry surface; those are the destinations
-    - Operator-presence detection per src/operator_presence.rs already exists for Discord; reuse the last-active-at signal here
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  description: 'Solo dev returns to PWA after hours away. Today they see live fleet
 
+    state but have to actively investigate "what happened? what needs me?"
+
+    Daily Brief proactively answers both. Highest-leverage operator-presence
+
+    gap from the 2026-05-11 PWA 50k-foot review.
+
+    '
+  acceptance_criteria:
+  - 'New PWA view /brief (or top-banner widget on /) renders on operator return-to-tab: ''since you last looked (Nh ago):
+    N PRs merged, N PRs blocked-on-you, N gaps stuck, N alerts'''
+  - 'Backend: src/web_server.rs adds /api/brief endpoint returning a structured summary keyed off ambient.jsonl + git log
+    --since=<last-visit> + chump gap audit-priorities + .chump-locks state'
+  - Last-visit timestamp persisted per-operator in ~/.chump/last-pwa-visit (or browser localStorage if better); updated on
+    every PWA tab focus
+  - 'Brief categorizes items into 3 buckets: (1) Done while you were away — informational; (2) Needs your judgment — actionable
+    links to PR/gap; (3) Fleet alerts — operator-actionable warnings (stuck PRs, silent agents, disk pressure)'
+  - Each item links to the relevant PWA view or external URL (GitHub PR)
+  - Dismiss button per-item; dismissals persist across reloads but reset at midnight local time
+  - 'scripts/ci/test-pwa-daily-brief.sh: synthesize ambient events + PR mergedAt timestamps over a fake 8h window; assert
+    brief output groups them correctly'
+  - Pairs with PRODUCT-079 (Needs your judgment), PRODUCT-080 (Stuck items), PRODUCT-081 (Outcome dashboard) — Brief is the
+    entry surface; those are the destinations
+  - Operator-presence detection per src/operator_presence.rs already exists for Discord; reuse the last-active-at signal here
+  notes: '[2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+
+    '
+  closed_date: '2026-05-16'
+  closed_pr: 2131

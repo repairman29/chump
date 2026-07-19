@@ -2,35 +2,18 @@
   domain: INFRA
   title: "RESILIENT: chump --acp on M4 produces no stdout — debug binary built in CI exits silently"
   status: open
-  priority: P1
+  priority: P2
   effort: m
-  pillar: RESILIENT
-  depends_on: ["INFRA-1534"]
   acceptance_criteria:
     - "Root-cause diagnosis: reproduce `chump --acp` producing empty stdout in the runner's _work/chump/chump checkout, then identify whether it's (a) silent panic on r2d2 state.db lock, (b) freshly-built debug binary missing a feature flag, (c) tracing/stderr-as-stdout config issue, (d) stdin EOF before flush, or other"
-    - "Fix lands in src/ such that running `echo '<JSON-RPC initialize>' | CHUMP_HOME=/tmp/fresh ./target/debug/chump --acp` produces a JSON response on stdout within 2s — verified on M4 self-hosted runner workspace"
-    - "scripts/ci/test-acp-smoke.sh extended to surface stderr on failure (currently `2>/dev/null` hides the actual error — change to capture stderr to a second tmpfile and emit it in the FAIL message)"
+    - Fix lands in src/ such that running `echo '<JSON-RPC initialize>' | CHUMP_HOME=/tmp/fresh ./target/debug/chump --acp` produces a JSON response on stdout within 2s — verified on M4 self-hosted runner workspace
+    - scripts/ci/test-acp-smoke.sh extended to surface stderr on failure (currently `2>/dev/null` hides the actual error — change to capture stderr to a second tmpfile and emit it in the FAIL message)
     - "Smoke test scripts/ci/test-acp-binary-isolation.sh: builds chump fresh in a tmp dir (no .chump/ inheriting from $HOME), runs --acp with empty CHUMP_HOME, asserts stdout response within 2s. This catches the silent-no-output mode without needing M4 to repro"
     - "After fix: flip CHUMP_SELF_HOSTED_ENABLED=true, push a canary PR through Editor Integration (ACP) workflow, observe ACP smoke green on M4 runner"
-    - "Doc update in docs/process/SELF_HOSTED_RUNNERS.md noting any runner-specific env requirements ACP discovered (e.g., empty CHUMP_HOME required, no inherited state.db)"
+    - Doc update in docs/process/SELF_HOSTED_RUNNERS.md noting any runner-specific env requirements ACP discovered (e.g., empty CHUMP_HOME required, no inherited state.db)
     - "Cross-link: today (2026-05-16) 8 of 10 open PRs blocked by this — emergency rollback to var=false was the unblock. This gap is the durable fix."
   notes: |
-    Discovered 2026-05-16 after ACP migration (#2244) landed on main. Failure shape:
-      Job log: "FAIL: No output from chump --acp" → exit 1.
-      Runner: jeffs-macbook-air-10-2 (M4 self-hosted).
-      Test script pipes 1-3 JSON-RPC messages to chump --acp 2>/dev/null > tmpout;
-      tmpout is empty → fail.
-    Local repro on operator's shell prints config + r2d2 "database is locked" error.
-    Hypothesis: when chump --acp starts with CHUMP_HOME=fresh tmpdir, it still tries
-    to open *something* (state.db? config.toml?) and aborts silently before writing
-    JSON-RPC response to stdout. 2>/dev/null in test masks the real error.
-
-    Acute mitigation: var=false routes ACP back to ubuntu-latest where it has always
-    passed. 75% of migration value (fast-checks, clippy, cargo-test on M4) is forfeit
-    until this is fixed since they share the var.
-
-    Possible variant fix: scope the var. CHUMP_SELF_HOSTED_FAST_CHECKS=true vs
-    CHUMP_SELF_HOSTED_ACP=true — let operator flip individual lanes. Out of scope
-    of this gap (file separately if useful).
-
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+  pillar: RESILIENT
 

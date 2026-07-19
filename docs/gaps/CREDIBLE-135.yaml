@@ -1,0 +1,15 @@
+- id: CREDIBLE-135
+  domain: CREDIBLE
+  title: "CREDIBLE: test-pwa-prefs failing on main — ambient-viewer.js never integrated chumpPrefs (3 assert) + index.html loads prefs.js AFTER app.js (script-order)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - ambient-viewer.js reads the ambient-kind-filter value from window.chumpPrefs on load (test-pwa-prefs 'reads ambient-kind-filter from prefs' + 'uses chumpPrefs on load' pass)
+    - ambient-viewer.js persists ambient-kind-filter to chumpPrefs on change ('sets ambient-kind-filter pref' passes)
+    - index.html loads prefs.js BEFORE app.js so window.chumpPrefs is defined when app.js evaluates ('prefs.js appears before app.js' passes)
+    - bash scripts/ci/test-pwa-prefs.sh exits 0 (all assertions green)
+  notes: |
+    Surfaced 2026-06-20 during INFRA-1620 PWA work: test-pwa-prefs has 4 pre-existing failures on main (3× ambient-viewer.js missing chumpPrefs integration per PRODUCT-098 migration, 1× index.html script order). Non-blocking (not a required check — #3135 merged despite it). app.js-side assertions already pass.
+  closed_pr: 3137
+

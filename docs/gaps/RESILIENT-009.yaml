@@ -2,13 +2,17 @@
   domain: RESILIENT
   title: "RESILIENT: INFRA-779 worktree-gitdir auto-repair followup — catch the corruption-during-add case; today's session hit it twice; add post-add sanity assertion and self-heal"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
-    - "After every `git worktree add <path>`, scripts/coord/gap-claim.sh (and `chump claim`) immediately calls `git -C <path> rev-parse --show-toplevel` and asserts it matches <path> (after macOS /tmp → /private/tmp canonicalization)"
-    - "If the assertion fails, auto-repair by re-pointing the worktree's `.git` file at the correct gitdir under /Users/<user>/Projects/Chump/.git/worktrees/<name>/ — same recipe documented in CLAUDE.md INFRA-779 section"
-    - "Emits ambient kind=worktree_gitdir_repaired_postadd with path, expected_toplevel, observed_toplevel"
+    - After every `git worktree add <path>`, scripts/coord/gap-claim.sh (and `chump claim`) immediately calls `git -C <path> rev-parse --show-toplevel` and asserts it matches <path> (after macOS /tmp → /private/tmp canonicalization)
+    - If the assertion fails, auto-repair by re-pointing the worktree's `.git` file at the correct gitdir under /Users/<user>/Projects/Chump/.git/worktrees/<name>/ — same recipe documented in CLAUDE.md INFRA-779 section
+    - Emits ambient kind=worktree_gitdir_repaired_postadd with path, expected_toplevel, observed_toplevel
     - "scripts/ci/test-worktree-gitdir-repair.sh: deliberately corrupt the .git file of a fresh worktree to point at a sibling worktree's gitdir, run gap-claim.sh's post-add check, assert detection + repair"
-    - "INFRA-779 fixed the pre-existing case (corruption already in place, chump claim detects + repairs). RESILIENT-009 fixes the during-add window where concurrent sibling claims corrupt fresh worktrees before chump's post-add doctor runs"
+    - INFRA-779 fixed the pre-existing case (corruption already in place, chump claim detects + repairs). RESILIENT-009 fixes the during-add window where concurrent sibling claims corrupt fresh worktrees before chump's post-add doctor runs
     - "Today's Opus session hit this twice: /tmp/infra-825-impl reported toplevel /private/tmp/chump-product-062 (unrelated sibling); same for /tmp/credible-followups. Required manual GIT_DIR= env-var workarounds per CLAUDE.md"
-    - "Documented in docs/process/CLAUDE_GOTCHAS.md INFRA-779 section as the followup closing the during-add window"
+    - Documented in docs/process/CLAUDE_GOTCHAS.md INFRA-779 section as the followup closing the during-add window
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: RESILIENT-000
+

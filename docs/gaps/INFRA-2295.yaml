@@ -1,17 +1,20 @@
 - id: INFRA-2295
   domain: INFRA
-  title: "RESILIENT P0: stale-pr-rebase-bot — auto-rebase before reap, 3-strike circuit-break (SCALE-C safety net)"
-  status: open
+  title: 'RESILIENT P0: stale-pr-rebase-bot — auto-rebase before reap, 3-strike circuit-break (SCALE-C safety net)'
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
-    - "scripts/coord/stale-pr-rebase-bot.sh exists, is executable, passes shellcheck"
-    - "Bot finds auto-merge-armed PRs stale > CHUMP_REBASE_BOT_STALE_MINS (default 120) and tries gh pr update-branch first, then local worktree rebase fallback"
-    - "Strike counter persisted in .chump-locks/rebase-bot-strikes/<PR>.json; after 3 strikes emits kind=stale_pr_unrebaseable and sends WARN broadcast; never closes the PR"
-    - "Trunk-RED guard: if trunk-red-detector-state.json exists with last_failed_sha, skip cycle and emit kind=stale_pr_rebase_bot_holding_for_trunk_red"
-    - "30-minute hysteresis per PR: skips re-attempt within CHUMP_REBASE_BOT_HYSTERESIS_MINS (default 30) of last attempt"
-    - "scripts/setup/install-stale-pr-rebase-bot.sh idempotently installs launchd plist running every 900s"
-    - "scripts/ci/test-stale-pr-rebase-bot.sh has 7 tests, all pass"
-    - "4 event kinds registered in EVENT_REGISTRY.yaml and event-registry-reserved.txt"
-    - "docs/process/REAPER_DOCTRINE.md documents rebase-before-reap policy"
-
+  - scripts/coord/stale-pr-rebase-bot.sh exists, is executable, passes shellcheck
+  - Bot finds auto-merge-armed PRs stale > CHUMP_REBASE_BOT_STALE_MINS (default 120) and tries gh pr update-branch first,
+    then local worktree rebase fallback
+  - Strike counter persisted in .chump-locks/rebase-bot-strikes/<PR>.json; after 3 strikes emits kind=stale_pr_unrebaseable
+    and sends WARN broadcast; never closes the PR
+  - 'Trunk-RED guard: if trunk-red-detector-state.json exists with last_failed_sha, skip cycle and emit kind=stale_pr_rebase_bot_holding_for_trunk_red'
+  - '30-minute hysteresis per PR: skips re-attempt within CHUMP_REBASE_BOT_HYSTERESIS_MINS (default 30) of last attempt'
+  - scripts/setup/install-stale-pr-rebase-bot.sh idempotently installs launchd plist running every 900s
+  - scripts/ci/test-stale-pr-rebase-bot.sh has 7 tests, all pass
+  - 4 event kinds registered in EVENT_REGISTRY.yaml and event-registry-reserved.txt
+  - docs/process/REAPER_DOCTRINE.md documents rebase-before-reap policy
+  closed_date: '2026-05-30'
+  closed_pr: 2871

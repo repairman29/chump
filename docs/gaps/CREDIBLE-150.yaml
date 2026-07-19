@@ -1,7 +1,7 @@
 - id: CREDIBLE-150
   domain: CREDIBLE
   title: env-mutating Rust tests must be sandboxed + serialized for reliable operator-machine pre-push (re-homed from collided CREDIBLE-128)
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -11,4 +11,8 @@
     - "all env-mutating auth + improve tests are #[serial_test::serial] so concurrent set_var cannot occur"
     - cargo test --bin chump is green on an operator machine (populated env creds + real ~/.chump/config.toml) across repeated runs
     - no auth/improve test reads the operators real $HOME/.chump
+  notes: |
+    Landed across #3195/#3197/#3198 + CREDIBLE-133 (hermetic home, prior). Full 2456-test suite verified green on operator machine with live creds; pushes unblocked.
+  closed_date: '2026-07-19'
+  closed_pr: 3198
 

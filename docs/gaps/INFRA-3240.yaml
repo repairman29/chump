@@ -1,0 +1,9 @@
+- id: INFRA-3240
+  domain: INFRA
+  title: "ZERO-WASTE: balanced-1"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+

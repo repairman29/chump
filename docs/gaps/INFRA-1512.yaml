@@ -2,7 +2,7 @@
   domain: INFRA
   title: "MISSION: Bus-factor mitigation plan — operator is current SPOF; knowledge transfer + ops doc + multi-operator support"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Operator (Jeff) is currently the single point of failure for: gap-store mutations, hot-path coordination decisions, the dogfood loop, all business decisions. Bus factor = 1. Mitigate via: runbook + handoff doc + identifying 1-2 trusted co-operators who can pick up if SPOF is unavailable. Critical because the project's growth trajectory now depends on operator availability.
@@ -11,4 +11,7 @@
     - Identify 1-2 trusted co-operators (could be paid contractors)
     - Cross-train via paired-week shadowing
     - "Quarterly bus-factor drill: co-operator runs the fleet for 48h while SPOF is unreachable"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

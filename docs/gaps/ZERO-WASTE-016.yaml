@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-016
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: drive dependabot PR #3128 (cargo bump) to terminal — fix clippy/ACP breakage from updated deps or close"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "PR #3128 (dependabot cargo-patch-and-minor bump) reaches terminal: either merged green or closed."
+    - "If merged: clippy + clippy-required + the ACP protocol smoke tests pass against the bumped deps."
+    - "If the bump is bad: closed with a note, and the offending dep(s) pinned/excluded."
+

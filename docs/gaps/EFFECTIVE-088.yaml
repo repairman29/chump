@@ -1,0 +1,19 @@
+- id: EFFECTIVE-088
+  domain: EFFECTIVE
+  title: "EFFECTIVE P0: autonomous conductor loop — orchestrator as a daemon (not a human session) that prioritizes/routes/decides/ships, obeying the dial"
+  status: done
+  priority: P1
+  effort: xl
+  description: |
+    The brain that empties the chair. Today orchestrator-opus is a HUMAN-run session (the operator role-plays the conductor). Build it as an autonomous loop (launchd daemon) that does what the human did this session: read the queue, prioritize toward the active Outcome (MISSION-008 FK), route work to agents via typed handoffs/assign, resolve conflicts THROUGH consensus (not by asking the operator), and escalate ONLY on true halt-class. It runs at and obeys the autonomy dial (level 4 = full auto; level<=2 = propose/assist only) and stops instantly on the kill switch. Depends on: the cockpit (must obey dial+kill), consensus firing (RESILIENT-062 routing + RESILIENT-061 deliberator), and the farmer (RESILIENT-068, so the conductor can't be killed by the substrate).
+  acceptance_criteria:
+    - an orchestrator daemon runs the prioritize->route->decide->ship cycle with NO human session — verified by a window where coordination acts are 100% agent-performed
+    - decisions route through consensus (consensus_result drives the choice), not operator-ask
+    - it obeys the autonomy dial (level-gated) and halts within one tick on chump fleet stop
+    - escalates ONLY on true halt-class (not routine)
+    - supervised dry-run shows it prioritizing toward the active Outcome + dispatching >=1 gap end-to-end with no human input
+    - "VERIFIED 2026-06-20: consensus deliberator TALLIES correctly but dies at NO_QUORUM — 0 .curator-opus-*.lock voters online. So self-rescue (non-halt-class) must use propose->objection-window->act (veto by -1), not block on a quorum that cannot form until autonomous curator-voters exist (sibling gap)."
+  depends_on: [RESILIENT-073]
+  closed_pr: 3134
+  outcome_id: EFFECTIVE-000
+

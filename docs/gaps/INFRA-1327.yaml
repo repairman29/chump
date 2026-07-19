@@ -1,16 +1,20 @@
 - id: INFRA-1327
   domain: INFRA
-  title: "RESILIENT: lease must auto-extend while a live PR for the gap exists with armed auto-merge — fix root-cause stomp pattern"
-  status: open
+  title: 'RESILIENT: lease must auto-extend while a live PR for the gap exists with armed auto-merge — fix root-cause stomp
+    pattern'
+  status: done
   priority: P0
   effort: s
   acceptance_criteria:
-  - "scripts/coord/lease-auto-extend.sh exists: reads all .chump-locks/claim-*.json leases, checks for near-expiry (< CHUMP_LEASE_EXTEND_THRESHOLD_S = 1800s default), and if an open PR with armed auto-merge is found, rewrites expires_at to now+CHUMP_GAP_CLAIM_TTL_SECS"
-  - "CHUMP_LEASE_EXTEND_THRESHOLD_S env var controls the threshold (default 1800s = 30 min)"
-  - "CHUMP_GAP_CLAIM_TTL_SECS env var controls the extended TTL (default 14400s = 4h)"
-  - "Emits kind=lease_auto_extended to ambient.jsonl with fields: gap_id, pr_number, new_expires, reason=auto_merge_armed"
-  - "Skips leases with > threshold seconds remaining (no-op)"
-  - "Skips leases with no open armed-auto-merge PR on the derived branch"
-  - "Uses cache_lookup_pr_by_branch from lib/github_cache.sh when available; falls back to direct gh api call"
-  - "lease_auto_extended registered in docs/observability/EVENT_REGISTRY.yaml"
-  - "scripts/ci/test-lease-auto-extend.sh passes 5/5 assertions: (1) near-expiry+armed PR extends, (2) plenty-of-time skips, (3) not-armed PR skips, (4) closed PR skips, (5) ambient event has correct fields"
+  - 'scripts/coord/lease-auto-extend.sh exists: reads all .chump-locks/claim-*.json leases, checks for near-expiry (< CHUMP_LEASE_EXTEND_THRESHOLD_S
+    = 1800s default), and if an open PR with armed auto-merge is found, rewrites expires_at to now+CHUMP_GAP_CLAIM_TTL_SECS'
+  - CHUMP_LEASE_EXTEND_THRESHOLD_S env var controls the threshold (default 1800s = 30 min)
+  - CHUMP_GAP_CLAIM_TTL_SECS env var controls the extended TTL (default 14400s = 4h)
+  - 'Emits kind=lease_auto_extended to ambient.jsonl with fields: gap_id, pr_number, new_expires, reason=auto_merge_armed'
+  - Skips leases with > threshold seconds remaining (no-op)
+  - Skips leases with no open armed-auto-merge PR on the derived branch
+  - Uses cache_lookup_pr_by_branch from lib/github_cache.sh when available; falls back to direct gh api call
+  - lease_auto_extended registered in docs/observability/EVENT_REGISTRY.yaml
+  - 'scripts/ci/test-lease-auto-extend.sh passes 5/5 assertions: (1) near-expiry+armed PR extends, (2) plenty-of-time skips,
+    (3) not-armed PR skips, (4) closed PR skips, (5) ambient event has correct fields'
+  closed_pr: 2035

@@ -1,16 +1,30 @@
 - id: INFRA-1893
   domain: INFRA
-  title: "CREDIBLE: chump gap reserve emits spurious 'gh ... HTTP 401 Bad credentials' warning when gh is actually healthy — false signal wasted operator attention on 2026-05-23 (real state: gh auth status + api user + api graphql + repo view all returned 200, rate-limits ~4k both buckets)"
-  status: open
+  title: 'CREDIBLE: chump gap reserve emits spurious ''gh ... HTTP 401 Bad credentials'' warning when gh is actually healthy
+    — false signal wasted operator attention on 2026-05-23 (real state: gh auth status + api user + api graphql + repo view
+    all returned 200, rate-limits ~4k both buckets)'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "1. Reproduce: in a session with verifiably healthy gh auth (gh auth status returns ✓ AND gh api user returns 200 AND gh api graphql returns 200 AND gh repo view returns 200 — all four), run chump gap reserve --domain X --title Y; warning currently fires anyway (confirmed 2026-05-23, ~5 consecutive reserves all emitted the same spurious 401)"
-    - 2. Trace the call path that emits the warning — grep src/ for 'open-PR scan failed' and 'HTTP 401' strings; identify which subprocess invocation of gh (or which API client) is producing the 401 while the parent shell's gh is fine
-    - "3. Root-cause hypotheses to verify in order: (a) chump invokes gh with a stripped env that loses GH_TOKEN / keyring access, (b) chump uses a hardcoded API path that requires a scope the keyring token lacks, (c) chump caches an earlier transient 401 and re-prints it without re-checking"
-    - "4. Fix matching the root cause: env passthrough OR scope-correct call OR cache-bust-on-success — but in all cases the warning MUST NOT fire when the underlying gh CLI returns 200 for the same call"
-    - "5. Negative-confirmation gate: before emitting the warning, run a 1-call gh smoke (gh api user or equivalent); if THAT returns 200, suppress the original warning and emit kind=gap_reserve_open_pr_scan_inconsistent for forensics (so we capture the case where the call genuinely failed but recovery is possible)"
-    - "6. If the call genuinely fails: emit kind=gap_reserve_open_pr_scan_failed ONCE per process (not per reserve invocation) with stderr captured, so 5 back-to-back reserves don't spam 5 identical warnings"
-    - "7. Unit test scripts/ci/test-gap-reserve-spurious-warning.sh: stub gh subprocess to return 200, run chump gap reserve, assert zero 'HTTP 401' lines on stderr; stub gh to return 401, assert exactly one warning + one telemetry event"
-    - "8. Validate: run 5 consecutive chump gap reserve calls in a healthy-auth session, assert zero warnings on stderr (baseline 2026-05-23: 5 of 5 reserves emitted the false warning)"
-
+  - '1. Reproduce: in a session with verifiably healthy gh auth (gh auth status returns ✓ AND gh api user returns 200 AND
+    gh api graphql returns 200 AND gh repo view returns 200 — all four), run chump gap reserve --domain X --title Y; warning
+    currently fires anyway (confirmed 2026-05-23, ~5 consecutive reserves all emitted the same spurious 401)'
+  - 2. Trace the call path that emits the warning — grep src/ for 'open-PR scan failed' and 'HTTP 401' strings; identify which
+    subprocess invocation of gh (or which API client) is producing the 401 while the parent shell's gh is fine
+  - '3. Root-cause hypotheses to verify in order: (a) chump invokes gh with a stripped env that loses GH_TOKEN / keyring access,
+    (b) chump uses a hardcoded API path that requires a scope the keyring token lacks, (c) chump caches an earlier transient
+    401 and re-prints it without re-checking'
+  - '4. Fix matching the root cause: env passthrough OR scope-correct call OR cache-bust-on-success — but in all cases the
+    warning MUST NOT fire when the underlying gh CLI returns 200 for the same call'
+  - '5. Negative-confirmation gate: before emitting the warning, run a 1-call gh smoke (gh api user or equivalent); if THAT
+    returns 200, suppress the original warning and emit kind=gap_reserve_open_pr_scan_inconsistent for forensics (so we capture
+    the case where the call genuinely failed but recovery is possible)'
+  - '6. If the call genuinely fails: emit kind=gap_reserve_open_pr_scan_failed ONCE per process (not per reserve invocation)
+    with stderr captured, so 5 back-to-back reserves don''t spam 5 identical warnings'
+  - '7. Unit test scripts/ci/test-gap-reserve-spurious-warning.sh: stub gh subprocess to return 200, run chump gap reserve,
+    assert zero ''HTTP 401'' lines on stderr; stub gh to return 401, assert exactly one warning + one telemetry event'
+  - '8. Validate: run 5 consecutive chump gap reserve calls in a healthy-auth session, assert zero warnings on stderr (baseline
+    2026-05-23: 5 of 5 reserves emitted the false warning)'
+  closed_date: '2026-05-24'
+  closed_pr: 2489

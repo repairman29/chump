@@ -1,10 +1,24 @@
 - id: CREDIBLE-015
   domain: CREDIBLE
-  title: "CREDIBLE: CLI help system consistency — all 31 commands have documented --help with examples"
-  status: open
+  title: 'CREDIBLE: CLI help system consistency — all 31 commands have documented --help with examples'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "\n(a) Audit all 31 commands: verify each has help text (chump <cmd> help or chump <cmd> --help)\n(b) Help output format: 'Usage: chump <cmd> <args> [options]' followed by option descriptions and 1 example\n(c) Consistent format across all commands (verify with test script)\n(d) Add tests/cli_help_consistency_test.rs: verifies all 31 commands output help without errors\n(e) Document help text standard in CONTRIBUTING.md\n(f) CI gate: scripts/ci/test-cli-help.sh validates all 31 commands have help, format is consistent\n"
-  opened_date: '2026-05-10'
+  - '
 
+    (a) Audit all 31 commands: verify each has help text (chump <cmd> help or chump <cmd> --help)
+
+    (b) Help output format: ''Usage: chump <cmd> <args> [options]'' followed by option descriptions and 1 example
+
+    (c) Consistent format across all commands (verify with test script)
+
+    (d) Add tests/cli_help_consistency_test.rs: verifies all 31 commands output help without errors
+
+    (e) Document help text standard in CONTRIBUTING.md
+
+    (f) CI gate: scripts/ci/test-cli-help.sh validates all 31 commands have help, format is consistent
+
+    '
+  opened_date: '2026-05-10'
+  closed_pr: 1512

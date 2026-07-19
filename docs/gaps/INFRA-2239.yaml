@@ -1,24 +1,49 @@
 - id: INFRA-2239
   domain: INFRA
-  title: "RESILIENT P0: chump-curator-supervisor — L3 supervision daemon that auto-files + dispatches when curators silently fail"
-  status: open
+  title: 'RESILIENT P0: chump-curator-supervisor — L3 supervision daemon that auto-files + dispatches when curators silently
+    fail'
+  status: done
   priority: P0
   effort: m
-  description: |
-    L3 supervision layer over the curator-loop fleet. Today (2026-05-30) we discovered 3 productized curators (decompose, handoff, shepherd) had been silently no-op'ing for 32 hours — emitting heartbeats but failing every tick with 'unknown subcommand'. The session-start fleet brief said 'healthy' because it counts heartbeat presence. Nobody was reading the curator-*.log files. The supervisor closes that gap: read the logs + telemetry, detect failure, react. Belongs as a Rust crate (META-064: long-lived daemon, mutates state.db, > 200 LOC, will outlive 3 months). Belongs at L3 in the fleet layer model (L0 substrate / L1 curators / L2 jit-scheduler / L3 NEW supervisor). Two operator-pending decisions, supported as runtime config flags so we don't have to pick one forever: (i) remediation mode: conservative (file-only) vs aggressive (file + spawn claude -p Sonnet inline); (ii) auto-restart: should the supervisor also tmux respawn-pane broken curators, or only file + leave for operator.
-  acceptance_criteria:
-    - crates/chump-curator-supervisor/ Rust daemon, StartInterval 300s, iterates the 6 productized curators (shepherd/target/handoff/ci-audit/decompose/md-links); four checks per role — error-pattern (regex 'unknown subcommand
-    - Traceback
-    - panic
-    - "fatal:"
-    - exit 1' >2× in last 50 log lines), silent-stall (no heartbeat ambient event >10min), crash-loop (log file growing only with error-class lines), productivity-drop (zero state.db mutations attributed to session_id in 1h)
-    - Fingerprint (role + error_pattern_hash); dedupe via sentinel .chump-locks/curator-supervisor/seen/<fp>.sentinel with 24h TTL; novel failures get chump gap reserve + chump gap set with last 20 log lines as evidence; P0 multi-curator outage, P1 single
-    - "Remediation: DEFAULT AGGRESSIVE (operator-chosen 2026-05-30). Supervisor files gap AND spawns Sonnet inline via claude -p with the SUBAGENT_DISPATCH.md epilogue + the gap-id as task. Env override CHUMP_CURATOR_SUPERVISOR_MODE=conservative falls back to file-only"
-    - "Auto-restart: DEFAULT ON (operator-chosen 2026-05-30). Supervisor tmux respawn-pane t chump-curators:<role> with the fleet-autopilot canonical command after filing. Verifies new pane heartbeats within 60s via ambient.jsonl tail; if no heartbeat, emits kind=curator_respawn_failed and escalates to operator via NATS WARN. Env override CHUMP_CURATOR_SUPERVISOR_AUTORESTART=0 disables"
-    - Emit ambient kind=curator_failure_paged on filing AND kind=curator_respawned on successful respawn; both registered in EVENT_REGISTRY.yaml per INFRA-754
-    - launchd plist scripts/setup/launchd/com.chump.curator-supervisor.plist installed by chump-fleet-bootstrap.sh; bootstrap --check exits 0 with supervisor running
-    - "Smoke test scripts/ci/test-curator-supervisor.sh: synth a broken-curator log + heartbeat history → supervisor detects + files + (in test mode) emits would-spawn-Sonnet event + would-respawn-pane event; second tick respects sentinel dedupe"
-    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
-    - "Operator surface: chump fleet curator-status prints one row per curator with role / last_tick_succeeded_at / last_heartbeat_at / state.db_mutations_1h / supervisor_mode / autorestart_flag"
-  depends_on: [INFRA-2238]
+  description: 'L3 supervision layer over the curator-loop fleet. Today (2026-05-30) we discovered 3 productized curators
+    (decompose, handoff, shepherd) had been silently no-op''ing for 32 hours — emitting heartbeats but failing every tick
+    with ''unknown subcommand''. The session-start fleet brief said ''healthy'' because it counts heartbeat presence. Nobody
+    was reading the curator-*.log files. The supervisor closes that gap: read the logs + telemetry, detect failure, react.
+    Belongs as a Rust crate (META-064: long-lived daemon, mutates state.db, > 200 LOC, will outlive 3 months). Belongs at
+    L3 in the fleet layer model (L0 substrate / L1 curators / L2 jit-scheduler / L3 NEW supervisor). Two operator-pending
+    decisions, supported as runtime config flags so we don''t have to pick one forever: (i) remediation mode: conservative
+    (file-only) vs aggressive (file + spawn claude -p Sonnet inline); (ii) auto-restart: should the supervisor also tmux respawn-pane
+    broken curators, or only file + leave for operator.
 
+    '
+  acceptance_criteria:
+  - crates/chump-curator-supervisor/ Rust daemon, StartInterval 300s, iterates the 6 productized curators (shepherd/target/handoff/ci-audit/decompose/md-links);
+    four checks per role — error-pattern (regex 'unknown subcommand
+  - Traceback
+  - panic
+  - 'fatal:'
+  - exit 1' >2× in last 50 log lines), silent-stall (no heartbeat ambient event >10min), crash-loop (log file growing only
+    with error-class lines), productivity-drop (zero state.db mutations attributed to session_id in 1h)
+  - Fingerprint (role + error_pattern_hash); dedupe via sentinel .chump-locks/curator-supervisor/seen/<fp>.sentinel with 24h
+    TTL; novel failures get chump gap reserve + chump gap set with last 20 log lines as evidence; P0 multi-curator outage,
+    P1 single
+  - 'Remediation: DEFAULT AGGRESSIVE (operator-chosen 2026-05-30). Supervisor files gap AND spawns Sonnet inline via claude
+    -p with the SUBAGENT_DISPATCH.md epilogue + the gap-id as task. Env override CHUMP_CURATOR_SUPERVISOR_MODE=conservative
+    falls back to file-only'
+  - 'Auto-restart: DEFAULT ON (operator-chosen 2026-05-30). Supervisor tmux respawn-pane t chump-curators:<role> with the
+    fleet-autopilot canonical command after filing. Verifies new pane heartbeats within 60s via ambient.jsonl tail; if no
+    heartbeat, emits kind=curator_respawn_failed and escalates to operator via NATS WARN. Env override CHUMP_CURATOR_SUPERVISOR_AUTORESTART=0
+    disables'
+  - Emit ambient kind=curator_failure_paged on filing AND kind=curator_respawned on successful respawn; both registered in
+    EVENT_REGISTRY.yaml per INFRA-754
+  - launchd plist scripts/setup/launchd/com.chump.curator-supervisor.plist installed by chump-fleet-bootstrap.sh; bootstrap
+    --check exits 0 with supervisor running
+  - 'Smoke test scripts/ci/test-curator-supervisor.sh: synth a broken-curator log + heartbeat history → supervisor detects
+    + files + (in test mode) emits would-spawn-Sonnet event + would-respawn-pane event; second tick respects sentinel dedupe'
+  - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before
+    push
+  - 'Operator surface: chump fleet curator-status prints one row per curator with role / last_tick_succeeded_at / last_heartbeat_at
+    / state.db_mutations_1h / supervisor_mode / autorestart_flag'
+  depends_on:
+  - INFRA-2238
+  closed_pr: 2800

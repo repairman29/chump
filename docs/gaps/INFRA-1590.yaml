@@ -1,7 +1,7 @@
 - id: INFRA-1590
   domain: INFRA
   title: "RESILIENT: PWA design-token discipline pre-commit lint — reject raw hex outside :root, new --*-primary aliases, mismatched var() fallbacks (mirrors Rust-First-Bypass pattern)"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -46,4 +46,7 @@
     - scripts/ci/test-css-token-discipline.sh round-trips linter against clean + dirty fixtures
     - docs/process/CSS_TOKEN_DISCIPLINE.md documents rules + canonical token list + bypass
     - CLAUDE.md 'Hard rules' section links to the new doc
+  closed_date: '2026-07-19'
+  closed_pr: 3183
+  outcome_id: MISSION-010
 

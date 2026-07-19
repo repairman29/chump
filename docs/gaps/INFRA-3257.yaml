@@ -1,0 +1,9 @@
+- id: INFRA-3257
+  domain: INFRA
+  title: "EFFECTIVE: real-2"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it
+

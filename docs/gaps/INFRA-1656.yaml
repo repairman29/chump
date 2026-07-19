@@ -1,20 +1,28 @@
 - id: INFRA-1656
   domain: INFRA
-  title: "CREDIBLE: nightly main-health watchdog — file P0 gap on red main"
-  status: open
+  title: 'CREDIBLE: nightly main-health watchdog — file P0 gap on red main'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Multiple pre-existing main-state failures (INFRA-1287 orphans, INFRA-682 skills-bundle missing from path-filter, DOC-026 missing env-var allowlist entries, INFRA-1274 missing raw-gh allowlist for pr-failure-auto-rescue.sh, INFRA-306 canonical comment) squeaked through during 2026-05-20 — each blocked every subsequent PR until manually surgically fixed. Need a watchdog that catches main-red automatically and files a P0 so the next operator session inherits the diagnostic.
-  acceptance_criteria:
-    - "Cron/launchd daemon runs daily at fixed time (e.g. 02:00 local)"
-    - Daemon queries gh run list --branch main --workflow CI --limit 1 --json conclusion,jobs
-    - If conclusion=failure, identifies failed job(s) + failed step(s) via gh api repos/.../actions/jobs/<id>
-    - "Files P0 gap auto-titled INFRA-NEW-MAIN-RED-<YYYY-MM-DD>: <failed-gate> with description linking the run URL + failed step name + most recent merge commit on main"
-    - "Dedup: skip if INFRA-NEW-MAIN-RED-* gap already open for same gate this week"
-    - Emits ambient kind=main_red_detected with gate + sha + run_url fields
-    - Register main_red_detected in EVENT_REGISTRY.yaml
-    - "CI test: stub gh response with synthetic failure JSON, verify gap reservation + dedup logic"
-  notes: |
-    Discovered 2026-05-20 Marcus cron-loop session. Prerequisite for high-throughput PR shipping — without this, main fails silently until a PR's CI cycle exposes it, and only the active PR-driver can fix. Pairs with INFRA-1655 (runner investigation): if main breaks because of a runner flake, this watchdog tells us within a day.
+  description: 'Multiple pre-existing main-state failures (INFRA-1287 orphans, INFRA-682 skills-bundle missing from path-filter,
+    DOC-026 missing env-var allowlist entries, INFRA-1274 missing raw-gh allowlist for pr-failure-auto-rescue.sh, INFRA-306
+    canonical comment) squeaked through during 2026-05-20 — each blocked every subsequent PR until manually surgically fixed.
+    Need a watchdog that catches main-red automatically and files a P0 so the next operator session inherits the diagnostic.
 
+    '
+  acceptance_criteria:
+  - Cron/launchd daemon runs daily at fixed time (e.g. 02:00 local)
+  - Daemon queries gh run list --branch main --workflow CI --limit 1 --json conclusion,jobs
+  - If conclusion=failure, identifies failed job(s) + failed step(s) via gh api repos/.../actions/jobs/<id>
+  - 'Files P0 gap auto-titled INFRA-NEW-MAIN-RED-<YYYY-MM-DD>: <failed-gate> with description linking the run URL + failed
+    step name + most recent merge commit on main'
+  - 'Dedup: skip if INFRA-NEW-MAIN-RED-* gap already open for same gate this week'
+  - Emits ambient kind=main_red_detected with gate + sha + run_url fields
+  - Register main_red_detected in EVENT_REGISTRY.yaml
+  - 'CI test: stub gh response with synthetic failure JSON, verify gap reservation + dedup logic'
+  notes: 'Discovered 2026-05-20 Marcus cron-loop session. Prerequisite for high-throughput PR shipping — without this, main
+    fails silently until a PR''s CI cycle exposes it, and only the active PR-driver can fix. Pairs with INFRA-1655 (runner
+    investigation): if main breaks because of a runner flake, this watchdog tells us within a day.
+
+    '
+  closed_pr: 2327

@@ -1,16 +1,39 @@
 - id: META-120
   domain: META
-  title: "ZERO-WASTE: META-107 Phase 2 cutover arc umbrella — track INFRA-2060..2065 (remove 10,487 LOC bash+python after parallel-run validation); enforces ordering INFRA-1997..2002 Phase 1 → 7-14 day parallel run → cutover"
-  status: open
+  title: 'ZERO-WASTE: META-107 Phase 2 cutover arc umbrella — track INFRA-2060..2065 (remove 10,487 LOC bash+python after
+    parallel-run validation); enforces ordering INFRA-1997..2002 Phase 1 → 7-14 day parallel run → cutover'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "Umbrella for the META-107 Phase 2 cutover arc; tracks INFRA-2060 (chump-git-hooks pre-push 1154 LOC) + INFRA-2061 (chump-messaging broadcast+inbox 583 LOC) + INFRA-2062 (chump-github-cache python+bash 1149 LOC) + INFRA-2063 (chump-gap-store::maintenance 4 Python tools ~2000 LOC) + INFRA-2064 (chump-ship bot-merge 3044 LOC) + INFRA-2065 (chump-worker worker+run-fleet 2557 LOC); total LOC out = 10487"
-    - "Sequencing rule: cutover gaps are P2 by default and pickable only after their Phase 1 sub-gap has been in production for the parallel-run window (7 days for xs/s gaps, 14 days for chump-github-cache because webhook divergence is silent); cutover candidates are auto-promoted to P1 once the window elapses + zero divergence events recorded"
-    - "Cutover order: INFRA-2060 first (lowest-risk, smallest blast radius, isolated git hook surface) → INFRA-2061 → INFRA-2063 → INFRA-2062 (Python receiver, biggest visibility win) → INFRA-2064 (chump-ship, critical-path) → INFRA-2065 (chump-worker, depends on INFRA-2062 cutover completing first since worker reads cache layer)"
-    - "Umbrella close criteria: (a) all 6 sub-cutover gaps in status:done, (b) git grep 'bash$' scripts/coord scripts/dispatch scripts/ops shows total LOC drop from current 16800+ to under 8000, (c) docs/strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md gets a Phase 2 Complete addendum, (d) ambient emit kind=meta_107_complete fires with sum_lines_out=10487 + per-cutover breakdown"
-    - "Rollback story for the umbrella: each individual cutover gap is independently rollback-able (24h hot-rollback window per cutover); umbrella never needs to be reverted wholesale; failure of one cutover does not block the others"
-  depends_on: [INFRA-2060, INFRA-2061, INFRA-2062, INFRA-2063, INFRA-2064, INFRA-2065]
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd. Phase 2 cutover follow-up arc for META-107. Phase 1 (INFRA-1997..INFRA-2002) shipped Rust binaries feature-flagged in parallel; these 6 cutover gaps remove the original bash/python bodies after a parallel-run validation window. Total LOC out: 10487 — exceeds META-107 AC #3 target of <8000 from 16800 (delta of 10487 - 8800 = ~1687 LOC of CLI shim + glue scripts remain by design).
+  - Umbrella for the META-107 Phase 2 cutover arc; tracks INFRA-2060 (chump-git-hooks pre-push 1154 LOC) + INFRA-2061 (chump-messaging
+    broadcast+inbox 583 LOC) + INFRA-2062 (chump-github-cache python+bash 1149 LOC) + INFRA-2063 (chump-gap-store::maintenance
+    4 Python tools ~2000 LOC) + INFRA-2064 (chump-ship bot-merge 3044 LOC) + INFRA-2065 (chump-worker worker+run-fleet 2557
+    LOC); total LOC out = 10487
+  - 'Sequencing rule: cutover gaps are P2 by default and pickable only after their Phase 1 sub-gap has been in production
+    for the parallel-run window (7 days for xs/s gaps, 14 days for chump-github-cache because webhook divergence is silent);
+    cutover candidates are auto-promoted to P1 once the window elapses + zero divergence events recorded'
+  - 'Cutover order: INFRA-2060 first (lowest-risk, smallest blast radius, isolated git hook surface) → INFRA-2061 → INFRA-2063
+    → INFRA-2062 (Python receiver, biggest visibility win) → INFRA-2064 (chump-ship, critical-path) → INFRA-2065 (chump-worker,
+    depends on INFRA-2062 cutover completing first since worker reads cache layer)'
+  - 'Umbrella close criteria: (a) all 6 sub-cutover gaps in status:done, (b) git grep ''bash$'' scripts/coord scripts/dispatch
+    scripts/ops shows total LOC drop from current 16800+ to under 8000, (c) docs/strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md
+    gets a Phase 2 Complete addendum, (d) ambient emit kind=meta_107_complete fires with sum_lines_out=10487 + per-cutover
+    breakdown'
+  - 'Rollback story for the umbrella: each individual cutover gap is independently rollback-able (24h hot-rollback window
+    per cutover); umbrella never needs to be reverted wholesale; failure of one cutover does not block the others'
+  depends_on:
+  - INFRA-2060
+  - INFRA-2061
+  - INFRA-2062
+  - INFRA-2063
+  - INFRA-2064
+  - INFRA-2065
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd. Phase 2 cutover follow-up arc for META-107. Phase 1 (INFRA-1997..INFRA-2002)
+    shipped Rust binaries feature-flagged in parallel; these 6 cutover gaps remove the original bash/python bodies after a
+    parallel-run validation window. Total LOC out: 10487 — exceeds META-107 AC #3 target of <8000 from 16800 (delta of 10487
+    - 8800 = ~1687 LOC of CLI shim + glue scripts remain by design).
 
+    '
+  closed_date: '2026-06-05'
+  closed_pr: 2662

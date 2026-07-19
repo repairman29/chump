@@ -1,14 +1,16 @@
 - id: INFRA-1423
   domain: INFRA
-  title: "RESILIENT: orphan-PR-closer must check PR's own commits for gap yaml before killing (today killed PR #2063 because state.db drift hid PRODUCT-120; yaml WAS in the PR's own diff but closer only checked main)"
-  status: open
+  title: 'RESILIENT: orphan-PR-closer must check PR''s own commits for gap yaml before killing (today killed PR #2063 because
+    state.db drift hid PRODUCT-120; yaml WAS in the PR''s own diff but closer only checked main)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - scripts/coord/orphan-pr-closer.sh checks the PR's own commit diff for docs/gaps/<id>.yaml BEFORE consulting main
-    - If yaml is in PR's diff, treat gap as registered (regardless of main state)
-    - If yaml absent from BOTH PR diff AND main, current orphan-close path applies
-    - Emit kind=orphan_close_skipped {pr, gap_id, reason=in_pr_diff} when sparing
-    - "Smoke test scripts/ci/test-orphan-closer-pr-diff-check.sh: open PR with new gap yaml, assert closer skips"
-    - "Repro of 2026-05-15 PR #2063 incident in the test fixture"
-
+  - scripts/coord/orphan-pr-closer.sh checks the PR's own commit diff for docs/gaps/<id>.yaml BEFORE consulting main
+  - If yaml is in PR's diff, treat gap as registered (regardless of main state)
+  - If yaml absent from BOTH PR diff AND main, current orphan-close path applies
+  - Emit kind=orphan_close_skipped {pr, gap_id, reason=in_pr_diff} when sparing
+  - 'Smoke test scripts/ci/test-orphan-closer-pr-diff-check.sh: open PR with new gap yaml, assert closer skips'
+  - 'Repro of 2026-05-15 PR #2063 incident in the test fixture'
+  closed_date: '2026-05-16'
+  closed_pr: 3159

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "MISSION: Launch playbook — Show HN + Lobste.rs + r/rust + dev.to coordinated post + 'why we built this' narrative"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Chump's business thesis is undermarketed (operator's own words: 4/10). Launch-the-product-on-public-channels playbook: coordinated post on HackerNews + Lobsters + r/rust + dev.to with a 'why we built this' narrative. Differentiator hook: 'the only fleet coordinator that runs offline on your Mac, harness-agnostic'. Time-window dependency: requires PR #2113 (June-6 demo) ready + EVAL-102 result.
@@ -12,4 +12,7 @@
     - "Pre-launch checklist: tap published (done), demo video, public dashboard URL, 5 dogfooders confirmed (PRODUCT-119), changelog public"
     - "Post-launch checklist: monitor comments live for first 4h, draft 3 follow-on tweets, capture critique into FEEDBACK loop"
     - Cross-link from docs/ROADMAP.md Phase 4
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

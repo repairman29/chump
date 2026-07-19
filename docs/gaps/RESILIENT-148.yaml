@@ -1,0 +1,11 @@
+- id: RESILIENT-148
+  domain: RESILIENT
+  title: "RESILIENT: conductor/keep-shipping unwedge driver is session-bound (dies with operator Claude Code session) — fleet has no durable recovery when operator away; move to launchd"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - The keep-shipping/unwedge conductor driver runs as a launchd daemon, not a session-bound /loop, so the fleet recovers when the operator session is away.
+    - "Recovery actions include: clear stale fleet-paused, drive open PRs toward merge, relaunch dead workers."
+    - Emits a heartbeat; fleet-doctor flags if the durable conductor is dead.
+

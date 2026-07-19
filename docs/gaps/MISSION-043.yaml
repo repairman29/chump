@@ -1,51 +1,32 @@
 - id: MISSION-043
   domain: MISSION
-  title: "MISSION: 11 BEAST-MODE PRs opened by fleet, 0 merged — no merge-confirmation loop or stranded-PR backpressure"
-  status: open
+  title: 'MISSION: 11 BEAST-MODE PRs opened by fleet, 0 merged — no merge-confirmation loop or stranded-PR backpressure'
+  status: done
   priority: P0
   effort: m
   opened_date: '2026-06-22'
-  description: |
-    The fleet's external-repo strategy for MISSION-010 (zero-human-touch delivery on
-    repairman29/BEAST-MODE) has opened at least 11 PRs on BEAST-MODE. Zero have merged.
-
-    Evidence (Issue #17, 2026-06-22):
-      bash scripts/dev/mission-scoreboard.sh
-      → ① THE BINARY: ❌ NO (BEAST merges last 7d: 0)
-      → VERDICT: 🔴 STALLED
-
-      git log origin/main --format='%B' | grep -o 'BEAST PR[s]* #[0-9/#]*'
-      → BEAST PRs #10/#11  (at least 11 PRs opened, commit EFFECTIVE-291 2026-06-22)
-
-    Root cause (EFFECTIVE-291, 2026-06-22): PRs #10 and #11 were branched from a
-    February 2026 BEAST-MODE HEAD — months stale. Gates that had been fixed on the
-    real BEAST-MODE main were absent from the branch base. EFFECTIVE-291 fixes the
-    stale-clone problem for future runs. But the 11 stranded PRs are not retroactively
-    fixed and no mechanism closes them.
-
-    Structural gap: the fleet has no "stop opening new PRs until existing ones merge"
-    gate. EFFECTIVE-288 (GREEN-FIRST) fires a CI-fix pick when >=2 PRs share a failing
-    gate — a partial backpressure — but it fires after damage is already N PRs deep and
-    does not close stranded PRs.
-
-    The fleet references MISSION-010 as the canonical gap in 3 commit subjects this
-    cycle. MISSION-010 does not exist in the gap store (MISSION-042, filed Issue #16,
-    unaddressed). Commits invoke a ghost gap as their north star while the metric
-    stays zero.
-
-    Fix path:
-    (a) Immediately: triage the 11 stranded BEAST-MODE PRs — close stale ones, rebase
-        rebased ones, identify which (if any) are mergeable with a CI fix.
-    (b) Add a pre-open-PR check in chump improve: if >=3 open PRs exist on the
-        external repo, block new PR creation until at least one merges or closes.
-    (c) Add a merge-confirmation step: after `gh pr create`, poll for merge within N
-        minutes; emit ambient kind=beast_pr_merged or kind=beast_pr_stalled.
-    (d) File MISSION-010 as a real gap (MISSION-042 AC) so commits reference an
-        actual pickable tracking artifact.
+  description: "The fleet's external-repo strategy for MISSION-010 (zero-human-touch delivery on\nrepairman29/BEAST-MODE)\
+    \ has opened at least 11 PRs on BEAST-MODE. Zero have merged.\n\nEvidence (Issue #17, 2026-06-22):\n  bash scripts/dev/mission-scoreboard.sh\n\
+    \  → ① THE BINARY: ❌ NO (BEAST merges last 7d: 0)\n  → VERDICT: \U0001F534 STALLED\n\n  git log origin/main --format='%B'\
+    \ | grep -o 'BEAST PR[s]* #[0-9/#]*'\n  → BEAST PRs #10/#11  (at least 11 PRs opened, commit EFFECTIVE-291 2026-06-22)\n\
+    \nRoot cause (EFFECTIVE-291, 2026-06-22): PRs #10 and #11 were branched from a\nFebruary 2026 BEAST-MODE HEAD — months\
+    \ stale. Gates that had been fixed on the\nreal BEAST-MODE main were absent from the branch base. EFFECTIVE-291 fixes\
+    \ the\nstale-clone problem for future runs. But the 11 stranded PRs are not retroactively\nfixed and no mechanism closes\
+    \ them.\n\nStructural gap: the fleet has no \"stop opening new PRs until existing ones merge\"\ngate. EFFECTIVE-288 (GREEN-FIRST)\
+    \ fires a CI-fix pick when >=2 PRs share a failing\ngate — a partial backpressure — but it fires after damage is already\
+    \ N PRs deep and\ndoes not close stranded PRs.\n\nThe fleet references MISSION-010 as the canonical gap in 3 commit subjects\
+    \ this\ncycle. MISSION-010 does not exist in the gap store (MISSION-042, filed Issue #16,\nunaddressed). Commits invoke\
+    \ a ghost gap as their north star while the metric\nstays zero.\n\nFix path:\n(a) Immediately: triage the 11 stranded\
+    \ BEAST-MODE PRs — close stale ones, rebase\n    rebased ones, identify which (if any) are mergeable with a CI fix.\n\
+    (b) Add a pre-open-PR check in chump improve: if >=3 open PRs exist on the\n    external repo, block new PR creation until\
+    \ at least one merges or closes.\n(c) Add a merge-confirmation step: after `gh pr create`, poll for merge within N\n \
+    \   minutes; emit ambient kind=beast_pr_merged or kind=beast_pr_stalled.\n(d) File MISSION-010 as a real gap (MISSION-042\
+    \ AC) so commits reference an\n    actual pickable tracking artifact.\n"
   acceptance_criteria:
-    - "All open stranded BEAST-MODE PRs are either merged, closed, or marked as explicitly deferred with a comment"
-    - "chump improve blocks new PR creation on an external repo when >=3 open PRs exist (configurable threshold)"
-    - "mission-scoreboard.sh reports ① YES at least once — a zero-human-touch PR has merged on repairman29/BEAST-MODE"
-    - "MISSION-010 gap file exists in docs/gaps/ (MISSION-042 AC #1 met)"
+  - All open stranded BEAST-MODE PRs are either merged, closed, or marked as explicitly deferred with a comment
+  - chump improve blocks new PR creation on an external repo when >=3 open PRs exist (configurable threshold)
+  - mission-scoreboard.sh reports ① YES at least once — a zero-human-touch PR has merged on repairman29/BEAST-MODE
+  - 'MISSION-010 gap file exists in docs/gaps/ (MISSION-042 AC #1 met)'
   raised_by: cold-water
   raised_in: RED_LETTER#17
+  closed_date: '2026-06-05'

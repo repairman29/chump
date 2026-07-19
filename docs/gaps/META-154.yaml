@@ -1,19 +1,31 @@
 - id: META-154
   domain: META
-  title: chump sibling-status — per-active-lease progress matrix (progressing/in-flight/heartbeat-only/stalled/silent), beats 'lease exists'
-  status: open
+  title: chump sibling-status — per-active-lease progress matrix (progressing/in-flight/heartbeat-only/stalled/silent), beats
+    'lease exists'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Demonstrated 2026-05-30: SessionStart digest showed me 3 active sibling leases (INFRA-2238, INFRA-2239, INFRA-2240) with their session_ids + expiry. That told me nothing about whether each was making progress, idle, or stalled. I had to manually grep ambient by session_id to find out (and found INFRA-2240 was actively editing files while INFRA-2238 had only emitted heartbeats). Beats "lease exists" by adding the actually-doing-what dimension. Pairs with META-152 (lane-recommend uses this signal) and META-132 (fresh-eyes uses this signal as comparator #3 input).
-  acceptance_criteria:
-    - chump sibling-status CLI exists; one row per active claim-*.json in .chump-locks/; output human table + --json
-    - "Per-lease columns: gap_id, session_id, age, last_commit_ts (vs git), last_file_edit_ts (vs ambient kind=file_edit), last_broadcast_ts (vs ambient broadcast events), last_heartbeat_ts, status_classification"
-    - "Status classifications: progressing (commit in last 30min), in-flight (file_edit but no commit in last 30min), heartbeat-only (heartbeat in last 30min but no edit/commit/broadcast — silent_agent candidate), stalled (lease age > 2h AND no activity in last 30min), silent (no heartbeat in last hour), expired (lease past expires_at)"
-    - "Auto-surface: SessionStart digest folds sibling-status one-line summary (\"3 leases: 1 progressing, 1 in-flight, 1 heartbeat-only\") replacing the existing \"Active sibling leases\" raw list"
-    - "--watch mode: refreshes every 30s, terminal screen redraw, exits on Ctrl-C"
-    - Emit kind=sibling_status_polled {progressing, in_flight, heartbeat_only, stalled, silent, expired} to ambient on each non-watch invocation; register in EVENT_REGISTRY.yaml
-    - "scripts/ci/test-sibling-status.sh fixture: 5 synthetic claim files + 5 synthetic ambient event patterns — assert each lease classified correctly"
-    - Reads from .chump-locks/ambient.jsonl directly (not gh) — must work offline and respond <500ms even with 10k ambient lines
-  notes: META-154 work in flight; PR opening shortly
+  description: 'Demonstrated 2026-05-30: SessionStart digest showed me 3 active sibling leases (INFRA-2238, INFRA-2239, INFRA-2240)
+    with their session_ids + expiry. That told me nothing about whether each was making progress, idle, or stalled. I had
+    to manually grep ambient by session_id to find out (and found INFRA-2240 was actively editing files while INFRA-2238 had
+    only emitted heartbeats). Beats "lease exists" by adding the actually-doing-what dimension. Pairs with META-152 (lane-recommend
+    uses this signal) and META-132 (fresh-eyes uses this signal as comparator #3 input).
 
+    '
+  acceptance_criteria:
+  - chump sibling-status CLI exists; one row per active claim-*.json in .chump-locks/; output human table + --json
+  - 'Per-lease columns: gap_id, session_id, age, last_commit_ts (vs git), last_file_edit_ts (vs ambient kind=file_edit), last_broadcast_ts
+    (vs ambient broadcast events), last_heartbeat_ts, status_classification'
+  - 'Status classifications: progressing (commit in last 30min), in-flight (file_edit but no commit in last 30min), heartbeat-only
+    (heartbeat in last 30min but no edit/commit/broadcast — silent_agent candidate), stalled (lease age > 2h AND no activity
+    in last 30min), silent (no heartbeat in last hour), expired (lease past expires_at)'
+  - 'Auto-surface: SessionStart digest folds sibling-status one-line summary ("3 leases: 1 progressing, 1 in-flight, 1 heartbeat-only")
+    replacing the existing "Active sibling leases" raw list'
+  - '--watch mode: refreshes every 30s, terminal screen redraw, exits on Ctrl-C'
+  - Emit kind=sibling_status_polled {progressing, in_flight, heartbeat_only, stalled, silent, expired} to ambient on each
+    non-watch invocation; register in EVENT_REGISTRY.yaml
+  - 'scripts/ci/test-sibling-status.sh fixture: 5 synthetic claim files + 5 synthetic ambient event patterns — assert each
+    lease classified correctly'
+  - Reads from .chump-locks/ambient.jsonl directly (not gh) — must work offline and respond <500ms even with 10k ambient lines
+  notes: META-154 work in flight; PR opening shortly
+  closed_pr: 2823

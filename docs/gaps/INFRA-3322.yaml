@@ -1,0 +1,32 @@
+- id: INFRA-3322
+  domain: INFRA
+  title: "PR #3186 stuck [CI-RED] — CI red for 59m"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3186
+    
+    Detected by stuck-pr-filer (2026-07-05T09:12:16Z).
+    
+    Trigger: CI red for 59m
+    At least one required check has been failing for 59m (threshold 20m). Failing check: audit.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3186 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-3302
+    Branch: chump/infra-3302-claim
+    Failing check: audit
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-07-05T17:13:03Z] auto-closed by stuck-pr-filer: PR #3186 resolved (CLOSED)
+  closed_pr: 3186
+

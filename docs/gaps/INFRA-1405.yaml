@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE: event-driven auto-rebase on local-push OR pull_request.synchronize webhook — replaces pr-rescue.sh 2h cron without coupling to GitHub"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Root-cause reframe (Chief of Product, 2026-05-16): the original spec said 'on pull_request.synchronize webhook'. Same anti-offline trap as INFRA-1392: hard-coupling to a GitHub-delivered event. Reframe so the same logic fires on the LOCAL signal that triggers a stale rebase need (local main moved while a feature branch was open)."
@@ -15,4 +15,7 @@
     - "Cost: zero API spend in offline mode; in online mode, one webhook delivery + one git fetch per main-bump (vs N fetches per cron cycle today). chump waste-tally --kind rebase_daemon attributes wall-clock."
     - "Acceptance: scripts/ci/test-rebase-daemon-offline.sh seeds 3 open branches behind main, advances local main, asserts all 3 rebase within 30s of the post-receive hook firing, with no GitHub call (verified via stub or tcpdump). scripts/ci/test-rebase-daemon-online.sh same scenario but via webhook."
     - Pairs with INFRA-1323 (local merge queue) — both consume the same TRIGGER_LOCAL signal. Pairs with INFRA-1392 (proof-of-merge) — rebase success doesn't flip gap status; the eventual merge does.
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

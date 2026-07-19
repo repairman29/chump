@@ -1,21 +1,37 @@
 - id: INFRA-2007
   domain: INFRA
-  title: "RESILIENT: W-002 binary-cache-lag permanent fix — runner binary diverges from origin/main HEAD; refresh-runner-binary daemon not keeping up"
-  status: open
+  title: 'RESILIENT: W-002 binary-cache-lag permanent fix — runner binary diverges from origin/main HEAD; refresh-runner-binary
+    daemon not keeping up'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Today: refresh-runner-binary daemon runs on cron (default 5min); installed binary SHA can be up to 5min stale vs origin/main HEAD; wedge-state-machine flagged this as W-002 chronic on 2026-05-25 (fired 3+ in 24h)"
-    - "Pick ONE of three remediations (operator decides):  (a) Tighten cadence: 5min → 60s in scripts/setup/install-refresh-runner-binary-launchd.sh — costs CPU + GH api on every check  (b) Event-driven: chump itself emits kind=binary_main_updated on post-commit-merge; refresh-runner-binary subscribes to that kind via inotify on ambient.jsonl — zero-overhead between updates  (c) Hybrid: keep 5min poll AS FALLBACK + add event-driven path; rate-limit so only 1 rebuild per 60s window"
-    - "(b) is preferred — eliminates the entire W-002 class structurally rather than reducing the lag window. Same pattern as INFRA-1997 env_clear for INFRA-1986."
-    - "After fix: wedge-state-machine W-002 chronic event count should drop to 0 in 24h observation window"
-    - "Smoke test scripts/ci/test-binary-cache-event-driven.sh: synthesize a chump main commit + assert refresh-runner-binary triggers within 5sec (event-driven path)"
-    - "Catalyst: wedge_chronic event in .chump-locks/ambient.jsonl 2026-05-25T18:13:13Z; W-002 fired on every check-in for ~12 hours before the chronic threshold tripped"
-  description: |
-    The first real chronic detection from THE FLOOR's wedge state machine.
+  - 'Today: refresh-runner-binary daemon runs on cron (default 5min); installed binary SHA can be up to 5min stale vs origin/main
+    HEAD; wedge-state-machine flagged this as W-002 chronic on 2026-05-25 (fired 3+ in 24h)'
+  - 'Pick ONE of three remediations (operator decides):  (a) Tighten cadence: 5min → 60s in scripts/setup/install-refresh-runner-binary-launchd.sh
+    — costs CPU + GH api on every check  (b) Event-driven: chump itself emits kind=binary_main_updated on post-commit-merge;
+    refresh-runner-binary subscribes to that kind via inotify on ambient.jsonl — zero-overhead between updates  (c) Hybrid:
+    keep 5min poll AS FALLBACK + add event-driven path; rate-limit so only 1 rebuild per 60s window'
+  - (b) is preferred — eliminates the entire W-002 class structurally rather than reducing the lag window. Same pattern as
+    INFRA-1997 env_clear for INFRA-1986.
+  - 'After fix: wedge-state-machine W-002 chronic event count should drop to 0 in 24h observation window'
+  - 'Smoke test scripts/ci/test-binary-cache-event-driven.sh: synthesize a chump main commit + assert refresh-runner-binary
+    triggers within 5sec (event-driven path)'
+  - 'Catalyst: wedge_chronic event in .chump-locks/ambient.jsonl 2026-05-25T18:13:13Z; W-002 fired on every check-in for ~12
+    hours before the chronic threshold tripped'
+  description: 'The first real chronic detection from THE FLOOR''s wedge state machine.
+
     Confirmed real signal — not a smoke test. Operator action: pick remediation
+
     OR delegate to a worker.
 
-    Coordinates with INFRA-1997 (shepherd's Rust port of pre-push) — IF that
+
+    Coordinates with INFRA-1997 (shepherd''s Rust port of pre-push) — IF that
+
     Rust hook framework lands, the post-commit emit (path b) can use the
-    crate's typed event helpers instead of a printf-based ambient emit.
+
+    crate''s typed event helpers instead of a printf-based ambient emit.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2626
