@@ -195,7 +195,7 @@ pub fn run(args: &[String]) -> i32 {
             println!(
                 "    [{:>2}] {:<30} completed_at={} result={}",
                 s.step_index,
-                &s.step_name,
+                s.step_name,
                 s.completed_at.as_deref().unwrap_or("?"),
                 result_preview,
             );

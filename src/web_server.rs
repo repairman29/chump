@@ -9029,7 +9029,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         );
     }
     eprintln!("[web] Chump Web listening on http://0.0.0.0:{}", bound_port);
-    eprintln!("[web] serving Chump PWA from {:?}", &static_dir);
+    eprintln!("[web] serving Chump PWA from {:?}", static_dir);
 
     // INFRA-167: pre-warm the configured Ollama model on startup so the
     // first user turn doesn't pay 5-15 s cold-load. Best-effort, async,
