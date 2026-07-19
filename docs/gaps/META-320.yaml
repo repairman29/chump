@@ -1,0 +1,14 @@
+- id: META-320
+  domain: META
+  title: Mirror reaper/daemon/resilience gates cluster into chump preflight (META-086 follow-up)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-086 cluster follow-up: mirror the Reaper / daemon / resilience gates cluster (30 scripts) from ci.yml fast-checks job into chump preflight. See docs/process/AUDIT_JOB_DECOMPOSITION.md for the full script list.
+  acceptance_criteria:
+    - "Every script in the Reaper / daemon / resilience gates cluster (test-auto-arm-sweeper, test-autoscale-decisions, test-cargo-target-reaper, test-changes-job-self-hosted, test-chump-improve, test-ci-flake-rerun, test-claude-reaper, test-default-flip-guard, test-deliberator-tick-emits, test-external-verify-merge, test-flake-autorerun, test-fleet-fanout, test-fleet-kill-switch, test-fleet-spec, test-fleet-starve-auto-action, test-git-identity-guard, test-hardcoded-date-guard, test-infra-115-lease-ttl-file, test-infra-258-reaper-partial-delivery, test-install-ambient-hooks, test-keystone-cascade, test-migration-pipeline-gates, test-no-verify-audit, test-rollup-semantic, test-run-fleet-cross-repo, test-sandbox-isolation, test-spike-isolation, test-stale-process-watchdog, test-supervision-trees, test-worktree-reaper-safety) is either mirrored as a GateKind::Scripts gate in src/preflight.rs, or classified Tier-D in docs/process/CI_GATES_INVENTORY.md with a reason"
+    - docs/process/AUDIT_JOB_DECOMPOSITION.md 'Mirrored?' column updated to yes for every mirrored script in this cluster
+    - scripts/ci/test-preflight-ci-parity.sh passes for the newly-mirrored scripts
+  depends_on: [META-086]
+
