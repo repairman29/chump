@@ -8236,3 +8236,13 @@ events:
     consumers: [fleet-brief, audit-log, infra-watcher]
     fields_required: [ts, kind, auth_ok, kicked]
     fields_optional: [note]
+
+  - kind: bot_merge_enqueue_failed
+    effect_metric: waste_prevented
+    emitter: scripts/coord/bot-merge.sh Mode A enqueue block (CREDIBLE-154)
+    trigger: Mode A marked a gap ready_to_ship but the write could not be
+      verified in the CANONICAL state.db (worktree-local db resolution class,
+      the 2026-07-19 phantom-ship root cause) — bot-merge fails open to Mode B
+      per-PR flow instead of silently stranding the gap
+    consumers: [fleet-brief, audit-log, ci-audit]
+    fields_required: [ts, kind, gap_id, note]

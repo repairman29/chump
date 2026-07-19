@@ -10,8 +10,4 @@
   closed_pr: 3182
   evidence: |
     2026-06-23: fleet halted for HOURS — the farmer read a cached 'AUTH BROKEN' (CHUMP_AUTH_STATUS_TTL_S=600) and refused to spawn workers + paged AUTH_DEAD, while a forced-fresh probe (TTL=0) validated oauth OK in BOTH my shell AND a stripped launchd-like env. Credential was valid the whole time; the stale cache was the false-positive. This is the concrete root cause of the recurring #1-false-positive auth-dead class (CREDIBLE-090 reality-check).
-  evidence: |
-    2026-06-23: fleet halted for HOURS — the farmer read a cached 'AUTH BROKEN' (CHUMP_AUTH_STATUS_TTL_S=600) and refused to spawn workers + paged AUTH_DEAD, while a forced-fresh probe (TTL=0) validated oauth OK in BOTH my shell AND a stripped launchd-like env. Credential was valid the whole time; the stale cache was the false-positive. This is the concrete root cause of the recurring #1-false-positive auth-dead class (CREDIBLE-090 reality-check).
-  evidence: |
-    2026-06-23: fleet halted for HOURS — the farmer read a cached 'AUTH BROKEN' (CHUMP_AUTH_STATUS_TTL_S=600) and refused to spawn workers + paged AUTH_DEAD, while a forced-fresh probe (TTL=0) validated oauth OK in BOTH my shell AND a stripped launchd-like env. Credential was valid the whole time; the stale cache was the false-positive. This is the concrete root cause of the recurring #1-false-positive auth-dead class (CREDIBLE-090 reality-check).
 

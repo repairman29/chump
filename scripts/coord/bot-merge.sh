@@ -1870,16 +1870,40 @@ if [[ "$_BM_MODE" == "A" ]]; then
         # Fall through to existing PR-create flow below (no exit).
     else
         # NATS succeeded: mark gap status and emit ambient event.
+        # CREDIBLE-154: this used to run bare `chump gap set ... || true` from
+        # inside the claim worktree — which resolves to the WORKTREE-LOCAL
+        # .chump/state.db, so the canonical registry never saw ready_to_ship,
+        # the integrator queue stayed empty, and the worker's "shipped" was a
+        # phantom (2 of the first 3 post-revival ships, 2026-07-19). Pin the
+        # CANONICAL repo (main worktree) and VERIFY the write landed; on
+        # failure, fail open to Mode B instead of silently pretending.
+        _bm_a_enqueued=0
         if [[ -n "$_bm_route_gap" ]]; then
-            chump gap set "$_bm_route_gap" --status ready_to_ship 2>/dev/null || true
-            chump gap set "$_bm_route_gap" --notes-append \
+            _bm_canon_repo="$(git worktree list --porcelain 2>/dev/null \
+                | awk '/^worktree /{print $2; exit}')"
+            [[ -n "$_bm_canon_repo" ]] || _bm_canon_repo="${REPO_ROOT:-$PWD}"
+            if CHUMP_REPO="$_bm_canon_repo" chump gap set "$_bm_route_gap" \
+                    --status ready_to_ship 2>/dev/null; then
+                _bm_ack="$(sqlite3 "${_bm_canon_repo}/.chump/state.db" \
+                    "SELECT status FROM gaps WHERE id='${_bm_route_gap}'" 2>/dev/null || true)"
+                [[ "$_bm_ack" == "ready_to_ship" ]] && _bm_a_enqueued=1
+            fi
+            CHUMP_REPO="$_bm_canon_repo" chump gap set "$_bm_route_gap" --notes-append \
                 "Mode: batched (chump-integrator-daemon will pick up)" 2>/dev/null || true
         fi
+        if [[ "$_bm_a_enqueued" == "1" ]]; then
+            _ambient_write "$_bm_a_amb" \
+                "$(printf '{"ts":"%s","kind":"gap_routed_to_batched","gap_id":"%s","branch":"%s","mode":"A","note":"INFRA-2133: routed to integration queue (canonical-db verified, CREDIBLE-154); chump-integrator-daemon will ship"}' \
+                    "$_bm_a_ts" "$_bm_route_gap" "$BRANCH")"
+            green "Gap ${_bm_route_gap:-none} routed to batched integration queue (canonical-db verified). Integrator daemon will ship in next cycle."
+            exit 0
+        fi
+        # scanner-anchor: "kind":"bot_merge_enqueue_failed"
         _ambient_write "$_bm_a_amb" \
-            "$(printf '{"ts":"%s","kind":"gap_routed_to_batched","gap_id":"%s","branch":"%s","mode":"A","note":"INFRA-2133: routed to integration queue; chump-integrator-daemon will ship"}' \
-                "$_bm_a_ts" "$_bm_route_gap" "$BRANCH")"
-        green "Gap ${_bm_route_gap:-none} routed to batched integration queue. Integrator daemon will ship in next cycle."
-        exit 0
+            "$(printf '{"ts":"%s","kind":"bot_merge_enqueue_failed","gap_id":"%s","note":"CREDIBLE-154: Mode A ready_to_ship write did not land in canonical state.db — failing open to Mode B per-PR flow"}' \
+                "$_bm_a_ts" "$_bm_route_gap")"
+        info "CREDIBLE-154: Mode A enqueue unverified in canonical db — failing open to Mode B (per-PR flow)."
+        # Fall through to existing PR-create flow below (no exit).
     fi
 fi
 # Mode B or C: fall through to existing PR-create + auto-merge flow (unchanged).

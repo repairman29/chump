@@ -1788,7 +1788,34 @@ Operator or sibling worker can rescue this branch via:
     _cycle_elapsed=$(( _cycle_end_s - ${_cycle_start_s:-_cycle_end_s} ))
     _cycle_kind="failed"
     if [ "$rc" -eq 0 ]; then
-        _cycle_kind="shipped"
+        # CREDIBLE-154: rc==0 is a CLAIM, not an outcome. "shipped" requires
+        # evidence a PR actually exists for this gap's branch (2 of the first
+        # 3 "ships" after the 2026-07-19 revival were phantoms: Mode A marked
+        # ready_to_ship in the worktree-local db and no PR was ever created).
+        # Evidence, cheapest first: webhook cache by head_ref → canonical-db
+        # gap status → gh fallback. No evidence → kind=unverified_ship.
+        _ship_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        _ship_evidence=""
+        _cache_db="${REPO_ROOT}/.chump/github_cache.db"
+        if [ -f "$_cache_db" ]; then
+            _ship_evidence="$(sqlite3 "$_cache_db" \
+                "SELECT number FROM pr_state WHERE head_ref='${_ship_branch}' LIMIT 1" 2>/dev/null || true)"
+        fi
+        if [ -z "$_ship_evidence" ]; then
+            _gap_now="$(CHUMP_REPO="$REPO_ROOT" chump gap show "$GAP_ID" 2>/dev/null \
+                | grep -m1 -oE 'status: *[a-z_]+' | awk '{print $2}' || true)"
+            case "$_gap_now" in ready_to_ship|done|shipped) _ship_evidence="status:$_gap_now" ;; esac
+        fi
+        if [ -z "$_ship_evidence" ]; then
+            _ship_evidence="$(gh pr list --head "$_ship_branch" --state all --json number \
+                --jq '.[0].number // empty' 2>/dev/null || true)"
+        fi
+        if [ -n "$_ship_evidence" ]; then
+            _cycle_kind="shipped"
+        else
+            _cycle_kind="unverified_ship"
+            log "CREDIBLE-154: rc=0 but NO ship evidence (branch=${_ship_branch}, no PR in cache/gh, gap not ready_to_ship) — classifying unverified_ship"
+        fi
     elif [ "${_is_wedge:-0}" -eq 1 ]; then
         _cycle_kind="wedge"
     elif [ "$rc" -eq 124 ]; then
