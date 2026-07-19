@@ -309,7 +309,7 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
                 newly_failing.len(),
                 newly_failing.join(", ")
             );
-            println!("  FAIL: {}", &reason);
+            println!("  FAIL: {}", reason);
             emit_held(&opts, &reason);
             println!("\nVerdict: HELD(regression)");
             println!("  {reason}");
