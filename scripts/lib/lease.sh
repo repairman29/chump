@@ -19,6 +19,7 @@
 #   lease_session_id <path>              shortcut for `lease_field … session_id`
 #   lease_gap_id <path>                  shortcut for `lease_field … gap_id`
 #   lease_worktree <path>                shortcut for `lease_field … worktree`
+#   lease_worktree_from_statedb <gap_id> [<db>]   worktree path for a state.db-only lease
 #
 # Implementation notes
 # - Parsers grep-based on purpose: jq is not always present on minimal CI
@@ -158,4 +159,23 @@ lease_session_from_statedb() {
     fi
     [[ -f "$db" ]] || return 0
     sqlite3 "$db" "SELECT session_id FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
+}
+
+# lease_worktree_from_statedb <gap_id> [<state_db_path>]
+#   Echoes the worktree path holding <gap_id>'s canonical lease (empty if
+#   none / no sqlite3). Sibling of lease_session_from_statedb (INFRA-1901) —
+#   lets a caller check "am I already sitting inside the claimed worktree?"
+#   before attempting a redundant `chump claim`.
+lease_worktree_from_statedb() {
+    local gap_id="$1" db="${2:-}"
+    [[ "$gap_id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    if [[ -z "$db" ]]; then
+        local repo gitdir
+        gitdir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        if [[ -n "$gitdir" ]]; then repo="$(dirname "$gitdir")"; else repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
+        db="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+    fi
+    [[ -f "$db" ]] || return 0
+    sqlite3 "$db" "SELECT worktree FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
 }

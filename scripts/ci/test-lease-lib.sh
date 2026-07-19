@@ -164,6 +164,18 @@ if command -v sqlite3 >/dev/null 2>&1; then
     sqlite3 "$SDB" "SELECT 1 FROM leases LIMIT 1;" >/dev/null 2>&1 \
         && ok "leases table intact after unsafe gap id (no SQL injection)" \
         || fail "leases table harmed by unsafe gap id (injection!)"
+
+    # ── INFRA-1901: lease_worktree_from_statedb ──────────────────────────────
+    got="$(lease_worktree_from_statedb INFRA-2744 "$SDB")"
+    [[ "$got" == "/tmp/wt" ]] \
+        && ok "lease_worktree_from_statedb resolves worktree from state.db" \
+        || fail "lease_worktree_from_statedb got='$got' (expected /tmp/wt)"
+    got="$(lease_worktree_from_statedb NOPE-0000 "$SDB")"
+    [[ -z "$got" ]] && ok "lease_worktree_from_statedb empty for absent gap" \
+        || fail "lease_worktree_from_statedb absent-gap got='$got' (expected empty)"
+    got="$(lease_worktree_from_statedb "x'; DROP TABLE leases;--" "$SDB")"
+    [[ -z "$got" ]] && ok "lease_worktree_from_statedb rejects SQL-unsafe gap id" \
+        || fail "lease_worktree_from_statedb unsafe-id got='$got' (expected empty)"
 else
     ok "sqlite3 absent — skipping INFRA-2744 state.db lease reader tests"
 fi

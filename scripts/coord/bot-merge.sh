@@ -2035,62 +2035,102 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     # "${arr[@]}". Build the optional flag as a string, then word-split via $arr.
     _claim_extra=""
     [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
+    # BOT_MERGE_CLAIM_BLOCK_START (INFRA-1901) — anchor for test-bot-merge-already-claimed.sh
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
-            # META-156 AC#2: re-claim failure auto-retry.
-            # If `chump claim` fails with "worktree already exists", detect whether
-            # the existing claim belongs to OUR session_id (CHUMP_SESSION_ID). If so,
-            # retry with --force-recover (same session; safe to re-enter). If a
-            # different session owns it, fail fast with an operator-visible message.
-            _claim_rc=0
-            _claim_out=""
-            _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
-            if [[ "$_claim_rc" -ne 0 ]]; then
-                _claim_worktree_exists=0
-                if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then  # pipefail-sweep-allowed
-                    _claim_worktree_exists=1
-                fi
-                if [[ "$_claim_worktree_exists" -eq 1 ]]; then
-                    # Check existing claim's session_id via the lease file.
-                    _existing_claim_session=""
-                    for _lf in "$LOCK_DIR"/*.json; do
-                        [[ -f "$_lf" ]] || continue
-                        _lf_gid="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('gap_id',''))" "$_lf" 2>/dev/null || true)"
-                        if [[ "$_lf_gid" == "$gid" ]]; then
-                            _existing_claim_session="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('session_id',''))" "$_lf" 2>/dev/null || true)"
-                            break
-                        fi
-                    done
-                    # INFRA-2744: JSON lock files are legacy; interactive `chump
-                    # claim` writes the lease to the canonical state.db only. Fall
-                    # back to it so we recognize the operator's own claim.
-                    if [[ -z "$_existing_claim_session" ]]; then
-                        _existing_claim_session="$(lease_session_from_statedb "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+            # INFRA-1901: if we're already sitting inside the worktree that holds
+            # this gap's canonical lease, skip the `chump claim` re-invocation
+            # entirely — it's redundant and, per the 2026-05-23 baseline, its
+            # failure path forced 3/4 sub-agents into manual gh pr create/merge
+            # recovery. CHUMP_BOT_MERGE_SKIP_CLAIM=1 restores the old
+            # unconditional-claim behavior for debugging.
+            _skip_claim=0
+            if [[ "${CHUMP_BOT_MERGE_SKIP_CLAIM:-0}" == "1" ]]; then
+                chump ambient emit bot_merge_skip_claim_lax "gap=$gid" 2>/dev/null || true
+            else
+                _lease_wt=""
+                for _lf in "$LOCK_DIR"/*.json; do
+                    [[ -f "$_lf" ]] || continue
+                    if [[ "$(lease_gap_id "$_lf")" == "$gid" ]]; then
+                        _lease_wt="$(lease_worktree "$_lf")"
+                        [[ -n "$_lease_wt" ]] && break
                     fi
-                    if [[ -n "${CHUMP_SESSION_ID:-}" && "$_existing_claim_session" == "$CHUMP_SESSION_ID" ]]; then
-                        # Same session — the existing worktree + (committed,
-                        # possibly-unpushed) branch are already OURS. INFRA-2744:
-                        # do NOT `chump claim --force-recover` here — it removes the
-                        # worktree dir + local branch, destroying committed-but-
-                        # unpushed work. The claim is already ours; no-op and reuse
-                        # the existing worktree + branch for the ship steps.
-                        info "INFRA-2744: re-claim no-op — gap $gid already held by our session ($CHUMP_SESSION_ID); reusing existing worktree + branch"
+                done
+                if [[ -z "$_lease_wt" ]]; then
+                    # INFRA-2744: interactive `chump claim` writes state.db only.
+                    _lease_wt="$(lease_worktree_from_statedb "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+                fi
+                if [[ -n "$_lease_wt" ]]; then
+                    # Resolve symlinks on both sides (INFRA-779: /tmp vs
+                    # /private/tmp) before comparing pwd against the lease.
+                    _real_pwd="$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$PWD" 2>/dev/null || echo "$PWD")"
+                    _real_lease_wt="$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$_lease_wt" 2>/dev/null || echo "$_lease_wt")"
+                    if [[ "$_real_pwd" == "$_real_lease_wt" || "$_real_pwd" == "$_real_lease_wt"/* ]]; then
+                        _skip_claim=1
+                    fi
+                fi
+                unset _lease_wt _real_pwd _real_lease_wt _lf
+            fi
+
+            if [[ "$_skip_claim" -eq 1 ]]; then
+                info "INFRA-1901: pwd is already inside the claimed worktree for $gid — skipping chump claim re-invocation"
+                _claim_rc=0
+            else
+                # META-156 AC#2: re-claim failure auto-retry.
+                # If `chump claim` fails with "worktree already exists", detect whether
+                # the existing claim belongs to OUR session_id (CHUMP_SESSION_ID). If so,
+                # retry with --force-recover (same session; safe to re-enter). If a
+                # different session owns it, fail fast with an operator-visible message.
+                _claim_rc=0
+                _claim_out=""
+                _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
+                if [[ "$_claim_rc" -ne 0 ]]; then
+                    _claim_worktree_exists=0
+                    if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then  # pipefail-sweep-allowed
+                        _claim_worktree_exists=1
+                    fi
+                    if [[ "$_claim_worktree_exists" -eq 1 ]]; then
+                        # Check existing claim's session_id via the lease file.
+                        _existing_claim_session=""
+                        for _lf in "$LOCK_DIR"/*.json; do
+                            [[ -f "$_lf" ]] || continue
+                            _lf_gid="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('gap_id',''))" "$_lf" 2>/dev/null || true)"
+                            if [[ "$_lf_gid" == "$gid" ]]; then
+                                _existing_claim_session="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('session_id',''))" "$_lf" 2>/dev/null || true)"
+                                break
+                            fi
+                        done
+                        # INFRA-2744: JSON lock files are legacy; interactive `chump
+                        # claim` writes the lease to the canonical state.db only. Fall
+                        # back to it so we recognize the operator's own claim.
+                        if [[ -z "$_existing_claim_session" ]]; then
+                            _existing_claim_session="$(lease_session_from_statedb "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db")"
+                        fi
+                        if [[ -n "${CHUMP_SESSION_ID:-}" && "$_existing_claim_session" == "$CHUMP_SESSION_ID" ]]; then
+                            # Same session — the existing worktree + (committed,
+                            # possibly-unpushed) branch are already OURS. INFRA-2744:
+                            # do NOT `chump claim --force-recover` here — it removes the
+                            # worktree dir + local branch, destroying committed-but-
+                            # unpushed work. The claim is already ours; no-op and reuse
+                            # the existing worktree + branch for the ship steps.
+                            info "INFRA-2744: re-claim no-op — gap $gid already held by our session ($CHUMP_SESSION_ID); reusing existing worktree + branch"
+                        else
+                            red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
+                            red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
+                            red "  Existing claim session: ${_existing_claim_session:-<unknown>}"
+                            red "  Resolution: wait for that session to finish, or release it with:"
+                            red "    chump --release --session ${_existing_claim_session:-<session-id>}"
+                            _bm_step_done "claim" "$_claim_rc"
+                            _BM_TERMINAL_STATE="claim_failed_session_mismatch"
+                            exit "$_claim_rc"
+                        fi
                     else
-                        red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
-                        red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
-                        red "  Existing claim session: ${_existing_claim_session:-<unknown>}"
-                        red "  Resolution: wait for that session to finish, or release it with:"
-                        red "    chump --release --session ${_existing_claim_session:-<session-id>}"
+                        # Some other claim failure — re-emit output and fail.
+                        printf '%s\n' "$_claim_out" >&2
                         _bm_step_done "claim" "$_claim_rc"
-                        _BM_TERMINAL_STATE="claim_failed_session_mismatch"
+                        _BM_TERMINAL_STATE="claim_failed"
                         exit "$_claim_rc"
                     fi
-                else
-                    # Some other claim failure — re-emit output and fail.
-                    printf '%s\n' "$_claim_out" >&2
-                    _bm_step_done "claim" "$_claim_rc"
-                    _BM_TERMINAL_STATE="claim_failed"
-                    exit "$_claim_rc"
                 fi
             fi
             # INFRA-492: emit session_start so INFRA-477's cost ledger
@@ -2100,6 +2140,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             info "[dry-run] chump claim $gid $_claim_extra"
         fi
     done
+    # BOT_MERGE_CLAIM_BLOCK_END (INFRA-1901)
     _bm_step_done "claim" 0
 fi
 
