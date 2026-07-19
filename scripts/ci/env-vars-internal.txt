@@ -1086,3 +1086,8 @@ CHUMP_AUTH_STATUS_FAKE_APIKEY
 CHUMP_AUTH_STATUS_FAKE_MODE
 # detected in: (standard input)
 CHUMP_AUTH_STATUS_FAKE_OAUTH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CSS_TOKEN_CHECK

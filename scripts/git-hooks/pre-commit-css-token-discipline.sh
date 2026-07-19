@@ -6,13 +6,9 @@
 # (META-064) exactly: env-bypass, bypass-trailer, ambient audit emit.
 #
 # Bypass: add 'Token-Discipline-Bypass: <one-sentence reason>' to commit body.
-# Env bypass (rare): CHUMP_CSS_TOKEN_CHECK=0
 
 set -uo pipefail
 
-if [[ "${CHUMP_CSS_TOKEN_CHECK:-1}" == "0" ]]; then
-    exit 0
-fi
 
 # Only fire when staged files include web/**/*.{js,html,css}
 STAGED_WEB=$(git diff --cached --name-only 2>/dev/null | grep -E '^web/.*\.(js|html|css)$' || true)
@@ -59,5 +55,4 @@ fi
 echo "" >&2
 echo "To bypass: add 'Token-Discipline-Bypass: <one-sentence reason>' to commit body." >&2
 echo "Full doc: docs/process/CSS_TOKEN_DISCIPLINE.md" >&2
-echo "Env bypass (rare): CHUMP_CSS_TOKEN_CHECK=0 git commit ..." >&2
 exit 1

@@ -1909,7 +1909,6 @@ fi
 # Rejects raw hex outside :root, non-canonical --*-primary aliases,
 # mismatched var() fallbacks, and color literals drifting across > 3 files.
 # Bypass: 'Token-Discipline-Bypass: <reason>' commit trailer.
-# Env bypass (rare): CHUMP_CSS_TOKEN_CHECK=0
 CSS_TOKEN_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-css-token-discipline.sh"
 if [ -x "$CSS_TOKEN_HOOK" ]; then
     if ! "$CSS_TOKEN_HOOK"; then

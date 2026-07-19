@@ -51,7 +51,6 @@ The bypass is logged to `.chump-locks/ambient.jsonl` as `kind=token_discipline_b
 with `{commit_sha, reason, files}` for audit. It mirrors the `Rust-First-Bypass:`
 pattern from `scripts/git-hooks/pre-commit-rust-first.sh` (META-064).
 
-Env bypass (rare, CI override): `CHUMP_CSS_TOKEN_CHECK=0 git commit ...`
 
 ## Pre-existing violations
 
