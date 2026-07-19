@@ -4220,6 +4220,16 @@ events:
       error spam from _bm_health_init.
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, gap, worktree_path]
+  # ── INFRA-1901: bypass of the already-in-lease-worktree skip-claim check ──
+  - kind: bot_merge_skip_claim_lax
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh INFRA-1901
+    trigger: CHUMP_BOT_MERGE_SKIP_CLAIM=1 was set, restoring the unconditional
+      `chump claim` re-invocation even when the session is already sitting
+      inside the gap's leased worktree. Debug-only bypass; emitted so the
+      lax mode is auditable.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap]
   # ── CREDIBLE-058: branch-protection / workflow-job alignment ─────────────
   - kind: branch_protection_drift
     effect_metric: self
