@@ -132,7 +132,7 @@ async fn roundtrip_gap_claim_release() {
 
     // 5. try_claim_gap (Won)
     let machine = "live-test-host";
-    let session_a = format!("live-test-A-{}", &gap_id);
+    let session_a = format!("live-test-A-{}", gap_id);
     let result = client
         .try_claim_gap(&gap_id, team_id, user_id, machine, &session_a, 60)
         .await
@@ -143,7 +143,7 @@ async fn roundtrip_gap_claim_release() {
     };
 
     // 6. try_claim_gap (Lost) — second call must report the holder
-    let session_b = format!("live-test-B-{}", &gap_id);
+    let session_b = format!("live-test-B-{}", gap_id);
     let result = client
         .try_claim_gap(&gap_id, team_id, user_id, machine, &session_b, 60)
         .await
