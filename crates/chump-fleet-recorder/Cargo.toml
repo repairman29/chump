@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "NATS+ambient capture daemon — writes fleet events to .chump/fleet_events.db (INFRA-2174, INFRA-2164 sub-slice a)"
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "fleet", "recorder", "nats", "sqlite"]
 categories = ["development-tools"]
 

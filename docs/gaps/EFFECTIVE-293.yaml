@@ -1,0 +1,49 @@
+- id: EFFECTIVE-293
+  domain: EFFECTIVE
+  title: "EFFECTIVE: 7-day main-branch silence (2026-06-23 to 2026-06-29) — fleet stalled after 60% bypass cycle; root-cause and restart"
+  status: open
+  priority: P0
+  effort: s
+  opened_date: '2026-06-29'
+  raised_by: cold-water
+  raised_in: RED_LETTER#18
+  description: |
+    VERIFIED 2026-06-29 (Issue #18 Cold Water audit):
+
+    git log origin/main --since="2026-06-23" --oneline → empty (7 days)
+
+    bash scripts/dev/mission-scoreboard.sh
+    → ① THE BINARY: ❌ NO (BEAST merges last 7d: 0)
+    → ④ Fleet liveness: last merge 911m ago
+    → VERDICT: 🔴 STALLED
+
+    The 5 commits that shipped on 2026-06-22 had a 60% bot-merge bypass rate
+    (3 of 5 non-cold-water commits). The INFRA-1543 Pi mesh provisioner that
+    shipped via bypass introduced 2 unregistered CI artifacts, turning
+    audit-shard(2) and pr-hygiene RED fleet-wide for at least 80 minutes.
+
+    Hypothesized cascade:
+    1. INFRA-1543 bypasses bot-merge → ships with unregistered artifacts
+    2. CI gates audit-shard(2) + pr-hygiene turn RED on all subsequent PRs
+    3. Workers attempt bot-merge → chump binary wedges on every attempt
+    4. Workers use CHUMP_BYPASS_BOT_MERGE=1 → CREDIBLE-144 bypass clears the
+       import-wedge but spawns another CI red (title-similarity INFRA-1434)
+    5. Queue drains to 0 shippable PRs; fleet goes silent
+
+    Root cause is unknown without log access. This gap is a mandate to:
+    (a) determine whether workers are alive but blocked, or truly idle, and
+    (b) restart normal fleet operation (chump preflight + bot-merge, no bypasses).
+
+    Note: the silence began the same day (2026-06-22) as the 60% bypass run —
+    suggesting the bypass-and-CI-cascade pattern stopped the queue rather than
+    a launchd/worker failure.
+
+    Falsifying condition: workers are running normally and shipping PRs that are
+    visible in a branch not reflected on origin/main (e.g. PRs in draft or
+    blocked by reviewers). git log origin/main --since=2026-06-23 is the ground
+    truth — it shows 0.
+  acceptance_criteria:
+    - "git log origin/main --since='2026-06-23' --oneline returns at least 3 non-cold-water commits"
+    - "bash scripts/dev/mission-scoreboard.sh exits 0 (HANDS-OFF/ON-TRACK) or reports last merge < 240 min ago"
+    - "Bot-merge bypass rate for the next 7-day window is < 20% (i.e., < 1 in 5 commits carries Bot-Merge-Bypass:)"
+    - "A post-mortem commit or ambient event documents the actual root cause of the silence"

@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'gap-cleanup') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -71,7 +71,7 @@ jobs:
   gaps-integrity:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 

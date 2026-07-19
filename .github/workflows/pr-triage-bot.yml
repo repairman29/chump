@@ -134,7 +134,7 @@ jobs:
         if: >-
           steps.pr.outputs.skip == 'false' &&
           steps.classify.outputs.lint_only == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.branch }}
           fetch-depth: 0
@@ -234,7 +234,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -424,7 +424,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

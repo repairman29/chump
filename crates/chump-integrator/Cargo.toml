@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "META-124 integration daemon: batches ready-to-ship gaps through preflight before committing to SHIP. Phase 1 dry-run only."
 repository = "https://github.com/repairman29/chump"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["agent", "integration", "ci", "ship", "batching"]
 categories = ["development-tools"]
 
@@ -23,8 +23,8 @@ serde           = { version = "1", features = ["derive"] }
 serde_json      = "1.0"
 tokio           = { version = "1", features = ["full"] }
 uuid            = { version = "1", features = ["v4"] }
-chump-coord     = { path = "../chump-coord", version = "0.1.0" }
-chump-gap-store = { path = "../chump-gap-store", version = "0.1.0" }
+chump-coord     = { path = "../chump-coord", version = "0.2.0" }
+chump-gap-store = { path = "../chump-gap-store", version = "0.2.0" }
 chump-ambient-cli = { path = "../ambient-cli", version = "0.1.0" }
 
 [dev-dependencies]

@@ -21,7 +21,7 @@ jobs:
   dogfood-matrix:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         if: runner.os == 'Linux'  # INFRA-1539: proactive Linux-only guard
@@ -55,7 +55,7 @@ jobs:
           shared-key: ci-dogfood-nightly
 
       - name: Cache Ollama models
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.ollama/models
           key: ollama-models-${{ runner.os }}-qwen25-7b-v2

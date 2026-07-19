@@ -1084,3 +1084,10 @@ CHUMP_AMBIENT
 CHUMP_HUNK_DROP_THRESHOLD
 # detected in: (standard input)
 CHUMP_POST_REBASE_VERIFY_SKIP
+CHUMP_AUTH_STATUS_CACHE
+# detected in: (standard input)
+CHUMP_AUTH_STATUS_FAKE_APIKEY
+# detected in: (standard input)
+CHUMP_AUTH_STATUS_FAKE_MODE
+# detected in: (standard input)
+CHUMP_AUTH_STATUS_FAKE_OAUTH

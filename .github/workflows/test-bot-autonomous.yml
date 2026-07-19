@@ -35,7 +35,7 @@ jobs:
       # Allow up to 18 min for CI + bot lag (20 min job timeout gives 2 min buffer)
       BOT_AUTONOMOUS_WAIT_SECS: "1080"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

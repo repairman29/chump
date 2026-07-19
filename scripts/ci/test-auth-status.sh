@@ -39,4 +39,62 @@ check "BROKEN: api-key out of credits, no oauth"    1  "OUT OF CREDITS"       au
 check "BROKEN: no credentials at all"               1  "no credentials"       auto    absent   absent
 check "BROKEN: both invalid"                        1  "none usable"          auto    invalid  invalid
 
+# ── CREDIBLE-146: cache-behavior regression ─────────────────────────────────
+# A stale/bad cache silently froze the fleet for days (cached BROKEN kept the
+# farmer paging AUTH_DEAD while oauth was valid). These run WITHOUT --probe so
+# the cache path is actually exercised.
+now="$(date +%s)"
+
+# (a) A fresh, in-TTL cached BROKEN must NOT be served — re-probe (valid oauth -> OK).
+c="$(mktemp -t authcache.XXXXXX)"
+printf '%s\n1\nAUTH BROKEN — no credentials found. (stale)\n' "$now" > "$c"
+out="$(CHUMP_AUTH_STATUS_CACHE="$c" CHUMP_AUTH_STATUS_FAKE_MODE=auto \
+    CHUMP_AUTH_STATUS_FAKE_OAUTH=valid CHUMP_AUTH_STATUS_FAKE_APIKEY=absent \
+    bash "$SCRIPT" 2>&1)"; rc=$?
+if [[ "$rc" == 0 ]] && printf '%s' "$out" | grep -qF "workers can transact" \
+   && ! printf '%s' "$out" | grep -qF "(cached)"; then
+    echo "[test] PASS: cached-BROKEN is re-probed fresh, never served"
+else
+    echo "[test] FAIL: cached-BROKEN must re-probe -> OK; got exit=$rc: $out"; fail=1
+fi
+rm -f "$c"
+
+# (baseline) A fresh cached-OK verdict IS still served (cache still works).
+c="$(mktemp -t authcache.XXXXXX)"
+printf '%s\n0\nAUTH OK — cached probe (should be served)\n' "$now" > "$c"
+out="$(CHUMP_AUTH_STATUS_CACHE="$c" bash "$SCRIPT" 2>&1)"; rc=$?
+if [[ "$rc" == 0 ]] && printf '%s' "$out" | grep -qF "(cached)"; then
+    echo "[test] PASS: cached-OK verdict is served from cache"
+else
+    echo "[test] FAIL: cached-OK should be served; got exit=$rc: $out"; fail=1
+fi
+rm -f "$c"
+
+# (c) --force busts even a fresh cached-OK (re-probes; no '(cached)' marker).
+c="$(mktemp -t authcache.XXXXXX)"
+printf '%s\n0\nAUTH OK — cached (should be bypassed by --force)\n' "$now" > "$c"
+out="$(CHUMP_AUTH_STATUS_CACHE="$c" CHUMP_AUTH_STATUS_FAKE_MODE=auto \
+    CHUMP_AUTH_STATUS_FAKE_OAUTH=valid CHUMP_AUTH_STATUS_FAKE_APIKEY=absent \
+    bash "$SCRIPT" --force 2>&1)"; rc=$?
+if [[ "$rc" == 0 ]] && ! printf '%s' "$out" | grep -qF "(cached)"; then
+    echo "[test] PASS: --force bypasses the cache"
+else
+    echo "[test] FAIL: --force should re-probe (no '(cached)'); got: $out"; fail=1
+fi
+rm -f "$c"
+
+# (b) A credential file newer than the cache invalidates the cached verdict.
+th="$(mktemp -d)"; mkdir -p "$th/.chump"; c="$th/.chump/auth-status-cache"
+printf '%s\n0\nAUTH OK — stale cached (token is newer)\n' "$((now - 10))" > "$c"
+sleep 1; : > "$th/.chump/oauth-token.json"   # token mtime now newer than cache
+out="$(HOME="$th" CHUMP_AUTH_STATUS_CACHE="$c" CHUMP_AUTH_STATUS_FAKE_MODE=auto \
+    CHUMP_AUTH_STATUS_FAKE_OAUTH=valid CHUMP_AUTH_STATUS_FAKE_APIKEY=absent \
+    bash "$SCRIPT" 2>&1)"; rc=$?
+if [[ "$rc" == 0 ]] && ! printf '%s' "$out" | grep -qF "(cached)"; then
+    echo "[test] PASS: credential newer than cache invalidates it"
+else
+    echo "[test] FAIL: newer token should bust cache; got: $out"; fail=1
+fi
+rm -rf "$th"
+
 [[ "$fail" -eq 0 ]] && echo "[test-auth-status] PASS" || { echo "[test-auth-status] FAIL"; exit 1; }
