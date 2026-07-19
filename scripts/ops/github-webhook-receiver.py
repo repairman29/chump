@@ -240,6 +240,60 @@ def _auto_release_sibling_leases(pr: dict, payload: dict) -> int:
     return released
 
 
+def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
+    """CREDIBLE-092: on a merged PR, flip each referenced gap to status=done in
+    the canonical .chump/state.db. This runs LOCALLY in the webhook receiver,
+    which has filesystem access to state.db — fixing the root cause of the broken
+    .github/workflows/auto-flip-on-merge.yml, which runs in CI where the canonical
+    state.db does not exist, so merged gaps stayed 'open' and got re-claimed (the
+    ghost-gap waste pattern). Mirrors the merged-PR guard + gap-id extraction used
+    by _auto_release_sibling_leases.
+
+    Only fires on action=closed AND merged=true. Idempotent: re-flipping an
+    already-done gap is harmless (a non-zero rc is logged, not raised). Emits
+    kind=gap_flipped_done_on_merge per flip. To disable, stop the receiver
+    (no env escape hatch on purpose — the EFFECTIVE-094 bypass-var ceiling
+    ratchets down, and stopping the local receiver is the same lever).
+
+    Returns the count of gaps flipped to done.
+    """
+    if payload.get("action") != "closed" or not pr.get("merged"):
+        return 0
+    gap_ids = _extract_gap_ids(pr)
+    if not gap_ids:
+        return 0
+    pr_number = pr.get("number")
+    chump_bin = os.environ.get("CHUMP_BIN", "chump")
+    flipped = 0
+    for gid in gap_ids:
+        try:
+            result = subprocess.run(
+                [chump_bin, "gap", "set", gid,
+                 "--status", "done", "--closed-pr", str(pr_number)],
+                cwd=str(_repo_root()),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (subprocess.SubprocessError, OSError) as e:
+            log.warning("CREDIBLE-092: flip gap %s errored: %s", gid, e)
+            continue
+        if result.returncode == 0:
+            flipped += 1
+            _emit_ambient({
+                "ts": _now_iso(),
+                "kind": "gap_flipped_done_on_merge",
+                "gap_id": gid,
+                "merged_pr": pr_number,
+            })
+            log.info("CREDIBLE-092: flipped gap %s -> done (merged via PR #%s)",
+                     gid, pr_number)
+        else:
+            log.warning("CREDIBLE-092: flip gap %s failed (rc=%s): %s",
+                        gid, result.returncode, (result.stderr or "").strip()[:200])
+    return flipped
+
+
 def _auto_prune_worktree_on_merge(pr: dict, payload: dict) -> int:
     """INFRA-1705: on a merged PR, prune the corresponding /tmp/chump-<slug>/
     worktree immediately instead of waiting for the periodic prune-worktrees.sh
@@ -623,6 +677,15 @@ class Handler(BaseHTTPRequestHandler):
                         if released > 0:
                             log.info("INFRA-1444: auto-released %d orphaned lease(s) for PR #%s",
                                      released, pr.get("number"))
+                        # CREDIBLE-092: on PR merge, flip referenced gaps to
+                        # status=done in the canonical state.db (the webhook
+                        # receiver has state.db access; the CI auto-flip workflow
+                        # does not — that's why merged gaps stayed open + got
+                        # re-claimed as ghosts).
+                        flipped = _auto_flip_gaps_done(pr, payload)
+                        if flipped > 0:
+                            log.info("CREDIBLE-092: flipped %d gap(s) to done for PR #%s",
+                                     flipped, pr.get("number"))
                         # INFRA-1705: on PR merge, prune the corresponding
                         # /tmp/chump-<slug>/ worktree immediately so the
                         # 5-10min "orphan window" before the next periodic

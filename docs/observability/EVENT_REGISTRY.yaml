@@ -8194,6 +8194,19 @@ events:
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
 
+  - kind: gap_flipped_done_on_merge
+    effect_metric: zero_waste
+    emitter: scripts/ops/github-webhook-receiver.py _auto_flip_merged_gaps (CREDIBLE-092)
+    # scanner-anchor: "kind":"gap_flipped_done_on_merge"
+    trigger: >
+      Webhook receiver saw a pull_request closed event with merged=true whose
+      title/branch referenced gap IDs still open in state.db, and flipped each
+      to status=done with the PR number. Kills the ghost-gap waste pattern
+      where merged gaps stayed open and got re-claimed (the CI-side
+      auto-flip-on-merge.yml could never reach the canonical state.db).
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, gap_id, pr_number]
+    status: stable
   # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
 
   - kind: rebase_hunk_dropped
