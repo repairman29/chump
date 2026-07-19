@@ -33,6 +33,12 @@ launchctl print "gui/$(id -u)/com.chump.wake-recovery" | grep state   # → runn
 3. Within one farmer TTL window (~1–5 min): worker processes present
    (`pgrep -f 'AGENT_ID=[0-9]+ .*worker.sh'`) and ChumpBar back to 🟢.
 
+**Pool keeper (RESILIENT-177).** Wake recovery kicks daemons, but a dead tmux
+server (hibernate, memory pressure) needs a full relaunch: `com.chump.fleet-pool-keeper`
+(300s) relaunches the fleet whenever worker heartbeats all go stale while
+`fleet-mode` says grind/travel — with a 600s cooldown and a 3-restores/hour
+storm limit that escalates instead of thrashing (`kind=fleet_pool_restored`).
+
 Handler-path testing without sleeping the machine:
 `bash scripts/ops/wake-recovery.sh` runs the full routine directly (same
 assertions), and `scripts/ci/test-wake-recovery.sh` covers it headlessly.

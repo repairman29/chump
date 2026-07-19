@@ -8246,3 +8246,15 @@ events:
       per-PR flow instead of silently stranding the gap
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
+
+  - kind: fleet_pool_restored
+    effect_metric: waste_prevented
+    emitter: scripts/ops/fleet-pool-keeper.sh (RESILIENT-177, launchd 300s)
+    trigger: zero live worker heartbeats while ~/.chump/fleet-mode says
+      grind|travel — the keeper relaunched the fleet at mode size
+      (restored=true), or refused because >=3 restores happened within an
+      hour (restored=false, escalated=true — persistent killer, needs the
+      operator). Owns TOTAL fleet death (dead tmux server class, 4x on
+      2026-07-19); partial degradation stays the farmer's lane.
+    consumers: [fleet-brief, audit-log, infra-watcher, operator-recall]
+    fields_required: [ts, kind, mode, restored, escalated, note]

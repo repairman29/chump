@@ -29,8 +29,16 @@ if (( now - last_fetch > FETCH_TTL_S )); then
     (git fetch origin main --quiet 2>/dev/null &)
 fi
 
-# one launcher wrapper per worker carries AGENT_ID=N; bash fork copies don't
-workers=$(pgrep -f 'AGENT_ID=[0-9]+ .*dispatch/worker\.sh' 2>/dev/null | wc -l | tr -d ' ')
+# RESILIENT-177: liveness = heartbeat freshness, not pgrep patterns — the
+# AGENT_ID cmdline match broke across launcher styles and reported 0 while
+# agent logs were actively moving (2026-07-19 counting bug).
+workers=0
+_hb_now=$(date +%s)
+for _hb in /tmp/chump-fleet-worker-*.heartbeat; do
+    [[ -f "$_hb" ]] || continue
+    _hb_age=$(( _hb_now - $(stat -f %m "$_hb" 2>/dev/null || echo 0) ))
+    (( _hb_age <= 180 )) && workers=$((workers + 1))
+done
 mode=$(cat "$MODE_FILE" 2>/dev/null || echo "off")
 last_merge_epoch=$(git log origin/main -1 --format=%ct 2>/dev/null || echo 0)
 last_merge_min=$(( (now - last_merge_epoch) / 60 ))
