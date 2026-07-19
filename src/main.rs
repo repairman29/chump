@@ -126,6 +126,7 @@ mod job_log;
 mod kpi_report;
 mod lesson_action;
 mod lesson_embeddings;
+mod librarian;
 mod limits;
 mod llm_backend_metrics;
 mod local_openai;
@@ -1752,6 +1753,74 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         return Ok(());
+    }
+
+    // `chump librarian audit <path> [--json]` (INFRA-1781) — Phase 1
+    // Librarian sweep of `chump ingest` (INFRA-1746). Read-only file/ext
+    // census + TODO/FIXME density over a target repo, writes
+    // <target>/.chump-ingest/triage.md. Emits librarian_audit_started, then
+    // librarian_audit_complete or librarian_audit_failed.
+    if args.get(1).map(String::as_str) == Some("librarian") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub == "--help" || sub == "help" || sub.is_empty() {
+            println!("Usage: chump librarian <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  audit <path>   Phase 1 Librarian sweep — file census + TODO density");
+            println!();
+            println!("Run 'chump librarian audit --help' for options.");
+            return Ok(());
+        }
+        if sub != "audit" {
+            eprintln!("chump librarian: unknown subcommand '{}'", sub);
+            eprintln!("Run 'chump librarian --help' for the list.");
+            std::process::exit(2);
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        if rest.iter().any(|a| *a == "--help" || *a == "help") || rest.is_empty() {
+            println!("Usage: chump librarian audit <path> [--json]");
+            println!();
+            println!("Walks <path> (any repo, not necessarily this one) and writes a triage");
+            println!("report to <path>/.chump-ingest/triage.md: file/extension census, largest");
+            println!("files, and TODO/FIXME density.");
+            println!();
+            println!("Options:");
+            println!("  --json   output the summary as JSON instead of text");
+            println!();
+            println!("Example:");
+            println!("  chump librarian audit ~/code/some-repo");
+            return Ok(());
+        }
+        let want_json = rest.contains(&"--json");
+        let target = std::path::PathBuf::from(rest[0]);
+        let repo_root = repo_path::repo_root();
+        match librarian::run_audit(&target, &repo_root) {
+            Ok(report) => {
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "target_repo": report.target_repo.display().to_string(),
+                            "report_path": report.report_path.display().to_string(),
+                            "files_scanned": report.files_scanned,
+                            "bytes_scanned": report.bytes_scanned,
+                            "todo_count": report.todo_count,
+                            "elapsed_ms": report.elapsed_ms,
+                            "cost_usd_cents": report.cost_usd_cents,
+                        })
+                    );
+                } else {
+                    println!("chump librarian audit: {} files scanned, {} TODO/FIXME markers, {}ms, ~{} cent(s)",
+                        report.files_scanned, report.todo_count, report.elapsed_ms, report.cost_usd_cents);
+                    println!("triage report: {}", report.report_path.display());
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump librarian audit: {} ({})", e.message(), e.as_str());
+                std::process::exit(if e.as_str() == "transient" { 75 } else { 1 });
+            }
+        }
     }
 
     // `chump mission-grade [--json]` (INFRA-599) — auto-emit 4-pillar scorecard.

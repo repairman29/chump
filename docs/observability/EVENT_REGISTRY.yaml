@@ -8246,3 +8246,28 @@ events:
       per-PR flow instead of silently stranding the gap
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
+
+  - kind: librarian_audit_started
+    effect_metric: self
+    emitter: src/librarian.rs (INFRA-1781, `chump librarian audit`)
+    trigger: Phase 1 Librarian sweep begins against a target repo path (the
+      read-only "chump ingest" leg, INFRA-1746)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo]
+
+  - kind: librarian_audit_complete
+    effect_metric: self
+    emitter: src/librarian.rs (INFRA-1781, `chump librarian audit`)
+    trigger: Phase 1 Librarian sweep finished successfully — triage.md written
+      to <target_repo>/.chump-ingest/triage.md
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, files_scanned, todo_count, elapsed_ms, cost_usd_cents, report_path]
+
+  - kind: librarian_audit_failed
+    effect_metric: self
+    emitter: src/librarian.rs (INFRA-1781, `chump librarian audit`)
+    trigger: Phase 1 Librarian sweep aborted — target path invalid
+      (failure_class=permanent) or a transient I/O error mid-walk
+      (failure_class=transient, retryable)
+    consumers: [fleet-brief, audit-log, ci-audit]
+    fields_required: [ts, kind, target_repo, failure_class, message, elapsed_ms]
