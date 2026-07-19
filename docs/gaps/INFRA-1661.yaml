@@ -1,7 +1,7 @@
 - id: INFRA-1661
   domain: INFRA
   title: "CREDIBLE: ingest 2026-05-21 cron-loop session lessons into CLAUDE_GOTCHAS + SELF_HOSTED_RUNNERS docs"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14,5 +14,7 @@
     - "docs/process/SELF_HOSTED_RUNNERS.md adds 'Current state (2026-05-21): CHUMP_SELF_HOSTED_ENABLED=false + 5 RUNNER_* vars deleted' section with rationale + flip-back procedure (links INFRA-1655)"
     - All four edits land in one PR with squash-merge enabled
   notes: |
-    META: knowledge ingestion follow-up. Bundles all six lesson-gap doc updates into one PR rather than spreading across the six implementation gaps. The implementation gaps still update docs as their own AC requires; this gap is the bridge so the docs are correct NOW even before implementations land.
+    Already shipped by commit 4e59c5d62 / PR #2305 (docs(INFRA-1661): operationalize 2026-05-21 Marcus cron-loop session lessons). Verified all 5 AC items present verbatim in docs/process/CLAUDE_GOTCHAS.md (Tangled-stack rebase recipe, pipefail race, EMIT_KIND naming) and docs/process/SELF_HOSTED_RUNNERS.md (Current state — degraded ubuntu-only mode section). No code change needed; closing as duplicate-of-shipped-work.
+  closed_pr: 2305
+  outcome_id: MISSION-010
 
