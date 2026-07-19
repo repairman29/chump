@@ -35,6 +35,12 @@ pub struct ClaimArgs {
     /// If branch already exists on the remote, reset HEAD to remote tip and continue
     /// instead of aborting. AC6: handles already-pushed-but-unmerged branch.
     pub resume: bool,
+    /// INFRA-1730: when the claim branch already exists on the remote (most
+    /// often an orphan left behind by a closed-but-not-merged PR), claim under
+    /// a fresh suffixed branch name (`<branch>-2`, `<branch>-3`, ...) instead
+    /// of aborting. Alternative to `--resume` when the old branch's work
+    /// should NOT be picked back up.
+    pub rename: bool,
     /// INFRA-1439: Before the atomic-claim step, auto-remove a stale worktree
     /// directory + stale local branch if they exist. Without this flag the
     /// caller must clean up manually. Does NOT bypass stomp-check (open PR on
@@ -93,6 +99,7 @@ impl ClaimArgs {
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
+                       --rename      Claim branch already exists remotely (e.g. orphaned by a closed PR) — claim under a fresh suffixed branch name instead of aborting\n  \
                        --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
@@ -116,6 +123,7 @@ impl ClaimArgs {
         let mut skip_doctor = false;
         let mut skip_import = false;
         let mut resume = false;
+        let mut rename = false;
         let mut force_recover = false;
         let mut force_overlap = false;
         let mut allow_duplicate_pr = false;
@@ -153,6 +161,10 @@ impl ClaimArgs {
                 }
                 "--resume" => {
                     resume = true;
+                    i += 1;
+                }
+                "--rename" => {
+                    rename = true;
                     i += 1;
                 }
                 "--force-recover" => {
@@ -204,6 +216,7 @@ impl ClaimArgs {
             skip_doctor,
             skip_import,
             resume,
+            rename,
             force_recover,
             force_overlap,
             allow_duplicate_pr,
@@ -724,7 +737,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // 5. Worktree path + branch name.
     let gap_lower = args.gap_id.to_lowercase();
     let worktree_path = args.worktree_base.join(format!("chump-{}", gap_lower));
-    let branch = format!("chump/{}-claim", gap_lower);
+    let mut branch = format!("chump/{}-claim", gap_lower);
 
     // PathBuf-to-str needed for both the force-recover block and worktree-add below.
     // Derive early so both code paths share the same binding.
@@ -1063,6 +1076,53 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5d. INFRA-1730: detect an existing remote branch BEFORE creating the
+    // worktree, so --rename can pick a fresh branch name without paying for a
+    // wasted worktree-add + rollback. The open-PR-in-flight case was already
+    // handled by the stomp-prevention check above (step 5b) — reaching here
+    // with a remote branch means either --resume/--allow-duplicate-pr/
+    // CHUMP_ALLOW_STOMP was set, or the branch has no OPEN PR. The latter is
+    // the "hit 3 times in session 2026-05-22" case: a PR was CLOSED (merged or
+    // abandoned) without its branch being deleted, orphaning the name for the
+    // next claim attempt on the same gap.
+    if !args.resume && remote_branch_exists(&args.repo_root, &args.remote, &branch) {
+        if args.rename {
+            let mut n = 2;
+            let mut candidate = format!("{}-{}", branch, n);
+            while remote_branch_exists(&args.repo_root, &args.remote, &candidate) {
+                n += 1;
+                candidate = format!("{}-{}", branch, n);
+            }
+            eprintln!(
+                "[claim] --rename: branch {} already exists remotely; claiming under {} instead",
+                branch, candidate
+            );
+            branch = candidate;
+        } else {
+            let hint = match closed_pr_info(&args.repo_root, &branch) {
+                Some((pr_num, true)) => format!(
+                    "  Note: PR #{pr_num} on this branch was already MERGED — the branch just wasn't deleted.\n  \
+                     --resume would reset to a merged tip (probably not what you want) — prefer --rename.\n"
+                ),
+                Some((pr_num, false)) => format!(
+                    "  Note: PR #{pr_num} on this branch was CLOSED without merging — likely an orphan left by a prior abandoned attempt.\n  \
+                     --resume continues that closed PR's work; --rename starts fresh under a new branch name.\n"
+                ),
+                None => String::new(),
+            };
+            bail!(
+                "branch {} already exists on {}.\n{}  \
+                 Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
+                 Or pass --rename to claim under a fresh branch name (chump/<gap>-claim-2, ...).\n  \
+                 Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
+                branch,
+                args.remote,
+                hint,
+                branch
+            );
+        }
+    }
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,
@@ -1113,40 +1173,30 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     };
 
-    // 6c. INFRA-1025 AC6: detect existing remote branch. If --resume, reset
-    // HEAD to the remote tip and continue; otherwise abort with guidance.
-    let remote_has_branch = remote_branch_exists(&args.repo_root, &args.remote, &branch);
-    if remote_has_branch {
-        if args.resume {
-            // Reset the new local branch to match the remote tip so we pick up
-            // prior work (e.g. an aborted session that already pushed commits).
-            if let Err(e) = run_git(
-                &worktree_path,
-                &["reset", "--hard", &format!("{}/{}", args.remote, branch)],
-            ) {
-                rollback_wt(&format!("reset --hard failed: {e}"));
-                bail!(
-                    "--resume: reset --hard to {}/{} failed: {}",
-                    args.remote,
-                    branch,
-                    e
-                );
-            }
-            eprintln!(
-                "[claim] --resume: reset HEAD to {}/{} (existing remote branch)",
-                args.remote, branch
-            );
-        } else {
-            rollback_wt("");
+    // 6c. INFRA-1025 AC6 / INFRA-1730: if --resume was passed and the branch
+    // pre-existed remotely (checked pre-worktree-creation at step 5d, above),
+    // reset HEAD to the remote tip so we pick up prior work. (--rename already
+    // picked a fresh, non-colliding branch name at step 5d, so this is a no-op
+    // in that case; the plain-abort case never reaches worktree creation.)
+    if args.resume && remote_branch_exists(&args.repo_root, &args.remote, &branch) {
+        // Reset the new local branch to match the remote tip so we pick up
+        // prior work (e.g. an aborted session that already pushed commits).
+        if let Err(e) = run_git(
+            &worktree_path,
+            &["reset", "--hard", &format!("{}/{}", args.remote, branch)],
+        ) {
+            rollback_wt(&format!("reset --hard failed: {e}"));
             bail!(
-                "branch {} already exists on {}.\n  \
-                 Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
-                 Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
-                branch,
+                "--resume: reset --hard to {}/{} failed: {}",
                 args.remote,
-                branch
+                branch,
+                e
             );
         }
+        eprintln!(
+            "[claim] --resume: reset HEAD to {}/{} (existing remote branch)",
+            args.remote, branch
+        );
     }
 
     // 7. INFRA-1025: Write lease atomically in Rust — no shell-out to gap-claim.sh.
@@ -1399,6 +1449,49 @@ pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, Strin
     let num = parts.next()?.parse::<u64>().ok()?;
     let author = parts.next().unwrap_or("").to_string();
     Some((num, author))
+}
+
+/// INFRA-1730: Returns `Some((pr_number, merged))` for the most recently
+/// updated CLOSED PR whose head is `<branch>`. Used to explain WHY a remote
+/// branch already exists when `chump claim` hits the "branch already exists"
+/// abort (most often: a PR was closed without merging and its branch was
+/// never deleted, orphaning the name for the next claim of the same gap).
+///
+/// Best-effort: any `gh` failure (no auth, no network) returns `None`, in
+/// which case the caller falls back to the generic "branch already exists"
+/// message.
+pub(crate) fn closed_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, bool)> {
+    let owner_repo = gh_owner_repo(repo_root)?;
+    let owner = owner_repo.split('/').next()?;
+    let head = format!("{}:{}", owner, branch);
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!(
+                "repos/{}/pulls?state=closed&head={}&per_page=1&sort=updated&direction=desc",
+                owner_repo, head
+            ),
+            "--jq",
+            // tab-separated number\tmerged; empty if no closed PR found
+            r#".[0] | if . == null then empty else "\(.number)\t\(.merged_at != null)" end"#,
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.splitn(2, '\t');
+    let num = parts.next()?.parse::<u64>().ok()?;
+    let merged = parts.next().unwrap_or("false") == "true";
+    Some((num, merged))
 }
 
 /// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
@@ -4799,6 +4892,17 @@ mod tests {
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-300");
         assert!(args.resume);
+    }
+
+    #[test]
+    fn from_argv_rename_flag() {
+        // INFRA-1730: --rename claims under a fresh branch name when the
+        // default branch already exists remotely (e.g. orphaned by a closed PR).
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-1730".into(), "--rename".into()];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert_eq!(args.gap_id, "INFRA-1730");
+        assert!(args.rename);
+        assert!(!args.resume);
     }
 
     #[test]
