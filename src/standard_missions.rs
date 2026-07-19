@@ -260,7 +260,7 @@ fn check_tests_in_ci_workflow(clone_dir: &std::path::Path) -> MissionCheckResult
         excerpt: format!(
             "{} workflow file(s) present, none contain: {}",
             yml_files.len(),
-            &test_keywords[..3].join(", ")
+            test_keywords[..3].join(", ")
         ),
     }
 }

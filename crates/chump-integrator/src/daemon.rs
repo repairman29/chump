@@ -272,7 +272,7 @@ impl IntegratorDaemon {
 
         // ── Step 4: MERGE ─────────────────────────────────────────────────
         // Integration branch named after the cycle for traceability.
-        let integration_branch = format!("chump/{}", &cycle_name);
+        let integration_branch = format!("chump/{}", cycle_name);
         let merge_outcome = match self.run_merge(&candidates, &integration_branch).await {
             Ok(outcome) => outcome,
             Err(e) => {
