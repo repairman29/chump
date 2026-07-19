@@ -1104,3 +1104,8 @@ CHUMP_GHOST_GAP_REAPER
 CHUMP_GHOST_REAPER
 # detected in: (standard input)
 CHUMP_GHOST_REAPER_LOOKBACK_DAYS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOT_MERGE_SKIP_CLAIM

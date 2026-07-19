@@ -159,3 +159,40 @@ lease_session_from_statedb() {
     [[ -f "$db" ]] || return 0
     sqlite3 "$db" "SELECT session_id FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
 }
+
+# lease_worktree_from_statedb <gap_id> [<state_db_path>]
+#   Echoes the `worktree` column of the leases row holding <gap_id> (empty
+#   if none / no sqlite3). Same default-db resolution as
+#   lease_session_from_statedb. Read-only. (INFRA-1901)
+lease_worktree_from_statedb() {
+    local gap_id="$1" db="${2:-}"
+    [[ "$gap_id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    if [[ -z "$db" ]]; then
+        local repo gitdir
+        gitdir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        if [[ -n "$gitdir" ]]; then repo="$(dirname "$gitdir")"; else repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
+        db="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+    fi
+    [[ -f "$db" ]] || return 0
+    sqlite3 "$db" "SELECT worktree FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
+}
+
+# lease_pwd_in_leased_worktree <gap_id> <db_path> [<pwd>]
+#   Returns 0 (true) iff <gap_id>'s lease in state.db points at a worktree
+#   that contains <pwd> (default: current directory) as a prefix. Resolves
+#   symlinks on both sides via `cd ... && pwd -P` so macOS's /tmp ->
+#   /private/tmp does not produce a false negative. Returns 1 if no lease
+#   is found, the leased worktree doesn't exist, or pwd is outside it.
+#   (INFRA-1901 — used by bot-merge.sh to skip a redundant `chump claim`
+#   re-invocation when already running inside the leased worktree.)
+lease_pwd_in_leased_worktree() {
+    local gap_id="$1" db="$2" cwd="${3:-$(pwd)}"
+    local lease_wt; lease_wt="$(lease_worktree_from_statedb "$gap_id" "$db")"
+    [[ -n "$lease_wt" ]] || return 1
+    local lease_wt_real; lease_wt_real="$(cd "$lease_wt" 2>/dev/null && pwd -P || true)"
+    [[ -n "$lease_wt_real" ]] || return 1
+    local cwd_real; cwd_real="$(cd "$cwd" 2>/dev/null && pwd -P || true)"
+    [[ -n "$cwd_real" ]] || return 1
+    [[ "$cwd_real" == "$lease_wt_real" || "$cwd_real" == "$lease_wt_real"/* ]]
+}

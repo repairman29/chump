@@ -2037,6 +2037,24 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
+            # INFRA-1901: already-inside-the-lease's-worktree detection.
+            # bot-merge invoked from inside a worktree that a lease already
+            # points at (interactive `chump claim`, or a fleet-3 dispatch
+            # worktree under .claude/worktrees/) has nothing to gain from
+            # re-claiming — the worktree + branch are already ours. Detect
+            # this BEFORE calling `chump claim` at all so we never hit the
+            # "worktree already exists" failure path in the first place.
+            # Compare against pwd (not just $REPO_ROOT) and resolve
+            # /tmp -> /private/tmp so macOS symlink differences don't
+            # produce a false negative.
+            _skip_claim=0
+            if [[ "${CHUMP_BOT_MERGE_SKIP_CLAIM:-0}" == "1" ]]; then
+                chump ambient emit bot_merge_skip_claim_lax --gap "$gid" >/dev/null 2>&1 || true
+                info "INFRA-1901: CHUMP_BOT_MERGE_SKIP_CLAIM=1 — bypassing already-claimed detection (unconditional re-claim)"
+            elif lease_pwd_in_leased_worktree "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db"; then
+                _skip_claim=1
+                info "INFRA-1901: already inside gap $gid's leased worktree — skipping chump claim re-invocation"
+            fi
             # META-156 AC#2: re-claim failure auto-retry.
             # If `chump claim` fails with "worktree already exists", detect whether
             # the existing claim belongs to OUR session_id (CHUMP_SESSION_ID). If so,
@@ -2044,6 +2062,9 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             # different session owns it, fail fast with an operator-visible message.
             _claim_rc=0
             _claim_out=""
+            if [[ "$_skip_claim" -eq 1 ]]; then
+                :
+            else
             _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
             if [[ "$_claim_rc" -ne 0 ]]; then
                 _claim_worktree_exists=0
@@ -2092,6 +2113,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                     _BM_TERMINAL_STATE="claim_failed"
                     exit "$_claim_rc"
                 fi
+            fi
             fi
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.

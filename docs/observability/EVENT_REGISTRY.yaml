@@ -8246,3 +8246,17 @@ events:
       per-PR flow instead of silently stranding the gap
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
+
+  - kind: bot_merge_skip_claim_lax
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh claim section (INFRA-1901)
+    # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
+    trigger: CHUMP_BOT_MERGE_SKIP_CLAIM=1 (debug-only bypass) forced an
+      unconditional `chump claim` re-invocation instead of the default
+      already-inside-the-leased-worktree detection (which skips the
+      re-claim entirely when pwd is already inside the gap's leased
+      worktree, per state.db leases.worktree). Baseline (2026-05-23) 3 of 4
+      sub-agents hit the "worktree already exists" failure path and were
+      forced into manual gh pr create/merge recovery before this fix.
+    consumers: [fleet-brief, audit-log, ci-audit]
+    fields_required: [ts, kind, gap]
