@@ -299,10 +299,9 @@ fn extract_plist_number(plist: &str, key: &str) -> Option<f64> {
     // Find the opening tag of the value.
     let (open_tag, close_tag) = if let Some(i) = tail.find("<real>") {
         (i + "<real>".len(), tail[i..].find("</real>")? + i)
-    } else if let Some(i) = tail.find("<integer>") {
-        (i + "<integer>".len(), tail[i..].find("</integer>")? + i)
     } else {
-        return None;
+        let i = tail.find("<integer>")?;
+        (i + "<integer>".len(), tail[i..].find("</integer>")? + i)
     };
     tail.get(open_tag..close_tag)?.trim().parse::<f64>().ok()
 }

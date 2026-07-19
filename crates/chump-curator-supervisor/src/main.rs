@@ -566,7 +566,7 @@ async fn handle_failure(cfg: &Config, det: &DetectionResult, multi_failure: bool
         );
         // Still write the sentinel so dedupe works in dry-run.
         write_sentinel(&sentinel_path, &fp)?;
-        format!("DRY-RUN-{}", &fp)
+        format!("DRY-RUN-{}", fp)
     } else {
         let gap_id = file_curator_gap(cfg, det, priority, &log_tail)?;
         emit_ambient(

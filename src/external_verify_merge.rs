@@ -309,7 +309,7 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
                 newly_failing.len(),
                 newly_failing.join(", ")
             );
-            println!("  FAIL: {}", &reason);
+            println!("  FAIL: {}", reason);
             emit_held(&opts, &reason);
             println!("\nVerdict: HELD(regression)");
             println!("  {reason}");
@@ -810,7 +810,7 @@ fn ensure_clone(clone_dir: &Path, repo: &str, _gh_bin: &str) -> anyhow::Result<(
             "[verify-merge] repo already cloned at {} — fetching ...",
             clone_dir.display()
         );
-        let status = Command::new("git")
+        let status = ext_git()
             .args([
                 "-C",
                 &clone_dir.to_string_lossy(),
@@ -833,7 +833,7 @@ fn ensure_clone(clone_dir: &Path, repo: &str, _gh_bin: &str) -> anyhow::Result<(
     }
 
     let clone_url = format!("https://github.com/{repo}.git");
-    let status = Command::new("git")
+    let status = ext_git()
         .args([
             "clone",
             "--depth",
@@ -854,7 +854,7 @@ fn ensure_clone(clone_dir: &Path, repo: &str, _gh_bin: &str) -> anyhow::Result<(
 fn fetch_refs(clone_dir: &Path, base_sha: &str, head_sha: &str) -> anyhow::Result<()> {
     for sha in [base_sha, head_sha] {
         // Check if SHA is already available.
-        let available = Command::new("git")
+        let available = ext_git()
             .args(["-C", &clone_dir.to_string_lossy(), "cat-file", "-e", sha])
             .status()
             .map(|s| s.success())
@@ -862,7 +862,7 @@ fn fetch_refs(clone_dir: &Path, base_sha: &str, head_sha: &str) -> anyhow::Resul
 
         if !available {
             // Fetch the specific SHA.
-            let _ = Command::new("git")
+            let _ = ext_git()
                 .args([
                     "-C",
                     &clone_dir.to_string_lossy(),
@@ -882,7 +882,7 @@ fn fetch_refs(clone_dir: &Path, base_sha: &str, head_sha: &str) -> anyhow::Resul
 /// Heuristic: file path contains `test` or `spec`, or matches `*_test.*`,
 /// `*_spec.*`, `test_*.*`, or `__tests__/*`.
 fn diff_test_files(clone_dir: &Path, base: &str, head: &str) -> anyhow::Result<Vec<String>> {
-    let output = Command::new("git")
+    let output = ext_git()
         .args([
             "-C",
             &clone_dir.to_string_lossy(),
@@ -1106,7 +1106,7 @@ fn run_tests_at_sha_with_overlay(
             let full_parent = clone_dir.join(parent);
             let _ = std::fs::create_dir_all(&full_parent);
         }
-        let status = Command::new("git")
+        let status = ext_git()
             .args([
                 "-C",
                 &clone_dir.to_string_lossy(),
@@ -1142,7 +1142,7 @@ fn run_tests_at_sha_with_overlay(
 
     // 5. Restore test files to base state (cleanup; subsequent runs start clean).
     for f in test_files {
-        let _ = Command::new("git")
+        let _ = ext_git()
             .args([
                 "-C",
                 &clone_dir.to_string_lossy(),
@@ -1207,7 +1207,7 @@ fn run_tests_at_sha_no_overlay(
 
 /// Detached-HEAD checkout helper.
 fn git_checkout_detach(clone_dir: &Path, sha: &str) -> anyhow::Result<()> {
-    let co = Command::new("git")
+    let co = ext_git()
         .args([
             "-C",
             &clone_dir.to_string_lossy(),
@@ -1503,6 +1503,27 @@ fn emit_held(opts: &Opts, reason: &str) {
     );
 }
 
+/// Git command with the hook-exported GIT_* environment scrubbed.
+/// Every git op in this module targets an explicit external clone dir
+/// (via `-C` or `.current_dir`), but GIT_DIR/GIT_WORK_TREE — exported by
+/// git when this code runs inside a hook (pre-push → preflight → tests, or
+/// a hook-invoked verify-merge) — override both, silently redirecting the
+/// op to the HOST repo (RESILIENT-172). Scrub them at the source.
+fn ext_git() -> Command {
+    let mut c = Command::new("git");
+    for k in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+    ] {
+        c.env_remove(k);
+    }
+    c
+}
+
 fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
     // Mirror the pattern from src/orchestrate.rs::emit_ambient_event.
     let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
@@ -1554,6 +1575,30 @@ fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
 
 #[cfg(test)]
 mod tests {
+    /// Git command for fixture repos with the hook-exported GIT_* environment
+    /// scrubbed. When cargo test runs inside a git hook (pre-push -> chump
+    /// preflight -> cargo test), git exports GIT_DIR/GIT_WORK_TREE/
+    /// GIT_INDEX_FILE for the HOST repo — and GIT_DIR overrides
+    /// Command::current_dir entirely, so every fixture git op silently
+    /// mutates the host repo instead of its TempDir (RESILIENT-172: observed
+    /// rewriting remotes, git identity, and committing fixture files onto
+    /// real branches). Always use this instead of Command::new("git") in
+    /// tests; pair with .current_dir(<fixture dir>) as before.
+    fn fixture_git() -> Command {
+        let mut c = Command::new("git");
+        for k in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_PREFIX",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_COMMON_DIR",
+        ] {
+            c.env_remove(k);
+        }
+        c
+    }
+
     use super::*;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -1808,17 +1853,17 @@ fi
     /// Returns (base_sha, head_sha, test_file_path).
     fn setup_npm_repo(dir: &Path) -> (String, String, String) {
         std::fs::create_dir_all(dir).expect("create repo dir");
-        Command::new("git")
+        fixture_git()
             .args(["init", "-q"])
             .current_dir(dir)
             .status()
             .expect("git init");
-        Command::new("git")
+        fixture_git()
             .args(["config", "user.email", "test@example.com"])
             .current_dir(dir)
             .status()
             .ok();
-        Command::new("git")
+        fixture_git()
             .args(["config", "user.name", "Test"])
             .current_dir(dir)
             .status()
@@ -1841,18 +1886,18 @@ fi
         )
         .expect("src/add.js");
 
-        Command::new("git")
+        fixture_git()
             .args(["add", "."])
             .current_dir(dir)
             .status()
             .expect("git add");
-        Command::new("git")
+        fixture_git()
             .args(["commit", "-q", "-m", "base: buggy add"])
             .current_dir(dir)
             .status()
             .expect("git commit base");
         let base_sha = String::from_utf8(
-            Command::new("git")
+            fixture_git()
                 .args(["rev-parse", "HEAD"])
                 .current_dir(dir)
                 .output()
@@ -1864,7 +1909,7 @@ fi
         .to_string();
 
         // PR head: fix the implementation AND add a test
-        Command::new("git")
+        fixture_git()
             .args(["checkout", "-q", "-b", "pr-head"])
             .current_dir(dir)
             .status()
@@ -1882,18 +1927,18 @@ fi
             "const add = require('../src/add');\nif (add(1,2) !== 3) { process.exit(1); }\nconsole.log('pass');\n",
         ).expect("add.test.js");
 
-        Command::new("git")
+        fixture_git()
             .args(["add", "."])
             .current_dir(dir)
             .status()
             .expect("git add head");
-        Command::new("git")
+        fixture_git()
             .args(["commit", "-q", "-m", "fix: add returns sum + add test"])
             .current_dir(dir)
             .status()
             .expect("git commit head");
         let head_sha = String::from_utf8(
-            Command::new("git")
+            fixture_git()
                 .args(["rev-parse", "HEAD"])
                 .current_dir(dir)
                 .output()
@@ -1967,7 +2012,7 @@ exit 0
         let (base_sha, head_sha, test_file) = setup_npm_repo(&repo_dir);
 
         // Clone it
-        Command::new("git")
+        fixture_git()
             .args([
                 "clone",
                 "-q",
@@ -1977,7 +2022,7 @@ exit 0
             .status()
             .expect("clone");
         // Make both SHAs available
-        Command::new("git")
+        fixture_git()
             .args(["fetch", "-q", "origin", &base_sha, &head_sha])
             .current_dir(&clone_dir)
             .status()

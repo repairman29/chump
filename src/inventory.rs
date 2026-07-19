@@ -398,11 +398,10 @@ pub fn resolve_repo_slug(root: &Path) -> Option<(String, String)> {
         .trim_end_matches(".git")
         .trim_end_matches('/')
         .to_string();
-    let tail = if let Some(idx) = stripped.find("github.com") {
+    let tail = {
+        let idx = stripped.find("github.com")?;
         let after = &stripped[idx + "github.com".len()..];
         after.trim_start_matches(':').trim_start_matches('/')
-    } else {
-        return None;
     };
     let parts: Vec<&str> = tail.split('/').collect();
     if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {

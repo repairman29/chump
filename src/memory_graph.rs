@@ -590,14 +590,12 @@ fn llm_worker_provider() -> Option<Box<dyn axonerai::provider::Provider>> {
 
 fn parse_llm_triples(response: &str) -> Option<Vec<(String, String, String, f64)>> {
     let trimmed = response.trim();
-    let json_str = if let Some(start) = trimmed.find('[') {
-        if let Some(end) = trimmed.rfind(']') {
+    let json_str = {
+        let start = trimmed.find('[')?;
+        {
+            let end = trimmed.rfind(']')?;
             &trimmed[start..=end]
-        } else {
-            return None;
         }
-    } else {
-        return None;
     };
 
     let arr: Vec<serde_json::Value> = serde_json::from_str(json_str).ok()?;

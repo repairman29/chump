@@ -632,6 +632,25 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
 /// Entry point called from main.rs subcommand dispatch.
 /// Returns the process exit code.
 pub fn run(argv: &[String]) -> i32 {
+    // RESILIENT-172: when preflight is invoked from a git hook (pre-push),
+    // git exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE for the HOST repo.
+    // GIT_DIR overrides Command::current_dir in every child process, so any
+    // gate that spawns git against an explicit fixture/clone dir (cargo test
+    // fixtures especially) silently mutates the host repo instead — observed
+    // live 2026-07-18: remote URL rewritten, git identity flipped, fixture
+    // commits landed on real branches. Preflight never needs the hook's
+    // GIT_* context (it resolves the repo via cwd), so scrub it once here
+    // and every spawned gate inherits a clean environment.
+    for k in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+    ] {
+        std::env::remove_var(k);
+    }
     let args = parse_args(argv);
     if args.help {
         print_help();

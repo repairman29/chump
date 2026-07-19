@@ -195,7 +195,7 @@ pub fn run(args: &[String]) -> i32 {
             println!(
                 "    [{:>2}] {:<30} completed_at={} result={}",
                 s.step_index,
-                &s.step_name,
+                s.step_name,
                 s.completed_at.as_deref().unwrap_or("?"),
                 result_preview,
             );
@@ -268,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(state_db_env)]
     fn no_resumable_run_exits_0() {
         let (path, _guard) = with_temp_db();
         unsafe {
@@ -280,6 +281,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(state_db_env)]
     fn resumable_run_exits_0_and_reports() {
         let (path, _guard) = with_temp_db();
         unsafe {
@@ -298,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(state_db_env)]
     fn json_mode_produces_valid_json() {
         let (path, _guard) = with_temp_db();
         unsafe {
