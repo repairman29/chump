@@ -1252,8 +1252,16 @@ _bm_health_init() {
     local gap_str="${GAP_IDS[*]:-}"
     local _hb_interval="${CHUMP_BOT_MERGE_HEARTBEAT_S:-30}"
     [[ "$_hb_interval" -lt 5 ]] 2>/dev/null && _hb_interval=5  # floor: don't spam
+    # INFRA-1732: also append kind=bot_merge_heartbeat to ambient.jsonl so
+    # stall detection can be programmatic (compare same_step_count across
+    # events) instead of relying only on elapsed-time timeouts. The health
+    # file + stderr line above are local-only; ambient is the cross-process
+    # signal other fleet detectors (queue-health-monitor, fresh-eyes, etc)
+    # already tail.
+    local _hb_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
     (
         local _hb_elapsed=0
+        local _hb_last_step="" _hb_same_count=0
         # Immediate first line so life is visible before the first sleep.
         printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (0s; heartbeat every %ss)\033[0m\n' \
             "$(date +%H:%M:%S)" "$(cat "$sf" 2>/dev/null || echo init)" "$_hb_interval" >&2
@@ -1269,6 +1277,19 @@ _bm_health_init() {
             # INFRA-2455: same liveness, surfaced to stderr so it's visible live.
             printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (~%ds elapsed)\033[0m\n' \
                 "$(date +%H:%M:%S)" "$step" "$_hb_elapsed" >&2
+            # INFRA-1732: track consecutive heartbeats on the same step so a
+            # consumer can flag "same_step_count > N" as a stall signal without
+            # needing to compute wall-clock deltas itself.
+            if [[ "$step" == "$_hb_last_step" ]]; then
+                _hb_same_count=$(( _hb_same_count + 1 ))
+            else
+                _hb_same_count=0
+                _hb_last_step="$step"
+            fi
+            # scanner-anchor: "kind":"bot_merge_heartbeat"
+            printf '{"ts":"%s","kind":"bot_merge_heartbeat","pid":%d,"gap_ids":"%s","current_step":"%s","elapsed_s":%d,"same_step_count":%d,"heartbeat_interval_s":%d}\n' \
+                "$now" "$pid" "$gap_str" "$step" "$_hb_elapsed" "$_hb_same_count" "$_hb_interval" \
+                >> "$_hb_amb" 2>/dev/null || true
         done
     ) &
     _BM_HEALTH_PID=$!
