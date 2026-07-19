@@ -401,6 +401,14 @@ impl GapStore {
                 ON routing_outcomes(recorded_at);
         ",
         )?;
+        // INFRA-1770: cost tracking per dispatch attempt, so a router can
+        // score routes by (success_rate * value) / cost_per_attempt instead
+        // of success_rate alone. ALTER TABLE ADD is idempotent here —
+        // duplicate-column errors on an already-migrated DB are ignored.
+        let _ = self.conn.execute(
+            "ALTER TABLE routing_outcomes ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+            [],
+        );
         // M1 (INFRA-059): add ISO-date columns alongside existing unix timestamps.
         // The YAML uses author-provided date strings (`opened_date: '2026-04-25'`);
         // round-trip preserves them verbatim instead of reformatting from unix ts.
@@ -4488,6 +4496,9 @@ pub struct RoutingOutcomeRow {
     pub outcome: String,
     pub pr_number: Option<u32>,
     pub duration_s: i64,
+    /// USD cost of this single dispatch attempt (token spend, API billing).
+    /// `0.0` for backends/callers that don't track cost yet.
+    pub cost_usd: f64,
 }
 
 /// One aggregated row from the `(task_class, backend, model, provider_pfx)`
@@ -4503,6 +4514,15 @@ pub struct ScoreboardEntry {
     pub total: u64,
     pub success_rate: f64,
     pub last_seen: String,
+    /// Average `cost_usd` per dispatch attempt on this route.
+    pub cost_per_attempt: f64,
+    /// `success_rate * value / cost_per_attempt`, where `value` is a
+    /// priority-derived weight (P0=4.0 .. P3=1.0, averaged across the
+    /// route's rows). Routes with `cost_per_attempt == 0.0` (cost not yet
+    /// tracked) fall back to `success_rate * value` so untracked routes
+    /// aren't penalized to zero. Higher is better; the COG-037 router picks
+    /// the highest-scoring route for a task class.
+    pub score: f64,
 }
 
 impl GapStore {
@@ -4514,8 +4534,8 @@ impl GapStore {
             .execute(
                 "INSERT INTO routing_outcomes
                     (recorded_at, task_class, priority, effort, backend, model,
-                     provider_pfx, gap_id, outcome, pr_number, duration_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     provider_pfx, gap_id, outcome, pr_number, duration_s, cost_usd)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     row.recorded_at,
                     row.task_class,
@@ -4528,6 +4548,7 @@ impl GapStore {
                     row.outcome,
                     row.pr_number,
                     row.duration_s,
+                    row.cost_usd,
                 ],
             )
             .context("insert routing_outcomes row")?;
@@ -4544,7 +4565,15 @@ impl GapStore {
                     SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
                     SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures,
                     COUNT(*) AS total,
-                    MAX(recorded_at) AS last_seen
+                    MAX(recorded_at) AS last_seen,
+                    AVG(cost_usd) AS cost_per_attempt,
+                    AVG(CASE priority
+                            WHEN 'P0' THEN 4.0
+                            WHEN 'P1' THEN 3.0
+                            WHEN 'P2' THEN 2.0
+                            WHEN 'P3' THEN 1.0
+                            ELSE 1.0
+                        END) AS avg_value
              FROM routing_outcomes
              GROUP BY task_class, backend, model, provider_pfx
              ORDER BY total DESC, successes DESC",
@@ -4558,10 +4587,21 @@ impl GapStore {
             let failures: i64 = r.get(5)?;
             let total: i64 = r.get(6)?;
             let last_seen: String = r.get::<_, Option<String>>(7)?.unwrap_or_default();
+            let cost_per_attempt: f64 = r.get::<_, Option<f64>>(8)?.unwrap_or(0.0);
+            let avg_value: f64 = r.get::<_, Option<f64>>(9)?.unwrap_or(1.0);
             let success_rate = if total > 0 {
                 successes as f64 / total as f64
             } else {
                 0.0
+            };
+            // INFRA-1770: cost-aware score for the COG-037 router. A route
+            // with untracked cost (cost_per_attempt == 0.0) isn't divided —
+            // it falls back to plain (success_rate * value) so it isn't
+            // unfairly zeroed out relative to cost-tracked routes.
+            let score = if cost_per_attempt > 0.0 {
+                success_rate * avg_value / cost_per_attempt
+            } else {
+                success_rate * avg_value
             };
             Ok(ScoreboardEntry {
                 task_class,
@@ -4573,6 +4613,8 @@ impl GapStore {
                 total: total as u64,
                 success_rate,
                 last_seen,
+                cost_per_attempt,
+                score,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -6402,6 +6444,7 @@ meta:
             outcome: outcome.into(),
             pr_number: pr,
             duration_s: 60,
+            cost_usd: 0.0,
         }
     }
 
@@ -6489,6 +6532,53 @@ meta:
         assert_eq!(board[1].successes, 1);
         assert_eq!(board[1].failures, 1);
         assert!((board[1].success_rate - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn routing_outcomes_score_prefers_cheaper_route_at_equal_success_rate() {
+        let (store, _dir) = test_store();
+        // Two routes, both 100% success, same P1 value — but chump-local is
+        // 10x cheaper per attempt, so it must out-score claude despite
+        // being newer/smaller.
+        let mut expensive = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(1), "", "");
+        expensive.cost_usd = 1.00;
+        store.record_routing_outcome(&expensive).unwrap();
+
+        let mut cheap = outcome(
+            "chump-local",
+            "shipped",
+            "2026-04-27T12:00:00Z",
+            Some(2),
+            "",
+            "qwen",
+        );
+        cheap.cost_usd = 0.10;
+        store.record_routing_outcome(&cheap).unwrap();
+
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 2);
+        let claude = board.iter().find(|e| e.backend == "claude").unwrap();
+        let local = board.iter().find(|e| e.backend == "chump-local").unwrap();
+        assert!((claude.cost_per_attempt - 1.00).abs() < 1e-9);
+        assert!((local.cost_per_attempt - 0.10).abs() < 1e-9);
+        assert!(
+            local.score > claude.score,
+            "cheaper route at equal success_rate must score higher: local={} claude={}",
+            local.score,
+            claude.score
+        );
+    }
+
+    #[test]
+    fn routing_outcomes_untracked_cost_falls_back_to_success_times_value() {
+        let (store, _dir) = test_store();
+        let row = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(1), "", "");
+        assert_eq!(row.cost_usd, 0.0, "default fixture has no cost tracked");
+        store.record_routing_outcome(&row).unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 1);
+        // P1 value = 3.0, success_rate = 1.0, cost untracked -> score = 3.0.
+        assert!((board[0].score - 3.0).abs() < 1e-9);
     }
 
     #[test]
