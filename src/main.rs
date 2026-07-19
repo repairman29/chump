@@ -8245,13 +8245,13 @@ async fn main() -> Result<()> {
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
                     None if !skip_obs_acs => {
-                        let obs_acs = vec![
-                            "TODO: what events emitted on success/failure/timeout",
-                            "TODO: how cost tracked and reported to operator",
-                            "TODO: failure-class taxonomy (distinguish transient vs permanent)",
-                            "TODO: smoke test command to verify observability",
-                        ];
-                        serde_json::to_string(&obs_acs).unwrap_or_else(|_| "[]".into())
+                        // EFFECTIVE-294: concrete, claimable default AC (no TODO
+                        // placeholders) so a reserved gap is immediately pickable.
+                        // The old obs-AC TODO template left ~32% of the open queue
+                        // unclaimable. The title carries the *what*; these carry the
+                        // *done-bar*. For gap-specific AC, run `chump gap decompose`.
+                        let acs = default_acceptance_criteria(&title, &domain);
+                        serde_json::to_string(&acs).unwrap_or_else(|_| "[]".into())
                     }
                     _ => "[]".into(),
                 };
@@ -8597,7 +8597,19 @@ async fn main() -> Result<()> {
                             *pillar_counts.entry(pillar.to_string()).or_insert(0) += 1;
                         }
 
-                        if total_pickable > 0 {
+                        // EFFECTIVE-294: percentage thresholds are meaningless on a
+                        // tiny pool — with < 10 pickable gaps the second same-pillar
+                        // reserve is already "≥50% of pool" and gets blocked, which
+                        // breaks fresh `chump bootstrap` repos and every CI fixture
+                        // DB (surfaced when concrete default AC made fixture gaps
+                        // pickable). The gate exists to correct drift in a mature
+                        // queue, not to police the first handful of gaps.
+                        let min_pool_for_balance: usize =
+                            std::env::var("CHUMP_PILLAR_BALANCE_MIN_POOL")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(10);
+                        if total_pickable >= min_pool_for_balance {
                             let proposed_count =
                                 *pillar_counts.get(proposed_pillar.as_str()).unwrap_or(&0);
                             // After this reserve, proposed count would be +1
@@ -17569,6 +17581,28 @@ fn external_repo_target_from_skills(skills: &str) -> Option<String> {
         .filter(|s| !s.is_empty() && s.contains('/'))
 }
 
+/// EFFECTIVE-294: concrete, claimable default acceptance criteria for a gap
+/// reserved without an explicit `--acceptance-criteria`. Replaces the old TODO
+/// obs-AC template that left ~32% of the open queue unclaimable (`chump claim`
+/// refuses a gap whose AC are TODO placeholders). The gap *title* carries the
+/// "what"; these encode the ship "done-bar" so the gap is immediately pickable.
+/// For gap-specific AC, run `chump gap decompose` (LLM).
+fn default_acceptance_criteria(title: &str, domain: &str) -> Vec<String> {
+    // Strip a leading "DOMAIN:" / pillar tag from the title to get the "what".
+    let what = title
+        .split_once(':')
+        .map(|(_, rest)| rest.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| title.trim());
+    vec![
+        format!(
+            "The change described by \"{what}\" is implemented in the relevant {domain} code path(s)."
+        ),
+        "At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.".to_string(),
+        "cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.".to_string(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use crate::agent_factory;
@@ -17576,6 +17610,31 @@ mod tests {
     use serial_test::serial;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // EFFECTIVE-294: a reserved gap with no explicit AC gets concrete, claimable
+    // AC (zero TODO placeholders) so `chump claim` accepts it.
+    #[test]
+    fn default_acceptance_criteria_are_concrete_no_todo() {
+        let acs = crate::default_acceptance_criteria("EFFECTIVE: add a foo widget", "EFFECTIVE");
+        assert!(acs.len() >= 3, "at least 3 AC items: {acs:?}");
+        assert!(
+            acs.iter().all(|a| !a.contains("TODO")),
+            "no TODO placeholders: {acs:?}"
+        );
+        assert!(
+            acs[0].contains("add a foo widget") && !acs[0].contains("EFFECTIVE: add"),
+            "first AC names the de-prefixed work: {}",
+            acs[0]
+        );
+        // a title without a ':' is used verbatim as the "what"
+        let acs2 = crate::default_acceptance_criteria("no prefix here", "INFRA");
+        assert!(
+            acs2[0].contains("no prefix here"),
+            "verbatim what: {}",
+            acs2[0]
+        );
+        assert!(acs2[0].contains("INFRA"), "names the domain: {}", acs2[0]);
+    }
 
     /// Full agent turn against a mock HTTP server: no real model. Asserts reply content.
     ///
