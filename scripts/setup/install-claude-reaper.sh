@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # install-claude-reaper.sh — INFRA-1662
 # Idempotently install the launchd agent that reaps orphan claude subprocesses
-# leaked by long-running autonomous loops. Runs every 5 minutes.
+# leaked by long-running autonomous loops. Runs every 2 minutes (INFRA-1930:
+# tightened from 5 min so PTY-pressure mode catches rising pressure before
+# saturation instead of reacting after it).
 #
 # Usage:  scripts/setup/install-claude-reaper.sh
 # Unload: launchctl unload ~/Library/LaunchAgents/com.chump.claude-reaper.plist
@@ -39,7 +41,7 @@ cat > "$PLIST_PATH" <<PLIST
     <string>${REPO_ROOT}</string>
 
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>120</integer>
 
     <key>ThrottleInterval</key>
     <integer>60</integer>

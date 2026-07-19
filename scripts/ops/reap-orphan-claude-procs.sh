@@ -67,7 +67,11 @@ REAP_AGE="${REAP_AGE:-3600}"
 # catches anything started in the last hour, not just the last hour-plus.
 #
 # Tunables:
-#   CHUMP_REAPER_PRESSURE_THRESHOLD  default 80  percent of ptmx_max
+#   CHUMP_REAPER_PRESSURE_THRESHOLD  default 65  percent of ptmx_max (INFRA-1930:
+#                                                 lowered from 80 — combined with
+#                                                 the 120s cadence, catches
+#                                                 pressure climbing instead of
+#                                                 only after it saturates)
 #   CHUMP_REAPER_PRESSURE_AGE        default 600 fallback REAP_AGE when pressured
 #   CHUMP_REAPER_PRESSURE_DISABLED   set to 1 to skip pressure check entirely
 #
@@ -83,7 +87,7 @@ if [ "${CHUMP_REAPER_PRESSURE_DISABLED:-0}" != "1" ]; then
     # `|| true` makes the count 0 on no-match without aborting the sweep.
     _pty_alloc=$(ls /dev/ttys??? 2>/dev/null | wc -l | awk '{print $1}' || true)
     _pty_alloc="${_pty_alloc:-0}"
-    _pty_threshold_pct="${CHUMP_REAPER_PRESSURE_THRESHOLD:-80}"
+    _pty_threshold_pct="${CHUMP_REAPER_PRESSURE_THRESHOLD:-65}"
     _pty_pressure_age="${CHUMP_REAPER_PRESSURE_AGE:-600}"
     if [ -n "$_pty_limit" ] && [ "$_pty_limit" -gt 0 ] && [ "$_pty_alloc" -gt 0 ]; then
         # integer percent — avoids bc dependency on shells without it
