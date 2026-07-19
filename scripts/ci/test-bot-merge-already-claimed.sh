@@ -141,10 +141,10 @@ else
     fail "bot-merge.sh missing _already_in_lease_wt detection variable"
 fi
 
-if grep -q 'CHUMP_BOT_MERGE_SKIP_CLAIM' "$BOT_MERGE"; then
-    ok "bot-merge.sh honors CHUMP_BOT_MERGE_SKIP_CLAIM bypass"
+if grep -q 'CHUMP_BOT_MERGE_CLAIM_LAX' "$BOT_MERGE"; then
+    ok "bot-merge.sh honors CHUMP_BOT_MERGE_CLAIM_LAX bypass"
 else
-    fail "bot-merge.sh missing CHUMP_BOT_MERGE_SKIP_CLAIM bypass"
+    fail "bot-merge.sh missing CHUMP_BOT_MERGE_CLAIM_LAX bypass"
 fi
 
 if grep -q 'bot_merge_skip_claim_lax' "$BOT_MERGE"; then

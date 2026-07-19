@@ -2044,7 +2044,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             # 3 of 4 sub-agents hit "re-claim failed" here and fell back to
             # manual gh pr create + gh pr merge --auto.
             _already_in_lease_wt=0
-            if [[ "${CHUMP_BOT_MERGE_SKIP_CLAIM:-0}" == "1" ]]; then
+            if [[ "${CHUMP_BOT_MERGE_CLAIM_LAX:-0}" == "1" ]]; then
                 # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
                 chump ambient emit bot_merge_skip_claim_lax "gap=$gid" >/dev/null 2>&1 || true
             else

@@ -4224,7 +4224,7 @@ events:
   - kind: bot_merge_skip_claim_lax
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh INFRA-1901
-    trigger: CHUMP_BOT_MERGE_SKIP_CLAIM=1 was set, restoring the unconditional
+    trigger: CHUMP_BOT_MERGE_CLAIM_LAX=1 was set, restoring the unconditional
       `chump claim` re-invocation even when the session is already sitting
       inside the gap's leased worktree. Debug-only bypass; emitted so the
       lax mode is auditable.
