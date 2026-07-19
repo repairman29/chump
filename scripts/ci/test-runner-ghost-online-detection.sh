@@ -2,7 +2,8 @@
 # test-runner-ghost-online-detection.sh — AC 6 smoke test for META-100
 #
 # Verifies that _detect_runner_ghost_online() fires kind=operator_recall
-# with condition=RUNNER_GHOST_ONLINE when:
+# with condition=RUNNERS_GHOSTED (renamed from RUNNER_GHOST_ONLINE by
+# META-101's QUEUE_SATURATED subclass split) when:
 #   - a fake .chump/github_cache.db has a queued run
 #   - CHUMP_RUNNER_QUEUE_THRESHOLD_S=0 (every queued run is "old")
 #   - the runners API mock returns 1 online+idle self-hosted runner
@@ -82,15 +83,15 @@ export PATH="$_tmpdir/bin:$PATH"
 
 bash "$SCRIPT_REPO_ROOT/scripts/dispatch/operator-recall.sh" 2>&1 || true
 
-# ── Assert kind=operator_recall with condition=RUNNER_GHOST_ONLINE ──────────
+# ── Assert kind=operator_recall with condition=RUNNERS_GHOSTED ──────────
 if [[ ! -f "$_amb_log" ]]; then
     _fail "ambient log not created at $_amb_log"
 else
-    _recall_line=$(grep '"kind":"operator_recall"' "$_amb_log" 2>/dev/null | grep '"condition":"RUNNER_GHOST_ONLINE"' || true)
+    _recall_line=$(grep '"kind":"operator_recall"' "$_amb_log" 2>/dev/null | grep '"condition":"RUNNERS_GHOSTED"' || true)
     if [[ -n "$_recall_line" ]]; then
-        _pass "kind=operator_recall with condition=RUNNER_GHOST_ONLINE emitted"
+        _pass "kind=operator_recall with condition=RUNNERS_GHOSTED emitted"
     else
-        _fail "kind=operator_recall condition=RUNNER_GHOST_ONLINE NOT found in ambient log"
+        _fail "kind=operator_recall condition=RUNNERS_GHOSTED NOT found in ambient log"
         echo "  ambient log contents:"
         cat "$_amb_log" 2>/dev/null | sed 's/^/    /' || echo "    (empty)"
     fi
@@ -111,11 +112,11 @@ export CHUMP_RUNNER_GHOST_ONLINE_DETECT=0
 
 bash "$SCRIPT_REPO_ROOT/scripts/dispatch/operator-recall.sh" 2>&1 || true
 
-_ghost_when_disabled=$(grep '"condition":"RUNNER_GHOST_ONLINE"' "$_amb_log2" 2>/dev/null || true)
+_ghost_when_disabled=$(grep '"condition":"RUNNERS_GHOSTED"' "$_amb_log2" 2>/dev/null || true)
 if [[ -z "$_ghost_when_disabled" ]]; then
-    _pass "RUNNER_GHOST_ONLINE suppressed when CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
+    _pass "RUNNERS_GHOSTED suppressed when CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
 else
-    _fail "RUNNER_GHOST_ONLINE fired even with CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
+    _fail "RUNNERS_GHOSTED fired even with CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

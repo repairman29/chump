@@ -16,9 +16,18 @@
 #                             (default 3, 7200)
 #   (d) QUEUE_STARVE        — fleet_queue_depth event with pickable_count=0 AND no
 #                             gap_reserved event in CHUMP_QUEUE_STARVE_SECS (default 86400)
-#   (e) RUNNER_GHOST_ONLINE — queued workflow_runs older than
+#   (e) QUEUE_SATURATED     — queued workflow_runs older than
 #                             CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300) exist AND
 #                             ≥1 self-hosted runner has status=online,busy=false.
+#                             Splits into two subclasses (META-101) by fetching each
+#                             sampled queued run's jobs and classifying by runs-on label:
+#                               RUNNERS_GHOSTED            — job targets self-hosted labels
+#                                                             (the idle runner should have
+#                                                             picked it up; restart it)
+#                               QUEUE_SATURATED_GH_HOSTED  — job targets a GitHub-hosted
+#                                                             label (ubuntu/macos/windows);
+#                                                             GH-hosted concurrency quota is
+#                                                             likely exhausted — no restart fix
 #                             Guard: CHUMP_RUNNER_GHOST_ONLINE_DETECT (default 1, set to 0 to disable)
 #   (f) DISK_CRITICAL       — ≥1 disk_critical event in last
 #                             CHUMP_DISK_CRITICAL_WINDOW_SECS (default 600) AND
@@ -175,6 +184,42 @@ PYEOF
         return 0
     fi
 
+    # --- Step 1b: pull queued run IDs so we can classify their jobs (META-101) ---
+    local queued_run_ids_csv=""
+    if [[ -f "$cache_db" ]]; then
+        local ids_result
+        ids_result=$(python3 - "$cache_db" "$now_epoch" "$stale_threshold" <<'PYEOF' 2>/dev/null
+import sys, sqlite3
+from datetime import datetime, timezone
+
+db_path, now_epoch, threshold = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    ids = []
+    if "workflow_run_cache" in tables:
+        rows = cur.execute(
+            "SELECT run_id, created_at FROM workflow_run_cache WHERE status='queued'"
+        ).fetchall()
+        for (run_id, created_at) in rows:
+            try:
+                created_epoch = int(datetime.fromisoformat(
+                    created_at.rstrip("Z")).replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                continue
+            age = now_epoch - created_epoch
+            if age >= threshold:
+                ids.append(str(run_id))
+    print(",".join(ids))
+    conn.close()
+except Exception:
+    print("")
+PYEOF
+        )
+        queued_run_ids_csv="$ids_result"
+    fi
+
     # --- Step 2: check for online-but-idle self-hosted runners via GitHub API ---
     local idle_runners=0
     local runners_json
@@ -204,21 +249,82 @@ PYEOF
         idle_runners=0
     fi
 
-    # --- Step 3: contradiction — stale queued jobs AND idle online runners ---
-    if (( idle_runners >= 1 )); then
-        # Informational pre-recall event (not cooldown-gated).
-        local detect_body
-        detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d}' \
-            "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold")"
-        printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
+    if (( idle_runners == 0 )); then
+        return 0
+    fi
 
-        local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s) with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online"
-        if (( _check_only )); then
-            echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE: $_reason"
-            _any_halt=1
-        else
-            _emit_recall "RUNNER_GHOST_ONLINE" "$_reason"
-        fi
+    # --- Step 3 (META-101 AC2): classify each sampled queued run's jobs by
+    # runs-on label — self-hosted (RUNNERS_GHOSTED candidate) vs GitHub-hosted
+    # (QUEUE_SATURATED_GH_HOSTED candidate). Capped to avoid API storms.
+    local self_hosted_hit_ids=() gh_hosted_hit_ids=() gh_hosted_labels_seen=""
+    local jobs_unclassified=0 sample_cap=5 n=0 rid
+    local IFS=','
+    read -r -a _queued_run_ids <<< "$queued_run_ids_csv"
+    unset IFS
+    for rid in "${_queued_run_ids[@]:-}"; do
+        [[ -z "$rid" ]] && continue
+        (( n++ ))
+        if (( n > sample_cap )); then break; fi
+        local jobs_json classify
+        jobs_json=$(gh api "repos/${_gh_repo}/actions/runs/${rid}/jobs" 2>/dev/null || echo "")
+        classify=$(python3 - "$jobs_json" <<'PYEOF' 2>/dev/null
+import sys, json
+try:
+    data = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    jobs = data.get("jobs", []) or []
+    labels_all = []
+    for j in jobs:
+        labels_all.extend(j.get("labels", []) or [])
+    if any(l == "self-hosted" for l in labels_all):
+        print("self-hosted:" + ",".join(labels_all))
+    elif labels_all:
+        print("gh-hosted:" + ",".join(labels_all))
+    else:
+        print("unknown")
+except Exception:
+    print("unknown")
+PYEOF
+        )
+        case "$classify" in
+            self-hosted:*) self_hosted_hit_ids+=("$rid") ;;
+            gh-hosted:*)
+                gh_hosted_hit_ids+=("$rid")
+                gh_hosted_labels_seen="${gh_hosted_labels_seen}${classify#gh-hosted:},"
+                ;;
+            *) jobs_unclassified=$(( jobs_unclassified + 1 )) ;;
+        esac
+    done
+
+    # --- Step 4: subclass + emit (META-101 AC3/AC4/AC5) ---
+    local detect_body _reason _subclass
+    if (( ${#self_hosted_hit_ids[@]} > 0 )); then
+        _subclass="RUNNERS_GHOSTED"
+    elif (( ${#gh_hosted_hit_ids[@]} > 0 )); then
+        _subclass="QUEUE_SATURATED_GH_HOSTED"
+    elif (( jobs_unclassified > 0 )); then
+        # Job labels couldn't be classified (API miss / cache-only signal) —
+        # fall back to the original self-hosted-idle contradiction signal.
+        _subclass="RUNNERS_GHOSTED"
+    else
+        return 0
+    fi
+
+    detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d,"subclass":"%s"}' \
+        "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold" "$_subclass")"
+    printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
+
+    if [[ "$_subclass" == "QUEUE_SATURATED_GH_HOSTED" ]]; then
+        local _run_ids_str="${gh_hosted_hit_ids[*]}"
+        _reason="${#gh_hosted_hit_ids[@]} workflow run(s) [${_run_ids_str}] queued for >${stale_threshold}s target GitHub-hosted runs-on labels (${gh_hosted_labels_seen%,}) while ${idle_runners} self-hosted runner(s) sit online-but-idle; GH-hosted runner concurrency quota is likely exhausted. Remediation: no-restart-fix; reduce concurrent workflow triggers OR increase GH quota OR migrate to self-hosted."
+    else
+        _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s) with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online. Remediation: launchctl restart of the self-hosted runner service is suggested."
+    fi
+
+    if (( _check_only )); then
+        echo "[operator-recall] HALT condition=${_subclass}: $_reason"
+        _any_halt=1
+    else
+        _emit_recall "$_subclass" "$_reason"
     fi
 }
 
