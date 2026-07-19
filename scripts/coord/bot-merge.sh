@@ -287,7 +287,7 @@ trap '_bm_cleanup' EXIT
 _bm_sigterm_handler() {
     local _ts _step _elapsed _ambient _gap_label
     _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    _step="$(cat "${_BM_STEP_FILE:-/dev/null}" 2>/dev/null || echo unknown)"
+    _step="$(head -1 "${_BM_STEP_FILE:-/dev/null}" 2>/dev/null || echo unknown)"
     _gap_label="${GAP_IDS[*]:-${GAP_ID:-unknown}}"
     _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
     _elapsed=$(( $(date +%s) - $(date -d "${_BM_STARTED_AT:-$_ts}" +%s 2>/dev/null || date +%s) ))
@@ -963,7 +963,9 @@ stage_start() {
     local budget="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
     info "▶ $__STAGE_LABEL starting … (budget ${budget}s)"
     # INFRA-119: keep step file current so the health-file writer tracks progress
-    [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
+    # INFRA-1732: second line records when this phase began, so watchdogs can
+    # detect a stuck *phase* (time-in-step) instead of only total process age.
+    [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s\n%s\n' "$__STAGE_LABEL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_BM_STEP_FILE" 2>/dev/null || true
     # INFRA-2272: update per-step progress ledger at each phase boundary.
     _bm_progress_write "$__STAGE_LABEL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # INFRA-1035: record transition start in the steps log
@@ -1207,13 +1209,16 @@ gh_api_probe() {
 #      Set to 0 to disable (e.g. for full cargo-test runs).
 _bm_health_write() {
     [[ -z "${_BM_HEALTH_FILE:-}" ]] && return 0
-    local step now gap_str
-    step="$(cat "$_BM_STEP_FILE" 2>/dev/null || echo init)"
+    local step step_started_at now gap_str
+    step="$(sed -n '1p' "$_BM_STEP_FILE" 2>/dev/null)"; [[ -z "$step" ]] && step="init"
+    # INFRA-1732: line 2 of the step file (written by stage_start) is when the
+    # *current* phase began — distinct from _BM_STARTED_AT (whole-session start).
+    step_started_at="$(sed -n '2p' "$_BM_STEP_FILE" 2>/dev/null)"; [[ -z "$step_started_at" ]] && step_started_at="$_BM_STARTED_AT"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # INFRA-1315: include gap_ids so bot-merge-watchdog.sh can identify zombies.
     gap_str="${GAP_IDS[*]:-}"
-    printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
-        "$_BM_PID" "$_BM_STARTED_AT" "$step" "$now" "$gap_str" \
+    printf '{"pid":%d,"started_at":"%s","current_step":"%s","step_started_at":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
+        "$_BM_PID" "$_BM_STARTED_AT" "$step" "$step_started_at" "$now" "$gap_str" \
         > "${_BM_HEALTH_FILE}.tmp" 2>/dev/null \
     && mv "${_BM_HEALTH_FILE}.tmp" "$_BM_HEALTH_FILE" 2>/dev/null || true
 }
@@ -1225,7 +1230,7 @@ _bm_health_init() {
     _BM_HEALTH_FILE="${lock_dir}/bot-merge-${_BM_PID}.health"
     _BM_STEP_FILE="${lock_dir}/bot-merge-${_BM_PID}.step"
     _BM_STEPS_FILE="${lock_dir}/bot-merge-${_BM_PID}.steps"  # INFRA-1035
-    printf 'init' > "$_BM_STEP_FILE" 2>/dev/null || true
+    printf 'init\n%s\n' "$_BM_STARTED_AT" > "$_BM_STEP_FILE" 2>/dev/null || true
     # INFRA-1035: seed the steps log with a session-start entry
     printf '{"ts":"%s","step":"session","transition":"start","elapsed_s":0,"pid":%d}\n' \
         "$_BM_STARTED_AT" "$_BM_PID" > "$_BM_STEPS_FILE" 2>/dev/null || true
@@ -1256,15 +1261,18 @@ _bm_health_init() {
         local _hb_elapsed=0
         # Immediate first line so life is visible before the first sleep.
         printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (0s; heartbeat every %ss)\033[0m\n' \
-            "$(date +%H:%M:%S)" "$(cat "$sf" 2>/dev/null || echo init)" "$_hb_interval" >&2
+            "$(date +%H:%M:%S)" "$(sed -n '1p' "$sf" 2>/dev/null || echo init)" "$_hb_interval" >&2
         while true; do
             sleep "$_hb_interval"
             _hb_elapsed=$(( _hb_elapsed + _hb_interval ))
-            local step now
-            step="$(cat "$sf" 2>/dev/null || echo unknown)"
+            local step step_started_at now
+            step="$(sed -n '1p' "$sf" 2>/dev/null)"; [[ -z "$step" ]] && step="unknown"
+            # INFRA-1732: line 2 is when the *current* phase began (written by
+            # stage_start); fall back to session start for pre-stage_start steps.
+            step_started_at="$(sed -n '2p' "$sf" 2>/dev/null)"; [[ -z "$step_started_at" ]] && step_started_at="$sa"
             now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
-                "$pid" "$sa" "$step" "$now" "$gap_str" \
+            printf '{"pid":%d,"started_at":"%s","current_step":"%s","step_started_at":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
+                "$pid" "$sa" "$step" "$step_started_at" "$now" "$gap_str" \
                 > "${hf}.tmp" && mv "${hf}.tmp" "$hf" || true
             # INFRA-2455: same liveness, surfaced to stderr so it's visible live.
             printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (~%ds elapsed)\033[0m\n' \
@@ -1285,7 +1293,7 @@ _bm_health_init() {
         (
             sleep "$budget"
             local step now
-            step="$(cat "$sf" 2>/dev/null || echo unknown)"
+            step="$(sed -n '1p' "$sf" 2>/dev/null)"; [[ -z "$step" ]] && step="unknown"
             now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             _ambient_write "$ambient" \
                 "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hung","pid":%d,"step":"%s","note":"total budget %ss exceeded — sending SIGTERM"}' \

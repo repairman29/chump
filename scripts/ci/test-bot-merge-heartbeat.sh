@@ -38,7 +38,9 @@ else
 fi
 
 # Must reuse the existing step file (no parallel tracking surface).
-grep -q 'step="\$(cat "\$sf"' "$BM" 2>/dev/null \
+# INFRA-1732: step file now carries a 2nd line (step_started_at) so reads
+# use sed -n '1p' instead of a bare `cat` — still the same file, no new surface.
+grep -q 'step="\$(sed -n .1p. "\$sf"' "$BM" 2>/dev/null \
   && p "reuses the existing step file" || f "does not reuse the step file"
 
 # Non-duplication (META-063): stall detection stays on the existing

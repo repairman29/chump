@@ -17,15 +17,27 @@
 #   1. .chump-locks/bot-merge-*.health files — read gap_ids field directly
 #   2. pgrep -f 'bot-merge.sh' — fallback process scan for pre-health-write zombies
 #
+# Phase-progress stall detection (INFRA-1732):
+#   Total process age alone (MAX_AGE_S) can't tell a legitimately-slow run
+#   (many short phases, each under budget) from one wedged in a single phase
+#   (silent stall observed 2026-05-22). The health file now carries
+#   step_started_at — when the *current* named phase began (written by
+#   bot-merge.sh's stage_start()). If step_started_at is stale beyond
+#   CHUMP_BOT_MERGE_PHASE_STALL_S while the gap is still open, that's a
+#   programmatic phase stall signal, independent of total age — emit
+#   kind=bot_merge_phase_stalled instead of (or before) the blunt age warn.
+#
 # Usage:
 #   scripts/coord/bot-merge-watchdog.sh             # execute (default — safe, kills only zombies)
 #   scripts/coord/bot-merge-watchdog.sh --dry-run   # report only, no kills
 #
-# Emits kind=bot_merge_watchdog_killed / bot_merge_watchdog_stuck to ambient.jsonl
+# Emits kind=bot_merge_watchdog_killed / bot_merge_watchdog_stuck /
+#       kind=bot_merge_phase_stalled to ambient.jsonl
 #
 # Environment:
-#   CHUMP_LOCK_DIR  — override .chump-locks path
-#   CHUMP_BIN       — override chump binary path (default: chump) — useful for tests
+#   CHUMP_LOCK_DIR                  — override .chump-locks path
+#   CHUMP_BIN                       — override chump binary path (default: chump) — useful for tests
+#   CHUMP_BOT_MERGE_PHASE_STALL_S   — phase-stall threshold in seconds (default 600)
 
 set -uo pipefail
 
@@ -34,6 +46,7 @@ REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || p
 LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 MAX_AGE_S="${CHUMP_BOT_MERGE_MAX_AGE_S:-1800}"   # default 30 min (2× per-agent budget)
+PHASE_STALL_S="${CHUMP_BOT_MERGE_PHASE_STALL_S:-600}"   # INFRA-1732: time-in-phase threshold
 NOW_EPOCH=$(date +%s)
 CHUMP_CMD="${CHUMP_BIN:-chump}"
 DRY_RUN=0
@@ -135,7 +148,37 @@ for hf in "$LOCK_DIR"/bot-merge-*.health; do
     gap_ids_hf="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('gap_ids',''))" "$hf" 2>/dev/null || echo "")"
     [[ -z "$pid" || -z "$gap_ids_hf" ]] && continue
     # Skip if already dead.
-    kill -0 "$pid" 2>/dev/null || { rm -f "$hf" 2>/dev/null || true; continue; }
+    kill -0 "$pid" 2>/dev/null || { rm -f "$hf" "${hf}".stalled.* 2>/dev/null || true; continue; }
+
+    # ── INFRA-1732: phase-progress stall check ────────────────────────────────
+    # step_started_at (when the *current* named phase began) lets us detect a
+    # process wedged in one phase, independent of total process age — the
+    # class of stall that MAX_AGE_S alone (elapsed-time-only) can't see when
+    # a run has legitimately been through several under-budget phases already.
+    step_hf="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('current_step',''))" "$hf" 2>/dev/null || echo "")"
+    step_started_hf="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('step_started_at',''))" "$hf" 2>/dev/null || echo "")"
+    if [[ -n "$step_started_hf" ]]; then
+        step_started_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$step_started_hf" +%s 2>/dev/null \
+            || date -u -d "$step_started_hf" +%s 2>/dev/null || echo 0)"
+        if [[ "$step_started_epoch" -gt 0 ]]; then
+            step_elapsed_s=$(( NOW_EPOCH - step_started_epoch ))
+            # De-dupe: one emit per (pid, step) stall episode, not once per cron tick.
+            marker="${hf}.stalled.${step_hf}"
+            if [[ "$step_elapsed_s" -ge "$PHASE_STALL_S" ]]; then
+                first_gid="${gap_ids_hf%% *}"
+                echo "[bot-merge-watchdog] PHASE STALL: PID $pid (gap=$first_gid) stuck in step=$step_hf for ${step_elapsed_s}s (threshold ${PHASE_STALL_S}s)"
+                if [[ ! -f "$marker" ]]; then
+                    # scanner-anchor: "kind":"bot_merge_phase_stalled"
+                    emit "bot_merge_phase_stalled" \
+                        "\"pid\":$pid,\"gap\":\"$first_gid\",\"step\":\"$step_hf\",\"step_elapsed_s\":$step_elapsed_s,\"threshold_s\":$PHASE_STALL_S"
+                    [[ $DRY_RUN -eq 0 ]] && { : > "$marker" 2>/dev/null || true; }
+                fi
+            else
+                rm -f "${hf}".stalled.* 2>/dev/null || true
+            fi
+        fi
+    fi
+
     # Check each gap.
     for gid in $gap_ids_hf; do
         [[ -z "$gid" ]] && continue
@@ -143,7 +186,7 @@ for hf in "$LOCK_DIR"/bot-merge-*.health; do
         if [[ "$gs" == "done" ]]; then
             age_s="$(_process_age_s "$pid")"
             _kill_process "$pid" "$gid" "$age_s" "done" ""
-            rm -f "$hf" 2>/dev/null || true
+            rm -f "$hf" "${hf}".stalled.* 2>/dev/null || true
             _handled_pids+=("$pid")
             break
         fi

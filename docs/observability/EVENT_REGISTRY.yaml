@@ -4017,6 +4017,20 @@ events:
     trigger: bot-merge.sh process over age limit but gap still open — operator review
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, pid, gap, age_s, gap_status, pr_status]
+
+  - kind: bot_merge_phase_stalled
+    effect_metric: self
+    emitter: scripts/coord/bot-merge-watchdog.sh (INFRA-1732)
+    trigger: bot-merge.sh health file's step_started_at shows the process has
+      been in the same named phase (stage_start()/stage_done() boundary)
+      longer than CHUMP_BOT_MERGE_PHASE_STALL_S (default 600s). Distinct from
+      bot_merge_watchdog_stuck (raw process age, elapsed-time-only, can't tell
+      a legitimately-slow multi-phase run from one wedged in a single phase —
+      silent stall observed 2026-05-22) and from bot_merge_stall_detected
+      (synchronous, git-push-phase-only check inside bot-merge.sh itself).
+      One emit per (pid, step) stall episode via a sentinel marker file.
+    consumers: [fleet-brief, curator, operator]
+    fields_required: [ts, kind, pid, gap, step, step_elapsed_s, threshold_s]
   # ── INFRA-1346: shadow ship-plan advisory ─────────────────────────────────
   - kind: ship_plan_advisory
     emitter: scripts/coord/bot-merge.sh _bm_shadow_plan() (INFRA-1346)
