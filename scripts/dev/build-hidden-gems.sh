@@ -9,19 +9,46 @@
 #   - chump-mcp.json             (MCP server descriptions)
 #   - scripts/ci/event-registry-reserved.txt  (ambient event kinds)
 #
-# Output: docs/HIDDEN_GEMS.md (idempotent — same inputs => same output)
+# Output: <repo-root>/docs/HIDDEN_GEMS.md (idempotent — same inputs => same output)
 # Emits: kind=hidden_gems_refreshed with delta_count to .chump-locks/ambient.jsonl
 #
 # Usage:
-#   bash scripts/dev/build-hidden-gems.sh           — regenerate doc + emit event
-#   bash scripts/dev/build-hidden-gems.sh --check   — exit non-zero if regenerate would change doc
+#   bash scripts/dev/build-hidden-gems.sh                     — regenerate doc + emit event
+#   bash scripts/dev/build-hidden-gems.sh --check              — exit non-zero if regenerate would change doc
+#   bash scripts/dev/build-hidden-gems.sh [--repo-root PATH] [--out PATH] [--check]
+#
+# --repo-root lets this run against an arbitrary target repo (the Column A
+# `chump ingest` Phase 3 Evangelist artifact) — used by
+# scripts/ops/generate-hidden-gems.sh. Defaults to the current git toplevel.
 
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REPO_ROOT_DEFAULT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REPO_ROOT="$REPO_ROOT_DEFAULT"
+OUT_OVERRIDE=""
+MODE="build"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo-root) REPO_ROOT="$2"; shift 2 ;;
+        --out)       OUT_OVERRIDE="$2"; shift 2 ;;
+        --check)     MODE="--check"; shift ;;
+        -h|--help)
+            sed -n '2,20p' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+        *)
+            echo "unknown arg: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+REPO_ROOT="$(cd "$REPO_ROOT" && pwd)"
 export CHUMP_HIDDEN_GEMS_REPO_ROOT="$REPO_ROOT"
-export CHUMP_HIDDEN_GEMS_MODE="${1:-build}"
-export CHUMP_HIDDEN_GEMS_AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+export CHUMP_HIDDEN_GEMS_OUT="${OUT_OVERRIDE:-$REPO_ROOT/docs/HIDDEN_GEMS.md}"
+export CHUMP_HIDDEN_GEMS_MODE="$MODE"
+export CHUMP_HIDDEN_GEMS_AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT_DEFAULT/.chump-locks/ambient.jsonl}"
 
 cd "$REPO_ROOT"
 
@@ -33,7 +60,7 @@ from pathlib import Path
 REPO = Path(os.environ["CHUMP_HIDDEN_GEMS_REPO_ROOT"])
 MODE = os.environ["CHUMP_HIDDEN_GEMS_MODE"]
 AMBIENT = Path(os.environ["CHUMP_HIDDEN_GEMS_AMBIENT"])
-OUT = REPO / "docs" / "HIDDEN_GEMS.md"
+OUT = Path(os.environ["CHUMP_HIDDEN_GEMS_OUT"])
 CURATED = REPO / "docs" / "HIDDEN_GEMS_CURATED.yaml"
 
 # ── Load curated overlay ────────────────────────────────────────────────────
@@ -201,6 +228,7 @@ try:
     payload = {
         "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "kind": "hidden_gems_refreshed",
+        "repo": REPO.name,
         "delta_count": delta,
         "total_entries": total,
         "script": "build-hidden-gems.sh",

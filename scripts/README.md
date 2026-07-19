@@ -53,7 +53,9 @@ Less-used directories (small scope):
 | **Restart fleet** | `scripts/dispatch/fleet-restart.sh` | Safe restart with cooldown |
 | **Watch ambient** | `scripts/dev/ambient-watch.sh` | Tail ambient.jsonl with formatting |
 | **Rebuild capabilities registry** | `scripts/dev/build-capabilities-registry.sh` | Canonical source for `docs/CAPABILITIES_REGISTRY.json` (Quartermaster artifact, INFRA-1729) |
-| **Generate registry for foreign repo** | `scripts/ops/generate-capabilities-registry.sh <repo-path>` | Column A `chump ingest` wrapper; writes `<repo-path>/docs/CAPABILITIES_REGISTRY.json` |
+| **Generate registry for foreign repo** | `scripts/ops/generate-capabilities-registry.sh <repo-path>` | Column A `chump ingest` Phase 4 Systematizer wrapper; writes `<repo-path>/docs/CAPABILITIES_REGISTRY.json` |
+| **Rebuild hidden gems** | `scripts/dev/build-hidden-gems.sh` | Canonical source for `docs/HIDDEN_GEMS.md` (Evangelist artifact, INFRA-1727) |
+| **Generate hidden gems for foreign repo** | `scripts/ops/generate-hidden-gems.sh <repo-path>` | Column A `chump ingest` Phase 3 Evangelist wrapper; writes `<repo-path>/docs/HIDDEN_GEMS.md` |
 | **Install hooks** | `scripts/setup/install-hooks.sh` | Idempotent; run after worktree add |
 | **Install ambient** | `scripts/setup/install-ambient-hooks.sh` | SessionStart/PreToolUse hooks for matrix wiring |
 | **Fix bare worktree** | `scripts/setup/fix-worktree-show-toplevel.sh` | Heals `core.bare=true` poison (INFRA-810) |
