@@ -25,6 +25,12 @@
 
 set -uo pipefail
 
+# launchd spawns with PATH=/usr/bin:/bin — tmux/chump live in homebrew and
+# ~/.local; without this the relaunch is a silent no-op while chump-mode still
+# prints its success banner (observed on the keeper's very first live firing,
+# 2026-07-19 21:20Z).
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
+
 REPO="${CHUMP_REPO:-$HOME/Projects/Chump}"
 MODE_FILE="${CHUMP_MODE_FILE:-$HOME/.chump/fleet-mode}"
 AMBIENT="${REPO}/.chump-locks/ambient.jsonl"
@@ -80,6 +86,23 @@ fi
 # ── relaunch at mode size ────────────────────────────────────────────────────
 relaunch_out="$("$CHUMP_MODE_BIN" "$mode" 2>&1 | tail -1 || true)"
 
+# Verify the relaunch actually took: wait for a fresh heartbeat (workers write
+# within ~60s of spawn). chump-mode's banner is a CLAIM; heartbeats are the
+# observation (CREDIBLE-154 discipline applies to the keeper itself).
+relaunch_ok=false
+if [[ "${CHUMP_POOL_KEEPER_SKIP_VERIFY:-0}" != "1" ]]; then
+    for _i in 1 2 3 4 5 6 7 8 9; do
+        sleep 10
+        for hb in $HB_GLOB; do
+            [[ -f "$hb" ]] || continue
+            hb_age=$(( $(date +%s) - $(stat -f %m "$hb" 2>/dev/null || echo 0) ))
+            (( hb_age <= 60 )) && relaunch_ok=true && break 2
+        done
+    done
+else
+    relaunch_ok=true
+fi
+
 python3 - "$STATE" "$now" <<'PY'
 import json, sys, os
 p, now = sys.argv[1], int(sys.argv[2])
@@ -93,5 +116,10 @@ d["last_restore"] = now
 json.dump(d, open(p, "w"))
 PY
 
-emit "{\"ts\":\"$(ts)\",\"kind\":\"fleet_pool_restored\",\"mode\":\"$mode\",\"restored\":true,\"escalated\":false,\"note\":\"RESILIENT-177: zero live worker heartbeats with mode=$mode — fleet relaunched\"}"
-echo "[pool-keeper] $(ts) restored fleet (mode=$mode): $relaunch_out"
+if [[ "$relaunch_ok" == "true" ]]; then
+    emit "{\"ts\":\"$(ts)\",\"kind\":\"fleet_pool_restored\",\"mode\":\"$mode\",\"restored\":true,\"escalated\":false,\"note\":\"RESILIENT-177: zero live worker heartbeats with mode=$mode — fleet relaunched and heartbeat verified\"}"
+    echo "[pool-keeper] $(ts) restored fleet (mode=$mode): $relaunch_out"
+else
+    emit "{\"ts\":\"$(ts)\",\"kind\":\"fleet_pool_restored\",\"mode\":\"$mode\",\"restored\":false,\"escalated\":false,\"note\":\"RESILIENT-177: relaunch invoked but NO fresh heartbeat within 90s — relaunch failed (PATH? tmux? see /tmp/chump-fleet-pool-keeper.log)\"}"
+    echo "[pool-keeper] $(ts) RELAUNCH FAILED (mode=$mode): no heartbeat within 90s; out: $relaunch_out"
+fi

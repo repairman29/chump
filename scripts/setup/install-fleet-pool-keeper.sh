@@ -51,6 +51,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>EnvironmentVariables</key>
     <dict>
         <key>CHUMP_REPO</key><string>${REPO_ROOT}</string>
+        <key>PATH</key><string>/opt/homebrew/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
     <key>StartInterval</key><integer>300</integer>
     <key>RunAtLoad</key><true/>
