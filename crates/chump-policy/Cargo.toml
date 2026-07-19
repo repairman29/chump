@@ -5,7 +5,7 @@ edition = "2021"
 description = "Per-operator + per-repo auto-merge policy resolution. Three scopes (fleet / operator / repo) merged with most-restrictive-wins semantics. Marcus M-E trust-cliff knob (INFRA-1489)."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-policy"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["policy", "auto-merge", "agent", "governance"]
 categories = ["development-tools"]
 

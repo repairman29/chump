@@ -1,0 +1,14 @@
+- id: INFRA-3338
+  domain: INFRA
+  title: "Dual-allocator gap-ID collisions: fresh-clone/fresh-worktree sessions allocate IDs already used on origin or in canonical state.db (CREDIBLE-127, CREDIBLE-128, INFRA-1591/1592 precedents)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Observed 4 times: (a) CREDIBLE-127 (per CREDIBLE-128 description), (b) CREDIBLE-128 — Red Letter #20 ran in a fresh remote clone with no state.db and hand-wrote YAML for an ID the canonical DB had already given to an env-tests gap (re-homed to CREDIBLE-150), (c/d) INFRA-1591/1592 — a fresh /tmp worktree spun up an empty state.db whose allocator handed out IDs origin/main already used (caught by pre-commit hijack guard, re-reserved as INFRA-3336/3337, 2026-07-18). Root cause: the ID allocator reads whatever state.db is visible to the cwd; fresh clones/worktrees see an empty or stale DB, and hand-written YAML bypasses allocation entirely. Rough shape: (1) allocator floor = max(state.db, docs/gaps/*.yaml on origin/main via git ls-tree) so a thin checkout can never allocate below published IDs; (2) reserve refuses to run against a state.db whose gap count is <10% of docs/gaps YAML count (empty-DB tripwire) unless CHUMP_ALLOW_THIN_DB=1; (3) CI cross-check: every gap YAML id on a PR must not redefine an existing id (exists as pre-commit hijack guard — promote to CI so fresh-clone sessions hit it too).
+  acceptance_criteria:
+    - Allocator floor includes published YAML ids (git ls-tree origin/main docs/gaps) so fresh worktrees cannot allocate a used id
+    - reserve against an empty/thin state.db fails loudly with remediation text
+    - CI gate rejects PRs whose gap YAML redefines an existing id's title (mirror of pre-commit block 19)
+    - regression test covering the fresh-worktree empty-db scenario
+
