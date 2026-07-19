@@ -8225,3 +8225,14 @@ events:
     consumers: [fleet-brief, ci-audit, ops-audit]
     fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
     fields_optional: [threshold]
+
+  - kind: wake_recovery
+    effect_metric: self
+    emitter: scripts/ops/wake-recovery.sh (RESILIENT-169, invoked by tools/chumpwake on NSWorkspace.didWakeNotification)
+    trigger: system wake from sleep — auth-status cache busted, auth re-probed
+      for validity, farmer + integrator + merge-queue-monitor kickstarted so a
+      lid-close resumes shipping within one farmer TTL window instead of
+      becoming a multi-day silent outage (June 22-28 class)
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, auth_ok, kicked]
+    fields_optional: [note]

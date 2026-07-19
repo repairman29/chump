@@ -70,6 +70,7 @@ REQUIRED_DAEMONS=(
     # pure bash, no cargo dep. Without this, the pause-deadlock self-seals
     # (RESILIENT-066 root cause) and the fleet cannot auto-recover.
     "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
+    "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
 )
 UID_VAL="$(id -u)"
 
