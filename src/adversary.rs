@@ -622,14 +622,19 @@ mod e2e_rule_to_ambient {
     }
 
     /// Read the temp ambient file the test pointed CHUMP_AMBIENT_LOG at.
+    ///
+    /// CHUMP_AMBIENT_LOG is process-global: a concurrent test outside this
+    /// module's serial(ambient_env) group can emit into this temp file
+    /// mid-line, producing an interleaved/unparseable row that is NOT the
+    /// line under test (CREDIBLE-150 class; observed as "trailing
+    /// characters" panics on operator machines). Skip lines that don't
+    /// parse — every assertion below runs on the session-filtered lines
+    /// this test itself emitted, and those must still parse to be found.
     fn read_ambient(path: &std::path::Path) -> Vec<serde_json::Value> {
         let raw = std::fs::read_to_string(path).unwrap_or_default();
         raw.lines()
             .filter(|l| !l.trim().is_empty())
-            .map(|l| {
-                serde_json::from_str::<serde_json::Value>(l)
-                    .expect("ambient line must be valid JSON")
-            })
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .collect()
     }
 
