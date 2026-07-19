@@ -8597,7 +8597,19 @@ async fn main() -> Result<()> {
                             *pillar_counts.entry(pillar.to_string()).or_insert(0) += 1;
                         }
 
-                        if total_pickable > 0 {
+                        // EFFECTIVE-294: percentage thresholds are meaningless on a
+                        // tiny pool — with < 10 pickable gaps the second same-pillar
+                        // reserve is already "≥50% of pool" and gets blocked, which
+                        // breaks fresh `chump bootstrap` repos and every CI fixture
+                        // DB (surfaced when concrete default AC made fixture gaps
+                        // pickable). The gate exists to correct drift in a mature
+                        // queue, not to police the first handful of gaps.
+                        let min_pool_for_balance: usize =
+                            std::env::var("CHUMP_PILLAR_BALANCE_MIN_POOL")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(10);
+                        if total_pickable >= min_pool_for_balance {
                             let proposed_count =
                                 *pillar_counts.get(proposed_pillar.as_str()).unwrap_or(&0);
                             // After this reserve, proposed count would be +1
