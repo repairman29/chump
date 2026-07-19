@@ -105,6 +105,20 @@ Per-slot fail-fast triggers:
 **Cap discipline**: never exceed 3 slots per Opus session (sibling Opus
 shepherds run their own slot pools; cluster-wide capacity is operator policy).
 
+**Retro evidence**: in the 2026-05-24 session2, a Sonnet dispatch on
+INFRA-1727 stalled silently for 35 minutes before I noticed and manually
+took over — no fail-fast budget existed, so the slot just sat dead. The
+15-min kill trigger above exists specifically to cap that class of loss.
+
+**Sub-agent quality vs token-cost tradeoff**: 3 concurrent slots costs
+roughly 3x the token spend of 1-at-a-time dispatch for the same wall-clock
+window. That's the right trade when the queue is deep and PR quality from
+Sonnet is holding (few reworks) — the wall-clock win dominates. Drop back to
+1-2 slots when CI fail-rate on your dispatched PRs climbs (see Stop
+conditions below) — that's a quality signal, not a budget one, and burning
+more slots into a degraded dispatch pattern compounds the rework cost
+instead of amortizing it.
+
 Tracked by [META-093](../gaps/META-093.yaml).
 
 ## Ghost-gap sweep cookbook

@@ -1,7 +1,7 @@
 - id: META-094
   domain: META
   title: "MISSION: docs/process/OPUS_SHEPHERD_PLAYBOOK.md — productize the shepherd-orchestrator role for future Opus sessions (session-start triage / predictive digest / parallel dispatch / lane-vs-curator-shepherd distinction / a2a tiers); stitches the 3 META-shepherd-improvement gaps"
-  status: open
+  status: ready_to_ship
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13,4 +13,5 @@
     - "6. Smoke test scripts/ci/test-opus-shepherd-playbook.sh: assert doc exists + has all 8 sections + cross-refs resolve"
     - 7. Baseline 2026-05-24 session2 retrospective is the source document; this gap captures that retrospective in canonical form
     - 8. Stitches META-091 + META-092 + META-093 (those gaps deliver the executable patterns; this gap delivers the doc)
+  outcome_id: MISSION-010
 

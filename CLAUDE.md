@@ -76,6 +76,12 @@ bash scripts/coord/freshness-preamble.sh         # META-115: FRESH/STALE/CRITICA
 bash scripts/dev/mission-scoreboard.sh           # MISSION-014: did yesterday move docs/MISSION.md?
 ```
 
+**Shepherd-orchestrator sessions**: read
+[`docs/process/OPUS_SHEPHERD_PLAYBOOK.md`](./docs/process/OPUS_SHEPHERD_PLAYBOOK.md)
+(META-094) right after the block above — session-start triage, predictive
+digest, parallel sub-fleet dispatch, ghost-gap sweep cookbook, and stop
+conditions all live there.
+
 **Freshness discipline** — before any "X is missing" claim, run [`verify-existence`](./.claude/skills/verify-existence/SKILL.md)
 or `git ls-tree origin/main path/to/X`. Local `ls` lies when your checkout is 40+
 commits behind. Full rules + anti-patterns + decision table in

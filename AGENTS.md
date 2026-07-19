@@ -415,6 +415,7 @@ Both are observable to you within ~minutes via `chump-coord watch` or the next s
 | [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) | System map: crates, data flow, key types |
 | [`docs/process/AGENT_COORDINATION.md`](./docs/process/AGENT_COORDINATION.md) | Lease system, branch model, failure modes |
 | [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) | Multi-agent design and roles |
+| [`docs/process/OPUS_SHEPHERD_PLAYBOOK.md`](./docs/process/OPUS_SHEPHERD_PLAYBOOK.md) | Productized shepherd-orchestrator role for Opus sessions — session-start triage, predictive digest, parallel sub-fleet dispatch, ghost-gap cookbook, self-implement-vs-dispatch decision tree, a2a tier discipline, stop conditions (META-094) |
 | [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) | Frontier a2a roadmap — six layers (NATS-primary, RPC, capability discovery, shared KV, deliberation, signed provenance) sequenced from today's primitives to world-class fleet coordination (META-061) |
 | [`docs/architecture/A2A_TWO_WAY_COMMS.md`](./docs/architecture/A2A_TWO_WAY_COMMS.md) | Two-way operator ↔ fleet comms: identity model, urgency/severity schema, reach hierarchy (inbox/toast/push/digest), filter rules, correlation_id reply contract (DOC-049) |
 | [`docs/research/RESEARCH_PLAN_2026Q3.md`](./docs/research/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
