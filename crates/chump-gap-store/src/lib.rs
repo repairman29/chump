@@ -393,7 +393,8 @@ impl GapStore {
                 gap_id        TEXT NOT NULL,
                 outcome       TEXT NOT NULL,
                 pr_number     INTEGER,
-                duration_s    INTEGER NOT NULL DEFAULT 0
+                duration_s    INTEGER NOT NULL DEFAULT 0,
+                cost_usd      REAL NOT NULL DEFAULT 0.0
             );
             CREATE INDEX IF NOT EXISTS routing_outcomes_lookup
                 ON routing_outcomes(task_class, backend, model, provider_pfx);
@@ -424,6 +425,13 @@ impl GapStore {
         // INFRA-314: affinity tags for worker preference matching.
         let _ = self.conn.execute(
             "ALTER TABLE gaps ADD COLUMN skills_required TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        // INFRA-1770: cost tracking so the router can score routes by
+        // (success_rate * value) / cost_per_attempt instead of success_rate
+        // alone. Idempotent for DBs created before this column existed.
+        let _ = self.conn.execute(
+            "ALTER TABLE routing_outcomes ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
             [],
         );
         let _ = self.conn.execute(
@@ -4488,6 +4496,9 @@ pub struct RoutingOutcomeRow {
     pub outcome: String,
     pub pr_number: Option<u32>,
     pub duration_s: i64,
+    /// USD spent on this dispatch attempt (token cost, API billing, etc).
+    /// `0.0` for backends/routes that don't report cost.
+    pub cost_usd: f64,
 }
 
 /// One aggregated row from the `(task_class, backend, model, provider_pfx)`
@@ -4503,6 +4514,17 @@ pub struct ScoreboardEntry {
     pub total: u64,
     pub success_rate: f64,
     pub last_seen: String,
+    /// Total USD spent across all attempts on this route.
+    pub total_cost_usd: f64,
+    /// `total_cost_usd / total` — USD spent per attempt on this route.
+    pub cost_per_attempt: f64,
+    /// `success_rate / cost_per_attempt` (INFRA-1770). Higher is better: a
+    /// route that ships reliably for cheap outranks one that ships
+    /// reliably but expensively. Routes with `cost_per_attempt == 0.0`
+    /// (no cost data yet) score as `success_rate` unchanged, so
+    /// zero-cost/unknown-cost routes don't get an artificial infinite
+    /// boost over measured ones.
+    pub value_score: f64,
 }
 
 impl GapStore {
@@ -4514,8 +4536,8 @@ impl GapStore {
             .execute(
                 "INSERT INTO routing_outcomes
                     (recorded_at, task_class, priority, effort, backend, model,
-                     provider_pfx, gap_id, outcome, pr_number, duration_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     provider_pfx, gap_id, outcome, pr_number, duration_s, cost_usd)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     row.recorded_at,
                     row.task_class,
@@ -4528,6 +4550,7 @@ impl GapStore {
                     row.outcome,
                     row.pr_number,
                     row.duration_s,
+                    row.cost_usd,
                 ],
             )
             .context("insert routing_outcomes row")?;
@@ -4544,7 +4567,8 @@ impl GapStore {
                     SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
                     SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures,
                     COUNT(*) AS total,
-                    MAX(recorded_at) AS last_seen
+                    MAX(recorded_at) AS last_seen,
+                    SUM(cost_usd) AS total_cost_usd
              FROM routing_outcomes
              GROUP BY task_class, backend, model, provider_pfx
              ORDER BY total DESC, successes DESC",
@@ -4558,10 +4582,21 @@ impl GapStore {
             let failures: i64 = r.get(5)?;
             let total: i64 = r.get(6)?;
             let last_seen: String = r.get::<_, Option<String>>(7)?.unwrap_or_default();
+            let total_cost_usd: f64 = r.get::<_, Option<f64>>(8)?.unwrap_or(0.0);
             let success_rate = if total > 0 {
                 successes as f64 / total as f64
             } else {
                 0.0
+            };
+            let cost_per_attempt = if total > 0 {
+                total_cost_usd / total as f64
+            } else {
+                0.0
+            };
+            let value_score = if cost_per_attempt > 0.0 {
+                success_rate / cost_per_attempt
+            } else {
+                success_rate
             };
             Ok(ScoreboardEntry {
                 task_class,
@@ -4573,6 +4608,9 @@ impl GapStore {
                 total: total as u64,
                 success_rate,
                 last_seen,
+                total_cost_usd,
+                cost_per_attempt,
+                value_score,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -6402,6 +6440,7 @@ meta:
             outcome: outcome.into(),
             pr_number: pr,
             duration_s: 60,
+            cost_usd: 0.0,
         }
     }
 
@@ -6527,6 +6566,72 @@ meta:
         assert_eq!(board[0].failures, 1);
         // last_seen reflects the most-recent write.
         assert_eq!(board[0].last_seen, "2026-04-27T11:00:00Z");
+    }
+
+    #[test]
+    fn routing_outcomes_cost_usd_drives_value_score() {
+        let (store, _dir) = test_store();
+        // Route A: 100% success, cheap ($0.10/attempt) — should win on value.
+        for i in 0..2 {
+            let mut row = outcome(
+                "chump-local",
+                "shipped",
+                &format!("2026-04-27T12:0{i}:00Z"),
+                Some(i + 1),
+                "cheap",
+                "qwen",
+            );
+            row.cost_usd = 0.10;
+            store.record_routing_outcome(&row).unwrap();
+        }
+        // Route B: 100% success too, but expensive ($5.00/attempt).
+        for i in 0..2 {
+            let mut row = outcome(
+                "claude",
+                "shipped",
+                &format!("2026-04-27T13:0{i}:00Z"),
+                Some(i + 10),
+                "expensive",
+                "opus",
+            );
+            row.cost_usd = 5.00;
+            store.record_routing_outcome(&row).unwrap();
+        }
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 2);
+        let cheap = board
+            .iter()
+            .find(|e| e.task_class == "cheap")
+            .expect("cheap route");
+        let expensive = board
+            .iter()
+            .find(|e| e.task_class == "expensive")
+            .expect("expensive route");
+        assert!((cheap.total_cost_usd - 0.20).abs() < 1e-9);
+        assert!((cheap.cost_per_attempt - 0.10).abs() < 1e-9);
+        assert!((expensive.cost_per_attempt - 5.00).abs() < 1e-9);
+        // Both routes ship 100% of the time, but the cheap one scores
+        // higher on value — this is the whole point of INFRA-1770.
+        assert!(
+            cheap.value_score > expensive.value_score,
+            "cheap route ({}) must outrank expensive route ({}) on value_score",
+            cheap.value_score,
+            expensive.value_score
+        );
+    }
+
+    #[test]
+    fn routing_outcomes_zero_cost_falls_back_to_success_rate() {
+        let (store, _dir) = test_store();
+        let row = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(1), "", "");
+        store.record_routing_outcome(&row).unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 1);
+        assert!((board[0].total_cost_usd - 0.0).abs() < f64::EPSILON);
+        assert!((board[0].cost_per_attempt - 0.0).abs() < f64::EPSILON);
+        // No cost data yet — value_score must equal success_rate, not
+        // blow up to infinity from a division by zero.
+        assert!((board[0].value_score - board[0].success_rate).abs() < f64::EPSILON);
     }
 
     // ── INFRA-216: post-reserve cross-host collision tests ────────────────
