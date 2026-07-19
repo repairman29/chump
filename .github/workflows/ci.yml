@@ -137,6 +137,7 @@ jobs:
               - '.github/workflows/**'
               - '.release-plz.toml'
               - 'scripts/**'
+              - 'tools/**'
               - 'docs/**'
               - 'ChumpMenu/**'
               - 'Formula/**'
@@ -193,6 +194,7 @@ jobs:
               - 'rust-toolchain.toml'
             scripts:
               - 'scripts/**'
+              - 'tools/**'
               - '.github/workflows/**'
               - 'bin/**'
               - 'launchd/**'
