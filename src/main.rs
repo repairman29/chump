@@ -87,6 +87,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod fleet_mode; // INFRA-1718: auth + backend + cost-ceiling surface
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
@@ -6990,6 +6991,23 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     });
                 std::process::exit(status.code().unwrap_or(1));
+            }
+            // INFRA-1718: one-glance auth + backend + cost-ceiling surface.
+            // Answers "which credential/backend/spend-cap will an agent
+            // spawned right now actually hit" — the thing auth-status.sh /
+            // fleet doctor answer only partially (presence, not routing).
+            "mode" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let surface = fleet_mode::build();
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&surface).unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else {
+                    println!("{}", surface.render_line());
+                }
+                std::process::exit(if surface.auth_usable { 0 } else { 1 });
             }
             // INFRA-1995 (THE FLOOR Phase 2): single-pane fleet pulse.
             // Aggregates floor_temp + fleet_hold + active leases + recent

@@ -5,8 +5,10 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - chump fleet mode [--json] prints one line/object with auth_mode (api-key|oauth|none), auth_usable bool, backend (cascade|claude-direct), effort_tier, and cost_ceiling_usd; exits 1 when auth_usable is false
+    - chump --briefing <GAP-ID> (both markdown and --json render paths) includes a Fleet Mode / fleet_mode section with the same auth_mode/auth_usable/backend/effort_tier/cost_ceiling_usd fields, computed fresh (not cached) at briefing time
+    - "surface is read-only: no network or gh calls, derived from auth::detect_credentials/resolve + CHUMP_CASCADE_ENABLED env + budget_tracker::tier_default_cost_usd"
+    - cargo check --workspace and cargo clippy --workspace -D warnings pass; unit tests cover render_line's [AUTH UNUSABLE] flag and the cascade-vs-claude-direct backend branch
+    - "smoke test: chump fleet mode --json | jq .auth_mode succeeds, and chump --briefing <any-open-gap-id> --json | jq .fleet_mode.backend succeeds"
+  outcome_id: MISSION-010
 

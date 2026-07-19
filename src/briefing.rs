@@ -111,6 +111,11 @@ pub struct GapBriefing {
     /// or when `CHUMP_SCRATCHPAD_INJECT=0` is set. Capped at 5 keys / ~500
     /// tokens total by `scratchpad::prompt_inject_snapshot`.
     pub scratchpad_context: Vec<(String, String)>,
+    /// INFRA-1718: auth + backend + cost-ceiling surface for the session
+    /// about to claim this gap. Computed fresh at briefing time (not
+    /// cached) since auth state can change between gap-preflight and
+    /// gap-claim. See `fleet_mode::build`.
+    pub fleet_mode: crate::fleet_mode::FleetModeSurface,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -190,6 +195,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             gap_not_found: true,
             umbrella_context: None,
             scratchpad_context: Vec::new(),
+            fleet_mode: crate::fleet_mode::build(),
         };
     };
 
@@ -312,6 +318,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         gap_not_found: false,
         umbrella_context,
         scratchpad_context,
+        fleet_mode: crate::fleet_mode::build(),
     }
 }
 
@@ -999,7 +1006,9 @@ pub fn render_json(b: &GapBriefing) -> String {
             r#"{{"schema_version":1,"gap_id":"{id}","gap_title":"{title}","gap_priority":"{prio}","#,
             r#""gap_effort":"{effort}","gap_domain":"{domain}","gap_not_found":{nf},"#,
             r#""gap_acceptance":{ac},"depends_on":[{deps}],"#,
-            r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}]}}"#
+            r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}],"#,
+            r#""fleet_mode":{{"auth_mode":"{auth_mode}","auth_usable":{auth_usable},"#,
+            r#""backend":"{backend}","effort_tier":"{effort_tier}","cost_ceiling_usd":{ceiling}}}}}"#
         ),
         id = escape(&b.gap_id),
         title = escape(&b.gap_title),
@@ -1015,6 +1024,11 @@ pub fn render_json(b: &GapBriefing) -> String {
         deps = deps.join(","),
         refs = reflections.join(","),
         prs = prs.join(","),
+        auth_mode = escape(&b.fleet_mode.auth_mode),
+        auth_usable = b.fleet_mode.auth_usable,
+        backend = escape(&b.fleet_mode.backend),
+        effort_tier = escape(&b.fleet_mode.effort_tier),
+        ceiling = b.fleet_mode.cost_ceiling_usd,
     )
 }
 
@@ -1048,6 +1062,14 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         out.push_str(&format!("- Depends on: {}\n", b.depends_on.join(", ")));
     }
     out.push('\n');
+
+    // INFRA-1718: auth + backend + cost-ceiling surface, always rendered
+    // (never empty) so an agent sees the routing it will hit before
+    // claiming — not just whether a credential is present.
+    out.push_str(&format!(
+        "**Fleet Mode**\n- {}\n\n",
+        b.fleet_mode.render_line()
+    ));
 
     // INFRA-1121: scratchpad context — fleet state snapshot at session start.
     // Only rendered when at least one key is set; hidden when empty to keep
