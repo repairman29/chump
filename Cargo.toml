@@ -34,6 +34,7 @@ members = [
     "crates/chump-reviewer-routing",
     "crates/chump-policy",
     "crates/chump-integrator",
+    "crates/chumpd",
     "crates/chump-curator-supervisor",
 ]
 resolver = "2"

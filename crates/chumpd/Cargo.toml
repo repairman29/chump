@@ -1,0 +1,17 @@
+[package]
+name = "chumpd"
+version = "0.1.0"
+edition = "2021"
+description = "MISSION-051 supervisor daemon v0: owns the worker pool as supervised child processes — no tmux, no launchd zoo. Ground-up step 2."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+keywords = ["agent", "supervisor", "fleet", "daemon"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "chumpd"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+libc = "0.2"

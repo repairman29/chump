@@ -1111,3 +1111,5 @@ CHUMP_GHOST_REAPER_LOOKBACK_DAYS
 CHUMP_REAPER_PRESSURE_DISABLED
 # detected in: (standard input)
 CHUMP_REAPER_PRESSURE_THRESHOLD
+# CHUMPD_TAKEOVER — 0 skips chumpd's pool-ownership sweep (test harness, MISSION-051)
+# CHUMP_HEARTBEAT_DIR — override worker heartbeat dir (test isolation, MISSION-051)
