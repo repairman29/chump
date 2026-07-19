@@ -159,3 +159,22 @@ lease_session_from_statedb() {
     [[ -f "$db" ]] || return 0
     sqlite3 "$db" "SELECT session_id FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
 }
+
+# lease_worktree_from_statedb <gap_id> [<state_db_path>]
+#   Echoes the worktree path recorded for <gap_id>'s canonical lease (empty if
+#   none / no sqlite3). Same default-db resolution as lease_session_from_statedb.
+#   INFRA-1901: lets a caller detect "am I already sitting inside the leased
+#   worktree?" without shelling out to `chump claim` first.
+lease_worktree_from_statedb() {
+    local gap_id="$1" db="${2:-}"
+    [[ "$gap_id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+    command -v sqlite3 >/dev/null 2>&1 || return 0
+    if [[ -z "$db" ]]; then
+        local repo gitdir
+        gitdir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        if [[ -n "$gitdir" ]]; then repo="$(dirname "$gitdir")"; else repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; fi
+        db="${CHUMP_STATE_DB:-$repo/.chump/state.db}"
+    fi
+    [[ -f "$db" ]] || return 0
+    sqlite3 "$db" "SELECT worktree FROM leases WHERE gap_id='$gap_id' LIMIT 1;" 2>/dev/null || true
+}
