@@ -40,6 +40,7 @@ mod browser;
 mod browser_tool;
 mod calc_tool;
 mod cancel_registry;
+mod cartographer;
 mod cascade_stats;
 mod checkpoint_db;
 mod checkpoint_tool;
@@ -1750,6 +1751,103 @@ async fn main() -> Result<()> {
             .any(|f| f.severity == audit::AuditSeverity::Alert);
         if any_alert {
             std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    // `chump cartograph <path> [--json] [--no-write]` (INFRA-1782, INFRA-1746
+    // Phase 2 Cartographer). Read-only static scan of a target repo that
+    // writes <path>/docs/ARCHITECTURE.md (topology + module map + entry
+    // points + hot paths). Zero-cost (no LLM calls) so it ships ahead of the
+    // full `chump ingest` orchestration and can be wired in as a phase once
+    // INFRA-1780/1784 land.
+    if args.get(1).map(String::as_str) == Some("cartograph") {
+        let rest: Vec<&str> = args.iter().skip(2).map(String::as_str).collect();
+        if rest.is_empty() || rest.iter().any(|a| *a == "--help" || *a == "help") {
+            println!("Usage: chump cartograph <target-repo-path> [--json] [--no-write]");
+            println!();
+            println!("Static read-only scan of <target-repo-path>: language mix, top-level module");
+            println!("map, entry points, and hot paths (largest source files). Writes");
+            println!("<target-repo-path>/docs/ARCHITECTURE.md unless --no-write is passed.");
+            println!();
+            println!("Options:");
+            println!("  --json       print the report as JSON instead of the markdown preview");
+            println!("  --no-write   scan only, don't write ARCHITECTURE.md");
+            return Ok(());
+        }
+        let want_json = rest.contains(&"--json");
+        let no_write = rest.contains(&"--no-write");
+        let target_repo_str = rest.iter().find(|a| !a.starts_with("--")).copied();
+        let coordinating_repo = repo_path::repo_root();
+        let target_repo = match target_repo_str {
+            Some(p) => std::path::PathBuf::from(p),
+            None => {
+                eprintln!("chump cartograph: missing <target-repo-path>");
+                std::process::exit(2);
+            }
+        };
+        cartographer::emit_ambient(
+            &coordinating_repo,
+            "cartographer_started",
+            serde_json::json!({"target_repo": target_repo.display().to_string()}),
+        );
+        let report = match cartographer::scan(&target_repo) {
+            Ok(r) => r,
+            Err(e) => {
+                cartographer::emit_ambient(
+                    &coordinating_repo,
+                    "cartographer_failed",
+                    serde_json::json!({
+                        "target_repo": target_repo.display().to_string(),
+                        "failure_class": e.class.as_str(),
+                        "note": e.message,
+                    }),
+                );
+                eprintln!("chump cartograph: {}", e);
+                std::process::exit(if e.class == cartographer::FailureClass::Permanent {
+                    2
+                } else {
+                    1
+                });
+            }
+        };
+        let mut out_path: Option<std::path::PathBuf> = None;
+        if !no_write {
+            match cartographer::write_architecture_md(&report) {
+                Ok(p) => out_path = Some(p),
+                Err(e) => {
+                    cartographer::emit_ambient(
+                        &coordinating_repo,
+                        "cartographer_failed",
+                        serde_json::json!({
+                            "target_repo": target_repo.display().to_string(),
+                            "failure_class": "transient",
+                            "note": format!("write ARCHITECTURE.md: {}", e),
+                        }),
+                    );
+                    eprintln!("chump cartograph: write ARCHITECTURE.md: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        cartographer::emit_ambient(
+            &coordinating_repo,
+            "cartographer_completed",
+            serde_json::json!({
+                "target_repo": target_repo.display().to_string(),
+                "files_scanned": report.files_scanned,
+                "elapsed_ms": report.elapsed_ms,
+                "cost_usd_cents": report.cost_usd_cents,
+                "wrote_architecture_md": out_path.is_some(),
+            }),
+        );
+        if want_json {
+            println!("{}", cartographer::render_json(&report));
+        } else {
+            if let Some(p) = &out_path {
+                println!("wrote {}", p.display());
+            }
+            print!("{}", cartographer::render_markdown(&report));
         }
         return Ok(());
     }

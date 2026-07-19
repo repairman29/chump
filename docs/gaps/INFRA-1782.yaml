@@ -5,8 +5,11 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - chump cartograph <target-repo-path> is a static, read-only scan (no LLM calls) that writes <target-repo-path>/docs/ARCHITECTURE.md with language mix, top-level module map, detected entry points (Rust/Python/JS-TS/Go/Bash), and hot paths (largest source files by line count)
+    - "emits kind=cartographer_started on scan begin, kind=cartographer_completed (fields: target_repo, files_scanned, elapsed_ms, cost_usd_cents, wrote_architecture_md) on success, kind=cartographer_failed (fields: target_repo, failure_class, note) on failure — registered in docs/observability/EVENT_REGISTRY.yaml"
+    - cost_usd_cents is tracked and reported in the completed event (0 for this static-scan v1; the field exists so downstream ingest-phase cost rollups (INFRA-1784) treat all phases uniformly even when a phase happens to cost $0)
+    - "failure-class taxonomy: Permanent (bad/missing target path — not retryable without operator action, exit 2) vs Transient (filesystem error mid-scan or during ARCHITECTURE.md write — retryable, exit 1)"
+    - "scripts/ci/test-cartographer-smoke.sh: builds chump, scans a fixture repo, asserts ARCHITECTURE.md is written with expected sections, asserts cartographer_started/completed/failed all fire, asserts a bad path exits non-zero"
+    - cargo fmt/clippy clean per CLAUDE.md local-CI discipline; unit tests in src/cartographer.rs cover missing-path failure, entry-point detection, module map, hot-path ranking, ARCHITECTURE.md write, and JSON rendering
+  outcome_id: MISSION-010
 

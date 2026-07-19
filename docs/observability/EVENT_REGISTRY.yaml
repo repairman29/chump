@@ -8246,3 +8246,27 @@ events:
       per-PR flow instead of silently stranding the gap
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
+
+  - kind: cartographer_started
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: chump cartograph begins scanning a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo]
+
+  - kind: cartographer_completed
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: chump cartograph finishes a scan (and writes ARCHITECTURE.md
+      unless --no-write was passed)
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, target_repo, files_scanned, elapsed_ms, cost_usd_cents, wrote_architecture_md]
+
+  - kind: cartographer_failed
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: chump cartograph hits a permanent failure (bad path) or a
+      transient failure (filesystem error mid-scan or during
+      ARCHITECTURE.md write)
+    consumers: [audit-log, ci-audit]
+    fields_required: [ts, kind, target_repo, failure_class, note]
