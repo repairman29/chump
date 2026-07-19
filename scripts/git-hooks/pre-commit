@@ -1901,4 +1901,19 @@ fi
 # committed source — removed. Acceptance-criteria is enforced where it belongs:
 # the gap-tooling layer (`chump gap reserve/set` reject empty/TODO acceptance_
 # criteria) and CI. It does not belong in a local pre-commit block.
+
+# ------------------------------------------------------------------
+# 19. CSS token-discipline gate (INFRA-1590)
+# ------------------------------------------------------------------
+# Fires ONLY when staged files include web/**/*.{js,html,css}.
+# Rejects raw hex outside :root, non-canonical --*-primary aliases,
+# mismatched var() fallbacks, and color literals drifting across > 3 files.
+# Bypass: 'Token-Discipline-Bypass: <reason>' commit trailer.
+CSS_TOKEN_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-css-token-discipline.sh"
+if [ -x "$CSS_TOKEN_HOOK" ]; then
+    if ! "$CSS_TOKEN_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0

@@ -1,0 +1,16 @@
+- id: RESILIENT-172
+  domain: RESILIENT
+  title: "RESILIENT: external_verify_merge tests escape their fixture sandbox and mutate the host repo (remotes, user identity, branches)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Observed live 2026-07-18 while running cargo test --bin chump from a /private/tmp worktree: the external_verify_merge e2e tests (src/external_verify_merge.rs ~line 1806+, the add.js/__tests__/add.test.js fixture) ran git config + branch + checkout operations against the HOST repo instead of their TempDir fixture. Damage observed: (a) shared repo-level git config overwritten — user.name/email -> Test/test@example.com, remote origin URL -> git@github.com:myorg/myrepo; (b) fixture commits (initial commit / base: buggy add / fix: add returns sum) committed onto the session's real branch + a stray pr-head branch created; (c) worktree files deleted/staged. Likely cause: a test resolves the repo root via git rev-parse / cwd fallback when a fixture path is missing (the 'pathspec __tests__/add.test.js did not match' error observed mid-run) and proceeds against whatever repo cwd is in. CI never sees this because its checkout is disposable — the damage class only hits operator machines and long-lived worktrees. Same family as CREDIBLE-150 (tests touching real operator state).
+  acceptance_criteria:
+    - "Every git invocation in external_verify_merge tests targets an explicit fixture path (git -C <tempdir> or Command::current_dir(tempdir)); no cwd-inherited git calls"
+    - A guard asserts the fixture repo root != host repo root before any mutating git op, failing loudly instead of escaping
+    - cargo test --bin chump run from a linked worktree leaves git config user.*, remote URLs, and branch list bit-identical (regression test or CI check)
+    - git config mutations in tests use per-fixture GIT_CONFIG or -c flags, never git config --global/--local on the host
+  notes: |
+    YAML carried to main via PR #3183 branch (queue-cleanup batch 2026-07-18).
+

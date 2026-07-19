@@ -1714,6 +1714,7 @@ Some prose from the agent.
     /// We use Command::get_envs() to inspect the env-override map without
     /// spawning any process.
     #[test]
+    #[serial_test::serial]
     fn configure_auth_env_strips_gateway_when_oauth_in_env() {
         // Set the OAUTH token in the process env for this test.
         // Use a clearly fake value — never logged.
@@ -1784,6 +1785,7 @@ Some prose from the agent.
     /// B4: when no OAUTH token is available (neither env nor file), the
     /// function returns false and does NOT strip any gateway vars.
     #[test]
+    #[serial_test::serial]
     fn configure_auth_env_noop_when_no_oauth() {
         // If the test process happens to carry CLAUDE_CODE_OAUTH_TOKEN, skip —
         // we can't safely remove it without affecting other parallel tests.
