@@ -5,7 +5,7 @@ edition = "2021"
 description = "Smart reviewer routing for fleet PRs. Deterministic suggestion from (recent committers ∪ CODEOWNERS ∪ operator override). Marcus M-E surface (INFRA-1491)."
 repository = "https://github.com/repairman29/chump"
 homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-reviewer-routing"
-license = "MIT"
+license = "AGPL-3.0-only"
 keywords = ["pr", "reviewer", "routing", "fleet", "agent"]
 categories = ["development-tools"]
 
