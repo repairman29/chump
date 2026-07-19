@@ -1,57 +1,17 @@
 - id: RESILIENT-169
   domain: RESILIENT
-  title: "RESILIENT: 9 stranded open PRs (oldest 21d); INFRA-1526 ghost gap drives 3 duplicate PRs; INFRA-918 triplicate post-OBL; RESILIENT-160 (dyld_start) root cause at 3 cycles inactive"
+  title: "RESILIENT: fleet has no sleep/wake-recovery hook — lid-close on battery becomes a multi-day outage instead of a pause"
   status: open
-  priority: P1
+  priority: P0
   effort: m
-  opened_date: '2026-07-13'
-  raised_by: cold-water
-  raised_in: RED_LETTER#20
   description: |
-    VERIFIED 2026-07-13 (Issue #20 Cold Water audit):
-
-    9 open PRs in repairman29/chump as of 2026-07-13. 8 are non-Dependabot.
-    Oldest: 2026-06-22 (21 days). The merge queue is a graveyard.
-
-    Cluster A — INFRA-1526 ghost gap (3 duplicate PRs, 21 days stranded):
-      PR #3163 (opened 2026-06-22): "Bot-Merge-Bypass: chump binary wedged at _dyld_start repeatedly"
-      PR #3173 (opened 2026-06-22): "Bot-Merge-Bypass: chump binary wedged after unwedge attempt"
-      PR #3174 (opened 2026-06-24): no bypass trailer
-      INFRA-1526: docs/gaps/INFRA-1526.yaml does not exist (ghost gap ID).
-      git log origin/main --grep='INFRA-1526' --oneline → 0 commits on main.
-      Three PRs were opened for a gap that was never filed.
-
-    Cluster B — INFRA-918 triplicate after OBL (3 duplicate PRs, 21 days stranded):
-      PR #3155 (opened 2026-06-22): "Bot-Merge-Bypass: chump binary persistently wedged (dyld_start)"
-      PR #3156 (opened 2026-06-22): "Bot-Merge-Bypass: chump binary wedging on dyld_start"
-      PR #3157 (opened 2026-06-22): opened by bot-merge.sh (no bypass)
-      INFRA-918 already has a commit on main: 4a028fe (feat(INFRA-918): bot-merge rebase-before-test
-      telemetry, PR #3168, merged 2026-06-22). Status: open with TODO ACs. The gap was never
-      marked shipped; three more PRs opened for the same gap the same day it was already merged.
-
-    Cluster C — post-CREDIBLE-146 stranded PR:
-      PR #3183 (opened 2026-07-05): INFRA-1590, "Bot-Merge-Bypass: bot-merge binary repeatedly
-      re-wedges on this machine; manual push required". Opened the day AFTER CREDIBLE-146 fixed
-      the auth cache. Still unmerged 8 days later.
-
-    Root cause: RESILIENT-160 (dyld_start inode-wedge, filed 2026-06-22, priority P1) has
-    0 implementation commits across 3 audit cycles. The wedge that created this graveyard
-    is still unfixed.
-
-    Evidence:
-    1. mcp__github__list_pull_requests: 9 open PRs, 8 non-Dependabot, oldest 2026-06-22
-    2. ls docs/gaps/INFRA-1526.yaml → No such file or directory (ghost)
-    3. git log origin/main --grep='RESILIENT-160' --oneline | grep -v cold-water → 0 results (3 cycles)
-
-    Falsifying condition: RESILIENT-160 has an implementation commit, OR the 8 non-Dependabot
-    PRs were merged or explicitly closed with a reason.
-
+    The fleet substrate is a MacBook. Closing the lid on battery (the operator's normal habit) puts it into full system sleep: all fleet processes suspend, no claude -p calls, no merges, AND the oauth-token refresh daemon (runs every ~5min) cannot run. On wake there is NO recovery hook anywhere (verified: no launchd com.apple.system.wake agent, no sleepwatcher, no caffeinate supervisor in scripts/). So a routine lid-close turns into a multi-day silent outage — confirmed as the persistence mechanism behind the 2026-06-22→28 six-day stall (pmset -g log shows repeated Maintenance-Sleep/DarkWake cycles on battery; the CREDIBLE-146 stale-cache bug then prevented fast self-heal on each brief wake). REFRAME: the lid closing is normal and expected; the bug is that the fleet treats sleep as DEATH instead of a PAUSE. Two complementary levers: (A) operator-side — on AC power, 'sudo pmset -c disablesleep 1' keeps it awake lid-closed (still sleeps on battery, by design, to protect the battery); (B) fleet-side (this gap) — a wake-triggered recovery so reopening the lid restores service in ~1 min regardless. Strategic end-state: move the substrate off the laptop entirely onto the always-on Pi-mesh actions-runner (INFRA-1543). Sibling: CREDIBLE-146 (stale cache), RESILIENT-054 (auth substrate).
   acceptance_criteria:
-    - "RESILIENT-160 has an implementation commit that demonstrably fixes the dyld_start wedge
-      (bot-merge.sh succeeds on a fresh run without manual intervention)"
-    - "The 3 duplicate INFRA-1526 PRs (#3163, #3173, #3174) are closed — either merged (one)
-      or explicitly closed with a comment identifying the chosen one"
-    - "The 3 duplicate INFRA-918 PRs (#3155, #3156, #3157) are closed — either merged or
-      closed; INFRA-918 gap status updated to shipped with the chosen PR reference"
-    - "PR #3183 (INFRA-1590) is merged or closed"
-    - "A gap is filed for INFRA-1526 with proper AC so it can be picked and claimed"
+    - "A launchd agent triggered on system wake (com.apple.system.wake / equivalent) runs a fleet-resume routine: bust auth-status cache + re-probe + kick the farmer"
+    - On wake from sleep, the fleet resumes shipping within one farmer TTL window (~1-5 min) with no human intervention — verified by a documented wake-test (sleep the machine, wake it, assert farmer_auth_ok + a worker spawn within N min)
+    - docs/process documents the operator-side 'sudo pmset -c disablesleep 1' lever (AC-only) and the battery tradeoff, plus the Pi-mesh-substrate end-state as the durable answer
+    - the recovery routine emits an ambient event (kind=wake_recovery or similar) so the resume is auditable
+  notes: |
+    P0 promotion 2026-07-19 cycle plan: true unblocker for fleet revival / registry truth (operator-directed re-rank; see docs/ROADMAP.md current cycle).
+  outcome_id: RESILIENT-000
+

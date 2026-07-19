@@ -1,14 +1,27 @@
 - id: EFFECTIVE-112
   domain: EFFECTIVE
-  title: "EFFECTIVE P1: chump onboard can't clone PRIVATE external repos — git clone uses unsupported https password auth (blocks the entire BEAST-MODE / external-repo mission)"
-  status: open
+  title: 'EFFECTIVE P1: chump onboard can''t clone PRIVATE external repos — git clone uses unsupported https password auth
+    (blocks the entire BEAST-MODE / external-repo mission)'
+  status: done
   priority: P0
   effort: s
-  description: |
-    VERIFIED 2026-06-03 by RUNNING it (conductor let Chump scout autonomously instead of hand-cloning): `chump onboard https://github.com/repairman29/BEAST-MODE` (a PRIVATE repo) fails at clone with 'Invalid username or token. Password authentication is not supported for Git operations. git clone exited exit status: 128'. src/onboard.rs (INFRA-2108) shells a bare `git clone https://github.com/...` with NO auth -> GitHub rejects https password -> private repos can't be cloned. This BLOCKS the whole external-repo mission: BEAST-MODE (repairman29/BEAST-MODE) is private, so Chump cannot even READ it, let alone work it. SECONDARY BUG: `chump onboard` exited 0 despite the clone failing — it swallows the error; it must exit non-zero so the autonomous loop / operator sees the failure. FIX: authenticate the clone using the fleet's existing GitHub creds (INFRA-AGENT-CREDS): inject the token into the clone URL (https://x-access-token:$GH_TOKEN@github.com/OWNER/REPO) using `gh auth token` or $GH_TOKEN/$GITHUB_TOKEN, OR shell `gh repo clone`, OR `gh auth setup-git` credential helper, OR SSH. Prefer the gh-token path (works for the autonomous worker too).
-  acceptance_criteria:
-    - chump onboard clones a PRIVATE repo using the fleet's GitHub auth (gh token / GH_TOKEN / credential helper) — verified against repairman29/BEAST-MODE
-    - onboard exits NON-ZERO when the git clone fails (no silent exit-0 on failure)
-    - a CI test covers the private-repo clone-auth path
-    - "`chump onboard https://github.com/repairman29/BEAST-MODE` completes the first-touch scan (clone + summary) end-to-end — the BEAST-MODE acceptance case"
+  description: 'VERIFIED 2026-06-03 by RUNNING it (conductor let Chump scout autonomously instead of hand-cloning): `chump
+    onboard https://github.com/repairman29/BEAST-MODE` (a PRIVATE repo) fails at clone with ''Invalid username or token. Password
+    authentication is not supported for Git operations. git clone exited exit status: 128''. src/onboard.rs (INFRA-2108) shells
+    a bare `git clone https://github.com/...` with NO auth -> GitHub rejects https password -> private repos can''t be cloned.
+    This BLOCKS the whole external-repo mission: BEAST-MODE (repairman29/BEAST-MODE) is private, so Chump cannot even READ
+    it, let alone work it. SECONDARY BUG: `chump onboard` exited 0 despite the clone failing — it swallows the error; it must
+    exit non-zero so the autonomous loop / operator sees the failure. FIX: authenticate the clone using the fleet''s existing
+    GitHub creds (INFRA-AGENT-CREDS): inject the token into the clone URL (https://x-access-token:$GH_TOKEN@github.com/OWNER/REPO)
+    using `gh auth token` or $GH_TOKEN/$GITHUB_TOKEN, OR shell `gh repo clone`, OR `gh auth setup-git` credential helper,
+    OR SSH. Prefer the gh-token path (works for the autonomous worker too).
 
+    '
+  acceptance_criteria:
+  - chump onboard clones a PRIVATE repo using the fleet's GitHub auth (gh token / GH_TOKEN / credential helper) — verified
+    against repairman29/BEAST-MODE
+  - onboard exits NON-ZERO when the git clone fails (no silent exit-0 on failure)
+  - a CI test covers the private-repo clone-auth path
+  - '`chump onboard https://github.com/repairman29/BEAST-MODE` completes the first-touch scan (clone + summary) end-to-end
+    — the BEAST-MODE acceptance case'
+  closed_date: '2026-06-04'

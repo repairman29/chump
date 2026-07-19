@@ -10,4 +10,7 @@
     - Every workspace crate published to crates.io has a latest version whose license field matches its Cargo.toml (AGPL-3.0-only or Apache-2.0)
     - cargo publish dry-run passes for all publishable crates
     - NOTICE crate lists verified against published metadata
+  depends_on: [INFRA-3287]
+  notes: |
+    2026-07-18 executed with operator cargo token: chump-ambient-cli 0.1.0 (AGPL) published as new dep, chump-coord 0.2.0 (AGPL) published; root chump 0.1.0 (stale March MIT) yanked — cannot republish until INFRA-3287 decomposition publishes its 16 path deps; old MIT versions of the 3 AGPL crates (coord/mcp-github/orchestrator 0.1.0) yanked; Apache-tier old MIT versions left live (permissive->permissive, no protection delta). Verified via crates.io API: every crate's latest now matches its Cargo.toml license. Remaining scope: republish root chump post-decomposition.
 

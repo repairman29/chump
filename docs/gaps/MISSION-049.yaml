@@ -1,0 +1,14 @@
+- id: MISSION-049
+  domain: MISSION
+  title: "MISSION: chump improve needs GUEST-MODE for 3rd-party repos (fork + PR-cap + NO self-merge + issue-first) vs throughput-mode for own repos"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  evidence: |
+    Operator strategic direction 2026-06-22: point the fleet outward IN ORDER — own repos first (auth solved, throughput OK), then 3rd-party. STEP 2 (own-repo/BEAST) is proven: chump improve repairman29/BEAST-MODE dry-run scouted + picked a real bug (ml-pipeline.yml path refs), --apply ship in flight. STEP 3 = the genuinely-NEW build: chump improve today is THROUGHPUT-only — it implements → opens PR → SELF-verify-merges on merit (EFFECTIVE-177). That is CORRECT for the operator's own repos (BEAST = repairman29, can self-merge, many PRs fine) but HOSTILE on a 3rd-party repo (a maintainer who gets a flood of self-merged PRs blocks you). Guest-mode is the inverse: optimize ACCEPTANCE PROBABILITY not throughput. CURE — add a mode to chump improve: (1) MODE auto-detect: target owner == our GH identity → own-repo/throughput (current behavior); else → GUEST. (2) GUEST flow: fork upstream → branch on the fork → implement → open ONE PR to upstream → STOP. NO self-merge (the maintainer decides). (3) PR-cap: refuse to open a new PR if >= CHUMP_GUEST_PR_CAP (default 1) open PRs already exist on that upstream — batch related work into one PR, wait for maintainer response before more. (4) Respect the target's CONTRIBUTING.md / PR template; issue-first gate (configurable) for non-trivial work. (5) Done-definition: own-repo = continuous; guest = bounded contribution submitted → STOP, don't churn the maintainer. GATED ON: step 2 (>=1 BEAST PR via chump improve --apply merged) proven first. Pairs with EFFECTIVE-165 (external-repo capability) + MISSION-010 (BEAST proof) + the conductor (step 4, drives targets-in-modes) + autonomous target-selection (step 5, hard-gated, last).
+

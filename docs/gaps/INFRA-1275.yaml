@@ -1,14 +1,20 @@
 - id: INFRA-1275
   domain: INFRA
-  title: "ZERO-WASTE: migrate chump-ambient-glance.sh + gap-preflight.sh to chump_gh / cache_lookup_pr (hot-path callers, fire on every hook + claim)"
-  status: open
+  title: 'ZERO-WASTE: migrate chump-ambient-glance.sh + gap-preflight.sh to chump_gh / cache_lookup_pr (hot-path callers,
+    fire on every hook + claim)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - scripts/coord/chump-ambient-glance.sh — every `gh api`/`gh pr view` call replaced with `cache_lookup_pr` or `cache_query_*` from scripts/coord/lib/github_cache.sh; grep returns 0 raw `gh` matches
-    - scripts/coord/gap-preflight.sh — same migration; the 4 raw `gh pr list`/`gh api` calls replaced with cache lookups; grep returns 0 raw `gh` matches
-    - Both scripts gracefully handle cache miss (fall through to a SINGLE REST call, never GraphQL) — preserves correctness when webhook receiver hasn`t seen a PR yet
-    - Background-tag remaining calls via CHUMP_GH_CALL_CRITICALITY=background so they yield the bucket to ship-blocking merges per INFRA-1080
-    - "Verify against a fresh PR claim: `time scripts/coord/gap-preflight.sh INFRA-<N>` reports zero GraphQL calls in the trailing `gh api rate_limit` delta"
-    - "Update CLAUDE.md `Cache-first reads` section: move both files from `Next consumers` to `Already migrated`"
-
+  - scripts/coord/chump-ambient-glance.sh — every `gh api`/`gh pr view` call replaced with `cache_lookup_pr` or `cache_query_*`
+    from scripts/coord/lib/github_cache.sh; grep returns 0 raw `gh` matches
+  - scripts/coord/gap-preflight.sh — same migration; the 4 raw `gh pr list`/`gh api` calls replaced with cache lookups; grep
+    returns 0 raw `gh` matches
+  - Both scripts gracefully handle cache miss (fall through to a SINGLE REST call, never GraphQL) — preserves correctness
+    when webhook receiver hasn`t seen a PR yet
+  - Background-tag remaining calls via CHUMP_GH_CALL_CRITICALITY=background so they yield the bucket to ship-blocking merges
+    per INFRA-1080
+  - 'Verify against a fresh PR claim: `time scripts/coord/gap-preflight.sh INFRA-<N>` reports zero GraphQL calls in the trailing
+    `gh api rate_limit` delta'
+  - 'Update CLAUDE.md `Cache-first reads` section: move both files from `Next consumers` to `Already migrated`'
+  closed_pr: 1952

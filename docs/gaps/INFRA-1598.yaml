@@ -1,20 +1,35 @@
 - id: INFRA-1598
   domain: INFRA
-  title: "RESILIENT P0: pre-push branch-vs-claim verification — prevent subagent from pushing to parent worktree's branch instead of claim branch"
-  status: open
+  title: 'RESILIENT P0: pre-push branch-vs-claim verification — prevent subagent from pushing to parent worktree''s branch
+    instead of claim branch'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "New 'chump verify-claim-branch' CLI subcommand: reads current branch (git rev-parse --abbrev-ref HEAD), reads active lease for current session from .chump-locks/<session>.json, asserts they match. Exits non-zero with explicit diff message if mismatch."
-    - "Pre-push hook (scripts/git-hooks/pre-push) invokes 'chump verify-claim-branch' BEFORE any other check. If mismatch, hook blocks push with: 'ERROR: pushing branch X but active lease expects branch Y. Likely cause: cd'd into wrong worktree. Use: cd to your claim worktree OR run chump --release if abandoning this claim.'"
-    - "gh pr create wrapper: extend scripts/coord/bot-merge.sh OR add scripts/coord/chump-pr-create wrapper that runs verify-claim-branch first."
-    - "Subagent shipping epilogue (docs/process/SUBAGENT_DISPATCH.md) updated: explicit step '0. Verify you're on the right branch: chump verify-claim-branch "
-    - ""
-    - " exit 1' before any push/PR commands."
-    - "Smoke test scripts/ci/test-claim-branch-mismatch.sh: stage a worktree on wrong branch + active lease pointing at right branch; assert verify-claim-branch exits 1 with the named-branches diff."
-    - "Cross-link: 2026-05-16 INFRA-1427 subagent pushed to chump/great-ritchie-f0a0ae (the parent session's worktree branch) instead of chump/infra-1427-claim. PR #2263 got opened on wrong branch; required manual close + reopen as #2264. Pattern: subagent's /tmp/chump-infra-1427 worktree had gitdir back-reference to my main worktree's .git, so 'git push origin HEAD' resolved HEAD via the parent worktree's branch state."
-    - Also a sentinel for INFRA-779 (linked-worktree gitdir confusion on macOS /tmp symlink) — if verify-claim-branch detects gitdir-back-reference mismatch, emit kind=worktree_gitdir_corrupt to ambient so operator can repair.
-  notes: |
-    Demoted P0→P1 by curator 2026-05-23T23:46Z as part of operator-priority swap (re-promote META-074 net-zero). Pre-push branch-vs-claim verification is a RESILIENT-class fix that doesn't map directly to operator's verbatim 22:20Z stack (CI/QA 100% / A2A world-class / owner-by-scope/role). Re-promote if observed-and-painful frequency justifies it again.
-  closed_pr: 2276
+  - 'New ''chump verify-claim-branch'' CLI subcommand: reads current branch (git rev-parse --abbrev-ref HEAD), reads active
+    lease for current session from .chump-locks/<session>.json, asserts they match. Exits non-zero with explicit diff message
+    if mismatch.'
+  - 'Pre-push hook (scripts/git-hooks/pre-push) invokes ''chump verify-claim-branch'' BEFORE any other check. If mismatch,
+    hook blocks push with: ''ERROR: pushing branch X but active lease expects branch Y. Likely cause: cd''d into wrong worktree.
+    Use: cd to your claim worktree OR run chump --release if abandoning this claim.'''
+  - 'gh pr create wrapper: extend scripts/coord/bot-merge.sh OR add scripts/coord/chump-pr-create wrapper that runs verify-claim-branch
+    first.'
+  - 'Subagent shipping epilogue (docs/process/SUBAGENT_DISPATCH.md) updated: explicit step ''0. Verify you''re on the right
+    branch: chump verify-claim-branch '
+  - ''
+  - ' exit 1'' before any push/PR commands.'
+  - 'Smoke test scripts/ci/test-claim-branch-mismatch.sh: stage a worktree on wrong branch + active lease pointing at right
+    branch; assert verify-claim-branch exits 1 with the named-branches diff.'
+  - 'Cross-link: 2026-05-16 INFRA-1427 subagent pushed to chump/great-ritchie-f0a0ae (the parent session''s worktree branch)
+    instead of chump/infra-1427-claim. PR #2263 got opened on wrong branch; required manual close + reopen as #2264. Pattern:
+    subagent''s /tmp/chump-infra-1427 worktree had gitdir back-reference to my main worktree''s .git, so ''git push origin
+    HEAD'' resolved HEAD via the parent worktree''s branch state.'
+  - Also a sentinel for INFRA-779 (linked-worktree gitdir confusion on macOS /tmp symlink) — if verify-claim-branch detects
+    gitdir-back-reference mismatch, emit kind=worktree_gitdir_corrupt to ambient so operator can repair.
+  notes: 'Demoted P0→P1 by curator 2026-05-23T23:46Z as part of operator-priority swap (re-promote META-074 net-zero). Pre-push
+    branch-vs-claim verification is a RESILIENT-class fix that doesn''t map directly to operator''s verbatim 22:20Z stack
+    (CI/QA 100% / A2A world-class / owner-by-scope/role). Re-promote if observed-and-painful frequency justifies it again.
 
+    '
+  closed_pr: 2276
+  closed_date: '2026-05-24'

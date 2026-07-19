@@ -1,0 +1,9 @@
+- id: INFRA-3311
+  domain: INFRA
+  title: "RESILIENT: res-a"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify res-a
+

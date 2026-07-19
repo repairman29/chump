@@ -1,0 +1,17 @@
+- id: INFRA-2997
+  domain: INFRA
+  title: "RESILIENT: delete haiku downgrade routes (xs/s) — flat subscription makes cost argument invalid, haiku 0% ship rate today"
+  status: blocked
+  priority: P0
+  effort: xs
+  description: |
+    RESILIENT: Delete the effort:xs and effort:s routes (model_class: haiku) from docs/dispatch/routing.yaml. With no matching route, scripts/dispatch/_resolve_model.py returns its fallback (worker base FLEET_MODEL, default sonnet per worker.sh:117). Root cause: INFRA-515 flipped the default haiku->sonnet at worker.sh:1017, but routing SETS FLEET_MODEL=haiku at worker.sh:719 BEFORE that guard, making ${FLEET_MODEL-sonnet} a no-op for every xs/s pick. 2026-06-21 data: 32 haiku spawns, 6 cycle_stall_killed, 0 real ships 18:00-20:00Z (haiku runs cargo check on shell gaps -> 2-5min recompile -> exceeds 120s INFRA-705 stall threshold). Flat Claude subscription => no per-token cost delta => 'save tokens' rationale invalid. Shape: (a) remove both route blocks in routing.yaml, (b) update header comment + add INFRA-2997/INFRA-515 justification comment, (c) update scripts/ci/test-model-class-routing.sh assertions xs/s haiku->sonnet. Do NOT change m/l/xl routes, cognition/research routes, or worker.sh.
+  acceptance_criteria:
+    - "The 'match: { effort: xs }' route (model_class: haiku) is removed from docs/dispatch/routing.yaml"
+    - "The 'match: { effort: s }' route (model_class: haiku) is removed from docs/dispatch/routing.yaml"
+    - _resolve_model.py returns 'sonnet' (not 'haiku') for xs and s effort gaps when FLEET_MODEL fallback is sonnet
+    - m/l/xl routes and cognition/research routes still resolve to sonnet (no regression)
+    - scripts/ci/test-model-class-routing.sh passes with updated xs->sonnet and s->sonnet assertions
+  notes: |
+    SUPERSEDED by RESILIENT-154 (PR #3146 'remove haiku from the fleet — sonnet is the floor', merged to origin/main 2026-06-21). RESILIENT-154 achieves the identical outcome (xs/s effort -> model_class sonnet, no haiku stalls) by flipping the routes rather than deleting them. Filed/claimed/implemented INFRA-2997 (route deletion) in parallel; standing down rather than unilaterally revert a merged sibling change (CLAUDE.md: route routing/doctrine changes through consensus). Same-day haiku-removal sweep: MISSION-047 #3142, MISSION-048 #3145, RESILIENT-154 #3146.
+

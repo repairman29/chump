@@ -2,8 +2,17 @@
   domain: INFRA
   title: "EFFECTIVE: Review-as-Handoff sub-gap 4/6 — chump review --serve daemon. Subscribes ambient kind=pr_check_fail, pulls PR + failed-job logs + diff, calls model with template-anchored prompt (cascade-routed for cost), validates diff via 'git apply --check' on throwaway worktree, posts comment. Watches branch for next push (15-min timeout). Spec: docs/architecture/REVIEW_AS_HANDOFF.md §6."
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "[\n  \"chump review --serve starts a daemon that subscribes to ambient.jsonl for kind=pr_check_fail events\",\n  \"On event: fetches PR diff + failed-job logs via gh, calls model with template-anchored prompt from docs/architecture/REVIEW_AS_HANDOFF.md §6\",\n  \"Model response validated via git apply --check on a throwaway worktree before posting\",\n  \"Posts a structured review comment to the PR with a fix diff inline\",\n  \"Watches branch for next push with 15-min timeout, re-reviews if push arrives before timeout\",\n  \"Cost routing: small PRs → haiku, large diffs → sonnet (cascade-routed)\",\n  \"scripts/ci/test-review-handoff-serve.sh passes: daemon starts, event received, comment posted\"\n]"
+    - chump review --serve starts a daemon that subscribes to ambient.jsonl for kind=pr_check_fail events
+    - "On event: fetches PR diff + failed-job logs via gh, calls model with template-anchored prompt from docs/architecture/REVIEW_AS_HANDOFF.md §6"
+    - Model response validated via git apply --check on a throwaway worktree before posting
+    - Posts a structured review comment to the PR with a fix diff inline
+    - Watches branch for next push with 15-min timeout, re-reviews if push arrives before timeout
+    - "Cost routing: small PRs → haiku, large diffs → sonnet (cascade-routed)"
+    - "scripts/ci/test-review-handoff-serve.sh passes: daemon starts, event received, comment posted"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

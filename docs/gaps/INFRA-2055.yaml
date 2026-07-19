@@ -1,15 +1,29 @@
 - id: INFRA-2055
   domain: INFRA
-  title: chump --execute-gap MUST emit kind=gap_shipped|gap_blocked|gap_deferred before exit — eliminates silent-exit wheel-spin class that bit wizard-daemon today
-  status: open
+  title: chump --execute-gap MUST emit kind=gap_shipped|gap_blocked|gap_deferred before exit — eliminates silent-exit wheel-spin
+    class that bit wizard-daemon today
+  status: done
   priority: P0
   effort: m
-  description: |
-    chump --execute-gap is a multi-tool-call mini-agent that can exit silently without emitting a structured outcome. This is exactly what bit wizard-daemon today (2026-05-27T14:32-14:36Z): the wizard dispatched CREDIBLE-069 twice, both processes exited within ~3min without creating a PR or changing gap status, wizard had no signal to detect failure → wheel-spin. INFRA-2051 (in flight) adds heuristic outcome detection (PID-dead + no-PR + gap-still-open + >timeout = FAILED). But the AUTHORITATIVE fix is to make chump --execute-gap itself ALWAYS emit one of three terminal kinds before exit. Then wizard reads the explicit kind, not heuristic. Eliminates the silent-exit class entirely.\n\nFIX: wrap the chump --execute-gap exit path so EVERY path (success, error, timeout, ctrl-c, panic) emits exactly one of:\n  kind=gap_shipped {gap_id, pr_number, commit_sha}\n  kind=gap_blocked {gap_id, reason, recoverable_by}\n  kind=gap_deferred {gap_id, reason, defer_until_event}
-  acceptance_criteria:
-    - "chump --execute-gap exit handler installs trap (Rust: Drop impl or process::exit wrapper) that always emits one of gap_shipped/gap_blocked/gap_deferred to ambient.jsonl"
-    - On panic or ctrl-c, emit kind=gap_blocked with reason=panic_or_signal and exit non-zero
-    - Register the 3 new kinds in EVENT_REGISTRY.yaml plus event-registry-reserved.txt single-commit lease pattern
-    - "Smoke test scripts/ci/test-execute-gap-always-emits.sh covers: (a) happy-path-emits-gap_shipped, (b) silent-exit-emits-gap_blocked, (c) explicit-defer-emits-gap_deferred, (d) ctrl-c-emits-gap_blocked-with-signal-reason"
-    - "wizard-daemon Step 4 outcome detection (INFRA-2051) gains a PREFERRED path: read gap_shipped/blocked/deferred events from ambient before falling back to PID-dead heuristic. Heuristic stays as defense-in-depth for legacy chump --execute-gap that didn't emit."
+  description: 'chump --execute-gap is a multi-tool-call mini-agent that can exit silently without emitting a structured outcome.
+    This is exactly what bit wizard-daemon today (2026-05-27T14:32-14:36Z): the wizard dispatched CREDIBLE-069 twice, both
+    processes exited within ~3min without creating a PR or changing gap status, wizard had no signal to detect failure → wheel-spin.
+    INFRA-2051 (in flight) adds heuristic outcome detection (PID-dead + no-PR + gap-still-open + >timeout = FAILED). But the
+    AUTHORITATIVE fix is to make chump --execute-gap itself ALWAYS emit one of three terminal kinds before exit. Then wizard
+    reads the explicit kind, not heuristic. Eliminates the silent-exit class entirely.\n\nFIX: wrap the chump --execute-gap
+    exit path so EVERY path (success, error, timeout, ctrl-c, panic) emits exactly one of:\n  kind=gap_shipped {gap_id, pr_number,
+    commit_sha}\n  kind=gap_blocked {gap_id, reason, recoverable_by}\n  kind=gap_deferred {gap_id, reason, defer_until_event}
 
+    '
+  acceptance_criteria:
+  - 'chump --execute-gap exit handler installs trap (Rust: Drop impl or process::exit wrapper) that always emits one of gap_shipped/gap_blocked/gap_deferred
+    to ambient.jsonl'
+  - On panic or ctrl-c, emit kind=gap_blocked with reason=panic_or_signal and exit non-zero
+  - Register the 3 new kinds in EVENT_REGISTRY.yaml plus event-registry-reserved.txt single-commit lease pattern
+  - 'Smoke test scripts/ci/test-execute-gap-always-emits.sh covers: (a) happy-path-emits-gap_shipped, (b) silent-exit-emits-gap_blocked,
+    (c) explicit-defer-emits-gap_deferred, (d) ctrl-c-emits-gap_blocked-with-signal-reason'
+  - 'wizard-daemon Step 4 outcome detection (INFRA-2051) gains a PREFERRED path: read gap_shipped/blocked/deferred events
+    from ambient before falling back to PID-dead heuristic. Heuristic stays as defense-in-depth for legacy chump --execute-gap
+    that didn''t emit.'
+  closed_date: '2026-05-27'
+  closed_pr: 2639

@@ -1,18 +1,24 @@
 - id: INFRA-1375
   domain: INFRA
-  title: "RESILIENT: chump paramedic daemon — rule-engine PR rescue (replaces manual paramedic role)"
-  status: open
+  title: 'RESILIENT: chump paramedic daemon — rule-engine PR rescue (replaces manual paramedic role)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "`chump paramedic triage` reads .chump/github_cache.db (fallback gh pr list) and prints JSON action plan, exit 0 always, read-only"
-    - "`chump paramedic execute --plan <file>` runs one cycle: REBASE_DIRTY, RERUN_FLAKE (KNOWN_FLAKES.yaml), ALLOWLIST_EMIT_NO_REG (auto-PR to event-registry-reserved.txt), SQUASH_INIT_LEAK (drop Test <test@test.local> empty-author commits), FILE_CLUSTER_RESCUE (≥3 PRs sharing failing check → reserve RESCUE gap)"
-    - "`chump paramedic daemon --interval-secs 600` loops triage→execute, default-off, single-instance via .chump-locks/paramedic.lock"
-    - "Skip list: do-not-paramedic label; <!-- no-paramedic --> in body; PR touched 3x without merge progress (TTL 24h in .chump/paramedic_attempts.db); active sibling lease on PR's gap"
-    - Every action emits kind=paramedic_action to ambient with pr_number, action, outcome, reason, latency_ms, attempt_count; kind registered in EVENT_REGISTRY.yaml
-    - Per-PR budget 90s; exceeded → kind=paramedic_action outcome=fail reason=budget_exceeded; flagged for human
-    - "Dry-run mode (--dry-run): no writes except kind=paramedic_action_dry emit"
-    - scripts/ci/test-paramedic-rules.sh covers all 5 action types with stub gh shim, asserts JSON plan shape + ambient emit format
-    - Zero per-action LLM tokens slice-1 (rule engine only); LLM escalation tier is separate follow-up gap
+  - '`chump paramedic triage` reads .chump/github_cache.db (fallback gh pr list) and prints JSON action plan, exit 0 always,
+    read-only'
+  - '`chump paramedic execute --plan <file>` runs one cycle: REBASE_DIRTY, RERUN_FLAKE (KNOWN_FLAKES.yaml), ALLOWLIST_EMIT_NO_REG
+    (auto-PR to event-registry-reserved.txt), SQUASH_INIT_LEAK (drop Test <test@test.local> empty-author commits), FILE_CLUSTER_RESCUE
+    (≥3 PRs sharing failing check → reserve RESCUE gap)'
+  - '`chump paramedic daemon --interval-secs 600` loops triage→execute, default-off, single-instance via .chump-locks/paramedic.lock'
+  - 'Skip list: do-not-paramedic label; <!-- no-paramedic --> in body; PR touched 3x without merge progress (TTL 24h in .chump/paramedic_attempts.db);
+    active sibling lease on PR''s gap'
+  - Every action emits kind=paramedic_action to ambient with pr_number, action, outcome, reason, latency_ms, attempt_count;
+    kind registered in EVENT_REGISTRY.yaml
+  - Per-PR budget 90s; exceeded → kind=paramedic_action outcome=fail reason=budget_exceeded; flagged for human
+  - 'Dry-run mode (--dry-run): no writes except kind=paramedic_action_dry emit'
+  - scripts/ci/test-paramedic-rules.sh covers all 5 action types with stub gh shim, asserts JSON plan shape + ambient emit
+    format
+  - Zero per-action LLM tokens slice-1 (rule engine only); LLM escalation tier is separate follow-up gap
   pillar: RESILIENT
-
+  closed_pr: 2137

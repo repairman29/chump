@@ -1,0 +1,18 @@
+- id: CREDIBLE-136
+  domain: CREDIBLE
+  title: "CREDIBLE: auth-status.sh validity probe FALSE-NEGATIVE — reports BROKEN + fires farmer_auth_dead/operator_recall AUTH_DEAD while real claude -p with fleet creds succeeds"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - auth-status.sh does NOT serve a cached BROKEN verdict to halt-class consumers (farmer/operator-recall) without a fresh re-probe — a transient failure must not be cached + replayed as AUTH_DEAD while a fresh probe + real claude -p succeed
+    - "the farmer re-probes (or auth-status re-probes) before emitting farmer_auth_dead / operator_recall AUTH_DEAD, per CREDIBLE-090 (signal≠outcome: don't fire halt-class on one cached/transient failure)"
+    - "repro: a 13:49Z transient failure was cached + replayed as BROKEN for the TTL window while ANTHROPIC_API_KEY/oauth claude -p both returned OK and the forced --probe returned 'AUTH ✓ OK'"
+    - "optional: cap the BROKEN-verdict cache TTL well below the OK-verdict TTL, or invalidate the cache on a subsequent OK"
+  notes: |
+    Refined 2026-06-21: forced --probe returns AUTH ✓ OK (oauth validated). Root cause = stale cache: a transient claude -p failure cached as BROKEN + served without re-probe, firing farmer_auth_dead + operator_recall AUTH_DEAD spuriously. Non-blocking (self-clears next fresh probe) but pages operator + risks farmer tearing down workers during the stale window. Fix is durable: re-verify before halt-class action.
+  evidence: |
+    COMMAND: bash scripts/coord/auth-status.sh (farmer ran it 13:49Z) → 'AUTH ✗ BROKEN — no credentials found' + emitted farmer_auth_dead{reason:validity_probe_broken,mode:oauth} + operator_recall{reason:AUTH_DEAD}. CONTRAST: ANTHROPIC_API_KEY=$(launchctl getenv ANTHROPIC_API_KEY) claude -p 'reply FLEET_AUTH_OK' → returns FLEET_AUTH_OK; oauth-only path also OK; bogus key → 'Invalid API key' (rejected) proving the working test is NOT my-login-contaminated. OUTPUT: probe says dead, real claude -p says alive — they disagree; auth genuinely WORKS. THEORY: probe caches a transient/stale failure (saw '(cached)') OR its claude -p PONG invocation/match differs from a working call OR the api-key REST sub-probe fails (depleted key) and the oauth fallback in the probe misjudges. ALT: maybe my test inherited ~/.claude config — REFUTED by the bogus-key rejection. IMPACT: the #1 false-positive class (CLAUDE.md, mis-called 4x); spuriously pages operator_recall and would make the farmer tear down workers the moment the fleet is spun up — blocks trusting the fleet's own go/no-go signal.
+  evidence: |
+    COMMAND: bash scripts/coord/auth-status.sh (farmer ran it 13:49Z) → 'AUTH ✗ BROKEN — no credentials found' + emitted farmer_auth_dead{reason:validity_probe_broken,mode:oauth} + operator_recall{reason:AUTH_DEAD}. CONTRAST: ANTHROPIC_API_KEY=$(launchctl getenv ANTHROPIC_API_KEY) claude -p 'reply FLEET_AUTH_OK' → returns FLEET_AUTH_OK; oauth-only path also OK; bogus key → 'Invalid API key' (rejected) proving the working test is NOT my-login-contaminated. OUTPUT: probe says dead, real claude -p says alive — they disagree; auth genuinely WORKS. THEORY: probe caches a transient/stale failure (saw '(cached)') OR its claude -p PONG invocation/match differs from a working call OR the api-key REST sub-probe fails (depleted key) and the oauth fallback in the probe misjudges. ALT: maybe my test inherited ~/.claude config — REFUTED by the bogus-key rejection. IMPACT: the #1 false-positive class (CLAUDE.md, mis-called 4x); spuriously pages operator_recall and would make the farmer tear down workers the moment the fleet is spun up — blocks trusting the fleet's own go/no-go signal.
+

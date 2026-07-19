@@ -1,0 +1,19 @@
+- id: INFRA-3289
+  domain: INFRA
+  title: 'ZERO-WASTE: main.rs slice 1 — extract external-repo commands (onboard/improve/external) to dispatch_external'
+  status: done
+  priority: P2
+  effort: m
+  description: 'Slice 1 of INFRA-3287 (main.rs decomposition). Extract the 3 external-repo command arms (onboard, improve,
+    external verify-merge) from main.rs''s dispatch chain into src/commands/dispatch_external.rs::try_dispatch(args)->Option<i32>.
+    main() replaces the ~39-line block with one ''if let Some(c)=commands::dispatch_external::try_dispatch(&args){exit(c)}''.
+    Pure move, zero behavior change. Template for the phase.
+
+    '
+  acceptance_criteria:
+  - 3 external arms moved out of main.rs into commands/dispatch_external.rs behind try_dispatch
+  - main.rs shrinks by the moved block; cargo check + cargo test --bin chump green
+  - onboard/improve/external CLI surface unchanged
+  - dispatch_external declared in commands/mod.rs
+  closed_date: '2026-07-05'
+  closed_pr: 3184

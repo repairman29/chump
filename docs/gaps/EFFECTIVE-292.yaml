@@ -1,0 +1,13 @@
+- id: EFFECTIVE-292
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump improve implement stage produces scope-crept/dirty PRs (touches unrelated gate files → CONFLICTING)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. Reset the clone working tree clean (git reset --hard + git clean -fd) before each implement so leftover edits from a prior/killed run don't leak in. 2. Constrain the implement agent to the gap's declared paths/evidence; the PR diff is scoped to the fix. 3. Test: a single-file-fix gap yields a PR touching only the relevant file(s), not unrelated gate files."
+  evidence: |
+    2026-06-22 BEAST PR #11: tasked with the RLS-recursion fix (should be 1 migration + 1 test), the spawned agent's PR spanned 7 files +353/-3, also re-touching .github/workflows/automation.yml, beast-mode-quality-check.yml, cypress/support/commands.ts, cypress/tsconfig.json, scripts/run-all-tests.js — the very gate files already fixed on main (#7/#8/#9) — yielding mergeable=CONFLICTING/DIRTY. Likely causes: persistent clone not reset clean between runs (leftover edits from a prior killed run swept in) AND/OR an under-scoped implement prompt that lets the agent wander into unrelated files. AC: reset the clone working tree clean (git reset --hard + git clean -fd) before each implement; constrain the implement to the gap's declared paths/evidence; the resulting PR diff should be scoped to the fix. Sibling of EFFECTIVE-291 (clone freshness).
+  evidence: |
+    2026-06-22 BEAST PR #11: tasked with the RLS-recursion fix (should be 1 migration + 1 test), the spawned agent's PR spanned 7 files +353/-3, also re-touching .github/workflows/automation.yml, beast-mode-quality-check.yml, cypress/support/commands.ts, cypress/tsconfig.json, scripts/run-all-tests.js — the very gate files already fixed on main (#7/#8/#9) — yielding mergeable=CONFLICTING/DIRTY. Likely causes: persistent clone not reset clean between runs (leftover edits from a prior killed run swept in) AND/OR an under-scoped implement prompt that lets the agent wander into unrelated files. AC: reset the clone working tree clean (git reset --hard + git clean -fd) before each implement; constrain the implement to the gap's declared paths/evidence; the resulting PR diff should be scoped to the fix. Sibling of EFFECTIVE-291 (clone freshness).
+

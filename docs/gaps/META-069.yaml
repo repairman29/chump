@@ -1,12 +1,14 @@
 - id: META-069
   domain: META
-  title: "META: subagent delegation discipline — Opus orchestrates, Sonnet executes, Haiku sweeps; codify dispatch defaults in CLAUDE.md + soft enforcement in chump claim"
-  status: open
+  title: 'META: subagent delegation discipline — Opus orchestrates, Sonnet executes, Haiku sweeps; codify dispatch defaults
+    in CLAUDE.md + soft enforcement in chump claim'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-23'
+  closed_pr: 2400

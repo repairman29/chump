@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: paramedic safety rule — never reset --soft main on branches that predate recent main commits (deletes intervening files)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Paramedic daemon (INFRA-1375) SQUASH_INIT_LEAK action MUST use git rebase -i --autosquash or git filter-repo with explicit commit-drop, NOT git reset --soft <main>
@@ -10,5 +10,7 @@
     - "Document the foot-gun in docs/process/PARAMEDIC_SAFETY_RULES.md with the today's #2068 incident: reset --soft chump/main produced a commit that deleted 38 test files including scripts/ci/test-tauri-filter-scope.sh from a different recently-merged PR"
     - "Smoke test scripts/ci/test-paramedic-no-reset-squash.sh: fixture branch + main that diverged with new files on main, assert SQUASH_INIT_LEAK action does not produce deletions"
     - "Bonus: chump-paramedic dry-run mode prints the proposed file-list-change before any push, so operator can intercept"
-  depends_on: [INFRA-1375, INFRA-1408]
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

@@ -1,16 +1,33 @@
 - id: INFRA-2191
   domain: INFRA
-  title: "RESILIENT P0 trunk-RED: ruleset required checks 'audit'+'test' never fire on doc/yaml-only PRs → entire queue silently BLOCKED with 0 fails 0 pending (today: 6 PRs stuck). Same wedge as INFRA-2128 pwa-onboarding class. Fix: rename audit-stub/test-stub job outputs to emit as 'audit'/'test' OR demote ruleset to require fast-checks/gap-status-check (always-runs)"
-  status: open
+  title: 'RESILIENT P0 trunk-RED: ruleset required checks ''audit''+''test'' never fire on doc/yaml-only PRs → entire queue
+    silently BLOCKED with 0 fails 0 pending (today: 6 PRs stuck). Same wedge as INFRA-2128 pwa-onboarding class. Fix: rename
+    audit-stub/test-stub job outputs to emit as ''audit''/''test'' OR demote ruleset to require fast-checks/gap-status-check
+    (always-runs)'
+  status: done
   priority: P0
   effort: s
   acceptance_criteria:
-    - "Reproduce: open a doc/yaml-only PR (changes only docs/**, *.md, no Rust/script touches); gh pr checks shows zero `test` and zero `audit` entries; gh pr view --json mergeStateStatus reports BLOCKED despite zero fails + zero pending; the gh-api ruleset query lists `test` + `audit` as required-status-checks"
-    - "Root cause: .github/workflows/ci.yml `test` and `audit` jobs are gated by `if: needs.changes.outputs.X == true`. On doc/yaml-only PRs, changes job outputs all false → test/audit jobs SKIP → no check-run emitted at all → ruleset waits forever for a check that will never exist"
-    - "Fix A (recommended): make the *-stub jobs in ci.yml emit check-runs with the SAME names as the real jobs (audit, test, ACP protocol smoke test). When the real job runs, stub skips. When path-filter excludes real job, stub runs + passes. Either way, branch protection sees the named check completed"
-    - "Fix B (alternative): demote `audit` + `test` from ruleset required-status-checks; replace with `fast-checks` + `gap-status-check` + `gaps-integrity` (these run on every PR regardless of path)"
-    - "Smoke test scripts/ci/test-ruleset-doc-only-pr.sh: synth a PR that touches only docs/foo.md; assert mergeStateStatus moves from BLOCKED→CLEAN within 5min of CI completion (no manual unblock needed)"
-    - "Post-fix verification: gh pr checks on a doc-only PR shows all 3 ruleset-required check names PRESENT and PASSING"
-  notes: |
-    Filed 2026-05-29 by curator-opus-shepherd after queue stalled with 6 PRs BLOCKED (all 0 fails 0 pending). Manual cascade-break needed: temporarily removed required_status_checks rule from ruleset 15133729, merged the 5 ARMED PRs (#2728, #2730, #2731, #2732, #2733), then restored the rule. This pattern was the morning's INFRA-2128 (pwa-onboarding) class but for required checks rather than advisory. Without this fix, every doc-only PR (gap files, ROADMAP updates, syntheses) will wedge the queue.
+  - 'Reproduce: open a doc/yaml-only PR (changes only docs/**, *.md, no Rust/script touches); gh pr checks shows zero `test`
+    and zero `audit` entries; gh pr view --json mergeStateStatus reports BLOCKED despite zero fails + zero pending; the gh-api
+    ruleset query lists `test` + `audit` as required-status-checks'
+  - 'Root cause: .github/workflows/ci.yml `test` and `audit` jobs are gated by `if: needs.changes.outputs.X == true`. On doc/yaml-only
+    PRs, changes job outputs all false → test/audit jobs SKIP → no check-run emitted at all → ruleset waits forever for a
+    check that will never exist'
+  - 'Fix A (recommended): make the *-stub jobs in ci.yml emit check-runs with the SAME names as the real jobs (audit, test,
+    ACP protocol smoke test). When the real job runs, stub skips. When path-filter excludes real job, stub runs + passes.
+    Either way, branch protection sees the named check completed'
+  - 'Fix B (alternative): demote `audit` + `test` from ruleset required-status-checks; replace with `fast-checks` + `gap-status-check`
+    + `gaps-integrity` (these run on every PR regardless of path)'
+  - 'Smoke test scripts/ci/test-ruleset-doc-only-pr.sh: synth a PR that touches only docs/foo.md; assert mergeStateStatus
+    moves from BLOCKED→CLEAN within 5min of CI completion (no manual unblock needed)'
+  - 'Post-fix verification: gh pr checks on a doc-only PR shows all 3 ruleset-required check names PRESENT and PASSING'
+  notes: 'Filed 2026-05-29 by curator-opus-shepherd after queue stalled with 6 PRs BLOCKED (all 0 fails 0 pending). Manual
+    cascade-break needed: temporarily removed required_status_checks rule from ruleset 15133729, merged the 5 ARMED PRs (#2728,
+    #2730, #2731, #2732, #2733), then restored the rule. This pattern was the morning''s INFRA-2128 (pwa-onboarding) class
+    but for required checks rather than advisory. Without this fix, every doc-only PR (gap files, ROADMAP updates, syntheses)
+    will wedge the queue.
 
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2741

@@ -1,12 +1,14 @@
 - id: INFRA-1777
   domain: INFRA
-  title: "RESILIENT: chump pr-auto-rebase daemon — auto-rebase DIRTY/BEHIND PRs with auto-merge armed (no more manual gh pr update-branch)"
-  status: open
+  title: 'RESILIENT: chump pr-auto-rebase daemon — auto-rebase DIRTY/BEHIND PRs with auto-merge armed (no more manual gh pr
+    update-branch)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-23'
+  closed_pr: 2383

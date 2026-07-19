@@ -1,20 +1,29 @@
 - id: INFRA-1658
   domain: INFRA
-  title: "RESILIENT: audit + fix printf|grep -q pipefail race across scripts/"
-  status: open
+  title: 'RESILIENT: audit + fix printf|grep -q pipefail race across scripts/'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Yesterday's keystone unblocker fix in scripts/git-hooks/pre-commit-obs-budget.sh was a printf|grep -q pipefail race: under set -o pipefail, grep -q closes stdin early on first match, printf gets SIGPIPE → exit non-zero → pipeline reports failure even when the match was found. Spent 6 hours chasing false-negative obs-budget hits before locating it. Pattern likely repeats across scripts/.
-  acceptance_criteria:
-    - grep -rn 'printf.*
-    - .*grep' scripts/ — produce candidate list
-    - "For each match: assess (1) is set -o pipefail in effect, (2) does grep -q early-close cause the race, (3) is the script in a hot-path (called per-PR or per-cycle)"
-    - Fix race-prone sites via tempfile materialization (the INFRA-755 fix pattern in pre-commit-obs-budget.sh as the model)
-    - Add scripts/ci/test-pipefail-race-sweep.sh that re-greps and fails if new printf
-    - grep -q in marked hot-path scripts
-    - "Update docs/process/CLAUDE_GOTCHAS.md with the anti-pattern: under pipefail, never 'printf X "
-    - " grep -q Y'; instead 'echo X > tmp; grep -q Y tmp'"
-  notes: |
-    FOLLOW-UP from INFRA-755 fix 2026-05-20. The original race was in pre-commit-obs-budget.sh; INFRA-1658 sweeps for sibling occurrences. Hot-path candidates: any script in scripts/coord/, scripts/dispatch/, scripts/git-hooks/. xs-effort: grep, audit, fix ~3-5 sites.
+  description: 'Yesterday''s keystone unblocker fix in scripts/git-hooks/pre-commit-obs-budget.sh was a printf|grep -q pipefail
+    race: under set -o pipefail, grep -q closes stdin early on first match, printf gets SIGPIPE → exit non-zero → pipeline
+    reports failure even when the match was found. Spent 6 hours chasing false-negative obs-budget hits before locating it.
+    Pattern likely repeats across scripts/.
 
+    '
+  acceptance_criteria:
+  - grep -rn 'printf.*
+  - .*grep' scripts/ — produce candidate list
+  - 'For each match: assess (1) is set -o pipefail in effect, (2) does grep -q early-close cause the race, (3) is the script
+    in a hot-path (called per-PR or per-cycle)'
+  - Fix race-prone sites via tempfile materialization (the INFRA-755 fix pattern in pre-commit-obs-budget.sh as the model)
+  - Add scripts/ci/test-pipefail-race-sweep.sh that re-greps and fails if new printf
+  - grep -q in marked hot-path scripts
+  - 'Update docs/process/CLAUDE_GOTCHAS.md with the anti-pattern: under pipefail, never ''printf X '
+  - ' grep -q Y''; instead ''echo X > tmp; grep -q Y tmp'''
+  notes: 'FOLLOW-UP from INFRA-755 fix 2026-05-20. The original race was in pre-commit-obs-budget.sh; INFRA-1658 sweeps for
+    sibling occurrences. Hot-path candidates: any script in scripts/coord/, scripts/dispatch/, scripts/git-hooks/. xs-effort:
+    grep, audit, fix ~3-5 sites.
+
+    '
+  closed_date: '2026-05-22'
+  closed_pr: 2322

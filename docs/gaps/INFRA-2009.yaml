@@ -1,22 +1,38 @@
 - id: INFRA-2009
   domain: INFRA
-  title: "RESILIENT: generalize INFRA-1988 silent-noop alarm to all critical daemons — meta-level fix for the floor's own silent-failure surface"
-  status: open
+  title: 'RESILIENT: generalize INFRA-1988 silent-noop alarm to all critical daemons — meta-level fix for the floor''s own
+    silent-failure surface'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Each of the 3 floor daemons (cluster-detector, wedge-state-machine, recovery-queue-service) gets a sentinel + EXIT trap that emits kind=daemon_silent_noop if the main work loop NEVER entered on a tick where it was expected to find work"
-    - "Expected-to-find-work heuristic: scan kind=daemon_input_available marker file for that daemon class; if file exists AND main loop did not execute → silent regression"
-    - "Pattern source: scripts/git-hooks/pre-push lines 117-160 (INFRA-1988 sentinel + check_and_emit + EXIT trap). Refactor into scripts/coord/lib/silent-noop-alarm.sh so each daemon sources it"
-    - "Smoke test scripts/ci/test-daemon-silent-noop.sh: synthesize input file + run daemon with mock that skips main loop; assert daemon_silent_noop fires"
-    - "Doc update: docs/process/WEDGE_CLASS_CATALOG.md — note that 'wedge in the floor itself' (per FLOOR_RETROSPECTIVE.md §next-crack-3) is now monitored"
-  description: |
-    From FLOOR_RETROSPECTIVE.md: "We're vulnerable to a wedge in the
+  - Each of the 3 floor daemons (cluster-detector, wedge-state-machine, recovery-queue-service) gets a sentinel + EXIT trap
+    that emits kind=daemon_silent_noop if the main work loop NEVER entered on a tick where it was expected to find work
+  - 'Expected-to-find-work heuristic: scan kind=daemon_input_available marker file for that daemon class; if file exists AND
+    main loop did not execute → silent regression'
+  - 'Pattern source: scripts/git-hooks/pre-push lines 117-160 (INFRA-1988 sentinel + check_and_emit + EXIT trap). Refactor
+    into scripts/coord/lib/silent-noop-alarm.sh so each daemon sources it'
+  - 'Smoke test scripts/ci/test-daemon-silent-noop.sh: synthesize input file + run daemon with mock that skips main loop;
+    assert daemon_silent_noop fires'
+  - 'Doc update: docs/process/WEDGE_CLASS_CATALOG.md — note that ''wedge in the floor itself'' (per FLOOR_RETROSPECTIVE.md
+    §next-crack-3) is now monitored'
+  description: 'From FLOOR_RETROSPECTIVE.md: "We''re vulnerable to a wedge in the
+
     floor itself. The cluster-detector daemon, recovery-queue daemon,
+
     and wedge-state-machine daemon are all critical-path. If one of
+
     them silently exits (the INFRA-1986 pattern), we lose the visibility
+
     they provide."
 
+
     This gap addresses that META-vulnerability. The pre-push hook got
+
     INFRA-1988 alarm; the floor daemons need the same instrumentation
-    so the floor doesn't have a silent crack in its own foundation.
+
+    so the floor doesn''t have a silent crack in its own foundation.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2621

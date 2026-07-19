@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: PWA hot-reload on PR merge — SSE event triggers service-worker invalidation + live component re-registration; operator watches canvas evolve without refresh"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Today the operator opens the PWA, the fleet ships 4 PRs in the next hour, and the operator sees nothing change until they hit refresh. The fleet feels invisible. The 'stitching is the differentiator' thesis (per feedback_no_drafts_ship_and_stitch memory) says forward motion should be VISIBLE in real time, not hidden until next reload.
@@ -40,4 +40,7 @@
     - kind=pwa_hot_reload_applied + kind=pwa_hot_reload_deferred ambient events emitted
     - "scripts/ci/test-pwa-hot-reload.sh end-to-end test: simulated PR merge → headless browser reload within 5s"
     - docs/process/PWA_HOT_RELOAD.md documents pipeline + reload-safe opt-in + debug
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

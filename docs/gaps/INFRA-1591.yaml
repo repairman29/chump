@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE: PWA visual snapshot tests at 3 breakpoints — Playwright baselines for NOW/AMBIENT/LIBRARY/CONFIG + first-run wizard + cockpit + audit at 375/768/1440px, CI fails on >0.5% pixel delta"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     The PWA shell cleanup arc (INFRA-1585 onboarding consolidation, INFRA-1586 header dedup, INFRA-1587 CSS evacuation) is dangerous without a visual regression net. The CSS evacuation alone moves 2,300 lines of styles across ~20 components; manual visual verification doesn't scale and won't catch every pixel.
@@ -46,4 +46,7 @@
     - scripts/ci/test-pwa-visual-bootstrap.sh smoke-tests config + one spec end-to-end
     - "PR template note added: 'Touched web/v2/**? Visual snapshots reviewed?'"
     - "Theme + browser coverage: dark + chromium only for v1; follow-up gap filed for light/HC/cross-browser if needed"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

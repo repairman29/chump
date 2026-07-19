@@ -1,29 +1,40 @@
 - id: INFRA-823
   domain: INFRA
-  title: "ZERO-WASTE: shipped-but-not-closed gaps accumulate — bot-merge.sh does not auto-close gap YAML on merge"
-  status: open
+  title: 'ZERO-WASTE: shipped-but-not-closed gaps accumulate — bot-merge.sh does not auto-close gap YAML on merge'
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-05-11'
   raised_by: cold-water
   raised_in: RED_LETTER#6
-  description: |
-    As of 2026-05-11, at least 3 gaps have code merged to main but YAML still shows status:open:
+  description: 'As of 2026-05-11, at least 3 gaps have code merged to main but YAML still shows status:open:
+
     - INFRA-816: fixed in PR #1437 (fix(infra-816): add system deps to release-plz.yml) — gap still open
+
     - CREDIBLE-013: shipped in PR #1431 (CREDIBLE-013: CI failure triage) — gap still open
+
     - INFRA-817: fixed in PR #1442 (fix(e2e): update PWA v2 test selectors) — gap still open
+
 
     In addition, INFRA-796/797/798 have pr: 1421 set but status: open, indicating partial ship.
 
+
     The CLAUDE.md ship pipeline says to run `chump gap ship <ID> --update-yaml` after merge.
+
     Bot-merge.sh does not call this automatically. When the agent that shipped moves on to the
+
     next gap, the prior gap stays open forever unless someone manually closes it.
 
+
     This is pure waste: false signal in the open queue, incorrect pillar counts, and audit tools
+
     reporting on "open with closed_pr" pattern will eventually mis-report metrics.
+
+    '
   acceptance_criteria:
-    - bot-merge.sh calls chump gap ship <GAP-ID> --update-yaml after successful gh pr merge
-    - Gap ID extracted from branch name (pattern chump/<GAP-ID>-*) or PR title prefix
-    - chump gap audit-priorities "open with closed_pr" count = 0
-    - INFRA-816, CREDIBLE-013, INFRA-817 closed (or manually confirmed still incomplete)
-    - scripts/ci/test-bot-merge-auto-close.sh verifies the new behavior on a fixture gap
+  - bot-merge.sh calls chump gap ship <GAP-ID> --update-yaml after successful gh pr merge
+  - Gap ID extracted from branch name (pattern chump/<GAP-ID>-*) or PR title prefix
+  - chump gap audit-priorities "open with closed_pr" count = 0
+  - INFRA-816, CREDIBLE-013, INFRA-817 closed (or manually confirmed still incomplete)
+  - scripts/ci/test-bot-merge-auto-close.sh verifies the new behavior on a fixture gap
+  closed_pr: 1490

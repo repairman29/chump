@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: paramedic RUST_FIRST_BYPASS_TRIAGE — on rust-first audit-fail, classify shell script: small+additive auto-trailer; large/state-mutator file new 'convert to Rust' gap"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Paramedic daemon (INFRA-1375) new action RUST_FIRST_BYPASS_TRIAGE: triggered when audit fails with 'state-mutating shell' or 'hot-path directory' violation from pre-commit-rust-first.sh"
@@ -14,4 +14,7 @@
     - "For FILE_CONVERT_GAP: chump gap reserve --domain INFRA --title 'RUST-PORT: convert <path> from shell to chump <verb> subcommand (audit-blocking)' linked to the blocking PR via depends_on"
     - "Smoke test scripts/ci/test-paramedic-rust-first-triage.sh: 3 fixtures (auto-trailer-eligible, file-convert-needed, ambiguous-skip)"
     - "Today's signal: INFRA-1447 gate landed mid-fleet-cycle, now ~10 PRs failing audit on state-mutating shell additions. Each needs human judgment unless paramedic handles the easy cases."
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

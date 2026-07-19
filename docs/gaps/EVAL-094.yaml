@@ -2,19 +2,19 @@
   domain: EVAL
   title: "CREDIBLE: n=50/cell paired naturalized-framing evaluation — quantify evaluation-awareness bias in chump fixture suite (EVAL-087 follow-through)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     RESEARCH_INTEGRITY.md §4 requires that any mechanism claim with |Δ|>0.05 cite either
     a paired naturalized-framing comparison from the RESEARCH-026/EVAL-094 result set OR
     a written justification for why the fixture is not susceptible to evaluation-context
     discrimination. This gap is the measurement leg: run the actual n=50/cell paired eval.
-
+    
     Naturalized framing: same task presented without lab-style preamble (no "evaluate", no
     numbered rubric, no "assistant" role header) vs. standard chump fixture framing. If
     the model's score distribution shifts significantly between framings, any delta measured
     with standard fixtures is confounded by evaluation-awareness.
-
+    
     Signal: IAPS 2026, arXiv:2508.00943 (16–36% monitor-bypass on Claude-class models),
     Meta Muse Spark April 2026 (19.8% benchmark flagging vs 2.0% internal) — external
     evidence that the confound is real at scale.
@@ -26,8 +26,7 @@
     - "Result doc at docs/eval/EVAL-094-naturalized-framing-<date>.md: per-condition means, B−A bootstrapped 95% CI, kappa, effect size, n=2 smoke-check output"
     - "Decision rule: if |B−A| < 0.03 across fixture classes → naturalized-framing confound is not dominant; RESEARCH_INTEGRITY.md standing caveat lifted. If |B−A| ≥ 0.03 → file a fixture-redesign gap."
     - "RESEARCH_INTEGRITY §1 §2 §6 compliance verified by runner before launch: n≥50 per cell, non-Anthropic judge, exit-code scorer not used"
-    - "Result doc cross-links RESEARCH-026 (companion qualitative analysis)"
+    - Result doc cross-links RESEARCH-026 (companion qualitative analysis)
   notes: |
-    Cited by: docs/process/RESEARCH_INTEGRITY.md §4 (phantom-ID fix: RESEARCH-001)
-    Companion: RESEARCH-026 (qualitative fixture taxonomy for same fixture class)
-    Depends on: EVAL-103 (prereg-enforcement runtime gates) recommended but not hard blocked
+    Demoted P1→P2 2026-07-19 re-rank: research-lane work, not on the Revival & Truth cycle critical path (docs/ROADMAP.md). Re-promote when an eval cycle is scheduled.
+

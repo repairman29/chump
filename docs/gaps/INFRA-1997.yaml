@@ -1,59 +1,45 @@
 - id: INFRA-1997
   domain: INFRA
-  title: "RESILIENT: chump-git-hooks crate Phase 1 — HookContext env-immunity + ForceWithLeaseRaceGuard port (Rust-first substrate for the bash pre-push hook; INFRA-1950 root-cause class fix)"
-  status: open
+  title: 'RESILIENT: chump-git-hooks crate Phase 1 — HookContext env-immunity + ForceWithLeaseRaceGuard port (Rust-first substrate
+    for the bash pre-push hook; INFRA-1950 root-cause class fix)'
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
-    - "New crate crates/chump-git-hooks/ added as workspace member"
-    - "HookContext::new_from_stdin scrubs GIT_DIR / GIT_WORK_TREE / GITHUB_WORKSPACE / GIT_COMMON_DIR / GIT_INDEX_FILE before any git subprocess invocation"
-    - "HookContext::git() returns a Command with env_clear() and -C <repo_root> pre-configured — single chokepoint for all guard git calls"
-    - "Hook trait + HookOutcome enum (Pass/Skipped/Block) + BlockReason struct"
-    - "ONE concrete Hook impl: ForceWithLeaseRaceGuard (Guard 3 / INFRA-345 port — the one INFRA-1950 env-leak bypassed)"
-    - "Stub Hook impls for stdin-double-drain (INFRA-1986) and silent-noop (INFRA-1988); full ports deferred to follow-up sub-gaps"
-    - "Binary src/bin/chump-pre-push.rs reads stdin, builds HookContext, runs Phase 1 chain, exits 0 on Pass / 1 on Block"
-    - "Feature flag: bash shim at top of scripts/git-hooks/pre-push exec's chump-pre-push IFF CHUMP_PREPUSH_RUST=1; legacy bash path otherwise (parallel run during 1-week validation)"
-    - "Smoke test scripts/ci/test-prepush-rust-env-immunity.sh injects fake GIT_DIR/GIT_WORK_TREE/GITHUB_WORKSPACE and asserts the Rust hook resolves the REAL repo path"
-    - "No new ambient event kinds emitted from the new crate (INFRA-2003 lease on event-registry-reserved.txt)"
-    - "No edits to scripts/ci/event-registry-reserved.txt"
-    - "cargo fmt / cargo clippy -D warnings / cargo check workspace all green"
+  - New crate crates/chump-git-hooks/ added as workspace member
+  - HookContext::new_from_stdin scrubs GIT_DIR / GIT_WORK_TREE / GITHUB_WORKSPACE / GIT_COMMON_DIR / GIT_INDEX_FILE before
+    any git subprocess invocation
+  - HookContext::git() returns a Command with env_clear() and -C <repo_root> pre-configured — single chokepoint for all guard
+    git calls
+  - Hook trait + HookOutcome enum (Pass/Skipped/Block) + BlockReason struct
+  - 'ONE concrete Hook impl: ForceWithLeaseRaceGuard (Guard 3 / INFRA-345 port — the one INFRA-1950 env-leak bypassed)'
+  - Stub Hook impls for stdin-double-drain (INFRA-1986) and silent-noop (INFRA-1988); full ports deferred to follow-up sub-gaps
+  - Binary src/bin/chump-pre-push.rs reads stdin, builds HookContext, runs Phase 1 chain, exits 0 on Pass / 1 on Block
+  - 'Feature flag: bash shim at top of scripts/git-hooks/pre-push exec''s chump-pre-push IFF CHUMP_PREPUSH_RUST=1; legacy
+    bash path otherwise (parallel run during 1-week validation)'
+  - Smoke test scripts/ci/test-prepush-rust-env-immunity.sh injects fake GIT_DIR/GIT_WORK_TREE/GITHUB_WORKSPACE and asserts
+    the Rust hook resolves the REAL repo path
+  - No new ambient event kinds emitted from the new crate (INFRA-2003 lease on event-registry-reserved.txt)
+  - No edits to scripts/ci/event-registry-reserved.txt
+  - cargo fmt / cargo clippy -D warnings / cargo check workspace all green
   depends_on: []
-  description: |
-    Phase 1 of META-107 (Rust-First Migration Blueprint) for the pre-push
-    bash hook. Yesterday's first attempt PR #2540 (INFRA-1950) was CLOSED
-    for 5 CI failures — that attempt added new ambient event kinds in the
-    smoke test, tripping the EVENT_REGISTRY coverage gate. This Phase 1
-    deliberately ships the SMALLEST viable carve-out:
-
-    (a) Crate scaffolding: HookContext, Hook trait, HookOutcome enum,
-        BlockReason struct, run_hooks runner.
-    (b) ONE concrete guard: ForceWithLeaseRaceGuard. The other 10 guards
-        in pre-push.sh stay in bash; each gets a follow-up sub-gap.
-    (c) Bash shim dispatches on CHUMP_PREPUSH_RUST=1; legacy path
-        untouched. Both run in parallel during 1-week validation.
-    (d) Smoke test exercises env-leak immunity directly — sets fake
-        GIT_DIR/GIT_WORK_TREE/GITHUB_WORKSPACE, asserts repo discovery
-        finds the real repo via the env_clear'd subprocess.
-
-    Discipline guardrails (avoid yesterday's failure mode):
-    - Zero new ambient event kinds.
-    - Zero edits to scripts/ci/event-registry-reserved.txt
-      (active INFRA-2003 lease).
-    - Every new CHUMP_* env var appears in scripts/ci/env-vars-internal.txt
-      under an INFRA-1997 header.
-
-    Follow-up sub-gaps to file after this lands:
-    - INFRA-1997-A: port stdin-double-drain guard (INFRA-1986).
-    - INFRA-1997-B: port silent-noop alarm (INFRA-1988) — coordinates
-      with event-registry-reserved.txt lease holder for the
-      hook_silent_passthrough event registration.
-    - INFRA-1997-C: port Guard 0 cargo fmt --check (INFRA-749).
-    - INFRA-1997-D: port Guard 0c clippy gate (INFRA-1390).
-    - INFRA-1997-E: port Guards 1/2 (gap-preflight + auto-merge armed).
-    - INFRA-1997-F: port Guard 4 (bot-merge required) + 1441 trailer.
-    - INFRA-1997-G: port Guard 0d (ghost test fixture commits, INFRA-1408).
-    - INFRA-1997-H: port Guard 0e (merge-tree DIRTY pre-check, INFRA-1391).
-    - INFRA-1997-I: port Guard 0a (chump preflight invocation).
-    - INFRA-1997-J: port CI-regression-guard suite (INFRA-1421).
-    - INFRA-1997-K: cutover — flip default to CHUMP_PREPUSH_RUST=1,
-      retire bash hook (separate ship after 1-week parallel).
+  description: "Phase 1 of META-107 (Rust-First Migration Blueprint) for the pre-push\nbash hook. Yesterday's first attempt\
+    \ PR #2540 (INFRA-1950) was CLOSED\nfor 5 CI failures — that attempt added new ambient event kinds in the\nsmoke test,\
+    \ tripping the EVENT_REGISTRY coverage gate. This Phase 1\ndeliberately ships the SMALLEST viable carve-out:\n\n(a) Crate\
+    \ scaffolding: HookContext, Hook trait, HookOutcome enum,\n    BlockReason struct, run_hooks runner.\n(b) ONE concrete\
+    \ guard: ForceWithLeaseRaceGuard. The other 10 guards\n    in pre-push.sh stay in bash; each gets a follow-up sub-gap.\n\
+    (c) Bash shim dispatches on CHUMP_PREPUSH_RUST=1; legacy path\n    untouched. Both run in parallel during 1-week validation.\n\
+    (d) Smoke test exercises env-leak immunity directly — sets fake\n    GIT_DIR/GIT_WORK_TREE/GITHUB_WORKSPACE, asserts repo\
+    \ discovery\n    finds the real repo via the env_clear'd subprocess.\n\nDiscipline guardrails (avoid yesterday's failure\
+    \ mode):\n- Zero new ambient event kinds.\n- Zero edits to scripts/ci/event-registry-reserved.txt\n  (active INFRA-2003\
+    \ lease).\n- Every new CHUMP_* env var appears in scripts/ci/env-vars-internal.txt\n  under an INFRA-1997 header.\n\n\
+    Follow-up sub-gaps to file after this lands:\n- INFRA-1997-A: port stdin-double-drain guard (INFRA-1986).\n- INFRA-1997-B:\
+    \ port silent-noop alarm (INFRA-1988) — coordinates\n  with event-registry-reserved.txt lease holder for the\n  hook_silent_passthrough\
+    \ event registration.\n- INFRA-1997-C: port Guard 0 cargo fmt --check (INFRA-749).\n- INFRA-1997-D: port Guard 0c clippy\
+    \ gate (INFRA-1390).\n- INFRA-1997-E: port Guards 1/2 (gap-preflight + auto-merge armed).\n- INFRA-1997-F: port Guard\
+    \ 4 (bot-merge required) + 1441 trailer.\n- INFRA-1997-G: port Guard 0d (ghost test fixture commits, INFRA-1408).\n- INFRA-1997-H:\
+    \ port Guard 0e (merge-tree DIRTY pre-check, INFRA-1391).\n- INFRA-1997-I: port Guard 0a (chump preflight invocation).\n\
+    - INFRA-1997-J: port CI-regression-guard suite (INFRA-1421).\n- INFRA-1997-K: cutover — flip default to CHUMP_PREPUSH_RUST=1,\n\
+    \  retire bash hook (separate ship after 1-week parallel).\n"
+  closed_date: '2026-05-25'
+  closed_pr: 2605

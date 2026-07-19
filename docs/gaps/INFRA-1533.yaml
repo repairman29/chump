@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: claim-affinity + handoff protocol — when PR needs follow-up, ping prior claimer first; if gone, dispatch fresh agent with explicit handoff context (not random helper)"
   status: open
-  priority: P0
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Add claim_history table to .chump/state.db: gap_id, agent_session_id, agent_type (worker"
@@ -20,4 +20,7 @@
     - "Smoke test scripts/ci/test-claim-handoff-worker.sh: fixture worker with prior claim_history alive, assert continuation request emitted + worker claims within 30s"
     - "Smoke test scripts/ci/test-claim-handoff-subagent.sh: fixture subagent-prior-claim (exited), assert fresh dispatch with full handoff brief"
     - "Today's signal: 7 subagents dispatched without affinity tracking; any follow-up on their PRs went to a fresh subagent with no memory of prior attempt — wasteful re-work, sometimes regressed prior progress. Workers vs. subagents have fundamentally different lifecycle: workers stay alive across many gaps (paged via NATS), subagents are one-shot (only handoff-brief possible)"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

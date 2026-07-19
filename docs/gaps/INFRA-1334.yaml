@@ -1,12 +1,14 @@
 - id: INFRA-1334
   domain: INFRA
-  title: "EFFECTIVE: backend /api/fleet/health endpoint — aggregates pillar grades + KPIs + SLOs + GraphQL budget for PWA <chump-view-fleet-health> + status footer pillar slot (INFRA-1203 + PRODUCT-107 follow-up)"
-  status: open
+  title: 'EFFECTIVE: backend /api/fleet/health endpoint — aggregates pillar grades + KPIs + SLOs + GraphQL budget for PWA
+    <chump-view-fleet-health> + status footer pillar slot (INFRA-1203 + PRODUCT-107 follow-up)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-15'
+  closed_pr: 2091

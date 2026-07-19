@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: deepen claim-collision detection beyond INFRA-1394 — full path-set intersection of lease.paths[] instead of 5-hot-file AC-scan; supports globs + directory overlap"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     INFRA-1394 shipped a claim-collision check that:
@@ -36,4 +36,7 @@
     - Emit kind=lease_path_collision ambient event with {claim_gap, sibling_gap, overlap_paths[], paths_count}
     - "scripts/ci/test-deep-claim-collision.sh: 3 sibling leases with glob overlap, 4th claim detection, exit codes correct with/without --force-overlap"
     - docs/process/CLAUDE_GOTCHAS.md updated to describe the deep collision check
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

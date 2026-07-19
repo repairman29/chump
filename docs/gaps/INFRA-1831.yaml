@@ -1,16 +1,21 @@
 - id: INFRA-1831
   domain: INFRA
-  title: "ZERO-WASTE P0: chump preflight runs gaps-integrity gate locally — would have caught both 2026-05-23 yaml cascade keystones (#2417 + #2419)"
-  status: open
+  title: 'ZERO-WASTE P0: chump preflight runs gaps-integrity gate locally — would have caught both 2026-05-23 yaml cascade
+    keystones (#2417 + #2419)'
+  status: done
   priority: P0
   effort: m
   acceptance_criteria:
-    - src/preflight.rs gains a gaps-integrity local gate (extends INFRA-1731 / 1787 / 1789 / 1790 / 1791 / 1792 / 1793 mirror chain) — adds a step AFTER the existing pr-scope gate when staged diff touches docs/gaps/
-    - "Gate invokes the same logic CI uses: python3 scripts/coord/check-gaps-integrity.py --per-file docs/gaps/"
-    - "Scope-gated: skipped unless staged diff includes any docs/gaps/*.yaml file (avoids penalizing pure-Rust PRs)"
-    - Exit non-zero with the same error format the CI script emits (YAML parse error / duplicate id / empty id)
-    - "Bypass: CHUMP_PREFLIGHT_SKIP_GAPSINT=1 with audit-trail emit kind=preflight_gapsint_bypassed; allowlist in scripts/ci/event-registry-reserved.txt"
-    - "Smoke test scripts/ci/test-preflight-gapsint-gate.sh: 5 static assertions — preflight.rs invokes check-gaps-integrity.py, honors bypass env, emits the kind, attribution comment, allowlist entry present"
-    - "Would have caught both 2026-05-23 yaml cascade keystones (#2417 + #2419 — 3 yaml files with malformed AC that blocked the merge queue for ~2.5h)"
-    - "Pattern reference: INFRA-1731 #2377; same shape as 7 prior mirrors I've shipped"
-
+  - src/preflight.rs gains a gaps-integrity local gate (extends INFRA-1731 / 1787 / 1789 / 1790 / 1791 / 1792 / 1793 mirror
+    chain) — adds a step AFTER the existing pr-scope gate when staged diff touches docs/gaps/
+  - 'Gate invokes the same logic CI uses: python3 scripts/coord/check-gaps-integrity.py --per-file docs/gaps/'
+  - 'Scope-gated: skipped unless staged diff includes any docs/gaps/*.yaml file (avoids penalizing pure-Rust PRs)'
+  - Exit non-zero with the same error format the CI script emits (YAML parse error / duplicate id / empty id)
+  - 'Bypass: CHUMP_PREFLIGHT_SKIP_GAPSINT=1 with audit-trail emit kind=preflight_gapsint_bypassed; allowlist in scripts/ci/event-registry-reserved.txt'
+  - 'Smoke test scripts/ci/test-preflight-gapsint-gate.sh: 5 static assertions — preflight.rs invokes check-gaps-integrity.py,
+    honors bypass env, emits the kind, attribution comment, allowlist entry present'
+  - 'Would have caught both 2026-05-23 yaml cascade keystones (#2417 + #2419 — 3 yaml files with malformed AC that blocked
+    the merge queue for ~2.5h)'
+  - 'Pattern reference: INFRA-1731 #2377; same shape as 7 prior mirrors I''ve shipped'
+  closed_date: '2026-05-24'
+  closed_pr: 2420

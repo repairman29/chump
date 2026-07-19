@@ -1,16 +1,26 @@
 - id: RESILIENT-035
   domain: RESILIENT
-  title: "RESILIENT P0: curator-supervisor circuit breaker — cap Sonnet spawns + halt auto-remediation on flapping"
-  status: open
+  title: 'RESILIENT P0: curator-supervisor circuit breaker — cap Sonnet spawns + halt auto-remediation on flapping'
+  status: done
   priority: P0
   effort: xs
-  description: |
-    Risk 1 of 10 from operator-requested risk inventory 2026-05-30T06:00Z. curator-supervisor in Aggressive mode (operator default) can fork-bomb: detect failure → spawn Sonnet → next tick detect slightly-different fingerprint → spawn another. Flapping errors produce N distinct fingerprints over time, bypassing sentinel dedup. Also tmux respawn-loop: respawn fires → new pane has same bug → heartbeat lands by luck → declared 'respawned' → next tick detects same failure → respawn.
-  acceptance_criteria:
-    - "Per-role hard cap: CHUMP_CURATOR_SUPERVISOR_MAX_SPAWNS_PER_HOUR (default 3). If exceeded, supervisor stops auto-remediating this role + emits ambient kind=curator_supervisor_circuit_broken + broadcasts WARN to operator"
-    - "Detection cap: if same role triggers detection 3+ times in 30min (across ANY fingerprint), the FOURTH detection halts auto-remediation + broadcasts WARN with 'flapping role — operator review required'"
-    - "Respawn-success criterion tightened: pane must heartbeat AND show one successful (non-error) work line within 90s, not just heartbeat"
-    - "Smoke test in scripts/ci/test-curator-supervisor.sh: synth 4 consecutive failures with different fingerprints for same role; assert 4th does not spawn Sonnet AND emits circuit_broken"
-    - chump preflight green
-  depends_on: [INFRA-2239]
+  description: 'Risk 1 of 10 from operator-requested risk inventory 2026-05-30T06:00Z. curator-supervisor in Aggressive mode
+    (operator default) can fork-bomb: detect failure → spawn Sonnet → next tick detect slightly-different fingerprint → spawn
+    another. Flapping errors produce N distinct fingerprints over time, bypassing sentinel dedup. Also tmux respawn-loop:
+    respawn fires → new pane has same bug → heartbeat lands by luck → declared ''respawned'' → next tick detects same failure
+    → respawn.
 
+    '
+  acceptance_criteria:
+  - 'Per-role hard cap: CHUMP_CURATOR_SUPERVISOR_MAX_SPAWNS_PER_HOUR (default 3). If exceeded, supervisor stops auto-remediating
+    this role + emits ambient kind=curator_supervisor_circuit_broken + broadcasts WARN to operator'
+  - 'Detection cap: if same role triggers detection 3+ times in 30min (across ANY fingerprint), the FOURTH detection halts
+    auto-remediation + broadcasts WARN with ''flapping role — operator review required'''
+  - 'Respawn-success criterion tightened: pane must heartbeat AND show one successful (non-error) work line within 90s, not
+    just heartbeat'
+  - 'Smoke test in scripts/ci/test-curator-supervisor.sh: synth 4 consecutive failures with different fingerprints for same
+    role; assert 4th does not spawn Sonnet AND emits circuit_broken'
+  - chump preflight green
+  depends_on:
+  - INFRA-2239
+  closed_pr: 2829

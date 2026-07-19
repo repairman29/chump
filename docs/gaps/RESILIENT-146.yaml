@@ -1,0 +1,12 @@
+- id: RESILIENT-146
+  domain: RESILIENT
+  title: "RESILIENT: fleet-paused auto-resume keys off 7d-cumulative waste % so a recovered/idle fleet never un-pauses (3-min blip -> multi-day outage)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - The mechanism that clears .chump/fleet-paused computes recovery on a CURRENT-WINDOW waste rate (e.g. last 30-60min), not a 7d cumulative, so an idle/recovered fleet un-pauses within 2 checks.
+    - "A pause written by an SLO breach (reason:slo_breach) is cleared when that SLO recovers, not only via the waste-rate path."
+    - "Failsafe: a fleet-paused sentinel older than CHUMP_MAX_PAUSE_AGE_S (default e.g. 2h) with trunk green is auto-cleared + emits fleet_resumed, so a stale pause cannot cause a multi-day outage."
+    - "Regression test: write sentinel + idle waste -> detector removes it within N checks."
+

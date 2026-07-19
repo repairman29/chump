@@ -1,0 +1,11 @@
+- id: CREDIBLE-142
+  domain: CREDIBLE
+  title: "CREDIBLE: re-implement CREDIBLE-092 webhook gap-flip — register gap_flipped_done_on_merge event + handle bypass ceiling"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Register gap_flipped_done_on_merge in docs/observability/EVENT_REGISTRY.yaml with description, fields (gap_id, pr_number), pillar=CREDIBLE; 2. Handle CHUMP_NO_AUTO_FLIP bypass: either remove it (prefer) or get operator sign-off to raise bypass-var-ceiling.txt from 236 to 237 with a reason comment; 3. All audit-shards pass in CI (audit-shard (2) and (4) previously failed in PR #3144); 4. scripts/ci/test-webhook-gap-flip.sh passes (inherits from CREDIBLE-092 AC5); 5. Re-implement the full CREDIBLE-092 scope (see parent gap AC 1-4)"
+  notes: |
+    INFRA-1393 rescue: PR #3144 closed because (a) gap_flipped_done_on_merge was emitted but not registered in EVENT_REGISTRY.yaml (emit-without-register audit failure) and (b) CHUMP_NO_AUTO_FLIP added pushed bypass count to 237 > ceiling 236 requiring operator sign-off. Both must be fixed before re-attempting. See .chump-locks/pr-rescue-2026-05-16.log for full triage.
+

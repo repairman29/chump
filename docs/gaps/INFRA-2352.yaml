@@ -1,12 +1,24 @@
 - id: INFRA-2352
   domain: INFRA
-  title: "META-269 sub-3: daemon-silent meta-monitor — emit daemon_silent on idle daemons"
-  status: open
+  title: 'META-269 sub-3: daemon-silent meta-monitor — emit daemon_silent on idle daemons'
+  status: done
   priority: P0
   effort: m
-  description: |
-    META-269 sub-3: daemon-silent meta-monitor. Watches expected ambient event-kinds per launchd daemon; emits daemon_silent when LOADED+candidates_exist+0_events.
-  acceptance_criteria:
-    - "- New script scripts/coord/daemon-silence-monitor.sh runs at 5-min interval\n- Reads scripts/coord/daemon-expectations.yaml mapping daemon-label -> expected ambient event-kinds\n- Counts last-hour event kinds in ambient.jsonl per daemon\n- Emits kind=daemon_silent with daemon label + expected_kinds + actual_count when LOADED + 0 events + eligible candidates\n- Integration test scripts/ci/test-daemon-silence-monitor.sh validates the silent-detection logic with synthetic ambient.jsonl + state.db"
-  skills_required: bash,fleet
+  description: 'META-269 sub-3: daemon-silent meta-monitor. Watches expected ambient event-kinds per launchd daemon; emits
+    daemon_silent when LOADED+candidates_exist+0_events.
 
+    '
+  acceptance_criteria:
+  - '- New script scripts/coord/daemon-silence-monitor.sh runs at 5-min interval
+
+    - Reads scripts/coord/daemon-expectations.yaml mapping daemon-label -> expected ambient event-kinds
+
+    - Counts last-hour event kinds in ambient.jsonl per daemon
+
+    - Emits kind=daemon_silent with daemon label + expected_kinds + actual_count when LOADED + 0 events + eligible candidates
+
+    - Integration test scripts/ci/test-daemon-silence-monitor.sh validates the silent-detection logic with synthetic ambient.jsonl
+    + state.db'
+  skills_required: bash,fleet
+  closed_date: '2026-06-01'
+  closed_pr: 2930

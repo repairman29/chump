@@ -1,39 +1,16 @@
 - id: RESILIENT-168
   domain: RESILIENT
-  title: "RESILIENT: stale-worktree-reaper creates wip/ branches but never deletes them — 324 remote branches accumulating, newest 2026-07-05"
+  title: "RESILIENT: integrator-daemon dead (exit 127) ~32h → merge queue down → fleet opens PRs but can't merge them (backlog frozen, behind-PRs never auto-rebased)"
   status: open
-  priority: P2
-  effort: xs
-  opened_date: '2026-07-06'
-  raised_by: cold-water
-  raised_in: RED_LETTER#19
-  description: |
-    VERIFIED 2026-07-06 (Issue #19 Cold Water audit):
-
-    git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l
-    → 324 (growing; newest timestamp 2026-07-05 21:05 UTC)
-
-    RESILIENT-029 implemented stash-before-reap in scripts/ops/stale-worktree-reaper.sh:
-    before deleting a worktree, uncommitted work is pushed to wip/<gap>-<ts> on origin.
-    This is correct — but the reaper NEVER deletes those wip/ branches afterward.
-    The branches accumulate indefinitely.
-
-    Evidence:
-    - scripts/ops/stale-worktree-reaper.sh:571: git -C "$wt" push "$REMOTE" "$wip_branch"
-    - No corresponding delete call exists anywhere in the script
-    - git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l → 324
-    - Oldest wip/credible-033 branches predate 2026-05-30
-    - Total remote branches: 412 (of which 324 = 79% are abandoned wip stashes)
-
-    Impact: (1) every `git ls-remote` call is 324-branch slower; (2) any agent doing
-    branch enumeration sees a polluted namespace; (3) operator confusion about what is
-    actually in-flight. RESILIENT-029's acceptance criteria say nothing about cleanup.
-
-    Falsifying condition: a prune step exists somewhere that deletes wip/ branches after
-    recovery — grep -r "push.*delete.*wip\|wip.*prune" scripts/ returns non-empty.
+  priority: P0
+  effort: m
   acceptance_criteria:
-    - "stale-worktree-reaper.sh gains a prune phase: after a wip/ branch is no longer needed (gap closed or recovered), delete it with git push origin --delete <wip-branch>"
-    - "Alternatively, a separate cron script prunes wip/ branches older than 14d"
-    - "git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l < 10 after prune runs"
-    - "Smoke test: create a synthetic wip/ branch, run prune, assert it's gone"
-    - "No data loss: prune only touches branches whose parent gap is status=done or status=closed"
+    - "1. com.chump.integrator-daemon starts and STAYS running — currently exit=127 (ProgramArguments command/binary not found); diagnose + repair the broken path/binary (likely stale plist or missing subcommand after a rename). 2. With it up, BLOCKED/behind PRs get auto-update-branched + re-run + merged so the backlog drains (per-PR Mode-B fallback does NOT drain because behind PRs are never rebased to green). 3. A healthcheck pages when integrator exit!=0 for >15min (it was silently dead ~32h). 4. The 4 DIRTY stale-duplicate PRs (INFRA-918 #3155/3156/3157, INFRA-1526 #3163) are closed by the orphan/dup reaper."
+  notes: |
+    P0 promotion 2026-07-19 cycle plan: true unblocker for fleet revival / registry truth (operator-directed re-rank; see docs/ROADMAP.md current cycle).
+  outcome_id: RESILIENT-000
+  evidence: |
+    2026-06-24: 0 fleet-worker merges in 32h (last was #3170) despite auth OK (force-fresh validated) + audit-gate fixed (#3172) + workers actively producing PRs (open count 8->9). integrator-daemon exit=127, merge-queue-monitor exit=78. Manual kickstart did not hold (127=binary-not-found). The fleet cannot self-heal: it can't merge its own merge-pipeline fixes (catch-22) — needs an out-of-band substrate repair. Siblings: RESILIENT-165 (bot-merge silent-wedge), RESILIENT-167 (keeper/autopilot won't revive pool), CREDIBLE-146 (auth-cache false-positive).
+  evidence: |
+    2026-06-24: 0 fleet-worker merges in 32h (last was #3170) despite auth OK (force-fresh validated) + audit-gate fixed (#3172) + workers actively producing PRs (open count 8->9). integrator-daemon exit=127, merge-queue-monitor exit=78. Manual kickstart did not hold (127=binary-not-found). The fleet cannot self-heal: it can't merge its own merge-pipeline fixes (catch-22) — needs an out-of-band substrate repair. Siblings: RESILIENT-165 (bot-merge silent-wedge), RESILIENT-167 (keeper/autopilot won't revive pool), CREDIBLE-146 (auth-cache false-positive).
+

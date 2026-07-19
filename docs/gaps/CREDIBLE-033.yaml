@@ -1,16 +1,20 @@
 - id: CREDIBLE-033
   domain: CREDIBLE
-  title: "CREDIBLE: add tests to src/discord.rs — message parsing + webhook validation + event handlers (1107 LOC, decomp of CREDIBLE-004 child 4/4)"
-  status: open
+  title: 'CREDIBLE: add tests to src/discord.rs — message parsing + webhook validation + event handlers (1107 LOC, decomp
+    of CREDIBLE-004 child 4/4)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "tests/discord_test.rs covers: message parser (slash-command + plain-text), webhook signature validation, event handlers (on_message, on_dm, on_a2a)"
-    - "Parser tests use fixture Discord payloads in tests/fixtures/discord/*.json (capture real payloads with sensitive fields stripped)"
-    - "Webhook validation tested: valid signature → pass, invalid signature → reject, missing signature → reject (per A-005 a2a tool security if exists, else current code)"
-    - "A2A peer-config gating tested: a2a_peer_configured() returns true only when CHUMP_A2A_PEER_USER_ID is set + non-empty"
-    - "Channel-vs-DM routing tested: CHUMP_A2A_CHANNEL_ID set → channel; unset → DM"
-    - "Coverage target: >50% line coverage on src/discord.rs (today: 0%)"
-    - "No live Discord API calls in tests; use serenity's test harness or a HTTP mock"
-    - "CI gate: `cargo test --test discord_test` passes; runs in <15s"
-
+  - 'tests/discord_test.rs covers: message parser (slash-command + plain-text), webhook signature validation, event handlers
+    (on_message, on_dm, on_a2a)'
+  - Parser tests use fixture Discord payloads in tests/fixtures/discord/*.json (capture real payloads with sensitive fields
+    stripped)
+  - 'Webhook validation tested: valid signature → pass, invalid signature → reject, missing signature → reject (per A-005
+    a2a tool security if exists, else current code)'
+  - 'A2A peer-config gating tested: a2a_peer_configured() returns true only when CHUMP_A2A_PEER_USER_ID is set + non-empty'
+  - 'Channel-vs-DM routing tested: CHUMP_A2A_CHANNEL_ID set → channel; unset → DM'
+  - 'Coverage target: >50% line coverage on src/discord.rs (today: 0%)'
+  - No live Discord API calls in tests; use serenity's test harness or a HTTP mock
+  - 'CI gate: `cargo test --test discord_test` passes; runs in <15s'
+  closed_pr: 1626

@@ -1,0 +1,9 @@
+- id: EFFECTIVE-265
+  domain: EFFECTIVE
+  title: "Bootstrap: A CLI tool that tracks daily habits"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"A CLI tool that tracks daily habits\"\n3. Sub-gaps filed for core feature areas"
+

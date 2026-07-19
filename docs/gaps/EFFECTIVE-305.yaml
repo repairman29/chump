@@ -1,0 +1,22 @@
+- id: EFFECTIVE-305
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump-mode one-dial fleet run-mode toggle grind travel off"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Operator ask (2026-06-29): 'I want to control this easily with modes that let me toggle how the system is running.' Root pain: closing the MacBook lid on battery sleeps the machine and (compounded by CREDIBLE-146 stale auth cache) turns a routine lid-close into a multi-day fleet outage. Deliver a single dial. CONFIRMED DESIGN (operator chose 3-mode + one-time passwordless sudo): 'chump mode <name>' persists to ~/.chump/fleet-mode and flips sleep-behavior + worker-fleet together. MODES: grind = plugged-in, stay awake lid-closed (sudo pmset -c disablesleep 1) + full worker fleet; travel = on battery, allow normal sleep on lid-close (pmset disablesleep 0, protects battery) + reduced fleet + wake-recovery armed so reopening the lid auto-resumes within one farmer TTL (never a multi-day death); off = chump fleet down (AUTONOMY_LEVEL=0) + release leases + restore normal sleep. 'chump mode' no-arg shows current mode + fleet status + disablesleep + auth-status. 'chump mode setup-sudo' installs a NARROW /etc/sudoers.d/chump-pmset NOPASSWD rule for '/usr/bin/pmset -c disablesleep 0|1' only (validated via visudo -c). v1 ships as ~/.local/bin/chump-mode shim (usable immediately); durable Rust port folds into the chump binary as a real 'mode' subcommand and wires farmer/worker loops to READ ~/.chump/fleet-mode each cycle (state-mutating hot-path -> Rust-first per META-064). Pairs with CREDIBLE-146 (auth self-heal) and RESILIENT-169 (wake-recovery hook).
+  acceptance_criteria:
+    - chump-mode grind
+    - travel
+    - off flips both sleep policy (pmset -c disablesleep) and worker fleet (chump fleet up/scale/down) in one command
+    - chump mode with no arg prints current mode + fleet worker count + disablesleep state + auth-status verdict
+    - chump mode setup-sudo writes a narrow validated /etc/sudoers.d/chump-pmset NOPASSWD rule scoped to pmset disablesleep only
+    - mode persisted to ~/.chump/fleet-mode and survives reboot
+    - travel mode arms wake-recovery (RESILIENT-169) so lid-close->reopen resumes shipping within one farmer TTL
+    - off mode releases leases and sets AUTONOMY_LEVEL=0
+    - durable Rust chump mode subcommand + farmer reads the mode file (follow-up)
+  notes: |
+    P0 promotion 2026-07-19 cycle plan: true unblocker for fleet revival / registry truth (operator-directed re-rank; see docs/ROADMAP.md current cycle).
+  outcome_id: EFFECTIVE-000
+

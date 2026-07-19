@@ -1,15 +1,24 @@
 - id: META-163
   domain: META
-  title: "fleet recv-side v0 MISSING PRODUCER: nothing creates .curator-opus-*.lock sentinel files — META-158 fan-out has no recipients to deliver to"
-  status: open
+  title: 'fleet recv-side v0 MISSING PRODUCER: nothing creates .curator-opus-*.lock sentinel files — META-158 fan-out has
+    no recipients to deliver to'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    During META-157 fleet recv-side v0 dispatch, discovered META-158 fan-out path globs `.curator-opus-*.lock` sentinel files in .chump-locks/ but NO curator-loop script creates these files. zsh check on main shows zero matches. So feedback_fanout_skipped reason=no_curator_locks will always fire even with CHUMP_FLEET_RECV_SIDE_V0=1 enabled. This is a missing PRODUCER complement to META-158.
-  acceptance_criteria:
-    - "scripts/coord/lib/curator-sentinel.sh helper: _create_curator_sentinel <role> creates .chump-locks/.curator-opus-<role>.lock (touch + lock pidfile); _remove on exit trap"
-    - All 8 curator loops (ci-audit / handoff / decompose / shepherd / target / md-links / observability / infra-watcher / external-collab) source the helper and call _create_curator_sentinel at startup AND _remove on EXIT trap
-    - "Stale sentinel reaper: launchd plist com.chump.curator-sentinel-reaper runs every 5 min, removes any .curator-opus-*.lock whose pid is dead OR file mtime > 30 min"
-    - "Integration test: start ci-audit-loop in background, assert .chump-locks/.curator-opus-ci-audit.lock exists; broadcast FEEDBACK proposal with CHUMP_FLEET_RECV_SIDE_V0=1, assert one inbox file matches ci-audit role gets the message"
-    - "Backwards compat: when sentinel file already exists, _create updates mtime not error (idempotent reentry)"
+  description: 'During META-157 fleet recv-side v0 dispatch, discovered META-158 fan-out path globs `.curator-opus-*.lock`
+    sentinel files in .chump-locks/ but NO curator-loop script creates these files. zsh check on main shows zero matches.
+    So feedback_fanout_skipped reason=no_curator_locks will always fire even with CHUMP_FLEET_RECV_SIDE_V0=1 enabled. This
+    is a missing PRODUCER complement to META-158.
 
+    '
+  acceptance_criteria:
+  - 'scripts/coord/lib/curator-sentinel.sh helper: _create_curator_sentinel <role> creates .chump-locks/.curator-opus-<role>.lock
+    (touch + lock pidfile); _remove on exit trap'
+  - All 8 curator loops (ci-audit / handoff / decompose / shepherd / target / md-links / observability / infra-watcher / external-collab)
+    source the helper and call _create_curator_sentinel at startup AND _remove on EXIT trap
+  - 'Stale sentinel reaper: launchd plist com.chump.curator-sentinel-reaper runs every 5 min, removes any .curator-opus-*.lock
+    whose pid is dead OR file mtime > 30 min'
+  - 'Integration test: start ci-audit-loop in background, assert .chump-locks/.curator-opus-ci-audit.lock exists; broadcast
+    FEEDBACK proposal with CHUMP_FLEET_RECV_SIDE_V0=1, assert one inbox file matches ci-audit role gets the message'
+  - 'Backwards compat: when sentinel file already exists, _create updates mtime not error (idempotent reentry)'
+  closed_pr: 2824

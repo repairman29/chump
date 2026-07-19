@@ -1,11 +1,15 @@
 - id: DOC-067
   domain: DOC
-  title: "DOC: A2A coordination research synthesis 2026-06 — frontier validation + cutting-edge refinements for the MISSION-009 cluster"
-  status: open
+  title: 'DOC: A2A coordination research synthesis 2026-06 — frontier validation + cutting-edge refinements for the MISSION-009
+    cluster'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - docs/design/A2A_COORDINATION_RESEARCH_2026-06-08.md exists, capturing the 2026 frontier survey (Google A2A protocol, MCP-for-A2A, multi-agent frameworks, classical distributed patterns, forced-consumption patterns, LLM consensus/voting) with source URLs for every claim
-    - Maps each finding to the implementing gap in the MISSION-009 cluster (CREDIBLE-114/122, INFRA-1798, EFFECTIVE-037/038/039/229, ZERO-001) — what we got right, what we upgraded, what we filed
-    - Cross-referenced from docs/design/A2A_MASTER_PLAN_2026-06-03.md and MISSION-009 so it is discoverable
-
+  - docs/design/A2A_COORDINATION_RESEARCH_2026-06-08.md exists, capturing the 2026 frontier survey (Google A2A protocol, MCP-for-A2A,
+    multi-agent frameworks, classical distributed patterns, forced-consumption patterns, LLM consensus/voting) with source
+    URLs for every claim
+  - Maps each finding to the implementing gap in the MISSION-009 cluster (CREDIBLE-114/122, INFRA-1798, EFFECTIVE-037/038/039/229,
+    ZERO-001) — what we got right, what we upgraded, what we filed
+  - Cross-referenced from docs/design/A2A_MASTER_PLAN_2026-06-03.md and MISSION-009 so it is discoverable
+  closed_pr: 3101

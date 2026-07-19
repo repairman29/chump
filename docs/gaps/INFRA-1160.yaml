@@ -1,12 +1,13 @@
 - id: INFRA-1160
   domain: INFRA
-  title: "ZERO-WASTE-034: per-gap timeout multiplier — scale worker timeout by effort estimate"
-  status: open
+  title: 'ZERO-WASTE-034: per-gap timeout multiplier — scale worker timeout by effort estimate'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "1. CHUMP_WORKER_TIMEOUT_MULTIPLIER env var: map effort→multiplier (xs=0.5, s=1.0, m=1.5, l=2.0, xl=3.0)"
-    - 2. worker.sh reads gap effort from chump gap show output, applies multiplier to CHUMP_WORKER_TIMEOUT_S
-    - 3. result capped at CHUMP_WORKER_TIMEOUT_MAX_S (default 7200)
-    - 4. emits kind=worker_timeout_scaled with gap_id, effort, base_timeout_s, scaled_timeout_s to ambient.jsonl
-    - "5. test scripts/ci/test-worker-timeout-multiplier.sh: 5 assertions covering each effort tier and cap behavior"
+  - '1. CHUMP_WORKER_TIMEOUT_MULTIPLIER env var: map effort→multiplier (xs=0.5, s=1.0, m=1.5, l=2.0, xl=3.0)'
+  - 2. worker.sh reads gap effort from chump gap show output, applies multiplier to CHUMP_WORKER_TIMEOUT_S
+  - 3. result capped at CHUMP_WORKER_TIMEOUT_MAX_S (default 7200)
+  - 4. emits kind=worker_timeout_scaled with gap_id, effort, base_timeout_s, scaled_timeout_s to ambient.jsonl
+  - '5. test scripts/ci/test-worker-timeout-multiplier.sh: 5 assertions covering each effort tier and cap behavior'
+  closed_pr: 2041

@@ -2,7 +2,7 @@
   domain: INFRA
   title: e2e-pwa flake persists — PWA-shell-loads-home test fails intermittently, zero green CI runs on main in last 100
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     The e2e-pwa Playwright test "PWA-shell-loads-home-and-shows-message-composer" 
@@ -38,4 +38,7 @@
     - " Either: rendering race fixed, or test hardened, or test skipped with tracking gap "
     - " yes "
     - ""
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

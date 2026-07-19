@@ -1,17 +1,37 @@
 - id: INFRA-2074
   domain: INFRA
-  title: "RESILIENT: CI flake catalog + flake-rate-per-check separation — distinguish 'check failed because real bug' vs 'check is flaky'; novel-wedge classifier (INFRA-2067) must consult flake catalog before classifying, OR false-positive auto-dispatches will burn Sonnet tokens on flakes"
-  status: open
+  title: 'RESILIENT: CI flake catalog + flake-rate-per-check separation — distinguish ''check failed because real bug'' vs
+    ''check is flaky''; novel-wedge classifier (INFRA-2067) must consult flake catalog before classifying, OR false-positive
+    auto-dispatches will burn Sonnet tokens on flakes'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "New file scripts/coord/flake-catalog.yaml — declarative catalog of KNOWN-FLAKY checks; each entry has {check_name: str, signature_pattern: regex, flake_rate_observed: float, last_seen: ISO-ts, retry_strategy: rerun-once|rerun-with-backoff|operator-required}; ships seeded with todays observed flakes (cargo-test-stub intermittent network, e2e-pwa flake on screenshot timeout)"
-    - New script scripts/coord/flake-rate-aggregator.sh runs every 6h via launchd plist — scans last 7d of CI runs via gh api, computes failure_count / total_count per (check_name, error_signature); when rate exceeds CHUMP_FLAKE_THRESHOLD (default 0.05 = 5%) AND total_count >= 20 (min sample), auto-adds entry to flake-catalog.yaml and emits ambient kind=flake_detected with fields check_name, signature, rate, sample_count
-    - INFRA-2067 novel-wedge classifier MUST consult flake-catalog.yaml BEFORE emitting wedge_class_detected — if (check_name, signature) matches a flake entry, emit kind=flake_observed (informational, no auto-dispatch) instead of wedge_class_detected; this is the gating cross-reference that prevents false-positive auto-dispatch on known flakes
-    - "Operator surface: chump flake list lists current catalog; chump flake add <check_name> [--signature REGEX] [--rate F] manually-adds entry; chump flake remove <check_name> removes; chump flake stats prints per-check failure rates from last 7d"
-    - "Smoke test scripts/ci/test-flake-catalog.sh: synth 5 fake CI runs with check_name=fake-flake failing intermittently; run flake-rate-aggregator; assert kind=flake_detected emit + flake-catalog.yaml entry added; then synth wedge_class_detected candidate matching the flake; assert classifier suppresses to flake_observed instead"
-    - EVENT_REGISTRY.yaml entries kind=flake_detected + kind=flake_observed; allowlist entries in scripts/ci/event-registry-reserved.txt
-    - "docs/process/CI_FLAKE_DISCIPLINE.md — short doc explaining the flake catalog model + when to add an entry manually vs let aggregator catch it + ban-list for \"is_actually_real_bug_disguised_as_flake\" (3 examples from history where real bugs were marked flaky and caused regressions)"
-  notes: |
-    Filed 2026-05-27 by curator-opus-shepherd as the gating cross-reference for INFRA-2067 (novel-wedge classifier) and INFRA-2069 (wedge-fixer dispatch). Without this gap, the wizard's auto-loop will dispatch Sonnets on every flake → tokens burned + PR queue pollution. Pairs with INFRA-2069's rate limit (volume guard) but flake catalog is the SIGNAL guard.
+  - 'New file scripts/coord/flake-catalog.yaml — declarative catalog of KNOWN-FLAKY checks; each entry has {check_name: str,
+    signature_pattern: regex, flake_rate_observed: float, last_seen: ISO-ts, retry_strategy: rerun-once|rerun-with-backoff|operator-required};
+    ships seeded with todays observed flakes (cargo-test-stub intermittent network, e2e-pwa flake on screenshot timeout)'
+  - New script scripts/coord/flake-rate-aggregator.sh runs every 6h via launchd plist — scans last 7d of CI runs via gh api,
+    computes failure_count / total_count per (check_name, error_signature); when rate exceeds CHUMP_FLAKE_THRESHOLD (default
+    0.05 = 5%) AND total_count >= 20 (min sample), auto-adds entry to flake-catalog.yaml and emits ambient kind=flake_detected
+    with fields check_name, signature, rate, sample_count
+  - INFRA-2067 novel-wedge classifier MUST consult flake-catalog.yaml BEFORE emitting wedge_class_detected — if (check_name,
+    signature) matches a flake entry, emit kind=flake_observed (informational, no auto-dispatch) instead of wedge_class_detected;
+    this is the gating cross-reference that prevents false-positive auto-dispatch on known flakes
+  - 'Operator surface: chump flake list lists current catalog; chump flake add <check_name> [--signature REGEX] [--rate F]
+    manually-adds entry; chump flake remove <check_name> removes; chump flake stats prints per-check failure rates from last
+    7d'
+  - 'Smoke test scripts/ci/test-flake-catalog.sh: synth 5 fake CI runs with check_name=fake-flake failing intermittently;
+    run flake-rate-aggregator; assert kind=flake_detected emit + flake-catalog.yaml entry added; then synth wedge_class_detected
+    candidate matching the flake; assert classifier suppresses to flake_observed instead'
+  - EVENT_REGISTRY.yaml entries kind=flake_detected + kind=flake_observed; allowlist entries in scripts/ci/event-registry-reserved.txt
+  - docs/process/CI_FLAKE_DISCIPLINE.md — short doc explaining the flake catalog model + when to add an entry manually vs
+    let aggregator catch it + ban-list for "is_actually_real_bug_disguised_as_flake" (3 examples from history where real bugs
+    were marked flaky and caused regressions)
+  notes: 'Filed 2026-05-27 by curator-opus-shepherd as the gating cross-reference for INFRA-2067 (novel-wedge classifier)
+    and INFRA-2069 (wedge-fixer dispatch). Without this gap, the wizard''s auto-loop will dispatch Sonnets on every flake
+    → tokens burned + PR queue pollution. Pairs with INFRA-2069''s rate limit (volume guard) but flake catalog is the SIGNAL
+    guard.
 
+    '
+  closed_date: '2026-06-05'
+  closed_pr: 2669

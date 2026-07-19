@@ -1,23 +1,39 @@
 - id: INFRA-2015
   domain: INFRA
-  title: "EFFECTIVE P1: A2A typed urgency levels — broadcast.sh adds --urgency INFO|WARN|CRIT|EMERGENCY routing"
-  status: open
+  title: 'EFFECTIVE P1: A2A typed urgency levels — broadcast.sh adds --urgency INFO|WARN|CRIT|EMERGENCY routing'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "broadcast.sh adds --urgency flag: INFO (default, file-only — next-session pickup), WARN (file + kind=urgent_broadcast ambient emit — in-loop curators tick within 5min), CRIT (file + ambient + tmux send-keys via INFRA-2014 injector), EMERGENCY (file + ambient + pane-kill + restart with --read-inbox-first)"
-    - "Outbound message metadata adds urgency field (preserved in inbox/<session>.jsonl); chump-inbox.sh display surfaces urgency in colored output"
-    - "Default urgency for existing callers stays INFO so no behavior change for legacy senders"
-    - "Smoke test scripts/ci/test-broadcast-urgency-routing.sh: 4 messages at 4 urgency levels, assert each takes the correct route"
-    - "Doc update: docs/process/OPUS_MESSAGE_PROTOCOL.md — urgency table + when-to-use guidance ('CRIT = pile-up cluster fired and worker is about to push into it; EMERGENCY = data-loss-imminent like the PR #2582 stale-base force-push class')"
-  depends_on: [["INFRA-2014"]]
-  description: |
-    Today (pre-INFRA-2015): broadcast.sh accepts an event-type
+  - 'broadcast.sh adds --urgency flag: INFO (default, file-only — next-session pickup), WARN (file + kind=urgent_broadcast
+    ambient emit — in-loop curators tick within 5min), CRIT (file + ambient + tmux send-keys via INFRA-2014 injector), EMERGENCY
+    (file + ambient + pane-kill + restart with --read-inbox-first)'
+  - Outbound message metadata adds urgency field (preserved in inbox/<session>.jsonl); chump-inbox.sh display surfaces urgency
+    in colored output
+  - Default urgency for existing callers stays INFO so no behavior change for legacy senders
+  - 'Smoke test scripts/ci/test-broadcast-urgency-routing.sh: 4 messages at 4 urgency levels, assert each takes the correct
+    route'
+  - 'Doc update: docs/process/OPUS_MESSAGE_PROTOCOL.md — urgency table + when-to-use guidance (''CRIT = pile-up cluster fired
+    and worker is about to push into it; EMERGENCY = data-loss-imminent like the PR #2582 stale-base force-push class'')'
+  depends_on:
+  - - INFRA-2014
+  description: 'Today (pre-INFRA-2015): broadcast.sh accepts an event-type
+
     (INTENT|HANDOFF|STUCK|DONE|WARN|ALERT|FEEDBACK) but those describe
+
     INTENT not URGENCY. Caller might WARN about something low-priority
+
     or ALERT about something already-resolved — receiver has no way to
+
     triage.
 
+
     With urgency: sender declares "this needs response in <window>"
+
     independently from event-type. Routing layer matches urgency to
+
     delivery mechanism.
+
+    '
+  closed_date: '2026-05-29'
+  closed_pr: 2622

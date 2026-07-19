@@ -1,0 +1,32 @@
+- id: INFRA-2872
+  domain: INFRA
+  title: "PR #3125 stuck [CI-RED] — CI red for 41m"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3125
+    
+    Detected by stuck-pr-filer (2026-06-09T06:25:59Z).
+    
+    Trigger: CI red for 41m
+    At least one required check has been failing for 41m (threshold 20m). Failing check: fast-checks.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3125 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: RESILIENT-086
+    Branch: chump/resilient-086-auth-status-probe
+    Failing check: fast-checks
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-20T23:03:03Z] auto-closed by stuck-pr-filer: PR #3125 resolved (MERGED)
+  closed_pr: 3125
+

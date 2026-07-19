@@ -31,6 +31,60 @@ live. "Offline-first" is a tier-3 differentiator, not the spine. The fleet's
 behavior (reliable auto-merge, conflict-resolving rebases, healing CI gates)
 IS what customers like Marcus pay for.
 
+## Current cycle — Revival & Truth (2026-07-19 → 2026-08-16)
+
+> Filed 2026-07-19 after the queue-clear + registry triage session (15 PRs merged,
+> 288 pollution gaps closed, outcome linkage backfilled to 100% of open gaps,
+> P0 refilled with 5 true unblockers, 85 dormant P1s demoted). Context: the fleet
+> was silent June 22 → July 18 (auth-cache + lid-close class outages); trunk is
+> green and the queue is empty. This cycle turns the machine back on WITHOUT
+> re-inheriting the failure modes that killed it, then points it at the mission.
+
+## Week 1 — Revive the heart, safely (Jul 19 → 26)
+
+**Outcome.** The fleet ships autonomously again for 72h+ with no silent death:
+merge queue alive, sleep/wake survivable, operator has a one-dial control, and
+the scoreboard can no longer claim health it can't prove.
+
+**Implementing gaps:**
+- **RESILIENT-168** P0 — integrator-daemon dead (exit 127) → merge queue restored
+- **RESILIENT-169** P0 — sleep/wake-recovery hook (lid-close killed the fleet twice)
+- **EFFECTIVE-305** P0 — chump-mode one-dial run-mode toggle (grind/travel/off), durable port
+- **CREDIBLE-151** P0 — mission scoreboard verifies installed-binary SHA vs origin/main (13-day-stale-binary incident)
+
+## Week 2 — Registry truth (Jul 26 → Aug 2)
+
+**Outcome.** state.db is trustworthy end-to-end: no ID collisions across
+worktrees, no fixture leakage, workers attributable, vague-AC backlog burned down.
+
+**Implementing gaps:**
+- **INFRA-3338** P0 — dual-allocator gap-ID collision fix
+- **CREDIBLE-152** P1 — reserve guard: fixture titles hard-blocked from canonical db
+- **CREDIBLE-099** P1 — workers register THEMSELVES (heartbeats + kpi --agents attribution)
+
+## Week 3 — Mission proof on BEAST (Aug 2 → 9)
+
+**Outcome.** MISSION-010 stops being aspirational: the fleet runs an overnight
+loop against repairman29/BEAST-MODE and lands real merged PRs there — the
+scoreboard's own definition of proof.
+
+**Implementing gaps:**
+- **INFRA-2268** P1 — `chump onboard --schedule` per-external-repo overnight loop
+- **INFRA-2269** P2 — `chump keys` per-org key vault (unblocks safe external-repo auth)
+
+## Week 4 — Product surface (Aug 9 → 16)
+
+**Outcome.** The parts a customer touches get real: monolith decomposed enough
+to publish the root crate, TS bindings exist, and the operator gets a weekly
+digest instead of reading ambient streams.
+
+**Implementing gaps:**
+- **INFRA-3287** P2 — main.rs god-switchboard decomposition (tiny slices; unblocks crates.io root publish)
+- **INFRA-2270** P2 — `chump sdk gen --target ts`
+- **PRODUCT-137** P2 — operator weekly digest (Discord/email)
+
+---
+
 ## Shipped from week-of-2026-05-16 bets ✅
 
 | Bet | Gap | Status |
@@ -94,208 +148,8 @@ The remaining substrate-quality work is OAuth refresh chain (INFRA-2124) + Oracl
 
 ---
 
-## Historical 30-day plan (2026-05-06 → 2026-06-06)
+## Historical cycles
 
-This section reflects the cycle plan filed 2026-05-06. The TL;DR above
-supersedes the framing where they conflict; the gap progress and shipped
-list below remain valid.
-
-## 4-pillar mission & current cycle thrusts
-
-Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Waste**.
-
-| Pillar | Focus (this cycle) | Sample thrusts |
-|---|---|---|
-| **Effective** | User-facing velocity | App integration (PRODUCT-036/037), agent decision quality (FLEET-052), end-to-end flows |
-| **Credible** | Measurable progress | Effort sizing (INFRA-708), operator feedback loops (FLEET-048), pillar metrics (FLEET-053/054) |
-| **Resilient** | Failure tolerance | SWARM-domain exclusion (INFRA-710), stall detection (INFRA-705), worker health (FLEET-042) |
-| **Zero-Waste** | Cycle efficiency | Effort-scaled timeout (INFRA-707), wedge diagnosis (INFRA-706), pre-ship quality (INFRA-666) |
-
-**This week's bets** (Week 2 — Credible evidence, May 14→21):
-- **EVAL-101** P0 — cognition A/B sweep (prereg filed, runner ready, start sweep)
-- **INFRA-595** P1 ✅ — per-PR coupling-tax measurement (`chump pr-coupling-cost`)
-- **INFRA-601** P1 ✅ — bandit Thompson vs UCB1 replay study (done in #1225)
-- **COG-053** P1 ✅ — subagent self-ship rate measurement (done in #1310)
-
-**Sunset** (last 5 meaningful PRs shipped, 2026-05-13):
-- #1758 — fix(INFRA-1071): RESILIENT — `#[serial]` on ambient_rotate env-mutating tests (cargo test race)
-- #1755 — fix(INFRA-1064): RESILIENT — `worktree_root()` returns CWD when CHUMP_REPO points at sibling
-- #1753 — feat(INFRA-1063): ZERO-WASTE — per-worktree CARGO_TARGET_DIR + `cargo_lock_wait` telemetry
-- #1750 — docs(DOC-047): MISSION — harness-agnostic framing in README + AGENTS.md
-- #1741 — fix(INFRA-1018): CREDIBLE — repair `#msg-input` alias (shadowRoot bug) blocking e2e-pwa
-
----
-
-## Vision (June 6 2026)
-
-An operator runs **`chump start --orchestrator opus`** on a clean Mac and gets
-a self-driving multi-agent fleet that:
-
-- Translates plain-English operator intent ("ship the offline quickstart by
-  EOD") into concrete gap filings + fleet operations.
-- Spawns + tears down the fleet without remembering env vars.
-- Emits an honest 4-pillar mission grade every iter, unprompted.
-- Ships real user-facing features (not only fleet plumbing).
-
-This is the front door for the **offline-LLM mission** (per
-`memory/project_offline_local_llm_mission.md`): a solo dev with a 24GB Mac,
-Ollama, and one binary should be able to drive a coding-agent fleet without
-paying Anthropic/OpenAI.
-
-## Success criteria (June 6 demo)
-
-A 5-minute video that shows, on a clean macOS install:
-
-1. `brew tap repairman29/chump && brew install chump` — installs cleanly.
-2. `chump init` — wizard, pinned deps, ~/.chump/config.toml.
-3. `chump gen "add a /health endpoint to my axum server"` — single-shot
-   coding task, produces a working PR.
-4. `chump orchestrate` — conversational loop, operator types
-   "spawn the fleet on infra p0/p1", fleet starts, ships ≥1 gap, reports back.
-5. `chump fleet-status` (real-time and JSON) — visible activity.
-
-If the video records cleanly without operator hand-holding, the roadmap
-shipped.
-
----
-
-## Week 1 — User-facing front door (May 6 → 13) ✅ SHIPPED
-
-**Outcome.** A solo dev with Ollama can run `chump gen "<task>"` and get
-a working PR. **Achieved.**
-
-**Implementing gaps:**
-- **INFRA-593** — `chump gen <task>` single-shot coding command ✅ (#1204)
-- **INFRA-591** — offline-LLM quickstart doc ✅ (#1216)
-- **INFRA-610** — `chump fleet` subcommand (start/stop/status/restart) ✅ (#1385)
-- **INFRA-743** — `chump init` lists available Ollama models ✅ (#1384)
-- **INFRA-733** — free-tier dispatch harness (non-Claude LLMs) ✅ (#1355 + #1373)
-- **INFRA-594** — chump-gen smoke suite ✅ (#1276)
-
-**Remaining.** FTUE clean-machine CI test (pre-existing Ollama-unreachable failure on main; not a Week 1 regression — defer to Week 4 polish).
-
----
-
-## Week 2 — Credible evidence (May 14 → 21)
-
-**Outcome.** Published numbers showing whether the cognition stack helps and
-by how much. We've shipped COG-041 / COG-046 / COG-042 / COG-043 on faith;
-this week we measure.
-
-**Implementing gaps:**
-- **EVAL-101** (P0 m) — cognition A/B pilot ✅ **null result (Δ=+0.025, n=20/cell, Qwen local).** Result cannot be cited — protocol violated preregistration (wrong agent, structural-only scoring, no Cell C, no LLM judges). See audit trail in EVAL-102 prereg.
-- **EVAL-102** (P1 m) 🏗️ **preregistration locked 2026-05-11, harness run PENDING.** Corrected re-run: Sonnet 4.6, n=50/cell, Cell C padding control, dual judges (haiku + Llama-3.3-70B), deviation-locked runner. Preregistered at `docs/eval/preregistered/EVAL-102.md`. Result doc stub at `docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md`. Run the sweep to get a citable result.
-- **INFRA-595** (P1 s) ✅ — per-PR coupling-tax measurement. `chump pr-coupling-cost` shipped in #1224.
-- **INFRA-601** (P1 s) ✅ — bandit Thompson vs UCB1 replay study. `src/bin/bandit-relay.rs` + report shipped in #1225.
-- **COG-053** (P1 m) ✅ — subagent self-ship rate measurement. Prompt epilogue shipped in #1310.
-
-**Remaining.** Execute EVAL-102 harness sweep (needs Anthropic API ~$5 + Together AI free tier + ~24h). Smoke-check first: `python3.12 scripts/ab-harness/run-local-v2.py --gap EVAL-102 --n 2 ...`. Full decision rule and downstream consequence map in `docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md`.
-
-**Out of scope this week.** Anything that doesn't produce a measurable
-number. No new infra, no new features unless they unblock a measurement.
-
----
-
-## Week 3 — Orchestrator MVP (May 22 → 28) 🏗️ IN PROGRESS
-
-**Outcome.** Operator types `chump orchestrate`, has a natural-language
-session with Opus, and Opus drives the fleet (files gaps, spawns workers,
-reports back) without human-typing each chump CLI command.
-
-**Implementing gaps:**
-- **INFRA-796** — Telemetry, cost tracking, failure taxonomy ✅ **scoped + implemented.** `emit_ambient_event`, `estimate_tokens`, `classify_failure` added. Each iteration emits `kind=orchestrate_intent` to ambient.jsonl.
-- **INFRA-797** — Mission auto-grader: emit 4-pillar scorecard to ambient every 30min unprompted ✅ **scoped + implemented.** Background `tokio::spawn` task runs a 30-min `interval` calling `emit_grade()`.
-- **INFRA-798** — Intent parser: natural language → structured chump ops ✅ **scoped + AC'd.** Stub parser (keyword matching) + real Opus-driven parser both verified. System prompt + tool-router already shipped in INFRA-598 loop.
-- **INFRA-NEW** — `chump init` first-run wizard (m, dependency check + `~/.chump/config.toml` + brew tap) — file when INFRA-743 scope is confirmed done
-
-**Acceptance criteria.** Operator can:
-- Type "spawn the fleet on infra p0/p1, size 4" → fleet starts.
-- Type "what's our mission grade?" → orchestrator reads ambient + emits grade.
-- Type "ship the offline quickstart by EOD" → orchestrator promotes INFRA-591 to P0 and confirms.
-- Type "stop the fleet" → INFRA-581 cascade-kill teardown.
-
----
-
-## Week 4 — Polish + demo (May 29 → June 6)
-
-**Outcome.** Pitch-ready 5-min demo on a clean Mac.
-
-**Implementing gaps:**
-- **PRODUCT-025** — PWA dashboard MVP (L; split into shippable slices: registry view, fleet pane, ambient stream pane)
-- **INFRA-799** — FTUE clean-machine CI test (brew install + chump init + chump gen on fresh runner) — filed 2026-05-10
-- **DOC-NEW** — README rewrite anchored on the demo flow — file Week 4
-- **INFRA-NEW** — performance tuning at FLEET_SIZE=10 with cascade hot — file Week 4
-
-**Out of scope.** Anything that doesn't appear in the 5-minute demo.
-
----
-
-## Phase 5 — Fleet quality backlog (superseded by Waves)
-
-**Superseded 2026-05-16 by [`docs/strategy/ROADMAP_WAVES.md`](strategy/ROADMAP_WAVES.md)** — the canonical ship-order discipline with explicit prerequisite gating (Waves 0 → 0b → 1 → 2 → 3 → 4 and transition tests per wave). This section was filed earlier the same day in PR #2255 as a parallel ordering; the Waves doc lands the same intent more rigorously and replaces it.
-
-**Filed-2026-05-16 gaps with wave assignments** (also stored in each gap's `notes:` field per the Waves §How-to-use rule):
-
-| Wave | Role | Gaps |
-|---|---|---|
-| **0** | Truth gates | INFRA-1548 (schema_version contract), INFRA-1550 (EVENT_REGISTRY truth), INFRA-1554 (synthesis filing-atomicity), INFRA-1562 (preregistered evals), INFRA-1576 (doc staleness markers), **INFRA-1589** (runtime-verification discipline) |
-| **0b** | Auto-recovery | INFRA-1546 (monitor plists), INFRA-1547 (war-room SessionStart), INFRA-1549 (path-level lease via PreToolUse), INFRA-1552 (FAILURE_MODES wire-up), INFRA-1563 (/api/decisions endpoint), INFRA-1564 (3 dev-script plists), INFRA-1582 (chump gap show reaped), META-051 (failure-class pattern detector) |
-| **2-3** | Capacity | INFRA-1317 (GitHub Liaison Phase 1), INFRA-1318 (Phase 2 webhook-cache) |
-| **4** | Customer-facing / agent quality | INFRA-1545 (routing-brain wire-up), INFRA-1553 (chump-mcp-lifecycle in ACP), INFRA-1555 (FLEET-048 ratings picker), INFRA-1565 (chump-xml-adapter), INFRA-1570 (/api/settings/repo), INFRA-1571 (Tauri native), INFRA-1583 (chump-mcp-code MCP server) |
-| **noise** | Do not block ship (per Mission Yield calibration) | INFRA-1551, INFRA-1569, INFRA-1572, INFRA-1573, INFRA-1574, INFRA-1577, INFRA-1578 |
-
-**Why this section stayed instead of being removed**: PR #2255 ships AGENTS.md Behaviour 4 + `scripts/dev/verify-existence.sh`. Removing the originating Phase 5 framing leaves orphan references. Cross-linking to Waves preserves audit trail without competing.
-
----
-
-## Explicitly out of scope (entire 30 days)
-
-- **SWARM-* proprietary work.** Lives in `~/Projects/chump-proprietary/`. Not in this repo's queue except as opaque placeholders.
-- **Hardware (RTX 6000 Blackwell) decisions.** That's exec-summary work, not engineering work. See `memory/exec_summary_hardware_economics.md`.
-- **Cross-machine fleet (NATS).** FLEET-006 already shipped. The Pi mesh / dual-Mac vision is post-June-6.
-- **Fine-tuning a 405B on Chump data.** Per `memory/project_model_strategy.md`, that's a 4-8 week effort owned outside the agent fleet.
-- **Adding more pillars or rewriting the mission.** The 4 pillars are stable.
-
-## Hygiene rules (active for all 30 days)
-
-1. **P0 budget = 5 max** at any moment (per CLAUDE.md Mission Driver).
-2. **Pillar pickable balance** — none < 2, none > 50% of pool.
-3. **Gap retention** — any gap idle >90 days either gets done or demoted to P3 with justification (TBD: needs scripts/ops/gap-retention-sweep.sh — file as part of week 4 polish).
-4. **Roadmap-before-gaps.** Gaps must reference a stated outcome here, or be filed as P2/P3 backlog.
-
-## Status (live; updated by Mission Driver)
-
-- **Updated.** 2026-05-15
-- **Note on "Week N" labels.** Week labels are **phase markers** (Phase 1 — Front door; Phase 2 — Credible evidence; Phase 3 — Orchestrator; Phase 4 — Polish + demo). The calendar dates in parens are *target* dates from the original 30-day plan, not enforcement boundaries. Status flags (SHIPPED / WORK COMPLETE / IN PROGRESS) reflect actual milestone completion, not calendar position. A phase can be WORK COMPLETE before its target date window opens.
-- **Phase 1 / Week 1 (target May 6–13) — SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Phase 4.
-- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early), citable result PENDING.** EVAL-101 closed null (Δ=+0.025) but cannot be cited (preregistration violated). **EVAL-102 (rerun) still PENDING operator-action**: needs ~$5 API spend + Together AI + ~24h harness time. **Without EVAL-102, Week 2 has no citable credible-evidence number.**
-- **Phase 3 / Week 3 (target May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser. **Operator end-to-end smoke test still PENDING** — no one has typed the four demo prompts ("spawn the fleet…", "what's our grade?", "ship X by EOD", "stop the fleet") against the real binary and verified the fleet responds.
-- **Launch dependency — INFRA-1501 (Anthropic partnership outreach):** Contact path, 3-paragraph pitch, draft email + DM, and SDK edge-case data points live in [`docs/business/ANTHROPIC_PARTNERSHIP.md`](./business/ANTHROPIC_PARTNERSHIP.md). Blocked only on operator send action (tracked in `chump-proprietary/OPERATOR_ACTIONS.md`). Cross-references INFRA-1500 (public launch playbook).
-- **Phase 4 / Week 4 (target May 29–June 6) — STARTED EARLY.** PWA cockpit work was undertaken ahead of schedule (see Cockpit detour below). **INFRA-799 (FTUE clean-machine CI test) SHIPPED** (PR #1468, commit c00102be) — covers brew install → `chump --version` → `chump init` → `chump gen` → `chump mcp list` → `chump fleet start/status/stop`. **Gap discovered 2026-05-15:** the existing FTUE workflow does NOT cover `chump orchestrate` (June 6 demo criterion #4 — "operator types 'spawn the fleet…', fleet starts"). Extending the FTUE workflow tonight to add a 3-intent smoke step. DOC-035 (README rewrite for demo flow) also pending.
-- **Cockpit detour (2026-05-15) — major cycle, not on the original 30-day spec.** A "PWA isn't running" session start expanded into a full cockpit reshape:
-  - PRODUCT-121 ✅ — PWA cockpit roadmap doc shipped (#2024) with 4 phases + ship-criteria
-  - PRODUCT-122 ✅ — Cockpit-MVP landing shell shipped (#2030) composing 22 existing components
-  - PRODUCT-120 🟡 — Action-first cockpit (Read/Signal/Noise framework + 5 action wires + 2 new endpoints) in PR #2063 (auto-merge armed, sibling rebasing); doctrine docs merged (#2067, #2094)
-  - PRODUCT-132 🟡 — Operator-attention dedup in PR #2066
-  - INFRA-1349 🟡 — `target/` artifact reaper in PR #2083 (addresses today's 97%-full disk crisis)
-  - **Honest assessment:** the cockpit work is arguably Week 4 polish surfaced as PRODUCT-025 (PWA dashboard MVP). It moves the project forward but **does NOT directly satisfy any of the 5 June-6 demo criteria** (brew install, chump init, chump gen, chump orchestrate, chump fleet-status). The demo is CLI-driven.
-- **Pillar balance (2026-05-15):** Fleet brief reported `EFFECTIVE=12 CREDIBLE=3 RESILIENT=4 ZERO-WASTE=6 (of 33 pickable)` — balanced. Ship velocity ~7.3 ships/hr / 176 ships/24h.
-- **SLO status:** earlier disk_critical alerts (97% full) recovered to ~90% after sibling-agent worktree reaping; INFRA-1349 launchd install pending for permanent fix. 13 active leases at session-end.
-- **Next actions (priority order for June 6):**
-  1. **FTUE workflow extended for `chump orchestrate`** (in this same PR). Adds a smoke step that asserts 3 canonical intents route to the right chump commands. Plugs the demo-criterion #4 hole.
-  2. **EVAL-102 rerun.** Operator-action required (~$5 API + 24h). Until this lands, Week 2 has no citable number.
-  3. **`chump orchestrate` LLM-driven e2e** (not just intent-parser stub). Operator types real prompts; orchestrator drives the fleet via Anthropic. The FTUE smoke covers the routing; this covers the cognition.
-  4. **DOC-035 README rewrite** anchored on the 5-step demo flow.
-  5. **5-minute screencast on clean Mac.** Final June 6 deliverable; operator-action.
-  6. **PWA cockpit PRs** (#2063 + #2066 + #2083) — already auto-merge armed, riding through CI; no further action needed.
-  7. **PRODUCT-133 (right-zone treatment)** — gated on #2063 landing first.
-
-## Latent levers (audited 2026-05-22)
-
-Three architectural maneuvers surfaced during the 2026-05-22 "Ordnance Engine" structural audit. Each repurposes an existing Chump primitive at an unexpected target. **Filed here as future levers, not active gaps.** Promote to a gap only when concrete demand-pull appears — these are options held in reserve, not work scheduled.
-
-1. **Webhook mirror generalization → offline-first SaaS layer.** Re-aim `scripts/ops/github-webhook-receiver.py` + `.chump/github_cache.db` schema + `scripts/coord/lib/github_cache.sh` (`cache_lookup_*` helpers) at Linear / Stripe / Notion / Slack. One process per source, table-per-resource, same read-through API. Agents query the full SaaS stack offline; REST fallback on miss. Promote when a concrete agent workflow hits a polling-rate wall on a non-GitHub API.
-2. **Provider cascade re-aim → tier-ranked failover for non-LLM resources.** `src/provider_cascade.rs`'s `ProviderSlot` trait, RPD ledger, and circuit breaker describe *any* tiered resource. Candidates: internet uplink (fiber / 5G / Starlink), payment processors (Stripe / Paddle / LemonSqueezy), GPU rental tiers. Promote when off-grid use-case or payment redundancy becomes a real operator need.
-3. **Adversary as continuous resilience drill.** `src/adversary.rs` already injects failure modes. A launchd-scheduled drill that picks a rule, injects into one worker, watches `ambient.jsonl` for a `fleet_recovered` event within SLO, and auto-files a P1 `RESILIENT:` gap if the recovery breaches — self-evolving chaos engineering. Promote *only* if RESILIENT pillar coverage drops below the META-046 floor; currently 69 %, healthy.
-
-Companion gap: **EFFECTIVE-023** extracts the `ambient-cli` substrate that maneuvers (1) and (3) both consume; landing that crate is the architectural prerequisite for those two maneuvers.
+The full May 2026 30-day plan (weeks, vision, success criteria, phase-5 backlog,
+hygiene rules, latent levers) is archived at
+[archive/ROADMAP_MAY_2026_CYCLE.md](archive/ROADMAP_MAY_2026_CYCLE.md).

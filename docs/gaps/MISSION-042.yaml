@@ -1,54 +1,89 @@
 - id: MISSION-042
   domain: MISSION
-  title: "CREDIBLE: MISSION-010/011/012 are ghost gap IDs — the mission's canonical gap, picker gap, and multiplier are referenced in docs/MISSION.md but do not exist in gap store or git history"
-  status: open
+  title: 'CREDIBLE: MISSION-010/011/012 are ghost gap IDs — the mission''s canonical gap, picker gap, and multiplier are referenced
+    in docs/MISSION.md but do not exist in gap store or git history'
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-06-15'
   raised_by: cold-water
   raised_in: RED_LETTER#16
-  description: |
-    VERIFIED 2026-06-15 (Issue #16 Cold Water audit):
+  description: 'VERIFIED 2026-06-15 (Issue #16 Cold Water audit):
+
 
     docs/MISSION.md declares:
+
     - "Canonical mission gap: MISSION-010" (self-coordinating fleet / BEAST-MODE proof)
+
     - "The picker (MISSION-011) reads ACTIVE_MISSION and ranks mission-linked gaps"
+
     - "Current multiplier: MISSION-012 (self-deploy). *Metric: manual deploy steps per ship = 0.*"
+
     - "Filed as MISSION-014"
 
+
     None of these gaps exist:
+
     ```
+
     ls docs/gaps/MISSION-010.yaml → No such file
+
     ls docs/gaps/MISSION-011.yaml → No such file
+
     ls docs/gaps/MISSION-012.yaml → No such file
+
     ls docs/gaps/MISSION-013.yaml → No such file
+
     ls docs/gaps/MISSION-014.yaml → No such file
 
+
     python3 -c "
+
     import sqlite3
-    conn = sqlite3.connect('.chump/state.db')
-    r = conn.execute(\"SELECT id FROM gaps WHERE id IN ('MISSION-010','MISSION-011','MISSION-012','MISSION-013','MISSION-014')\").fetchall()
+
+    conn = sqlite3.connect(''.chump/state.db'')
+
+    r = conn.execute(\"SELECT id FROM gaps WHERE id IN (''MISSION-010'',''MISSION-011'',''MISSION-012'',''MISSION-013'',''MISSION-014'')\").fetchall()
+
     print(r)
+
     "
+
     → []
 
-    git log origin/main --grep='MISSION-010' --oneline → (empty — only appears in
+
+    git log origin/main --grep=''MISSION-010'' --oneline → (empty — only appears in
+
     commits referencing unrelated MISSION-039 via substring match)
+
     ```
 
+
     Every gap that has filed since MISSION-006 skips directly to MISSION-029.
+
     MISSION-007 through MISSION-028 are all absent (22 ghost gap IDs). The gaps
+
     referenced as the canonical foundation of the mission doctrine are headless.
 
+
     This is first found in Issue #16 — not in prior RED_LETTER issues (grep count: 0
+
     for MISSION-012 in docs/audits/RED_LETTER.md prior to this cycle).
 
+
     Remediation options (operator decision required):
+
     (a) File the missing MISSION-010/012 gaps from the description in MISSION.md
+
     (b) Update MISSION.md to point to real gap IDs (e.g. MISSION-031 for fleet operation)
+
     (c) Both
+
+    '
   acceptance_criteria:
-    - "MISSION.md gap references resolve: docs/MISSION.md references gap IDs that exist in state.db (find docs/gaps/MISSION-*.yaml confirms each referenced ID)"
-    - "The canonical mission gap (MISSION-010 or its replacement) has a real gap file with acceptance criteria and opened_date"
-    - "The self-deploy multiplier (MISSION-012 or its replacement) has a real gap file with measurable AC: 'manual deploy steps per ship = 0'"
-    - "git log origin/main --grep='<NEW-MISSION-GAP-ID>' returns >= 1 implementation commit"
+  - 'MISSION.md gap references resolve: docs/MISSION.md references gap IDs that exist in state.db (find docs/gaps/MISSION-*.yaml
+    confirms each referenced ID)'
+  - The canonical mission gap (MISSION-010 or its replacement) has a real gap file with acceptance criteria and opened_date
+  - 'The self-deploy multiplier (MISSION-012 or its replacement) has a real gap file with measurable AC: ''manual deploy steps
+    per ship = 0'''
+  - git log origin/main --grep='<NEW-MISSION-GAP-ID>' returns >= 1 implementation commit

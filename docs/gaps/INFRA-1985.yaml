@@ -1,9 +1,11 @@
 - id: INFRA-1985
   domain: INFRA
-  title: "MISSION P1: architectural critique 2026-05-25 — umbrella for 21 sub-gaps + critique doc (file docs/strategy/ARCHITECTURAL_CRITIQUE_2026-05-25.md)"
-  status: open
+  title: 'MISSION P1: architectural critique 2026-05-25 — umbrella for 21 sub-gaps + critique doc (file docs/strategy/ARCHITECTURAL_CRITIQUE_2026-05-25.md)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - Author docs/strategy/ARCHITECTURAL_CRITIQUE_2026-05-25.md with the full 21-finding critique (6 critical / 9 high / 6 medium) cited against specific code paths and 2026-05-24/25 lived evidence.
-
+  - Author docs/strategy/ARCHITECTURAL_CRITIQUE_2026-05-25.md with the full 21-finding critique (6 critical / 9 high / 6 medium)
+    cited against specific code paths and 2026-05-24/25 lived evidence.
+  closed_date: '2026-05-25'
+  closed_pr: 2572

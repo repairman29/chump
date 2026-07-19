@@ -1,17 +1,26 @@
 - id: INFRA-1365
   domain: INFRA
-  title: "CREDIBLE: PWA orchestrator-session panel — surface orchestrate_session_summary ambient events in <chump-view-orchestrator> with rolling sparkline (cost, wall time, intent-routing rate) (Phase 3+4 demo visibility)"
-  status: open
+  title: 'CREDIBLE: PWA orchestrator-session panel — surface orchestrate_session_summary ambient events in <chump-view-orchestrator>
+    with rolling sparkline (cost, wall time, intent-routing rate) (Phase 3+4 demo visibility)'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Pairs with INFRA-1363 (the emit side) — gives operators a visible artifact for Phase 3 demo. Without this the metrics live in ambient.jsonl with no UI surface. Phase 4 demo step 5 (chump fleet-status — visible activity) becomes credible if recent orchestrator sessions show up here.
-  acceptance_criteria:
-    - New PWA web component <chump-view-orchestrator-sessions> mounted under the AMBIENT cadence (per OPERATOR_CONSOLE_V2.md 4-cadence nav)
-    - Reads kind=orchestrate_session_summary events from /api/ambient/stream SSE (last 50 sessions, 24h rolling window)
-    - "Renders 3 sparklines: total cost USD, wall_time_s, intents_routed/total ratio — last 50 sessions"
-    - "Per-session row table: timestamp, session_id (clickable to filter ambient by that id), intents_routed/failed, tool_calls, cost, exit_reason (color-coded clean=green, crash/timeout=red, user_quit=gray)"
-    - "Empty-state copy when no sessions yet: \"no orchestrator sessions in the last 24h — run chump orchestrate to populate\" with link to docs/process/CHUMP_ORCHESTRATE.md"
-    - "Telemetry: emit kind=ui_view_render to ambient when component mounts (subject=\"orchestrator-sessions\")"
-    - CI test scripts/ci/test-pwa-orchestrator-sessions-view.sh seeds 3 fake summary events to ambient + asserts the e2e renders 3 rows + 3 sparklines
+  description: 'Pairs with INFRA-1363 (the emit side) — gives operators a visible artifact for Phase 3 demo. Without this
+    the metrics live in ambient.jsonl with no UI surface. Phase 4 demo step 5 (chump fleet-status — visible activity) becomes
+    credible if recent orchestrator sessions show up here.
 
+    '
+  acceptance_criteria:
+  - New PWA web component <chump-view-orchestrator-sessions> mounted under the AMBIENT cadence (per OPERATOR_CONSOLE_V2.md
+    4-cadence nav)
+  - Reads kind=orchestrate_session_summary events from /api/ambient/stream SSE (last 50 sessions, 24h rolling window)
+  - 'Renders 3 sparklines: total cost USD, wall_time_s, intents_routed/total ratio — last 50 sessions'
+  - 'Per-session row table: timestamp, session_id (clickable to filter ambient by that id), intents_routed/failed, tool_calls,
+    cost, exit_reason (color-coded clean=green, crash/timeout=red, user_quit=gray)'
+  - 'Empty-state copy when no sessions yet: "no orchestrator sessions in the last 24h — run chump orchestrate to populate"
+    with link to docs/process/CHUMP_ORCHESTRATE.md'
+  - 'Telemetry: emit kind=ui_view_render to ambient when component mounts (subject="orchestrator-sessions")'
+  - CI test scripts/ci/test-pwa-orchestrator-sessions-view.sh seeds 3 fake summary events to ambient + asserts the e2e renders
+    3 rows + 3 sparklines
+  closed_date: '2026-05-16'
+  closed_pr: 2140

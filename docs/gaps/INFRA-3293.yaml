@@ -1,0 +1,29 @@
+- id: INFRA-3293
+  domain: INFRA
+  title: "PR #3183 stuck [CI-RED] — CI red for 38m"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3183
+    
+    Detected by stuck-pr-filer (2026-07-05T02:11:27Z).
+    
+    Trigger: CI red for 38m
+    At least one required check has been failing for 38m (threshold 20m). Failing check: audit.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3183 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1590
+    Branch: chump/infra-1590-fleet-2-20260704-192043
+    Failing check: audit
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

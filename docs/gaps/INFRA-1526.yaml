@@ -1,0 +1,23 @@
+- id: INFRA-1526
+  domain: INFRA
+  title: "RESILIENT: auto-rebase daemon silently drops src/main.rs hunks — INFRA-1418 PR #2216 lost 173-line offline-check block while preserving EVENT_REGISTRY entries (orphan)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Observed today 2026-05-16: PR #2216 (INFRA-1418 offline-check linter) had its full 173-line src/main.rs INFRA-1418 hunk silently dropped by the auto-rebase daemon between original commit 17a92e26 and rebased tip 2d027386. The EVENT_REGISTRY.yaml + scripts/ci/env-vars-internal.txt entries from the SAME commit survived intact. Result: CI audit reported 'register-without-emit ORPHAN: gap_offline_check_block' because the registration had no emitting code."
+    - "Asymmetric loss confirmed by inspecting both PRs from the same arc: PR #2173 (INFRA-1434) had the OPPOSITE pattern — src/main.rs hunk survived but EVENT_REGISTRY entry was dropped, causing 'emit-without-register' fail. Not a one-off; the rebase tool drops different hunks on different PRs in unpredictable ways."
+    - "Identify the rebase script doing this. Candidates: scripts/coord/pr-rescue.sh, scripts/coord/rebase-daemon.sh (if exists), scripts/coord/bot-merge.sh's rebase phase, or a launchd plist. Search for 'git rebase' invocations across scripts/coord/ + scripts/ops/. Document which script ran the silent-drop rebase on PR #2216 (timestamp 2026-05-16T11:00:31 -0600 per reflog)."
+    - "Reproduce: take a feature branch with a multi-file commit. Run the suspect rebase script with main moved forward by N commits. Diff resulting commit's file list against original. If any file's hunks are silently absent, that's the bug."
+    - "Root cause likely one of: (a) git rebase merge-driver registered for one of the affected files that auto-discards conflicts as 'take-theirs', (b) custom rebase script doing 'git checkout main -- <files>' as conflict-resolution, (c) 'git rebase -X theirs' or '-X ours' applied indiscriminately. Inspect .gitattributes for merge drivers on src/main.rs."
+    - "Mitigation in the meantime: add a post-rebase verification step that compares 'git log --stat ORIG_HEAD..HEAD' against expected file scope, fails CI if any file with >50 added lines in original commit has 0 lines in rebased commit. Single-script check, runs after rebase, before push."
+    - "Fix per AC#4-5: either remove the offending merge driver / -X strategy from the rebase script, or replace silent-drop with explicit conflict markers + abort."
+    - "Ambient event: emit kind=rebase_hunk_dropped {file, lines_dropped, original_commit, rebased_commit} when post-rebase verification catches a drop. Operator gets notified before bad push."
+    - Pairs with INFRA-1509 (env-var/kind registration lint at pre-push) — both are 'fleet-meta lints that catch class-of-bug at the cheapest layer'.
+    - This gap is high-priority because it silently broke 2 PRs in one session and the same root cause will keep biting until fixed. Estimate every long-lived feature PR that gets rebased onto main has some probability of hunk drop.
+  notes: |
+    Both halves shipped: wedge-recover STEP 2 guard (#3173) + post-rebase detector w/ pr-auto-rebase integration (#3174); older duplicates #3155-57/#3163 closed superseded.
+  closed_date: '2026-07-19'
+  closed_pr: 3174
+  outcome_id: MISSION-010
+

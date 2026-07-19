@@ -2,7 +2,7 @@
   domain: INFRA
   title: "MISSION: Pricing experiment design — 3-tier proposal (Solo/Team/Enterprise) + founding-customer mechanic"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Pricing experiment needs to ship before hosted tier (INFRA-1337) lands. 3-tier proposal: Solo (free, OSS), Team ($X/seat/mo, hosted coordinator + managed NATS), Enterprise ($Y/year, air-gapped + SLA). Founding-customer mechanic (INFRA-1511) is the validation gate. Run as a Stripe checkout experiment with fake-price-test landing pages.
@@ -11,4 +11,7 @@
     - 2 landing-page variants for Stripe checkout A/B test
     - "Decision rule: Tier-2 conversion >5% → ship, 1-5% → iterate, <1% → free-only forever"
     - Founding-customer mechanic spec'd separately in INFRA-1511
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

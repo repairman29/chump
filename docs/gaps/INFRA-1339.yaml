@@ -2,11 +2,14 @@
   domain: INFRA
   title: "CREDIBLE: backend mission-grade JSON endpoint /api/fleet/pillars returns {effective, credible, resilient, zero-waste} with grade + trend + breach_reasons — powers PRODUCT-107 pillar quadrant + INFRA-1203 grades"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

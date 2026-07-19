@@ -1,0 +1,9 @@
+- id: INFRA-3258
+  domain: INFRA
+  title: "EFFECTIVE: p2-gap"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - verify it
+

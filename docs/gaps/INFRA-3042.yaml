@@ -1,0 +1,9 @@
+- id: INFRA-3042
+  domain: INFRA
+  title: "CREDIBLE: under-b"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+

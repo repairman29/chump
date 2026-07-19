@@ -1,12 +1,15 @@
 - id: INFRA-001
   domain: INFRA
-  title: "CREDIBLE: integration-test-pipeline-1784446547-79433"
-  status: open
-  priority: P3
-  effort: xs
+  title: race-a
+  status: superseded
+  priority: P2
+  effort: m
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Closed 2026-07-19 registry triage: CI test-fixture leak into production state.db (reserve ran without CHUMP_REPO isolation). Root-cause gap filed.
+  outcome_id: MISSION-010
 

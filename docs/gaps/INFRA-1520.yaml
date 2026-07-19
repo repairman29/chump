@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: PWA one-click operator approval — paramedic-proposed actions (Merge Queue, branch protection, repo settings) get an Approve button in PWA, runs proposed_action.sh on consent"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Paramedic emits kind=proposed_action {description, command, risk_level, approval_required:true} when an action requires operator consent (Merge Queue enable, branch-protection edits, repo-settings, force-push to protected branch)"
@@ -11,4 +11,7 @@
     - Skip emits kind=proposed_action_skipped with operator note
     - Approval bypass for read-only commands (CHUMP_AUTO_APPROVE_READONLY=1)
     - "Smoke test scripts/ci/test-pwa-proposed-action-approval.sh: stub paramedic emit, click Approve in headless PWA, assert command ran + kind emitted"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
 

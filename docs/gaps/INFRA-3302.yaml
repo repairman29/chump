@@ -1,0 +1,16 @@
+- id: INFRA-3302
+  domain: INFRA
+  title: "ZERO-WASTE: main.rs slice 3 — extract the 5985-line gap command arm to dispatch_gap (33% of main.rs)"
+  status: closed
+  priority: P2
+  effort: m
+  description: |
+    Slice 3 of INFRA-3287 — the big one. Extract the entire 'chump gap <subcommand>' arm (lines ~7599-13580, ~5985 lines = 33% of main.rs) into src/commands/dispatch_gap.rs as 'pub async fn run(args: &[String]) -> anyhow::Result<()>'. VERBATIM body move into a matching async+Result context, so all 97 process::exit / 2 .await / 4 ? / 48 return work unchanged. Block is self-contained: locals (repo_root, store, flag, json_out) defined inside from args; only 4 crate-module imports needed (local_openai, provider_cascade, repo_path, version); everything else is external crates. Arm always exits (default help arm = process::exit(2)), so main() calls 'if args==gap { commands::dispatch_gap::run(&args).await?; }' — exact behavior. Verified by cargo check + full cargo test --bin chump (gap has real test coverage).
+  acceptance_criteria:
+    - "gap arm body moved verbatim to commands::dispatch_gap::run; main.rs shrinks ~5985 lines"
+    - cargo check --bin chump green (out-of-worktree target)
+    - full cargo test --bin chump green (gap tests pass)
+    - chump gap show/list/etc CLI surface unchanged
+  notes: |
+    [2026-07-05T16:52:55Z] ABANDONED 2026-07-05 (operator decision). The one-PR extraction of the whole 5985-line gap arm is CORRECT code (compiles, exit(0) regression fixed, functionally verified) but breaks ~42 self-audit tests that hard-code src/main.rs — there are 89 scripts/ci tests grepping src/main.rs. A blanket test-migration also introduced new breakage (appended a 2nd file path inside VAR= assignments, not just greps). Root constraint: the self-audit suite's main.rs coupling. RE-DO as many tiny sub-slices (one gap-subcommand group per PR, ~50-line blast radius) so each has a small, safe test footprint. PR #3186 closed, branch deleted.
+

@@ -1,17 +1,34 @@
 - id: EFFECTIVE-023
   domain: EFFECTIVE
   title: Extract ambient-cli crate + record 2026-05-22 latent leverage audit
-  status: open
+  status: done
   priority: P1
   effort: m
-  description: |
-    2026-05-22 'Ordnance Engine' audit identified src/ambient_emit.rs, ambient_stream.rs, ambient_rotate.rs, kpi_report.rs, plus docs/observability/EVENT_REGISTRY.yaml as the most-extractable public-good infrastructure in the repo: schema-enforced, multi-writer, append-only structured telemetry that drop-in replaces OTel/Datadog/Honeycomb for solo devs and local-first apps. Extract these into a standalone workspace member crates/ambient-cli/ (cargo install-able), and atomically record the audit's other three latent levers in docs/ROADMAP.md so they aren't lost. Low time-to-delivery because the code already exists — lift is workspace restructure + thin bin target. Pillar: EFFECTIVE (public-good infra that sells the offline-first thesis without IP disclosure).
-  acceptance_criteria:
-    - New workspace member crates/ambient-cli/ exists with bin target 'ambient' exposing emit + tail subcommands (kpi deferred — see follow-up gap)
-    - "Main chump binary continues to emit ambient events unchanged via pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream} at the crate root; cargo check --workspace passes with no regressions"
-    - cargo install --path crates/ambient-cli succeeds on a clean checkout; resulting 'ambient' binary appends schema-valid lines to .chump-locks/ambient.jsonl with the existing EVENT_REGISTRY.yaml contract preserved (chump-main continues to be the schema enforcer for now)
-    - "docs/ROADMAP.md gains a new 'Latent levers (audited 2026-05-22)' section (appended after the Status (live) section) with three bullets: (a) webhook mirror generalization to Linear/Stripe/Notion/Slack as offline-first SaaS layer, (b) provider cascade re-aim for tier-ranked non-LLM resources (uplink, payment, GPU rental), (c) adversary as continuous resilience drill scheduled via launchd"
-    - crates/ambient-cli/README.md documents emit/tail usage and highlights the EVENT_REGISTRY schema-at-emit-time rejection pattern as the differentiator vs unstructured stdout logging
-    - New smoke test crates/ambient-cli/tests/roundtrip.rs verifying emit followed by read recovers the event with all fields intact; cargo test -p chump-ambient-cli passes (24 unit + 5 integration tests)
-    - "Scope correction noted: kpi_report extraction deferred because it depends on gap_store, session_ledger, and waste_tally — that's a separate layering effort. Filed as follow-up gap."
+  description: '2026-05-22 ''Ordnance Engine'' audit identified src/ambient_emit.rs, ambient_stream.rs, ambient_rotate.rs,
+    kpi_report.rs, plus docs/observability/EVENT_REGISTRY.yaml as the most-extractable public-good infrastructure in the repo:
+    schema-enforced, multi-writer, append-only structured telemetry that drop-in replaces OTel/Datadog/Honeycomb for solo
+    devs and local-first apps. Extract these into a standalone workspace member crates/ambient-cli/ (cargo install-able),
+    and atomically record the audit''s other three latent levers in docs/ROADMAP.md so they aren''t lost. Low time-to-delivery
+    because the code already exists — lift is workspace restructure + thin bin target. Pillar: EFFECTIVE (public-good infra
+    that sells the offline-first thesis without IP disclosure).
 
+    '
+  acceptance_criteria:
+  - New workspace member crates/ambient-cli/ exists with bin target 'ambient' exposing emit + tail subcommands (kpi deferred
+    — see follow-up gap)
+  - Main chump binary continues to emit ambient events unchanged via pub use chump_ambient_cli::{ambient_emit, ambient_rotate,
+    ambient_stream} at the crate root; cargo check --workspace passes with no regressions
+  - cargo install --path crates/ambient-cli succeeds on a clean checkout; resulting 'ambient' binary appends schema-valid
+    lines to .chump-locks/ambient.jsonl with the existing EVENT_REGISTRY.yaml contract preserved (chump-main continues to
+    be the schema enforcer for now)
+  - 'docs/ROADMAP.md gains a new ''Latent levers (audited 2026-05-22)'' section (appended after the Status (live) section)
+    with three bullets: (a) webhook mirror generalization to Linear/Stripe/Notion/Slack as offline-first SaaS layer, (b) provider
+    cascade re-aim for tier-ranked non-LLM resources (uplink, payment, GPU rental), (c) adversary as continuous resilience
+    drill scheduled via launchd'
+  - crates/ambient-cli/README.md documents emit/tail usage and highlights the EVENT_REGISTRY schema-at-emit-time rejection
+    pattern as the differentiator vs unstructured stdout logging
+  - New smoke test crates/ambient-cli/tests/roundtrip.rs verifying emit followed by read recovers the event with all fields
+    intact; cargo test -p chump-ambient-cli passes (24 unit + 5 integration tests)
+  - 'Scope correction noted: kpi_report extraction deferred because it depends on gap_store, session_ledger, and waste_tally
+    — that''s a separate layering effort. Filed as follow-up gap.'
+  closed_pr: 2355

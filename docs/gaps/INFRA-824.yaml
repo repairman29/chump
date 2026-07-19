@@ -1,36 +1,57 @@
 - id: INFRA-824
   domain: INFRA
-  title: "CREDIBLE: EVAL-101 protocol deviation — ran on wrong model, wrong n, skipped Cell C, no deviation doc; re-run required"
-  status: open
+  title: 'CREDIBLE: EVAL-101 protocol deviation — ran on wrong model, wrong n, skipped Cell C, no deviation doc; re-run required'
+  status: done
   priority: P1
   effort: m
   opened_date: '2026-05-11'
   raised_by: cold-water
   raised_in: RED_LETTER#6
-  description: |
-    EVAL-101 closed as a null result (Δ=+0.025) but violated multiple RESEARCH_INTEGRITY.md
+  description: 'EVAL-101 closed as a null result (Δ=+0.025) but violated multiple RESEARCH_INTEGRITY.md
+
     requirements. The preregistration (docs/eval/preregistered/EVAL-101.md) specified:
+
     - Agent under test: claude-sonnet-4-20250514 (Anthropic API)
+
     - n per cell: 20 (underpowered; RESEARCH_INTEGRITY.md requires n≥50 for directional signal)
+
     - Cells: A/B/C (C skipped "due to Ollama timeout")
+
     - Judges: haiku + gpt-4o-mini (dual LLM)
 
+
     Actual run:
+
     - Agent: Qwen 2.5 14b (Ollama local) — different architecture, different base rates
+
     - n: 20 per cell (below the n≥50 floor in RESEARCH_INTEGRITY.md §1)
+
     - Cell C: omitted entirely (breaks confound control)
+
     - Judges: structural scoring only (no LLM judge despite being mandatory per RESEARCH_INTEGRITY.md §6)
+
     - Deviation section in preregistration: "(none yet)" — no deviation documentation
+
     - A/A baseline: not reported
 
-    The preregistration's Deviations section still reads "(none yet)" despite all the above.
+
+    The preregistration''s Deviations section still reads "(none yet)" despite all the above.
+
     The null result cannot be trusted as dispositive because the study ran on the wrong model.
+
     The cognition stack (reflections, lessons, neuromodulation) remains faith-based.
 
-    Gap EVAL-101 was closed with `closed_date: '2026-05-10'` but has no cross_judge_audit
+
+    Gap EVAL-101 was closed with `closed_date: ''2026-05-10''` but has no cross_judge_audit
+
     or single_judge_waived fields — the INFRA-079 pre-commit guard should have blocked this.
+
+    '
   acceptance_criteria:
-    - Deviations section in docs/eval/preregistered/EVAL-101.md updated with all deviations (model swap, n=20, Cell C skip, no LLM judge)
-    - A new EVAL-* gap filed for the correct re-run (claude-sonnet-4, n≥50/cell, A/B/C, dual LLM judges)
-    - EVAL-101 gap YAML updated with cross_judge_audit or single_judge_waived field to explain pre-commit bypass
-    - RESEARCH_INTEGRITY.md deviation-documentation requirement enforced at pre-commit level
+  - Deviations section in docs/eval/preregistered/EVAL-101.md updated with all deviations (model swap, n=20, Cell C skip,
+    no LLM judge)
+  - A new EVAL-* gap filed for the correct re-run (claude-sonnet-4, n≥50/cell, A/B/C, dual LLM judges)
+  - EVAL-101 gap YAML updated with cross_judge_audit or single_judge_waived field to explain pre-commit bypass
+  - RESEARCH_INTEGRITY.md deviation-documentation requirement enforced at pre-commit level
+  closed_date: '2026-05-15'
+  closed_pr: 2078

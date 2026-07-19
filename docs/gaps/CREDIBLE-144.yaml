@@ -1,0 +1,16 @@
+- id: CREDIBLE-144
+  domain: CREDIBLE
+  title: "CREDIBLE: harden CREDIBLE-061 schema-test fixture seeding — swallows reserve failures, false-fails PRs as 'got 1 of 5'"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. The 5-gap seeding loop in scripts/ci/test-gap-list-since-json-schema.sh stops swallowing reserve failures (it currently runs 'gap reserve ... --quiet 2>/dev/null "
+    - ""
+    - " true' — on a failed reserve, capture and print stderr so the cause is diagnosable). 2. The seeding retries each reserve (bounded, e.g. 3x) or hard-fails with the captured diagnostic when fewer than 5 gaps land, instead of proceeding to a confusing 'expected >=5; got N' assertion with no cause. 3. The test passes deterministically across 10 consecutive runs and under CI parallel-shard load (no 'got 1 of 5' false-fail). 4. cargo fmt + clippy --all-targets -D warnings + check pass; the seeding change is the only behavioral edit."
+  closed_pr: 3171
+  evidence: |
+    2026-06-22: PR #3167 (EFFECTIVE-294, an AC-content-only change to src/main.rs) and PR #3155 (unrelated) both fail audit-shard(1) with 'FAIL: expected >=5 fixture gaps; got 1' while main's binary passes the same test 5/5 locally. #3167's change is provably downstream of reserve-success (it only formats AC strings; unwrap_or_else makes it infallible) so it cannot affect FIXTURE_COUNT — the failure is environmental flakiness in the seeding loop, which swallows reserve failures and gives no diagnostic. Two unrelated PRs failing identically + main passing 5/5 = flaky test, not PR bugs.
+  evidence: |
+    2026-06-22: PR #3167 (EFFECTIVE-294, an AC-content-only change to src/main.rs) and PR #3155 (unrelated) both fail audit-shard(1) with 'FAIL: expected >=5 fixture gaps; got 1' while main's binary passes the same test 5/5 locally. #3167's change is provably downstream of reserve-success (it only formats AC strings; unwrap_or_else makes it infallible) so it cannot affect FIXTURE_COUNT — the failure is environmental flakiness in the seeding loop, which swallows reserve failures and gives no diagnostic. Two unrelated PRs failing identically + main passing 5/5 = flaky test, not PR bugs.
+

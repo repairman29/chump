@@ -2,7 +2,7 @@
   domain: PRODUCT
   title: "EFFECTIVE: First-15-minutes operator-journey doc — from clone to first PR shipped, with screenshots + troubleshoot"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     The 5-minute README section gets operators to install. The 15-minute journey gets them to first PR shipped. Needs: paired screenshot walkthrough (cockpit-first), 'gotcha' troubleshooting for the top 5 install failures, 'congratulations you shipped' moment doc. Complements the FTUE CI workflow (which is correctness validation, not narrative).
@@ -12,4 +12,6 @@
     - Top-5 troubleshooting items (Ollama unreachable, GH token missing, etc.)
     - "'Next steps' menu after first PR (set up autopilot, recruit a second operator, etc.)"
     - Link from README + landing page
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
 

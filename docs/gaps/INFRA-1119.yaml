@@ -1,16 +1,25 @@
 - id: INFRA-1119
   domain: INFRA
-  title: "EFFECTIVE: A2A Layer 2b — RPC / request-response with deadlines + 5 use-case wrappers (META-061)"
-  status: open
+  title: 'EFFECTIVE: A2A Layer 2b — RPC / request-response with deadlines + 5 use-case wrappers (META-061)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "chump-coord exports `call_rpc(target_session, method, args, timeout_ms) -> Result<Response>` and `serve_rpc(method, handler)` strongly-typed async APIs; integration test in `tests/a2a_layer2b.rs` covers both sides"
-    - "Five use-case wrappers shipped and integration-tested: `ask-eta` (remaining seconds on gap), `ask-overlap` (INTENT holders on paths), `ask-handoff` (WIP + stand-down), `ask-progress` (percent_complete + last commit), `ask-capability` (does session have capability X)"
-    - "Every RPC carries `request_id`; server-side handler de-dups within 60s so retries are idempotent (network blip / timeout reissue safe)"
-    - "Client deadline enforced: if server doesn't respond within `timeout_ms` (default 10 000ms), `kind=a2a_rpc_timeout` emitted to ambient.jsonl; no blocking call ever exceeds deadline"
-    - "Handler crash surfaces as `kind=a2a_rpc_handler_crashed` (not timeout) within 5s; smoke test in CI kills handler mid-call and asserts the distinct event kind"
-    - "Bash wrapper `scripts/coord/rpc.sh call <session> <method> <json-args>` callable from non-Rust harnesses; smoke test in `scripts/ci/test-a2a-rpc-bash.sh`"
-    - "Tracing: `a2a_rpc_started` and `a2a_rpc_finished` (with `latency_ms`, `method`, `target_session`) registered in EVENT_REGISTRY.yaml and emitted on every RPC round-trip"
-    - "Release gate: 7-day fleet run with `CHUMP_A2A_LAYER=2` sustaining > 10 RPCs/min, zero `a2a_rpc_handler_crashed` events, single-hop p99 < 50ms local"
-
+  - chump-coord exports `call_rpc(target_session, method, args, timeout_ms) -> Result<Response>` and `serve_rpc(method, handler)`
+    strongly-typed async APIs; integration test in `tests/a2a_layer2b.rs` covers both sides
+  - 'Five use-case wrappers shipped and integration-tested: `ask-eta` (remaining seconds on gap), `ask-overlap` (INTENT holders
+    on paths), `ask-handoff` (WIP + stand-down), `ask-progress` (percent_complete + last commit), `ask-capability` (does session
+    have capability X)'
+  - Every RPC carries `request_id`; server-side handler de-dups within 60s so retries are idempotent (network blip / timeout
+    reissue safe)
+  - 'Client deadline enforced: if server doesn''t respond within `timeout_ms` (default 10 000ms), `kind=a2a_rpc_timeout` emitted
+    to ambient.jsonl; no blocking call ever exceeds deadline'
+  - Handler crash surfaces as `kind=a2a_rpc_handler_crashed` (not timeout) within 5s; smoke test in CI kills handler mid-call
+    and asserts the distinct event kind
+  - Bash wrapper `scripts/coord/rpc.sh call <session> <method> <json-args>` callable from non-Rust harnesses; smoke test in
+    `scripts/ci/test-a2a-rpc-bash.sh`
+  - 'Tracing: `a2a_rpc_started` and `a2a_rpc_finished` (with `latency_ms`, `method`, `target_session`) registered in EVENT_REGISTRY.yaml
+    and emitted on every RPC round-trip'
+  - 'Release gate: 7-day fleet run with `CHUMP_A2A_LAYER=2` sustaining > 10 RPCs/min, zero `a2a_rpc_handler_crashed` events,
+    single-hop p99 < 50ms local'
+  closed_pr: 2957

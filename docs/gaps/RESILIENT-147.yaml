@@ -1,0 +1,12 @@
+- id: RESILIENT-147
+  domain: RESILIENT
+  title: "RESILIENT: farmer check_auth pages AUTH_DEAD on oauth token-FILE-AGE not validity — false-positive on long-lived (1yr setup-token) tokens; wire to auth-status.sh validity probe"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - farmer.sh check_auth OAuth path decides AUTH_DEAD via scripts/coord/auth-status.sh (validity probe) — pages only when the probe reports the fleet cannot transact, NOT on token-file age.
+    - A valid long-lived token (1yr setup-token) whose file is >1h old does NOT emit farmer_auth_dead / page AUTH_DEAD.
+    - If auth-status.sh is absent, fall back to the existing age check (backward compatible).
+    - Test covers valid-but-stale-file token -> no page, and genuinely-invalid token -> page.
+

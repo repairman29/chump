@@ -1,0 +1,11 @@
+- id: RESILIENT-165
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge silent-wedges (0 output) when preflight chump-gap-import hits an INFRA-1434 similarity block on an unrelated gap"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "1. bot-merge.sh preflight's 'chump gap import' step does NOT abort the ship when an UNRELATED gap is title-similarity-blocked (INFRA-1434) — it skips the blocked gap with a warning and continues shipping the target gap. 2. When the gap being shipped is already present in state.db (reserved+claimed in this session), bot-merge does not attempt to re-import/self-collide it. 3. bot-merge NEVER exits with zero diagnostic output — on any abort it prints the reason to stdout (the silent 0-byte exit is the bot-merge-silent-wedge VOA class; an operator must be able to see WHY without spelunking .chump-locks logs). 4. Regression test: feed bot-merge a state where 'chump gap import' reports a similarity block on a non-target gap and assert the ship proceeds."
+  evidence: |
+    2026-06-22 CREDIBLE-144 ship: bot-merge exited SILENTLY (0 bytes when backgrounded; foreground revealed it died right after preflight 'chump gap import' reported '0 inserted, 980 skipped, 2 blocked by title-similarity (INFRA-1434)'). The 2 blocked were the session's freshly-reserved CREDIBLE-144/145. A verified bash-only change had to ship via CHUMP_BYPASS_BOT_MERGE=1 + Bot-Merge-Bypass trailer. Sibling of CREDIBLE-143 (gap-mutation tooling) + the bot-merge-silent-wedge seed class.
+

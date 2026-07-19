@@ -1,17 +1,24 @@
 - id: INFRA-1304
   domain: INFRA
-  title: "\"RESILIENT: queue-driver.sh launchd plist — auto-rebase BEHIND + driver-resolve DIRTY every 5 min (closes last manual gap in PR drain)\""
-  status: open
+  title: '"RESILIENT: queue-driver.sh launchd plist — auto-rebase BEHIND + driver-resolve DIRTY every 5 min (closes last manual
+    gap in PR drain)"'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    Closes the last manual gap in the PR drain. 2026-05-14 audit: scripts/coord/queue-driver.sh has the merge-driver-aware DIRTY auto-rescue (INFRA-1137) + BEHIND update-branch (INFRA-1081), but NO launchd plist. Every DIRTY rescue today was manually triggered via /tmp/rescue-dirty-prs.sh. With this plist, queue-driver runs every 5 min in the background, drain becomes fully hands-off.
-  acceptance_criteria:
-    - scripts/plists/dev.chump.queue-driver.plist exists with Label dev.chump.queue-driver and StartInterval=300
-    - scripts/setup/install-queue-driver-launchd.sh writes plist to HOME/Library/LaunchAgents/ then launchctl load
-    - "--uninstall flag removes plist + launchctl unload"
-    - Generated plist is valid XML (plutil -lint passes); ampersand-escape XML-encoded for plutil strictness
-    - RunAtLoad=false (avoid double-fire on install)
-    - "Test scripts/ci/test-queue-driver-launchd-install.sh: 10 assertions including end-to-end install against stubbed launchctl and uninstall removes plist"
-    - "Post-install: launchctl list shows dev.chump.queue-driver loaded; queue-driver.sh runs every 5 min picking up BEHIND (INFRA-1081) and DIRTY (INFRA-1137) PRs hands-off"
+  description: 'Closes the last manual gap in the PR drain. 2026-05-14 audit: scripts/coord/queue-driver.sh has the merge-driver-aware
+    DIRTY auto-rescue (INFRA-1137) + BEHIND update-branch (INFRA-1081), but NO launchd plist. Every DIRTY rescue today was
+    manually triggered via /tmp/rescue-dirty-prs.sh. With this plist, queue-driver runs every 5 min in the background, drain
+    becomes fully hands-off.
 
+    '
+  acceptance_criteria:
+  - scripts/plists/dev.chump.queue-driver.plist exists with Label dev.chump.queue-driver and StartInterval=300
+  - scripts/setup/install-queue-driver-launchd.sh writes plist to HOME/Library/LaunchAgents/ then launchctl load
+  - --uninstall flag removes plist + launchctl unload
+  - Generated plist is valid XML (plutil -lint passes); ampersand-escape XML-encoded for plutil strictness
+  - RunAtLoad=false (avoid double-fire on install)
+  - 'Test scripts/ci/test-queue-driver-launchd-install.sh: 10 assertions including end-to-end install against stubbed launchctl
+    and uninstall removes plist'
+  - 'Post-install: launchctl list shows dev.chump.queue-driver loaded; queue-driver.sh runs every 5 min picking up BEHIND
+    (INFRA-1081) and DIRTY (INFRA-1137) PRs hands-off'
+  closed_pr: 1966

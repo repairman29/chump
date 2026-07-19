@@ -1,38 +1,33 @@
 - acceptance_criteria:
-  - docs/strategy/CHUMP_TO_CHAMP.md 'Empirical Status' table has all specific deltas,
-    model names, and n-values removed or replaced with qualitative language per RESEARCH_INTEGRITY.md
-    pattern
+  - docs/strategy/CHUMP_TO_CHAMP.md 'Empirical Status' table has all specific deltas, model names, and n-values removed or
+    replaced with qualitative language per RESEARCH_INTEGRITY.md pattern
   - CHUMP_TO_CHAMP.md:last_audited updated to >= 2026-05-18
-  - grep for specific numeric deltas (+0.14, +0.13, +0.23, n=100, n=20) returns 0
-    lines in CHUMP_TO_CHAMP.md
-  - CI scripts/ci/test-public-doc-privacy.sh scans all docs/strategy/*.md for pattern
-    violations against RESEARCH_INTEGRITY.md prohibited list
-  description: 'We are failing at research data privacy. docs/strategy/CHUMP_TO_CHAMP.md
-    publicly discloses specific deltas, model names, and n-values that RESEARCH_INTEGRITY.md
-    explicitly prohibits in public documents.
+  - grep for specific numeric deltas (+0.14, +0.13, +0.23, n=100, n=20) returns 0 lines in CHUMP_TO_CHAMP.md
+  - CI scripts/ci/test-public-doc-privacy.sh scans all docs/strategy/*.md for pattern violations against RESEARCH_INTEGRITY.md
+    prohibited list
+  description: 'We are failing at research data privacy. docs/strategy/CHUMP_TO_CHAMP.md publicly discloses specific deltas,
+    model names, and n-values that RESEARCH_INTEGRITY.md explicitly prohibits in public documents.
 
 
     Evidence:
 
-    - docs/strategy/CHUMP_TO_CHAMP.md:52: ''+0.14 pp mean hallucination delta (...
-    n=100 per cell)''
+    - docs/strategy/CHUMP_TO_CHAMP.md:52: ''+0.14 pp mean hallucination delta (... n=100 per cell)''
 
     - docs/strategy/CHUMP_TO_CHAMP.md:53: ''haiku-4-5: +0.13–0.16; opus-4-5: +0.23–0.40''
 
     - docs/strategy/CHUMP_TO_CHAMP.md:56: ''n=20''
 
-    - docs/process/RESEARCH_INTEGRITY.md:28-29: ''Do not state magnitudes, model names,
-    or per-eval IDs in public docs, PRs, or external communications''
+    - docs/process/RESEARCH_INTEGRITY.md:28-29: ''Do not state magnitudes, model names, or per-eval IDs in public docs, PRs,
+    or external communications''
 
-    - CHUMP_TO_CHAMP.md:last_audited: 2026-04-25 — not audited since the privacy directive
-    was formalized
+    - CHUMP_TO_CHAMP.md:last_audited: 2026-04-25 — not audited since the privacy directive was formalized
 
 
     RED_LETTER#12 (2026-05-18).
 
 
-    Falsifying condition: RESEARCH_INTEGRITY.md has an explicit carve-out permitting
-    CHUMP_TO_CHAMP.md to retain specifics (none found after review).'
+    Falsifying condition: RESEARCH_INTEGRITY.md has an explicit carve-out permitting CHUMP_TO_CHAMP.md to retain specifics
+    (none found after review).'
   domain: DOC
   effort: xs
   id: DOC-050
@@ -40,6 +35,6 @@
   priority: P1
   raised_by: cold-water
   raised_in: RED_LETTER#12
-  status: open
-  title: 'CREDIBLE: CHUMP_TO_CHAMP.md publishes prohibited deltas/model-names/n-values
-    — violates RESEARCH_INTEGRITY.md:28-29'
+  status: done
+  title: 'CREDIBLE: CHUMP_TO_CHAMP.md publishes prohibited deltas/model-names/n-values — violates RESEARCH_INTEGRITY.md:28-29'
+  closed_pr: 2325

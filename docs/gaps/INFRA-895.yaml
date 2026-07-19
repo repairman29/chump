@@ -1,9 +1,12 @@
 - id: INFRA-895
   domain: INFRA
-  title: "EFFECTIVE: Run Now button for manual trigger"
-  status: open
+  title: 'EFFECTIVE: Run Now button for manual trigger'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "1. scripts/ops/gap-run-now.sh <GAP-ID> triggers immediate dispatch of a gap outside the normal scheduler cycle: validates gap is open+unclaimed, calls scripts/dispatch/worker.sh with GAP_ID override, logs kind=gap_run_now_triggered to ambient.jsonl. 2. 'chump gap run-now <GAP-ID>' subcommand calls the script. 3. scripts/ci/test-gap-run-now.sh: 6+ tests verifying validation, event schema, fallback when gap is already claimed."
-
+  - '1. scripts/ops/gap-run-now.sh <GAP-ID> triggers immediate dispatch of a gap outside the normal scheduler cycle: validates
+    gap is open+unclaimed, calls scripts/dispatch/worker.sh with GAP_ID override, logs kind=gap_run_now_triggered to ambient.jsonl.
+    2. ''chump gap run-now <GAP-ID>'' subcommand calls the script. 3. scripts/ci/test-gap-run-now.sh: 6+ tests verifying validation,
+    event schema, fallback when gap is already claimed.'
+  closed_pr: 1558

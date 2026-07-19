@@ -1,16 +1,26 @@
 - id: INFRA-2236
   domain: INFRA
-  title: "RESILIENT: chump-fleet-recorder ambient_tail_ingests_new_lines flake — 800ms timeout under 250ms poll is too tight (CI flake)"
-  status: open
+  title: 'RESILIENT: chump-fleet-recorder ambient_tail_ingests_new_lines flake — 800ms timeout under 250ms poll is too tight
+    (CI flake)'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    crates/chump-fleet-recorder/src/main.rs test 'ambient_tail_ingests_new_lines' uses tokio::time::timeout(800ms) wrapped around the infinite ambient_tail_loop, which polls every 250ms (AMBIENT_POLL_INTERVAL_MS). On CI with shared runners + cargo-test parallelism, 800ms may not allow even one poll cycle to land the row before the timeout. Flake observed during INFRA-2203 ship (operator-reported 2026-05-30T01:50Z). Pre-existing; not from INFRA-2203. Fix: replace the fixed-budget timeout with a poll-until-success loop bounded at 5s ceiling so the test passes deterministically when the ingestion lands, and fails fast (with a clear assertion) when it doesn't.
-  acceptance_criteria:
-    - "Test ambient_tail_ingests_new_lines uses a poll-until-success pattern (e.g. spawn tail task, loop: tokio::time::sleep(50ms) + check count + break on count>=1, max 5s) instead of a fixed 800ms timeout"
-    - Test fails with a clear assertion message (line count, file path, elapsed time) when ingestion does not land within 5s
-    - cargo test -p chump-fleet-recorder ambient_tail_ingests_new_lines passes 20 consecutive runs locally
-    - If the underlying race is structural (the loop never sees the file), document the failure mode in a code comment so the next reader doesn't waste time
-    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN
-  depends_on: [INFRA-2203]
+  description: 'crates/chump-fleet-recorder/src/main.rs test ''ambient_tail_ingests_new_lines'' uses tokio::time::timeout(800ms)
+    wrapped around the infinite ambient_tail_loop, which polls every 250ms (AMBIENT_POLL_INTERVAL_MS). On CI with shared runners
+    + cargo-test parallelism, 800ms may not allow even one poll cycle to land the row before the timeout. Flake observed during
+    INFRA-2203 ship (operator-reported 2026-05-30T01:50Z). Pre-existing; not from INFRA-2203. Fix: replace the fixed-budget
+    timeout with a poll-until-success loop bounded at 5s ceiling so the test passes deterministically when the ingestion lands,
+    and fails fast (with a clear assertion) when it doesn''t.
 
+    '
+  acceptance_criteria:
+  - 'Test ambient_tail_ingests_new_lines uses a poll-until-success pattern (e.g. spawn tail task, loop: tokio::time::sleep(50ms)
+    + check count + break on count>=1, max 5s) instead of a fixed 800ms timeout'
+  - Test fails with a clear assertion message (line count, file path, elapsed time) when ingestion does not land within 5s
+  - cargo test -p chump-fleet-recorder ambient_tail_ingests_new_lines passes 20 consecutive runs locally
+  - If the underlying race is structural (the loop never sees the file), document the failure mode in a code comment so the
+    next reader doesn't waste time
+  - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN
+  depends_on:
+  - INFRA-2203
+  closed_pr: 2791
