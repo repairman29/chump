@@ -223,6 +223,15 @@ while IFS=$'\t' read -r PR STATE; do
         git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
             if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
+                # INFRA-1526: post-rebase hunk-drop check in fallback worktree.
+                # Warn only (don't block push) — this is already a fallback recovery
+                # path; emitting the event surfaces the drop for ops-audit without
+                # stalling the rebase queue.
+                _prv="$REPO_ROOT/scripts/coord/post-rebase-verify.sh"
+                if [[ -x "$_prv" ]]; then
+                    (cd "$WT" && CHUMP_AMBIENT="$AMBIENT" bash "$_prv") || \
+                        echo "[pr-auto-rebase] WARN #$PR — post-rebase-verify found hunk drops (rebase_hunk_dropped emitted)"
+                fi
                 if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
                     echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
                     emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""

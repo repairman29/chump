@@ -8187,3 +8187,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason, prev_age_seconds]
     status: stable
+
+  # ── INFRA-1526: post-rebase hunk-drop detector ───────────────────────────
+
+  - kind: rebase_hunk_dropped
+    effect_metric: resilient
+    emitter: scripts/coord/post-rebase-verify.sh (INFRA-1526)
+    # scanner-anchor: "kind":"rebase_hunk_dropped"
+    trigger: >
+      post-rebase-verify.sh detected that a file had >50 added lines in the
+      original commit stack but 0 lines touched in the rebased stack — a
+      strong signal that a merge driver silently discarded content instead of
+      producing conflict markers. Root cause (2026-05-16/23): the
+      rust-main-append append-only driver on src/main.rs dropped hunks on
+      PRs #2216 and #2350-#2356; the driver was removed from .gitattributes
+      (2026-05-23 P0 fix). This event fires if any future regression
+      reintroduces silent drops on any file.
+    consumers: [fleet-brief, ci-audit, ops-audit]
+    fields_required: [ts, kind, file, lines_dropped, original_commit, rebased_commit]
+    fields_optional: [threshold]
