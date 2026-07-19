@@ -15,6 +15,11 @@
 
 set -uo pipefail
 
+# Under launchd/app contexts LANG is unset → cut/sed slice BYTES, which can
+# bisect a multibyte char (em-dashes in commit subjects) and emit invalid
+# UTF-8 that strict decoders (Swift String) reject wholesale. Force UTF-8.
+export LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
 REPO="${CHUMP_REPO:-$HOME/Projects/Chump}"
 MODE_FILE="${CHUMP_MODE_FILE:-$HOME/.chump/fleet-mode}"
 STAMP="$HOME/.chump/chumpbar-last-fetch"
@@ -26,7 +31,10 @@ now=$(date +%s)
 last_fetch=$(stat -f %m "$STAMP" 2>/dev/null || echo 0)
 if (( now - last_fetch > FETCH_TTL_S )); then
     touch "$STAMP"
-    (git fetch origin main --quiet 2>/dev/null &)
+    # >/dev/null: the backgrounded fetch must NOT inherit our stdout — the
+    # ChumpBar app reads this pipe to EOF, and a hung fetch (credential
+    # prompt under launchd env) held it open forever, starving the menu.
+    (GIT_TERMINAL_PROMPT=0 git fetch origin main --quiet >/dev/null 2>&1 &)
 fi
 
 # RESILIENT-177: liveness = heartbeat freshness, not pgrep patterns — the
@@ -83,21 +91,26 @@ else
     icon="🟡"
 fi
 
-# python3 assembles valid JSON regardless of quotes/emoji in titles
-ICON="$icon" MODE="$mode" WORKERS="$workers" SHIPS="$ships_24h" \
-LAST_MIN="$last_merge_min" P0="$p0_open" OPEN="$open_gaps" \
-WORKER_LINES="$(printf '%s\n' "${worker_lines[@]:-}")" \
-RECENT_SHIPS="$recent_ships" \
-python3 - <<'PY'
-import json, os
-def lines(k): return [l for l in os.environ.get(k, "").splitlines() if l.strip()]
-print(json.dumps({
-    "icon": os.environ["ICON"], "mode": os.environ["MODE"],
-    "workers": int(os.environ["WORKERS"] or 0),
-    "ships_24h": int(os.environ["SHIPS"] or 0),
-    "last_merge_min": int(os.environ["LAST_MIN"] or 0),
-    "p0_open": os.environ["P0"], "open_gaps": os.environ["OPEN"],
-    "workers_detail": lines("WORKER_LINES"),
-    "recent_ships": lines("RECENT_SHIPS"),
-}, ensure_ascii=False))
-PY
+# Pure-bash JSON assembly (RESILIENT-177 follow-up): the python3 heredoc
+# assembler hung when parented by the ChumpBar app (never reproduced under
+# shells or launchd one-shots) — and a status surface must not depend on an
+# interpreter spawn anyway. Titles are single-line; escape \ and ".
+_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+_wd_json=""
+for _l in "${worker_lines[@]:-}"; do
+    [[ -n "$_l" ]] || continue
+    _wd_json+="\"$(_esc "$_l")\","
+done
+_wd_json="[${_wd_json%,}]"
+
+_rs_json=""
+while IFS= read -r _l; do
+    [[ -n "$_l" ]] || continue
+    _rs_json+="\"$(_esc "$_l")\","
+done <<< "$recent_ships"
+_rs_json="[${_rs_json%,}]"
+
+printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s}\n' \
+    "$icon" "$(_esc "$mode")" "${workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
+    "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json"

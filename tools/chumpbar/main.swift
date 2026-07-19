@@ -40,8 +40,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.arguments = args
         let pipe = Pipe()
         p.standardOutput = pipe
-        p.standardError = Pipe()
+        FileManager.default.createFile(atPath: "/tmp/chumpbar-stderr.log", contents: nil)
+        p.standardError = FileHandle(forWritingAtPath: "/tmp/chumpbar-stderr.log")
         do { try p.run() } catch { return "" }
+        // Hard 20s guard: a child that inherits our pipe and hangs (the
+        // backgrounded-git-fetch bug of 2026-07-19) must not starve the menu.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20) {
+            if p.isRunning { p.terminate() }
+        }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return String(data: data, encoding: .utf8) ?? ""
@@ -50,7 +56,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func refresh() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let out = self.run("/bin/bash", [self.statusScript])
+            // File-drop instead of pipe: under this launchd app context the
+            // child pipeline stalled writing to an NSPipe (2026-07-19, cause
+            // never fully isolated — python3 assembler AND pure-bash printf
+            // both hung). A tmp file + read is boring and unbreakable.
+            _ = self.run("/bin/bash", ["-c",
+                "\(self.statusScript) > /tmp/chumpbar-out.json.tmp 2>/dev/null && mv /tmp/chumpbar-out.json.tmp /tmp/chumpbar-out.json"])
+            // Lossy decode: one mangled byte must not blank the whole menu
+            // (strict String(contentsOfFile:) returned nil on a bisected
+            // em-dash — the 2026-07-19 eternal-❓ bug).
+            let raw = FileManager.default.contents(atPath: "/tmp/chumpbar-out.json") ?? Data()
+            let out = String(decoding: raw, as: UTF8.self)
             var icon = "❓", title = "❓"
             var detail = ["status script unavailable"]
             if let data = out.data(using: .utf8),
