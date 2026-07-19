@@ -111,6 +111,10 @@ pub struct GapBriefing {
     /// or when `CHUMP_SCRATCHPAD_INJECT=0` is set. Capped at 5 keys / ~500
     /// tokens total by `scratchpad::prompt_inject_snapshot`.
     pub scratchpad_context: Vec<(String, String)>,
+    /// INFRA-1718: fleet-mode snapshot (auth/backend/cost-ceiling), computed
+    /// fresh at briefing-build time — never cached, since auth state can
+    /// flip between sessions.
+    pub fleet_mode: crate::fleet_mode::FleetMode,
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -190,6 +194,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             gap_not_found: true,
             umbrella_context: None,
             scratchpad_context: Vec::new(),
+            fleet_mode: crate::fleet_mode::detect(),
         };
     };
 
@@ -312,6 +317,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         gap_not_found: false,
         umbrella_context,
         scratchpad_context,
+        fleet_mode: crate::fleet_mode::detect(),
     }
 }
 
@@ -994,12 +1000,21 @@ pub fn render_json(b: &GapBriefing) -> String {
         .map(|d| format!("\"{}\"", escape(d)))
         .collect();
     let prs: Vec<String> = b.similar_closed_prs.iter().map(|n| n.to_string()).collect();
+    let fleet_mode = format!(
+        r#"{{"auth_mode":"{auth_mode}","auth_usable":{auth_usable},"backend":"{backend}","effort_tier":"{effort_tier}","cost_ceiling_usd":{cost_ceiling_usd}}}"#,
+        auth_mode = escape(&b.fleet_mode.auth_mode),
+        auth_usable = b.fleet_mode.auth_usable,
+        backend = escape(&b.fleet_mode.backend),
+        effort_tier = escape(&b.fleet_mode.effort_tier),
+        cost_ceiling_usd = b.fleet_mode.cost_ceiling_usd,
+    );
     format!(
         concat!(
             r#"{{"schema_version":1,"gap_id":"{id}","gap_title":"{title}","gap_priority":"{prio}","#,
             r#""gap_effort":"{effort}","gap_domain":"{domain}","gap_not_found":{nf},"#,
             r#""gap_acceptance":{ac},"depends_on":[{deps}],"#,
-            r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}]}}"#
+            r#""relevant_reflections":[{refs}],"similar_closed_prs":[{prs}],"#,
+            r#""fleet_mode":{fleet_mode}}}"#
         ),
         id = escape(&b.gap_id),
         title = escape(&b.gap_title),
@@ -1015,6 +1030,7 @@ pub fn render_json(b: &GapBriefing) -> String {
         deps = deps.join(","),
         refs = reflections.join(","),
         prs = prs.join(","),
+        fleet_mode = fleet_mode,
     )
 }
 
@@ -1032,6 +1048,22 @@ pub fn render_markdown(b: &GapBriefing) -> String {
 
     // Header with ID and title
     out.push_str(&format!("# {}: {}\n\n", b.gap_id, clean_title));
+
+    // INFRA-1718: Fleet Mode — auth/backend/cost-ceiling, computed fresh at
+    // briefing time so agents don't misroute work to a broken cascade.
+    out.push_str("## Fleet Mode\n\n");
+    if !b.fleet_mode.auth_usable {
+        out.push_str("**[AUTH UNUSABLE]**\n\n");
+    }
+    out.push_str(&format!("- auth_mode: {}\n", b.fleet_mode.auth_mode));
+    out.push_str(&format!("- auth_usable: {}\n", b.fleet_mode.auth_usable));
+    out.push_str(&format!("- backend: {}\n", b.fleet_mode.backend));
+    out.push_str(&format!("- effort_tier: {}\n", b.fleet_mode.effort_tier));
+    out.push_str(&format!(
+        "- cost_ceiling_usd: {:.2}\n",
+        b.fleet_mode.cost_ceiling_usd
+    ));
+    out.push('\n');
 
     // Metadata in a cleaner format
     out.push_str("**Metadata**\n");
