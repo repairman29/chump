@@ -84,13 +84,20 @@ if (( restores_this_hour >= STORM_LIMIT )); then
 fi
 
 # ── relaunch at mode size ────────────────────────────────────────────────────
+# Respect the operator/gate-chosen fleet size (INFRA-518 scaling gate): the
+# first live restore relaunched at chump-mode's default of 3 when the gate
+# said 2. .chump/fleet-desired-size is the size of record when present.
+desired_size="$(cat "$REPO/.chump/fleet-desired-size" 2>/dev/null | tr -dc '0-9')"
+if [[ -n "$desired_size" ]]; then
+    export CHUMP_MODE_GRIND_SIZE="$desired_size" CHUMP_MODE_TRAVEL_SIZE="$desired_size"
+fi
 relaunch_out="$("$CHUMP_MODE_BIN" "$mode" 2>&1 | tail -1 || true)"
 
 # Verify the relaunch actually took: wait for a fresh heartbeat (workers write
 # within ~60s of spawn). chump-mode's banner is a CLAIM; heartbeats are the
 # observation (CREDIBLE-154 discipline applies to the keeper itself).
 relaunch_ok=false
-if [[ "${CHUMP_POOL_KEEPER_SKIP_VERIFY:-0}" != "1" ]]; then
+if [[ "${CHUMP_POOL_KEEPER_VERIFY:-1}" == "1" ]]; then
     for _i in 1 2 3 4 5 6 7 8 9; do
         sleep 10
         for hb in $HB_GLOB; do
