@@ -1252,6 +1252,20 @@ _bm_health_init() {
     local gap_str="${GAP_IDS[*]:-}"
     local _hb_interval="${CHUMP_BOT_MERGE_HEARTBEAT_S:-30}"
     [[ "$_hb_interval" -lt 5 ]] 2>/dev/null && _hb_interval=5  # floor: don't spam
+    # INFRA-1732: the health file + stderr liveness above is only visible to a
+    # process watching THIS pid's stdio/filesystem — no cross-machine or
+    # after-the-fact signal exists, so the fleet's only stall detector is the
+    # single hardcoded elapsed-time budget (_bm_health_init's watchdog below,
+    # or the per-step gtimeout). A sibling worker / curator tailing
+    # ambient.jsonl has no way to tell "still on step X, 40s since last
+    # progress" from "silently wedged" until the whole budget expires. Emit
+    # the same liveness as a low-cardinality ambient event so stall detection
+    # can key off "no bot_merge_phase_heartbeat for gap G in > N*interval"
+    # instead of waiting out the full timeout. Not a duplicate of
+    # bot_merge_hung/bot_merge_stall_detected (those are terminal ALERTs
+    # fired once a threshold is breached); this is the progress signal those
+    # detectors — or a new one — can key off. See docs/observability/EVENT_REGISTRY.yaml.
+    local _hb_ambient="${lock_dir}/ambient.jsonl"
     (
         local _hb_elapsed=0
         # Immediate first line so life is visible before the first sleep.
@@ -1269,6 +1283,13 @@ _bm_health_init() {
             # INFRA-2455: same liveness, surfaced to stderr so it's visible live.
             printf '\033[0;36m[bot-merge %s] ⏳ alive — step=%s (~%ds elapsed)\033[0m\n' \
                 "$(date +%H:%M:%S)" "$step" "$_hb_elapsed" >&2
+            # INFRA-1732: mirror the same liveness to ambient.jsonl as a
+            # phase-progress heartbeat so fleet monitors can key stall
+            # detection off event staleness, not only elapsed-time budgets.
+            # scanner-anchor: "kind":"bot_merge_phase_heartbeat"
+            printf '{"ts":"%s","kind":"bot_merge_phase_heartbeat","pid":%d,"step":"%s","elapsed_s":%d,"interval_s":%d,"gap_ids":"%s","note":"INFRA-1732: periodic progress signal — absence for > 3x interval_s indicates a stall independent of the total budget timeout"}\n' \
+                "$now" "$pid" "$step" "$_hb_elapsed" "$_hb_interval" "$gap_str" \
+                >> "$_hb_ambient" 2>/dev/null || true
         done
     ) &
     _BM_HEALTH_PID=$!

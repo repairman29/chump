@@ -1921,6 +1921,23 @@ events:
     trigger: bot-merge.sh hung beyond reaper threshold
     consumers: [audit-log]
 
+  - kind: bot_merge_phase_heartbeat
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1732)
+    trigger: periodic (every CHUMP_BOT_MERGE_HEARTBEAT_S, default 30s) progress
+      signal emitted for the whole lifetime of a bot-merge run, mirroring the
+      existing health-file/stderr liveness loop; carries pid, current step,
+      elapsed_s, interval_s, gap_ids
+    consumers: [fleet-brief, queue-health-monitor, operator-recall]
+    fields_required: [ts, kind, pid, step, elapsed_s, interval_s, gap_ids]
+    notes: |
+      Distinct from bot_merge_hung/bot_merge_stall_detected (terminal ALERTs
+      fired once a hardcoded elapsed-time threshold breaches). This is the
+      progress signal a monitor keys off to detect staleness ("no heartbeat
+      for this gap in > 3x interval_s") independent of — and earlier than —
+      the total budget timeout. Silent stall observed 2026-05-22 motivated
+      this: without a periodic event, detection was elapsed-time-only.
+
   - kind: bot_merge_stall_detected
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh (INFRA-1399)
