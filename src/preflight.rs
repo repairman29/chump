@@ -621,6 +621,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // writes Cargo.toml + src/main.rs + README.md + .gitignore, inits git, and passes
         // cargo check. Scoped to src/commands/bootstrap.rs. SKIPs cleanly if cargo not on PATH.
         "scripts/ci/test-chump-bootstrap-rust.sh",
+        // INFRA-2925: pr-stuck-cluster-detector run-event observability
+        // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
+        // network, 3 synthetic-ambient fixture tests.
+        "scripts/ci/test-pr-stuck-cluster-observability.sh",
     ];
     candidates
         .iter()
