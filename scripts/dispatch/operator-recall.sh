@@ -82,13 +82,19 @@ done
 _now_epoch() { date +%s; }
 
 _emit_recall() {
-    local condition="$1" reason="$2"
+    # Args: condition reason [class] [remediation]
+    # class/remediation (META-101) — QUEUE_SATURATED subclass detail. Optional;
+    # omitted for conditions (a)-(d),(f) that don't have a subclass.
+    local condition="$1" reason="$2" class="${3:-}" remediation="${4:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     mkdir -p "$_lock_dir" 2>/dev/null || true
 
-    # Cooldown: skip if we already emitted this condition recently.
-    local cooldown_file="$_lock_dir/operator-recall-${condition}.ts"
+    # Cooldown: skip if we already emitted this condition(+class) recently.
+    # Keyed on class too so RUNNERS_GHOSTED and QUEUE_SATURATED_GH_HOSTED don't
+    # suppress each other when both fire in the same run.
+    local cooldown_key="${condition}${class:+-$class}"
+    local cooldown_file="$_lock_dir/operator-recall-${cooldown_key}.ts"
     if [[ -f "$cooldown_file" ]]; then
         local last_ts; last_ts="$(cat "$cooldown_file" 2>/dev/null || echo 0)"
         local age=$(( $(_now_epoch) - last_ts ))
@@ -99,14 +105,19 @@ _emit_recall() {
 
     # Emit to ambient.jsonl.
     local body
-    body="$(printf '{"ts":"%s","kind":"operator_recall","condition":"%s","reason":"%s"}' \
-        "$ts" "$condition" "$reason")"
+    if [[ -n "$class" ]]; then
+        body="$(printf '{"ts":"%s","kind":"operator_recall","condition":"%s","class":"%s","reason":"%s","remediation":"%s"}' \
+            "$ts" "$condition" "$class" "$reason" "$remediation")"
+    else
+        body="$(printf '{"ts":"%s","kind":"operator_recall","condition":"%s","reason":"%s"}' \
+            "$ts" "$condition" "$reason")"
+    fi
     printf '%s\n' "$body" >> "$_amb" 2>/dev/null || true
 
     # Update cooldown timestamp.
     _now_epoch > "$cooldown_file" 2>/dev/null || true
 
-    echo "[operator-recall] RECALL condition=${condition} reason=${reason}"
+    echo "[operator-recall] RECALL condition=${condition}${class:+ class=$class} reason=${reason}"
 
     # Webhook notification.
     if [[ -n "$_recall_url" ]]; then
@@ -127,9 +138,10 @@ _detect_runner_ghost_online() {
     local stale_threshold="$_runner_queue_threshold"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-    # --- Step 1: find queued workflow_runs older than threshold ---
+    # --- Step 1: find queued workflow_runs older than threshold (+ run_ids, META-101) ---
     local queued_count=0
     local oldest_age_s=0
+    local queued_run_ids=""
 
     if [[ -f "$cache_db" ]]; then
         # Read from cache: workflow_run_cache table (INFRA-1872 shape)
@@ -145,11 +157,12 @@ try:
     tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
     count = 0
     oldest_age = 0
+    ids = []
     if "workflow_run_cache" in tables:
         rows = cur.execute(
-            "SELECT created_at FROM workflow_run_cache WHERE status='queued'"
+            "SELECT run_id, created_at FROM workflow_run_cache WHERE status='queued'"
         ).fetchall()
-        for (created_at,) in rows:
+        for (run_id, created_at) in rows:
             try:
                 created_epoch = int(datetime.fromisoformat(
                     created_at.rstrip("Z")).replace(tzinfo=timezone.utc).timestamp())
@@ -158,16 +171,19 @@ try:
             age = now_epoch - created_epoch
             if age >= threshold:
                 count += 1
+                ids.append(str(run_id))
                 if age > oldest_age:
                     oldest_age = age
-    print(f"{count} {oldest_age}")
+    # META-101 AC2 step2: sample up to 5 queued run_ids for job-level classification
+    print(f"{count} {oldest_age} {','.join(ids[:5])}")
     conn.close()
 except Exception:
-    print("0 0")
+    print("0 0 ")
 PYEOF
         )
         queued_count=$(echo "$cache_result" | awk '{print $1}')
         oldest_age_s=$(echo "$cache_result" | awk '{print $2}')
+        queued_run_ids=$(echo "$cache_result" | awk '{print $3}')
     fi
 
     # No stale queued runs — nothing to do.
@@ -177,41 +193,161 @@ PYEOF
 
     # --- Step 2: check for online-but-idle self-hosted runners via GitHub API ---
     local idle_runners=0
+    local idle_runner_labels_json="[]"
     local runners_json
     local _gh_repo="${GITHUB_REPOSITORY:-repairman29/chump}"
     runners_json=$(gh api "repos/${_gh_repo}/actions/runners" --paginate 2>/dev/null || echo "")
 
     if [[ -n "$runners_json" ]]; then
-        idle_runners=$(python3 - "$runners_json" <<'PYEOF' 2>/dev/null
+        local _idle_result
+        _idle_result=$(python3 - "$runners_json" <<'PYEOF' 2>/dev/null
 import sys, json
 try:
     data = json.loads(sys.argv[1])
     runners = data if isinstance(data, list) else data.get("runners", [])
-    count = sum(
-        1 for r in runners
+    idle = [
+        r for r in runners
         if r.get("status") == "online" and not r.get("busy", True)
         and any(l.get("name") == "self-hosted" for l in r.get("labels", []))
-    )
-    print(count)
+    ]
+    labels = [[l.get("name") for l in r.get("labels", [])] for r in idle]
+    print(len(idle))
+    print(json.dumps(labels))
 except Exception:
     print(0)
+    print("[]")
 PYEOF
         )
+        idle_runners=$(echo "$_idle_result" | sed -n '1p')
+        idle_runner_labels_json=$(echo "$_idle_result" | sed -n '2p')
     fi
 
     idle_runners="${idle_runners//[[:space:]]/}"
     if [[ -z "$idle_runners" ]]; then
         idle_runners=0
     fi
+    if [[ -z "$idle_runner_labels_json" ]]; then
+        idle_runner_labels_json="[]"
+    fi
 
-    # --- Step 3: contradiction — stale queued jobs AND idle online runners ---
+    # --- Step 2b (META-101 AC2 step2): fetch + classify jobs for sampled queued runs ---
+    # Classifies each queued run's requested runs-on labels as self-hosted (matches an
+    # idle runner's label set) or GitHub-hosted (ubuntu-*/macos-*/windows-* labels).
+    local jobs_blob="[]"
+    if [[ -n "$queued_run_ids" ]]; then
+        jobs_blob="["
+        local _first=1
+        local run_id
+        IFS=',' read -ra _run_id_arr <<< "$queued_run_ids"
+        for run_id in "${_run_id_arr[@]}"; do
+            [[ -z "$run_id" ]] && continue
+            local _jobs_json
+            _jobs_json=$(gh api "repos/${_gh_repo}/actions/runs/${run_id}/jobs" 2>/dev/null || echo '{"jobs":[]}')
+            if (( _first )); then
+                _first=0
+            else
+                jobs_blob+=","
+            fi
+            jobs_blob+="{\"run_id\":${run_id},\"jobs\":$(python3 -c "
+import json,sys
+try:
+    d = json.loads(sys.argv[1])
+    print(json.dumps(d.get('jobs', [])))
+except Exception:
+    print('[]')
+" "$_jobs_json" 2>/dev/null || echo '[]')}"
+        done
+        jobs_blob+="]"
+    fi
+
+    # --- Step 3 (META-101): classify + decide subclass — RUNNERS_GHOSTED vs QUEUE_SATURATED_GH_HOSTED ---
+    local _classify_result
+    _classify_result=$(python3 - "$jobs_blob" "$idle_runner_labels_json" <<'PYEOF' 2>/dev/null
+import sys, json, re
+
+jobs_blob, idle_labels_json = sys.argv[1], sys.argv[2]
+GH_HOSTED_RX = re.compile(r'^(ubuntu|macos|windows)(-|$)', re.IGNORECASE)
+
+try:
+    runs = json.loads(jobs_blob)
+except Exception:
+    runs = []
+try:
+    idle_label_sets = [set(l for l in labels if l) for labels in json.loads(idle_labels_json)]
+except Exception:
+    idle_label_sets = []
+
+self_hosted_run_ids = []
+gh_hosted_run_ids = []
+gh_hosted_labels = set()
+
+for run in runs:
+    run_id = run.get("run_id")
+    for job in run.get("jobs", []):
+        labels = job.get("labels", []) or []
+        label_set = set(labels)
+        if "self-hosted" in label_set:
+            # Self-hosted job — RUNNERS_GHOSTED candidate if it matches an idle runner's labels.
+            if any(label_set.issubset(idle_set) or label_set & idle_set for idle_set in idle_label_sets) or not idle_label_sets:
+                if run_id not in self_hosted_run_ids:
+                    self_hosted_run_ids.append(run_id)
+        elif any(GH_HOSTED_RX.match(l) for l in labels):
+            if run_id not in gh_hosted_run_ids:
+                gh_hosted_run_ids.append(run_id)
+            gh_hosted_labels.update(l for l in labels if GH_HOSTED_RX.match(l))
+
+print(json.dumps({
+    "self_hosted_run_ids": self_hosted_run_ids,
+    "gh_hosted_run_ids": gh_hosted_run_ids,
+    "gh_hosted_labels": sorted(gh_hosted_labels),
+}))
+PYEOF
+    )
+    if [[ -z "$_classify_result" ]]; then
+        _classify_result='{"self_hosted_run_ids":[],"gh_hosted_run_ids":[],"gh_hosted_labels":[]}'
+    fi
+
+    local _gh_hosted_run_ids _gh_hosted_labels _self_hosted_run_ids
+    _gh_hosted_run_ids=$(echo "$_classify_result" | python3 -c "import json,sys; print(','.join(str(x) for x in json.load(sys.stdin).get('gh_hosted_run_ids',[])))" 2>/dev/null || echo "")
+    _gh_hosted_labels=$(echo "$_classify_result" | python3 -c "import json,sys; print(','.join(json.load(sys.stdin).get('gh_hosted_labels',[])))" 2>/dev/null || echo "")
+    _self_hosted_run_ids=$(echo "$_classify_result" | python3 -c "import json,sys; print(','.join(str(x) for x in json.load(sys.stdin).get('self_hosted_run_ids',[])))" 2>/dev/null || echo "")
+
+    # Informational pre-recall event (not cooldown-gated) — preserved for compat with existing consumers.
     if (( idle_runners >= 1 )); then
-        # Informational pre-recall event (not cooldown-gated).
         local detect_body
         detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d}' \
             "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold")"
         printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
+    fi
 
+    # AC4: QUEUE_SATURATED_GH_HOSTED — queued jobs target GitHub-hosted labels regardless
+    # of self-hosted idle state; this is the actual root cause class (2026-05-24 wizard finding).
+    if [[ -n "$_gh_hosted_run_ids" ]]; then
+        local _reason="workflow run(s) [${_gh_hosted_run_ids}] queued for >${stale_threshold}s (oldest=${oldest_age_s}s) targeting GitHub-hosted runs-on label(s) [${_gh_hosted_labels}]; GH-hosted runner concurrency quota likely exhausted, not a self-hosted runner problem"
+        local _remediation="no-restart-fix; reduce concurrent workflow triggers OR increase GH-hosted runner quota OR migrate affected workflows to self-hosted"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE class=QUEUE_SATURATED_GH_HOSTED: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "RUNNER_GHOST_ONLINE" "$_reason" "QUEUE_SATURATED_GH_HOSTED" "$_remediation"
+        fi
+    fi
+
+    # AC3: RUNNERS_GHOSTED — self-hosted runner(s) online+idle AND queued jobs target
+    # their labels but aren't being picked up.
+    if [[ -n "$_self_hosted_run_ids" ]] && (( idle_runners >= 1 )); then
+        local _reason="workflow run(s) [${_self_hosted_run_ids}] queued for >${stale_threshold}s (oldest=${oldest_age_s}s) targeting self-hosted labels, with ${idle_runners} self-hosted runner(s) online-but-idle; runner process likely wedged/ghost-online"
+        local _remediation="launchctl restart suggested for the affected self-hosted runner service"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE class=RUNNERS_GHOSTED: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "RUNNER_GHOST_ONLINE" "$_reason" "RUNNERS_GHOSTED" "$_remediation"
+        fi
+    elif [[ -z "$_gh_hosted_run_ids" ]] && (( idle_runners >= 1 )); then
+        # Fallback: job-label data unavailable (e.g. API mock without /jobs support) but
+        # the original stale-queue + idle-runner contradiction still holds — preserve
+        # META-100 behavior so existing consumers/tests keep working.
         local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s) with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online"
         if (( _check_only )); then
             echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE: $_reason"
