@@ -4057,6 +4057,15 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
 
+  - kind: gap_id_reuse_blocked
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (reserve_with_external — INFRA-1954)
+    trigger: candidate gap ID already appears in git commit history (a previously
+      shipped gap reused this ID slot because its state.db row and/or YAML mirror
+      were deleted rather than archived); reserve fails with DUPLICATE
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, rejected_id]
+
   - kind: gap_id_allocator_collision
     effect_metric: self
     emitter: crates/chump-gap-store/src/lib.rs

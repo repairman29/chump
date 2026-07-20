@@ -1288,6 +1288,39 @@ impl GapStore {
                 |r| r.get(0),
             )?;
             let new_id = format!("{}{:03}", prefix, num);
+
+            // INFRA-1954: the counter above only knows about rows still in
+            // state.db. A gap that shipped and had its docs/gaps/<ID>.yaml
+            // *deleted* (rather than moved to docs/gaps/closed/) leaves no
+            // trace in either state.db or the YAML mirror if that row was
+            // ever pruned — but the commit that shipped it still names the
+            // ID in its message. Check git history as a last line of
+            // defense before handing the ID out again.
+            if self.id_in_git_history(&new_id) {
+                let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                let ts = unix_to_iso_full(unix_now());
+                let line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reuse_blocked\",\
+                     \"domain\":\"{domain_upper}\",\"rejected_id\":\"{new_id}\"}}\n"
+                );
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&amb)
+                {
+                    let _ = f.write_all(line.as_bytes());
+                }
+                bail!(
+                    "DUPLICATE: {new_id} already appears in git history (a previously \
+                     shipped gap reused this ID slot). gap_counters for domain \
+                     {domain_upper} is out of sync with git history — investigate \
+                     before retrying (e.g. a docs/gaps/{new_id}.yaml was deleted \
+                     instead of moved to docs/gaps/closed/, or state.db rows for \
+                     this domain were pruned/reset). See INFRA-1954."
+                );
+            }
+
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -1548,6 +1581,32 @@ impl GapStore {
     /// Stale leases (expired or heartbeat older than 15 min) are skipped —
     /// their pending IDs are unlikely to land and continuing to reserve
     /// past them would inflate the next number indefinitely.
+    /// INFRA-1954: true if `id` appears in any commit message across all
+    /// refs (`git log --all --grep=<id> --fixed-strings`). Used as a
+    /// last-line-of-defense duplicate-ID guard at reserve time — the
+    /// gap_counters row and the `gaps` table only know about state.db's
+    /// current contents, which is blind to a shipped gap whose row and/or
+    /// YAML mirror were later deleted rather than archived.
+    ///
+    /// Disable with `CHUMP_RESERVE_GIT_HISTORY_CHECK=0` (offline builds
+    /// with no `.git`, or perf-sensitive bulk imports). Best-effort: any
+    /// failure to run `git` (missing binary, non-repo) is treated as "not
+    /// found" rather than blocking reserve.
+    fn id_in_git_history(&self, id: &str) -> bool {
+        if std::env::var("CHUMP_RESERVE_GIT_HISTORY_CHECK").as_deref() == Ok("0") {
+            return false;
+        }
+        if !self.repo_root.join(".git").exists() {
+            return false;
+        }
+        std::process::Command::new("git")
+            .args(["log", "--all", "--oneline", "--fixed-strings", "--grep", id])
+            .current_dir(&self.repo_root)
+            .output()
+            .map(|o| o.status.success() && !o.stdout.is_empty())
+            .unwrap_or(false)
+    }
+
     pub fn external_pending_ids(&self, domain: &str) -> Result<Vec<i64>> {
         let mut out = Vec::new();
         let domain_upper = domain.to_uppercase();
@@ -6695,6 +6754,83 @@ meta:
         let id = store
             .reserve_verified("INFRA", "fast", "P1", "s", "any-session")
             .unwrap();
+        assert_eq!(id, "INFRA-001");
+    }
+
+    // ── INFRA-1954: git-history duplicate-ID guard ──────────────────────
+
+    fn git_run(repo: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Reproduces the Cold Water incident: a gap (INFRA-001) shipped and its
+    /// state.db row / YAML mirror were later removed, leaving gap_counters
+    /// free to hand the same ID out again. The commit history still names
+    /// it, so reserve must refuse rather than reuse it.
+    #[test]
+    fn reserve_rejects_id_already_referenced_in_git_history() {
+        let (store, dir) = test_store();
+        let repo = dir.path();
+        git_run(repo, &["init", "-q"]);
+        git_run(repo, &["config", "user.email", "test@example.com"]);
+        git_run(repo, &["config", "user.name", "Test"]);
+        git_run(
+            repo,
+            &[
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "feat(INFRA-001): shipped, later deleted from docs/gaps/",
+            ],
+        );
+
+        let err = store
+            .reserve("INFRA", "should collide with shipped INFRA-001", "P1", "s")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("DUPLICATE"),
+            "expected DUPLICATE error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn reserve_git_history_check_bypassed_by_env_var() {
+        let (store, dir) = test_store();
+        let repo = dir.path();
+        git_run(repo, &["init", "-q"]);
+        git_run(repo, &["config", "user.email", "test@example.com"]);
+        git_run(repo, &["config", "user.name", "Test"]);
+        git_run(
+            repo,
+            &[
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "feat(INFRA-001): shipped",
+            ],
+        );
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "0");
+        }
+        let id = store
+            .reserve("INFRA", "bypass history check", "P1", "s")
+            .unwrap();
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_GIT_HISTORY_CHECK");
+        }
         assert_eq!(id, "INFRA-001");
     }
 
