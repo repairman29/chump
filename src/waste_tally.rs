@@ -31,6 +31,7 @@
 //! | `fleet_auth_fallback`   | INFRA-622      | auth path failed; retry round burns probe tokens        |
 //! | `slo_breach`            | INFRA-848      | curator detected SLO violation; downstream cost likely  |
 //! | `missing_attribution`   | ambient hook   | session has no CHUMP_AGENT_HARNESS — telemetry blind   |
+//! | `pr_stuck_cluster_reserve_failed` | INFRA-2932 (synthetic, from `pr_stuck_cluster_detector_run` outcome=gap_reserve_failed\|gap_id_extract_failed) | detector spent a `chump gap reserve` mutation attempt with no gap landed — pure waste |
 //!
 //! ## Output
 //!
@@ -115,6 +116,11 @@ pub fn default_tokens_per_kind(kind: &str) -> u64 {
         "pr_stuck_cluster" => 5_000,
         "bot_merge_hang" => 15_000,
         "missing_attribution" => 0,
+        // INFRA-2932: a failed `chump gap reserve` attempt has no LLM token
+        // cost of its own (it's a shell/CLI failure) — the cost is the
+        // wasted script-cycle + operator confusion, captured via
+        // estimated_cost_secs instead.
+        "pr_stuck_cluster_reserve_failed" => 0,
         _ => 0,
     }
 }
@@ -155,6 +161,7 @@ pub const WASTE_KINDS: &[&str] = &[
     "fleet_auth_fallback", // INFRA-622 — auth fallback path triggered; probe + retry cost
     "slo_breach",     // INFRA-848 — curator-observed SLO breach (downstream cost)
     "missing_attribution", // ambient hook — session lacks CHUMP_AGENT_HARNESS; observability waste
+    "pr_stuck_cluster_reserve_failed", // INFRA-2932 synthetic — from pr_stuck_cluster_detector_run outcome=gap_reserve_failed|gap_id_extract_failed
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574, INFRA-934).
@@ -233,6 +240,7 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
         let is_session_end_event = raw_kind == "session_end";
         let is_worker_exit_event = raw_kind == "worker_exit";
+        let is_pscd_run_event = raw_kind == "pr_stuck_cluster_detector_run";
         let kind = if is_session_end_event {
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
@@ -244,6 +252,17 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             match extract_field(line, "exit_class").as_deref() {
                 Some("TIMEOUT") => "worker_exit_timeout".to_string(),
                 Some("OOM_KILL") => "worker_exit_oom".to_string(),
+                _ => continue,
+            }
+        } else if is_pscd_run_event {
+            // INFRA-2932: no_op/dry_run/cluster_filed/help/bad_args are
+            // routine (or already tracked via the `pr_stuck_cluster` event
+            // that fires alongside cluster_filed) — only the reserve-attempt
+            // failure paths represent net-new waste.
+            match extract_field(line, "outcome").as_deref() {
+                Some("gap_reserve_failed") | Some("gap_id_extract_failed") => {
+                    "pr_stuck_cluster_reserve_failed".to_string()
+                }
                 _ => continue,
             }
         } else {
@@ -267,6 +286,10 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
                 "slo_breach" => Some(120),
                 "pr_stuck_cluster" => Some(300),
                 "missing_attribution" => Some(0),
+                // INFRA-2932: wasted chump gap reserve attempt — one CLI
+                // round-trip plus the operator time to notice the cluster
+                // went unfiled.
+                "pr_stuck_cluster_reserve_failed" => Some(60),
                 _ => None,
             })
             .unwrap_or(0);
@@ -327,6 +350,9 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             "missing_attribution" => {
                 extract_field(line, "session").or_else(|| extract_field(line, "worktree"))
             }
+            "pr_stuck_cluster_reserve_failed" => extract_int_field(line, "stuck_pr_count")
+                .map(|n| n.to_string())
+                .or_else(|| extract_field(line, "outcome")),
             _ => extract_field(line, "session")
                 .or_else(|| extract_field(line, "reaper"))
                 .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
@@ -577,6 +603,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
         let is_session_end_event = raw_kind == "session_end";
         let is_worker_exit_event = raw_kind == "worker_exit";
+        let is_pscd_run_event = raw_kind == "pr_stuck_cluster_detector_run";
         let kind = if is_session_end_event {
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
@@ -589,6 +616,15 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 Some("TIMEOUT") => "worker_exit_timeout".to_string(),
                 Some("OOM_KILL") => "worker_exit_oom".to_string(),
                 _ => continue, // CLEAN, INTERRUPT, ERROR_* not waste
+            }
+        } else if is_pscd_run_event {
+            // INFRA-2932: only the reserve-attempt failure paths are net-new
+            // waste; cluster_filed cost is already tracked via pr_stuck_cluster.
+            match extract_field(line, "outcome").as_deref() {
+                Some("gap_reserve_failed") | Some("gap_id_extract_failed") => {
+                    "pr_stuck_cluster_reserve_failed".to_string()
+                }
+                _ => continue,
             }
         } else {
             raw_kind
@@ -618,6 +654,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 "slo_breach" => Some(120),
                 "pr_stuck_cluster" => Some(300),
                 "missing_attribution" => Some(0),
+                "pr_stuck_cluster_reserve_failed" => Some(60),
                 _ => None,
             })
             .unwrap_or(0);
@@ -700,6 +737,9 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             "missing_attribution" => {
                 extract_field(line, "session").or_else(|| extract_field(line, "worktree"))
             }
+            "pr_stuck_cluster_reserve_failed" => extract_int_field(line, "stuck_pr_count")
+                .map(|n| n.to_string())
+                .or_else(|| extract_field(line, "outcome")),
             // queue_stuck, ambient_oversize, silent_agent's siblings:
             // fall through to the generic search.
             _ => extract_field(line, "session")
@@ -1261,6 +1301,67 @@ mod tests {
     }
 
     #[test]
+    fn infra2932_pr_stuck_cluster_reserve_failed_is_tracked_not_dry_run() {
+        // INFRA-2932: only the reserve-attempt failure outcomes on
+        // pr_stuck_cluster_detector_run become waste; no_op/dry_run/
+        // cluster_filed must NOT show up (cluster_filed cost is already
+        // carried by the sibling pr_stuck_cluster event).
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = [
+            format!(
+                r#"{{"kind":"pr_stuck_cluster_detector_run","ts":"{}","outcome":"gap_reserve_failed","stuck_pr_count":3,"duration_ms":42,"gap_reserve_calls":1,"failure_class":"permanent"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"pr_stuck_cluster_detector_run","ts":"{}","outcome":"gap_id_extract_failed","stuck_pr_count":4,"duration_ms":51,"gap_reserve_calls":1,"failure_class":"transient"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"pr_stuck_cluster_detector_run","ts":"{}","outcome":"no_op","stuck_pr_count":0,"duration_ms":10,"gap_reserve_calls":0,"failure_class":"none"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"pr_stuck_cluster_detector_run","ts":"{}","outcome":"dry_run","stuck_pr_count":3,"duration_ms":15,"gap_reserve_calls":0,"failure_class":"none"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"pr_stuck_cluster_detector_run","ts":"{}","outcome":"cluster_filed","stuck_pr_count":3,"duration_ms":88,"gap_reserve_calls":1,"failure_class":"none"}}"#,
+                now_iso
+            ),
+        ];
+        let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        write_ambient(&tmp, &refs);
+
+        let report = build_report(&tmp, 86400);
+        assert_eq!(
+            report.total_events, 2,
+            "only the two failure outcomes should be classified as waste (got {})",
+            report.total_events
+        );
+
+        let by_kind: std::collections::HashMap<&str, &WasteEntry> = report
+            .entries
+            .iter()
+            .map(|e| (e.kind.as_str(), e))
+            .collect();
+        let entry = by_kind
+            .get("pr_stuck_cluster_reserve_failed")
+            .expect("pr_stuck_cluster_reserve_failed entry present");
+        assert_eq!(entry.count, 2);
+        assert_eq!(
+            entry.estimated_cost_secs, 120,
+            "2 failures x 60s default cost each"
+        );
+        assert!(
+            !by_kind.contains_key("pr_stuck_cluster_detector_run"),
+            "raw pr_stuck_cluster_detector_run kind must never appear directly"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn infra488_excludes_events_outside_window() {
         let tmp = tempdir();
         // Old timestamp — way outside any reasonable window.
@@ -1412,7 +1513,8 @@ mod tests {
         // INFRA-773: +2 review_handoff_failed + review_handoff_timeout = 18.
         // INFRA-950: +6 (bot_merge_hang, bot_merge_hot_file, pr_stuck_cluster,
         //             fleet_auth_fallback, slo_breach, missing_attribution) = 24.
-        assert_eq!(WASTE_KINDS.len(), 24);
+        // INFRA-2932: +1 pr_stuck_cluster_reserve_failed = 25.
+        assert_eq!(WASTE_KINDS.len(), 25);
     }
 
     #[test]

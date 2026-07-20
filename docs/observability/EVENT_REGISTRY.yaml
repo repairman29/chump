@@ -2018,6 +2018,15 @@ events:
       (runnable standalone; covers no_op/dry_run/bad_args outcome paths
       and asserts failure_class on each).
 
+      Cost tracking (INFRA-2932): src/waste_tally.rs promotes
+      outcome=gap_reserve_failed|gap_id_extract_failed into the synthetic
+      waste kind `pr_stuck_cluster_reserve_failed` (a chump gap reserve
+      mutation was attempted/burned with no gap landed — pure waste,
+      estimated_cost_secs=60). no_op/dry_run/cluster_filed/help/bad_args
+      are NOT double-counted here — cluster_filed cost is already tracked
+      via the sibling `pr_stuck_cluster` event on the same invocation.
+      `chump waste-tally` surfaces the rollup to the operator.
+
   - kind: fleet_auth_fallback
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (INFRA-622)
