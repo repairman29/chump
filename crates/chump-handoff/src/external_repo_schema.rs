@@ -189,6 +189,32 @@ pub struct OnboardScan {
     pub proposed_gaps: Vec<ProposedGap>,
 }
 
+/// MISSION-016 (MISSION-015 slice): an in-memory gap object derived from a
+/// scanned [`ProposedGap`] — the intermediate representation between a raw
+/// `onboard-scan-*.json` and a `chump gap reserve`d registry entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InternalGap {
+    /// One-line gap title.
+    pub title: String,
+    /// Evidence excerpt explaining why this gap was proposed.
+    pub description: String,
+    /// `owner/repo` of the external repository this gap was proposed for.
+    pub external_repo: String,
+}
+
+/// Transform every [`ProposedGap`] in an [`OnboardScan`] into an
+/// [`InternalGap`], tagging each with the scan's `external_repo`.
+pub fn scan_to_internal_gaps(scan: &OnboardScan) -> Vec<InternalGap> {
+    scan.proposed_gaps
+        .iter()
+        .map(|pg| InternalGap {
+            title: pg.title.clone(),
+            description: pg.source_of_evidence.excerpt.clone(),
+            external_repo: scan.external_repo.clone(),
+        })
+        .collect()
+}
+
 /// Return the canonical file path for a scan inside the external-repo directory.
 pub fn scan_path(repo_dir: &Path, scan_timestamp: &DateTime<Utc>) -> PathBuf {
     let ts = scan_timestamp.format("%Y%m%dT%H%M%SZ");
@@ -628,5 +654,25 @@ mod tests {
         // Valid tags pass
         assert!(validate_external_repo_tag("external_repo:anthropics/anthropic-sdk-rust").is_ok());
         assert!(validate_external_repo_tag("external_repo:tokio-rs/tokio").is_ok());
+    }
+
+    // MISSION-016 (MISSION-015 slice): parse a real onboard-scan fixture
+    // (10 proposed gaps against repairman29/BEAST-MODE) into InternalGap objects.
+    #[test]
+    fn onboard_scan_fixture_transforms_into_internal_gaps() {
+        let raw = include_str!("../tests/fixtures/onboard-scan-beast-mode-sample.json");
+        let scan: OnboardScan = serde_json::from_str(raw).expect("valid onboard-scan JSON");
+
+        let gaps = scan_to_internal_gaps(&scan);
+
+        assert_eq!(gaps.len(), 10, "fixture has 10 proposed_gaps entries");
+        for gap in &gaps {
+            assert!(!gap.title.is_empty(), "title must not be empty");
+            assert!(!gap.description.is_empty(), "description must not be empty");
+            assert_eq!(
+                gap.external_repo, "repairman29/BEAST-MODE",
+                "every gap must carry the scan's external_repo tag"
+            );
+        }
     }
 }

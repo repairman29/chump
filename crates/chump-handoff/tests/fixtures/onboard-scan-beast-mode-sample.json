@@ -1,0 +1,204 @@
+{
+  "scan_timestamp": "2026-06-05T02:16:47.779231Z",
+  "external_repo": "repairman29/BEAST-MODE",
+  "tool_version": "0.1.2",
+  "inputs_read": [
+    {
+      "path": "README.md",
+      "sha256": "fcf2065bdd9e89733d45d79e5d3b28a028f19113a353680b212af7ee4edcea1e",
+      "summary": "# BEAST-MODE"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "350eba6b2ab9aea96d6b78acf4abbfe6b3ddea4c2e3954c15d6fd0dd5413316d",
+      "summary": "# Agent instructions (BEAST MODE)"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "sha256": "f520ff47f893f0d56b7691180217240f8d3a0ba375b47e4a92bcb20fecf85ae8",
+      "summary": "# BEAST MODE Roadmap"
+    },
+    {
+      "path": "github:issues+prs",
+      "sha256": "a6ecae4d5b052faa28cb0707806bd76fd24942123c6ca2e4cb997d428ef12c15",
+      "summary": "Open GitHub issues and PRs"
+    },
+    {
+      "path": "package.json",
+      "sha256": "9c326c2578523d73f1db346eb3508152f4456e6878db7bb94eff327715bc7051",
+      "summary": "Package manifest (package.json)"
+    }
+  ],
+  "proposed_gaps": [
+    {
+      "title": "EFFECTIVE: Migrate roadmap tasks to bd issue tracker",
+      "domain": "EFFECTIVE",
+      "priority": "P0",
+      "effort": "m",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "AGENTS.md",
+        "section": "AGENTS.md mandates `bd` for ALL issue tracking, but docs/ROADMAP.md contains PENDING tasks in markdown format.",
+        "excerpt": "AGENTS.md mandates `bd` for ALL issue tracking, but docs/ROADMAP.md contains PENDING tasks in markdown format."
+      },
+      "acceptance_criteria_draft": [
+        "All 'PENDING' tasks from docs/ROADMAP.md are created as issues in `bd` with appropriate types and priorities.",
+        "The docs/ROADMAP.md 'Delegated Tasks' section is updated to reflect that tasks are now tracked in `bd`.",
+        "Running `bd ready` shows the newly migrated tasks as available work items."
+      ]
+    },
+    {
+      "title": "INFRA: Complete and merge CI/CD setup",
+      "domain": "INFRA",
+      "priority": "P0",
+      "effort": "s",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "README.md",
+        "section": "README.md states 'CI/CD setup in progress', and there is an open PR 'ci: add GitHub Actions workflow'.",
+        "excerpt": "README.md states 'CI/CD setup in progress', and there is an open PR 'ci: add GitHub Actions workflow'."
+      },
+      "acceptance_criteria_draft": [
+        "The 'chump/add-ci' PR is merged into the main branch.",
+        "CI pipeline successfully runs lint, test, and build steps on every push and pull request.",
+        "README.md is updated to reflect that CI/CD is fully established."
+      ]
+    },
+    {
+      "title": "EFFECTIVE: Implement comprehensive test suite",
+      "domain": "EFFECTIVE",
+      "priority": "P1",
+      "effort": "l",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "README.md",
+        "section": "README.md explicitly states 'Tests coming soon'.",
+        "excerpt": "README.md explicitly states 'Tests coming soon'."
+      },
+      "acceptance_criteria_draft": [
+        "Core functionalities (e.g., model selection, code generation, quality prediction) have unit and integration tests.",
+        "Test coverage metrics are established and meet a minimum threshold (e.g., 70%).",
+        "Tests are integrated into the CI pipeline and pass consistently."
+      ]
+    },
+    {
+      "title": "EFFECTIVE: Implement user profiles table with admin/owner roles",
+      "domain": "EFFECTIVE",
+      "priority": "P1",
+      "effort": "m",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "docs/ROADMAP.md",
+        "section": "docs/ROADMAP.md lists 'Create user profiles table with admin/owner roles' as a high-priority, ready-to-delegate task.",
+        "excerpt": "docs/ROADMAP.md lists 'Create user profiles table with admin/owner roles' as a high-priority, ready-to-delegate task."
+      },
+      "acceptance_criteria_draft": [
+        "A database table for user profiles is created, including fields for user ID, name, email, and role (admin/owner/user).",
+        "API endpoints exist to create, read, update, and delete user profiles, respecting role-based access control.",
+        "New users are assigned a default role upon registration."
+      ]
+    },
+    {
+      "title": "EFFECTIVE: Build admin dashboard page",
+      "domain": "EFFECTIVE",
+      "priority": "P1",
+      "effort": "l",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "docs/ROADMAP.md",
+        "section": "docs/ROADMAP.md lists 'Build admin dashboard page' as a high-priority, ready-to-delegate task.",
+        "excerpt": "docs/ROADMAP.md lists 'Build admin dashboard page' as a high-priority, ready-to-delegate task."
+      },
+      "acceptance_criteria_draft": [
+        "A dedicated web page for administrators is accessible only to users with 'admin' or 'owner' roles.",
+        "The dashboard displays key system metrics or an overview of user activity (e.g., number of users, active models).",
+        "Navigation elements are present to access other admin functionalities (e.g., user management, settings)."
+      ]
+    },
+    {
+      "title": "EFFECTIVE: Build admin authentication middleware",
+      "domain": "EFFECTIVE",
+      "priority": "P1",
+      "effort": "m",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "docs/ROADMAP.md",
+        "section": "docs/ROADMAP.md lists 'Build admin authentication middleware' as a high-priority, ready-to-delegate task.",
+        "excerpt": "docs/ROADMAP.md lists 'Build admin authentication middleware' as a high-priority, ready-to-delegate task."
+      },
+      "acceptance_criteria_draft": [
+        "A middleware layer is implemented to protect admin-specific routes and API endpoints.",
+        "Only authenticated users with 'admin' or 'owner' roles can access protected resources.",
+        "Unauthorized access attempts are logged and return appropriate error responses (e.g., 403 Forbidden)."
+      ]
+    },
+    {
+      "title": "EFFECTIVE: Fix OAuth login password issue",
+      "domain": "EFFECTIVE",
+      "priority": "P1",
+      "effort": "m",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "docs/ROADMAP.md",
+        "section": "docs/ROADMAP.md lists 'Fix OAuth login password issue' as a high-priority, ready-to-delegate task, noting 'OAuth users don't have password for beast-mode login'.",
+        "excerpt": "docs/ROADMAP.md lists 'Fix OAuth login password issue' as a high-priority, ready-to-delegate task, noting 'OAuth users don't have password for beast-mode login'."
+      },
+      "acceptance_criteria_draft": [
+        "OAuth users can successfully log in to BEAST-MODE without needing a separate password.",
+        "The system correctly handles user accounts created via OAuth, allowing them to access their profiles and features.",
+        "Existing OAuth users are not prompted to set a password for direct BEAST-MODE login."
+      ]
+    },
+    {
+      "title": "DOC: Document and automate session completion workflow",
+      "domain": "DOC",
+      "priority": "P2",
+      "effort": "s",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "AGENTS.md",
+        "section": "AGENTS.md states 'When ending a work session, you MUST complete ALL steps below. Work is NOT complete until `git push… [truncated]' indicating an incomplete but critical workflow.",
+        "excerpt": "AGENTS.md states 'When ending a work session, you MUST complete ALL steps below. Work is NOT complete until `git push… [truncated]' indicating an incomplete but critical workflow."
+      },
+      "acceptance_criteria_draft": [
+        "A complete, step-by-step guide for agents to end a work session is documented in AGENTS.md or a linked file.",
+        "The documented workflow includes `bd` updates, `git` operations, and any other necessary cleanup or reporting.",
+        "Consideration is given to automating parts of the session completion process via a script or tool."
+      ]
+    },
+    {
+      "title": "RESILIENT: Verify bd system operational health and visibility",
+      "domain": "RESILIENT",
+      "priority": "P1",
+      "effort": "s",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "AGENTS.md",
+        "section": "AGENTS.md mandates `bd` for ALL issue tracking, yet the 'Open issues' signal is empty, suggesting a potential disconnect or lack of visibility.",
+        "excerpt": "AGENTS.md mandates `bd` for ALL issue tracking, yet the 'Open issues' signal is empty, suggesting a potential disconnect or lack of visibility."
+      },
+      "acceptance_criteria_draft": [
+        "Confirm that `bd` issues are correctly persisted to `.beads/issues.jsonl` and are version controlled.",
+        "Ensure that `bd ready --json` correctly outputs issues that are unblocked and ready for work.",
+        "Investigate why `bd` issues are not reflected in the 'Open issues' signal provided by the external system, or integrate `bd` output with the external view."
+      ]
+    },
+    {
+      "title": "DOC: Update documentation with correct port numbers",
+      "domain": "DOC",
+      "priority": "P2",
+      "effort": "xs",
+      "confidence": "high",
+      "source_of_evidence": {
+        "input_path": "docs/ROADMAP.md",
+        "section": "docs/ROADMAP.md lists 'Update documentation with correct port numbers' as a medium-priority, ready-to-delegate task.",
+        "excerpt": "docs/ROADMAP.md lists 'Update documentation with correct port numbers' as a medium-priority, ready-to-delegate task."
+      },
+      "acceptance_criteria_draft": [
+        "All relevant documentation files (e.g., README.md, installation guides, API docs) are reviewed for port number references.",
+        "Any incorrect or outdated port numbers are updated to reflect the current system configuration.",
+        "A quick start guide or installation instructions clearly specify the correct port numbers for local development and deployment."
+      ]
+    }
+  ]
+}
