@@ -532,13 +532,20 @@ CHUMP_CI_HEALTH_GATE_DISABLE
 CHUMP_CI_HEALTH_JAM_THRESHOLD
 CHUMP_CI_HEALTH_JAM_RECOVERY
 CHUMP_CI_HEALTH_CONSEC_FILE
-# META-100: RUNNER_GHOST_ONLINE detection in operator-recall.
+# META-100/META-101: QUEUE_SATURATED detection in operator-recall (fires
+# RUNNERS_GHOSTED or QUEUE_SATURATED_GH_HOSTED depending on runs-on label).
 # CHUMP_RUNNER_QUEUE_THRESHOLD_S: seconds a workflow_run stays queued before
-#   ghost-online detection fires (default 300). Set to 0 in tests to force detection.
+#   detection fires (default 300 = T_min 5min). Set to 0 in tests to force detection.
+# CHUMP_RUNNER_GHOST_MIN_QUEUED: min queued+stale runs (M) required before firing
+#   (default 3).
 # CHUMP_RUNNER_GHOST_ONLINE_DETECT: set to 0 to disable the detection block entirely
 #   (default 1 = enabled). Bypass emits no audit event; use sparingly.
+# CHUMP_RUNNER_GHOST_SAMPLE_LIMIT: max queued runs to fetch jobs for per cycle
+#   (default 10).
 CHUMP_RUNNER_QUEUE_THRESHOLD_S
+CHUMP_RUNNER_GHOST_MIN_QUEUED
 CHUMP_RUNNER_GHOST_ONLINE_DETECT
+CHUMP_RUNNER_GHOST_SAMPLE_LIMIT
 # META-093: opus parallel sub-fleet slot tracker
 CHUMP_OPUS_MAX_SLOTS          # 0=disabled, 1=single-slot legacy, 3=default parallel (3 concurrent Sonnet slots)
 CHUMP_OPUS_SLOTS_FILE         # override path for .chump-locks/opus-slots.json (test use)
@@ -1116,3 +1123,8 @@ CHUMP_REAPER_PRESSURE_THRESHOLD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_OAUTH_TOKEN_PATH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_OPERATOR_RECALL_COOLDOWN_SECS
