@@ -326,6 +326,8 @@ INFRA-1318 Phase 2 end-to-end smoke      # reason: INFRA-1877 — spins up pytho
 # from allowlist; mirror exists. Runs in <1s, so the "long-running" concern
 # is moot when the gate is wired correctly.
 scripts/ci/test-pr-terminal-state.sh         # reason: INFRA-1981 helper needs gh API + PR context; not exposed to local preflight
+scripts/ci/test-pr-stuck-cluster-detection.sh      # reason: INFRA-1133/2925 cluster detector reads ambient.jsonl + calls chump gap reserve; CI-only smoke, not a per-commit gate
+scripts/ci/test-pr-stuck-cluster-observability.sh  # reason: INFRA-2754/2925 run-event observability smoke for pr-stuck-cluster-detector; CI-only, same rationale as detection sibling above
 scripts/ci/test-subagent-budget-kill.sh      # reason: INFRA-1972 parent-enforced kill is a runtime supervisor test; spawns + kills child processes; not preflight-shaped
 scripts/ci/test-docs-delta-commit-msg.sh     # reason: INFRA-1969 commit-msg gate runs as a git hook, not as preflight; mirror would duplicate hook logic
 scripts/ci/test-rebase-coordination.sh       # reason: INFRA-1974 per-branch lock test simulates concurrent rebase; needs git fixture + race window; CI-only

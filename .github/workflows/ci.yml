@@ -817,6 +817,12 @@ jobs:
       - name: spike scripts isolated from production state.db (INFRA-430)
         run: bash scripts/ci/test-spike-isolation.sh
 
+      - name: pr-stuck-cluster-detector cluster/dedup smoke (INFRA-1133)
+        run: bash scripts/ci/test-pr-stuck-cluster-detection.sh
+
+      - name: pr-stuck-cluster-detector run-event observability smoke (INFRA-2754/INFRA-2925)
+        run: bash scripts/ci/test-pr-stuck-cluster-observability.sh
+
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
