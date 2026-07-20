@@ -1,0 +1,80 @@
+name: Gap-status catch-up (nightly)
+
+# INFRA-2230 followup to INFRA-2121's auto-flip-on-merge.yml.
+#
+# Root cause (confirmed via `gh api .../runs`): GitHub does not retroactively
+# attach a newly-landed `pull_request` trigger to PR branches that were
+# created/last-synced before the workflow file existed on main. Six known
+# gaps (INFRA-2202/2200/2151/2184/2208, DOC-058) merged within hours of
+# auto-flip-on-merge.yml landing and had ZERO workflow_runs on record for
+# their branch — the merge-event path never fired for them, and never will
+# retroactively. That's a rollout-boundary condition, not a fixable regex or
+# state.db bug, so the durable answer is a time-based safety net rather than
+# a patch to the merge-event workflow.
+#
+# This nightly job re-derives "should be done" straight from merged-PR
+# history (scripts/ops/backfill-shipped-gaps.sh) regardless of whether the
+# merge-event workflow fired, so any future miss — rollout boundary, a
+# transient chump-gap-ship failure, anything — self-heals within 24h instead
+# of accumulating silently for weeks.
+#
+# Event registry (INFRA-755 + scanner-anchor pattern):
+#   scanner-anchor: "kind":"auto_flip_skipped" emitted by scripts/ops/backfill-shipped-gaps.sh (INFRA-2230)
+#   scanner-anchor: "kind":"gap_backfill_flipped" emitted by scripts/ops/backfill-shipped-gaps.sh (INFRA-2121)
+
+on:
+  schedule:
+    # 04:00 UTC daily — after gap-status-guard's usual traffic, before US morning.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: gap-status-catchup-nightly
+  cancel-in-progress: false
+
+jobs:
+  catchup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build chump
+        run: cargo build --bin chump --release
+
+      - name: Run backfill in --apply mode (3-day window)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/target/release:$PATH"
+          # 3-day window: nightly cadence only needs to cover since-yesterday,
+          # padded for a missed run. The 60-day default is for manual sweeps.
+          bash scripts/ops/backfill-shipped-gaps.sh --days 3 --apply
+
+      - name: Commit any flipped gap YAML
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/gaps/; then
+            echo "[catchup] no YAML diff — nothing was stale"
+            exit 0
+          fi
+          git config user.name  "gap-status-catchup[bot]"
+          git config user.email "gap-status-catchup@chump.local"
+          git add docs/gaps/
+          git commit -m "$(printf 'chore(auto-flip): nightly catch-up flip for stale-merged gaps\n\nInvoked by .github/workflows/gap-status-catchup-nightly.yml (INFRA-2230).\n')"
+          git push origin main || {
+            echo "[catchup] push rejected (main moved) — next nightly run will retry"
+            exit 0
+          }
+          echo "[catchup] ✓ pushed catch-up flips"

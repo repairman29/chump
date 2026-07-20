@@ -6582,6 +6582,21 @@ events:
       which gaps the backfill touched without re-running it in dry-run.
     consumers: [ops-audit]
     fields_required: [ts, kind, gap, pr, source]
+
+  - kind: auto_flip_skipped
+    effect_metric: credible
+    emitter: scripts/ops/backfill-shipped-gaps.sh (INFRA-2230)
+    trigger: >
+      Emitted by the nightly/manual backfill script whenever it finds a
+      gap still status:open despite a merged PR title matching its ID —
+      i.e. the merge-event auto-flip-on-merge.yml workflow missed it.
+      reason=workflow_skip is the confirmed root cause (a newly-landed
+      pull_request trigger never retroactively attaches to PR branches
+      created/synced before the workflow existed on main); reason=
+      state_db_error covers the rarer case where the catch-up's own
+      `chump gap ship` call then fails.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, gap, pr, reason, source]
   - kind: reviewer_routing_computed
     effect_metric: effective
     emitter: crates/chump-reviewer-routing/src/bin/chump-reviewer-routing.rs (INFRA-1491)

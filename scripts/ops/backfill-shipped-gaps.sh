@@ -26,6 +26,19 @@
 #
 # Event registry (INFRA-755 + scanner-anchor pattern):
 #   scanner-anchor: "kind":"gap_backfill_flipped" emitted by this script (INFRA-2121)
+#   scanner-anchor: "kind":"auto_flip_skipped" emitted by this script (INFRA-2230)
+#
+# INFRA-2230 root cause: GitHub does not retroactively wire a newly-added
+# `pull_request` trigger onto PR branches that were created/last-synced
+# before the workflow file landed on the base branch. Every one of the 6
+# known stale gaps (INFRA-2202/2200/2151/2184/2208, DOC-058) had zero
+# workflow_runs for auto-flip-on-merge.yml on their branch — the workflow
+# never dispatched, not a regex miss or a state.db write failure. That gap
+# self-heals for PRs opened/synced after the workflow exists, but any PR
+# in flight at rollout time is permanently missed by the merge-event path.
+# This script is the durable catch-up: it re-derives "should be done" from
+# merged-PR history regardless of whether the merge-event workflow fired,
+# and reports why via kind=auto_flip_skipped reason=workflow_skip.
 
 set -euo pipefail
 
@@ -143,17 +156,26 @@ while IFS=$'\t' read -r pr_number pr_title; do
                 if [[ "$MODE" == "dry-run" ]]; then
                     echo "[backfill] WOULD ship $gap_id (closed_pr=$pr_number)  title='${pr_title:0:60}'"
                 else
+                    ambient_log="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
+                    # INFRA-2230: a gap reaching this branch means the merge
+                    # already landed but the merge-event workflow never
+                    # flipped it — the reason is almost always workflow_skip
+                    # (see header note); state_db_error is the fallback when
+                    # the flip itself then fails below.
+                    printf '{"ts":"%s","kind":"auto_flip_skipped","gap":"%s","pr":%s,"reason":"workflow_skip","source":"backfill-shipped-gaps"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_number" >> "$ambient_log" 2>/dev/null || true
                     if CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
                             chump gap ship "$gap_id" --closed-pr "$pr_number" --update-yaml >/dev/null 2>&1; then
                         echo "[backfill] ✓ shipped $gap_id (closed_pr=$pr_number)"
                         shipped=$((shipped + 1))
                         # INFRA-755: structured ambient emit so the operator
                         # can audit which gaps were backfill-flipped.
-                        ambient_log="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
                         printf '{"ts":"%s","kind":"gap_backfill_flipped","gap":"%s","pr":%s,"source":"backfill-shipped-gaps"}\n' \
                             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_number" >> "$ambient_log" 2>/dev/null || true
                     else
                         echo "[backfill] ⚠ failed to ship $gap_id — left as-is"
+                        printf '{"ts":"%s","kind":"auto_flip_skipped","gap":"%s","pr":%s,"reason":"state_db_error","source":"backfill-shipped-gaps"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_number" >> "$ambient_log" 2>/dev/null || true
                     fi
                 fi
                 ;;
