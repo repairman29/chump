@@ -1116,3 +1116,12 @@ CHUMP_REAPER_PRESSURE_THRESHOLD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_OAUTH_TOKEN_PATH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_OPERATOR_RECALL_COOLDOWN_SECS
+# detected in: (standard input)
+CHUMP_QUEUE_SATURATED_MIN_RUNS
+# detected in: (standard input)
+CHUMP_QUEUE_SATURATED_SAMPLE

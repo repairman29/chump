@@ -5651,6 +5651,24 @@ events:
     consumers: [operator-recall, fleet-brief, ops-audit]
     fields_required: [ts, kind, queued_count, oldest_age_s, idle_runners, threshold_s]
 
+  # META-101: QUEUE_SATURATED_GH_HOSTED subclass — GitHub-hosted runner
+  # concurrency quota exhausted, not a self-hosted runner problem. Fired by
+  # operator-recall.sh alongside (or instead of) runner_ghost_online_detected
+  # after sampling queued jobs' runs-on labels; corrects the 2026-05-24 16:32Z
+  # misdiagnosis where a wizard restarted self-hosted runners while the real
+  # queue saturation was on GitHub's own ubuntu-latest quota.
+  - kind: queue_saturated_detected
+    effect_metric: self
+    emitter: scripts/dispatch/operator-recall.sh (META-101)
+    trigger: >
+      operator-recall.sh sampled up to CHUMP_QUEUE_SATURATED_SAMPLE stale
+      queued workflow_runs' jobs and found >=1 job targeting a GitHub-hosted
+      runs-on label (ubuntu-*/macos-*/windows-*). Emitted unconditionally
+      (not cooldown-gated) so detection frequency is observable independent
+      of the paging cooldown.
+    consumers: [operator-recall, fleet-brief, ops-audit]
+    fields_required: [ts, kind, queued_count, oldest_age_s, threshold_s, gh_hosted_jobs, runs_on_labels]
+
   # META-100: recovery script ran (scripts/ops/restart-actions-runners.sh).
   # Emitted after launchctl unload+load cycle for all configured runner plists.
   - kind: actions_runners_restarted

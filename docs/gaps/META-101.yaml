@@ -1,0 +1,18 @@
+- id: META-101
+  domain: META
+  title: "RESILIENT P1: operator_recall halt-class detection — runners-online-but-idle pattern (4 self-hosted runners status=online,busy=false but 30 queued jobs, runner_name=null; precedent 2026-05-24 16:32Z wizard found root cause after hours of wrong-tree debugging on PR-stuck cluster)"
+  status: ready_to_ship
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "CORRECTED FRAMING (wizard 16:38Z): the detector class is QUEUE_SATURATED — fires when EITHER (a) self-hosted runners are online+idle but jobs target their labels and aren't picked up (original RUNNERS_GHOSTED case), OR (b) queued jobs target GitHub-hosted runs-on labels (ubuntu-NN/ubuntu-latest/macos/windows) and GH-hosted runner concurrency quota is exhausted (today's actual root cause, 2026-05-24 16:38Z)"
+    - "Detector logic in scripts/dispatch/operator-recall.sh: fires when ALL of (1) >=M queued workflow runs older than T_min minutes (M=3, T=5 defaults), (2) for each sampled queued run, fetch jobs via gh api repos/OWNER/REPO/actions/runs/RUN_ID/jobs and classify by runs-on label (self-hosted vs GH-hosted), (3) emit different subclass: RUNNERS_GHOSTED if self-hosted+matching+idle, QUEUE_SATURATED_GH_HOSTED if GH-hosted+over-quota"
+    - Emit ambient kind=operator_recall with class=RUNNERS_GHOSTED
+    - QUEUE_SATURATED_GH_HOSTED + reason listing affected workflow_run_ids + runs_on_labels
+    - "Remediation field per subclass: RUNNERS_GHOSTED → launchctl restart suggested, QUEUE_SATURATED_GH_HOSTED → no-restart-fix; reduce concurrent workflow triggers OR increase GH quota OR migrate to self-hosted"
+    - "Smoke test scripts/ci/test-operator-recall-queue-saturated.sh: 2 stubbed scenarios — (1) self-hosted idle + jobs target their labels (asserts RUNNERS_GHOSTED), (2) GH-hosted ubuntu-latest queue + self-hosted idle but jobs target ubuntu-latest (asserts QUEUE_SATURATED_GH_HOSTED + no-restart-fix text)"
+    - "Pairs with INFRA-1907 pr-auto-rearm: rearm daemon's force-push storms create the queued workflow runs that exceed GH quota; consider whether INFRA-1907 should self-throttle when QUEUE_SATURATED_GH_HOSTED fires"
+    - "Document in docs/process/CI_RUNNER_HEALTH.md: decision-tree for operator (restart vs reduce-load vs GH-quota-increase)"
+    - "Filed 16:34Z at wizard request post-runner-restart-diagnosis; reframed 16:42Z after wizard 16:38Z correction"
+  outcome_id: MISSION-010
+

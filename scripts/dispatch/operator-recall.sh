@@ -16,9 +16,20 @@
 #                             (default 3, 7200)
 #   (d) QUEUE_STARVE        — fleet_queue_depth event with pickable_count=0 AND no
 #                             gap_reserved event in CHUMP_QUEUE_STARVE_SECS (default 86400)
-#   (e) RUNNER_GHOST_ONLINE — queued workflow_runs older than
-#                             CHUMP_RUNNER_QUEUE_THRESHOLD_S (default 300) exist AND
-#                             ≥1 self-hosted runner has status=online,busy=false.
+#   (e) QUEUE_SATURATED    — >= CHUMP_QUEUE_SATURATED_MIN_RUNS (default 3) queued
+#                             workflow_runs older than CHUMP_RUNNER_QUEUE_THRESHOLD_S
+#                             (default 300s / 5min) exist. Sample up to
+#                             CHUMP_QUEUE_SATURATED_SAMPLE (default 3) of the stale
+#                             queued runs' jobs (gh api .../actions/runs/RUN_ID/jobs)
+#                             and classify each job's runs-on label to pick a subclass:
+#                               RUNNERS_GHOSTED           — sampled jobs target
+#                                 self-hosted labels AND >=1 self-hosted runner is
+#                                 status=online,busy=false (runner appears stuck;
+#                                 restart is the fix)
+#                               QUEUE_SATURATED_GH_HOSTED — sampled jobs target
+#                                 GitHub-hosted labels (ubuntu-*/macos-*/windows-*);
+#                                 GH-hosted concurrency quota is exhausted, not a
+#                                 runner problem — no restart will fix this
 #                             Guard: CHUMP_RUNNER_GHOST_ONLINE_DETECT (default 1, set to 0 to disable)
 #   (f) DISK_CRITICAL       — ≥1 disk_critical event in last
 #                             CHUMP_DISK_CRITICAL_WINDOW_SECS (default 600) AND
@@ -40,8 +51,10 @@
 #   CHUMP_CI_BROKEN_THRESHOLD              default 3
 #   CHUMP_CI_BROKEN_WINDOW_SECS            default 7200
 #   CHUMP_QUEUE_STARVE_SECS                default 86400
-#   CHUMP_RUNNER_QUEUE_THRESHOLD_S         seconds a run stays queued before ghost-online fires (default 300)
-#   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable RUNNER_GHOST_ONLINE detection (default 1)
+#   CHUMP_RUNNER_QUEUE_THRESHOLD_S         seconds a run stays queued before QUEUE_SATURATED fires (default 300)
+#   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable QUEUE_SATURATED detection (default 1)
+#   CHUMP_QUEUE_SATURATED_MIN_RUNS         min stale queued runs required to fire (default 3)
+#   CHUMP_QUEUE_SATURATED_SAMPLE           max stale queued runs to sample jobs for (default 3)
 #   CHUMP_DISK_CRITICAL_WINDOW_SECS        recency window for disk_critical events (default 600)
 #   CHUMP_DISK_CRITICAL_PCT                free% threshold below which to page (default 5)
 #   CHUMP_AMBIENT_LOG                      path to ambient.jsonl
@@ -61,6 +74,8 @@ _ci_window="${CHUMP_CI_BROKEN_WINDOW_SECS:-7200}"
 _queue_starve="${CHUMP_QUEUE_STARVE_SECS:-86400}"
 _runner_queue_threshold="${CHUMP_RUNNER_QUEUE_THRESHOLD_S:-300}"
 _runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
+_queue_saturated_min_runs="${CHUMP_QUEUE_SATURATED_MIN_RUNS:-3}"
+_queue_saturated_sample="${CHUMP_QUEUE_SATURATED_SAMPLE:-3}"
 _disk_critical_window="${CHUMP_DISK_CRITICAL_WINDOW_SECS:-600}"
 _disk_critical_pct="${CHUMP_DISK_CRITICAL_PCT:-5}"
 
@@ -119,37 +134,42 @@ _emit_recall() {
     fi
 }
 
-# ── (e) RUNNER_GHOST_ONLINE detection ─────────────────────────────────────────
+# ── (e) QUEUE_SATURATED detection (META-101 — RUNNERS_GHOSTED vs QUEUE_SATURATED_GH_HOSTED) ──
 
 _detect_runner_ghost_online() {
     local cache_db="$REPO_ROOT/.chump/github_cache.db"
     local now_epoch; now_epoch="$(_now_epoch)"
     local stale_threshold="$_runner_queue_threshold"
+    local min_runs="$_queue_saturated_min_runs"
+    local sample_n="$_queue_saturated_sample"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local _gh_repo="${GITHUB_REPOSITORY:-repairman29/chump}"
 
-    # --- Step 1: find queued workflow_runs older than threshold ---
+    # --- Step 1: find queued workflow_runs older than threshold, sample up to N run_ids ---
     local queued_count=0
     local oldest_age_s=0
+    local sample_run_ids=""
 
     if [[ -f "$cache_db" ]]; then
         # Read from cache: workflow_run_cache table (INFRA-1872 shape)
         local cache_result
-        cache_result=$(python3 - "$cache_db" "$now_epoch" "$stale_threshold" <<'PYEOF' 2>/dev/null
+        cache_result=$(python3 - "$cache_db" "$now_epoch" "$stale_threshold" "$sample_n" <<'PYEOF' 2>/dev/null
 import sys, sqlite3
 from datetime import datetime, timezone
 
-db_path, now_epoch, threshold = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+db_path, now_epoch, threshold, sample_n = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
 try:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
     count = 0
     oldest_age = 0
+    stale_runs = []
     if "workflow_run_cache" in tables:
         rows = cur.execute(
-            "SELECT created_at FROM workflow_run_cache WHERE status='queued'"
+            "SELECT run_id, created_at FROM workflow_run_cache WHERE status='queued'"
         ).fetchall()
-        for (created_at,) in rows:
+        for (run_id, created_at) in rows:
             try:
                 created_epoch = int(datetime.fromisoformat(
                     created_at.rstrip("Z")).replace(tzinfo=timezone.utc).timestamp())
@@ -158,16 +178,20 @@ try:
             age = now_epoch - created_epoch
             if age >= threshold:
                 count += 1
+                stale_runs.append((age, run_id))
                 if age > oldest_age:
                     oldest_age = age
-    print(f"{count} {oldest_age}")
+    stale_runs.sort(key=lambda t: t[0], reverse=True)
+    sampled = ",".join(str(r[1]) for r in stale_runs[:sample_n])
+    print(f"{count} {oldest_age} {sampled}")
     conn.close()
 except Exception:
-    print("0 0")
+    print("0 0 ")
 PYEOF
         )
         queued_count=$(echo "$cache_result" | awk '{print $1}')
         oldest_age_s=$(echo "$cache_result" | awk '{print $2}')
+        sample_run_ids=$(echo "$cache_result" | awk '{print $3}')
     fi
 
     # No stale queued runs — nothing to do.
@@ -175,10 +199,14 @@ PYEOF
         return 0
     fi
 
+    # Below the min-runs floor — not saturated, just a normal blip.
+    if (( queued_count < min_runs )); then
+        return 0
+    fi
+
     # --- Step 2: check for online-but-idle self-hosted runners via GitHub API ---
     local idle_runners=0
     local runners_json
-    local _gh_repo="${GITHUB_REPOSITORY:-repairman29/chump}"
     runners_json=$(gh api "repos/${_gh_repo}/actions/runners" --paginate 2>/dev/null || echo "")
 
     if [[ -n "$runners_json" ]]; then
@@ -204,20 +232,81 @@ PYEOF
         idle_runners=0
     fi
 
-    # --- Step 3: contradiction — stale queued jobs AND idle online runners ---
-    if (( idle_runners >= 1 )); then
-        # Informational pre-recall event (not cooldown-gated).
+    # --- Step 3: sample stale queued runs' jobs, classify runs-on labels ---
+    local self_hosted_jobs=0
+    local gh_hosted_jobs=0
+    local gh_hosted_labels=""
+
+    if [[ -n "$sample_run_ids" ]]; then
+        IFS=',' read -ra _run_id_arr <<< "$sample_run_ids"
+        for _run_id in "${_run_id_arr[@]}"; do
+            [[ -z "$_run_id" ]] && continue
+            local jobs_json
+            jobs_json=$(gh api "repos/${_gh_repo}/actions/runs/${_run_id}/jobs" 2>/dev/null || echo "")
+            [[ -z "$jobs_json" ]] && continue
+            local jobs_result
+            jobs_result=$(python3 - "$jobs_json" <<'PYEOF' 2>/dev/null
+import sys, json
+GH_HOSTED_PREFIXES = ("ubuntu-", "macos-", "windows-")
+try:
+    data = json.loads(sys.argv[1])
+    jobs = data.get("jobs", []) if isinstance(data, dict) else []
+    self_hosted = 0
+    gh_hosted = 0
+    gh_labels = set()
+    for j in jobs:
+        labels = j.get("labels", []) or []
+        lowered = [str(l).lower() for l in labels]
+        if "self-hosted" in lowered:
+            self_hosted += 1
+        elif any(l.startswith(GH_HOSTED_PREFIXES) or l in ("ubuntu-latest", "macos-latest", "windows-latest") for l in lowered):
+            gh_hosted += 1
+            gh_labels.update(lowered)
+    print(f"{self_hosted} {gh_hosted} {'|'.join(sorted(gh_labels))}")
+except Exception:
+    print("0 0 ")
+PYEOF
+            )
+            self_hosted_jobs=$(( self_hosted_jobs + $(echo "$jobs_result" | awk '{print $1}') ))
+            gh_hosted_jobs=$(( gh_hosted_jobs + $(echo "$jobs_result" | awk '{print $2}') ))
+            local _labels_part; _labels_part=$(echo "$jobs_result" | awk '{print $3}')
+            if [[ -n "$_labels_part" && "$_labels_part" != "0" ]]; then
+                gh_hosted_labels="${gh_hosted_labels}${gh_hosted_labels:+,}${_labels_part}"
+            fi
+        done
+    fi
+
+    # --- Step 4: classify subclass ---
+    # (a) RUNNERS_GHOSTED — self-hosted jobs queued AND matching idle runner online
+    if (( self_hosted_jobs > 0 && idle_runners >= 1 )); then
         local detect_body
-        detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d}' \
-            "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold")"
+        detect_body="$(printf '{"ts":"%s","kind":"runner_ghost_online_detected","queued_count":%d,"oldest_age_s":%d,"idle_runners":%d,"threshold_s":%d,"self_hosted_jobs":%d}' \
+            "$ts" "$queued_count" "$oldest_age_s" "$idle_runners" "$stale_threshold" "$self_hosted_jobs")"
         printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
 
-        local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s) with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online"
+        local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s), ${self_hosted_jobs} sampled job(s) target self-hosted labels, with ${idle_runners} self-hosted runner(s) online-but-idle; runners may be ghost-online. Remediation: launchctl restart the self-hosted runner"
         if (( _check_only )); then
-            echo "[operator-recall] HALT condition=RUNNER_GHOST_ONLINE: $_reason"
+            echo "[operator-recall] HALT condition=RUNNERS_GHOSTED: $_reason"
             _any_halt=1
         else
-            _emit_recall "RUNNER_GHOST_ONLINE" "$_reason"
+            _emit_recall "RUNNERS_GHOSTED" "$_reason"
+        fi
+        return 0
+    fi
+
+    # (b) QUEUE_SATURATED_GH_HOSTED — sampled jobs target GH-hosted labels
+    if (( gh_hosted_jobs > 0 )); then
+        local detect_body
+        detect_body="$(printf '{"ts":"%s","kind":"queue_saturated_detected","queued_count":%d,"oldest_age_s":%d,"threshold_s":%d,"gh_hosted_jobs":%d,"runs_on_labels":"%s"}' \
+            "$ts" "$queued_count" "$oldest_age_s" "$stale_threshold" "$gh_hosted_jobs" "$gh_hosted_labels")"
+        printf '%s\n' "$detect_body" >> "$_amb" 2>/dev/null || true
+
+        local _reason="${queued_count} workflow run(s) queued for >${stale_threshold}s (oldest=${oldest_age_s}s), ${gh_hosted_jobs} sampled job(s) target GitHub-hosted runs-on labels [${gh_hosted_labels}]; GH-hosted runner concurrency quota is exhausted. Remediation: no-restart-fix; reduce concurrent workflow triggers OR increase GH quota OR migrate to self-hosted"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=QUEUE_SATURATED_GH_HOSTED: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "QUEUE_SATURATED_GH_HOSTED" "$_reason"
         fi
     fi
 }
@@ -361,7 +450,8 @@ if (( _pickable == 0 )); then
     fi
 fi
 
-# (e) RUNNER_GHOST_ONLINE — queued runs stale + runner online-but-idle contradiction
+# (e) QUEUE_SATURATED — stale queued runs, subclassified as RUNNERS_GHOSTED or
+#     QUEUE_SATURATED_GH_HOSTED by sampling job runs-on labels
 if (( _runner_ghost_detect != 0 )); then
     _detect_runner_ghost_online
 fi

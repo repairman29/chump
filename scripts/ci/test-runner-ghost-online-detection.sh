@@ -57,6 +57,10 @@ if [[ "${*}" == *"actions/runners"* ]]; then
     echo '{"runners":[{"id":1,"name":"test-runner","status":"online","busy":false,"labels":[{"name":"self-hosted"},{"name":"macOS"}]}]}'
     exit 0
 fi
+if [[ "${*}" == *"actions/runs/1/jobs"* ]]; then
+    echo '{"jobs":[{"labels":["self-hosted","macOS"]}]}'
+    exit 0
+fi
 # For any other gh call (e.g. queued run count) return empty
 echo '{"total_count":0,"workflow_runs":[]}'
 exit 0
@@ -73,6 +77,7 @@ mkdir -p "$_tmpdir/repo/.chump-locks"
 export CHUMP_AMBIENT_LOG="$_amb_log"
 export CHUMP_RUNNER_QUEUE_THRESHOLD_S=0       # every queued run is "old"
 export CHUMP_RUNNER_GHOST_ONLINE_DETECT=1
+export CHUMP_QUEUE_SATURATED_MIN_RUNS=1       # single fixture run is enough to fire (META-101)
 export CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=0  # no cooldown suppression in tests
 export REPO_ROOT="$_tmpdir/repo"
 export GITHUB_REPOSITORY="repairman29/chump"
@@ -86,11 +91,11 @@ bash "$SCRIPT_REPO_ROOT/scripts/dispatch/operator-recall.sh" 2>&1 || true
 if [[ ! -f "$_amb_log" ]]; then
     _fail "ambient log not created at $_amb_log"
 else
-    _recall_line=$(grep '"kind":"operator_recall"' "$_amb_log" 2>/dev/null | grep '"condition":"RUNNER_GHOST_ONLINE"' || true)
+    _recall_line=$(grep '"kind":"operator_recall"' "$_amb_log" 2>/dev/null | grep '"condition":"RUNNERS_GHOSTED"' || true)
     if [[ -n "$_recall_line" ]]; then
-        _pass "kind=operator_recall with condition=RUNNER_GHOST_ONLINE emitted"
+        _pass "kind=operator_recall with condition=RUNNERS_GHOSTED emitted"
     else
-        _fail "kind=operator_recall condition=RUNNER_GHOST_ONLINE NOT found in ambient log"
+        _fail "kind=operator_recall condition=RUNNERS_GHOSTED NOT found in ambient log"
         echo "  ambient log contents:"
         cat "$_amb_log" 2>/dev/null | sed 's/^/    /' || echo "    (empty)"
     fi
@@ -111,11 +116,11 @@ export CHUMP_RUNNER_GHOST_ONLINE_DETECT=0
 
 bash "$SCRIPT_REPO_ROOT/scripts/dispatch/operator-recall.sh" 2>&1 || true
 
-_ghost_when_disabled=$(grep '"condition":"RUNNER_GHOST_ONLINE"' "$_amb_log2" 2>/dev/null || true)
+_ghost_when_disabled=$(grep '"condition":"RUNNERS_GHOSTED"' "$_amb_log2" 2>/dev/null || true)
 if [[ -z "$_ghost_when_disabled" ]]; then
-    _pass "RUNNER_GHOST_ONLINE suppressed when CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
+    _pass "RUNNERS_GHOSTED suppressed when CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
 else
-    _fail "RUNNER_GHOST_ONLINE fired even with CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
+    _fail "RUNNERS_GHOSTED fired even with CHUMP_RUNNER_GHOST_ONLINE_DETECT=0"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
