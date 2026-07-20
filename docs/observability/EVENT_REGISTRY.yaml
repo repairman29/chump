@@ -8236,6 +8236,65 @@ events:
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
 
+  - kind: chumpd_started
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: supervisor daemon start — takes pool ownership (kills tmux fleet
+      + orphan worker loops unless CHUMPD_TAKEOVER=0)
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, repo, note]
+
+  - kind: chumpd_stopped
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: SIGTERM/SIGINT — children stopped with the supervisor
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, note]
+
+  - kind: chumpd_mode_change
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: ~/.chump/fleet-mode changed between ticks (grind|travel|off)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, from, to, desired]
+
+  - kind: chumpd_worker_spawned
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: worker child process spawned into a slot
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, agent, pid]
+
+  - kind: chumpd_worker_exit
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: worker child exited (reaped by try_wait; slot respawns next tick)
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, agent, code]
+
+  - kind: chumpd_worker_wedge_killed
+    effect_metric: waste_prevented
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: child alive but heartbeat older than wedge threshold — killed for
+      respawn (the 60s heartbeat writer died inside a live PID)
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, agent, hb_age_s]
+
+  - kind: chumpd_spawn_failed
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: worker spawn returned an OS error (surfaced, never silent —
+      the launchd-PATH lesson of RESILIENT-177)
+    consumers: [fleet-brief, audit-log, infra-watcher, operator-recall]
+    fields_required: [ts, kind, agent, error]
+
+  - kind: chumpd_slot_broken
+    effect_metric: waste_prevented
+    emitter: crates/chumpd/src/main.rs (MISSION-051)
+    trigger: a slot respawned more than the hourly storm budget — parked with
+      escalated=true instead of thrashing (persistent-crash class)
+    consumers: [fleet-brief, audit-log, operator-recall]
+    fields_required: [ts, kind, agent, respawns_last_hour, escalated, note]
   - kind: verify_bypassed
     effect_metric: self
     emitter: src/verify/mod.rs emit_verify_bypassed (CREDIBLE-155)

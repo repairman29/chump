@@ -230,6 +230,9 @@ FLEET_SIZE="${FLEET_SIZE:-8}"
 # finish-line kills without wasting much more on true stalls (shipped gaps
 # avg 200s, max 460s — plenty of headroom).
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
+# Memory guard (2026-07-19): cap per-worker cargo parallelism — concurrent
+# rustc jobs (~1.2GB each) are the top RAM consumers during fleet build storms.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
