@@ -157,6 +157,10 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         .env("FLEET_INLINE_BRIEFING", "1")
         .env("CHUMP_AGENT_HARNESS", "claude")
         .env("CARGO_TARGET_DIR", cfg.repo.join("target"))
+        // Memory guard: concurrent rustc jobs are the machine's top RAM
+        // consumers (~1.2GB each); 2 workers x default parallelism spikes
+        // past what a 24GB laptop shares with the operator's apps.
+        .env("CARGO_BUILD_JOBS", "4")
         .env(
             "CHUMP_OAUTH_TOKEN_FILE",
             cfg.home.join(".chump/oauth-token.json"),
