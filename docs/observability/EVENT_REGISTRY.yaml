@@ -2006,12 +2006,42 @@ events:
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost
   # (gap_reserve_calls) is visible without grepping logs.
+  # INFRA-2804: fills in the outcome/failure-class taxonomy, cost-reporting
+  # path, and smoke-test pointer that this entry was originally missing.
   - kind: pr_stuck_cluster_detector_run
     effect_metric: self
     emitter: scripts/coord/pr-stuck-cluster-detector.sh (INFRA-2754)
-    trigger: every invocation of pr-stuck-cluster-detector.sh, any exit path
+    trigger: >
+      Every invocation of pr-stuck-cluster-detector.sh, on every exit path —
+      via a bash EXIT trap, so success, failure, and no-op all emit exactly
+      one event. `outcome` is one of: no_op (no cluster this cycle — either
+      no ambient.jsonl yet, no stuck events in window, or below threshold;
+      terminal, no retry needed), dry_run (cluster detected but --apply not
+      passed), cluster_filed (cluster detected, gap successfully reserved —
+      the only outcome with gap_reserve_calls=1), gap_reserve_failed
+      (permanent: `chump gap reserve` itself returned non-zero — treat as a
+      hard failure, do not retry blindly), gap_id_extract_failed (transient:
+      gap reserve succeeded but the ID could not be parsed from its output —
+      safe to retry, the underlying mutation already happened), help /
+      bad_args (CLI usage errors, no mutation attempted), error (uncaught
+      exit — the trap's fallback default). There is no dedicated timeout
+      outcome: the script has no internal timeout, so a hang surfaces as
+      the caller's own timeout/watchdog killing the process before the EXIT
+      trap fires (i.e. absence of this event within the expected cron cadence
+      IS the timeout signal for consumers).
     consumers: [waste-tally, watchdog]
     fields_required: [ts, kind, outcome, stuck_pr_count, duration_ms, gap_reserve_calls]
+    docs: |
+      Cost tracking: gap_reserve_calls counts mutating `chump gap reserve`
+      calls made during the run (0 or 1 today — one cluster gap per run at
+      most). waste-tally rolls this field up across runs to report mutation
+      cost to the operator without grepping logs; fleet-brief surfaces the
+      per-run duration_ms/outcome pair for quick eyeballing.
+      Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh — asserts
+      the no-op path emits outcome=no_op/gap_reserve_calls=0 and the
+      cluster-detected dry-run path emits outcome=dry_run/gap_reserve_calls=0
+      with the correct stuck_pr_count. Run standalone:
+      `scripts/ci/test-pr-stuck-cluster-observability.sh`.
 
   - kind: fleet_auth_fallback
     effect_metric: self
