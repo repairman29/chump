@@ -16,6 +16,18 @@
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
 #
 # Cron-friendly. Emits kind=pr_stuck_cluster ambient events.
+#
+# Observability contract (INFRA-2920):
+#   - Every invocation emits kind=pr_stuck_cluster_detector_run regardless of
+#     outcome (success/failure/timeout), with fields: outcome, stuck_pr_count,
+#     duration_ms, gap_reserve_calls, failure_class. See _pscd_emit_run_event().
+#   - Cluster filings additionally emit kind=pr_stuck_cluster.
+#   - Cost (gap_reserve_calls) rolls up via `chump waste-tally` (see
+#     docs/observability/EVENT_REGISTRY.yaml, kind=pr_stuck_cluster_detector_run).
+#   - failure_class taxonomy: none (no_op/dry_run/cluster_filed/help), transient
+#     (gap_id_extract_failed/error), permanent (gap_reserve_failed/bad_args).
+#     See _pscd_failure_class().
+#   - Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh.
 
 set -uo pipefail
 
