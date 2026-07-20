@@ -1,0 +1,15 @@
+- id: INFRA-3383
+  domain: INFRA
+  title: preflight-mirror docs/CLI/git-hooks hygiene guards (~30 scripts, META-086 cluster 5/5, self-closes META-086)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Mirror the ~30 unmirrored scripts/ci/test-*.sh gates covering docs/CLI/git-hooks hygiene (book-sync-guard, doc-freshness, docs-delta-guard/commit-msg, no-claude-leak, no-verify-audit, css-token-discipline, cross-judge-guard, prereg-content-guard, effective-010-completion, default-flip-guard, install-ambient-hooks, md-links-loop, merge-driver-*, infra-1025-atomic-claim, infra-250/254/257/258, attribution-portable, review-handoff-smoke, rollup-semantic, cli-help/integration/version-debug, subagent-budget-kill, subagent-epilogue-ref, pick-and-claim-lockdir, meta-011-git-stomp, research-026-preflight) into src/preflight.rs. Full inventory: docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'misc-hygiene'. This is the last of the 5 META-086 sub-gaps — closing it should self-close META-086 per its AC #4.
+  acceptance_criteria:
+    - Every script listed under the misc-hygiene cluster in docs/process/AUDIT_JOB_DECOMPOSITION.md is invoked from src/preflight.rs (same pattern as existing mirrored scripts)
+    - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
+    - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
+    - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+    - META-086 is closed after this gap ships (last of the 5 cluster sub-gaps)
+

@@ -409,6 +409,7 @@ chump improve orchestrator  # reason: Tier-C integration test (test-chump-improv
 test-review-handoff-smoke.sh       # reason: INFRA-774 end-to-end smoke (synthesize CI failure + simulate review --serve + telemetry assertions); needs the full CI fixture env, not a local preflight gate
 test-auth-status.sh       # reason: RESILIENT-086 auth validity probe; runs in audit shard with CI credential context (mirror in preflight is a follow-up)
 test-css-token-discipline.sh  # reason: INFRA-1590 CSS token-discipline smoke; runs linter against fixture files; Tier-C local test, deferred mirror in src/preflight.rs
+test-audit-job-decomposition.sh  # reason: META-086 survey-freshness smoke over docs/process/AUDIT_JOB_DECOMPOSITION.md; doc-freshness gate, not a code-correctness gate — mirror deferred to the META-086 cluster sub-gaps' own preflight work
 CSS token-discipline smoke (INFRA-1590)  # reason: test-css-token-discipline.sh alias; fixture-based, fully local
 curator pillar no-overlap — every agent declares unique primary_pillar (MISSION-003)       # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up
 inbox-watcher pattern — every checked-in agent arms event-driven wake (INFRA-1936 / MISSION-003)   # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up

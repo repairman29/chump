@@ -1,0 +1,14 @@
+- id: INFRA-3381
+  domain: INFRA
+  title: preflight-mirror fleet daemon/reaper/isolation gates (~21 scripts, META-086 cluster 3/5)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Mirror the ~21 unmirrored scripts/ci/test-*.sh gates covering fleet daemons/reapers/isolation (auto-arm-sweeper, autoscale-decisions, cargo-target-reaper, claude-reaper, worktree-reaper-safety, fleet-kill-switch, fleet-starve-auto-action, fleet-spec, fleet-fanout, deliberator-tick-emits, supervision-trees, stale-process-watchdog, chump-improve, sandbox/spike-isolation, keystone-cascade, mcp-coord-smoke, run-fleet-cross-repo, cli-fleet-coord) into src/preflight.rs. Full inventory: docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'fleet-daemon'.
+  acceptance_criteria:
+    - Every script listed under the fleet-daemon cluster in docs/process/AUDIT_JOB_DECOMPOSITION.md is invoked from src/preflight.rs (same pattern as existing mirrored scripts)
+    - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
+    - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
+    - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+

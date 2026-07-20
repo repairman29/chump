@@ -1162,6 +1162,9 @@ jobs:
       - name: preflight-vs-CI parity smoke (INFRA-1867)
         run: bash scripts/ci/test-preflight-ci-parity.sh
 
+      - name: audit-job decomposition survey freshness (META-086)
+        run: bash scripts/ci/test-audit-job-decomposition.sh
+
       - name: CSS token-discipline smoke (INFRA-1590)
         run: bash scripts/ci/test-css-token-discipline.sh
 

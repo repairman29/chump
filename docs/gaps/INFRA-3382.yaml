@@ -1,0 +1,14 @@
+- id: INFRA-3382
+  domain: INFRA
+  title: preflight-mirror CI-infra + observability-coverage gates (~10 scripts, META-086 cluster 4/5)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Mirror the ~10 unmirrored scripts/ci/test-*.sh gates covering CI infra + observability coverage (changes-job-self-hosted, self-hosted-runner-deps, obs-coverage-guard, observability-coverage, ci-flake-rerun, flake-autorerun, fleet-brief, preflight-ci-parity, inspect-resume-scrap, orchestrate-session-summary) into src/preflight.rs. Full inventory: docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'ci-observability'.
+  acceptance_criteria:
+    - Every script listed under the ci-observability cluster in docs/process/AUDIT_JOB_DECOMPOSITION.md is invoked from src/preflight.rs (same pattern as existing mirrored scripts)
+    - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
+    - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
+    - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+
