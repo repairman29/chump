@@ -2037,6 +2037,48 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
+            # INFRA-1901: if we are already sitting inside the worktree that
+            # holds this gap's lease, skip the `chump claim` re-invocation
+            # entirely instead of attempting a claim (and only recovering
+            # after it fails, per META-156 AC#2 below). Baseline 2026-05-23:
+            # 3 of 4 sub-agents hit "re-claim failed" here and fell back to
+            # manual gh pr create + gh pr merge --auto.
+            _already_in_lease_wt=0
+            if [[ "${CHUMP_BOT_MERGE_CLAIM_LAX:-0}" == "1" ]]; then
+                # scanner-anchor: "kind":"bot_merge_skip_claim_lax"
+                chump ambient emit bot_merge_skip_claim_lax "gap=$gid" >/dev/null 2>&1 || true
+            else
+                # AC#3: prefer the canonical state.db lease; fall back to a
+                # legacy JSON sidecar (multi-session-claim files) on miss.
+                _lease_wt="$(lease_worktree_from_statedb "$gid" "${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db" 2>/dev/null || true)"
+                if [[ -z "$_lease_wt" ]]; then
+                    for _lf in "$LOCK_DIR"/*.json; do
+                        [[ -f "$_lf" ]] || continue
+                        if [[ "$(lease_gap_id "$_lf")" == "$gid" ]]; then
+                            _lease_wt="$(lease_worktree "$_lf")"
+                            [[ -n "$_lease_wt" ]] && break
+                        fi
+                    done
+                fi
+                if [[ -n "$_lease_wt" ]]; then
+                    # AC#3: resolve symlinks on both sides (e.g. /tmp vs
+                    # /private/tmp on macOS) before the prefix comparison.
+                    _pwd_real="$(cd "$PWD" 2>/dev/null && pwd -P || printf '%s' "$PWD")"
+                    _lease_wt_real="$(cd "$_lease_wt" 2>/dev/null && pwd -P || printf '%s' "$_lease_wt")"
+                    case "$_pwd_real" in
+                        "$_lease_wt_real"|"$_lease_wt_real"/*)
+                            _already_in_lease_wt=1
+                            ;;
+                    esac
+                fi
+            fi
+
+            if [[ "$_already_in_lease_wt" -eq 1 ]]; then
+                info "INFRA-1901: already inside claimed worktree for $gid (lease=$_lease_wt) — skipping chump claim re-invocation"
+                chump session-track --start "$gid" >/dev/null 2>&1 || true
+                continue
+            fi
+
             # META-156 AC#2: re-claim failure auto-retry.
             # If `chump claim` fails with "worktree already exists", detect whether
             # the existing claim belongs to OUR session_id (CHUMP_SESSION_ID). If so,
