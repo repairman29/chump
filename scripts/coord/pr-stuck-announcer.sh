@@ -49,9 +49,21 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# INFRA-2728: run-level cost/timing, tracked across the whole scan and
+# surfaced in the summary event below (AC2: cost tracked + reported).
+run_start_epoch="$(date +%s)"
+api_calls=0
+
 command -v gh >/dev/null 2>&1 || { echo "[pr-stuck-announcer] gh missing; skip"; exit 0; }
 repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
-[ -z "$repo" ] && { echo "[pr-stuck-announcer] no repo nwo; skip" >&2; exit 1; }
+api_calls=$((api_calls + 1))
+if [ -z "$repo" ]; then
+    echo "[pr-stuck-announcer] no repo nwo; skip" >&2
+    _ambient_write "$LOCK_DIR/ambient.jsonl" \
+        "$(printf '{"ts":"%s","kind":"pr_stuck_announcer_error","stage":"repo_lookup","reason":"no nameWithOwner from gh repo view"}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+    exit 1
+fi
 
 # Pull every open PR's relevant state in one REST call.
 prs_tmp="$(mktemp)"
@@ -59,13 +71,42 @@ trap 'rm -f "$prs_tmp"' EXIT
 gh api "repos/$repo/pulls?state=open&per_page=100" \
     --jq '.[] | "\(.number)|\(.updated_at)|\(.head.sha)|\(.title)|\(.head.ref)"' \
     > "$prs_tmp" 2>/dev/null
+api_calls=$((api_calls + 1))
 
-[ ! -s "$prs_tmp" ] && { echo "[pr-stuck-announcer] empty PR list"; exit 0; }
+if [ ! -s "$prs_tmp" ]; then
+    echo "[pr-stuck-announcer] empty PR list"
+    _ambient_write "$LOCK_DIR/ambient.jsonl" \
+        "$(printf '{"ts":"%s","kind":"pr_stuck_announcer_summary","eligible":0,"announced":0,"skipped_dedup":0,"api_calls":%d,"duration_s":%d}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$api_calls" "$(( $(date +%s) - run_start_epoch ))")"
+    exit 0
+fi
 
 now_epoch="$(date +%s)"
 stale_count=0
 announced_count=0
 skipped_dedup=0
+
+# AC3: failure-class taxonomy — distinguish transient (retry-worthy: CI
+# flake, in-flight rebase) from permanent (needs human/agent intervention:
+# real merge conflict, real failing check) so consumers can auto-retry
+# transient cases without paging on every stuck PR.
+classify_failure() {
+    local mergeable_state="$1" failing_check="$2"
+    case "$mergeable_state" in
+        dirty) echo "permanent" ;;  # merge conflict — needs rebase, never self-resolves
+        blocked)
+            if [ -z "$failing_check" ]; then
+                echo "unknown"      # blocked with no identifiable failing check
+            else
+                case "$failing_check" in
+                    *flake*|*flaky*|*timeout*) echo "transient" ;;
+                    *) echo "permanent" ;;
+                esac
+            fi
+            ;;
+        *) echo "unknown" ;;
+    esac
+}
 
 while IFS='|' read -r pr_num updated_at head_sha title head_ref; do
     [ -z "$pr_num" ] && continue
@@ -96,6 +137,7 @@ except Exception: print(0)
     # Fallback to direct REST if cache miss / lib not loaded.
     if [[ -z "$detail" ]]; then
         detail="$(gh api "repos/$repo/pulls/$pr_num" --jq '.mergeable_state' 2>/dev/null | tr -d '"')"
+        api_calls=$((api_calls + 1))
     fi
     case "$detail" in
         dirty|blocked) : ;;  # candidate
@@ -106,6 +148,8 @@ except Exception: print(0)
     failing_check="$(gh api "repos/$repo/commits/$head_sha/check-runs?per_page=50" \
         --jq '.check_runs[] | select(.conclusion=="failure") | .name' 2>/dev/null \
         | head -1)"
+    api_calls=$((api_calls + 1))
+    failure_class="$(classify_failure "$detail" "$failing_check")"
 
     # Extract gap-id from title (first one).
     gap_id="$(echo "$title" | grep -oE '[A-Z]+-[0-9]+' | head -1)"
@@ -146,15 +190,25 @@ except Exception: print('')
         fi
         printf '%s' "$now_epoch" > "$stamp"
         # Audit ambient event distinct from STUCK itself (this is the *scanner's* announce).
+        # failure_class (AC3) lets consumers auto-retry transient stalls without
+        # paging on every stuck PR; permanent/unknown still page as before.
         _ambient_write "$LOCK_DIR/ambient.jsonl" \
-            "$(printf '{"ts":"%s","kind":"pr_stuck_announced","pr":%s,"gap":"%s","target":"%s","age_h":%d,"failing_check":"%s"}' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "$gap_id" "${target:-fleet}" "$((age_s/3600))" "${failing_check:-}")"
+            "$(printf '{"ts":"%s","kind":"pr_stuck_announced","pr":%s,"gap":"%s","target":"%s","age_h":%d,"failing_check":"%s","failure_class":"%s"}' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "$gap_id" "${target:-fleet}" "$((age_s/3600))" "${failing_check:-}" "$failure_class")"
         announced_count=$((announced_count + 1))
-        echo "[pr-stuck-announcer] STUCK #$pr_num ($gap_id) → ${target:-fleet}"
+        echo "[pr-stuck-announcer] STUCK #$pr_num ($gap_id) → ${target:-fleet} [$failure_class]"
     else
-        echo "[pr-stuck-announcer] WOULD STUCK #$pr_num ($gap_id) → ${target:-fleet} — $reason"
+        echo "[pr-stuck-announcer] WOULD STUCK #$pr_num ($gap_id) → ${target:-fleet} [$failure_class] — $reason"
     fi
 done < "$prs_tmp"
 
-echo "[pr-stuck-announcer] eligible=$stale_count announced=$announced_count skipped-dedup=$skipped_dedup"
+echo "[pr-stuck-announcer] eligible=$stale_count announced=$announced_count skipped-dedup=$skipped_dedup api_calls=$api_calls"
+
+# AC1/AC2: one summary event per run regardless of outcome (success or
+# no-op) so cost (api_calls, duration_s) and reach (eligible/announced) are
+# always reported, not only on the announce path.
+_ambient_write "$LOCK_DIR/ambient.jsonl" \
+    "$(printf '{"ts":"%s","kind":"pr_stuck_announcer_summary","eligible":%d,"announced":%d,"skipped_dedup":%d,"api_calls":%d,"duration_s":%d}' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$stale_count" "$announced_count" "$skipped_dedup" "$api_calls" "$(( $(date +%s) - run_start_epoch ))")"
+
 exit 0

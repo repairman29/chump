@@ -4725,7 +4725,27 @@ events:
     trigger: announcer detected an open PR stuck past its SLO (age>threshold
       with at least one failing required check) and emitted an alert.
     consumers: [fleet-brief, ops-audit, curator]
-    fields_required: [ts, kind, pr, gap, target, age_h, failing_check]
+    fields_required: [ts, kind, pr, gap, target, age_h, failing_check, failure_class]
+    docs: |
+      INFRA-2728: failure_class is one of transient (retry-worthy — known
+      flaky/timeout check), permanent (merge conflict or real CI failure —
+      needs rebase/fix), or unknown (blocked with no identifiable check).
+
+  - kind: pr_stuck_announcer_summary
+    effect_metric: self
+    emitter: scripts/coord/pr-stuck-announcer.sh
+    trigger: end of every announcer run (INFRA-2728), success or no-op, so
+      cost and reach are always reported rather than only on the announce path.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, eligible, announced, skipped_dedup, api_calls, duration_s]
+
+  - kind: pr_stuck_announcer_error
+    effect_metric: self
+    emitter: scripts/coord/pr-stuck-announcer.sh
+    trigger: announcer aborted before completing a scan (e.g. gh repo view
+      returned no nameWithOwner) — distinct from a clean no-op run.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, stage, reason]
 
   - kind: pre_restart
     effect_metric: self

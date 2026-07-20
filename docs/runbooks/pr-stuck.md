@@ -7,15 +7,32 @@ and no forward progress is being made toward merge.
 
 Ambient event kinds to watch:
 - `pr_stuck` — emitted when a PR exceeds the stuck threshold (default 2h, failing checks)
+- `pr_stuck_announced` — `scripts/coord/pr-stuck-announcer.sh` broadcast a STUCK alert for one
+  PR; carries `failure_class` (see taxonomy below)
+- `pr_stuck_announcer_summary` — one per announcer run (success or no-op); cost/reach fields
+  `eligible`, `announced`, `skipped_dedup`, `api_calls`, `duration_s` (INFRA-2728)
+- `pr_stuck_announcer_error` — announcer aborted before completing a scan (e.g. `gh repo view`
+  failed); fields `stage`, `reason` (INFRA-2728)
+- `pr_stuck_cluster` — 3+ PRs stuck simultaneously in a 2h window (`scripts/coord/pr-stuck-cluster-detector.sh`)
 - `pr_rescue_triggered` — auto-rebase+re-arm attempt started
 - `pr_rescue_completed` — rescue succeeded
 - `pr_rescue_failed` — rescue failed (manual intervention needed)
 - `stuck_pr_filing_dedup_hit` — filer skipped duplicate stuck-PR gap
 
+**`failure_class` taxonomy** (INFRA-2728, set by `pr-stuck-announcer.sh`'s `classify_failure()`):
+- `transient` — failing check name matches a known flaky/timeout pattern; safe to auto-retry
+  (`/rerun-failed`) before escalating
+- `permanent` — `mergeable_state=dirty` (real merge conflict) or a failing check that isn't a
+  known-flaky pattern; needs rebase or a real fix, will not self-resolve on retry
+- `unknown` — blocked with no identifiable failing check; needs manual triage
+
 Check:
 ```bash
 tail -200 .chump-locks/ambient.jsonl | grep -E '"kind":"(pr_stuck|pr_rescue)"'
 gh pr list --state open --json number,title,updatedAt,mergeable
+
+# Smoke test: verify the announcer still emits summary + failure_class fields (INFRA-2728)
+bash scripts/ci/test-pr-stuck-observability.sh
 ```
 
 ## Steps
