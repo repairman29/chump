@@ -22,6 +22,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // INFRA-1893: debounce flag — emit gap_reserve_open_pr_scan_failed at most once per process.
 static SCAN_FAILED_WARNED: AtomicBool = AtomicBool::new(false);
 
+/// INFRA-1954: does any commit on any branch reference `id` (e.g. in its
+/// subject or body)? A hit means the ID was already used by a shipped (and
+/// since YAML-deleted) gap — the live registry (state.db + docs/gaps/*.yaml)
+/// has no record of it, but git history does. Fails open (returns false) on
+/// any git error (not a repo, git missing, etc.) so this never blocks
+/// reserve in a non-git fixture/test environment.
+fn id_referenced_in_git_history(repo_root: &Path, id: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("log")
+        .arg("--all")
+        .arg("--oneline")
+        .arg("-F")
+        .arg(format!("--grep={id}"))
+        .output()
+        .map(|out| out.status.success() && !out.stdout.is_empty())
+        .unwrap_or(false)
+}
+
 // ────────────────────────── Data types ──────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1277,17 +1297,52 @@ impl GapStore {
                     let _ = f.write_all(line.as_bytes());
                 }
             }
-            // Atomically bump the counter and read the assigned number.
-            self.conn.execute(
-                "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
-                params![domain_upper],
-            )?;
-            let num: i64 = self.conn.query_row(
-                "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
-                params![domain_upper],
-                |r| r.get(0),
-            )?;
-            let new_id = format!("{}{:03}", prefix, num);
+            // INFRA-1954: bump past any number git history already references —
+            // catches IDs shipped and later deleted from docs/gaps/ (so
+            // absent from both state.db and the live YAML registry) before
+            // they get re-used. Bypass: CHUMP_RESERVE_GIT_HISTORY_CHECK=0.
+            let check_git_history =
+                std::env::var("CHUMP_RESERVE_GIT_HISTORY_CHECK").as_deref() != Ok("0");
+            const MAX_GIT_HISTORY_RETRIES: u32 = 200;
+            let mut new_id = String::new();
+            for _attempt in 0..MAX_GIT_HISTORY_RETRIES {
+                // Atomically bump the counter and read the assigned number.
+                self.conn.execute(
+                    "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
+                    params![domain_upper],
+                )?;
+                let num: i64 = self.conn.query_row(
+                    "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
+                    params![domain_upper],
+                    |r| r.get(0),
+                )?;
+                let candidate = format!("{}{:03}", prefix, num);
+                if check_git_history && id_referenced_in_git_history(&self.repo_root, &candidate) {
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_git_history_reuse_blocked\",\
+                         \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                    continue;
+                }
+                new_id = candidate;
+                break;
+            }
+            if new_id.is_empty() {
+                bail!(
+                    "DUPLICATE: exhausted {MAX_GIT_HISTORY_RETRIES} candidate IDs for domain \
+                     {domain_upper} — all referenced in git history (INFRA-1954)"
+                );
+            }
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
