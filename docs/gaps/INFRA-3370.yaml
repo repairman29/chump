@@ -1,0 +1,11 @@
+- id: INFRA-3370
+  domain: INFRA
+  title: "META-070: preflight mirror for PR/merge-lifecycle audit-job scripts (18 scripts, cluster 2/5)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster pr-merge-lifecycle).
+  acceptance_criteria:
+    - "1. src/preflight.rs gains a pr_merge_lifecycle gate covering the 18 unmirrored scripts: test-bot-merge-auto-close.sh, test-bot-merge-conflict-wiring.sh, test-ci-flake-rerun.sh, test-conflict-resolver.sh, test-flake-autorerun.sh, test-install-pr-auto-rebase.sh, test-open-pr-dup-detection.sh, test-pr-auto-rebase.sh, test-pr-blocked-watch.sh, test-pr-explain-block.sh, test-pr-terminal-state.sh, test-pr-triage-bot.sh, test-pr-watch-auto-resolve.sh, test-pr-watch-shepherd-smoke.sh, test-rebase-coordination.sh, test-speculative-on-speculative-guard.sh, test-stale-branch-rebase.sh, test-status-flip-proof-of-merge.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_PR_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-pr-lifecycle.sh smoke asserts the gate runs all 18 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+

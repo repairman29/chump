@@ -1,0 +1,11 @@
+- id: INFRA-3372
+  domain: INFRA
+  title: "META-070: preflight mirror for docs/hygiene/commit-guard audit-job scripts (21 scripts, cluster 4/5)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster docs-hygiene-guard).
+  acceptance_criteria:
+    - "1. src/preflight.rs gains a docs_hygiene_guard gate covering the 21 unmirrored scripts: test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh, test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-gate-promotion-no-regression.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-md-links-loop.sh, test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-merge-driver-state-sql.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh, test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-schema-version-assert.sh, test-submodule-guard.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-docs-hygiene.sh smoke asserts the gate runs all 21 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+

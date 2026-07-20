@@ -1,0 +1,11 @@
+- id: INFRA-3371
+  domain: INFRA
+  title: "META-070: preflight mirror for fleet-daemon & reaper-cadence audit-job scripts (14 scripts, cluster 3/5)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster fleet-daemon-reaper).
+  acceptance_criteria:
+    - "1. src/preflight.rs gains a fleet_daemon_reaper gate covering the 14 unmirrored scripts: test-auto-arm-sweeper.sh, test-autoscale-decisions.sh, test-cargo-target-reaper.sh, test-claude-reaper.sh, test-fleet-brief.sh, test-fleet-fanout.sh, test-fleet-kill-switch.sh, test-fleet-spec.sh, test-fleet-starve-auto-action.sh, test-infra-258-reaper-partial-delivery.sh, test-stale-process-watchdog.sh, test-subagent-budget-kill.sh, test-supervision-trees.sh, test-worktree-reaper-safety.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_FLEET_DAEMON=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-fleet-daemon.sh smoke asserts the gate runs all 14 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+
