@@ -1,3 +1,367 @@
+## Issue #21 — 2026-07-20
+
+> Audit window: commits since 2026-07-13 (Issue #20). **39 non-cold-water commits** to `origin/main` (PRs #3160–#3224). Sandbox: fresh remote clone, chump binary build **failed** (timeout; proposed-only mode — SQLite verification of filed gaps skipped). Evidence from git log, `.chump/state.sql` (tracked versioned dump), `mcp__github__list_pull_requests`, and bash scripts. Bypass rate: **23/39 (59%) — worst ever for a high-volume cycle.** Open PRs: 1 (down from 9 in Issue #20). `wip/` branches: 390 (up from 324 in Issue #19). Critical new finding: **state.sql is 21 days stale** and missing entire domains (CREDIBLE, MISSION, RESILIENT, EFFECTIVE, ZERO-WASTE) — promoted as "canonical versioned dump" by ZERO-WASTE-020 two days ago. **Audit methodology self-correction: EVAL-094 and FLEET-053 were not in state.sql as open gaps; 10 cycles of "STILL_OPEN_INACTIVE" findings for EVAL-094 were based on the now-retired YAML store, not the canonical DB.** 4 follow-up gaps proposed (gap-reserve unavailable in sandbox — operator must file manually).
+
+---
+
+### Status of Prior Issues (Issue #20)
+
+- **FIXED**: CREDIBLE-128 — AGPL relicense completed. 22 straggler MIT crates flipped, INFRA-1506 closed, LICENSE_STRATEGY.md updated, follow-up gaps INFRA-3336 (crates.io republish) and INFRA-3337 (legal review) filed.
+  ```
+  git log origin/main --grep='CREDIBLE-128' --oneline | grep -v cold-water
+  3948c8b fix(CREDIBLE-128): complete AGPL relicense — 22 straggler MIT crates flipped, governance loop closed (#3192)
+  ```
+
+- **FIXED**: RESILIENT-169 (prior cycle: stranded PRs → sleep/wake recovery) — lid-close recovery shipped PR #3204.
+  ```
+  git log origin/main --grep='RESILIENT-169' --oneline | grep -v cold-water
+  5e21371 feat(RESILIENT-169): sleep/wake recovery — lid-close becomes a pause, not a multi-day outage (#3204)
+  ```
+
+- **FIXED**: RESILIENT-168 (wip-branch accumulation / integrator daemon dead) — daemon revived PR #3203.
+  ```
+  git log origin/main --grep='RESILIENT-168' --oneline | grep -v cold-water
+  6e95620 fix(RESILIENT-168): revive integrator + merge-queue daemons (#3203)
+  ```
+  NOTE: wip/ branch count is still growing (324→390) because the reaper creates branches but the cleanup code does not exist. Daemon health ≠ branch cleanup.
+
+- **FIXED**: Stranded PR graveyard. 9 open PRs → 1 open PR. This is the most significant improvement across all 21 issues. The RESILIENT-160 dyld_start root cause was subsumed by the "Revival & Truth" batch which cleaned the queue via INFRA-1909 (ghost-gap reaper phase 2), CREDIBLE-154, and RESILIENT-100.
+
+- **FIXED**: INFRA-1526 (ghost gap driving 3 duplicate PRs) — implemented via PRs #3173 and #3174 (post-rebase hunk-drop detector).
+  ```
+  git log origin/main --grep='INFRA-1526' --oneline | grep -v cold-water
+  01fa17c fix(INFRA-1526): post-rebase hunk-drop detector + pr-auto-rebase integration (#3174)
+  0af4665 fix(INFRA-1526): replace -X theirs with hunk-drop guard in wedge-recover STEP 2 (#3173)
+  ```
+
+- **METHODOLOGY CORRECTION**: EVAL-094 — **was NOT open for 10 cycles.** state.sql (canonical store) shows `status: done, closed_date: 2026-05-03, closed_pr: 909`. All prior cold-water findings tracking EVAL-094 as STILL_OPEN_INACTIVE relied on the YAML file store, which was not synchronized with state.db. The YAML store has been retired by ZERO-WASTE-020 (PR #3215, 2026-07-19). The prior finding stands on different grounds: EVAL-094's 5 acceptance criteria require a preregistration doc (`docs/eval/preregistered/EVAL-094.md`, NOT FOUND), results doc (`docs/eval/EVAL-094-results.md`, NOT FOUND), and RESEARCH_INTEGRITY.md entry (absent) — the gap appears closed without AC evidence. See Lens 4.
+  ```
+  # state.sql entry for EVAL-094:
+  # status: done, closed_date: '2026-05-03', closed_pr: 909
+  # docs/eval/preregistered/EVAL-094.md → NOT FOUND
+  # docs/eval/EVAL-094-results.md → NOT FOUND
+  ```
+
+- **METHODOLOGY CORRECTION**: FLEET-053 — **NOT IN state.sql.** Cannot verify prior "open/inactive" finding from canonical store. Insufficient evidence to carry forward.
+
+- **STILL_OPEN_INACTIVE (4 cycles)**: MISSION-043 — **NOT IN state.sql.** This gap was filed by cold-water in Issue #17 directly to YAML. YAML was never imported into state.db. YAML is now retired. MISSION-043 effectively does not exist in the canonical store. The mission failure it tracked (0 BEAST-MODE merges) is real; the gap is a ghost.
+  ```
+  git log origin/main --grep='MISSION-043' --oneline | grep -v cold-water
+  (empty — 4 cycles, 0 impl commits; gap not in canonical store)
+  ```
+
+- **UNCHANGED (methodology)**: MISSION-010/011/012/014 ghost gaps. docs/MISSION.md cites these as "canonical mission gap IDs" and "active mission pointer." None exist in state.sql:
+  ```
+  python3 -c "
+  c=open('.chump/state.sql').read()
+  for g in ['MISSION-010','MISSION-011','MISSION-012','MISSION-014']:
+      print(g, 'IN' if f'- id: {g}' in c else 'NOT IN', 'state.sql')
+  "
+  MISSION-010 NOT IN state.sql
+  MISSION-011 NOT IN state.sql
+  MISSION-012 NOT IN state.sql
+  MISSION-014 NOT IN state.sql
+  ```
+
+- **WORSE (different vector)**: Bypass rate — **23/39 (59%)** this cycle. Prior two cycles were 0/6 and 0/9. The return to high-volume shipping exposed that bot-merge is structurally broken: RESILIENT-100 (re-entrancy fix) addressed only 1 of ≥6 active failure classes. See Lens 1.
+
+- **BETTER**: P0 count trajectory unclear. state.sql shows only 6 P0s (all SWARM-*). But state.sql doesn't include CREDIBLE/MISSION/RESILIENT/EFFECTIVE domains where most P0s lived in the YAML era. The ROADMAP.md "Revival & Truth" cycle lists 4 P0s (RESILIENT-168, RESILIENT-169, EFFECTIVE-305, CREDIBLE-151) — all absent from state.sql. P0 count is unverifiable from state.sql alone; operator's state.db is the only source.
+
+- **STILL_OPEN (prior cold-water-filed, NOT IN state.sql)**: CREDIBLE-126, RESILIENT-167, RESILIENT-160, EFFECTIVE-293, CREDIBLE-127, META-064 — all filed to YAML in prior cycles, never imported to state.db, YAML now retired. These gaps effectively do not exist in the canonical store. The conditions they tracked may persist but cannot be verified against the gap registry.
+
+- **NO_GAP filed/proposed this cycle**: CREDIBLE-156 (state.sql staleness), CREDIBLE-157 (EVAL-094 premature closure), RESILIENT-170 (wip/ branch cleanup), META-128 (bot-merge bypass failure class census) — see Proposed Gaps below.
+
+---
+
+### The Looming Ghost
+
+**[P0/High] G1 — state.sql (canonical versioned gap dump) is 21 days stale and missing entire domains; ZERO-WASTE-020 promoted it as "the tracked versioned dump" on 2026-07-19 while it contained no CREDIBLE/MISSION/RESILIENT/EFFECTIVE entries and maxed out at INFRA-501, yet commit messages this cycle reference INFRA-3298**
+
+We are failing at the one thing ZERO-WASTE-020 promised: a canonical, git-tracked representation of the gap registry. PR #3215 retired 1625 YAML files (the only human-readable, approximately-current view) and designated `.chump/state.sql` as the tracked replacement. But state.sql:
+
+- Was last committed on **2026-06-29** (21 days before ZERO-WASTE-020 landed on 2026-07-19)
+- Contains **no gaps in CREDIBLE, MISSION, RESILIENT, EFFECTIVE, or ZERO-WASTE domains** — every gap the fleet's own docs reference for fleet health tracking is invisible
+- Tops out at **INFRA-501**; this cycle's commits reference INFRA-3298 (a delta of at least 2,797 unreflected gap IDs)
+- Lists the ROADMAP.md's 4 current P0s (RESILIENT-168, RESILIENT-169, EFFECTIVE-305, CREDIBLE-151) as **not present** — they don't appear in the dump at all
+
+```bash
+git log --format='%ai' -- .chump/state.sql | head -1
+2026-06-29 23:50:19 +0000   ← last committed; ZERO-WASTE-020 landed 2026-07-19
+
+python3 -c "
+import re
+c=open('.chump/state.sql').read()
+ids=re.findall(r'^- id: INFRA-(\d+)', c, re.M)
+print('INFRA max:', max(int(x) for x in ids))
+" 
+INFRA max: 501   ← current commits reference INFRA-3298
+
+# Domains absent from state.sql:
+for d in CREDIBLE MISSION RESILIENT EFFECTIVE; do
+  python3 -c "import re; c=open('.chump/state.sql').read(); print('$d:', len(re.findall(r'^- id: $d-', c, re.M)), 'gaps')"
+done
+CREDIBLE: 0 gaps
+MISSION: 0 gaps
+RESILIENT: 0 gaps
+EFFECTIVE: 0 gaps
+```
+
+The consequence: any remote agent, CI system, or cold-water audit that reads state.sql (as instructed by the docs/gaps/README.md tombstone) sees a 3-week-old registry with no tracking for fleet health, mission, or resilience gaps. The promise of a canonical versioned dump is currently void.
+
+- evidence 1: `git log --format='%ai' -- .chump/state.sql | head -1` → `2026-06-29` (21 days before ZERO-WASTE-020)
+- evidence 2: `python3 -c "import re; c=open('.chump/state.sql').read(); ids=re.findall(r'^- id: INFRA-(\d+)', c, re.M); print(max(int(x) for x in ids))"` → `501`; commits reference INFRA-3298
+- evidence 3: All 4 ROADMAP.md P0 gaps (RESILIENT-168, RESILIENT-169, EFFECTIVE-305, CREDIBLE-151) absent from state.sql
+
+*This finding is wrong if: state.sql is deliberately a partial export (e.g., only historical gaps before a cutoff date, with newer gaps tracked elsewhere). The docs/gaps/README.md tombstone states it is "the tracked, versioned dump of state.db" with no partial-export caveat.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — MISSION scoreboard ① = NO for 11th consecutive audit cycle; MISSION-010/011/012/014 ghost gaps; 39-commit cycle produced 0 BEAST-MODE-advancing commits**
+
+We are failing to advance the mission for the eleventh consecutive audit cycle. 39 commits landed this cycle — the highest volume in this audit's history. Zero advanced the external-repo merge pipeline.
+
+```bash
+git log origin/main --since="2026-07-13" --format='%s' | grep -iv "cold-water" | \
+  grep -iE "BEAST|MISSION-01[0-4]"
+(empty — 0 BEAST-advancing commits)
+
+# docs/MISSION.md scoreboard (current):
+grep "today:" docs/MISSION.md
+- **① THE BINARY (weekly):** Did Chump merge a zero-human-touch PR in
+  BEAST-MODE this week? — *today: **NO**.*
+
+# MISSION-010 (canonical mission gap) in state.sql:
+python3 -c "c=open('.chump/state.sql').read(); print('MISSION-010 IN state.sql:', '- id: MISSION-010' in c)"
+MISSION-010 IN state.sql: False
+```
+
+The ROADMAP.md's "Revival & Truth" cycle (2026-07-19 → 2026-08-16) schedules BEAST-MODE proof for Week 3 (2026-08-02). That is the right commitment. The failure this cycle is that 39 commits improved the substrate — `chumpd`, sleep/wake recovery, ChumpBar, off-laptop prep — while the scoreboard result is identical to the prior 10 cycles. Motion ≠ progress (docs/MISSION.md §Doctrine, first bullet).
+
+- evidence 1: `git log origin/main --since="2026-07-13" --format='%s' | grep -iE "BEAST|mission-01"` → empty
+- evidence 2: `grep "today:" docs/MISSION.md` → "today: **NO**" (11th consecutive NO)
+- evidence 3: MISSION-010/011/012/014 not in state.sql — the mission tracking infrastructure has no canonical backing
+
+*This finding is wrong if: BEAST-MODE PRs merged via a path not captured in repairman29/chump git log (e.g., direct push to repairman29/BEAST-MODE not visible from this sandbox). The mission-scoreboard.sh fetches BEAST-MODE directly; without gh CLI in sandbox the scoreboard cannot run, but the chump/main log has no BEAST-advancing commits.*
+
+---
+
+**[P2/Medium] O2 — INFRA-1909 (ghost-gap reaper phase 2) calls `chump gap ship --update-yaml` which ZERO-WASTE-020 (landed same day) made a documented no-op; the auto-reconciler's ship path silently skips the YAML step it depends on**
+
+We are failing to sequence same-day PRs that interact. INFRA-1909 (PR #3208, landed 2026-07-19T16:04Z) added auto-reconciliation via `chump gap ship --update-yaml`. ZERO-WASTE-020 (PR #3215, landed 2026-07-19T20:17Z) deprecated `--update-yaml` as a no-op. The reaper's ship path now silently succeeds without writing a YAML file — which was its stated mechanism for marking gaps done externally.
+
+```bash
+git show a69adab --format="%B" | grep "update-yaml"
+auto-runs `chump gap ship --closed-pr N --update-yaml` when one is found
+
+git show 9f82fdf --format="%B" | grep "update-yaml"
+`chump gap ship --update-yaml` (now a documented no-op)
+```
+
+The db update still fires; only the YAML step is skipped. Functional for current state but the commit body's rationale for the YAML call is now false.
+
+- evidence 1: INFRA-1909 commit (a69adab) body cites `--update-yaml` as the mechanism
+- evidence 2: ZERO-WASTE-020 commit (9f82fdf) body states `--update-yaml` is "now a documented no-op"
+- evidence 3: Both PRs landed 2026-07-19, INFRA-1909 4h before ZERO-WASTE-020
+
+*This finding is wrong if: the db-only path (without YAML write) was already the correct behavior before ZERO-WASTE-020 and the YAML flag was already a no-op for db updates. The ZERO-WASTE-020 body says "the per-file YAML write call sites" were removed from `gap ship`, implying the db write remains. If so, INFRA-1909's reaper ship is correct and the commit body's YAML mention is stale comment only.*
+
+---
+
+### The Complexity Trap
+
+**[P1/High] C1 — Bot-merge bypass rate: 23/39 (59%) — worst ever for a high-volume cycle; 6 distinct failure classes identified; RESILIENT-100 addresses only 1; 5 remain active**
+
+We are failing to merge our own work through our own tooling even as we fix that tooling. 23 of 39 non-cold-water commits carried `Bot-Merge-Bypass:` trailers this cycle. The failure classes per bypass trailer text:
+
+```
+Class A — chump binary wedge (INFRA-275): 6 occurrences
+  "chump binary re-wedged 3x", "chump binary wedged (re-wedges after unwedge)"
+  → NOT addressed by RESILIENT-100
+
+Class B — CREDIBLE-154 worktree-db enqueue bug: 5 occurrences  
+  "manual PR fallback per CREDIBLE-154 notes"
+  → NOT addressed by RESILIENT-100 (CREDIBLE-154 fix landed as PR #3206 but worktree-db phantom-ship may persist)
+
+Class C — claim-reconciliation 900s stall / NATS conflict: 2 occurrences
+  "hung 900s in claim-reconciliation", "stalled/hung 4 consecutive times at rebase/claim"
+  → NOT addressed by RESILIENT-100
+
+Class D — session-ID mismatch (INFRA-1970): 1 occurrence
+  "self-blocks on its own valid claim (INFRA-1970 guard doesn't recognize CHUMP_SESSION_ID at preflight)"
+  → NOT addressed by RESILIENT-100
+
+Class E — parent process silent death: 1 occurrence
+  "bot-merge.sh's parent process died silently"
+  → NOT addressed by RESILIENT-100
+
+Class F — hot-file self-deadlock (RESILIENT-100): addressed by PR #3222
+  "make hot_file_lock_acquire idempotent" — this PR itself shipped via Bot-Merge-Bypass (Class C stall)
+
+git log origin/main --since="2026-07-13" --grep="RESILIENT-100" --oneline | grep -v cold-water
+37ad6c7 fix(RESILIENT-100): bot-merge hot-file-lock re-entrant-safe + bounded wait (#3222)
+# This fix's own commit carried Bot-Merge-Bypass (Class C, 900s stall)
+```
+
+The fleet is using the manual fallback path as the DEFAULT ship path. When the bypass rate exceeds 50%, the "bypass" is not an escape hatch — it is the operational normal. This cycle's 39 commits are evidence of a functional fleet, but they were built on a shipping pipeline that bypassed its own safety gates 59% of the time.
+
+- evidence 1: `git log origin/main --since="2026-07-13" --format='COMMIT%n%b' | grep -c "Bot-Merge-Bypass:"` → 23
+- evidence 2: Bypass reason taxonomy: 6 classes identified, 5 without any fix in this cycle
+- evidence 3: RESILIENT-100's own commit shipped via Bot-Merge-Bypass (Class C) — the fix for bot-merge bypassed bot-merge
+
+*This finding is wrong if: the bypass count is inflated by counting the cold-water commit or automated commits. The grep excluded `cold-water`; the count of 23 is confirmed against the 39-commit total.*
+
+---
+
+**[P2/Medium] C2 — wip/ stash branches grew from 324 → 390 (+66) despite RESILIENT-168 fix; stale-worktree-reaper still has no cleanup code**
+
+We are failing to stop the wip/ branch accumulation. RESILIENT-168 was fixed (daemon revived, PR #3203). But the fix restored the daemon's ability to create wip/ stash branches on worktree reap — not the cleanup of those branches. The reaper creates them and never deletes them:
+
+```bash
+git ls-remote --heads origin | grep "refs/heads/wip/" | wc -l
+390   ← was 324 in Issue #19 (+66 in 2 cycles)
+
+git ls-remote --heads origin | wc -l
+473   ← total branches; 390/473 = 82% are wip/ stash branches
+
+grep -n "git push.*delete\|git push origin :.*wip\|prune.*wip" \
+  scripts/ops/stale-worktree-reaper.sh
+(empty — no cleanup code, same as Issue #19)
+```
+
+- evidence 1: `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` → 390 (was 324)
+- evidence 2: `grep "delete.*wip\|wip.*prune" scripts/ops/stale-worktree-reaper.sh` → empty
+- evidence 3: RESILIENT-168 fix commit (6e95620) body: no mention of branch cleanup
+
+*This finding is wrong if: a separate cron or daemon prunes wip/ branches outside stale-worktree-reaper.sh. No such script found in `scripts/` search.*
+
+---
+
+### The Reality Check
+
+**[P1/High] R1 — EVAL-094 closed in state.sql without AC evidence; preregistration doc, results doc, and RESEARCH_INTEGRITY.md entry all absent; 10 prior cycles of cold-water "STILL_OPEN_INACTIVE" were tracking a closed gap via a stale YAML store**
+
+We are failing at gap closure integrity on the most important open methodology question. EVAL-094's 5 acceptance criteria require concrete artifacts that do not exist:
+
+```bash
+ls docs/eval/preregistered/EVAL-094.md
+ls: cannot access 'docs/eval/preregistered/EVAL-094.md': No such file or directory
+# AC2: "Preregistration doc at docs/eval/preregistered/EVAL-094.md committed before data collection" — NOT MET
+
+ls docs/eval/EVAL-094-results.md
+ls: cannot access 'docs/eval/EVAL-094-results.md': No such file or directory  
+# AC4: "Wilson CI results committed to docs/eval/EVAL-094-results.md" — NOT MET
+
+grep "EVAL-094" docs/strategy/RESEARCH_INTEGRITY.md
+(no output)
+# AC5: "Validated findings table in RESEARCH_INTEGRITY.md updated with result" — NOT MET
+
+# state.sql shows:
+# status: done, closed_date: '2026-05-03', closed_pr: 909
+# opened_date: '2026-05-02' → closed 1 day after filing
+```
+
+There are two possible explanations: (a) PR #909 satisfied all 5 ACs and the artifact files were later deleted (no evidence of deletion found); or (b) EVAL-094 was closed prematurely without AC satisfaction. The absence of three required artifact files in the current repo favors (b). The underlying research question — whether model behavior differs under naturalized vs. evaluation framing — remains unanswered. This affects RESEARCH_INTEGRITY.md's standing claim about mechanism analysis.
+
+The self-correction this audit owes: the prior 10 cycles of "EVAL-094 STILL_OPEN_INACTIVE" were wrong — the gap was closed. The substance of the concern (missing experiment artifacts) is real but should have been tracked as a different gap.
+
+- evidence 1: `ls docs/eval/preregistered/EVAL-094.md` → not found; AC2 explicitly requires this file
+- evidence 2: `ls docs/eval/EVAL-094-results.md` → not found; AC4 explicitly requires this file
+- evidence 3: `grep "EVAL-094" docs/strategy/RESEARCH_INTEGRITY.md` → no output; AC5 requires update there
+
+*This finding is wrong if: PR #909's tree contained these files and they were deliberately removed in a subsequent PR. `git log -- docs/eval/preregistered/EVAL-094.md` would confirm. Sandbox git history starts after PR #3000-range; full history not available.*
+
+---
+
+**[P2/Medium] R2 — MISSION-010 scoreboard reads "today: NO" in docs/MISSION.md but the scripted scoreboard (scripts/dev/mission-scoreboard.sh) requires gh CLI and machine-local state.db — neither available in sandbox or CI; any remote agent reading MISSION.md gets a hardcoded stale value**
+
+We are failing to make the mission scoreboard machine-readable in a non-interactive context. docs/MISSION.md contains the literal string "today: **NO**" as a hardcoded value in the markdown. The actual scoreboard runs `scripts/dev/mission-scoreboard.sh` which requires gh CLI and live state.db. Any agent, CI check, or remote audit that reads MISSION.md gets the value from whenever the file was last hand-updated — not the current state.
+
+```bash
+grep "today:" docs/MISSION.md
+- **① THE BINARY (weekly):** Did Chump merge a zero-human-touch PR in
+  BEAST-MODE this week? — *today: **NO**.*
+
+# Last commit to docs/MISSION.md:
+git log --follow -1 --format='%ai %s' -- docs/MISSION.md
+# (whatever the last commit was — the value is static unless manually updated)
+```
+
+- evidence 1: `grep "today:" docs/MISSION.md` → hardcoded "NO" (static, not computed)
+- evidence 2: `scripts/dev/mission-scoreboard.sh` requires gh CLI (absent in sandbox and CI)
+- evidence 3: MISSION.md §Doctrine: "The conductor's job is the Scoreboard, not busy-ness" — but the scoreboard can only be read by an interactive session with gh CLI
+
+*This finding is wrong if: the scoreboard is updated automatically on each commit via a hook or workflow. No such hook found in `.github/workflows/` or `.git/hooks/`.*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] I1 — 39 commits; 0 advance the external-repo pipeline; ROADMAP Week 3 targets "BEAST-MODE proof" for 2026-08-02 — 13 days; no external-repo infrastructure exists to support it**
+
+We are failing to build toward Week 3 while building Week 1. The "Revival & Truth" ROADMAP is well-scoped: Week 1 revive substrate, Week 2 registry truth, Week 3 BEAST-MODE proof. Week 1 shipped well. Week 3 requires `chump onboard --schedule` (INFRA-2268) and per-org key vault (INFRA-2269). Both absent from state.sql. Neither has any commits in the past 30 days:
+
+```bash
+git log origin/main --grep="INFRA-2268\|INFRA-2269" --oneline
+(empty — 0 commits)
+
+# Week 3 deadline: 2026-08-02 (13 days from today)
+# BEAST-MODE merge requires: external-repo auth, overnight loop, PR-creation in foreign repo
+# None of this infrastructure shipped in the 39 commits this cycle
+```
+
+The GROUND_UP_2026-07-19.md design doc (shipped PR #3205) is architecturally correct. The risk is that the "one supervisor owns everything" architecture (chumpd v0 shipped PR #3211) is Week 1 work that creates Week 3 prerequisites — but chumpd has no external-repo dispatch path yet.
+
+External context: `chump onboard` already exists (referenced in CLAUDE.md §Bootstrap). The missing piece for BEAST-MODE proof is scheduled overnight runs and per-repo authentication, not the fundamental architecture. Week 3 is achievable if INFRA-2268/2269 are claimed immediately. If the Week 1 substrate work continues into Week 2 instead, the 2026-08-02 deadline slips and the scoreboard reads NO for cycle 12.
+
+*This finding is wrong if: INFRA-2268 and INFRA-2269 are in the operator's state.db as in-progress gaps with active claims. state.sql (the only registry available in sandbox) doesn't reflect this.*
+
+---
+
+**THE ONE BIG THING:** [P0] We are failing to maintain a versioned, canonical, remote-readable gap registry. ZERO-WASTE-020 (PR #3215, 2026-07-19) made the correct architectural decision — retire 1625 YAML files and rely on `.chump/state.sql` as the git-tracked versioned dump. But state.sql was last committed 21 days before ZERO-WASTE-020 landed. The dump doesn't contain CREDIBLE, MISSION, RESILIENT, or EFFECTIVE domains. Every gap the fleet uses to track its own health — and every gap filed by prior cold-water cycles — is absent from the canonical dump. Any agent, CI system, or audit that reads state.sql (as the tombstone now instructs) sees a 3-week-old registry with no fleet-health tracking. The prior 10 cold-water cycles' findings about EVAL-094 and FLEET-053 were all based on the YAML store, which turned out to be out of sync with state.db in the opposite direction (state.db had those gaps closed while YAML showed them open). The fix for this is a single `chump gap dump` run committed to state.sql — but that command requires the chump binary and a live state.db, neither of which is available in a remote sandbox. The state.sql staleness makes the gap registry effectively unauditable by any agent without direct machine access. Gap to file: CREDIBLE-156 (see Proposed Follow-up Gaps).
+
+---
+
+### Proposed Follow-up Gaps (gap-reserve unavailable in sandbox — file manually)
+
+`chump gap reserve` failed (chump binary build timed out). Operator must file these via `chump gap reserve --domain X --title '...'` on the local machine with state.db available. Use state.sql format for the YAML body; state.sql is no longer the filing path.
+
+**CREDIBLE-156** — `CREDIBLE: state.sql versioned dump 21 days stale after ZERO-WASTE-020; entire fleet-health domains (CREDIBLE/MISSION/RESILIENT/EFFECTIVE) absent from canonical git-tracked dump`
+- Priority: P0 | Effort: xs
+- AC: (1) `chump gap dump` run committed to state.sql contains CREDIBLE-* entries; (2) gap domains in state.sql match gap domains referenced in the most recent 50 commits to main; (3) a launchd cron or pre-push hook ensures state.sql is updated before every push that modifies state.db
+- Evidence: `git log --format='%ai' -- .chump/state.sql | head -1` → 2026-06-29; `python3 -c "c=open('.chump/state.sql').read(); print(c.count('- id: CREDIBLE-'))"` → 0; ROADMAP P0s absent from state.sql
+- Falsifying condition: state.sql has been updated to include current gap registry and the dump is current within 24h
+
+**CREDIBLE-157** — `CREDIBLE: EVAL-094 closed without AC evidence — preregistration doc, results doc, and RESEARCH_INTEGRITY.md entry all absent`
+- Priority: P1 | Effort: s
+- AC: (1) `docs/eval/preregistered/EVAL-094.md` exists and was committed before any data collection run; (2) `docs/eval/EVAL-094-results.md` committed with n≥100, cross-judge κ≥0.6, A/A baseline, mechanism analysis per RESEARCH_INTEGRITY.md; (3) `docs/strategy/RESEARCH_INTEGRITY.md` updated with result entry for EVAL-094
+- Evidence: `ls docs/eval/preregistered/EVAL-094.md` → not found; `ls docs/eval/EVAL-094-results.md` → not found; `grep "EVAL-094" docs/strategy/RESEARCH_INTEGRITY.md` → no output
+- Falsifying condition: `git log -- docs/eval/preregistered/EVAL-094.md` shows the file was committed in PR #909 and later removed via a separate PR; removal PR justifies the deletion
+
+**RESILIENT-170** — `RESILIENT: stale-worktree-reaper creates wip/ branches but never deletes them — 390 remote branches (82% of total) are abandoned stash branches; no cleanup code exists`
+- Priority: P2 | Effort: xs
+- AC: (1) `scripts/ops/stale-worktree-reaper.sh` contains cleanup logic that deletes wip/ branches older than N days; (2) `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` decreases after the reaper's next run; (3) a new ambient event kind `wip_branch_pruned` is emitted on each deletion
+- Evidence: `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` → 390; `grep -n "delete.*wip" scripts/ops/stale-worktree-reaper.sh` → empty
+- Falsifying condition: a separate script prunes wip/ branches — `grep -r "wip.*prune\|prune.*wip\|delete.*wip" scripts/` returns non-empty
+
+**META-128** — `META: bot-merge bypass rate 59% (23/39) this cycle — 5 of 6 failure classes have no fix in flight; the bypass path is the de facto ship path`
+- Priority: P1 | Effort: m
+- AC: (1) Formal census of bot-merge bypass failure classes filed in state.db with gap IDs for each; (2) bypass rate drops below 20% in the cycle following fixes for the top-3 classes; (3) ambient event `botmerge_class_census` emitted after census
+- Evidence: `git log origin/main --since='2026-07-13' --format='COMMIT%n%b' | grep -c "Bot-Merge-Bypass:"` → 23; RESILIENT-100 addressed 1 of 6 identified classes; 5 classes remain: binary-wedge, worktree-db-enqueue, claim-stall, session-ID-mismatch, parent-process-death
+- Falsifying condition: the 23 bypass count includes duplicates or automated commits not tied to real bot-merge attempts
+
+<details><summary>gap-reserve failure output</summary>
+
+```
+chump binary build: timeout after 300s (cargo build --release --bin chump)
+Container restarted mid-build; target/release/chump not present.
+Fallback shell script (scripts/coord/gap-reserve.sh) not invoked — requires CHUMP_ALLOW_MAIN_WORKTREE=1 and gh CLI for PR creation; gh CLI absent in sandbox.
+```
+</details>
+
+---
+
 ## Issue #20 — 2026-07-13
 
 > Audit window: commits since 2026-07-06 (Issue #19). **6 commits to `origin/main`** (PRs #3189–#3190 plus 4 direct commits). Sandbox: fresh remote clone, chump binary build still in progress (proposed-only mode; SQLite verification skipped). All evidence from git log, YAML file reads, bash scripts, and mcp__github__list_pull_requests. Bypass rate: 0/6 non-cold-water commits (0% — second consecutive 0% cycle). P0 count: 78 (budget: 5, unchanged). New ghost gap IDs: CP-018, CP-019 (no YAML, this cycle's commits). **2 follow-up gaps filed: CREDIBLE-128, RESILIENT-169** (YAML files written manually; chump binary unavailable for state.db import — operator must run `chump gap import` to sync).
