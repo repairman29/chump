@@ -144,6 +144,34 @@ else
     fail "Bonus: expected MISSION-KEY over P0-EFFECTIVE tiebreak, got '$picked'"
 fi
 
+# ── AC-MISSION-040: dependency-ordered ranking composes with mission rank ────
+# A: linked to ACTIVE_MISSION via outcome_id, no deps.
+# B: linked to a different outcome, has an open (unresolved) dependency.
+# Same priority/effort/age band — the worker picker must choose A because B's
+# dependency is not yet done (deps-first rule).
+cat > "$TMP/t5.json" <<'EOF'
+[
+  {"id":"OTHER-DEP","domain":"INFRA","priority":"P2","effort":"s","status":"open",
+   "created_at":900,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Unrelated open dependency gap.\"]",
+   "title":"Unrelated blocker","outcome_id":null,"notes":"","description":""},
+  {"id":"MISSION-A","domain":"INFRA","priority":"P1","effort":"s","status":"open",
+   "created_at":1000,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Mission-linked gap with no deps.\"]",
+   "title":"Mission-linked, no deps","outcome_id":"MISSION-010","notes":"","description":""},
+  {"id":"OTHER-B","domain":"INFRA","priority":"P1","effort":"s","status":"open",
+   "created_at":1001,"depends_on":"[\"OTHER-DEP\"]",
+   "acceptance_criteria":"[\"1. Different-outcome gap blocked by an open dep.\"]",
+   "title":"Different outcome, blocked","outcome_id":"EFFECTIVE-000","notes":"","description":""}
+]
+EOF
+picked="$(CHUMP_ACTIVE_MISSION=MISSION-010 FLEET_MODEL=opus run_worker_picker "$TMP/t5.json")"
+if [[ "$picked" == "MISSION-A" ]]; then
+    ok "AC-MISSION-040: mission-linked gap with no deps beats same-pri gap blocked by an open dep (worker picker)"
+else
+    fail "AC-MISSION-040: expected MISSION-A, got '$picked'"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

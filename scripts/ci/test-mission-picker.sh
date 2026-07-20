@@ -17,6 +17,9 @@
 #         (d) verbatim active_mission ID in title / notes / description
 #   AC4: CHUMP_ACTIVE_MISSION="" disables the boost (pure priority ordering)
 #   AC5: kind=picker_mission_boost emitted when boost influenced the pick
+#   AC-MISSION-040: dependency-ordered ranking composes with mission ranking —
+#        a mission-linked gap with no open deps is picked over a same-pri/effort
+#        gap linked to a different outcome that has an unresolved open dep.
 
 set -uo pipefail
 
@@ -296,6 +299,36 @@ if [[ "$picked" == "MISSION-XS" ]]; then
     ok "AC-MISSION-026c: xs-effort P0 MISSION gap is NOT skipped by sonnet worker (effort gate exception)"
 else
     fail "AC-MISSION-026c: expected MISSION-XS to be picked by sonnet worker, got '$picked' (xs P0 mission blocked by effort gate)"
+fi
+
+# ── Test 10 (MISSION-040): dependency-ordered ranking composes with mission rank ──
+# A: linked to ACTIVE_MISSION via outcome_id, no deps.
+# B: linked to a different outcome, has an open (unresolved) dependency.
+# Same priority/effort/age band — picker must choose A because B's dependency
+# is not yet done (deps-first rule), even though B would otherwise be a
+# same-priority substrate-vs-mission tiebreak candidate.
+cat > "$TMP/t10.json" <<'EOF'
+[
+  {"id":"OTHER-DEP","domain":"INFRA","priority":"P2","effort":"s","status":"open",
+   "created_at":900,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Unrelated open dependency gap.\"]",
+   "title":"Unrelated blocker","outcome_id":null,"notes":"","description":""},
+  {"id":"MISSION-A","domain":"INFRA","priority":"P1","effort":"s","status":"open",
+   "created_at":1000,"depends_on":"[]",
+   "acceptance_criteria":"[\"1. Mission-linked gap with no deps.\"]",
+   "title":"Mission-linked, no deps","outcome_id":"MISSION-010","notes":"","description":""},
+  {"id":"OTHER-B","domain":"INFRA","priority":"P1","effort":"s","status":"open",
+   "created_at":1001,"depends_on":"[\"OTHER-DEP\"]",
+   "acceptance_criteria":"[\"1. Different-outcome gap blocked by an open dep.\"]",
+   "title":"Different outcome, blocked","outcome_id":"EFFECTIVE-000","notes":"","description":""}
+]
+EOF
+: > "$TMP/.chump-locks/ambient.jsonl"
+picked="$(CHUMP_ACTIVE_MISSION=MISSION-010 run_picker "$TMP/t10.json")"
+if [[ "$picked" == "MISSION-A" ]]; then
+    ok "AC-MISSION-040: mission-linked gap with no deps beats same-pri gap blocked by an open dep"
+else
+    fail "AC-MISSION-040: expected MISSION-A, got '$picked'"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
