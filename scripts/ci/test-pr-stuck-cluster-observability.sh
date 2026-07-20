@@ -60,6 +60,7 @@ test_no_op_run_event() {
     echo "$ev" | grep -q '"stuck_pr_count":0' || fail "Test 1: expected stuck_pr_count=0, got: $ev"
     echo "$ev" | grep -q '"duration_ms":[0-9]\+' || fail "Test 1: expected numeric duration_ms, got: $ev"
     echo "$ev" | grep -q '"gap_reserve_calls":0' || fail "Test 1: expected gap_reserve_calls=0, got: $ev"
+    echo "$ev" | grep -q '"failure_class":"none"' || fail "Test 1: expected failure_class=none, got: $ev"
 
     pass "Test 1: no-stuck-events path emits run event with outcome=no_op"
 }
@@ -89,14 +90,36 @@ EOF
     echo "$ev" | grep -q '"outcome":"dry_run"' || fail "Test 2: expected outcome=dry_run, got: $ev"
     echo "$ev" | grep -q '"stuck_pr_count":3' || fail "Test 2: expected stuck_pr_count=3, got: $ev"
     echo "$ev" | grep -q '"gap_reserve_calls":0' || fail "Test 2: expected gap_reserve_calls=0 (no --apply), got: $ev"
+    echo "$ev" | grep -q '"failure_class":"none"' || fail "Test 2: expected failure_class=none, got: $ev"
 
     pass "Test 2: cluster-detected (dry-run) path emits run event with correct fields"
+}
+
+# Test 3: bad-args path emits run event with outcome=bad_args, failure_class=permanent.
+test_bad_args_run_event() {
+    local test_dir
+    test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+
+    touch "$test_dir/.chump-locks/ambient.jsonl"
+
+    LOCK_DIR="$test_dir/.chump-locks" bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" --bogus-flag >/dev/null 2>&1
+
+    local ev
+    ev="$(last_run_event "$test_dir/.chump-locks/ambient.jsonl")"
+    [ -n "$ev" ] || fail "Test 3: no pr_stuck_cluster_detector_run event emitted"
+
+    echo "$ev" | grep -q '"outcome":"bad_args"' || fail "Test 3: expected outcome=bad_args, got: $ev"
+    echo "$ev" | grep -q '"failure_class":"permanent"' || fail "Test 3: expected failure_class=permanent, got: $ev"
+
+    pass "Test 3: bad-args path emits run event with failure_class=permanent"
 }
 
 echo "[test-pr-stuck-cluster-observability] Starting tests..."
 
 test_no_op_run_event
 test_cluster_detected_run_event
+test_bad_args_run_event
 
 echo "[test-pr-stuck-cluster-observability] All tests passed!"
 exit 0
