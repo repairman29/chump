@@ -40,7 +40,7 @@ One ambient field (`kind=floor_temp`), one CLI command, one prompt-template chan
 both this signal and fleet-hold (item 2) and exports `CHUMP_FLOOR_TEMP` /
 `CHUMP_FLEET_HOLD` for the loop and any spawned subagent (contract documented
 in `docs/process/SUBAGENT_DISPATCH.md`). Verified by
-`scripts/ci/test-worker-prelude-floor-signals.sh`.
+`scripts/ci/test-worker-prelude-reads-floor.sh`.
 
 ### 2. Cluster-first autopilot (INFRA-1987)
 **Effort: s · Phase 1**
