@@ -1,9 +1,0 @@
-- id: INFRA-3259
-  domain: INFRA
-  title: "EFFECTIVE: m-effort"
-  status: open
-  priority: P1
-  effort: m
-  acceptance_criteria:
-    - verify it
-

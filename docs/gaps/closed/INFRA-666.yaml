@@ -1,9 +1,0 @@
-- id: INFRA-666
-  domain: INFRA
-  title: "ZERO-WASTE: workers run cargo clippy --workspace --fix BEFORE bot-merge — at scripts/dispatch/worker.sh layer, not as bot post-hoc. Today fleet workers shipped 8+ PRs with auto-fixable clippy lints because bot-merge --fast skipped clippy and the pr-triage-bot to fix afterward had 3 sequential bugs blocking it. Prevent at source: after claude exits cleanly, before bot-merge.sh runs, worker.sh runs cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged + cargo fmt + amends commit. Cost: ~2-3 min/cycle on warm cache. Benefit: PR ships clippy-clean by construction. AC: scripts/dispatch/worker.sh adds 'pre-ship-clippy-fix' phase between claude-success and bot-merge call; documented opt-out via CHUMP_SKIP_PRESHIP_CLIPPY=1; test scripts/ci/test-worker-preship-clippy.sh on fixture worker run."
-  status: done
-  priority: P0
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1337
-

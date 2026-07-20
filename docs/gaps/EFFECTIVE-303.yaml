@@ -1,9 +1,0 @@
-- id: EFFECTIVE-303
-  domain: EFFECTIVE
-  title: "EFFECTIVE: Wire RESILIENT-167.yaml into role curator-opus-target"
-  status: open
-  priority: P2
-  effort: xs
-  acceptance_criteria:
-    - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-167.yaml (shipped in commit 7dfefdbff5a9) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-167.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
-

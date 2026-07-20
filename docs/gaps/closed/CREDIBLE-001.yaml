@@ -1,9 +1,0 @@
-- id: CREDIBLE-001
-  domain: CREDIBLE
-  title: "CREDIBLE: pre-deploy smoke test for infrastructure changes — workflow YAML / lint config / coordination scripts get the same setup CI uses BEFORE shipping. Today INFRA-624 pr-triage-bot shipped with 3 sequential bugs (YAML pipe-scalar break, event-name filter, PR-lookup) all of which would have died at first commit if the smoke test had been hard-required (not soft-skipped on missing PyYAML). AC: scripts/ci/test-infra-changes-smoke.sh — for any commit touching .github/workflows/* OR scripts/coord/* OR scripts/dispatch/* OR Cargo.toml [lints], runs PyYAML parse, shellcheck, cargo clippy --workspace, exits non-zero on any failure; pre-commit hook invokes it; documented bypass for genuine edge cases."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1293
-

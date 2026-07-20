@@ -249,6 +249,7 @@ mod user_error_hints;
 pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
+mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
@@ -739,6 +740,7 @@ fn print_help() {
     );
     println!("  lesson-grade       lesson-learning quality score");
     println!("  ci-summary         last-N CI run outcomes");
+    println!("  verify --stage <s> unified policy gate: pre-commit|commit-msg|ci (CREDIBLE-155)");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
     println!(
         "  kpi report         KPI scorecard across all pillars
@@ -1252,6 +1254,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump verify` (CREDIBLE-155) — unified policy engine: typed rules
+    // over parsed diff semantics, one implementation for git hooks and CI.
+    // All logic lives in src/verify/ (INFRA-3287: keep this arm tiny).
+    if args.get(1).map(String::as_str) == Some("verify") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(verify::run(&sub_args));
     }
 
     // `chump self-rescue-loop [--execute] [--grace-secs N]` (EFFECTIVE-088) — the
@@ -8892,153 +8902,20 @@ async fn main() -> Result<()> {
                                 "[gap reserve] stack hint — ship with: scripts/coord/bot-merge.sh --gap {id} --stack-on {prev} --auto-merge"
                             );
                         }
-                        // INFRA-228 (post-INFRA-188 cutover, 2026-05-02):
-                        // also write the per-file YAML mirror at
-                        // docs/gaps/<ID>.yaml. Without this, every
-                        // `chump gap reserve` call required a follow-up
-                        // hand-edit (or CHUMP_ALLOW_UNREGISTERED_GAP=1
-                        // bypass) before bot-merge.sh's gap-preflight.sh
-                        // would let the work ship — observed mid-flight on
-                        // INFRA-227 itself. Best-effort: SQLite (state.db)
-                        // is canonical, so a write failure is logged but
-                        // doesn't fail the reserve.
-                        // INFRA-247: write to the linked worktree, not the main checkout.
-                        // INFRA-498: per-file YAML mirrors deleted from the
-                        // repo as redundant with .chump/state.sql. We keep
-                        // the dump_per_file_single call gated on directory
-                        // existence — if the operator re-creates docs/gaps/
-                        // (e.g. for offline browsing), the write resumes.
-                        // Default: directory doesn't exist, write is a no-op.
                         if why {
                             eprintln!(
                                 "reserved {id} — why: collision-free atomic ID pick from domain {domain} pool (INFRA-216 verification window)"
                             );
                         }
-                        // INFRA-1428: write YAML to MAIN repo's docs/gaps/, not the current
-                        // linked worktree. `repo_root` resolves via CHUMP_REPO / CHUMP_HOME /
-                        // git common-dir to the main checkout. Writing to `worktree_root` (the
-                        // previous behaviour) means the YAML is only visible in that one
-                        // linked worktree; other workers and origin/main never see it
-                        // (#2063 cascade pattern: 840 LOC of cockpit work + 2 rescue PRs lost).
-                        // Fallback to worktree_root only if main repo's docs/gaps/ doesn't
-                        // exist (detached operator, fresh clone, etc.).
-                        let main_gaps_dir = repo_root.join("docs").join("gaps");
-                        let wt_gaps_dir = worktree_root.join("docs").join("gaps");
-                        let (per_file_dir, yaml_git_root, yaml_target) = if main_gaps_dir.exists() {
-                            (main_gaps_dir, repo_root.clone(), "main_repo")
-                        } else if wt_gaps_dir.exists() {
-                            eprintln!(
-                                "[reserve] WARNING (INFRA-1428): main repo docs/gaps/ not found at {}; falling back to linked worktree. Set CHUMP_REPO/CHUMP_HOME to avoid this.",
-                                repo_root.display()
-                            );
-                            (wt_gaps_dir, worktree_root.clone(), "worktree_fallback")
-                        } else {
-                            // No-op path. state.db is canonical, state.sql is
-                            // the tracked mirror. Use 'chump gap show <ID>'
-                            // for per-gap human-readable rendering.
-                            if json_out {
-                                println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
-                            } else {
-                                println!("{}", id);
-                            }
-                            return Ok(());
-                        };
-                        match store.dump_per_file_single(&id, &per_file_dir) {
-                            Ok(true) => {
-                                let yaml_path = per_file_dir.join(format!("{id}.yaml"));
-                                eprintln!("wrote {}", yaml_path.display());
-                                write_yaml_op_marker(&worktree_root, "reserve");
-
-                                // INFRA-484: auto-stage the YAML mirror so it
-                                // rides along on the next commit. Pre-fix:
-                                // chump gap reserve wrote the YAML untracked,
-                                // so linked worktrees (fleet workers) created
-                                // from origin/main never saw it. The 2026-05-05
-                                // sonnet fleet wedge is the canonical incident:
-                                // workers got "(gap YAML not found)" prompts,
-                                // had to discover from state.db (also not in
-                                // linked worktree), got stuck, and burned 600s
-                                // × N cycles to 0-byte output.
-                                //
-                                // Staging makes the YAML part of the next PR's
-                                // diff so origin/main and all linked worktrees
-                                // pick it up.
-                                //
-                                // Best-effort: warns on failure but never
-                                // blocks the reserve. Bypass with
-                                // CHUMP_RESERVE_NO_AUTOSTAGE=1 for genuine
-                                // detached / read-only operator workflows.
-                                // INFRA-1354: emit warning when git add fails
-                                // so operators notice the staging gap instead
-                                // of discovering it via orphan-PR-closer.
-                                if std::env::var("CHUMP_RESERVE_NO_AUTOSTAGE").as_deref() != Ok("1")
-                                {
-                                    // INFRA-1428: git -C points at yaml_git_root (main repo or
-                                    // worktree fallback) so the YAML is staged in the right
-                                    // index, not the linked worktree's separate index.
-                                    match std::process::Command::new("git")
-                                        .arg("-C")
-                                        .arg(&yaml_git_root)
-                                        .arg("add")
-                                        .arg(&yaml_path)
-                                        .status()
-                                    {
-                                        Ok(s) if s.success() => {
-                                            if !quiet {
-                                                eprintln!(
-                                                    "[reserve] staged {}",
-                                                    yaml_path.display()
-                                                );
-                                            }
-                                        }
-                                        Ok(s) => {
-                                            eprintln!(
-                                                "[reserve] warning: git add {} exited {}; yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
-                                                yaml_path.display(), s
-                                            );
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[reserve] warning: git add {} failed ({e}); yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
-                                                yaml_path.display()
-                                            );
-                                        }
-                                    }
-                                }
-                                // INFRA-1428: emit gap_yaml_written so fleet-brief and the
-                                // orphan-PR-closer can see where the YAML landed (main_repo vs
-                                // worktree_fallback). Direct append; the EmitArgs path would
-                                // double-resolve repo_root here.
-                                let ts =
-                                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-                                let yaml_event = format!(
-                                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_yaml_written\",\"gap_id\":\"{id}\",\"path\":\"{}\",\"target\":\"{yaml_target}\"}}\n",
-                                    yaml_path.display()
-                                );
-                                let ambient_path =
-                                    worktree_root.join(".chump-locks").join("ambient.jsonl");
-                                if let Ok(mut f) = std::fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(&ambient_path)
-                                {
-                                    use std::io::Write;
-                                    let _ = f.write_all(yaml_event.as_bytes());
-                                }
-                            }
-                            Ok(false) => {} // no-op write
-                            Err(e) => {
-                                eprintln!("warning: dump-per-file write failed for {id}: {e}")
-                            }
-                        }
-                        // INFRA-2177: --json emits {id, yaml_path} for operator scripts.
+                        // ZERO-WASTE-020: YAML mirrors retired — state.db is
+                        // canonical, .chump/state.sql is the tracked dump.
+                        // `chump gap reserve` no longer writes a per-file
+                        // docs/gaps/<ID>.yaml mirror (the INFRA-228/1428
+                        // write-and-autostage path this replaced is gone).
+                        // Use `chump gap show <ID>` for human-readable
+                        // per-gap inspection.
                         if json_out {
-                            let yaml_path_str = per_file_dir
-                                .join(format!("{id}.yaml"))
-                                .display()
-                                .to_string()
-                                .replace('\\', "/");
-                            println!("{{\"id\":\"{id}\",\"yaml_path\":\"{yaml_path_str}\"}}");
+                            println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
                         } else {
                             println!("{}", id);
                         }
@@ -9375,85 +9252,16 @@ async fn main() -> Result<()> {
                             }
                         }
                         if update_yaml {
-                            // INFRA-148: warn if this binary predates the most recent
-                            // gap_store-affecting commit on the repo's HEAD before mutating
-                            // the YAML mirror. Pre-INFRA-147 binaries silently stripped the
-                            // meta: preamble (~20k-line corruption observed 2026-04-27); a
-                            // fresh build catches that and similar future serialization
-                            // changes.
-                            //
-                            // INFRA-825 (2026-05-11): upgraded from warn to hard-fail
-                            // for this single-gap path too — PR #1444 silently reverted
-                            // META-044 because a stale binary regenerated YAMLs from a
-                            // stale state.db. CHUMP_ALLOW_STALE_DESTRUCTIVE=1 is the
-                            // audited override; otherwise the operation refuses.
-                            match version::fail_if_stale_for_destructive(
-                                &repo_root,
-                                "gap ship --update-yaml",
-                            ) {
-                                version::DestructiveStalenessOutcome::Refuse => {
-                                    return Err(anyhow::anyhow!(
-                                        "refused: chump gap ship --update-yaml on stale binary (INFRA-825). \
-                                         Rebuild with `cargo install --path . --bin chump --force` \
-                                         or override with CHUMP_ALLOW_STALE_DESTRUCTIVE=1."
-                                    ));
-                                }
-                                version::DestructiveStalenessOutcome::Proceed
-                                | version::DestructiveStalenessOutcome::OverrideAccepted => {}
-                            }
-                            // INFRA-229 (post-INFRA-188 cutover, 2026-05-02):
-                            // write the per-file YAML mirror at
-                            // docs/gaps/<ID>.yaml instead of the deleted
-                            // monolithic docs/gaps.yaml. The pre-INFRA-188
-                            // path here would have silently re-created the
-                            // monolithic file on every successful ship,
-                            // resurrecting the very file INFRA-188 deleted.
-                            // Behavior change: callers that pass
-                            // `--update-yaml` now get a single per-file
-                            // write, not a full-registry regen.
-                            // INFRA-247: write to the linked worktree, not the main checkout.
-                            // INFRA-498: gated on directory existence — when
-                            // docs/gaps/ is absent (the post-deletion state),
-                            // this becomes a no-op. state.db is canonical.
-                            let per_file_dir = worktree_root.join("docs").join("gaps");
-                            if !per_file_dir.exists() {
-                                return Ok(());
-                            }
-                            match store.dump_per_file_single(&gap_id, &per_file_dir) {
-                                Ok(true) => {
-                                    let yaml_path = per_file_dir.join(format!("{gap_id}.yaml"));
-                                    eprintln!("wrote {}", yaml_path.display());
-                                    write_yaml_op_marker(&worktree_root, "ship");
-
-                                    // INFRA-486: same auto-stage pattern as
-                                    // INFRA-484 (gap reserve). The YAML mirror
-                                    // regenerated by ship --update-yaml needs
-                                    // to be staged so it rides along with the
-                                    // close commit. Pre-fix: bot-merge.sh's
-                                    // auto-close path manually `git add`s it
-                                    // separately, but the manual recovery
-                                    // path (operator runs ship by hand after
-                                    // bot-merge wedge) leaves it untracked.
-                                    //
-                                    // Bypass: CHUMP_SHIP_NO_AUTOSTAGE=1.
-                                    if std::env::var("CHUMP_SHIP_NO_AUTOSTAGE").as_deref()
-                                        != Ok("1")
-                                    {
-                                        let _ = std::process::Command::new("git")
-                                            .arg("-C")
-                                            .arg(&worktree_root)
-                                            .arg("add")
-                                            .arg(&yaml_path)
-                                            .stderr(std::process::Stdio::null())
-                                            .stdout(std::process::Stdio::null())
-                                            .status();
-                                    }
-                                }
-                                Ok(false) => {} // no-op write — content unchanged
-                                Err(e) => {
-                                    eprintln!("warning: dump-per-file write failed: {e}")
-                                }
-                            }
+                            // ZERO-WASTE-020: YAML mirrors retired — state.db
+                            // is canonical, .chump/state.sql is the tracked
+                            // dump. `--update-yaml` is now a documented no-op
+                            // kept for CLI compatibility with existing callers
+                            // (bot-merge.sh auto-close path) rather than a
+                            // hard error. Use `chump gap show <ID>` for
+                            // human-readable per-gap inspection.
+                            eprintln!(
+                                "chump gap ship --update-yaml: no-op (ZERO-WASTE-020 — YAML mirrors retired, state.db is canonical)"
+                            );
                         }
                         return Ok(());
                     }
@@ -9729,42 +9537,13 @@ async fn main() -> Result<()> {
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
                         println!("updated {}", gap_id);
-                        // INFRA-470: state.db is canonical; the per-file YAML
-                        // at docs/gaps/<ID>.yaml is a render of the DB. Without
-                        // an auto-regen here, `chump gap set --notes "X"`
-                        // mutates only state.db and leaves docs/gaps/<ID>.yaml
-                        // stale — the same drift class INFRA-460 fixed for
-                        // status propagation on import. Mirror the `ship`
-                        // path: write the per-file YAML and stamp the
-                        // .last-yaml-op freshness marker so the pre-commit
-                        // raw-YAML guard recognizes the regenerated file as
-                        // canonical.
+                        // ZERO-WASTE-020: YAML mirrors retired — state.db is
+                        // canonical, .chump/state.sql is the tracked dump.
+                        // `chump gap set` no longer regenerates a per-file
+                        // docs/gaps/<ID>.yaml mirror (the INFRA-470 auto-regen
+                        // this replaced is gone). Use `chump gap show <ID>`
+                        // for human-readable per-gap inspection.
                         let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
-                        // INFRA-498: gated on directory existence — no-op
-                        // when docs/gaps/ is absent (post-deletion state).
-                        let per_file_dir = worktree_root.join("docs").join("gaps");
-                        if !per_file_dir.exists() {
-                            return Ok(());
-                        }
-                        match store.dump_per_file_single(&gap_id, &per_file_dir) {
-                            Ok(true) => {
-                                eprintln!(
-                                    "wrote {}",
-                                    per_file_dir.join(format!("{gap_id}.yaml")).display()
-                                );
-                                write_yaml_op_marker(&worktree_root, "set");
-                            }
-                            Ok(false) => {
-                                // Content unchanged — still stamp the marker
-                                // so a follow-up `git add docs/gaps/<ID>.yaml`
-                                // within 5 min for an unrelated reason isn't
-                                // blocked by the raw-YAML guard.
-                                write_yaml_op_marker(&worktree_root, "set");
-                            }
-                            Err(e) => {
-                                eprintln!("warning: dump-per-file write failed: {e}")
-                            }
-                        }
                         return Ok(());
                     }
                     Err(e) => {
@@ -11871,15 +11650,10 @@ async fn main() -> Result<()> {
                                     },
                                 );
 
-                                let gaps_dir = worktree_root.join("docs/gaps");
-                                if gaps_dir.is_dir() {
-                                    let yaml_path = gaps_dir.join(format!("{}.yaml", new_id));
-                                    let _ = store.dump_per_file_single(&new_id, &gaps_dir);
-                                    let _ = std::process::Command::new("git")
-                                        .args(["add", &yaml_path.to_string_lossy()])
-                                        .current_dir(&worktree_root)
-                                        .status();
-                                }
+                                // ZERO-WASTE-020: YAML mirrors retired —
+                                // state.db is canonical. decompose no longer
+                                // writes a per-file docs/gaps/<ID>.yaml mirror
+                                // for filed sub-gaps.
 
                                 eprintln!("  filed {new_id}: {slice_title}");
                                 filed_ids.push(new_id);

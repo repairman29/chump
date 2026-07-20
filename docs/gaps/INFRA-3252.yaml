@@ -1,9 +1,0 @@
-- id: INFRA-3252
-  domain: INFRA
-  title: "EFFECTIVE: heavy-6"
-  status: open
-  priority: P1
-  effort: xs
-  acceptance_criteria:
-    - verify it works
-

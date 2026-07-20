@@ -1,9 +1,0 @@
-- id: META-298
-  domain: META
-  title: "META: commit the Outward Flywheel roadmap (MISSION-050) — docs/strategy + ROADMAP.md link"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - 1. docs/strategy/OUTWARD_FLYWHEEL_2026-06-22.md is committed to main. 2. docs/ROADMAP.md links it in the TL;DR anchor table. 3. The doc states the 3→2→1 (substrate→outward-loop→work-mix) flywheel + per-phase exit criteria + the gap map, matching MISSION-050's AC.
-

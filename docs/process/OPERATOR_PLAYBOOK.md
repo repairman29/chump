@@ -59,6 +59,10 @@ graph TD
 - **Ambient bus** (`.chump-locks/ambient.jsonl`): single event stream
   everyone publishes to + everyone tails for coordination.
 
+Each curator's primary pillar, secondary scope, and hard boundary is
+tabulated in [`CURATOR_PILLAR_MATRIX.md`](./CURATOR_PILLAR_MATRIX.md) — the
+canonical no-overlap reference (MISSION-003).
+
 ## 2. The 5-Track Program
 
 See `docs/process/THE_PATH.md` for the LIVE per-track ranked program.

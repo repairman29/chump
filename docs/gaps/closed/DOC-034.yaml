@@ -1,9 +1,0 @@
-- id: DOC-034
-  domain: DOC
-  title: 'EFFECTIVE: fleet env vars A-G/H-N/O-Z docs batch (DOC-028+029+030)'
-  status: done
-  priority: P2
-  effort: m
-  acceptance_criteria:
-  - "done — implementation shipped in PR #1396; ACs fulfilled at time of merge (INFRA-822 retrospective)"
-  closed_date: '2026-05-10'

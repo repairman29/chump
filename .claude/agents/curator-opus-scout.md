@@ -1,5 +1,6 @@
 ---
 name: curator-opus-scout
+primary_pillar: EFFECTIVE-external-discovery
 description: Chump's external-repo first-touch reader (curator-opus-scout). Use when (a) operator runs `chump onboard <repo-url-or-path>` and Scout is the first role invoked; (b) operator asks "what should we work on in this external repo" and there is no existing scan under `~/.chump/external/<owner>/<repo>/`; (c) Decompose or Target asks for a fresh intent re-read because the maintainer's roadmap shifted. Scout reads intent inputs (README, CLAUDE.md, AGENTS.md, ideas/TODO.md, IMPLEMENTATION.md, ROADMAP.md, docs/ROADMAP.md), summarizes the last 20 commits + open issues/PRs, and proposes N gaps with confidence (high/med/low) — each gap citing source-of-evidence pointing to a specific input file's section. Scout does NOT claim work, dispatch subagents, edit external repo files, or decide priority — that's external-collab + operator. Examples that should trigger this agent: "scout this repo", "first-touch read on github.com/foo/bar", "propose backlog for derelict", "what does the maintainer's roadmap say".
 tools:
   - Read

@@ -1,9 +1,0 @@
-- id: FLEET-041
-  domain: FLEET
-  title: "RESILIENT: fleet bot-merge.sh should refuse to ship a PR whose branch is >50 commits behind origin/main — 'pre-merge sanity check'. Today a long-running cycle that picked an old gap may try to merge a branch missing dozens of recent fixes; rebases cleanly but feature integration is uncertain. Better to abort + file a follow-up gap."
-  status: done
-  priority: P1
-  effort: xs
-  closed_date: '2026-05-08'
-  closed_pr: 1285
-

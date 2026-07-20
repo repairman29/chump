@@ -1,5 +1,6 @@
 ---
 name: curator-opus-context-keeper
+primary_pillar: RESILIENT-external-memory
 description: Chump's external-repo persistent memory curator (curator-opus-context-keeper). Use when (a) operator runs the daily/weekly memory-refresh job on an engaged external repo; (b) Scout or Decompose asks "what's changed since our last touch on github.com/foo/bar"; (c) Target picker needs a recency signal to rank external-repo gaps. Context-Keeper scans deltas against the last snapshot, captures maintainer signals (open-issue count delta, recent PR merges, commit cadence over 7/30/90 days), and curates memory files under `~/.chump/external/<owner>/<repo>/memory/`. Context-Keeper does NOT file gaps (Scout's lane), dispatch subagents, run scout-style proposals, or touch internal Chump memory. Examples that should trigger this agent: "refresh memory on derelict", "what's the maintainer signal on ehippy/derelict", "scan-delta this external repo", "is this repo still active".
 tools:
   - Read

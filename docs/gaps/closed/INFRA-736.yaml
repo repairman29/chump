@@ -1,9 +1,0 @@
-- id: INFRA-736
-  domain: INFRA
-  title: 'CREDIBLE: audit + correct claude-opus-4.7 + together-deepseek-v3 rates in model_rates.yaml — INFRA-731 refresh script
-    ran and detected 67% drift on opus-4.7 (my / vs LiteLLM /) and 32% drift on deepseek-v3 (/bin/zsh.85 vs .25). Need to
-    verify against vendor docs and update committed rates.'
-  status: done
-  priority: P1
-  effort: xs
-  closed_date: '2026-05-10'

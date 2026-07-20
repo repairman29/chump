@@ -1,9 +1,0 @@
-- id: INFRA-1558
-  domain: INFRA
-  title: "EFFECTIVE: brain graph visualization renderer — Cytoscape.js force-directed layout over /api/brain/graph.json"
-  status: open
-  priority: P2
-  effort: s
-  acceptance_criteria:
-    - "[\"Backlog-promoted 2026-05-16: /api/brain/graph.json exists but has no renderer. Brain graph is the dev-debugging tool that shows the relationship mesh (gap↔PR↔agent↔lesson). Today operators read it as raw JSON.\",\"Library choice: Cytoscape.js (NOT D3, NOT vis.js). Reasons: (a) graph-first not general-purpose viz, (b) handles 10k+ nodes performant, (c) supports incremental layout for live updates, (d) MIT license, (e) active maintenance unlike vis.js.\",\"UI lives at /brain in the PWA (web/v2/brain.js). Force-directed layout (cose-bilkent or fcose extension) default. Filters by node-type: gap, PR, agent, lesson, ambient_event. Click node → focus subgraph + right-pane shows full record from /api/brain/node/{id}.\",\"Edges color-coded by relation kind: blocks, references, ships, applies_lesson, claims.\",\"Live updates: SSE stream from /api/brain/graph/stream pushes node/edge add/remove events; cytoscape add/remove called incrementally. No full reload on every change.\",\"SCOPE GUARD: 2D only. No 3D, no animations beyond default Cytoscape layout. Keep < 800 LOC of frontend code.\",\"Smoke test scripts/ci/test-brain-graph-renderer.sh: spin up dev server, hit /brain, assert HTTP 200 + DOM contains #cy-container + Cytoscape script loaded.\",\"DEFER until after Marcus M-B canonical demo (INFRA-1483 + INFRA-1484) lands. Brain graph is dev-tool, not customer-facing — Marcus does not need this in v1.\",\"Out of scope: brain editor (drag-and-drop reshape), brain-as-source-of-truth (still derived view), historical replay.\"]"
-

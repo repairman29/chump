@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# test-ghost-gap-reaper.sh — integration test for INFRA-556 ghost-gap rollback.
+# test-ghost-gap-reaper.sh — integration test for the ghost-gap reaper's two
+# phases: INFRA-556 (done-but-bounced-PR rollback) and INFRA-1909
+# (open-but-already-merged reconciliation).
 # INFRA-1313: Also tests that closed_at (not updated_at) is used for lookback,
 # and that meta-tracking gaps with [CI-RED], [ORPHAN], etc. titles are excluded.
 #
-# Fixtures:
+# Phase 1 fixtures:
 #   gap_A: status=done, closed_pr=101 (PR 101 closed without merge) → must roll back to open
 #   gap_B: status=done, closed_pr=102 (PR 102 merged)               → must stay done
 #   gap_C: status=done, closed_pr=103 (PR 103 still open)           → must stay done (not yet decided)
@@ -11,6 +13,10 @@
 #   gap_E: status=done, closed_pr=104, title="PR #104 stuck [CI-RED]" → must stay done (meta-tracking)
 #   gap_F: status=done, closed_pr=105, title="ORPHAN-fix" → must stay done (meta-tracking)
 #   gap_old: status=done, closed_pr=106, updated_at recent (commented on), closed_at old → must stay done (uses closed_at)
+#
+# Phase 2 fixtures (INFRA-1909):
+#   gap_G: status=open, no merged PR found            → must stay open
+#   gap_H: status=open, merged PR #201 found via search → must be shipped (status=done)
 #
 # Stubs out chump + gh with minimal shims; never touches real state.db or GitHub.
 set -euo pipefail
@@ -20,6 +26,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REAPER="$REPO_ROOT/scripts/coord/ghost-gap-reaper.sh"
 
 [[ -x "$REAPER" ]] || { echo "FAIL: reaper not found or not executable: $REAPER"; exit 1; }
+
+# INFRA-1909: dates must be computed relative to "now" (not hardcoded) so the
+# 7-day lookback window in phase 1 doesn't drift stale as calendar time passes.
+RECENT_DATE=$(python3 -c "import datetime; print((datetime.datetime.utcnow()-datetime.timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+OLD_DATE=$(python3 -c "import datetime; print((datetime.datetime.utcnow()-datetime.timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+NOW_DATE=$(python3 -c "import datetime; print(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'))")
 
 TMPDIR_TEST=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
@@ -66,35 +78,55 @@ JSON
   *"set gap_old --status open"*)
     touch "$TMPDIR_TEST/rolled_back/gap_old"
     ;;
+  *"list --status open --json"*)
+    cat <<'JSON'
+[
+  {"id":"gap_G","status":"open","closed_pr":"","title":"gap G"},
+  {"id":"gap_H","status":"open","closed_pr":"","title":"gap H"}
+]
+JSON
+    ;;
+  *"ship gap_H --closed-pr 201 --update-yaml"*)
+    touch "$TMPDIR_TEST/shipped/gap_H"
+    ;;
   *)
     ;;
 esac
 exit 0
 STUB
 chmod +x "$STUB_CHUMP"
+mkdir -p "$TMPDIR_TEST/shipped"
 
 # ---------- stub: gh ----------------------------------------------------------
 # Accepts: pr view <N> --json state,mergedAt
 STUB_GH="$TMPDIR_TEST/bin/gh"
-cat > "$STUB_GH" <<'STUB'
+cat > "$STUB_GH" <<STUB
 #!/usr/bin/env bash
 # gh shim: pr view <N> --json state,mergedAt
 # Also handles the REST pull API response format used by ghost-gap-reaper
-case "$*" in
+case "\$*" in
   *"repos"*"pulls?state=closed"*)
     # REST API response for closed PRs (103 is still open, so not in this list)
-    cat <<'JSON'
+    cat <<JSON
 [
-  {"number":101,"state":"closed","merged_at":null,"closed_at":"2026-05-10T10:00:00Z","updated_at":"2026-05-10T10:00:00Z"},
-  {"number":102,"state":"closed","merged_at":"2026-05-06T10:00:00Z","closed_at":"2026-05-06T10:00:00Z","updated_at":"2026-05-06T10:00:00Z"},
-  {"number":104,"state":"closed","merged_at":null,"closed_at":"2026-05-10T10:00:00Z","updated_at":"2026-05-10T10:00:00Z"},
-  {"number":105,"state":"closed","merged_at":null,"closed_at":"2026-05-10T10:00:00Z","updated_at":"2026-05-10T10:00:00Z"},
-  {"number":106,"state":"closed","merged_at":null,"closed_at":"2026-05-08T10:00:00Z","updated_at":"2026-05-14T23:59:00Z"}
+  {"number":101,"state":"closed","merged_at":null,"closed_at":"$RECENT_DATE","updated_at":"$RECENT_DATE"},
+  {"number":102,"state":"closed","merged_at":"$RECENT_DATE","closed_at":"$RECENT_DATE","updated_at":"$RECENT_DATE"},
+  {"number":104,"state":"closed","merged_at":null,"closed_at":"$RECENT_DATE","updated_at":"$RECENT_DATE"},
+  {"number":105,"state":"closed","merged_at":null,"closed_at":"$RECENT_DATE","updated_at":"$RECENT_DATE"},
+  {"number":106,"state":"closed","merged_at":null,"closed_at":"$OLD_DATE","updated_at":"$NOW_DATE"}
 ]
 JSON
     ;;
+  *"pr list --search gap_H --state merged"*)
+    cat <<JSON
+[{"number":201,"mergedAt":"$RECENT_DATE"}]
+JSON
+    ;;
+  *"pr list --search gap_G --state merged"*)
+    echo '[]'
+    ;;
   *)
-    echo '{"state":"MERGED","mergedAt":"2026-05-06T00:00:00Z"}'
+    echo '{"state":"MERGED","mergedAt":"$RECENT_DATE"}'
     ;;
 esac
 exit 0
@@ -177,5 +209,23 @@ echo "$OUT" | grep -q "gap_A" \
 
 echo "$OUT" | grep -q "rolled back 1 ghost gap(s)" \
     || { echo "FAIL: summary line 'rolled back 1 ghost gap(s)' not found in output"; FAIL=1; }
+
+# Phase 2 (INFRA-1909) assertions
+if [[ -f "$TMPDIR_TEST/shipped/gap_H" ]]; then
+    echo "PASS: gap_H (merged PR #201 found while open) was shipped"
+else
+    echo "FAIL: gap_H should have been shipped but was not"
+    FAIL=1
+fi
+
+if [[ ! -f "$TMPDIR_TEST/shipped/gap_G" ]]; then
+    echo "PASS: gap_G (no merged PR found) was NOT shipped"
+else
+    echo "FAIL: gap_G should NOT have been shipped (no merged PR)"
+    FAIL=1
+fi
+
+echo "$OUT" | grep -q "reaped 1 ghost-open gap(s)" \
+    || { echo "FAIL: summary line 'reaped 1 ghost-open gap(s)' not found in output"; FAIL=1; }
 
 exit $FAIL

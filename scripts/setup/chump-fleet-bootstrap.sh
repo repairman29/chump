@@ -72,6 +72,7 @@ REQUIRED_DAEMONS=(
     "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
     "com.chump.fleet-pool-keeper|scripts/setup/install-fleet-pool-keeper.sh"
+    "com.chump.chumpd|scripts/setup/install-chumpd.sh"
 )
 UID_VAL="$(id -u)"
 

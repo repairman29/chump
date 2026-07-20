@@ -888,7 +888,8 @@ pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
     format!(
         "{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps/<ID>.yaml for full acceptance criteria. \
+Read the gap entry via `chump gap show {gap}` for full acceptance criteria \
+(state.db is canonical, ZERO-WASTE-020 retired the docs/gaps/<ID>.yaml mirror). \
 Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
 After ship, exit. Reply ONLY with the PR number.{epilogue}",
         rules = rules_block,
