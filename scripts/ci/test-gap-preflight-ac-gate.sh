@@ -71,7 +71,13 @@ echo "=== test-gap-preflight-ac-gate.sh (INFRA-1259) ==="
 # chump binary uses the per-checkout state.db (fixes sqlite-lock under
 # parallel CI). But this test creates its OWN $TMP/repo fixture and needs
 # the binary to operate against it — unset the workflow env override.
-unset CHUMP_REPO CHUMP_LOCK_DIR
+# INFRA-2641: repo_root() (src/repo_path.rs) falls back to CHUMP_HOME when
+# CHUMP_REPO is unset. A fleet daemon environment (main-preflight-watchdog,
+# fleet workers) commonly exports CHUMP_HOME pointing at the main checkout,
+# so leaving it set here made every "$BINARY" call below resolve against the
+# real state.db instead of this test's isolated $TMP fixture — "gap
+# INFRA-1000 not found" under set -e, killing the script after test 1.
+unset CHUMP_REPO CHUMP_LOCK_DIR CHUMP_HOME
 
 REPO="$TMP/repo"
 mkdir -p "$REPO/.chump"
