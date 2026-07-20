@@ -125,6 +125,22 @@ fn heartbeat_age(agent_id: usize) -> Option<u64> {
 
 fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     fs::create_dir_all(&cfg.log_dir)?;
+    // Reset the heartbeat clock to spawn time: a stale file left by a previous
+    // fleet incarnation must not age-out the NEWBORN child (first live cutover
+    // wedge-killed both workers every tick off 900s-old files).
+    let hb = format!(
+        "{}/chump-fleet-worker-{}.heartbeat",
+        heartbeat_dir(),
+        agent_id
+    );
+    let _ = fs::write(
+        &hb,
+        format!(
+            "{}
+",
+            now_epoch()
+        ),
+    );
     let log_path = cfg.log_dir.join(format!("agent-{}.log", agent_id));
     let log = fs::OpenOptions::new()
         .create(true)
