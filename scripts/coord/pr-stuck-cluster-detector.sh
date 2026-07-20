@@ -16,6 +16,33 @@
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
 #
 # Cron-friendly. Emits kind=pr_stuck_cluster ambient events.
+#
+# Observability (INFRA-2754 / INFRA-2877): every invocation, on every exit
+# path, emits kind=pr_stuck_cluster_detector_run with an `outcome` field.
+# Possible outcomes:
+#   no_op                 no stuck events found, or count below threshold
+#   dry_run               cluster detected but --apply not passed (no mutation)
+#   cluster_filed         cluster detected, gap successfully reserved
+#   gap_id_extract_failed `chump gap reserve` exited 0 but no INFRA-NNNN
+#                         parseable from its output
+#   gap_reserve_failed    `chump gap reserve` itself exited non-zero
+#   bad_args              unrecognized CLI flag
+#   help                  -h/--help invoked
+#   error                 trap default; any exit not covered above
+#
+# Failure-class taxonomy:
+#   gap_id_extract_failed and gap_reserve_failed are TRANSIENT — safe to
+#   retry on the next scheduled run (e.g. gap-reserve endpoint hiccup,
+#   registry contention). `error` (the trap default, i.e. no outcome was
+#   set before exit) is PERMANENT — treat as a bug in this script until
+#   fixed; retrying won't self-heal it.
+#
+# Cost tracking: the run event's `gap_reserve_calls` field counts how many
+# times this invocation called `chump gap reserve` (0 or 1 today; the field
+# exists so a future multi-cluster-per-run change stays measurable). Report
+# operator-facing spend with:
+#   jq -s '[.[] | select(.kind=="pr_stuck_cluster_detector_run")] | map(.gap_reserve_calls) | add' \
+#       .chump-locks/ambient.jsonl
 
 set -uo pipefail
 
