@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # test-gap-ship-integration.sh — CREDIBLE-060
 #
-# Verifies that `chump gap ship` correctly flips status, creates YAML mirror,
-# and emits ambient event.
+# Verifies that `chump gap ship` correctly flips status and emits ambient
+# event.
 #
 # AC:
 #   1. Status flips from open to done in state.db
-#   2. YAML file written to docs/gaps/<ID>.yaml with closed_pr
+#   2. (ZERO-WASTE-020, 2026-07-19: retired — `--update-yaml` no longer
+#      writes docs/gaps/<ID>.yaml; state.db is canonical. Assertions below
+#      read state via `chump gap show` instead of the deleted YAML file.)
 #   3. .chump-plans/<ID>/ directory created with SHIPPED_AT marker
 #   4. kind=gap_shipped ambient event emitted
 #   5. kind=chump_plans_gc not yet emitted (within 7d grace period)
@@ -36,10 +38,9 @@ TEST_GAP=$($CHUMP_BIN gap reserve --domain CREDIBLE --title "CREDIBLE: test inte
 [ -n "$TEST_GAP" ] || fail "Cannot reserve test gap"
 pass "Created test gap: $TEST_GAP"
 
-# ─ Verify gap is open ──────────────────────────────────────────────────────────
-yaml_file="$REPO_ROOT/docs/gaps/${TEST_GAP}.yaml"
-[ -f "$yaml_file" ] || fail "YAML file not created: $yaml_file"
-status_before=$(grep '^  status: ' "$yaml_file" | awk '{print $2}' || echo "error")
+# ─ Verify gap is open (ZERO-WASTE-020: read state.db via `gap show`, not
+#   the retired docs/gaps/<ID>.yaml mirror) ──────────────────────────────────
+status_before=$($CHUMP_BIN gap show "$TEST_GAP" | grep '^  status: ' | awk '{print $2}' || echo "error")
 [ "$status_before" = "open" ] || fail "Gap not open before ship: $status_before"
 pass "Gap is open before ship"
 
@@ -55,15 +56,20 @@ $CHUMP_BIN gap ship "$TEST_GAP" --update-yaml --closed-pr 9999 \
   || fail "gap ship failed"
 pass "gap ship succeeded"
 
-# ─ Assert status flipped to done ───────────────────────────────────────────────
-status_after=$(grep '^  status: ' "$yaml_file" | awk '{print $2}' || echo "error")
+# ─ Assert status flipped to done (state.db, via `gap show`) ───────────────────
+status_after=$($CHUMP_BIN gap show "$TEST_GAP" | grep '^  status: ' | awk '{print $2}' || echo "error")
 [ "$status_after" = "done" ] || fail "Status not done after ship: $status_after"
-pass "Status flipped to done in YAML"
+pass "Status flipped to done in state.db"
 
-# ─ Assert closed_pr in YAML ────────────────────────────────────────────────────
-grep -q "^  closed_pr: 9999" "$yaml_file" || \
-  fail "closed_pr: 9999 not in YAML"
-pass "YAML updated with closed_pr"
+# ─ Assert closed_pr in state.db ────────────────────────────────────────────────
+# NOTE: capture to a variable before grepping — `cmd | grep -q` races: grep -q
+# exits the instant it finds a match, which can SIGPIPE the still-writing
+# producer and make `pipefail` report the pipeline as failed even though the
+# match was found (observed intermittently, ~1-in-5, while authoring this).
+show_out=$($CHUMP_BIN gap show "$TEST_GAP")
+echo "$show_out" | grep -q "^  closed_pr: 9999" || \
+  fail "closed_pr: 9999 not in state.db"
+pass "state.db updated with closed_pr"
 
 # ─ Assert .chump-plans marker created (optional in current implementation) ──────
 if [ -d "$REPO_ROOT/.chump-plans/$TEST_GAP" ]; then
@@ -92,8 +98,8 @@ output=$(CHUMP_ALLOW_STALE_DESTRUCTIVE=1 CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 $CHUM
 if echo "$output" | grep -q "already done"; then
   pass "gap ship is idempotent (second run reports already done)"
 else
-  # In CI, just verify the gap is still done
-  status_final=$(grep '^  status: ' "$yaml_file" | awk '{print $2}' || echo "error")
+  # In CI, just verify the gap is still done (state.db, via `gap show`)
+  status_final=$($CHUMP_BIN gap show "$TEST_GAP" | grep '^  status: ' | awk '{print $2}' || echo "error")
   [ "$status_final" = "done" ] || fail "Gap status changed on idempotent run"
   pass "gap ship is idempotent (status unchanged on second run)"
 fi

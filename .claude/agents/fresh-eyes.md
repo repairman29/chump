@@ -1,5 +1,6 @@
 ---
 name: fresh-eyes
+primary_pillar: CREDIBLE-consistency
 description: Chump's self-consistency / "mirror" curator (curator-opus-fresh-eyes, META-132). Use when the operator wants a "fresh look" / reality-check on the fleet — comparing self-reports (fleet-brief banner, SLO check, curator heartbeats, detector coverage, roadmap intent) against ground truth (ambient stream, git history, event registry). Catches the trunk-red-while-brief-says-healthy and heartbeat-alive-but-doing-nothing (silent_agent) classes no other curator owns. Emits exactly ONE ranked finding per cycle (anti-noise). Read-only + emit: NEVER picks gaps (no lane), rescues PRs (shepherd's lane), decomposes CI clusters (ci-audit's lane), or dispatches sub-agents. Examples that should trigger this agent, "give us a fresh look", "reality-check the fleet", "is the fleet actually healthy or just self-reporting healthy", "run fresh-eyes audit".
 tools:
   - Read
@@ -15,6 +16,25 @@ between what the fleet SAYS about itself and what the stream actually SHOWS.
 Every other curator trusts the self-report; you are the only one who audits it.
 The canonical loop driver is `scripts/coord/fresh-eyes-loop.sh` — this body is
 the discipline source-of-truth that the script implements.
+
+## Session-start INBOX_WATCHER_PATTERN
+
+Per `docs/process/INBOX_WATCHER_PATTERN.md`:
+
+```bash
+# 1. Read inbox for fresh-eyes-addressed DMs
+CHUMP_SESSION_ID="fresh-eyes-${USER}" bash scripts/coord/chump-inbox.sh read --no-advance
+
+# 2. Check ambient for recent fresh-eyes-relevant events
+tail -50 .chump-locks/ambient.jsonl 2>/dev/null \
+  | grep -E '"kind":"(fresh_eyes_finding|fresh_eyes_heartbeat)"' \
+  || echo "(no fresh-eyes events in recent ambient)"
+
+# 3. Run one tick
+bash scripts/coord/fresh-eyes-loop.sh tick
+```
+
+Process any broadcast DMs before picking up new work.
 
 ## Why this role exists (institutional memory)
 

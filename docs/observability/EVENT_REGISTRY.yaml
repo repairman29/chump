@@ -5232,17 +5232,6 @@ events:
     fields_required: [ts, kind, from_bot, to_bot, output_path, run_id]
 
 
-  - kind: gap_yaml_written
-    effect_metric: self
-    emitter: src/main.rs (chump gap reserve handler — INFRA-1428)
-    trigger: >
-      `chump gap reserve` successfully wrote a docs/gaps/<id>.yaml mirror.
-      Fields capture where it landed (main repo vs fallback worktree) so
-      fleet-brief and the orphan-PR-closer can distinguish "yaml visible
-      to all workers" from "yaml stuck in one linked worktree" (#2063
-      cascade pattern).
-    consumers: [fleet-brief, orphan-pr-closer, ops-audit]
-    fields_required: [ts, kind, gap_id, path, target]
   # ── INFRA-1698 / INFRA-1702: pipeline-abort terminus event ──
   - kind: content_bot_pipeline_aborted
     effect_metric: self
@@ -8306,3 +8295,14 @@ events:
       escalated=true instead of thrashing (persistent-crash class)
     consumers: [fleet-brief, audit-log, operator-recall]
     fields_required: [ts, kind, agent, respawns_last_hour, escalated, note]
+  - kind: verify_bypassed
+    effect_metric: self
+    emitter: src/verify/mod.rs emit_verify_bypassed (CREDIBLE-155)
+    trigger: a `Verify-Bypass: <rule-id>: <reason>` commit trailer flipped a
+      failing `chump verify` rule to bypassed at a binding stage (commit-msg
+      or ci). One line per bypassed rule — this is the single audited bypass
+      surface that replaces the per-gate env-var sprawl for ported rules
+      (docs-delta, test-lag, no-new-bypass-env-vars).
+    consumers: [fleet-brief, audit-log, ops-audit]
+    fields_required: [ts, kind, session, rule, reason, stage]
+    fields_optional: [gap_id, worktree]

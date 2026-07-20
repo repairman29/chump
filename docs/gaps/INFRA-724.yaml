@@ -1,9 +1,0 @@
-- id: INFRA-724
-  domain: INFRA
-  title: "ZERO-WASTE: split main.rs phase 3 — extract fleet/ module group (fleet, fleet_capability, fleet_db, fleet_health, fleet_status, fleet_tool, fleet_velocity, cluster_mesh)"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n  \"src/fleet/ directory created with one file per module: fleet.rs, fleet_capability.rs, fleet_db.rs, fleet_health.rs, fleet_status.rs, fleet_tool.rs, fleet_velocity.rs, cluster_mesh.rs\",\n  \"All moved modules compile with no warnings (cargo build --quiet exits 0)\",\n  \"main.rs no longer contains these module definitions\",\n  \"cargo test passes: no regressions\",\n  \"Fleet health checks and status commands behave identically before and after the move\"\n]"
-

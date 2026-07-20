@@ -1,9 +1,0 @@
-- id: INFRA-3038
-  domain: INFRA
-  title: "ZERO-WASTE: balance-b"
-  status: open
-  priority: P1
-  effort: xs
-  acceptance_criteria:
-    - verify it works
-

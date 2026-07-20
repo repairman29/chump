@@ -1,9 +1,0 @@
-- id: INFRA-2662
-  domain: INFRA
-  title: "EFFECTIVE P1: wire chump durable-resume + DurableExecutor into src/main.rs dispatch — RESILIENT-059 shipped opt-in, needs activation"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n\"RESILIENT-059 PR #3003 shipped DurableExecutor + chump durable-resume CLI module but per the Sonnet brief did NOT wire it into src/main.rs dispatch (kept opt-in).\",\n\"This gap wires the CLI: src/main.rs dispatch match adds the durable-resume subcommand and chump --execute-gap uses DurableExecutor at the top of the per-gap dispatch loop.\",\n\"Verify: chump durable-resume --help works after build; chump --execute-gap on a synthetic gap calls journal start_step + complete_step for each major activity.\",\n\"Regression test: scripts/ci/test-durable-resume-cli.sh — chump durable-resume on a synthetic gap with journaled steps replays them and emits kind=durable_journal_resumed.\"\n]"
-

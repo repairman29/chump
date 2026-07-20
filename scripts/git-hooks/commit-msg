@@ -17,17 +17,22 @@
 
 set -euo pipefail
 
-# Bypass.
-if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" = "0" ]; then
-    exit 0
-fi
-
 # $1 is the path to the in-progress commit message (real, not COMMIT_EDITMSG
 # fallback). This is the architectural difference vs. pre-commit stage.
 MSG_FILE="${1:?commit-msg hook expects \$1 = path to commit message}"
 if [ ! -f "$MSG_FILE" ]; then
     # Shouldn't happen; if it does, fail open (warn + allow).
     echo "[commit-msg] WARNING: \$1 ($MSG_FILE) is not a file; skipping docs-delta check." >&2
+    exit 0
+fi
+
+# Legacy inline docs-delta check — fallback when the installed chump binary
+# predates `chump verify` (CREDIBLE-155). NOTE: preserves historical early
+# exits (inapplicable -> exit 0 skips the INFRA-2407 validator below, same
+# as before the port).
+legacy_docs_delta_check() {
+# Bypass.
+if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" = "0" ]; then
     exit 0
 fi
 
@@ -65,6 +70,38 @@ elif [ "$TRAILER_VAL" -lt "$NET" ]; then
     exit 1
 fi
 # else: trailer >= NET → accepted silently (intentional declaration)
+}
+
+# ── CREDIBLE-155: unified policy engine (binding stage) ───────────────────────
+# `chump verify --stage commit-msg` runs the ported rules (docs-delta,
+# test-lag, no-new-bypass-env-vars) against the staged diff + the REAL
+# commit message. A `Verify-Bypass: <rule-id>: <reason>` trailer flips a
+# failing rule to bypassed and appends one audited kind=verify_bypassed
+# line to .chump-locks/ambient.jsonl. Exit 1 = rule failure (block);
+# exit 2 = engine error (fall back to the legacy inline check so a broken
+# engine never silently disables the gate — CREDIBLE-105).
+# Probe via --help text — never run an unknown subcommand on an old binary
+# (it falls through to the LLM agent loop, INFRA-1238).
+_CHUMP_VERIFY_BIN="$(command -v chump 2>/dev/null || true)"
+_CHUMP_VERIFY_HELP=""
+if [ -n "$_CHUMP_VERIFY_BIN" ]; then
+    _CHUMP_VERIFY_HELP="$(CHUMP_BINARY_STALENESS_CHECK=0 "$_CHUMP_VERIFY_BIN" --help 2>/dev/null || true)"
+fi
+case "$_CHUMP_VERIFY_HELP" in
+    *"verify --stage"*)
+        _vrc=0
+        CHUMP_BINARY_STALENESS_CHECK=0 "$_CHUMP_VERIFY_BIN" verify --stage commit-msg --msg-file "$MSG_FILE" || _vrc=$?
+        if [ "$_vrc" = "2" ]; then
+            echo "[commit-msg] WARN: chump verify engine error — using legacy docs-delta check" >&2
+            legacy_docs_delta_check
+        elif [ "$_vrc" != "0" ]; then
+            exit 1
+        fi
+        ;;
+    *)
+        legacy_docs_delta_check
+        ;;
+esac
 
 # ── INFRA-2407: bypass-trailer schema validator ───────────────────────────────
 # Delegates to commit-msg-bypass-trailers.sh when present. This runs regardless

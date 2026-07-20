@@ -1,9 +1,0 @@
-- id: INFRA-2663
-  domain: INFRA
-  title: "CREDIBLE P2: migrate last-mile-rescuer.sh raw gh calls to chump_gh — remove from raw-gh-allowlist exception"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n\"INFRA-2629 last-mile-rescuer.sh uses gh pr list --head + gh pr create directly (allowlist exception added). The exception was justified as bootstrap because chump_gh depends on stable runtime that the rescuer is fallback for.\",\n\"This gap revisits that decision. If chump_gh is robust enough on cold start, migrate the 2 raw calls and remove the allowlist exception.\",\n\"Verify: scripts/ci/test-raw-gh-allowlist.sh shows last-mile-rescuer.sh NOT in the allowlist; rescuer functional test still passes.\"\n]"
-

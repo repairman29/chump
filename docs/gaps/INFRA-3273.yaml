@@ -1,9 +1,0 @@
-- id: INFRA-3273
-  domain: INFRA
-  title: "RESILIENT: audit-int-2"
-  status: open
-  priority: P1
-  effort: xs
-  acceptance_criteria:
-    - verify
-
