@@ -832,6 +832,15 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-chump-repos.sh"],
             GateKind::Rust,
         ));
+        // INFRA-2925: pr-stuck-cluster-detector run-event observability smoke
+        // test. Existed since INFRA-2754/2906/2913 but was never wired into
+        // any gate — a regression to the outcome/failure_class/gap_reserve_calls
+        // fields would have shipped silently.
+        steps.push(step(
+            "pr-stuck-cluster-detector observability smoke (INFRA-2925)",
+            &["bash", "scripts/ci/test-pr-stuck-cluster-observability.sh"],
+            GateKind::Rust,
+        ));
         // INFRA-1791: gap-preflight-ac-gate audit. Surfaces open gaps with
         // vague/empty AC (TODO placeholders) before the operator tries to
         // claim them — INFRA-1259's "every open gap must have concrete AC"

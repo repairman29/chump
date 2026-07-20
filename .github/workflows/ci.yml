@@ -757,6 +757,12 @@ jobs:
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
 
+      - name: pr-stuck-cluster-detector observability smoke (INFRA-2925)
+        # Existed since INFRA-2754/2906/2913 but was never wired into a gate;
+        # asserts the outcome/failure_class/gap_reserve_calls fields on every
+        # exit path of pr-stuck-cluster-detector.sh.
+        run: bash scripts/ci/test-pr-stuck-cluster-observability.sh
+
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
 
