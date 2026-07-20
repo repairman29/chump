@@ -40,12 +40,17 @@ fn live_gaps_dir_loads_without_panic() {
         eprintln!("skipping live-dir test: {} missing", gaps_dir.display());
         return;
     }
+    // ZERO-WASTE-020: the per-gap YAML mirrors are retired — the live dir now
+    // holds only the tombstone README. The load-without-panic contract still
+    // matters (empty/README-only dir must not error); the >50 corpus
+    // assertion moved to the fixture-based tests.
     let gaps = load_gaps_dir(&gaps_dir).expect("live gaps directory must parse");
-    assert!(
-        gaps.len() > 50,
-        "expected at least 50 gaps in live corpus, found {}",
-        gaps.len()
-    );
+    if gaps.is_empty() {
+        eprintln!(
+            "live gaps dir is mirror-free (post-ZERO-WASTE-020): load OK, graph checks skipped"
+        );
+        return;
+    }
 
     let graph = DependencyGraph::build(&gaps);
     // Reconcile collection must not panic on the live corpus.

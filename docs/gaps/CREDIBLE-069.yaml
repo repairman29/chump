@@ -1,9 +1,0 @@
-- id: CREDIBLE-069
-  domain: CREDIBLE
-  title: "CREDIBLE: self_hosted_runner_run telemetry emit step (INFRA-1534 AC #6 ghost-ship)"
-  status: open
-  priority: P2
-  effort: s
-  acceptance_criteria:
-    - "[\"INFRA-1534 AC #6 promised: Telemetry: kind=self_hosted_runner_run {runner_label, workflow, duration_s, cache_hit} on each run completion. Not delivered. Without this, fleet visibility into runner performance/utilization is zero — we cannot see whether the 5-10x cache speedup is actually landing.\",\"Add a reusable composite action .github/actions/emit-self-hosted-run-stats/action.yml that captures: runner.name, runner.labels, workflow name, job duration (from job start ts), cache_hit boolean (look at $CARGO_TARGET_DIR mtime vs job start: if older than start, it was a hit).\",\"Each self-hosted-leg job ends with: - uses: ./.github/actions/emit-self-hosted-run-stats\",\"The action POSTs the event to a configured endpoint (CHUMP_AMBIENT_INGEST_URL env var) OR appends to a per-runner stats file in /var/cache/chump-runner/stats/<workflow>.jsonl that chump fleet doctor can read.\",\"Register the kind in docs/observability/EVENT_REGISTRY.yaml with effect_metric: ci_throughput_runs_per_hour.\",\"Smoke test scripts/ci/test-self-hosted-run-stats-emit.sh: drive the action via act or a synthetic env, assert JSONL line is well-formed.\",\"After: chump fleet doctor surfaces runner hit-rate, average duration, idle vs busy split. INFRA-1535 (RUNNER_AUTOSCALE) consumes this signal.\"]"
-

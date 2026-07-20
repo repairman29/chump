@@ -1,9 +1,0 @@
-- id: INFRA-1559
-  domain: INFRA
-  title: "EFFECTIVE: SSE filter UI + bandit regret rendering — pair with routing brain (TBD-INFRA-1545)"
-  status: open
-  priority: P2
-  effort: s
-  acceptance_criteria:
-    - "[\"Backlog-promoted 2026-05-16: today the ambient SSE stream is a firehose. Operator cant filter by kind/gap_id/severity. Once routing brain ships (TBD gap, placeholder INFRA-1545), the brain emits bandit-arm choices with regret signal — operator needs to see whether brain is working (regret flat = good) or degrading (regret growing = investigate).\",\"SSE filter UI: tag-based filter pills (kind=X, gap=Y, severity=warn/error/info), saved-preset dropdown (workspace-local localStorage), \\\"new since last viewed\\\" overlay counter. Filter applies client-side on the SSE stream from /api/ambient/stream.\",\"Bandit regret panel (new component): subscribes to kind=routing_decision and kind=routing_outcome events. Renders time-series chart of cumulative regret per arm (model tier, agent backend, machine). Overlay line: \\\"if we had picked the optimal arm always (computed retrospectively).\\\"\",\"Both ship in same PR. Both depend on routing brain shipping the events they consume — file-and-park P2 until then.\",\"Smoke test scripts/ci/test-sse-filter-and-regret.sh: dev server, inject synthetic routing_decision + routing_outcome events, assert filter pills appear + regret line renders monotonically non-decreasing.\",\"Telemetry: emit kind=sse_filter_applied {filter_spec, results_count} so we can see which filters operators actually use.\",\"Out of scope: server-side filtering (today client-side is fine for fleet < 100 active gaps; revisit at 1000+). Regret-prediction (forecasting) is separate gap if ever wanted.\"]"
-

@@ -1,9 +1,0 @@
-- id: INFRA-1754
-  domain: INFRA
-  title: "RESILIENT: track subprocess PID in worker leases for reaper kill capability"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - worker.sh (line 10-11, claude -p spawn) captures subprocess PID; lease written by chump claim includes 'pid' field; subagent-budget-reaper.sh can kill -15/-9 the process when budget exceeded
-

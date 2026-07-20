@@ -1,9 +1,0 @@
-- id: INFRA-723
-  domain: INFRA
-  title: "ZERO-WASTE: split main.rs phase 2 — extract providers/ module group (provider_bandit, provider_cascade, provider_quality, streaming_provider, local_openai, mistralrs_provider)"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n  \"src/providers/ directory created with one file per module: provider_bandit.rs, provider_cascade.rs, provider_quality.rs, streaming_provider.rs, local_openai.rs, mistralrs_provider.rs\",\n  \"All moved modules compile with no warnings (cargo build --quiet exits 0)\",\n  \"main.rs no longer contains these module definitions — only a pub mod providers; or use declaration\",\n  \"cargo test passes: no test regressions from the move\",\n  \"No behavioral change: provider selection, cascade routing, and streaming behave identically before and after\"\n]"
-

@@ -1,9 +1,0 @@
-- id: INFRA-3242
-  domain: INFRA
-  title: "EFFECTIVE: underfed-1"
-  status: open
-  priority: P1
-  effort: xs
-  acceptance_criteria:
-    - verify it works
-

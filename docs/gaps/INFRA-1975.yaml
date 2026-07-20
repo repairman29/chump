@@ -1,9 +1,0 @@
-- id: INFRA-1975
-  domain: INFRA
-  title: "HIGH: voice-lint half-state — fails but not in required-checks; banned terms ship to main (critique H6)"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "Failure: scripts/ci/test-voice-banlist.sh is wired into CI; emits FAILURE on banned words; but is NOT in branch-protection required-checks. PRs merge with banned terms. Today's PR #2561 merged with 2 instances of 'leverage' on main; my fix on a later commit got squashed out."
-

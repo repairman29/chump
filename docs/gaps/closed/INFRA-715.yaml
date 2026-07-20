@@ -1,9 +1,0 @@
-- id: INFRA-715
-  domain: INFRA
-  title: "ZERO-WASTE: relax 3 more clippy 1.95 lints (collapsible_match / manual_pattern_char_comparison / redundant_closure) — wave 4 of INFRA-664/668/712. Same blocking pattern, different lints. ROOT FIX is INFRA-672 (auto-relax) but hasn't shipped yet."
-  status: done
-  priority: P0
-  effort: xs
-  closed_date: '2026-05-08'
-  closed_pr: 1300
-
