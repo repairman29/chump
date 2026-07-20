@@ -151,6 +151,20 @@ chump bootstrap "A CLI tool that syncs files across machines" \
 # → .git/ + Cargo.toml + README.md + first commit + umbrella gap in state.db
 ```
 
+## Demo the autonomy-cascade throughput loop (META-072, INFRA-2391)
+
+`chump demo` (crates/chump-demo, wired as a subcommand — not a standalone
+binary you need to path-hunt) seeds N synthetic SMOKE gaps, watches
+`ambient.jsonl` for a duration, and emits a JSON metrics report
+(prs_merged_per_hour, operator_keystrokes_per_ship, automation_alerts,
+cascade_keystones_classified). `--dry-run` skips seeding/sleeping and prints
+the report shape.
+
+```bash
+chump demo --dry-run --seed 1 --duration 5s   # smoke it
+chump demo --seed 10 --duration 60m           # real 60-min scenario
+```
+
 ## Claim before writing any code
 
 ```bash

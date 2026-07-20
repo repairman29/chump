@@ -1264,6 +1264,13 @@ async fn main() -> Result<()> {
         std::process::exit(verify::run(&sub_args));
     }
 
+    // `chump demo` (INFRA-2391, META-072) — Track-3 autonomous-throughput
+    // demo loop. All logic lives in crates/chump-demo (chump_demo::run).
+    if args.get(1).map(String::as_str) == Some("demo") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(chump_demo::run(&sub_args));
+    }
+
     // `chump self-rescue-loop [--execute] [--grace-secs N]` (EFFECTIVE-088) — the
     // autonomous conductor: detect a wedged fleet → propose self-rescue on the
     // consensus bus → objection window → act. Dry-run unless --execute. Obeys the

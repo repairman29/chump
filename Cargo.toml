@@ -122,6 +122,7 @@ chump-ambient-cli = { path = "crates/ambient-cli", version = "0.1.0" }
 chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
+chump-demo = { path = "crates/chump-demo", version = "0.1.0" } # INFRA-2391: `chump demo` subcommand
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
 async-nats = "0.49"

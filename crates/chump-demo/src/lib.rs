@@ -14,7 +14,7 @@
 //!        - cascade_keystones_auto_classified (kind=keystone_candidate
 //!          ambient events; populated by INFRA-1840 once it lands)
 //!
-//! v0 scope (this binary):
+//! v0 scope:
 //!
 //! * `--seed N` — write N synthetic SMOKE-*.yaml gaps via
 //!   `chump gap reserve --domain SMOKE`.
@@ -23,12 +23,13 @@
 //!   `./.chump-locks/demo-metrics-<ts>.json`.
 //! * `--dry-run` — print what would happen without seeding or sleeping.
 //!
+//! Wired into the main `chump` binary as `chump demo` (INFRA-2391) via
+//! [`run`], which is also the entry point for the standalone `chump-demo`
+//! binary in `src/bin/chump-demo.rs`.
+//!
 //! Out of scope for v0 (deferred to follow-up gaps):
 //!
 //! * Loom/asciinema recording (operator-side action; META-072 final AC).
-//! * `chump fleet demo-loop` wiring into src/main.rs (contested file;
-//!   ship as standalone `chump-demo` binary first, then alias once
-//!   main.rs lease window opens).
 //! * Live dashboard integration (Rust route work — pair with INFRA-1338's
 //!   /api/fleet-status once available).
 //!
@@ -211,8 +212,7 @@ fn default_report_path(started_at: &str) -> PathBuf {
     PathBuf::from(root).join(format!(".chump-locks/demo-metrics-{safe_ts}.json"))
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
+fn run_inner(args: Args) -> Result<()> {
     let duration = parse_duration(&args.duration)?;
     let ambient_path = args.ambient_log.unwrap_or_else(default_ambient_path);
 
@@ -295,6 +295,31 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Entry point shared by the standalone `chump-demo` binary and the
+/// `chump demo` subcommand wired into the main `chump` binary (INFRA-2391).
+/// `argv0` is a placeholder so clap's usage string reads `chump-demo ...`
+/// regardless of caller; `args` is the remaining args (no argv0).
+pub fn run(args: &[String]) -> i32 {
+    let mut full_args = vec!["chump-demo".to_string()];
+    full_args.extend(args.iter().cloned());
+
+    let parsed = match Args::try_parse_from(&full_args) {
+        Ok(a) => a,
+        Err(e) => {
+            e.print().ok();
+            return e.exit_code();
+        }
+    };
+
+    match run_inner(parsed) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("[chump-demo] error: {e:#}");
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,10 +338,30 @@ mod tests {
         assert!(parse_duration("").is_err());
     }
 
-    // NOTE: collect_metrics has a self-contained synthetic test in
-    // crates/chump-demo/tests/collect_metrics.rs (Cargo's integration-test
-    // directory, which the EVENT_REGISTRY scanner skips). Inline unit
-    // tests here would scan the synthetic "kind":"X" literals as emit
-    // sites and trip the audit gate — see the docs/process/EVENT_REGISTRY
-    // notes in this repo for the scanner pattern.
+    #[test]
+    fn run_dry_run_smoke() {
+        let dir = tempfile::tempdir().unwrap();
+        let report_path = dir.path().join("report.json");
+        let ambient_path = dir.path().join("ambient.jsonl");
+        std::fs::write(&ambient_path, "").unwrap();
+        let code = run(&[
+            "--dry-run".to_string(),
+            "--seed".to_string(),
+            "1".to_string(),
+            "--duration".to_string(),
+            "1s".to_string(),
+            "--report-path".to_string(),
+            report_path.to_string_lossy().to_string(),
+            "--ambient-log".to_string(),
+            ambient_path.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(code, 0);
+        assert!(report_path.exists());
+    }
+
+    // NOTE: no inline unit test for collect_metrics's synthetic ambient
+    // fixtures here — literal "kind":"X" strings would be scanned as emit
+    // sites by the EVENT_REGISTRY audit gate. If one is added, put it in
+    // crates/chump-demo/tests/ (Cargo's integration-test dir, which the
+    // scanner skips) — see docs/process/EVENT_REGISTRY for the pattern.
 }

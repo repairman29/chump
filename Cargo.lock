@@ -1322,6 +1322,7 @@ dependencies = [
  "chump-cancel-registry",
  "chump-coord",
  "chump-cost-tracker",
+ "chump-demo",
  "chump-gap-store",
  "chump-handoff",
  "chump-mcp-lifecycle",

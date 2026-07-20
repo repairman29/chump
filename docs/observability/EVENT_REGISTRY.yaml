@@ -8327,3 +8327,12 @@ events:
     consumers: [fleet-brief, audit-log, ops-audit]
     fields_required: [ts, kind, session, rule, reason, stage]
     fields_optional: [gap_id, worktree]
+
+  - kind: shelfware_resolved
+    effect_metric: waste_prevented
+    emitter: scripts/coord/chump-commit.sh (invoked manually per-gap; INFRA-2391)
+    trigger: a shelfware audit (quartermaster) finding was resolved — a
+      dormant crate/binary/daemon was either wired into an active surface
+      or deleted. One emit per resolution, recording which action was taken.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, crate, action, pr]
