@@ -249,6 +249,7 @@ mod user_error_hints;
 pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
+mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
@@ -739,6 +740,7 @@ fn print_help() {
     );
     println!("  lesson-grade       lesson-learning quality score");
     println!("  ci-summary         last-N CI run outcomes");
+    println!("  verify --stage <s> unified policy gate: pre-commit|commit-msg|ci (CREDIBLE-155)");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
     println!(
         "  kpi report         KPI scorecard across all pillars
@@ -1252,6 +1254,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump verify` (CREDIBLE-155) — unified policy engine: typed rules
+    // over parsed diff semantics, one implementation for git hooks and CI.
+    // All logic lives in src/verify/ (INFRA-3287: keep this arm tiny).
+    if args.get(1).map(String::as_str) == Some("verify") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(verify::run(&sub_args));
     }
 
     // `chump self-rescue-loop [--execute] [--grace-secs N]` (EFFECTIVE-088) — the
