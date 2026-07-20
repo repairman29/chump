@@ -45,10 +45,13 @@ for needle in \
     "cmd_stop" \
     "cmd_status" \
     "cmd_heartbeat" \
+    "cmd_healthcheck" \
+    "autopilot_state" \
     "autopilot_started" \
     "autopilot_stopped" \
     "autopilot_heartbeat" \
     "autopilot_partial" \
+    "not_started" \
     "CHUMP_AUTOPILOT_DISABLED" \
     "chump-fleet-bootstrap.sh"; do
     if grep -qF "$needle" "$TARGET"; then
@@ -159,6 +162,20 @@ if CHUMP_AUTOPILOT_DISABLED=1 "$TARGET" start 2>&1 | grep -qE "BYPASS|CHUMP_AUTO
     ok "CHUMP_AUTOPILOT_DISABLED bypass honored"
 else
     fail "bypass env not honored on start"
+fi
+
+# (8b) RESILIENT-120: healthcheck exits 0 when not_started (CI/dev host, never ran `start`)
+if "$TARGET" healthcheck >/dev/null 2>&1; then
+    ok "RESILIENT-120: healthcheck exits 0 on a not-started host"
+else
+    fail "RESILIENT-120: healthcheck unexpectedly non-zero on a not-started host"
+fi
+
+# (8c) RESILIENT-120: status text output includes the state field
+if "$TARGET" status 2>/dev/null | grep -qE '^\s*state:\s+(not_started|running|degraded)'; then
+    ok "RESILIENT-120: status reports state field"
+else
+    fail "RESILIENT-120: status missing state field"
 fi
 
 # (8) Unknown command rejected

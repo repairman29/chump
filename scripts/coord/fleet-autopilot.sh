@@ -21,6 +21,12 @@
 #   bash scripts/coord/fleet-autopilot.sh status [--json]    # one-shot health report
 #   bash scripts/coord/fleet-autopilot.sh restart            # stop then start
 #   bash scripts/coord/fleet-autopilot.sh heartbeat          # internal: master heartbeat tick
+#   bash scripts/coord/fleet-autopilot.sh healthcheck        # RESILIENT-120: fails loudly (exit 1)
+#                                                             # if state=running/degraded but the
+#                                                             # /loop scheduler is silently idle
+#                                                             # (no autopilot_heartbeat ticks in
+#                                                             # the expected window). Exit 0 when
+#                                                             # healthy OR legitimately not-started.
 #
 # Telemetry kinds:
 #   autopilot_started          — start complete (all layers loaded)
@@ -125,6 +131,30 @@ log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 is_loaded() {
     local label="$1"
     launchctl list 2>/dev/null | grep -qE "^[0-9-]+\s+[0-9-]+\s+${label}$"
+}
+
+# RESILIENT-120: distinguish "never started on this host" from "started but
+# degraded". `com.chump.fleet-autopilot` is the master heartbeat cron — its
+# own loaded-state is the signal for whether `start` was ever run here. A dev
+# checkout/worktree that never ran `chump fleet autopilot start` legitimately
+# shows most layers unloaded; that is NOT the same failure as a host where
+# autopilot was started and then daemons silently dropped. AC#2's "opt-in with
+# a reason" is satisfied by this state distinction, surfaced in status/healthcheck.
+autopilot_state() {
+    if ! is_loaded "com.chump.fleet-autopilot"; then
+        echo "not_started"
+        return
+    fi
+    local loaded=0
+    for entry in "${AUTOPILOT_LAYERS[@]}"; do
+        is_loaded "${entry%%|*}" && loaded=$((loaded+1))
+    done
+    local total=${#AUTOPILOT_LAYERS[@]}
+    if (( loaded * 5 < total * 4 )); then
+        echo "degraded"
+    else
+        echo "running"
+    fi
 }
 
 # ── META-122: Curator session helpers ─────────────────────────────────────
@@ -422,9 +452,11 @@ cmd_status() {
     else
         recent_events=0
     fi
+    local state
+    state="$(autopilot_state)"
     if [[ "$format" == "json" ]]; then
-        printf '{"layers":%d,"loaded":%d,"plist_present":%d,"absent":%d,"recent_ambient_events_5min":%s,"daemons":[' \
-            "${#AUTOPILOT_LAYERS[@]}" "$loaded" "$plist_present" "$absent" "$recent_events"
+        printf '{"state":"%s","layers":%d,"loaded":%d,"plist_present":%d,"absent":%d,"recent_ambient_events_5min":%s,"daemons":[' \
+            "$state" "${#AUTOPILOT_LAYERS[@]}" "$loaded" "$plist_present" "$absent" "$recent_events"
         local sep=""
         for r in "${report[@]}"; do
             local n=${r%%|*}; local rest=${r#*|}
@@ -440,16 +472,67 @@ cmd_status() {
         printf '}\n'
     else
         echo "=== chump fleet autopilot status ==="
+        echo "  state:             $state"
         echo "  layers configured: ${#AUTOPILOT_LAYERS[@]}"
         echo "  loaded:            $loaded"
         echo "  plist-present:     $plist_present"
         echo "  absent:            $absent"
         echo "  ambient events (last 5min): $recent_events"
+        if [[ "$state" == "not_started" ]]; then
+            echo "  NOTE: autopilot has not been started on this host — unloaded layers are"
+            echo "        expected, not a defect. Run: bash scripts/coord/fleet-autopilot.sh start"
+        fi
         echo
         for r in "${report[@]}"; do echo "  $r"; done
         # META-122: append 6 curator-session lines.
         curator_status_lines "text"
     fi
+}
+
+# RESILIENT-120 AC#3: assert the /loop scheduler is ACTIVELY TICKING, not just
+# "plist present". `autopilot_heartbeat` is emitted by cmd_heartbeat on every
+# launchd StartInterval (300s) tick — its presence in ambient.jsonl within a
+# generous window IS the proof of life. A loaded plist with zero recent ticks
+# means the daemon is wedged/dead (the exact "silent idle" failure this exists
+# to catch), not healthy. Exit 0 = healthy or legitimately not-started;
+# exit 1 = FAIL LOUDLY (silently idle while supposedly running).
+cmd_healthcheck() {
+    local state
+    state="$(autopilot_state)"
+    if [[ "$state" == "not_started" ]]; then
+        echo "[healthcheck] autopilot not started on this host (com.chump.fleet-autopilot not loaded) — nothing to check"
+        return 0
+    fi
+
+    # Window: 2x StartInterval (300s) + 2min buffer = 12min, tolerant of one
+    # missed tick without false-alarming.
+    local window_s=720
+    local cutoff
+    cutoff="$(perl -e 'print time()-'"$window_s"'')"
+    local recent_ticks=0
+    if [[ -f "$AMBIENT" ]]; then
+        recent_ticks="$(tail -500 "$AMBIENT" 2>/dev/null | grep '"kind":"autopilot_heartbeat"' | while IFS= read -r line; do
+            ts="$(printf '%s' "$line" | sed -n 's/.*"ts":"\([^"]*\)".*/\1/p')"
+            [[ -z "$ts" ]] && continue
+            epoch="$(perl -MTime::Local -e '
+                my ($y,$mo,$d,$h,$mi,$s) = ($ARGV[0] =~ /(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)/);
+                print timegm($s,$mi,$h,$d,$mo-1,$y) if defined $s;
+            ' "$ts" 2>/dev/null)"
+            [[ -n "$epoch" && "$epoch" -ge "$cutoff" ]] && echo 1
+        done | wc -l | tr -d ' ')"
+    fi
+
+    if [[ "$state" == "running" && "${recent_ticks:-0}" -eq 0 ]]; then
+        echo "[healthcheck] FAIL: autopilot state=running (plist loaded) but 0 autopilot_heartbeat events in last ${window_s}s — /loop scheduler is SILENTLY IDLE" >&2
+        emit autopilot_partial "\"reason\":\"healthcheck_silent_idle\",\"window_s\":$window_s"
+        return 1
+    fi
+    if [[ "$state" == "degraded" ]]; then
+        echo "[healthcheck] FAIL: autopilot state=degraded (<80% layers loaded)" >&2
+        return 1
+    fi
+    echo "[healthcheck] OK: state=$state, ${recent_ticks:-0} autopilot_heartbeat tick(s) in last ${window_s}s"
+    return 0
 }
 
 # RESILIENT-158: durable owner for the run-fleet WORKER POOL. The control plane
@@ -535,11 +618,12 @@ cmd_restart() {
 main() {
     local cmd="${1:-status}"
     case "$cmd" in
-        start)     cmd_start ;;
-        stop)      cmd_stop ;;
-        status)    cmd_status "${2:-text}" ;;
-        restart)   cmd_restart ;;
-        heartbeat) cmd_heartbeat ;;
+        start)       cmd_start ;;
+        stop)        cmd_stop ;;
+        status)      cmd_status "${2:-text}" ;;
+        restart)     cmd_restart ;;
+        heartbeat)   cmd_heartbeat ;;
+        healthcheck) cmd_healthcheck ;;
         -h|--help|help)
             sed -n '2,35p' "$0" | sed 's/^# \?//'
             ;;

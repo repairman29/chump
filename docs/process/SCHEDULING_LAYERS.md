@@ -247,6 +247,22 @@ launchctl list | grep com.chump.NAME           # verify
   ls ~/Library/LaunchAgents | grep -c 'chump.wizard-daemon'   # must be 1 (com.chump only)
   chump fleet autopilot status                                # loaded == configured, ticking
   ```
+- **`chump fleet autopilot status` reports a `state` field (RESILIENT-120
+  AC#2).** `not_started` / `running` / `degraded`, derived from whether
+  `com.chump.fleet-autopilot` (the master heartbeat cron) itself is loaded.
+  A dev checkout/worktree where `fleet-autopilot start` was never run
+  legitimately shows most of the 15 layers unloaded — that is the documented
+  opt-in reason, not a defect, and status prints a NOTE saying so instead of
+  reading as broken. Only a `running` host whose loaded-layer count later
+  drops below 80% flips to `degraded` (that IS a defect — see below).
+- **`chump fleet autopilot healthcheck` (RESILIENT-120 AC#3)** — asserts the
+  `/loop` scheduler is *actively ticking*, not just plist-present. It checks
+  for `autopilot_heartbeat` ambient events (emitted every `cmd_heartbeat`
+  tick, StartInterval=300s) within the last 720s (2 missed-tick tolerance).
+  `state=not_started` → exit 0 (nothing to check). `state=running` with zero
+  recent ticks, or `state=degraded` → **exit 1, fails loudly** — the exact
+  "silently idle" case a plist-present check misses. Wire into any health
+  sweep that currently only checks `launchctl list`.
 
 ---
 
