@@ -1,0 +1,9 @@
+- id: INFRA-3365
+  domain: INFRA
+  title: "preflight mirror: audit-shard-3 bash/coordinator/worker/bot-merge/PWA gates (33 scripts, META-086 cluster 3/5)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"bash-script-gates (shard 3)\" for the current unmirrored-script list (33 at filing time, the largest cluster; re-check for drift).\n2. Split into at most 2 sibling PRs if the diff exceeds ~400 LOC (coordinator/worker/bot-merge gates vs PWA/precommit gates) — note the split explicitly in the PR description; do not silently drop scripts.\n3. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly (including any CHUMP_BIN cargo-build prerequisite).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR(s).\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+

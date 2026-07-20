@@ -1,0 +1,9 @@
+- id: INFRA-3366
+  domain: INFRA
+  title: "preflight mirror: audit-shard-4 cross-PR-contract/security gates (12 scripts, META-086 cluster 4/5)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cross-pr-security (shard 4)\" for the current unmirrored-script list (12 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly.\n3. Cross-PR-contract gate (test-cross-pr-contract.sh) and security guards must be flagged as \"requires network/GH context\" in preflight.rs comments if they cannot run fully offline — document any script that can only partially mirror (e.g. runs a local-only subset).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+
