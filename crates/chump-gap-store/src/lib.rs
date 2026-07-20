@@ -1288,6 +1288,32 @@ impl GapStore {
                 |r| r.get(0),
             )?;
             let new_id = format!("{}{:03}", prefix, num);
+
+            // INFRA-1954: the INFRA-018 duplicate-ID guard only checks the
+            // live registry (state.db + docs/gaps/*.yaml) — it is blind to
+            // IDs that were shipped and later dropped from that live state
+            // (e.g. a stale/reset gap_counters row). Since a shipped gap's
+            // ID is permanently burned into commit messages, git history is
+            // the one source of truth that can never drift. Cross-check the
+            // proposed ID against `git log --all --grep` before handing it
+            // out. Skippable via CHUMP_GAP_RESERVE_SKIP_GIT_HISTORY_CHECK=1
+            // (fresh `chump bootstrap` dirs with no git history yet, or CI
+            // fixtures that don't want the extra `git log` shellout).
+            let git_check_disabled = std::env::var("CHUMP_GAP_RESERVE_SKIP_GIT_HISTORY_CHECK")
+                .as_deref()
+                == Ok("1");
+            if !git_check_disabled && self.repo_root.join(".git").exists() {
+                if let Some(sha) = git_log_first_match(&self.repo_root, &new_id) {
+                    bail!(
+                        "DUPLICATE: {new_id} already appears in git history (commit {sha}) — \
+                         it was previously shipped and removed from the live registry. \
+                         This is INFRA-1954: the ID counter drifted below an already-used ID. \
+                         Investigate gap_counters for domain {domain_upper}, or bypass with \
+                         CHUMP_GAP_RESERVE_SKIP_GIT_HISTORY_CHECK=1 if this is a false positive."
+                    );
+                }
+            }
+
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -3565,6 +3591,35 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+/// INFRA-1954: return the short SHA of the first commit (any branch, any
+/// ref, per `--all`) whose message references `gap_id`, or `None` if no
+/// commit mentions it. Used by `reserve_with_external` to catch IDs that
+/// were shipped and later dropped from the live registry (state.db /
+/// docs/gaps/*.yaml) — git history is the one source that can't drift.
+fn git_log_first_match(repo_root: &Path, gap_id: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args([
+            "log",
+            "--all",
+            "--fixed-strings",
+            &format!("--grep={gap_id}"),
+            "--format=%h",
+            "-n1",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sha.is_empty() {
+        None
+    } else {
+        Some(sha)
+    }
 }
 
 /// INFRA-2053 sync-module shim around the private `unix_now()` — keeps
