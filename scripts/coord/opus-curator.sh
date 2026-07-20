@@ -110,12 +110,34 @@ log_ambient() {
 #                          waste_investigation | balance_restock
 #   reasoning: why this decision was made (human-readable)
 #   action_taken: what was done (or "identified_only" if just flagged)
+#   extra_json (INFRA-2728, optional): raw JSON fragment (no braces) appended
+#     to the event, e.g. '"gh_calls":1,"failure_class":"transient"'
 log_curator_decision() {
   local decision_type="$1"
   local reasoning="$2"
   local action_taken="${3:-identified_only}"
+  local extra_json="${4:-}"
+  local extra_suffix=""
+  [[ -n "$extra_json" ]] && extra_suffix=",$extra_json"
   log_ambient "curator_decision" \
-    '"decision_type":"'"$decision_type"'","reasoning":"'"$reasoning"'","action_taken":"'"$action_taken"'"'
+    '"decision_type":"'"$decision_type"'","reasoning":"'"$reasoning"'","action_taken":"'"$action_taken"'"'"$extra_suffix"
+}
+
+# INFRA-2728: classify a failed `chump gap reserve` call as transient
+# (retry next tick is likely to succeed: timeout, rate limit, network) or
+# permanent (needs human/code fix: validation error, bad args). rc=124 is
+# GNU `timeout`'s signal for "command did not finish in time".
+_curator_classify_failure() {
+  local rc="$1" out="$2"
+  if [[ "$rc" == "124" ]]; then
+    echo "transient"
+    return
+  fi
+  if echo "$out" | grep -qiE 'timeout|timed out|connection reset|temporarily unavailable|rate limit|429|5[0-9][0-9][[:space:]]|network is unreachable'; then
+    echo "transient"
+  else
+    echo "permanent"
+  fi
 }
 
 # ============================================================================
@@ -152,12 +174,39 @@ _curator_mark_filed_today() {
 
 # Reserve a new gap via chump CLI. Returns the gap ID on stdout, or
 # empty string on failure. Sets AC + caller-provided body via stdin.
+# INFRA-2728: callers invoke this as `x="$(_curator_file_gap ...)"`, which
+# runs the function in a subshell — any variable set inside it (e.g. a
+# failure-class global) is invisible to the caller once the subshell exits.
+# A file survives the subshell, so failure classification is handed back
+# through this side-channel instead of a global var.
+_curator_last_gap_file_class_path() {
+  printf '%s' "$(_curator_lock_dir)/.last-gap-file-class"
+}
+
 _curator_file_gap() {
   local title="$1" effort="${2:-s}"
-  local out gap_id
+  local out gap_id rc class_file
+  class_file="$(_curator_last_gap_file_class_path)"
   out="$(chump gap reserve --domain INFRA --title "$title" --priority P1 --effort "$effort" 2>&1)"
+  rc=$?
   gap_id="$(printf '%s' "$out" | grep -oE 'INFRA-[0-9]+' | head -1)"
+  if [[ -z "$gap_id" ]]; then
+    _curator_classify_failure "$rc" "$out" > "$class_file" 2>/dev/null || true
+  else
+    rm -f "$class_file" 2>/dev/null || true
+  fi
   printf '%s' "$gap_id"
+}
+
+# Read back the failure class left by the most recent failed
+# _curator_file_gap call. Returns "unknown" if none was recorded.
+_curator_last_gap_file_class() {
+  local class_file; class_file="$(_curator_last_gap_file_class_path)"
+  if [[ -f "$class_file" ]]; then
+    cat "$class_file"
+  else
+    echo "unknown"
+  fi
 }
 
 # ============================================================================
@@ -577,12 +626,28 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
 
   # Decision 4 (INFRA-979): Stuck-PR scan — file ONE tracking gap when ≥1
   # PR has been open >2h with failing checks. Dedup: max 1 per day.
+  # INFRA-2728: `gh_calls` counts API calls this decision made this tick
+  # (cost proxy — cheap to report, no separate billing API to query).
+  # `timeout 30` classifies a hung `gh pr list` as transient rather than
+  # letting the curator tick block indefinitely.
   if command -v gh &>/dev/null; then
-    _stuck_count=$(_to_int "$(gh pr list --state open --json number,updatedAt,statusCheckRollup \
+    _gh_out="$(timeout "${CHUMP_CURATOR_GH_TIMEOUT_S:-30}" gh pr list --state open --json number,updatedAt,statusCheckRollup \
       --jq '[.[] | select(
         (now - (.updatedAt | fromdateiso8601)) > 7200 and
         (.statusCheckRollup != "SUCCESS" or .statusCheckRollup == null)
-      )] | length' 2>/dev/null)")
+      )] | length' 2>&1)"
+    _gh_rc=$?
+    if [[ "$_gh_rc" -ne 0 ]]; then
+      _gh_class="$(_curator_classify_failure "$_gh_rc" "$_gh_out")"
+      echo "Decision 4: gh pr list failed (rc=$_gh_rc, class=$_gh_class) — skipping this tick"
+      log_curator_decision "pr_unstick" \
+        "gh pr list failed while scanning for stuck PRs" \
+        "error: gh pr list failed" \
+        '"gh_calls":1,"failure_class":"'"$_gh_class"'"'
+      _stuck_count=0
+    else
+      _stuck_count=$(_to_int "$_gh_out")
+    fi
     if [[ "$_stuck_count" -gt 0 ]]; then
       if _curator_already_filed_today "pr_unstick"; then
         echo "Decision 4: $_stuck_count stuck PR(s) — already filed today, skipping"
@@ -590,7 +655,8 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
         echo "Decision 4: $_stuck_count stuck PR(s) — [dry-run] would file gap"
         log_curator_decision "pr_unstick" \
           "$_stuck_count PR(s) open >2h with failing checks" \
-          "dry_run: would file pr_stuck_cluster gap"
+          "dry_run: would file pr_stuck_cluster gap" \
+          '"gh_calls":1,"failure_class":"none"'
       else
         _today="$(date -u +%Y-%m-%d)"
         _gap_id="$(_curator_file_gap "RESILIENT: pr-stuck-cluster — ${_stuck_count} PRs blocked >2h as of ${_today}" "s")"
@@ -599,10 +665,13 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
           echo "Decision 4: $_stuck_count stuck PR(s) → filed $_gap_id"
           log_curator_decision "pr_unstick" \
             "$_stuck_count PR(s) open >2h with failing checks block fleet throughput" \
-            "filed $_gap_id ($_stuck_count stuck PRs)"
+            "filed $_gap_id ($_stuck_count stuck PRs)" \
+            '"gh_calls":1,"failure_class":"none"'
         else
           log_curator_decision "pr_unstick" \
-            "$_stuck_count stuck PRs" "error: chump gap reserve failed"
+            "$_stuck_count stuck PRs" \
+            "error: chump gap reserve failed" \
+            '"gh_calls":1,"failure_class":"'"$(_curator_last_gap_file_class)"'"'
         fi
       fi
     else

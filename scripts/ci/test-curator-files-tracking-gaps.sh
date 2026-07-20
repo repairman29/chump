@@ -60,7 +60,7 @@ chmod +x "$SHIM_DIR/gh"
 
 run_curator() {
   env \
-    PATH="$SHIM_DIR:/usr/bin:/bin" \
+    PATH="$SHIM_DIR:$PATH" \
     CHUMP_AMBIENT_LOG="$AMB" \
     CHUMP_FLEET_STATE="$FS" \
     LOCK_DIR="$LOCK_DIR" \
@@ -103,7 +103,7 @@ echo 999 > "$RESERVE_COUNTER"
 rm -f "$LOCK_DIR"/curator-filed-*.json
 : > "$AMB"
 env \
-  PATH="$SHIM_DIR:/usr/bin:/bin" \
+  PATH="$SHIM_DIR:$PATH" \
   CHUMP_AMBIENT_LOG="$AMB" \
   CHUMP_FLEET_STATE="$FS" \
   LOCK_DIR="$LOCK_DIR" \
