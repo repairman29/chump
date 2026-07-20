@@ -1001,6 +1001,14 @@ CHUMP_IMPROVE_GH_BIN
 CHUMP_IMPROVE_CHUMP_BIN
 CHUMP_IMPROVE_DISABLED
 
+# INFRA-2276: chump onboard --iter-once worker loop (Tier 2 — operator-tunable)
+# CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR — min gap priority to pick, P0..P3 (default: P2)
+# CHUMP_EXTERNAL_LOOP_EFFORT_CEIL    — max gap effort to pick, xs/s/m/l (default: s)
+# CHUMP_EXTERNAL_LOOP_MAX_FAILURES   — consecutive ship failures before auto-pause (default: 3)
+CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR
+CHUMP_EXTERNAL_LOOP_EFFORT_CEIL
+CHUMP_EXTERNAL_LOOP_MAX_FAILURES
+
 # EFFECTIVE-201: 0→1 audit doctrine layer + standard-mission injection
 # No new env vars — the doctrine layer field is schema-only, not runtime-configurable.
 
@@ -1124,3 +1132,8 @@ CHUMP_REAPER_PRESSURE_THRESHOLD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_OAUTH_TOKEN_PATH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ONBOARD_IMPROVE_BIN

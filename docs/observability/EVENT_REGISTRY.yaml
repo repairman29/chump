@@ -8044,6 +8044,31 @@ events:
     trigger: chump onboard --unschedule unloaded a per-repo launchd plist
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, repo_path, reason]
+
+  - kind: external_repo_escalation
+    effect_metric: effective
+    emitter: src/onboard.rs (INFRA-2276)
+    # scanner-anchor: "kind":"external_repo_escalation"
+    trigger: >
+      chump onboard --iter-once shipped a PR via `chump improve --apply` that
+      did not reach a MERGE verdict (HELD or hard error) — pages the operator
+      via scripts/dispatch/operator-recall.sh.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, pr_number, escalate_reason]
+    status: stable
+
+  - kind: external_repo_paused
+    effect_metric: effective
+    emitter: src/onboard.rs (INFRA-2276)
+    # scanner-anchor: "kind":"external_repo_paused"
+    trigger: >
+      chump onboard --iter-once skipped its iteration because consecutive
+      ship failures reached CHUMP_EXTERNAL_LOOP_MAX_FAILURES (default 3) —
+      pages the operator via scripts/dispatch/operator-recall.sh.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, reason]
+    status: stable
+
   - kind: ci_triage_verdict
     effect_metric: credible
     emitter: scripts/ci/triage-cargo-test-failure.sh (CREDIBLE-013)

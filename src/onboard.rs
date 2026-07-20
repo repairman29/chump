@@ -26,8 +26,8 @@
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use chump_handoff::external_repo_schema::{
-    save_scan, validate_external_repo_tag, Confidence, Effort, InputRead, OnboardScan, Priority,
-    ProposedGap, SourceOfEvidence,
+    read_latest_scan, save_scan, validate_external_repo_tag, Confidence, Effort, InputRead,
+    OnboardScan, Priority, ProposedGap, SourceOfEvidence,
 };
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -71,6 +71,18 @@ pub fn run(args: &[String]) -> i32 {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("chump onboard --list-scheduled: {e:#}");
+                1
+            }
+        };
+    }
+    // INFRA-2276: per-iter worker loop body, invoked by the launchd plist
+    // installed by --schedule (INFRA-2275). Routed before run_inner for the
+    // same reason as --schedule/--unschedule/--list-scheduled above.
+    if args.iter().any(|a| a == "--iter-once") {
+        return match run_iter_once(args) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("chump onboard --iter-once: {e:#}");
                 1
             }
         };
@@ -166,9 +178,19 @@ fn print_usage() {
     println!("  --unschedule <path>      Unload the plist and remove from the schedule list");
     println!("  --list-scheduled [--json]  Show all scheduled repos");
     println!();
-    println!("NOTE: --iter-once (the worker loop body) is owned by INFRA-2276.");
-    println!("      The plist will load successfully but the worker is a no-op until");
-    println!("      INFRA-2276 ships.");
+    println!();
+    println!("Worker loop (INFRA-2276 — BEAST overnight loop slice 2/3):");
+    println!("  --iter-once <path>       Run one worker iteration against a scheduled repo:");
+    println!("                           pick the safest pickable proposed gap, ship it via");
+    println!("                           `chump improve --apply`, and track consecutive");
+    println!("                           failures for auto-pause. Invoked by the launchd plist.");
+    println!();
+    println!("Env overrides for --iter-once:");
+    println!("  CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR  min priority to pick (default: P2)");
+    println!("  CHUMP_EXTERNAL_LOOP_EFFORT_CEIL     max effort to pick (default: s)");
+    println!(
+        "  CHUMP_EXTERNAL_LOOP_MAX_FAILURES    consecutive failures before auto-pause (default: 3)"
+    );
 }
 
 // ── Core logic ────────────────────────────────────────────────────────────
@@ -866,6 +888,362 @@ fn run_list_scheduled(args: &[String]) -> Result<()> {
             println!("{:<60} {:<10} {}", display_path, loaded_str, label);
         }
     }
+
+    Ok(())
+}
+
+// ── INFRA-2276: worker loop (--iter-once) ─────────────────────────────────
+
+/// Per-repo worker-loop state file: `~/.chump/external-repos/<sanitized>/loop-state.json`.
+/// Schema matches INFRA-2277's plan so slice 3/3 can extend it without a rewrite.
+fn loop_state_path(repo_path: &str) -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home)
+        .join(".chump")
+        .join("external-repos")
+        .join(sanitize_label_component(repo_path))
+        .join("loop-state.json")
+}
+
+/// Load the per-repo loop state. Returns defaults (zeroed counters) on missing file.
+fn load_loop_state(repo_path: &str) -> Result<serde_json::Value> {
+    let path = loop_state_path(repo_path);
+    if !path.exists() {
+        return Ok(serde_json::json!({
+            "last_iter_ts": null,
+            "consecutive_failures": 0,
+            "iter_count_total": 0,
+            "ship_count_total": 0
+        }));
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("reading loop state {}", path.display()))?;
+    serde_json::from_str(&content).with_context(|| format!("parsing loop state {}", path.display()))
+}
+
+/// Persist the per-repo loop state (atomic write via temp file + rename).
+fn save_loop_state(repo_path: &str, state: &serde_json::Value) -> Result<()> {
+    let path = loop_state_path(repo_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let content = serde_json::to_string_pretty(state).context("serializing loop state")?;
+    fs::write(&tmp, content).with_context(|| format!("writing {}", tmp.display()))?;
+    fs::rename(&tmp, &path).with_context(|| format!("renaming to {}", path.display()))?;
+    Ok(())
+}
+
+/// Rank a `Priority` so "safest" (lowest-stakes) gaps sort highest.
+/// Declaration order is P0 (unblocking emergency) .. P3 (nice-to-have), so the
+/// numeric rank matches the enum's own ordering.
+fn priority_rank(p: Priority) -> u8 {
+    match p {
+        Priority::P0 => 0,
+        Priority::P1 => 1,
+        Priority::P2 => 2,
+        Priority::P3 => 3,
+    }
+}
+
+fn parse_priority_floor(s: &str) -> Priority {
+    match s.trim().to_uppercase().as_str() {
+        "P0" => Priority::P0,
+        "P1" => Priority::P1,
+        "P3" => Priority::P3,
+        _ => Priority::P2,
+    }
+}
+
+/// Rank an `Effort` so smaller efforts sort lower (Xs=0 .. L=3).
+fn effort_rank(e: Effort) -> u8 {
+    match e {
+        Effort::Xs => 0,
+        Effort::S => 1,
+        Effort::M => 2,
+        Effort::L => 3,
+    }
+}
+
+fn parse_effort_ceil(s: &str) -> Effort {
+    match s.trim().to_lowercase().as_str() {
+        "xs" => Effort::Xs,
+        "m" => Effort::M,
+        "l" => Effort::L,
+        _ => Effort::S,
+    }
+}
+
+/// Determine `owner/repo` for a scheduled local repo path: prefer the git
+/// remote (so the pick step reads the same onboard scan `chump onboard
+/// <url>` produced), falling back to the `local/<basename>` slug used by
+/// `run_inner` for path-only (no-remote) repos.
+fn owner_repo_for_scheduled_path(repo_path: &Path) -> String {
+    let remote_url = Command::new("git")
+        .args([
+            "-C",
+            &repo_path.to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if let Some(url) = remote_url {
+        if let Ok(slug) = extract_owner_repo(&url) {
+            return slug;
+        }
+    }
+
+    repo_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| format!("local/{n}"))
+        .unwrap_or_else(|| "local/repo".to_string())
+}
+
+/// Pick the safest pickable proposed gap from the latest onboard scan:
+/// `priority >= floor` (i.e. P2/P3 by default — the low-stakes tiers) AND
+/// `effort <= ceil` (i.e. xs/s by default). Ties broken by highest confidence.
+fn pick_safest_gap(owner_repo: &str, floor: Priority, ceil: Effort) -> Result<Option<ProposedGap>> {
+    let repo_dir = external_repo_dir(owner_repo);
+    let scan = match read_latest_scan(&repo_dir)? {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+
+    let floor_rank = priority_rank(floor);
+    let ceil_rank = effort_rank(ceil);
+
+    let mut candidates: Vec<ProposedGap> = scan
+        .proposed_gaps
+        .into_iter()
+        .filter(|g| priority_rank(g.priority) >= floor_rank && effort_rank(g.effort) <= ceil_rank)
+        .collect();
+
+    candidates.sort_by_key(|g| match g.confidence {
+        Confidence::High => 0,
+        Confidence::Med => 1,
+        Confidence::Low => 2,
+    });
+
+    Ok(candidates.into_iter().next())
+}
+
+/// Best-effort extraction of `#<N>` from a `chump improve` PR-number line
+/// (`"[improve] PR number: #123"`), for escalation event fields.
+fn extract_pr_number_from_output(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let idx = line.find("PR number: #")?;
+        let rest = &line[idx + "PR number: #".len()..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            None
+        } else {
+            Some(digits)
+        }
+    })
+}
+
+/// Page the operator via `scripts/dispatch/operator-recall.sh --condition
+/// <condition> --reason <reason>`. Best-effort — a failure here must not
+/// crash the worker loop (the recall script itself is cooldown-gated so
+/// repeated calls per iteration are safe).
+fn page_operator(condition: &str, reason: &str) {
+    let repo_root = std::env::var("CHUMP_REPO_ROOT")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    let Some(repo_root) = repo_root else {
+        eprintln!("[onboard --iter-once] cannot locate repo root to page operator ({condition})");
+        return;
+    };
+    let script = repo_root.join("scripts/dispatch/operator-recall.sh");
+    if !script.exists() {
+        eprintln!(
+            "[onboard --iter-once] operator-recall.sh not found at {}",
+            script.display()
+        );
+        return;
+    }
+    let status = Command::new("bash")
+        .arg(&script)
+        .args(["--condition", condition, "--reason", reason])
+        .status();
+    if let Err(e) = status {
+        eprintln!("[onboard --iter-once] failed to invoke operator-recall.sh: {e}");
+    }
+}
+
+/// `chump onboard --iter-once <repo-path>` handler (INFRA-2276).
+///
+/// Per-iter worker loop body, invoked by the launchd plist installed by
+/// `--schedule` (INFRA-2275): pick the safest pickable proposed gap from the
+/// repo's latest onboard scan, ship it via `chump improve --apply` (which
+/// already gates on CI-green + anti-cosmetic-test + no-regression before
+/// merging — the "all-checks-green" conservative bar), and track consecutive
+/// failures for auto-pause.
+fn run_iter_once(args: &[String]) -> Result<()> {
+    let repo_path = {
+        let mut found: Option<String> = None;
+        let mut i = 0;
+        while i < args.len() {
+            if args[i] == "--iter-once" {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or_else(|| anyhow!("--iter-once requires a repo path argument"))?;
+                found = Some(v.clone());
+                break;
+            }
+            i += 1;
+        }
+        found.ok_or_else(|| anyhow!("--iter-once requires a repo path argument"))?
+    };
+
+    let abs_path = if repo_path.starts_with('/') {
+        PathBuf::from(&repo_path)
+    } else {
+        std::env::current_dir()
+            .context("getting cwd")?
+            .join(&repo_path)
+    };
+    let abs_str = abs_path.to_string_lossy().to_string();
+
+    let max_failures: u32 = std::env::var("CHUMP_EXTERNAL_LOOP_MAX_FAILURES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
+    let mut state = load_loop_state(&abs_str)?;
+    let consecutive_failures = state
+        .get("consecutive_failures")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    if consecutive_failures >= max_failures {
+        let reason = format!(
+            "{abs_str}: {consecutive_failures} consecutive ship failures (threshold {max_failures})"
+        );
+        eprintln!("[onboard --iter-once] PAUSED: {reason}");
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "external_repo_paused".to_string(),
+            source: Some("chump-onboard".to_string()),
+            fields: vec![
+                ("repo_path".to_string(), abs_str.clone()),
+                ("reason".to_string(), reason.clone()),
+            ],
+            ..Default::default()
+        });
+        page_operator("EXTERNAL_REPO_PAUSED", &reason);
+        return Ok(());
+    }
+
+    let owner_repo = owner_repo_for_scheduled_path(&abs_path);
+
+    let floor = parse_priority_floor(
+        &std::env::var("CHUMP_EXTERNAL_LOOP_PRIORITY_FLOOR").unwrap_or_else(|_| "P2".to_string()),
+    );
+    let ceil = parse_effort_ceil(
+        &std::env::var("CHUMP_EXTERNAL_LOOP_EFFORT_CEIL").unwrap_or_else(|_| "s".to_string()),
+    );
+
+    let picked = pick_safest_gap(&owner_repo, floor, ceil)?;
+
+    let now = Utc::now().to_rfc3339();
+    let iter_count_total = state
+        .get("iter_count_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        + 1;
+
+    let Some(gap) = picked else {
+        eprintln!("[onboard --iter-once] no pickable gap for {owner_repo} (floor={floor:?} ceil={ceil:?}) — no-op iter");
+        state["last_iter_ts"] = serde_json::Value::String(now);
+        state["iter_count_total"] = serde_json::Value::from(iter_count_total);
+        save_loop_state(&abs_str, &state)?;
+        return Ok(());
+    };
+
+    eprintln!(
+        "[onboard --iter-once] {owner_repo}: picked \"{}\"",
+        gap.title
+    );
+
+    let chump_bin = std::env::current_exe().context("cannot determine chump binary path")?;
+    let output = Command::new(&chump_bin)
+        .args([
+            "improve",
+            &owner_repo,
+            "--apply",
+            "--gap",
+            &gap.title,
+            "--clone-dir",
+            &abs_str,
+        ])
+        .output()
+        .context("spawning chump improve")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    print!("{stdout}");
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+    let shipped = output.status.success() && stdout.contains("Verdict: MERGE");
+
+    let ship_count_total = state
+        .get("ship_count_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    state["last_iter_ts"] = serde_json::Value::String(Utc::now().to_rfc3339());
+    state["iter_count_total"] = serde_json::Value::from(iter_count_total);
+
+    if shipped {
+        state["consecutive_failures"] = serde_json::Value::from(0u64);
+        state["ship_count_total"] = serde_json::Value::from(ship_count_total + 1);
+        save_loop_state(&abs_str, &state)?;
+        println!("[onboard --iter-once] SHIPPED: {}", gap.title);
+        return Ok(());
+    }
+
+    // Not shipped: HELD verdict or a hard error either way counts as a
+    // failure for the auto-pause counter.
+    let new_failures = consecutive_failures + 1;
+    state["consecutive_failures"] = serde_json::Value::from(new_failures as u64);
+    save_loop_state(&abs_str, &state)?;
+
+    let pr_number = extract_pr_number_from_output(&stdout).unwrap_or_default();
+    let escalate_reason = if stdout.contains("Verdict: HELD") {
+        stdout
+            .lines()
+            .find(|l| l.contains("Verdict: HELD"))
+            .unwrap_or("Verdict: HELD")
+            .trim()
+            .to_string()
+    } else {
+        format!("chump improve exited {}", output.status)
+    };
+
+    eprintln!("[onboard --iter-once] ESCALATE: {owner_repo}: {escalate_reason}");
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "external_repo_escalation".to_string(),
+        source: Some("chump-onboard".to_string()),
+        fields: vec![
+            ("repo_path".to_string(), abs_str.clone()),
+            ("pr_number".to_string(), pr_number),
+            ("escalate_reason".to_string(), escalate_reason.clone()),
+        ],
+        ..Default::default()
+    });
+    page_operator(
+        "EXTERNAL_REPO_ESCALATION",
+        &format!("{abs_str}: {escalate_reason}"),
+    );
 
     Ok(())
 }
@@ -2087,5 +2465,158 @@ mod tests {
             content.contains("CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED"),
             "CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED must be registered in scripts/ci/env-vars-internal.txt"
         );
+    }
+
+    // ── INFRA-2276: worker loop (--iter-once) ─────────────────────────────
+
+    #[test]
+    fn test_priority_rank_order() {
+        assert!(priority_rank(Priority::P0) < priority_rank(Priority::P1));
+        assert!(priority_rank(Priority::P1) < priority_rank(Priority::P2));
+        assert!(priority_rank(Priority::P2) < priority_rank(Priority::P3));
+    }
+
+    #[test]
+    fn test_effort_rank_order() {
+        assert!(effort_rank(Effort::Xs) < effort_rank(Effort::S));
+        assert!(effort_rank(Effort::S) < effort_rank(Effort::M));
+        assert!(effort_rank(Effort::M) < effort_rank(Effort::L));
+    }
+
+    #[test]
+    fn test_parse_priority_floor() {
+        assert_eq!(
+            priority_rank(parse_priority_floor("P0")),
+            priority_rank(Priority::P0)
+        );
+        assert_eq!(
+            priority_rank(parse_priority_floor("p3")),
+            priority_rank(Priority::P3)
+        );
+        // Unrecognized / missing → default P2.
+        assert_eq!(
+            priority_rank(parse_priority_floor("bogus")),
+            priority_rank(Priority::P2)
+        );
+    }
+
+    #[test]
+    fn test_parse_effort_ceil() {
+        assert_eq!(
+            effort_rank(parse_effort_ceil("xs")),
+            effort_rank(Effort::Xs)
+        );
+        assert_eq!(effort_rank(parse_effort_ceil("L")), effort_rank(Effort::L));
+        // Unrecognized / missing → default S.
+        assert_eq!(
+            effort_rank(parse_effort_ceil("bogus")),
+            effort_rank(Effort::S)
+        );
+    }
+
+    #[test]
+    fn test_extract_pr_number_from_output() {
+        let stdout =
+            "[improve] PR opened: https://github.com/foo/bar/pull/42\n[improve] PR number: #42\n";
+        assert_eq!(
+            extract_pr_number_from_output(stdout),
+            Some("42".to_string())
+        );
+        assert_eq!(extract_pr_number_from_output("no pr line here"), None);
+    }
+
+    #[test]
+    fn test_owner_repo_for_scheduled_path_no_remote() {
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-onboard-test-noremote-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&tmp);
+        let status = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&tmp)
+            .status();
+        if status.map(|s| s.success()).unwrap_or(false) {
+            let slug = owner_repo_for_scheduled_path(&tmp);
+            assert!(slug.starts_with("local/"), "got: {slug}");
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_pick_safest_gap_filters_by_priority_and_effort() {
+        use chump_handoff::external_repo_schema::SourceOfEvidence;
+
+        let owner_repo = "test-owner/pick-safest-fixture";
+        let repo_dir = external_repo_dir(owner_repo);
+        let _ = fs::remove_dir_all(&repo_dir);
+
+        let evidence = SourceOfEvidence {
+            input_path: "README.md".to_string(),
+            section: "test".to_string(),
+            excerpt: "excerpt".to_string(),
+        };
+        let scan = OnboardScan {
+            scan_timestamp: Utc::now(),
+            external_repo: owner_repo.to_string(),
+            tool_version: "test".to_string(),
+            inputs_read: vec![],
+            proposed_gaps: vec![
+                ProposedGap {
+                    title: "risky P0 gap".to_string(),
+                    domain: "INFRA".to_string(),
+                    priority: Priority::P0,
+                    effort: Effort::Xs,
+                    confidence: Confidence::High,
+                    source_of_evidence: evidence.clone(),
+                    acceptance_criteria_draft: vec![],
+                    layer: None,
+                    doctrine_justification: None,
+                },
+                ProposedGap {
+                    title: "too-large P2 gap".to_string(),
+                    domain: "INFRA".to_string(),
+                    priority: Priority::P2,
+                    effort: Effort::M,
+                    confidence: Confidence::High,
+                    source_of_evidence: evidence.clone(),
+                    acceptance_criteria_draft: vec![],
+                    layer: None,
+                    doctrine_justification: None,
+                },
+                ProposedGap {
+                    title: "safe P2/xs gap".to_string(),
+                    domain: "INFRA".to_string(),
+                    priority: Priority::P2,
+                    effort: Effort::Xs,
+                    confidence: Confidence::Med,
+                    source_of_evidence: evidence.clone(),
+                    acceptance_criteria_draft: vec![],
+                    layer: None,
+                    doctrine_justification: None,
+                },
+                ProposedGap {
+                    title: "safe P3/s gap, higher confidence".to_string(),
+                    domain: "INFRA".to_string(),
+                    priority: Priority::P3,
+                    effort: Effort::S,
+                    confidence: Confidence::High,
+                    source_of_evidence: evidence,
+                    acceptance_criteria_draft: vec![],
+                    layer: None,
+                    doctrine_justification: None,
+                },
+            ],
+        };
+        save_scan(&repo_dir, &scan).expect("save fixture scan");
+
+        let picked = pick_safest_gap(owner_repo, Priority::P2, Effort::S)
+            .expect("pick should not error")
+            .expect("expected a pickable gap");
+        // Both "safe P2/xs gap" and "safe P3/s gap, higher confidence" pass the
+        // filter; the higher-confidence one sorts first.
+        assert_eq!(picked.title, "safe P3/s gap, higher confidence");
+
+        let _ = fs::remove_dir_all(&repo_dir);
     }
 }
