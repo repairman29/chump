@@ -1241,6 +1241,19 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-worker-timeout-scale.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-2925: pr-stuck-cluster-detector observability smoke test.
+        // Verifies pr-stuck-cluster-detector.sh emits kind=pr_stuck_cluster_detector_run
+        // on every exit path (no_op / dry_run / bad_args) with outcome,
+        // gap_reserve_calls, and failure_class fields — so the run-level
+        // observability landed in INFRA-2754/INFRA-2906 doesn't silently
+        // regress. Pure bash + synthetic ambient.jsonl fixtures: no network,
+        // no chump binary, <1s. Always-on, NO bypass env var.
+        steps.push(step(
+            "pr-stuck-cluster-observability",
+            &["bash", "scripts/ci/test-pr-stuck-cluster-observability.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
