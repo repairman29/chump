@@ -2713,7 +2713,11 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
     # INFRA-1082: cache-first branch lookup; falls back to gh pr view on miss.
     _existing_state=""
     if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
-        _bm_cached_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null)"
+        # INFRA-2925: cache_lookup_pr_by_branch returns rc=2 on a cache miss
+        # (the normal case for a brand-new branch with no PR yet). Without
+        # `|| true`, `set -euo pipefail` kills bot-merge.sh right here on
+        # every first-ship — silently, with no error printed.
+        _bm_cached_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null || true)"
         if [[ -n "$_bm_cached_meta" ]]; then
             _existing_state="$(printf '%s' "$_bm_cached_meta" | \
                 python3 -c "import sys,json; print(json.load(sys.stdin).get('state','') or '')" \
