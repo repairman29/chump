@@ -1278,16 +1278,55 @@ impl GapStore {
                 }
             }
             // Atomically bump the counter and read the assigned number.
-            self.conn.execute(
-                "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
-                params![domain_upper],
-            )?;
-            let num: i64 = self.conn.query_row(
-                "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
-                params![domain_upper],
-                |r| r.get(0),
-            )?;
-            let new_id = format!("{}{:03}", prefix, num);
+            //
+            // INFRA-1954: a gap that shipped and later dropped out of the
+            // live registry (row purged, or a fresh/reset state.db) is
+            // invisible to `existing_max` above, so the naive next ID can
+            // collide with an ID already referenced in commit history —
+            // observed 4x in the 2026-05-25 Cold Water cycle (META-103,
+            // INFRA-1953/1955/1957). Before accepting a candidate, check
+            // `git log --all --grep=<id>`; if it's already referenced,
+            // skip it and bump past it rather than reusing it.
+            let mut new_id = String::new();
+            const MAX_GIT_HISTORY_RETRIES: u32 = 50;
+            for _ in 0..MAX_GIT_HISTORY_RETRIES {
+                self.conn.execute(
+                    "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
+                    params![domain_upper],
+                )?;
+                let num: i64 = self.conn.query_row(
+                    "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
+                    params![domain_upper],
+                    |r| r.get(0),
+                )?;
+                let candidate = format!("{}{:03}", prefix, num);
+                if self.id_referenced_in_git_history(&candidate) {
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_git_history_duplicate\",\
+                         \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                    continue;
+                }
+                new_id = candidate;
+                break;
+            }
+            if new_id.is_empty() {
+                bail!(
+                    "reserve({domain}) DUPLICATE: {MAX_GIT_HISTORY_RETRIES} consecutive \
+                     candidate IDs already appear in git history — the domain counter is \
+                     likely desynced from a state.db reset. Investigate before retrying."
+                );
+            }
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -1463,6 +1502,24 @@ impl GapStore {
         }
 
         bail!("reserve({domain}) failed after {MAX_RETRIES} retries — persistent collision")
+    }
+
+    /// INFRA-1954: true if `id` appears in any commit message across all
+    /// branches/refs. Catches gap IDs that shipped and later dropped out of
+    /// the live registry (row purged, or a fresh/reset state.db), which the
+    /// `existing_max` scan over the `gaps` table cannot see. Disable via
+    /// `CHUMP_GAP_RESERVE_SKIP_GIT_CHECK=1` (offline sandboxes / perf-sensitive
+    /// test loops with no meaningful git history).
+    fn id_referenced_in_git_history(&self, id: &str) -> bool {
+        if std::env::var("CHUMP_GAP_RESERVE_SKIP_GIT_CHECK").as_deref() == Ok("1") {
+            return false;
+        }
+        std::process::Command::new("git")
+            .args(["log", "--all", "--oneline", "-1", "--grep", id])
+            .current_dir(&self.repo_root)
+            .output()
+            .map(|o| o.status.success() && !o.stdout.is_empty())
+            .unwrap_or(false)
     }
 
     /// Return the `session_id` strings of all live leases (other than our
