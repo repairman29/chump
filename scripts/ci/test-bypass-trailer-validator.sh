@@ -16,6 +16,8 @@
 #   T8  prose merely mentions "bypass"/"bypasses", no schema key → exit 0  (RESILIENT-150)
 #   T9  sanctioned single-line Rust-First-Bypass: trailer → exit 0          (RESILIENT-150)
 #   T10 sanctioned single-line Test-Gate-Bypass: trailer → exit 0          (RESILIENT-150)
+#   T11 test-script FILENAME containing "bypass" in a checklist → exit 0    (INFRA-2448)
+#   T12 genuine Bot-Merge-Bypass: trailer amid filename mentions → exit 1  (INFRA-2448)
 
 set -euo pipefail
 
@@ -164,6 +166,39 @@ Rust-First-Bypass: 30-line gh+jq glue that legitimately does not need types"
 run_test "T10-test-gate-bypass-trailer" 0 "fix(INFRA-0008): rescue after flaky test gate
 
 Test-Gate-Bypass: pre-existing unrelated test failure tracked in INFRA-9999"
+
+# ─── T11: test-script FILENAME mentioning "bypass" → exit 0 ─────────────────
+# INFRA-2448 regression guard: a commit-body checklist referencing the
+# filename test-no-manual-ship-bypass.sh must NOT trip the 4-trailer
+# requirement — there is no schema-key trailer here, only a filename.
+run_test "T11-filename-mention" 0 "fix(INFRA-2432): fix trunk-red CI gate
+
+Checklist:
+- [x] ran scripts/ci/test-no-manual-ship-bypass.sh locally
+- [x] ran scripts/ci/test-rust-first-bypass-gate.sh locally
+- [x] no manual bypass trailers used"
+
+# ─── T12: genuine Bot-Merge-Bypass: trailer amid filename mentions → exit 0 ──
+# The single-line sanctioned trailer (not the INFRA-2407 4-trailer schema)
+# must still be left alone by this validator even when filenames mentioning
+# "bypass" are also present in the body — no false-negative introduced.
+run_test "T12-real-trailer-with-filenames" 0 "fix(INFRA-2432): fix trunk-red CI gate
+
+Checklist:
+- [x] ran scripts/ci/test-no-manual-ship-bypass.sh locally
+
+Bot-Merge-Bypass: preflight gate was down for the trunk-red window, verified manually"
+
+# ─── T13: partial 4-trailer schema amid filename mentions → exit 1 ──────────
+# INFRA-2448 no-false-negative guard: a real (but incomplete) INFRA-2407
+# schema trailer must still be detected and enforced even when the body
+# also mentions bypass-named test filenames.
+run_test "T13-schema-trailer-with-filenames" 1 "fix(INFRA-2432): fix trunk-red CI gate
+
+Checklist:
+- [x] ran scripts/ci/test-no-manual-ship-bypass.sh locally
+
+Bypass-Reason: tooling was broken during the trunk-red window so this gate had to be skipped"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
