@@ -1,0 +1,11 @@
+- id: INFRA-3355
+  domain: INFRA
+  title: "META-070: mirror PR/worker-lifecycle audit-job gates into chump preflight (cluster B)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster B from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the bot-merge/PR-lifecycle test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 16 scripts: test-bot-merge-arm-ship-order.sh, test-bot-merge-exit-codes.sh, test-bot-merge-exit-phases.sh, test-bot-merge-graphql-preflight.sh, test-bot-merge-stacked-rebase.sh, test-bot-merge-watchdog.sh, test-bounced-pr-detector.sh, test-cache-mergestatestatus.sh, test-merge-driver-ci-yml-add-row.sh, test-pr-failure-auto-rescue.sh, test-pr-rescue-audit-handler.sh, test-pr-scope-title-fallback.sh, test-review-handoff-reengage.sh, test-rollup-cascade-cancel.sh, test-stale-binary-ship-blocked.sh, test-stale-worktree-reaper-tmp.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml.)
+  acceptance_criteria:
+    - 1. All 16 cluster-B scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 16 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster B shipped.
+
