@@ -340,6 +340,21 @@ Format (prepend above all prior entries; increment N):
 
 ## Step 6: Commit and push
 
+**Detached-HEAD trap (META-272, 2026-07-20):** `git push origin main` pushes
+your *local branch named `main`* to the remote — not necessarily the commit
+you just made. If the sandbox checked out a detached HEAD (common on shallow
+CI-style clones), there is no local `main` branch tracking your new commit,
+so `git push origin main` either fails loudly (no local `main` to push) or,
+worse, silently pushes a stale local `main` while your Red Letter commit sits
+orphaned on the detached HEAD. This stranded two full audit cycles (Issues
+#12 and #13, 2026-05-18 through 2026-05-25) for 50 commits before anyone
+noticed. Always push `HEAD` explicitly instead of relying on a local branch
+name:
+
+```bash
+CHUMP_GAP_CHECK=0 git push origin HEAD:main
+```
+
 If gap-reserve succeeded for at least one gap:
 ```bash
 git config user.email 'cold-water@chump.bot'
@@ -349,7 +364,7 @@ git commit -m "chore(cold-water): Red Letter issue #N — YYYY-MM-DD
 
 Files <K> follow-up gaps: <ID1>, <ID2>, ...
 "
-CHUMP_GAP_CHECK=0 git push origin main
+CHUMP_GAP_CHECK=0 git push origin HEAD:main
 ```
 
 If gap-reserve failed everywhere (proposed-only mode):
@@ -358,7 +373,7 @@ git config user.email 'cold-water@chump.bot'
 git config user.name 'Cold Water'
 git add docs/audits/RED_LETTER.md
 git commit -m "chore(cold-water): Red Letter issue #N — YYYY-MM-DD (proposed gaps; gap-reserve unavailable in sandbox)"
-CHUMP_GAP_CHECK=0 git push origin main
+CHUMP_GAP_CHECK=0 git push origin HEAD:main
 ```
 
 If the push is rejected (branch protection, etc.), fall back to a feature branch + PR:
@@ -368,6 +383,18 @@ git checkout -b "$br"
 CHUMP_GAP_CHECK=0 git push -u origin "$br"
 gh pr create --base main --title "chore(cold-water): Red Letter issue #N" --body 'Adversarial review — see RED_LETTER.md diff. Auto-merge OK.'
 gh pr merge --auto --squash || true
+```
+
+**Verify the push actually landed** — don't trust a clean exit code alone
+(the exact failure mode that stranded Issues #12/#13):
+```bash
+local_sha=$(git rev-parse HEAD)
+remote_sha=$(git ls-remote origin main | cut -f1)
+if [ "$local_sha" != "$remote_sha" ]; then
+  echo "PUSH DID NOT REACH origin/main — local HEAD=$local_sha remote main=$remote_sha" >&2
+  echo "Fall back to the feature-branch + PR path above." >&2
+  exit 1
+fi
 ```
 
 Replace N, YYYY-MM-DD, K, and gap IDs with actual values. Do not split the RED_LETTER.md and gaps.yaml across multiple commits.
