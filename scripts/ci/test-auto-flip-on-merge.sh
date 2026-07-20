@@ -96,6 +96,38 @@ else
     pass "backfill rejected --bogus-flag"
 fi
 
+# ── Test 6: nightly catch-up plist is well-formed (INFRA-2230) ──────────────
+# plutil (macOS-native, used by launchctl itself) tolerates the "--" inside
+# XML comments that trips Python's stricter plistlib parser — sibling
+# plists in this dir (e.g. com.chump.api-cost-digest.plist) fail plistlib
+# the same way despite being live-installed and working, so plutil is the
+# correct ground truth here.
+echo ""
+echo "Test 6: com.chump.gap-status-catchup.plist parses"
+if command -v plutil >/dev/null 2>&1; then
+    if plutil -lint launchd/com.chump.gap-status-catchup.plist >/dev/null 2>&1; then
+        pass "plist parses (plutil)"
+    else
+        fail "plist parse failed (plutil)"
+    fi
+else
+    echo "[SKIP] plutil not in PATH (non-macOS runner)"
+fi
+
+# ── Test 7: backfill script sources REPO_ROOT before use (INFRA-2230) ───────
+# Regression guard: REPO_ROOT was referenced in the ambient-emit path
+# without ever being assigned, so the emit silently wrote to the wrong
+# path whenever CHUMP_AMBIENT_LOG was unset.
+echo ""
+echo "Test 7: backfill script defines REPO_ROOT before first use"
+assign_line=$(grep -n '^REPO_ROOT=' scripts/ops/backfill-shipped-gaps.sh | head -1 | cut -d: -f1)
+use_line=$(grep -n 'REPO_ROOT}' scripts/ops/backfill-shipped-gaps.sh | head -1 | cut -d: -f1)
+if [[ -n "$assign_line" && -n "$use_line" && "$assign_line" -lt "$use_line" ]]; then
+    pass "REPO_ROOT assigned (line $assign_line) before use (line $use_line)"
+else
+    fail "REPO_ROOT not assigned before use (assign=$assign_line use=$use_line)"
+fi
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

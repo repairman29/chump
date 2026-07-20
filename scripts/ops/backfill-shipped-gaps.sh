@@ -29,6 +29,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
 DAYS=60
 MODE="dry-run"   # default to dry-run for safety
 
@@ -151,6 +153,17 @@ while IFS=$'\t' read -r pr_number pr_title; do
                         # can audit which gaps were backfill-flipped.
                         ambient_log="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
                         printf '{"ts":"%s","kind":"gap_backfill_flipped","gap":"%s","pr":%s,"source":"backfill-shipped-gaps"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_number" >> "$ambient_log" 2>/dev/null || true
+                        # INFRA-2230: this gap was still open despite a merged
+                        # PR carrying its ID in the title — auto-flip-on-merge
+                        # (.github/workflows/auto-flip-on-merge.yml) should have
+                        # already flipped it. Root cause: that workflow runs
+                        # `chump gap ship` against a state.db that does not
+                        # exist in the CI runner's fresh checkout (.chump/state.db
+                        # is gitignored and never rebuilt from state.sql there),
+                        # so it silently no-ops every time. This catch-up run is
+                        # the compensating control until that's fixed upstream.
+                        printf '{"ts":"%s","kind":"auto_flip_skipped","gap":"%s","pr":%s,"reason":"state_db_error"}\n' \
                             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_number" >> "$ambient_log" 2>/dev/null || true
                     else
                         echo "[backfill] ⚠ failed to ship $gap_id — left as-is"

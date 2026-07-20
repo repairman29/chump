@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.gap-status-catchup — INFRA-2230 LaunchAgent.
+
+  Runs scripts/ops/backfill-shipped-gaps.sh --days 2 --apply nightly at
+  03:00 local time. Compensates for auto-flip-on-merge
+  (.github/workflows/auto-flip-on-merge.yml, INFRA-2121) silently no-oping
+  on every merge: that workflow's `chump gap ship` runs against a
+  .chump/state.db that doesn't exist in the CI runner's fresh checkout
+  (gitignored, never rebuilt from state.sql there). This job re-scans the
+  last 2 days of merged PRs against the real local state.db and flips any
+  gap the workflow missed, emitting kind=gap_backfill_flipped +
+  kind=auto_flip_skipped (reason=state_db_error) to ambient.jsonl for
+  audit.
+
+  INSTALLATION:
+    scripts/setup/install-gap-status-catchup-launchd.sh
+
+  Manual run:
+    launchctl start com.chump.gap-status-catchup
+    tail /tmp/chump-gap-status-catchup.out.log
+
+  UNINSTALL:
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.chump.gap-status-catchup.plist
+    rm ~/Library/LaunchAgents/com.chump.gap-status-catchup.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.gap-status-catchup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/backfill-shipped-gaps.sh --days 2 --apply</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-gap-status-catchup.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-gap-status-catchup.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+</dict>
+</plist>

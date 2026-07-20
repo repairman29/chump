@@ -26,6 +26,26 @@ name: Auto-flip-on-merge
 # Event registry (INFRA-755 + scanner-anchor pattern):
 #   scanner-anchor: "kind":"gap_auto_flipped" emitted by this workflow (INFRA-2121)
 #   scanner-anchor: "kind":"gap_auto_flip_failed" emitted by this workflow (INFRA-2121)
+#
+# KNOWN LIMITATION (INFRA-2230, diagnosed 2026-07-20):
+#   This workflow's `chump gap ship` runs against `.chump/state.db` in a
+#   fresh `actions/checkout` of `main`. state.db is gitignored (only
+#   `.chump/state.sql`, the tracked dump, is checked out) and this job
+#   never rebuilds it via `chump gap restore --from-sql` — so it silently
+#   ships against a brand-new empty database every run. The target gap
+#   never exists there, `chump gap ship` exits non-zero, and the "non-fatal"
+#   branch below swallows it. Net effect: this workflow has never actually
+#   flipped a gap in CI; the printf'd ambient lines only ever reach the GH
+#   Actions job log, not `.chump-locks/ambient.jsonl` (that file is local
+#   per-machine and unreachable from a cloud runner). The compensating
+#   control is `scripts/ops/backfill-shipped-gaps.sh --apply`, scheduled
+#   nightly via `launchd/com.chump.gap-status-catchup.plist` — it runs on
+#   the operator's machine against the real, canonical state.db and emits
+#   `kind=gap_backfill_flipped` + `kind=auto_flip_skipped` (reason=
+#   state_db_error) to the real ambient stream. A durable in-CI fix would
+#   need either a state.db round-trip (restore-from-sql, ship, re-dump to
+#   sql, commit) or dropping this workflow in favor of the nightly job
+#   entirely — left as a follow-up given this gap's effort budget.
 
 on:
   pull_request:

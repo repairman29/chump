@@ -6582,6 +6582,23 @@ events:
       which gaps the backfill touched without re-running it in dry-run.
     consumers: [ops-audit]
     fields_required: [ts, kind, gap, pr, source]
+
+  - kind: auto_flip_skipped
+    effect_metric: credible
+    emitter: scripts/ops/backfill-shipped-gaps.sh (INFRA-2230)
+    trigger: >
+      Emitted alongside gap_backfill_flipped whenever the nightly catch-up
+      run finds and flips a gap that auto-flip-on-merge
+      (.github/workflows/auto-flip-on-merge.yml, INFRA-2121) should have
+      already flipped on merge but didn't. Root cause diagnosed in
+      INFRA-2230: that workflow's `chump gap ship` runs against a
+      .chump/state.db that does not exist in the CI runner's fresh
+      checkout (gitignored, never rebuilt from state.sql there), so it
+      silently no-ops on every merge. `reason` is currently always
+      state_db_error; the field is kept open (regex_miss, workflow_skip)
+      for future skip classes.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, gap, pr, reason]
   - kind: reviewer_routing_computed
     effect_metric: effective
     emitter: crates/chump-reviewer-routing/src/bin/chump-reviewer-routing.rs (INFRA-1491)
