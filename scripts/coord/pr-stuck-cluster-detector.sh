@@ -16,6 +16,26 @@
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
 #
 # Cron-friendly. Emits kind=pr_stuck_cluster ambient events.
+#
+# Observability contract (INFRA-2877, extends INFRA-2754):
+#
+#   Events on every exit path — kind=pr_stuck_cluster_detector_run, outcome=
+#     no_op               no stuck events / below threshold / cooldown active (expected steady state)
+#     dry_run             cluster detected, --apply not passed (no mutation)
+#     cluster_filed       cluster detected, gap reserved successfully (mutation happened)
+#     gap_id_extract_failed  TRANSIENT: gap reserve succeeded but stdout parse failed — retry next run
+#     gap_reserve_failed  TRANSIENT: `chump gap reserve` itself returned nonzero — retry next run
+#     bad_args / help     invocation error, not a detection outcome
+#     error (trap default) PERMANENT until fixed: unhandled exit, needs investigation
+#
+#   Cost: gap_reserve_calls field on the run event counts mutating `chump gap
+#   reserve` calls per invocation (0 or 1, since one cluster = one gap). Report
+#   to operator via:
+#     grep '"kind":"pr_stuck_cluster_detector_run"' .chump-locks/ambient.jsonl \
+#       | jq -s '[.[] | .gap_reserve_calls] | add'
+#
+#   Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh (covers the
+#   no_op and dry_run paths end to end against a scratch LOCK_DIR).
 
 set -uo pipefail
 
