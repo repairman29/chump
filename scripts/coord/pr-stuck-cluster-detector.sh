@@ -16,6 +16,31 @@
 #   scripts/coord/pr-stuck-cluster-detector.sh --apply     # file gap
 #
 # Cron-friendly. Emits kind=pr_stuck_cluster ambient events.
+#
+# Observability contract (INFRA-2920):
+#   1. Events on success/failure/timeout — every invocation, regardless of
+#      outcome, emits kind=pr_stuck_cluster_detector_run (INFRA-2754) with
+#      fields: outcome, stuck_pr_count, duration_ms, gap_reserve_calls,
+#      failure_class. A cluster that gets filed additionally emits the
+#      pre-existing kind=pr_stuck_cluster event. There is no separate
+#      timeout path — the script has no long-running network call, so
+#      "timeout" collapses into the trap-based EXIT emission (fires even
+#      on an unexpected early exit).
+#   2. Cost tracking — the only paid mutation this script performs is
+#      `chump gap reserve` (LLM-assisted gap filing). Each call increments
+#      gap_reserve_calls in the run event, so cost is 1:1 with that field
+#      and needs no separate accounting. docs/observability/EVENT_REGISTRY.yaml
+#      lists waste-tally as a consumer of pr_stuck_cluster_detector_run —
+#      `chump waste-tally` rolls per-script gap_reserve_calls up for the
+#      operator; no separate dashboard is needed.
+#   3. Failure-class taxonomy — see _pscd_failure_class() below:
+#      none (no_op/dry_run/cluster_filed/help, not a failure),
+#      transient (gap_id_extract_failed/error, retry may succeed as-is),
+#      permanent (gap_reserve_failed/bad_args, retry repeats until fixed).
+#   4. Smoke test — scripts/ci/test-pr-stuck-cluster-observability.sh
+#      (INFRA-2754) exercises the no_op, dry_run, and bad_args paths and
+#      asserts the run event's fields. Run directly:
+#        scripts/ci/test-pr-stuck-cluster-observability.sh
 
 set -uo pipefail
 
