@@ -106,11 +106,15 @@ fi
 
 FAKE="$TMP/repo"
 mkdir -p "$FAKE/.chump-locks/cooldown" "$FAKE/scripts/coord" \
-         "$FAKE/scripts/dispatch" "$FAKE/scripts/dev" "$FAKE/logs"
+         "$FAKE/scripts/dispatch/lib" "$FAKE/scripts/dev" "$FAKE/logs"
 
 # Minimal git repo so git commands don't crash
 git init -q "$FAKE" 2>/dev/null || true
 git -C "$FAKE" commit --allow-empty -m "init" --no-gpg-sign -q 2>/dev/null || true
+
+# INFRA-2008: worker.sh sources REPO_ROOT-relative floor-readers.sh — stage
+# the real lib into the fake repo so functional runs (REPO_ROOT="$FAKE") find it.
+cp "$REPO_ROOT/scripts/dispatch/lib/floor-readers.sh" "$FAKE/scripts/dispatch/lib/floor-readers.sh"
 
 # fleet-hold-check.sh stub: reads CHUMP_FLEET_HOLD_FILE directly (real contract)
 # When the hold file exists: exits 2. When absent: exits 0.

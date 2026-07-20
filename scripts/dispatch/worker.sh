@@ -410,6 +410,9 @@ while :; do
 
     # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
     # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget.
+    # scripts/dispatch/lib/floor-readers.sh exports CHUMP_FLEET_HOLD (true/false)
+    # and CHUMP_FLOOR_TEMP (COLD/WARM/HOT) so this worker AND any subagent it
+    # spawns can branch on the same signals (see docs/process/SUBAGENT_DISPATCH.md).
     # (1) fleet-hold-check.sh — exits 2 if cluster-detector wrote fleet-hold.txt
     #     (INFRA-1987 Phase 2). On hold: pivot to triage/docs work; don't ship.
     # (2) chump health --temp — exits 0=COLD, 1=WARM, 2=HOT (INFRA-1992).
@@ -417,43 +420,38 @@ while :; do
     _amb_pre="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
     mkdir -p "$(dirname "$_amb_pre")" 2>/dev/null || true
 
+    _floor_readers_lib="${REPO_ROOT}/scripts/dispatch/lib/floor-readers.sh"
+    if [[ -r "$_floor_readers_lib" ]]; then
+        # shellcheck source=lib/floor-readers.sh
+        source "$_floor_readers_lib"
+        chump_floor_read
+    else
+        CHUMP_FLEET_HOLD="false"
+        CHUMP_FLOOR_TEMP="COLD"
+    fi
+
     # (1) Fleet-hold check
     _hold_active=0
-    _fleet_hold_check="${REPO_ROOT}/scripts/coord/fleet-hold-check.sh"
-    if [[ -x "$_fleet_hold_check" ]]; then
-        if ! bash "$_fleet_hold_check" --quiet 2>/dev/null; then
-            _hold_active=1
+    [[ "$CHUMP_FLEET_HOLD" == "true" ]] && _hold_active=1
+    printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"fleet_hold","hold":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_hold_active" \
+        >> "$_amb_pre" 2>/dev/null || true
+    if [[ "$_hold_active" -eq 1 ]]; then
+        log "INFRA-2008: fleet-hold ACTIVE (cluster-detector signal) — skipping shipping work; next cycle"
+        # Count hold-cycles toward stand-down so the worker doesn't spin
+        # forever if the hold persists and no gaps can be claimed.
+        _starve_count=$((_starve_count + 1))
+        if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
+            _emit_worker_stuck "fleet_hold_stand_down: hold persisted >= $CHUMP_STAND_DOWN_THRESHOLD cycles"
+            log "INFRA-2008: fleet-hold persistent ($CHUMP_STAND_DOWN_THRESHOLD cycles) — standing down"
+            exit 0
         fi
-        printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"fleet_hold","hold":%s}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_hold_active" \
-            >> "$_amb_pre" 2>/dev/null || true
-        if [[ "$_hold_active" -eq 1 ]]; then
-            log "INFRA-2008: fleet-hold ACTIVE (cluster-detector signal) — skipping shipping work; next cycle"
-            # Count hold-cycles toward stand-down so the worker doesn't spin
-            # forever if the hold persists and no gaps can be claimed.
-            _starve_count=$((_starve_count + 1))
-            if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
-                _emit_worker_stuck "fleet_hold_stand_down: hold persisted >= $CHUMP_STAND_DOWN_THRESHOLD cycles"
-                log "INFRA-2008: fleet-hold persistent ($CHUMP_STAND_DOWN_THRESHOLD cycles) — standing down"
-                exit 0
-            fi
-            sleep "${IDLE_SLEEP_S:-60}"
-            continue
-        fi
+        sleep "${IDLE_SLEEP_S:-60}"
+        continue
     fi
 
     # (2) Floor-temperature check
-    _floor_temp="COLD"
-    if chump health --temp >/dev/null 2>&1; then
-        _floor_temp="COLD"
-    else
-        _temp_rc=$?
-        case "$_temp_rc" in
-            1) _floor_temp="WARM" ;;
-            2) _floor_temp="HOT" ;;
-            *) _floor_temp="COLD" ;;  # unknown / chump not available — proceed normally
-        esac
-    fi
+    _floor_temp="$CHUMP_FLOOR_TEMP"
     printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"floor_temp","temp":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_floor_temp" \
         >> "$_amb_pre" 2>/dev/null || true

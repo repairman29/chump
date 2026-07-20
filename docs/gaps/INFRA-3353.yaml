@@ -1,0 +1,9 @@
+- id: INFRA-3353
+  domain: INFRA
+  title: "RESILIENT: test-worker-prelude-floor-signals.sh and test-worker-prelude-reads-floor.sh not wired into CI"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - 1. scripts/ci/test-worker-prelude-floor-signals.sh added to src/preflight.rs whitelist (scripts scope) so it runs under 'chump preflight --with-tests' when worker.sh or floor-readers.sh changes. 2. scripts/ci/test-worker-prelude-reads-floor.sh (INFRA-2008) added likewise. 3. Both scripts referenced in a CI workflow step (.github/workflows/ci.yml) OR added to docs/process/CI_GATES_INVENTORY.md Tier D with reason if they cannot run in CI. 4. chump preflight run locally confirms both tests execute on a worker.sh diff.
+

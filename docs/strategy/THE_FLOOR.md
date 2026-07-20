@@ -35,6 +35,8 @@ Every agent prompt reads `chump health --temp` before picking work. Returns `COL
 
 One ambient field (`kind=floor_temp`), one CLI command, one prompt-template change. Converts "every agent ships at max risk all the time" into adaptive throttling. **Smallest unit-change, largest behavior-change.**
 
+**Status: wired (INFRA-2008, 100%).** `scripts/dispatch/worker.sh` sources `scripts/dispatch/lib/floor-readers.sh` before every claim, which exports `CHUMP_FLOOR_TEMP` and `CHUMP_FLEET_HOLD` (the Phase 2 fleet-hold signal, see item 2 below) for the worker and any subagent it spawns to branch on — see `docs/process/SUBAGENT_DISPATCH.md` §Floor-signal env vars. Each read emits `kind=worker_floor_signal_read` to `ambient.jsonl` for adoption audit.
+
 ### 2. Cluster-first autopilot (INFRA-1987)
 **Effort: s · Phase 1**
 
@@ -101,7 +103,7 @@ Phase 3 lets the fleet RECOVER WITHOUT US.
 | Time to attribute a regression to a commit | 15-50 min (`bash -x` manual) | <5 min (blame bot) |
 | Time to unstick a pile-up without Opus on duty | infinite | <15 min (recovery queue) |
 | Silent-failure surfaces in production paths | unknown (≥1 just shipped for 3 days) | 0 unannotated; audited count |
-| % of agent picks that read floor temp before claim | 0% | 100% |
+| % of agent picks that read floor temp before claim | 100% (INFRA-2008: `scripts/dispatch/worker.sh` prelude via `scripts/dispatch/lib/floor-readers.sh`) | 100% |
 | Wedge classes with detector + automatic remediation | 7 of 13 (detector only) | 13 of 13 (both) |
 | Operator queries to understand fleet state | 5 surfaces | 1 (`chump fleet pulse`) |
 | Mean time between admin-merge cycles needed | ~30 min (today) | >4 hours (target) |

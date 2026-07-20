@@ -1,0 +1,65 @@
+# chumpd.service — RESILIENT-176 (PREP slice) / MISSION-051
+#
+# systemd user-unit TEMPLATE for running chumpd on a Linux always-on host
+# (Pi mesh box, DigitalOcean droplet, etc). Mirrors the launchd plist
+# pattern used for macOS daemons (see launchd/*.plist +
+# scripts/setup/install-chump-fleet-daemon.sh) — this file is NOT installed
+# as-is; scripts/setup/provision-chumpd-host.sh substitutes the two
+# placeholders below and writes the result to
+# ~/.config/systemd/user/chumpd.service.
+#
+# Placeholders (substituted by provision-chumpd-host.sh):
+#   __REPO_ROOT__   absolute path to the cloned chump checkout on this host
+#   __HOME__        the provisioning user's $HOME
+#
+# STATUS: chumpd itself (MISSION-051) has not merged yet, so ExecStart
+# below points at a binary that may not exist until then. The unit is
+# written now so the *shape* is reviewed and ready; provision-chumpd-host.sh
+# skips actually enabling it until the chumpd binary target is present in
+# the checkout.
+#
+# Credentials: intentionally NOT set here via Environment=KEY=value (that
+# would put secrets in `systemctl show` / `ps` output and process listings
+# readable by any local user — the exact RESILIENT-173 hazard). Use
+# EnvironmentFile= pointing at a 0600 file the operator provisions
+# out-of-band; see docs/process/OFF_LAPTOP_SUBSTRATE.md "Auth material
+# checklist" for what belongs in it (GH_TOKEN, oauth token file path).
+#
+# Install (user-level, no sudo/root needed):
+#   mkdir -p ~/.config/systemd/user
+#   sed -e "s|__REPO_ROOT__|/path/to/chump-host|g" -e "s|__HOME__|$HOME|g" \
+#     scripts/setup/chumpd.service > ~/.config/systemd/user/chumpd.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now chumpd.service
+#   loginctl enable-linger "$(id -un)"   # keep it running after SSH logout
+#
+# Status / logs:
+#   systemctl --user status chumpd.service
+#   journalctl --user -u chumpd.service -f
+#
+# Uninstall:
+#   scripts/setup/provision-chumpd-host.sh --uninstall
+
+[Unit]
+Description=Chump supervisor daemon (chumpd) — MISSION-051 / RESILIENT-176
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/target/release/chumpd
+EnvironmentFile=-__HOME__/.chump/chumpd.env
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chumpd
+
+# Resource ceiling — chumpd + 2 sonnet workers is a modest footprint
+# (see docs/process/OFF_LAPTOP_SUBSTRATE.md capacity table). Cap generously
+# to catch a runaway rather than starve the host.
+MemoryMax=8G
+
+[Install]
+WantedBy=default.target

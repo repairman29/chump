@@ -65,6 +65,11 @@ install-self-hosted-runner-cache.sh
 install-self-hosted-runner-pi.sh
 install-self-hosted-runner.sh
 install-self-hosted-runners-all-local.sh
+# provision-chumpd-host.sh — RESILIENT-176 (PREP slice). Not named install-*.sh
+# (test-install-script-manifest.sh's glob doesn't require an entry here), but
+# mapped anyway per the installer-manifest doctrine: situational, opt-in,
+# run ONCE on a fresh always-on host, never auto-installed on this laptop.
+provision-chumpd-host.sh
 install-smee-tunnel-launchd.sh
 install-soak-checkpoint-launchd.sh
 install-stale-auditor-finding-reaper-launchd.sh

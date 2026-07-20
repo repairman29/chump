@@ -86,6 +86,25 @@ classes. As INFRA-1787 (env-var coverage), INFRA-1788 (docs-delta), INFRA-1790
 follow-ups ship, this checklist gets gradually absorbed into `chump preflight`
 proper and shrinks.
 
+## Floor-signal env vars (INFRA-2008 — worker prelude sets these before dispatch)
+
+Before claiming a gap, `scripts/dispatch/worker.sh` sources
+`scripts/dispatch/lib/floor-readers.sh` and exports:
+
+- `CHUMP_FLOOR_TEMP=COLD|WARM|HOT` — from `chump health --temp` (INFRA-1992)
+- `CHUMP_FLEET_HOLD=true|false` — from `scripts/coord/fleet-hold-check.sh` (INFRA-1987)
+
+Both env vars are present in the dispatching worker's process, so any
+subagent it spawns inherits them. If your subagent prompt makes decisions
+about scope (claim a new gap? propose an env-mutating change? go big or
+stay small?), have it check these first:
+
+```
+if CHUMP_FLEET_HOLD=true: do not claim new shipping gaps — pivot to triage/docs.
+if CHUMP_FLOOR_TEMP=HOT:  only xs-effort / docs / single-file changes; no env-mutating work.
+if CHUMP_FLOOR_TEMP=WARM: proceed, but double-verify before commit.
+```
+
 ## The no-clarifying-questions directive (paste into every subagent prompt)
 
 Add this as the **first section** of every subagent prompt, before the task
