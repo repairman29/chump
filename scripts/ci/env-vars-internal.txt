@@ -1124,3 +1124,37 @@ CHUMP_REAPER_PRESSURE_THRESHOLD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_OAUTH_TOKEN_PATH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_HOLD
+# detected in: (standard input)
+CHUMP_FLEET_HOLD_ACTIVE
+# detected in: (standard input)
+CHUMP_FLOOR_TEMP
+# detected in: (standard input)
+CHUMP_STAND_DOWN_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_HOLD_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOT_MERGE_STAGE_BUDGET_S
+# detected in: (standard input)
+CHUMP_HOT_FILES_YAML
+# detected in: (standard input)
+CHUMP_HOT_FILE_BASE
+# detected in: (standard input)
+CHUMP_HOT_FILE_LOCK_DIR
+# detected in: (standard input)
+CHUMP_HOT_FILE_LOCK_DISABLE

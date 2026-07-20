@@ -125,10 +125,29 @@ hot_file_lock_acquire() {
   [[ ${#needed[@]} -eq 0 ]] && return 0
 
   _hf_log "diff touches ${#needed[@]} hot file(s); acquiring locks (timeout=${HF_TIMEOUT}s each)"
-  local f sanitized lockfile fd
+  local f sanitized lockfile fd already_held
   for f in "${needed[@]}"; do
     sanitized="$(_hf_sanitize "$f")"
     lockfile="$HF_LOCK_DIR/hot-file-${sanitized}.lock"
+
+    # RESILIENT-100: re-entrant-safe. flock is non-reentrant — a second
+    # `flock` call on a NEW fd for a lockfile this same process already
+    # holds via an earlier fd will block forever waiting on itself (the
+    # 2026-06-05 self-deadlock, hit when a PR edits bot-merge.sh, which is
+    # itself in the serialize list). If we already hold this lockfile,
+    # skip re-acquiring it.
+    already_held=0
+    for existing in "${HOT_FILE_LOCK_FILES[@]:-}"; do
+      if [[ "$existing" == "$lockfile" ]]; then
+        already_held=1
+        break
+      fi
+    done
+    if [[ "$already_held" == "1" ]]; then
+      _hf_log "  already held: $lockfile — skipping re-acquire"
+      continue
+    fi
+
     fd=$(( 200 + ${#HOT_FILE_LOCK_FDS[@]} ))
     eval "exec $fd>>\"\$lockfile\""
 

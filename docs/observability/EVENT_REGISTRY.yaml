@@ -2003,6 +2003,21 @@ events:
     consumers: [waste-tally, fleet-brief, watchdog]
     fields_required: [ts, kind, count]
 
+  # INFRA-2754: run-level observability for the detector itself — fires on
+  # every invocation (no-op, cluster-filed, or error) so mutation cost
+  # (gap_reserve_calls) is visible without grepping logs. INFRA-2906 added
+  # failure_class (none|transient|permanent) to the same event.
+  - kind: pr_stuck_cluster_detector_run
+    effect_metric: self
+    emitter: scripts/coord/pr-stuck-cluster-detector.sh (INFRA-2754, INFRA-2906)
+    trigger: every invocation of pr-stuck-cluster-detector.sh, any exit path
+    consumers: [waste-tally, watchdog]
+    fields_required: [ts, kind, outcome, stuck_pr_count, duration_ms, gap_reserve_calls, failure_class]
+    docs: |
+      Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh
+      (runnable standalone; covers no_op/dry_run/bad_args outcome paths
+      and asserts failure_class on each).
+
   - kind: fleet_auth_fallback
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (INFRA-622)
