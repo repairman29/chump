@@ -1996,12 +1996,37 @@ events:
 
   # INFRA-950: register kinds that the system already emits but were never
   # captured here. waste-tally classifies these as of this gap.
+  # INFRA-2932: corrected stale emitter (was opus-curator.sh) and
+  # fields_required (was [ts, kind, count]) to match the actual
+  # pr-stuck-cluster-detector.sh --apply payload; added success/failure/cost docs.
   - kind: pr_stuck_cluster
     effect_metric: self
-    emitter: scripts/coord/opus-curator.sh (INFRA-848)
-    trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
+    emitter: scripts/coord/pr-stuck-cluster-detector.sh (INFRA-1133)
+    trigger: 3+ stuck PRs detected within CLUSTER_WINDOW_S (default 2h); fires only on the --apply cluster-filed path, once per cluster_id per RESEND_COOLDOWN_S (default 24h)
     consumers: [waste-tally, fleet-brief, watchdog]
-    fields_required: [ts, kind, count]
+    fields_required: [ts, kind, cluster_id, pr_count, prs, gap, window_h]
+    docs: |
+      Success/failure/timeout: this event is a success-only signal — it
+      fires exactly once, when --apply files the follow-up gap for a
+      detected cluster. No-op, dry-run, and error paths (including
+      timeouts) never emit pr_stuck_cluster; they instead emit
+      pr_stuck_cluster_detector_run (see below) with outcome and
+      failure_class fields, which is the run-level signal to alert on.
+
+      Cost tracking: the only cost this detector incurs is the
+      `chump gap reserve` call on cluster-filed — tracked via
+      gap_reserve_calls on the sibling pr_stuck_cluster_detector_run
+      event (INFRA-2754), not duplicated here.
+
+      Failure-class taxonomy: not applicable to this event (it only
+      fires on the success path). See pr_stuck_cluster_detector_run's
+      failure_class (none|transient|permanent, INFRA-2906) for the
+      run-level taxonomy covering this detector's failure modes.
+
+      Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh
+      Test 2 asserts the dry-run cluster-detected path; cluster_filed
+      emission is exercised indirectly via the same detector code path
+      with --apply (not run in CI to avoid live gap creation).
 
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost
