@@ -1,4 +1,6 @@
 /target
+# CREDIBLE-155: per-worktree local target dir (path-filter gate skips gitignored dirs)
+/target-local
 # INFRA-1138: per-worktree test target dir (isolates fingerprints from shared CARGO_TARGET_DIR)
 /.cargo-test-target
 # INFRA-1374: per-worktree build target dir (eliminates cargo mutex contention at 3+ parallelism)

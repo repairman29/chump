@@ -910,11 +910,32 @@ PYEOF_CLOSED_PR
 fi
 
 # ------------------------------------------------------------------
-# 3c. Test-lag guard (META-032) — reject status:done on gaps whose
-#     acceptance_criteria contain 'test', 'asserts', or 'verifies' when
-#     no scripts/ci/*.sh file references the gap ID.
-#     Bypass: CHUMP_TEST_LAG_CHECK=0 with a Obs-Bypass-Reason: trailer.
+# 3c. Test-lag guard (META-032) — PORTED to `chump verify` (CREDIBLE-155).
+#     Engine path: typed rule over parsed diff semantics, preview here,
+#     binding enforcement (with 'Verify-Bypass: test-lag: <reason>'
+#     trailer support) at the commit-msg hook stage.
+#     Legacy path below runs when the installed chump binary predates
+#     the verify subcommand (RESILIENT-172: hooks run the installed
+#     binary, not the repo). Legacy bypass: CHUMP_TEST_LAG_CHECK=0
+#     with a Obs-Bypass-Reason: trailer.
 # ------------------------------------------------------------------
+
+# Probe once: does the installed chump support `chump verify`? Detect via
+# --help text — NEVER run an unknown subcommand blind (on old binaries it
+# falls through to the LLM agent loop, INFRA-1238).
+_CHUMP_VERIFY_BIN="$(command -v chump 2>/dev/null || true)"
+_CHUMP_VERIFY_HELP=""
+if [ -n "$_CHUMP_VERIFY_BIN" ]; then
+    _CHUMP_VERIFY_HELP="$(CHUMP_BINARY_STALENESS_CHECK=0 "$_CHUMP_VERIFY_BIN" --help 2>/dev/null || true)"
+fi
+chump_verify_probe() {
+    case "$_CHUMP_VERIFY_HELP" in
+        *"verify --stage"*) return 0 ;;
+    esac
+    return 1
+}
+
+chump_verify_fallback_test_lag() {
 if [ "${CHUMP_TEST_LAG_CHECK:-1}" != "0" ]; then
     if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
         _test_lag_offenders=$(python3 - <<'PYEOF_TEST_LAG'
@@ -1035,6 +1056,21 @@ PYEOF_TEST_LAG
             exit 1
         fi
     fi
+fi
+}
+
+if chump_verify_probe; then
+    # CREDIBLE-155 engine path. Preview stage: prints would-fail verdicts
+    # (exit 0); the binding run — where Verify-Bypass trailers apply and
+    # audited kind=verify_bypassed events emit — happens at commit-msg.
+    # Exit 2 = engine error -> fall back to the legacy inline check so a
+    # broken engine never silently disables the gate (CREDIBLE-105).
+    if ! CHUMP_BINARY_STALENESS_CHECK=0 "$_CHUMP_VERIFY_BIN" verify --stage pre-commit; then
+        echo "[pre-commit] WARN: chump verify engine error — using legacy inline checks" >&2
+        chump_verify_fallback_test_lag
+    fi
+else
+    chump_verify_fallback_test_lag
 fi
 
 # ------------------------------------------------------------------
@@ -1626,6 +1662,10 @@ fi
 # authors see the warning while typing the commit, the real enforcement
 # fires at commit-msg stage.
 
+# CREDIBLE-155: when the unified engine handled the preview above (block
+# 3c dispatch), the docs-delta pending-trailer note was already printed by
+# `chump verify --stage pre-commit`; only the legacy path needs this notice.
+if ! chump_verify_probe; then
 if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
     ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' | wc -l | tr -d ' ')
     DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' | wc -l | tr -d ' ')
@@ -1635,6 +1675,7 @@ if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
         echo "[pre-commit]   commit-msg stage will require 'Net-new-docs: +$NET' trailer" >&2
         echo "[pre-commit]   (or set CHUMP_DOCS_DELTA_CHECK=0 to bypass)." >&2
     fi
+fi
 fi
 
 # ------------------------------------------------------------------

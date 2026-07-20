@@ -8235,3 +8235,15 @@ events:
       per-PR flow instead of silently stranding the gap
     consumers: [fleet-brief, audit-log, ci-audit]
     fields_required: [ts, kind, gap_id, note]
+
+  - kind: verify_bypassed
+    effect_metric: self
+    emitter: src/verify/mod.rs emit_verify_bypassed (CREDIBLE-155)
+    trigger: a `Verify-Bypass: <rule-id>: <reason>` commit trailer flipped a
+      failing `chump verify` rule to bypassed at a binding stage (commit-msg
+      or ci). One line per bypassed rule — this is the single audited bypass
+      surface that replaces the per-gate env-var sprawl for ported rules
+      (docs-delta, test-lag, no-new-bypass-env-vars).
+    consumers: [fleet-brief, audit-log, ops-audit]
+    fields_required: [ts, kind, session, rule, reason, stage]
+    fields_optional: [gap_id, worktree]
