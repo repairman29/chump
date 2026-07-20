@@ -1,0 +1,11 @@
+- id: META-325
+  domain: META
+  title: "META: fast-checks preflight-mirror cluster 4 — CLI/doc-quality/content-integrity gates"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster 4 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-4 gates locally so they no longer require a CI round-trip.
+  acceptance_criteria:
+    - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 22 scripts in cluster-4-cli-doc-quality listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (cli-fleet-coord through research-026-preflight). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes."
+

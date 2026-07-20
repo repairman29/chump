@@ -1,0 +1,11 @@
+- id: META-326
+  domain: META
+  title: "META: fast-checks preflight-mirror cluster 5 — merge-driver/safety/bypass-scope gates"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster 5 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-5 gates locally so they no longer require a CI round-trip.
+  acceptance_criteria:
+    - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 12 scripts in cluster-5-merge-driver-safety listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (keystone-cascade through merge-driver-state-sql). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes. 5. This is the last META-086 sub-gap to ship — on close, META-086 self-closes per its AC #4."
+

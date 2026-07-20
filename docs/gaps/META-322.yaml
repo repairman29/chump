@@ -1,0 +1,11 @@
+- id: META-322
+  domain: META
+  title: "META: fast-checks preflight-mirror cluster 1 — claim/lease/gap-registry gates"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster 1 of the META-086 fast-checks audit-job decomposition survey. Ship target: chump preflight covers all cluster-1 gates locally so they no longer require a CI round-trip.
+  acceptance_criteria:
+    - "1. Add preflight gates in src/preflight.rs (GateKind::Scripts) for the 15 scripts in cluster-1-claim-lease listed in docs/process/AUDIT_JOB_DECOMPOSITION.md (claim-fuzzy-match, gap-id-cross-session, gap-id-lease-uniqueness, gap-reserve-concurrency, gap-reserve-padding, gap-status-flip, gap-divergence-guard, pick-and-claim-lockdir, infra-1025-atomic-claim, infra-115-lease-ttl-file, infra-109-worktree-boundary, git-identity-guard, meta-011-git-stomp, submodule-guard, gap-doctor-safe-sweep). 2. Each gate gets a CHUMP_PREFLIGHT_SKIP_<NAME> bypass env var emitting a preflight_<gate>_bypassed ambient event. 3. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md mirrored table + docs/process/AUDIT_JOB_DECOMPOSITION.md Mirrored? column. 4. scripts/ci/test-audit-job-decomposition.sh still passes."
+
