@@ -271,6 +271,7 @@ test-bot-merge-auto-close.sh
 test-gap-reserve-concurrency.sh
 test-gap-reserve-padding.sh
 test-gap-id-cross-session.sh
+test-gap-reserve-no-reuse.sh
 test-cli-help.sh
 test-cli-fleet-coord.sh
 test-cli-integration.sh
@@ -292,6 +293,7 @@ orchestrate session-summary             # reason: needs cargo build + CHUMP_BIN;
 gap-reserve concurrency                 # reason: needs cargo build + PATH export; test-gap-reserve-concurrency.sh above
 gap-reserve ID zero-padding             # reason: needs cargo build + PATH export; test-gap-reserve-padding.sh above
 gap-ID cross-session collision          # reason: needs CHUMP_BIN env var; test-gap-id-cross-session.sh above
+gap-reserve never reissues a git-history-referenced ID   # reason: needs cargo build + PATH export; test-gap-reserve-no-reuse.sh above
 bot-merge auto-close handshake          # reason: needs CHUMP_BIN env var; test-bot-merge-auto-close.sh above
 CLI help system consistency             # reason: needs CHUMP_BIN env var; test-cli-help.sh above
 CLI fleet + health + coord              # reason: needs CHUMP_BIN env var; test-cli-fleet-coord.sh above

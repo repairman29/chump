@@ -1176,6 +1176,54 @@ impl GapStore {
         self.reserve_with_external(domain, title, priority, effort, &extra)
     }
 
+    /// INFRA-1954: git history never forgets a commit message, even after a
+    /// gap ships and its state.db row is later lost to a reset or a
+    /// reconciliation bug. Scan `git log --all` for the highest `<domain>-N`
+    /// reference in any commit subject/body and use it as a floor for the ID
+    /// counter, on top of the state.db-derived max. Returns 0 (no-op) when
+    /// `repo_root` isn't a git checkout (e.g. unit tests) or the git call
+    /// fails for any reason — this is a best-effort backstop, not a hard
+    /// dependency.
+    fn git_history_max_num(&self, domain_upper: &str) -> i64 {
+        if !self.repo_root.join(".git").exists() {
+            return 0;
+        }
+        let needle = format!("{domain_upper}-");
+        let output = std::process::Command::new("git")
+            .args(["log", "--all", "-F", "--grep", &needle, "--format=%s%n%b"])
+            .current_dir(&self.repo_root)
+            .output();
+        let Ok(output) = output else {
+            return 0;
+        };
+        if !output.status.success() {
+            return 0;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let bytes = text.as_bytes();
+        let mut max_num: i64 = 0;
+        let mut search_from = 0usize;
+        while let Some(rel_pos) = text
+            .get(search_from..)
+            .and_then(|s| s.find(needle.as_str()))
+        {
+            let start = search_from + rel_pos;
+            let before_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+            let digits_start = start + needle.len();
+            let mut digits_end = digits_start;
+            while digits_end < bytes.len() && bytes[digits_end].is_ascii_digit() {
+                digits_end += 1;
+            }
+            if before_ok && digits_end > digits_start {
+                if let Ok(n) = text[digits_start..digits_end].parse::<i64>() {
+                    max_num = max_num.max(n);
+                }
+            }
+            search_from = start + needle.len();
+        }
+        max_num
+    }
+
     /// Same as [`Self::reserve`] but with an explicit list of in-use ID
     /// numbers from sources outside the DB (open PRs, in-flight leases).
     /// Used by tests to inject collision scenarios deterministically without
@@ -1240,7 +1288,17 @@ impl GapStore {
             // pending leases (sources the DB cannot see). The counter must
             // start above the max of (DB max, external max).
             let extra_max = extra_used.iter().copied().max().unwrap_or(0);
-            let combined_max = std::cmp::max(existing_max, extra_max);
+            // INFRA-1954: also bump past any ID ever referenced in git
+            // history, even if its state.db row (and, pre-ZERO-WASTE-020,
+            // its docs/gaps/*.yaml mirror) is long gone. Disable for hot
+            // loops / offline via CHUMP_RESERVE_GIT_HISTORY_CHECK=0.
+            let git_max = if std::env::var("CHUMP_RESERVE_GIT_HISTORY_CHECK").as_deref() == Ok("0")
+            {
+                0
+            } else {
+                self.git_history_max_num(&domain_upper)
+            };
+            let combined_max = std::cmp::max(std::cmp::max(existing_max, extra_max), git_max);
             self.conn.execute(
                 "INSERT INTO gap_counters(domain, next_num) VALUES(?1, ?2)
                  ON CONFLICT(domain) DO UPDATE SET next_num = MAX(next_num, excluded.next_num)",
@@ -4810,6 +4868,128 @@ mod auto_fetch_tests {
         assert!(
             result.is_ok(),
             "Scenario A: expected Ok after auto-pull on clean+behind; got: {result:?}"
+        );
+    }
+}
+
+/// INFRA-1954: reserve() must never re-issue an ID that already appears in
+/// git history, even when the state.db row for that gap is gone (e.g. after
+/// a DB reset, or — pre-ZERO-WASTE-020 — after `docs/gaps/<ID>.yaml` was
+/// deleted on ship). Regression coverage for the Cold Water re-use incident
+/// (META-103, INFRA-1953, INFRA-1955, INFRA-1957 all reissued in one cycle).
+#[cfg(test)]
+mod git_history_no_reuse_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .ok();
+    }
+
+    fn init_repo(dir: &std::path::Path) {
+        git(dir, &["init", "--quiet"]);
+        git(dir, &["config", "user.email", "test@test.local"]);
+        git(dir, &["config", "user.name", "test"]);
+        git(dir, &["checkout", "-b", "main"]);
+        std::fs::write(dir.join("README.md"), b"init").ok();
+        git(dir, &["add", "README.md"]);
+        git(
+            dir,
+            &["commit", "--quiet", "--allow-empty", "-m", "chore: initial"],
+        );
+    }
+
+    fn open_store(repo: &std::path::Path) -> GapStore {
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        GapStore::open(repo).unwrap()
+    }
+
+    #[test]
+    #[serial_test::serial(gap_reserve_git_history_check_env)]
+    fn reserve_skips_past_ids_shipped_and_gone_from_state_db() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        // Simulate a gap that shipped long ago: a commit references
+        // INFRA-500 but there is no corresponding row in the (brand new,
+        // empty) state.db — exactly the state left behind once its
+        // docs/gaps/*.yaml mirror (or its state.db row) is gone.
+        git(
+            repo,
+            &[
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "-m",
+                "feat(INFRA-500): shipped and later removed from the registry",
+            ],
+        );
+
+        let store = open_store(repo);
+        let id = store.reserve("INFRA", "brand new work", "P2", "s").unwrap();
+        let n: i64 = id.rsplit('-').next().unwrap().parse().unwrap();
+        assert!(
+            n > 500,
+            "reserve() re-used or under-shot a git-history-referenced ID: got {id}"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(gap_reserve_git_history_check_env)]
+    fn reserve_still_works_with_no_matching_history() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        let store = open_store(repo);
+        let id = store
+            .reserve("EVAL", "unrelated domain", "P2", "s")
+            .unwrap();
+        assert!(id.starts_with("EVAL-"));
+    }
+
+    #[test]
+    #[serial_test::serial(gap_reserve_git_history_check_env)]
+    fn git_history_check_disabled_via_env() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+        git(
+            repo,
+            &[
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "-m",
+                "feat(RESILIENT-777): shipped, later gone",
+            ],
+        );
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "0");
+        }
+        let store = GapStore::open(repo).unwrap();
+        let id = store
+            .reserve("RESILIENT", "opt-out check", "P2", "s")
+            .unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        assert_eq!(
+            id, "RESILIENT-001",
+            "with the git-history check disabled, reserve() should fall back \
+             to the DB-only counter and re-issue RESILIENT-001"
         );
     }
 }
