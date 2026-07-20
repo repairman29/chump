@@ -34,6 +34,29 @@ CLUSTER_THRESHOLD=3                   # 3+ PRs = cluster
 CLUSTER_WINDOW_S="${CHUMP_PR_CLUSTER_WINDOW_S:-7200}"           # 2h window
 RESEND_COOLDOWN_S="${CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S:-86400}"  # 24h
 
+# INFRA-2754: run-level observability. Every invocation — regardless of
+# outcome — emits kind=pr_stuck_cluster_detector_run so the operator can see
+# mutation cost (gap_reserve_calls) without grepping logs.
+_pscd_ms_now() {
+    python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || \
+        echo $(( $(date +%s) * 1000 ))
+}
+_PSCD_RUN_T0_MS="$(_pscd_ms_now)"
+_PSCD_GAP_RESERVE_CALLS=0
+
+_pscd_emit_run_event() {
+    local outcome="$1" stuck_pr_count="${2:-0}"
+    local now_ms duration_ms ts
+    now_ms="$(_pscd_ms_now)"
+    duration_ms=$(( now_ms - _PSCD_RUN_T0_MS ))
+    [ "$duration_ms" -lt 0 ] && duration_ms=0
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _ambient_write "$LOCK_DIR/ambient.jsonl" \
+        "$(printf '{"ts":"%s","kind":"pr_stuck_cluster_detector_run","outcome":"%s","stuck_pr_count":%d,"duration_ms":%d,"gap_reserve_calls":%d}' \
+            "$ts" "$outcome" "$stuck_pr_count" "$duration_ms" "$_PSCD_GAP_RESERVE_CALLS")"
+}
+trap '_pscd_emit_run_event "${_PSCD_OUTCOME:-error}" "${_PSCD_STUCK_PR_COUNT:-0}"' EXIT
+
 APPLY=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,8 +64,8 @@ while [ $# -gt 0 ]; do
         --window) CLUSTER_WINDOW_S="$2"; shift 2 ;;
         --threshold) CLUSTER_THRESHOLD="$2"; shift 2 ;;
         --cooldown) RESEND_COOLDOWN_S="$2"; shift 2 ;;
-        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \?//'; exit 0 ;;
-        *) echo "[pr-stuck-cluster-detector] unknown arg: $1" >&2; exit 2 ;;
+        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \?//'; _PSCD_OUTCOME="help"; exit 0 ;;
+        *) echo "[pr-stuck-cluster-detector] unknown arg: $1" >&2; _PSCD_OUTCOME="bad_args"; exit 2 ;;
     esac
 done
 
@@ -119,18 +142,28 @@ now_epoch="$(date +%s)"
 
 # Pull stuck events from ambient.jsonl.
 ambient_path="$LOCK_DIR/ambient.jsonl"
-[ -f "$ambient_path" ] || { echo "[pr-stuck-cluster-detector] no ambient.jsonl yet"; exit 0; }
+if [ ! -f "$ambient_path" ]; then
+    echo "[pr-stuck-cluster-detector] no ambient.jsonl yet"
+    _PSCD_OUTCOME="no_op" _PSCD_STUCK_PR_COUNT=0
+    exit 0
+fi
 
 stuck_tmp="$(mktemp)"
-trap 'rm -f "$stuck_tmp"' EXIT
+trap 'rm -f "$stuck_tmp"; _pscd_emit_run_event "${_PSCD_OUTCOME:-error}" "${_PSCD_STUCK_PR_COUNT:-0}"' EXIT
 
 parse_stuck_events "$now_epoch" "$CLUSTER_WINDOW_S" "$ambient_path" > "$stuck_tmp" 2>/dev/null
-[ ! -s "$stuck_tmp" ] && { echo "[pr-stuck-cluster-detector] no stuck events in window"; exit 0; }
+if [ ! -s "$stuck_tmp" ]; then
+    echo "[pr-stuck-cluster-detector] no stuck events in window"
+    _PSCD_OUTCOME="no_op" _PSCD_STUCK_PR_COUNT=0
+    exit 0
+fi
 
 # Count distinct PRs in the window.
 stuck_pr_count=$(wc -l < "$stuck_tmp")
+_PSCD_STUCK_PR_COUNT="$stuck_pr_count"
 if [ "$stuck_pr_count" -lt "$CLUSTER_THRESHOLD" ]; then
     echo "[pr-stuck-cluster-detector] $stuck_pr_count stuck PRs (threshold=$CLUSTER_THRESHOLD) — no cluster"
+    _PSCD_OUTCOME="no_op"
     exit 0
 fi
 
@@ -155,6 +188,7 @@ if [ -f "$cluster_stamp" ]; then
     cluster_stamp_ts="$(cat "$cluster_stamp" 2>/dev/null || echo 0)"
     if [ "$cluster_stamp_ts" -gt 0 ] && [ $(( now_epoch - cluster_stamp_ts )) -lt "$RESEND_COOLDOWN_S" ]; then
         echo "[pr-stuck-cluster-detector] cluster $cluster_id filed within cooldown; skip"
+        _PSCD_OUTCOME="no_op"
         exit 0
     fi
 fi
@@ -197,6 +231,7 @@ if [ "$APPLY" -eq 1 ]; then
     title="RESILIENT: PR cluster stuck — $stuck_pr_count PRs blocked >2h; diagnose root cause + recover"
 
     # Use chump gap reserve to file.
+    _PSCD_GAP_RESERVE_CALLS=$(( _PSCD_GAP_RESERVE_CALLS + 1 ))
     result="$(chump gap reserve --domain INFRA --priority P0 --title "$title" --description "$description" 2>&1)"
     exit_code=$?
 
@@ -218,13 +253,18 @@ if [ "$APPLY" -eq 1 ]; then
 
             # Record the cluster filing time.
             printf '%s' "$now_epoch" > "$cluster_stamp"
+            _PSCD_OUTCOME="cluster_filed"
         else
             echo "[pr-stuck-cluster-detector] ERROR: gap reserve succeeded but no ID extracted"
+            # Transient: reserve succeeded but the ID was unparseable from output.
+            _PSCD_OUTCOME="gap_id_extract_failed"
             exit 1
         fi
     else
         echo "[pr-stuck-cluster-detector] ERROR: gap reserve failed"
         echo "$result" >&2
+        # Permanent: chump gap reserve itself returned nonzero.
+        _PSCD_OUTCOME="gap_reserve_failed"
         exit 1
     fi
 else
@@ -232,6 +272,7 @@ else
     echo "  Title: RESILIENT: PR cluster stuck — $stuck_pr_count PRs blocked >2h; diagnose root cause + recover"
     echo "  PRs: $(echo "$pr_list" | xargs)"
     echo "  Gaps: $(echo "$gap_list" | xargs)"
+    _PSCD_OUTCOME="dry_run"
 fi
 
 exit 0
