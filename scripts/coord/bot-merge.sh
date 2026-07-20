@@ -2161,10 +2161,19 @@ if [[ -r "$_HF_HELPER" ]]; then
     # shellcheck source=./hot-file-lock.sh
     source "$_HF_HELPER"
     if declare -F hot_file_lock_acquire >/dev/null 2>&1; then
+        # RESILIENT-100: wrap in stage_start/stage_done so (a) the heartbeat
+        # step label reflects "hot file lock" instead of going stale on
+        # whatever ran before it, and (b) the existing per-stage budget
+        # watchdog (CHUMP_BOT_MERGE_STAGE_BUDGET_S, default 300s) bounds the
+        # wait — well under both the flock helper's own 600s internal
+        # timeout and the 900s total-run budget, so a stuck lock fails fast
+        # and diagnosably (kind=botmerge_wedged) instead of wedging silently.
+        stage_start "hot file lock acquire"
         if ! hot_file_lock_acquire; then
             red "INFRA-953: failed to acquire hot-file lock(s) — aborting"
             exit 1
         fi
+        stage_done
     fi
 fi
 

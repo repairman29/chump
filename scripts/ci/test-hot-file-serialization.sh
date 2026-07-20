@@ -101,5 +101,36 @@ out=$(CHUMP_HOT_FILE_LOCK_DISABLE=1 bash "$HELPER" acquire 2>&1)
 echo "$out" | grep -q "skipping" || fail "DISABLE flag did not short-circuit"
 ok "CHUMP_HOT_FILE_LOCK_DISABLE=1 short-circuits"
 
+# 6) RESILIENT-100 regression: hot_file_lock_acquire is re-entrant-safe.
+# Reproduces the 2026-06-05 bot-merge self-deadlock — a PR that edits
+# scripts/coord/bot-merge.sh (itself a serialize-list entry) previously
+# risked a second in-process acquire on the same lockfile blocking forever
+# on its own held flock (flock is non-reentrant across distinct fds).
+# Calling hot_file_lock_acquire twice for the same file, in the same
+# shell, must return quickly both times rather than hang.
+(
+  source "$HELPER"
+  CHUMP_HOT_FILES_YAML="$TMP/hot-files.yaml"
+  CHUMP_HOT_FILE_LOCK_DIR="$LOCK_DIR"
+  CHUMP_HOT_FILE_BASE="--no-base--"
+  HF_YAML="$CHUMP_HOT_FILES_YAML"
+  HF_LOCK_DIR="$CHUMP_HOT_FILE_LOCK_DIR"
+  # Stub the diff-files lookup so "sentinel-path" always shows as touched,
+  # without needing a real git repo/base ref.
+  _hf_diff_files() { echo "sentinel-path"; }
+
+  T0=$(date +%s)
+  hot_file_lock_acquire || { echo "FAIL: first acquire failed" >&2; exit 1; }
+  hot_file_lock_acquire || { echo "FAIL: second (re-entrant) acquire failed/hung" >&2; exit 1; }
+  T1=$(date +%s)
+  ELAPSED=$((T1 - T0))
+  if [[ "$ELAPSED" -ge 3 ]]; then
+    echo "FAIL: re-entrant acquire took ${ELAPSED}s — self-deadlock regression" >&2
+    exit 1
+  fi
+  [[ ${#HOT_FILE_LOCK_FDS[@]} -eq 1 ]] || { echo "FAIL: expected exactly 1 held fd after re-entrant acquire, got ${#HOT_FILE_LOCK_FDS[@]}" >&2; exit 1; }
+) || fail "hot_file_lock_acquire is not re-entrant-safe (RESILIENT-100)"
+ok "hot_file_lock_acquire is re-entrant-safe (RESILIENT-100)"
+
 echo
 echo "=== test-hot-file-serialization.sh PASSED ==="
