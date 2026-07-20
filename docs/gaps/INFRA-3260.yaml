@@ -1,9 +1,0 @@
-- id: INFRA-3260
-  domain: INFRA
-  title: "EFFECTIVE: todo-ac"
-  status: open
-  priority: P1
-  effort: xs
-  acceptance_criteria:
-    - "TODO: fill me in"
-

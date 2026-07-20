@@ -1,9 +1,0 @@
-- id: INFRA-2665
-  domain: INFRA
-  title: "EFFECTIVE P2: dispatch brief SUBAGENT_DISPATCH.md — add binary-crate test gotcha (cargo test --bin chump not --lib)"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n\"RESILIENT-059 dispatched Sonnet wrote regression tests using cargo test --lib but chump is a binary-only crate (no library target). All 6 tests failed with no library targets found in package chump.\",\n\"This is the third todays Sonnet-near-miss — pattern: Sonnet defaults to a Rust-idiomatic pattern that does not match Chumps repo shape.\",\n\"Add a Common Pitfalls section to docs/process/SUBAGENT_DISPATCH.md:\",\n\"  1. chump is binary-only — use cargo test --bin chump in test scripts, NOT --lib\",\n\"  2. EVENT_REGISTRY.yaml edits collide with sibling Sonnets — coordinate via scanner-anchor in reserved.txt OR own EVENT_REGISTRY for your gap explicitly\",\n\"  3. Worktree is provisioned from cached origin/main — fetch before commit to avoid stale-base diffs (INFRA-2628 guard added today)\",\n\"Optional: scripts/ci/test-dispatch-template-current.sh asserts dispatch-template doc references the binary-crate pitfall.\"\n]"
-

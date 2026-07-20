@@ -1,9 +1,0 @@
-- id: INFRA-790
-  domain: INFRA
-  title: "RESILIENT: Gemini thinking-token budget — strip or budget for think blocks in agent loop"
-  status: open
-  priority: P2
-  effort: s
-  acceptance_criteria:
-    - "[\n  \"When Gemini model returns a response containing <think>...</think> or thinking_token blocks, those blocks are stripped before the content is passed to the agent loop\",\n  \"Alternatively: a configurable token budget cap GEMINI_THINKING_BUDGET_TOKENS (default 0 = strip all) is honored in the API request if the Gemini API supports it\",\n  \"Agent loop never sees raw thinking blocks — they are either stripped or summarized before injection into context\",\n  \"scripts/ci/test-gemini-thinking-budget.sh passes: fixture response with think blocks → assert output contains no <think> markers\",\n  \"No regression on normal Gemini 2.5-flash / 2.5-pro responses without thinking blocks\"\n]"
-

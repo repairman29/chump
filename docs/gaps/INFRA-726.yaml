@@ -1,9 +1,0 @@
-- id: INFRA-726
-  domain: INFRA
-  title: "ZERO-WASTE: split main.rs phase 5 — extract mod declarations into lib.rs and wire crate-level pub use"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\n  \"src/lib.rs created with all top-level pub mod declarations and pub use re-exports previously scattered in main.rs\",\n  \"main.rs reduced to: binary entry point + CLI arg parsing + top-level dispatch only (no module declarations)\",\n  \"cargo build --quiet exits 0 with no warnings\",\n  \"cargo test passes: no regressions\",\n  \"LOC in main.rs reduced by at least 60% from pre-phase-1 baseline\"\n]"
-

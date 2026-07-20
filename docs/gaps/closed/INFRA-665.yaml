@@ -1,9 +1,0 @@
-- id: INFRA-665
-  domain: INFRA
-  title: "RESILIENT: wire operator-recall to actual paging channel — INFRA-626 webhook is merged but not connected to anything that reaches operator. Today's 14h silent fleet outage at 05:00 UTC happened because no notification fired. Pick one delivery: (a) Slack webhook, (b) Pushover/email via mailgun, (c) macOS terminal-notifier on operator machine via NATS bridge. AC: scripts/setup/install-operator-recall-channel.sh writes ~/.chump/operator-recall.toml with channel config; INFRA-626 webhook reads that config and POSTs/notifies; test scripts/ci/test-operator-recall-channel.sh verifies kind=fleet_auth_unrecoverable / kind=fleet_silent / kind=cost_cap_exceeded all reach the channel; documented retry/backoff."
-  status: done
-  priority: P0
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1320
-

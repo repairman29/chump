@@ -1,9 +1,0 @@
-- id: INFRA-3344
-  domain: INFRA
-  title: "RESILIENT: hardcoded 2026-05 dates in test fixtures rot as calendar time advances past lookback windows (found in test-ghost-gap-reaper.sh)"
-  status: open
-  priority: P2
-  effort: xs
-  acceptance_criteria:
-    - "1. Audit scripts/ci/test-*.sh for hardcoded date literals used in lookback/window comparisons (grep -rn '\"2026-0[0-9]-' scripts/ci/)\n2. Replace hardcoded dates with dates computed relative to the test's execution time (see scripts/ci/test-ghost-gap-reaper.sh RECENT_DATE/OLD_DATE/NOW_DATE pattern fixed in INFRA-1909 as a model)\n3. CI passes with no test relying on a specific calendar date being \"recent\""
-

@@ -1,9 +1,0 @@
-- id: INFRA-610
-  domain: INFRA
-  title: "RESILIENT: 'chump fleet restart' command — clean teardown + relaunch with current main's worker.sh. Productizes the 7-step manual restart dance: (1) tmux kill-session, (2) pkill orphan claudes (INFRA-581 cascade), (3) rm stale fleet-*.json + done-gap locks, (4) git pull in /private/tmp/chump-fleet-launch (or operator-configured CHUMP_FLEET_CLONE_DIR), (5) preserve in-flight worktrees on disk for inspection, (6) re-spawn fleet with last-used FLEET_SIZE/FLEET_EFFORT_FILTER/FLEET_BACKEND/FLEET_MODEL from ~/.chump/last-fleet-config.json (written by INFRA-596 chump fleet start), (7) verify all workers alive after 30s grace, emit 'kind=fleet_restarted' ambient. AC: src/main.rs subcommand 'chump fleet restart [--size N --skip-pull]'; saves before-restart fleet snapshot to .chump/restart-snapshots/<ts>.json; test scripts/ci/test-chump-fleet-restart.sh covers the 7 steps end-to-end on FLEET_SIZE=2."
-  status: done
-  priority: P1
-  effort: m
-  closed_pr: 1385
-  closed_date: '2026-05-10'
-

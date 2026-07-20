@@ -517,6 +517,12 @@ fi
 # NOT in docs/gaps.yaml. This hook rejects adds of `status: in_progress`,
 # `claimed_by:`, or `claimed_at:` lines on staged gaps.yaml to stop the
 # hot-write loop (6 docs(gaps) commits in 48h before this audit).
+#
+# ZERO-WASTE-020: YAML mirrors retired (state.db canonical, .chump/state.sql
+# is the tracked dump; see docs/gaps/README.md). `chump gap reserve/set/ship`
+# no longer write docs/gaps/<ID>.yaml, so this block's ACM-filtered trigger
+# below is now permanently inert in normal operation — left in place (not
+# deleted) as a backstop against a future hand-added YAML under docs/gaps/.
 
 if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
     # INFRA-188: trigger on per-file docs/gaps/*.yaml OR legacy monolithic docs/gaps.yaml

@@ -1,9 +1,0 @@
-- id: EFFECTIVE-022
-  domain: EFFECTIVE
-  title: "EFFECTIVE: prompts/system.md ships Mission Yield + wave order + pillar cap framing to fleet agents"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - "[\"NEW file: prompts/system.md — the canonical system prompt fragment every fleet agent reads at session start. Replaces ad-hoc per-agent prompt slugs in src/agent_loop/*.\",\"Content: (a) Current Mission Yield + week delta, (b) Pillar mix vs caps, (c) Current wave per ROADMAP_WAVES.md, (d) Definition of chip-tags from MISSION_YIELD.md, (e) Rule: `If you cannot articulate the behavior delta for the gap you are picking, decline and pick another.`\",\"Updated on every chump cos digest run (cron Sundays + on-demand). Static portion (definitions) lives in `prompts/system.template.md`; dynamic portion (this-week numbers) injected at agent spawn time.\",\"Phase 2 enforcement: agents that reserve a gap without setting `behavior_delta` field get their reserve refused at filing time (gate ships separately).\",\"Smoke test scripts/ci/test-system-prompt-mission-yield.sh: render prompt with synthetic Mission Yield data, assert all 5 sections present, no NULL/TBD placeholders.\",\"Ships in the chump binary tarball (operators get this for free when they clone).\",\"Wave-3-or-4 work + DEPENDS ON Phase 1 (chump cos digest producing yield numbers). File now, claim after the digest CLI ships.\",\"Out of scope: per-agent prompt customization (Phase 3, after critique-pass exists).\"]"
-
