@@ -1,13 +1,15 @@
-// crates/chump-coord/src/mesh.rs — INFRA-1802 / INFRA-1815
+// crates/chump-coord/src/mesh.rs — INFRA-1802 / INFRA-1815 / INFRA-2248
 //
 // Mesh pub/sub transport abstraction for cross-Opus / cross-machine
 // coordination. The trait shape originates from the internal sibling repo's
 // crates/coord/src/mesh/abstract_impl.rs (MIT-licensed); ported and
 // adapted from the multi-robot swarm domain to LLM-agent fleet:
 //   - "robot" → "agent" / "session" in operator-facing strings
-//   - channel namespace adapted: gap_claimed, session_heartbeat,
-//     opus_dm, fleet_consensus
+//   - channel namespace adapted: gap_issued, gap_claimed, gap_shipped,
+//     pr_state, curator_heartbeat, session_heartbeat, opus_dm, fleet_consensus
 //   - signature field reserved for META-061 Layer 5/6 signed provenance
+//   - BandwidthBudget + MessageQueue lifted verbatim (INFRA-1804 fold-in;
+//     that gap closes on this ship)
 //
 // INFRA-1815 mesh-bridge migration path:
 // Once the internal sibling repo's `coord-mesh` crate ships (Side A,
@@ -22,11 +24,13 @@
 //                        in lib.rs; this file is still compiled but
 //                        consumers should prefer `chump_coord::mesh_bridge::*`.
 //
-// This file ships the trait + Message/Channel/AckMessage types + a stub
-// impl that returns NotImplemented. Real NATS-backed implementation lands
-// as INFRA-1758 slice 2/4 (the foundation's existing follow-up). Cargo
-// build for chump-coord stays standalone — no extra deps; tokio::sync is
-// already in the crate's deps from existing modules.
+// This file ships the trait + Message/Channel/AckMessage types, a stub
+// impl (NotImplemented placeholder), and `LocalProcessTransport` — an
+// in-memory single-node pub-sub default impl backed by
+// `tokio::sync::broadcast` that satisfies the trait completely with no
+// external dependencies (INFRA-2248). The real NATS-backed implementation
+// lands as INFRA-1758 slice 2/4; LoRa- and NATS-specific tuning stay in
+// the internal sibling repo (no internal IP copied here — see AC7).
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -84,10 +88,31 @@ impl Channel {
 pub mod channels {
     use super::Channel;
 
+    /// Per-gap issuance stream. Fired when a gap is filed/reserved.
+    pub fn gap_issued(gap_id: &str) -> Channel {
+        Channel::new(&format!("gap/issued/{}", gap_id))
+    }
+
     /// Per-gap claim-state stream. Used by sessions that want to react
     /// when a gap they care about is claimed/released.
     pub fn gap_claimed(gap_id: &str) -> Channel {
         Channel::new(&format!("gap/claimed/{}", gap_id))
+    }
+
+    /// Per-gap ship stream. Fired when a gap's PR merges and the gap closes.
+    pub fn gap_shipped(gap_id: &str) -> Channel {
+        Channel::new(&format!("gap/shipped/{}", gap_id))
+    }
+
+    /// Per-PR state-transition stream (open/behind/mergeable/merged).
+    pub fn pr_state(pr_number: u64) -> Channel {
+        Channel::new(&format!("pr/state/{}", pr_number))
+    }
+
+    /// Per-curator heartbeat. Subscribers detect silent-curator transitions
+    /// when this channel goes quiet past the manifest TTL.
+    pub fn curator_heartbeat(curator_name: &str) -> Channel {
+        Channel::new(&format!("curator/heartbeat/{}", curator_name))
     }
 
     /// Per-session heartbeat. Subscribers detect silent-agent transitions
@@ -117,6 +142,100 @@ pub mod channels {
     /// file.
     pub fn ambient_broadcast() -> Channel {
         Channel::new("ambient/broadcast")
+    }
+}
+
+/// Bandwidth budget tracking — ported from the internal sibling repo's
+/// crates/coord/src/mesh/abstract_impl.rs (MIT-licensed); 'bytes' framing
+/// kept as-is (INFRA-1804 fold-in), callers may treat units as tokens.
+#[derive(Clone, Debug)]
+pub struct BandwidthBudget {
+    /// Bytes remaining in current window.
+    pub remaining: usize,
+    /// Total bytes available per window.
+    pub total: usize,
+    /// Window duration (seconds).
+    pub window_seconds: u32,
+    /// When current window started.
+    pub window_start: String,
+}
+
+impl BandwidthBudget {
+    /// Create a new bandwidth budget.
+    pub fn new(total_bytes: usize, window_seconds: u32) -> Self {
+        Self {
+            remaining: total_bytes,
+            total: total_bytes,
+            window_seconds,
+            window_start: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Check if there's enough budget for a message.
+    pub fn can_send(&self, message_size: usize) -> bool {
+        self.remaining >= message_size
+    }
+
+    /// Deduct from budget after sending.
+    pub fn deduct(&mut self, message_size: usize) {
+        if self.remaining >= message_size {
+            self.remaining -= message_size;
+        }
+    }
+
+    /// Reset budget for new window.
+    pub fn reset(&mut self) {
+        self.remaining = self.total;
+        self.window_start = chrono::Utc::now().to_rfc3339();
+    }
+}
+
+/// Mesh message queue (simulates local queuing for offline operation) —
+/// ported from the internal sibling repo's crates/coord/src/mesh/abstract_impl.rs.
+#[derive(Clone, Debug)]
+pub struct MessageQueue {
+    /// Queued messages waiting for transmission.
+    pub pending: Vec<Message>,
+    /// Maximum queue size before dropping.
+    pub max_size: usize,
+}
+
+impl MessageQueue {
+    /// Create new message queue.
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            pending: Vec::new(),
+            max_size,
+        }
+    }
+
+    /// Enqueue a message. Returns false (drop) if the queue is full.
+    pub fn enqueue(&mut self, message: Message) -> bool {
+        if self.pending.len() < self.max_size {
+            self.pending.push(message);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Dequeue next message.
+    pub fn dequeue(&mut self) -> Option<Message> {
+        if self.pending.is_empty() {
+            None
+        } else {
+            Some(self.pending.remove(0))
+        }
+    }
+
+    /// Get queue size.
+    pub fn len(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Check if queue is empty.
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
     }
 }
 
@@ -213,6 +332,81 @@ impl MeshTransport for StubMesh {
     }
 }
 
+/// In-memory, single-process `MeshTransport` default impl backed by
+/// `tokio::sync::broadcast`. Satisfies the trait completely with no
+/// external dependencies — the LoRa- and NATS-backed impls that mirror
+/// the internal sibling repo's radio/broker layers stay internal.
+pub struct LocalProcessTransport {
+    channels: std::sync::Mutex<std::collections::HashMap<String, broadcast::Sender<Message>>>,
+    acks: std::sync::Mutex<std::collections::HashMap<String, AckMessage>>,
+    capacity: usize,
+}
+
+impl LocalProcessTransport {
+    /// Create a transport with the given per-channel broadcast buffer size.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            channels: std::sync::Mutex::new(std::collections::HashMap::new()),
+            acks: std::sync::Mutex::new(std::collections::HashMap::new()),
+            capacity,
+        }
+    }
+
+    fn sender_for(&self, channel: &Channel) -> broadcast::Sender<Message> {
+        let mut channels = self.channels.lock().unwrap();
+        channels
+            .entry(channel.name.clone())
+            .or_insert_with(|| broadcast::channel(self.capacity).0)
+            .clone()
+    }
+
+    /// Record an ack for a previously-published message. Real transports
+    /// would receive this over the wire; in-process callers invoke it
+    /// directly to simulate a subscriber acking.
+    pub fn record_ack(&self, ack: AckMessage) {
+        self.acks.lock().unwrap().insert(ack.message_id.clone(), ack);
+    }
+}
+
+impl Default for LocalProcessTransport {
+    fn default() -> Self {
+        Self::new(64)
+    }
+}
+
+#[async_trait::async_trait]
+impl MeshTransport for LocalProcessTransport {
+    async fn publish(&self, channel: &Channel, message: &Message) -> Result<(), MeshError> {
+        // No subscribers is not an error — mirrors a NATS publish with
+        // zero live subscribers.
+        let _ = self.sender_for(channel).send(message.clone());
+        Ok(())
+    }
+
+    async fn subscribe(
+        &self,
+        channel: &Channel,
+    ) -> Result<broadcast::Receiver<Message>, MeshError> {
+        Ok(self.sender_for(channel).subscribe())
+    }
+
+    async fn await_ack(&self, message_id: &str, timeout_ms: u32) -> Result<AckMessage, MeshError> {
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(u64::from(timeout_ms));
+        loop {
+            if let Some(ack) = self.acks.lock().unwrap().remove(message_id) {
+                return Ok(ack);
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(MeshError::AckTimeout {
+                    message_id: message_id.to_string(),
+                    timeout_ms,
+                });
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +485,63 @@ mod tests {
     fn error_display_references_slice() {
         let e = MeshError::NotImplemented;
         assert!(format!("{e}").contains("INFRA-1758"));
+    }
+
+    #[test]
+    fn bandwidth_budget_tracks_deductions() {
+        let mut budget = BandwidthBudget::new(1000, 3600);
+        assert!(budget.can_send(500));
+        budget.deduct(500);
+        assert_eq!(budget.remaining, 500);
+        assert!(!budget.can_send(501));
+        budget.reset();
+        assert_eq!(budget.remaining, 1000);
+    }
+
+    #[test]
+    fn message_queue_drops_beyond_max_size() {
+        let mut queue = MessageQueue::new(2);
+        let mk = |id: &str| Message {
+            id: id.to_string(),
+            timestamp: "t".to_string(),
+            channel: "test".to_string(),
+            payload: vec![],
+            source: "s".to_string(),
+            signature: None,
+        };
+        assert!(queue.enqueue(mk("1")));
+        assert!(queue.enqueue(mk("2")));
+        assert!(!queue.enqueue(mk("3")));
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue.dequeue().unwrap().id, "1");
+        assert!(!queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn local_process_transport_delivers_to_subscriber() {
+        let transport = LocalProcessTransport::default();
+        let ch = channels::gap_claimed("INFRA-2248");
+        let mut rx = transport.subscribe(&ch).await.unwrap();
+        let msg = Message {
+            id: "msg-1".to_string(),
+            timestamp: "t".to_string(),
+            channel: ch.name.clone(),
+            payload: b"hi".to_vec(),
+            source: "test".to_string(),
+            signature: None,
+        };
+        transport.publish(&ch, &msg).await.unwrap();
+        let received = rx.recv().await.unwrap();
+        assert_eq!(received.id, "msg-1");
+    }
+
+    #[tokio::test]
+    async fn local_process_transport_await_ack_times_out_cleanly() {
+        let transport = LocalProcessTransport::default();
+        let result = transport.await_ack("never-acked", 20).await;
+        match result {
+            Err(MeshError::AckTimeout { message_id, .. }) => assert_eq!(message_id, "never-acked"),
+            _ => panic!("expected AckTimeout"),
+        }
     }
 }
