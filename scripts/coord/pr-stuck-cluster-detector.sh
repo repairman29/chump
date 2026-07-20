@@ -37,6 +37,12 @@ RESEND_COOLDOWN_S="${CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S:-86400}"  # 24h
 # INFRA-2754: run-level observability. Every invocation — regardless of
 # outcome — emits kind=pr_stuck_cluster_detector_run so the operator can see
 # mutation cost (gap_reserve_calls) without grepping logs.
+#
+# INFRA-2906: failure_class taxonomy on the run event so operators can tell
+# retry-worthy transients from permanent failures without reading logs:
+#   none      — no_op / dry_run / cluster_filed / help (not a failure)
+#   transient — gap_id_extract_failed / error (retry may succeed as-is)
+#   permanent — gap_reserve_failed / bad_args (retry repeats until root cause fixed)
 _pscd_ms_now() {
     python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || \
         echo $(( $(date +%s) * 1000 ))
@@ -44,16 +50,26 @@ _pscd_ms_now() {
 _PSCD_RUN_T0_MS="$(_pscd_ms_now)"
 _PSCD_GAP_RESERVE_CALLS=0
 
+_pscd_failure_class() {
+    case "$1" in
+        no_op|dry_run|cluster_filed|help) echo "none" ;;
+        gap_id_extract_failed|error) echo "transient" ;;
+        gap_reserve_failed|bad_args) echo "permanent" ;;
+        *) echo "transient" ;;
+    esac
+}
+
 _pscd_emit_run_event() {
     local outcome="$1" stuck_pr_count="${2:-0}"
-    local now_ms duration_ms ts
+    local now_ms duration_ms ts failure_class
     now_ms="$(_pscd_ms_now)"
     duration_ms=$(( now_ms - _PSCD_RUN_T0_MS ))
     [ "$duration_ms" -lt 0 ] && duration_ms=0
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    failure_class="$(_pscd_failure_class "$outcome")"
     _ambient_write "$LOCK_DIR/ambient.jsonl" \
-        "$(printf '{"ts":"%s","kind":"pr_stuck_cluster_detector_run","outcome":"%s","stuck_pr_count":%d,"duration_ms":%d,"gap_reserve_calls":%d}' \
-            "$ts" "$outcome" "$stuck_pr_count" "$duration_ms" "$_PSCD_GAP_RESERVE_CALLS")"
+        "$(printf '{"ts":"%s","kind":"pr_stuck_cluster_detector_run","outcome":"%s","stuck_pr_count":%d,"duration_ms":%d,"gap_reserve_calls":%d,"failure_class":"%s"}' \
+            "$ts" "$outcome" "$stuck_pr_count" "$duration_ms" "$_PSCD_GAP_RESERVE_CALLS" "$failure_class")"
 }
 trap '_pscd_emit_run_event "${_PSCD_OUTCOME:-error}" "${_PSCD_STUCK_PR_COUNT:-0}"' EXIT
 
