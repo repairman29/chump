@@ -409,55 +409,38 @@ while :; do
     fi
 
     # ── INFRA-2008: pre-claim floor-signal reads ──────────────────────────
-    # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget.
-    # (1) fleet-hold-check.sh — exits 2 if cluster-detector wrote fleet-hold.txt
-    #     (INFRA-1987 Phase 2). On hold: pivot to triage/docs work; don't ship.
-    # (2) chump health --temp — exits 0=COLD, 1=WARM, 2=HOT (INFRA-1992).
-    #     HOT: restrict to xs/docs gaps; WARM: double-verify; COLD: normal.
+    # Read both THE FLOOR Phase 1+2 signals before spending any cycle budget,
+    # via the shared lib so the exported CHUMP_FLOOR_TEMP / CHUMP_FLEET_HOLD
+    # env vars are visible to this loop AND to any `claude -p` subagent we
+    # spawn later this cycle (SUBAGENT_DISPATCH.md documents the contract).
     _amb_pre="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
     mkdir -p "$(dirname "$_amb_pre")" 2>/dev/null || true
 
-    # (1) Fleet-hold check
-    _hold_active=0
-    _fleet_hold_check="${REPO_ROOT}/scripts/coord/fleet-hold-check.sh"
-    if [[ -x "$_fleet_hold_check" ]]; then
-        if ! bash "$_fleet_hold_check" --quiet 2>/dev/null; then
-            _hold_active=1
+    # shellcheck source=lib/floor-readers.sh
+    # Sourced relative to this script (not $REPO_ROOT — that's the worker's
+    # *target* worktree, which won't have scripts/dispatch/lib/ under test).
+    source "${BASH_SOURCE[0]%/*}/lib/floor-readers.sh"
+    chump_read_floor_signals "$REPO_ROOT" "$AGENT_ID" "$_amb_pre"
+    # exports CHUMP_FLOOR_TEMP=COLD|WARM|HOT (chump health --temp, floor_temp
+    # signal) and CHUMP_FLEET_HOLD=true|false for this loop + spawned subagents.
+
+    # (1) Fleet-hold: pivot to triage/docs — don't claim shipping work.
+    if [[ "$CHUMP_FLEET_HOLD" == "true" ]]; then
+        log "INFRA-2008: fleet-hold ACTIVE (cluster-detector signal) — skipping shipping work; next cycle"
+        # Count hold-cycles toward stand-down so the worker doesn't spin
+        # forever if the hold persists and no gaps can be claimed.
+        _starve_count=$((_starve_count + 1))
+        if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
+            _emit_worker_stuck "fleet_hold_stand_down: hold persisted >= $CHUMP_STAND_DOWN_THRESHOLD cycles"
+            log "INFRA-2008: fleet-hold persistent ($CHUMP_STAND_DOWN_THRESHOLD cycles) — standing down"
+            exit 0
         fi
-        printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"fleet_hold","hold":%s}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_hold_active" \
-            >> "$_amb_pre" 2>/dev/null || true
-        if [[ "$_hold_active" -eq 1 ]]; then
-            log "INFRA-2008: fleet-hold ACTIVE (cluster-detector signal) — skipping shipping work; next cycle"
-            # Count hold-cycles toward stand-down so the worker doesn't spin
-            # forever if the hold persists and no gaps can be claimed.
-            _starve_count=$((_starve_count + 1))
-            if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
-                _emit_worker_stuck "fleet_hold_stand_down: hold persisted >= $CHUMP_STAND_DOWN_THRESHOLD cycles"
-                log "INFRA-2008: fleet-hold persistent ($CHUMP_STAND_DOWN_THRESHOLD cycles) — standing down"
-                exit 0
-            fi
-            sleep "${IDLE_SLEEP_S:-60}"
-            continue
-        fi
+        sleep "${IDLE_SLEEP_S:-60}"
+        continue
     fi
 
-    # (2) Floor-temperature check
-    _floor_temp="COLD"
-    if chump health --temp >/dev/null 2>&1; then
-        _floor_temp="COLD"
-    else
-        _temp_rc=$?
-        case "$_temp_rc" in
-            1) _floor_temp="WARM" ;;
-            2) _floor_temp="HOT" ;;
-            *) _floor_temp="COLD" ;;  # unknown / chump not available — proceed normally
-        esac
-    fi
-    printf '{"ts":"%s","kind":"worker_floor_signal_read","agent_id":"%s","signal":"floor_temp","temp":"%s"}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_floor_temp" \
-        >> "$_amb_pre" 2>/dev/null || true
-    if [[ "$_floor_temp" == "HOT" ]]; then
+    # (2) Floor-temperature: HOT narrows effort; WARM double-verifies; COLD normal.
+    if [[ "$CHUMP_FLOOR_TEMP" == "HOT" ]]; then
         log "INFRA-2008: floor temp HOT — restricting to xs/docs gaps this cycle"
         # Narrow effort filter to xs only; restore after cycle
         _saved_effort="$FLEET_EFFORT_FILTER"
@@ -465,7 +448,7 @@ while :; do
         FLEET_EFFORT_FILTER="xs"
         # Allow any domain but prefer docs by removing domain restriction
         FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
-    elif [[ "$_floor_temp" == "WARM" ]]; then
+    elif [[ "$CHUMP_FLOOR_TEMP" == "WARM" ]]; then
         log "INFRA-2008: floor temp WARM — double-verify mode; proceeding normally"
         _saved_effort=""
         _saved_domain=""

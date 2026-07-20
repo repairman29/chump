@@ -113,6 +113,26 @@ subagent failure pattern after ship-stage wedges.
 
 ---
 
+## Floor-signal env vars — spawned subagents inherit them (INFRA-2008)
+
+`worker.sh` reads THE FLOOR's two signals every cycle, before claim, via
+`scripts/dispatch/lib/floor-readers.sh`, and exports them:
+
+- `CHUMP_FLOOR_TEMP` = `COLD` | `WARM` | `HOT` (`chump health --temp`, INFRA-1992)
+- `CHUMP_FLEET_HOLD` = `true` | `false` (`scripts/coord/fleet-hold-check.sh`, INFRA-2004)
+
+Because these are `export`-ed before `claude -p` is spawned, every dispatched
+subagent inherits the same view of fleet state. Adapt accordingly:
+
+- `CHUMP_FLEET_HOLD=true` → do not claim shipping gaps; pivot to triage/docs.
+- `CHUMP_FLOOR_TEMP=HOT` → prefer xs/docs-only work; do not touch env-mutating
+  or migration-shaped code this cycle.
+- `CHUMP_FLOOR_TEMP=WARM` → proceed, but double-verify before commit (rerun
+  the check that would catch your own mistake, not just the happy path).
+- `CHUMP_FLOOR_TEMP=COLD` and `CHUMP_FLEET_HOLD=false` → normal operation.
+
+---
+
 ## The 25%→80% problem
 
 Across this session's 4 dispatched subagents, 1 self-shipped a PR and 3 wrote
