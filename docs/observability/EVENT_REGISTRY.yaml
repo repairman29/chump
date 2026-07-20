@@ -1479,7 +1479,8 @@ events:
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-307)
     trigger: PR BLOCKED > 4h with no progress
-    consumers: [audit-log, fleet]
+    consumers: [audit-log, fleet, pr-stuck-cluster-detector]
+    fields_required: [ts, kind, pr, gap]
 
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
@@ -1998,10 +1999,30 @@ events:
   # captured here. waste-tally classifies these as of this gap.
   - kind: pr_stuck_cluster
     effect_metric: self
-    emitter: scripts/coord/opus-curator.sh (INFRA-848)
-    trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
+    emitter: scripts/coord/pr-stuck-cluster-detector.sh (INFRA-1133)
+    trigger: 3+ distinct PRs stuck simultaneously within CHUMP_PR_CLUSTER_WINDOW_S
+      (default 2h); emitted only on success — i.e. after `chump gap reserve`
+      files the recovery gap. A `chump gap reserve` failure is NOT silent: the
+      script prints `ERROR: gap reserve failed` to stderr and exits 1 (no
+      ambient event, since there is nothing to file) so the caller (cron/loop)
+      sees a non-zero exit and can retry next cycle. There is no timeout path —
+      the script is a single-pass ambient.jsonl scan with no network/LLM calls,
+      so cost is a few ms of python3/jq parsing (no cost tracking needed; the
+      only spend is the downstream `chump gap reserve` call, already captured
+      by waste-tally's gap-filing cost accounting).
     consumers: [waste-tally, fleet-brief, watchdog]
-    fields_required: [ts, kind, count]
+    fields_required: [ts, kind, cluster_id, pr_count, prs, gap, window_h]
+    docs: |
+      Failure-class taxonomy: (1) transient — `chump gap reserve` API/db
+      contention, safe to retry next cron tick, no state corrupted; (2)
+      permanent — malformed ambient.jsonl line (parse_stuck_events swallows
+      per-line json errors and continues, so a single bad line degrades
+      silently rather than blocking detection — this is intentional resilience,
+      not a bug). Dedup cooldown (CHUMP_PR_CLUSTER_RESEND_COOLDOWN_S, default
+      24h) is not a failure — it's a cluster already handled.
+      Smoke test: scripts/ci/test-pr-stuck-cluster-detection.sh (7 cases:
+      no-events, below-threshold, cluster-detected, outside-window,
+      cooldown-dedup, dry-run, script-exists).
 
   - kind: fleet_auth_fallback
     effect_metric: self
