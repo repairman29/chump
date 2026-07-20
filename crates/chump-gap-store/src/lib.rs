@@ -1288,6 +1288,40 @@ impl GapStore {
                 |r| r.get(0),
             )?;
             let new_id = format!("{}{:03}", prefix, num);
+
+            // INFRA-1954: state.db and docs/gaps/*.yaml both go blind to a
+            // shipped gap once its YAML mirror is deleted rather than
+            // archived to docs/gaps/closed/ — that's how META-103,
+            // INFRA-1953, INFRA-1955, and INFRA-1957 were re-issued in the
+            // 2026-05-25 Cold Water cycle. git history is permanent, so it's
+            // the last line of defense before an ID is handed out: fail this
+            // attempt with DUPLICATE rather than silently reissuing the ID.
+            // The counter above has already moved past `new_id`, so a
+            // subsequent reserve call self-heals onto the next number.
+            if self.id_referenced_in_git_history(&new_id) {
+                let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                let ts = unix_to_iso_full(unix_now());
+                let line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reuse_blocked\",\
+                     \"domain\":\"{domain_upper}\",\"blocked_id\":\"{new_id}\"}}\n"
+                );
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&amb)
+                {
+                    let _ = f.write_all(line.as_bytes());
+                }
+                bail!(
+                    "reserve({domain}) DUPLICATE: {new_id} already appears in git \
+                     history (git log --all --grep={new_id}) — it belongs to a \
+                     shipped gap whose docs/gaps/ entry was deleted rather than \
+                     archived to docs/gaps/closed/. Retry the reserve; the counter \
+                     has already moved past {new_id}."
+                );
+            }
+
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -1463,6 +1497,32 @@ impl GapStore {
         }
 
         bail!("reserve({domain}) failed after {MAX_RETRIES} retries — persistent collision")
+    }
+
+    /// INFRA-1954: true if `id` (e.g. "INFRA-1953") appears in any commit
+    /// message across all branches. state.db and docs/gaps/*.yaml both lose
+    /// track of a shipped gap once its YAML mirror is deleted (rather than
+    /// archived to docs/gaps/closed/), so the INFRA-018 duplicate-ID guard —
+    /// which only reads those two sources — is blind to it. git history is
+    /// permanent and cheap to check, so reserve cross-checks it too.
+    ///
+    /// Best-effort: any failure to invoke `git` (not a repo, git missing,
+    /// etc.) is treated as "not referenced" so reserve still works outside
+    /// a git checkout (e.g. isolated test fixtures).
+    fn id_referenced_in_git_history(&self, id: &str) -> bool {
+        std::process::Command::new("git")
+            .args([
+                "log",
+                "--all",
+                "-F",
+                &format!("--grep={id}"),
+                "--format=%H",
+                "-1",
+            ])
+            .current_dir(&self.repo_root)
+            .output()
+            .map(|o| o.status.success() && !o.stdout.is_empty())
+            .unwrap_or(false)
     }
 
     /// Return the `session_id` strings of all live leases (other than our
@@ -5210,6 +5270,88 @@ mod tests {
         let id = store.reserve("INFRA", "new gap", "P1", "s").unwrap();
         // Must skip past INFRA-042 — not collide with it or INFRA-005.
         assert_eq!(id, "INFRA-043", "reserve should skip past DB max, got {id}");
+    }
+
+    /// INFRA-1954 regression: reserve must reject an ID that already appears
+    /// in git history, even after its state.db row is gone — exactly the
+    /// Cold Water failure mode where META-103/INFRA-1953/1955/1957 were
+    /// re-issued to shipped-and-deleted gaps.
+    #[test]
+    fn test_reserve_rejects_id_shipped_and_removed_from_registry() {
+        // INFRA-100: don't let the open-PR scan pull in live `gh pr list`
+        // numbers (see test_store() above for the same rationale).
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        let init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main", "--quiet"])
+            .current_dir(&repo_root)
+            .status();
+        if init.is_err() || !init.unwrap().success() {
+            eprintln!("skipping: git not available in test sandbox");
+            return;
+        }
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(&repo_root)
+            .status();
+        let _ = std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(&repo_root)
+            .status();
+
+        let store = GapStore::open(&repo_root).unwrap();
+        // Reserve INFRA-001 the normal way, then ship + commit it — the
+        // commit is the only surviving evidence once its YAML mirror is
+        // deleted (ZERO-WASTE-020 retired the per-file mirror entirely).
+        let id = store
+            .reserve("INFRA", "shipped fixture gap", "P1", "s")
+            .unwrap();
+        assert_eq!(id, "INFRA-001");
+        let _ = std::process::Command::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                &format!("feat({id}): fixture gap already shipped"),
+            ])
+            .current_dir(&repo_root)
+            .status();
+
+        // Simulate the ID going missing from the live registry: the row is
+        // deleted from state.db (as if docs/gaps/INFRA-001.yaml had been
+        // deleted rather than archived to docs/gaps/closed/) and the
+        // counter is rolled back so the next reserve would naturally repick
+        // the same number.
+        store
+            .conn
+            .execute("DELETE FROM gaps WHERE id='INFRA-001'", [])
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gap_counters SET next_num = 1 WHERE domain='INFRA'",
+                [],
+            )
+            .unwrap();
+
+        let err = store
+            .reserve("INFRA", "new gap reusing the old number", "P1", "s")
+            .expect_err("reserve must reject an ID already present in git history");
+        assert!(
+            err.to_string().contains("INFRA-001") && err.to_string().contains("git history"),
+            "error should name the colliding ID and cite git history, got: {err}"
+        );
+        // The rejected row must not linger in state.db.
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM gaps WHERE id='INFRA-001'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0, "rejected reserve must roll back its DB row");
     }
 
     #[test]
