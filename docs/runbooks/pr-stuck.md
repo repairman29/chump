@@ -86,3 +86,28 @@ chump gap show <GAP-ID>
 - Auto-rescue (`pr_rescue_triggered`) fires within 10 min via `scripts/coord/opus-curator.sh`
 - If `pr_rescue_failed`: the gap is unblocked but the PR needs manual push; check the rescue log
 - Persistent stuck cluster (> 1h) → drop fleet to 2 workers and file an INFRA gap for root cause
+
+## Observability (INFRA-2942)
+
+- **Events emitted, every path.** `scripts/coord/pr-stuck-cluster-detector.sh`
+  emits `kind=pr_stuck_cluster_detector_run` on **every invocation, all exit
+  paths** (no-op / cluster-detected-dry-run / cluster-filed-apply / bad-args) —
+  not just success. Fields: `outcome` (`no_op` | `dry_run` | `filed` |
+  `bad_args`), `stuck_pr_count`, `duration_ms`, `gap_reserve_calls`,
+  `failure_class`. Registered in
+  `docs/observability/EVENT_REGISTRY.yaml` (`pr_stuck_cluster_detector_run`,
+  INFRA-2754/INFRA-2906). The cluster-level signal itself is
+  `kind=pr_stuck_cluster` (INFRA-950), consumed by waste-tally/fleet-brief/watchdog.
+- **Cost tracking.** `gap_reserve_calls` on the run event is the mutation-cost
+  signal — it's 0 on dry-run/no-op paths and only non-zero when the detector
+  actually filed a gap, so `waste-tally` can attribute registry-mutation cost
+  to this detector without inferring it from downstream gap counts.
+- **Failure-class taxonomy** (INFRA-2906): `failure_class` is one of `none`
+  (successful run, nothing to distinguish), `transient` (retryable —
+  e.g. a `gh`/cache call failed), or `permanent` (non-retryable — e.g.
+  `bad_args`). Documented alongside the field in EVENT_REGISTRY.yaml.
+- **Smoke test.** `scripts/ci/test-pr-stuck-cluster-observability.sh` —
+  runnable standalone, covers the `no_op`/`dry_run`/`bad_args` outcome paths
+  and asserts `failure_class` on each. Wired into `chump preflight`
+  (`src/preflight.rs`, INFRA-2925) so it runs on every local preflight, not
+  just CI.

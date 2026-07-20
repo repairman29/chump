@@ -406,7 +406,7 @@ fn main() {
     }
 
     // Graceful shutdown: take the children with us (launchd owns OUR restart).
-    for (_, slot) in slots.iter_mut() {
+    for slot in slots.values_mut() {
         if let Some(child) = slot.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
