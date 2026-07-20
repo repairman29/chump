@@ -1,7 +1,7 @@
 - id: INFRA-1909
   domain: INFRA
   title: "RESILIENT: ghost-gap reaper daemon — auto-reconcile state.db gaps with status:open but closed_pr already on origin/main (4 instances in 2026-05-24 session: INFRA-1727 INFRA-1887 DOC-053 DOC-054 — each took 1 round-trip of claim+discover+manual chump gap ship)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13,4 +13,8 @@
     - "6. Smoke test scripts/ci/test-ghost-gap-reaper.sh: seed state.db with synthetic status:open gap; stub gh pr list to return matching merged PR; invoke reaper; assert gap is now status:done"
     - "7. Baseline 2026-05-24 evidence: 4 instances in single ~3hr session forced manual operator round-trip (claim → discover stale → release+chump gap ship): INFRA-1727 (shipped #2488 by me but state stuck open earlier), INFRA-1887 (shipped #2450 earlier session), DOC-053 (shipped #2454 needed closeout #2471), DOC-054 (shipped #2462). 4 manual chump gap ship calls totaling ~20 operator-min that a daily cron would have absorbed silently"
     - "8. Pairs with INFRA-1888 (detect-gap-failure skips status:done — same drift class on detector side)"
+  notes: |
+    [2026-07-19T22:08:57Z] Ghost-gap reconciliation: PR #3208 already merged 2026-07-19T22:04:36Z implementing all AC (phase-2 reaper); state.db was stuck status:open — textbook ghost-gap scenario, reconciled manually since main checkout dirty from sibling sessions blocked auto-fetch in chump gap ship.
+  closed_pr: 3208
+  outcome_id: MISSION-010
 
