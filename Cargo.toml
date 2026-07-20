@@ -30,6 +30,7 @@ members = [
     "crates/chump-github-cache",
     "crates/chump-handoff",
     "crates/chump-fleet-server",
+    "crates/chump-verified-aggregator",
     "crates/chump-fleet-recorder",
     "crates/chump-reviewer-routing",
     "crates/chump-policy",
