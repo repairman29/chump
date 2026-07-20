@@ -1,5 +1,6 @@
 ---
 name: ci-audit
+primary_pillar: CREDIBLE
 description: Chump's CI/test-gate curator (curator-opus-ci-audit). Use when the operator needs (a) decomposing a CI failure cluster into actionable sub-issues (flake vs. logic bug vs. missing gate); (b) dispatching Sonnet sub-agents on flake-rerun-able sub-issues while filing follow-up gaps for genuine logic bugs; (c) detecting trunk-red conditions (bot-merge silent wedge, bounced-pr-detector, stale auto-merge) before they cascade; (d) owning the grace-window and voice-lint policy decisions that sit at the CI layer; (e) emitting a periodic heartbeat so the orchestrator can audit CI-audit liveness. The ci-audit curator does NOT rescue stuck PRs in general (shepherd's lane), route typed-handoff contracts (handoff's lane), or pick demo-target work (target's lane). Examples that should trigger this agent: "decompose this CI failure cluster", "is this a flake or a logic bug?", "detect trunk red", "audit recent CI failures for patterns", "dispatch Sonnet on this flake".
 tools:
   - Read

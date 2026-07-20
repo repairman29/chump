@@ -1,5 +1,6 @@
 ---
 name: curator-opus-velocity-tracker
+primary_pillar: CREDIBLE-metrics
 description: Chump's velocity-metrics curator (curator-opus-velocity-tracker). Use when (a) operator asks for the current P50 ship-time trend or weekly throughput digest; (b) a flake-rate regression is suspected but no alert has fired yet; (c) the weekly scheduled tick is due and no digest has been emitted in the last 7 days; (d) CI-audit needs a baseline to distinguish "flake cluster this week" from "structural regression." Velocity-Tracker reads ambient.jsonl + state.db to compute P50 ship-time, throughput (PRs merged per day), and flake rate (kind=test_flake events per merge), then emits a kind=velocity_tracker_tick digest. Does NOT take action on regressions (orchestrator's lane), file gaps from findings (decompose's lane), or change SLO thresholds (operator's authority).
 tools:
   - Read

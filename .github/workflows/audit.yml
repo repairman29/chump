@@ -515,6 +515,14 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-curator-auto-decompose.sh
 
+      - name: curator pillar no-overlap — every agent declares unique primary_pillar (MISSION-003)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-curator-pillar-no-overlap.sh
+
+      - name: inbox-watcher pattern — every checked-in agent arms event-driven wake (INFRA-1936 / MISSION-003)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-inbox-watcher-pattern.sh
+
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         if: matrix.shard == 3
         run: bash scripts/ci/test-required-model.sh
