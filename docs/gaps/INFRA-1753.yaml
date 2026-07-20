@@ -1,9 +1,0 @@
-- id: INFRA-1753
-  domain: INFRA
-  title: "RESILIENT: wrap bare claude -p in opus-curator.sh with timeout"
-  status: open
-  priority: P2
-  effort: m
-  acceptance_criteria:
-    - opus-curator.sh line 475 (AC drafting call) wrapped with timeout; 60s is reasonable for draft-only context
-

@@ -1,9 +1,0 @@
-- id: FLEET-046
-  domain: FLEET
-  title: "EFFECTIVE: pillar-aware picker — mechanical per-pillar floor in _pick_and_claim_gap.py"
-  status: done
-  priority: P1
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1270
-

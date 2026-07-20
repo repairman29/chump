@@ -7,8 +7,9 @@
 #
 # What is tested (the coordination contract):
 #   1. chump gap list  — reads state.db, no API call
-#   2. chump gap reserve — writes state.db + YAML, no API call
-#   3. chump gap ship  — flips status, mirrors YAML, no API call
+#   2. chump gap reserve — writes state.db, no API call (ZERO-WASTE-020,
+#      2026-07-19: no longer writes a YAML mirror — state.db is canonical)
+#   3. chump gap ship  — flips status in state.db, no API call
 #   4. No Anthropic credential is consumed at any point
 #
 # Worker spawn (Ollama/opencode) is explicitly NOT tested here — that is an
@@ -70,9 +71,14 @@ gap_id=$(FLEET_029_AMBIENT_GLANCE_SKIP=1 "$CHUMP_BIN" gap reserve \
     --title "TEST: CREDIBLE-046 no-anthropic smoke fixture" \
     --priority P3 2>&1 | grep '^TEST-' | tail -1)
 [ -n "$gap_id" ] || fail "gap reserve failed or returned no gap ID"
-yaml_path="$REPO_ROOT/docs/gaps/${gap_id}.yaml"
-[ -f "$yaml_path" ] || fail "YAML file not created at $yaml_path"
-grep -q "status: open" "$yaml_path" || fail "YAML status is not 'open'"
+# ZERO-WASTE-020: state.db is canonical; gap reserve no longer writes a
+# docs/gaps/<ID>.yaml mirror. Read state via `gap show` instead.
+# NOTE: capture to a variable before grepping — `cmd | grep -q` races: grep -q
+# exits the instant it finds a match, which can SIGPIPE the still-writing
+# producer and make `pipefail` report the pipeline as failed even though the
+# match was found (observed intermittently, ~1-in-5, while authoring this).
+show_out=$("$CHUMP_BIN" gap show "$gap_id" 2>&1)
+echo "$show_out" | grep -q "status: open" || fail "gap status is not 'open' after reserve"
 pass "gap reserve works without Anthropic creds (gap=$gap_id)"
 
 # ── Test 3: chump gap show works without creds ─────────────────────────────
@@ -98,16 +104,19 @@ git -C "$proof_repo" config user.name "Integration Test"
 echo "proof" > "$proof_repo/marker.txt"
 git -C "$proof_repo" add marker.txt
 git -C "$proof_repo" commit -q -m "feat(${gap_id}): no-anthropic smoke proof-of-merge marker"
-mkdir -p "$proof_repo/docs/gaps"
-cp "$yaml_path" "$proof_repo/docs/gaps/${gap_id}.yaml"
 CHUMP_REPO="$proof_repo" \
 CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
 CHUMP_SHIP_NO_AUTOSTAGE=1 \
 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
 CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
-"$CHUMP_BIN" gap ship "$gap_id" --update-yaml --closed-pr 9999 \
+"$CHUMP_BIN" gap ship "$gap_id" --closed-pr 9999 \
     || fail "gap ship failed"
-grep -q "status: done" "$proof_repo/docs/gaps/${gap_id}.yaml" || fail "YAML status not 'done' after ship"
+# ZERO-WASTE-020: state.db is canonical; gap ship no longer writes a
+# docs/gaps/<ID>.yaml mirror (--update-yaml is now a documented no-op).
+# NOTE: capture to a variable before grepping — see Test 2's comment above
+# for why a live `cmd | grep -q` pipe is a pipefail/SIGPIPE race.
+show_out=$("$CHUMP_BIN" gap show "$gap_id" 2>&1)
+echo "$show_out" | grep -q "status: done" || fail "gap status not 'done' after ship"
 pass "gap ship works without Anthropic creds"
 
 # ── Test 5: no Anthropic API calls in ambient log ──────────────────────────
@@ -135,8 +144,10 @@ else
     pass "ambient log check skipped (not available in this environment)"
 fi
 
-# ── Cleanup: remove test fixture gap from docs/ ────────────────────────────
-rm -f "$yaml_path"
+# ── Cleanup: nothing to remove — ZERO-WASTE-020 means gap reserve/ship
+#    never wrote a docs/gaps/<ID>.yaml fixture file to clean up. The test
+#    fixture gap lives only in $CHUMP_STATE_DB, which `trap cleanup EXIT`
+#    (rm -rf "$TMP") already removes.
 
 echo ""
 echo "All CREDIBLE-046 no-Anthropic smoke tests passed."

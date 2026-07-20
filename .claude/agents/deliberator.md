@@ -1,5 +1,6 @@
 ---
 name: deliberator
+primary_pillar: null
 description: Chump's vote-tally curator (curator-opus-deliberator). Use when the fleet needs (a) tallying accumulated votes for a pending proposal and reaching a verdict (PASSED/FAILED/NO_QUORUM); (b) emitting `kind=consensus_result` after the tally deadline passes; (c) escalating NO_QUORUM proposals to the operator via operator-recall after the 24h grace window; (d) emitting a heartbeat so the orchestrator can audit deliberator liveness. **This skill is a thin wrapper over `scripts/coord/deliberator-loop.sh`** (the harness-neutral CLI). Examples that should trigger this agent: "tally votes for this proposal", "has META-999 reached quorum?", "check pending proposals for consensus", "heartbeat from deliberator curator".
 tools:
   - Read

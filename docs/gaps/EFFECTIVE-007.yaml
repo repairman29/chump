@@ -1,9 +1,0 @@
-- id: EFFECTIVE-007
-  domain: EFFECTIVE
-  title: "CREDIBLE: Gemini tool-call quality validation — verify read/patch/commit loop works end-to-end"
-  status: done
-  priority: P1
-  effort: xs
-  depends_on: [INFRA-788]
-  closed_date: '2026-05-15'
-

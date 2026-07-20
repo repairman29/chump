@@ -1,9 +1,0 @@
-- id: INFRA-905
-  domain: INFRA
-  title: "EFFECTIVE: Gap templates and starter examples"
-  status: open
-  priority: P1
-  effort: s
-  acceptance_criteria:
-    - "1. docs/gaps/TEMPLATES/ directory with 3 markdown templates: EFFECTIVE-gap-template.md, CREDIBLE-gap-template.md, RESILIENT-gap-template.md. Each template includes: YAML front-matter with id/domain/title/priority/effort/acceptance_criteria placeholders, guidance comments for each field, 2-3 concrete AC examples. 2. 'chump gap template --pillar EFFECTIVE > my-gap.md' outputs the matching template. 3. scripts/ci/test-gap-templates.sh: 6+ tests verifying template exists, all required YAML fields present, AC examples non-empty."
-

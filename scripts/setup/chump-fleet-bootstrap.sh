@@ -71,6 +71,7 @@ REQUIRED_DAEMONS=(
     # (RESILIENT-066 root cause) and the fleet cannot auto-recover.
     "dev.chump.farmer|scripts/setup/install-farmer-launchd.sh"
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
+    "com.chump.chumpd|scripts/setup/install-chumpd.sh"
 )
 UID_VAL="$(id -u)"
 
