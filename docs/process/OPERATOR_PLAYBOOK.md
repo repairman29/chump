@@ -13,6 +13,10 @@ new operator and you've never run a fleet, start here.
 
 ## 1. The Hierarchy
 
+> Each curator owns one primary pillar with a hard scope boundary — see
+> [`CURATOR_PILLAR_MATRIX.md`](./CURATOR_PILLAR_MATRIX.md) for the canonical
+> role → pillar mapping (MISSION-003).
+
 ```mermaid
 graph TD
   Op[Operator -- human, weekly cadence after retirement]

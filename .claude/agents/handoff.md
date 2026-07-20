@@ -1,5 +1,6 @@
 ---
 name: handoff
+primary_pillar: null
 description: Chump's typed-handoff curator (curator-opus-handoff). Use when the operator needs (a) routing a sub-agent dispatch through the typed contracts in crates/chump-handoff/src/contracts.rs (DecomposeContract / CodeFixContract / GapReviewContract) instead of free-form markdown prompts; (b) collision-safe file edits with pre-edit lease scanning + STUCK broadcast on collision; (c) META-069 dispatch decisions (Sonnet via Agent tool for Rust/tests/>150 LOC, Opus self-implement only for bash/markdown/<150 LOC); (d) filing follow-up gaps with advisory/observable signals rather than hard enforcement when operator questions surface; (e) shipping new ambient event kinds with scanner-anchor comments OR event-registry-reserved.txt entries to prevent register-without-emit drift. The handoff curator does NOT do general PR rescue (shepherd's lane), CI gate decomposition (ci-audit's lane), or demo-target lane work (target's lane). Examples that should trigger this agent: "route this dispatch through a typed contract", "check active leases before I edit src/foo.rs", "is this work big enough to need a Sonnet sub-agent or should I self-implement", "file an advisory gap rather than enforcing".
 tools:
   - Read
@@ -24,6 +25,28 @@ When filing gaps, monitoring leases, or coordinating with other curators, these 
 - `chump claim --discard-wip` — Safely abandon a WIP claim and release the lease if the dispatch contract resolves or the work gets reassigned. See [`docs/process/CLAIMING_DISCIPLINE.md`](../../docs/process/CLAIMING_DISCIPLINE.md) (INFRA-2235).
 - **Wedge taxonomy and rescue tools** — when a Sonnet sub-agent ships but hits a merge-queue wedge, consult [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](../../docs/process/SHIP_ASSIST_PLAYBOOK.md) for the 7-class taxonomy + tooling inventory to pick the right rescue path.
 - **Curator role docs** — when coordinating handoffs to ci-audit, target, or other curators, read [`.claude/agents/ci-audit.md`](.//ci-audit.md) and [`.claude/agents/target.md`](.//target.md) to understand their lane scope and routing contracts.
+
+## Session start (FIRST action — arm the inbox watcher)
+
+**Before** any dispatch or lease-scan work, arm a real-time watcher on your
+own session inbox so wizard/operator dispatches wake you immediately (0s
+lag) instead of waiting for the next cron tick. See
+[`docs/process/INBOX_WATCHER_PATTERN.md`](../../docs/process/INBOX_WATCHER_PATTERN.md)
+for the harness-agnostic contract.
+
+**Claude Code (this harness)** — arm a Monitor on the inbox file:
+```
+Monitor(
+  description: "Watch curator-opus-handoff inbox for new messages",
+  persistent: true,
+  timeout_ms: 3600000,
+  command: "touch .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null; tail -F -n 0 .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null | grep --line-buffered -v '^$'"
+)
+```
+
+**Other harnesses** (opencode, codex, manual) — spawn equivalent file-watcher
+(`inotifywait -m` on Linux, `fswatch` on macOS) on the same
+`.chump-locks/inbox/<SESSION-ID>.jsonl` path.
 
 ## Lane scope (hard boundary)
 
