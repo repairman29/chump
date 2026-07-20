@@ -1,0 +1,9 @@
+- id: INFRA-3377
+  domain: INFRA
+  title: "META-070: mirror commit-content-guards fast-checks scripts (22) into chump preflight"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. For each of the 22 commit-content-guards scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#commit-content-guards-infra-3377, add a mirror gate in src/preflight.rs (GateKind::Scripts, or --pre-commit only where the check is inherently commit-scoped like docs-delta-trailer) following the established pattern.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-content-guard-mirrors.sh asserts all 22 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+

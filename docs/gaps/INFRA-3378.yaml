@@ -1,0 +1,9 @@
+- id: INFRA-3378
+  domain: INFRA
+  title: "META-070: mirror cli-product-acceptance fast-checks scripts (23) into chump preflight"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. For each of the 23 cli-product-acceptance scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#cli-product-acceptance-infra-3378, classify as Mirror (add to src/preflight.rs), Tier-D (add to docs/process/CI_GATES_INVENTORY.md, e.g. self-hosted-runner-only checks), or Allowlist (add to scripts/ci/preflight-ci-parity-exceptions.txt with reason) — most in this cluster are slow feature-acceptance tests, so Tier-D/Allowlist is expected to dominate over Mirror.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md accordingly for every script in this cluster.\n3. Smoke test scripts/ci/test-preflight-cli-acceptance-classification.sh asserts every script in the cluster has a classification (mirrored, Tier-D, or allowlisted) — none left unclassified."
+
