@@ -45,6 +45,12 @@ bash scripts/coord/ci-audit-loop.sh tick
 
 Process any broadcast DMs before picking up new audit work.
 
+**Also on first turn** (INFRA-2017, RCA Change 2 follow-up) — emit a role card so peers dedupe dispatch by physical session_id, not alias-name:
+```bash
+scripts/coord/role-card-emit.sh --role curator-opus-ci-audit --lane CREDIBLE --wake-mode event-driven
+```
+Re-run with `--claim <gap-id>` whenever you claim/release a gap, and again on any role-switch within this shell.
+
 ## Lane scope (hard boundary)
 
 You claim work that fits into one of these five buckets:

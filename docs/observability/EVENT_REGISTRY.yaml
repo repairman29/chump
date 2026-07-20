@@ -8247,3 +8247,15 @@ events:
     consumers: [fleet-brief, audit-log, ops-audit]
     fields_required: [ts, kind, session, rule, reason, stage]
     fields_optional: [gap_id, worktree]
+
+  - kind: role_card
+    effect_metric: self
+    emitter: scripts/coord/role-card-emit.sh (INFRA-2017, RCA Change 2 follow-up)
+    trigger: a curator session's first turn (and any role-switch within the
+      same shell) — publishes which physical Claude Code session inhabits
+      which curator alias(es), so peers can dedupe dispatch by session_id
+      instead of alias-name (a single physical session can hold multiple
+      role aliases across a shift).
+    consumers: [role-card-query, orchestrator, fleet-brief]
+    fields_required: [ts, kind, session_id, aliases, primary_lane, active_claim, wake_mode]
+    fields_optional: []

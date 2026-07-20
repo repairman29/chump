@@ -60,6 +60,11 @@ Run **before any other action**:
 2. **Pulse + roadmap read** — `bash scripts/coord/pr-pulse.sh` (INFRA-1897) for queue verdict; `head -80 docs/ROADMAP.md` for current week's bets.
 3. **Read inbox cursor** — `bash scripts/coord/chump-inbox.sh read --since cursor` to act on any pending DMs.
 4. **Check sibling leases** — `ls .chump-locks/claim-*.json 2>/dev/null` so you don't collide with an active worker.
+5. **Emit role card** (INFRA-2017, RCA Change 2 follow-up) — publish `kind=role_card` so peers can dedupe dispatch by physical session_id instead of alias-name:
+   ```
+   scripts/coord/role-card-emit.sh --role orchestrator --lane MISSION --wake-mode event-driven
+   ```
+   Re-run on any role-switch within the same shell (e.g. this session also picks up a curator alias mid-shift).
 
 ## Standard 5-step loop iteration
 
