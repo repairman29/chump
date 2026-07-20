@@ -1093,6 +1093,11 @@ CHUMP_AUTH_STATUS_FAKE_OAUTH
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
+# CHUMP_POOL_KEEPER_HB_FRESH_S — keeper heartbeat freshness window (RESILIENT-177)
+# CHUMP_POOL_KEEPER_COOLDOWN_S — keeper min seconds between restores (RESILIENT-177)
+# CHUMP_POOL_KEEPER_STORM_LIMIT — keeper max restores/hour before escalate (RESILIENT-177)
+# CHUMP_POOL_KEEPER_VERIFY — 0 disables post-relaunch heartbeat verification (test harness)
+# CHUMP_MODE_BIN — override chump-mode binary path (test harness, RESILIENT-177)
 
 # AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
 # Replace the AUTO marker with a real description on the next commit.
