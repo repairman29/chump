@@ -2015,7 +2015,9 @@ events:
     fields_required: [ts, kind, outcome, stuck_pr_count, duration_ms, gap_reserve_calls, failure_class]
     docs: |
       INFRA-3117 answers (this event was the "TODO" placeholder gap; answers
-      already existed in code/comments, this just makes them registry-visible):
+      already existed in code/comments, this just makes them registry-visible).
+      INFRA-3132 is a same-day duplicate of INFRA-3117 (identical AC, same
+      detector, filed one cluster-run apart) — these answers close it too:
         - emitted on: every exit path via `trap ... EXIT` in the detector
           script (success, no-op, dry-run, bad-args, and error) — see
           outcome field values: no_op | dry_run | cluster_filed | help |
