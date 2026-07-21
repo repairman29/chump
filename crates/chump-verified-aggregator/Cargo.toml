@@ -1,0 +1,33 @@
+[package]
+name = "chump-verified-aggregator"
+version = "0.1.0"
+edition = "2021"
+description = "Basic 'Verified' aggregator service (META-135, META-131 slice) — receives and stores per-lane CI status updates. Non-gating: no aggregation or enforcement logic yet."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-verified-aggregator"
+license = "AGPL-3.0-only"
+keywords = ["chump", "ci", "verified", "axum"]
+categories = ["web-programming::http-server"]
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8", features = ["macros", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lib]
+name = "chump_verified_aggregator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chump-verified-aggregator"
+path = "src/main.rs"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true
