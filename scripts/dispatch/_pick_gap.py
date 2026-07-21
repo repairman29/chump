@@ -450,24 +450,34 @@ def main() -> int:
             continue
         # INFRA-471: model-class effort gate (routing.yaml drives pick policy).
         # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
-        # sonnet workers refuse effort=xs — cheap models handle cleanup; don't burn frontier tokens.
         # opus is unconstrained.
-        # MISSION-026: P0 mission-linked gaps bypass the sonnet xs-effort gate so
+        # MISSION-026: P0 mission-linked gaps bypass the haiku m/l/xl gate so
         # xs-effort P0 MISSION gaps (e.g. MISSION-018) are never permanently blocked
-        # by worker tier. The rationale for the original rule still holds for P1+
-        # xs gaps (let haiku handle them), but a P0 mission gap is urgent enough
-        # that any capable worker should pick it rather than skip it entirely.
+        # by worker tier.
         _is_p0_mission = (
             p == "P0"
             and (g.get("domain") or "").upper() == "MISSION"
         )
-        # MISSION-047: P0 mission gaps bypass the haiku m/l/xl gate too — symmetric
-        # with the sonnet-xs bypass below. Without this, a P0-MISSION effort>=m gap
-        # is invisible to every haiku worker (and routing makes workers haiku), so
-        # it starves forever — the literal mechanism of MISSION-026.
+        # MISSION-047: P0 mission gaps bypass the haiku m/l/xl gate too. Without
+        # this, a P0-MISSION effort>=m gap is invisible to every haiku worker
+        # (and routing makes workers haiku), so it starves forever — the
+        # literal mechanism of MISSION-026.
         if worker_model == "haiku" and e in ("m", "l", "xl") and not _is_p0_mission:
             continue
-        if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
+        # INFRA-2998: the sonnet-refuses-xs gate (sibling of INFRA-2997) has been
+        # removed for the default all-sonnet fleet. It assumed a MIXED fleet where
+        # haiku workers pick up xs/s gaps and sonnet shouldn't "burn frontier tokens"
+        # on them — but INFRA-2997 deleted the last haiku routing path, and the
+        # operator pays a flat subscription (no per-token cost delta), so that
+        # rationale no longer holds. A sonnet worker now picks xs gaps like any
+        # other effort tier. Opt back into the old mixed-fleet behavior (e.g. a
+        # haiku-workers-exist deployment) via CHUMP_MIXED_FLEET_XS_GATE=1.
+        if (
+            worker_model == "sonnet"
+            and e == "xs"
+            and not _is_p0_mission
+            and os.environ.get("CHUMP_MIXED_FLEET_XS_GATE", "") == "1"
+        ):
             continue
         # Conservative: skip gaps with non-empty depends_on.
         # INFRA-397: depends_on arrives as a JSON-encoded string from

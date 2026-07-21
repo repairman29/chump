@@ -3,7 +3,9 @@
 #
 # Verifies that:
 #   1. haiku workers skip effort=m/l/xl gaps at pick time
-#   2. sonnet workers skip effort=xs gaps at pick time
+#   2. sonnet workers PICK effort=xs gaps at pick time (INFRA-2998: the
+#      sonnet-refuses-xs gate assumed a mixed haiku/sonnet fleet; the default
+#      all-sonnet fleet has no worker left to pick xs otherwise)
 #   3. _resolve_model.py returns the correct model class per routing.yaml
 #
 # Exit 0 = all checks pass; exit 1 = any failure.
@@ -88,19 +90,34 @@ else
     fail "haiku should refuse effort=l but picked: '$haiku_l'"
 fi
 
-# ── 2. sonnet refuses xs ────────────────────────────────────────────────────
-GAP_JSON_XS='[{"id":"TEST-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1}]'
+# ── 2. sonnet picks xs (INFRA-2998) ─────────────────────────────────────────
+# The sonnet-refuses-xs gate assumed a mixed haiku/sonnet fleet; the default
+# all-sonnet fleet (run-fleet.sh:285) has no other worker to pick xs gaps, so
+# the gate was removed unless CHUMP_MIXED_FLEET_XS_GATE=1 is set.
+GAP_JSON_XS='[{"id":"TEST-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1,"acceptance_criteria":"do the thing"}]'
 tmpf="$(mktemp -t routing-test.XXXXXX)"
 printf '%s' "$GAP_JSON_XS" > "$tmpf"
 sonnet_xs="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
     FLEET_DOMAIN_FILTER="" FLEET_EFFORT_FILTER="" EXCLUDE_RE="^$" \
     ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
     python3 "$PICK_SCRIPT" 2>/dev/null || true)"
-rm -f "$tmpf"
-if [[ -z "$sonnet_xs" ]]; then
-    ok "sonnet refuses effort=xs"
+if [[ "$sonnet_xs" == "TEST-XS" ]]; then
+    ok "sonnet picks effort=xs (default all-sonnet fleet)"
 else
-    fail "sonnet should refuse effort=xs but picked: '$sonnet_xs'"
+    fail "sonnet should pick effort=xs but got: '$sonnet_xs'"
+fi
+
+# sonnet still refuses xs when the mixed-fleet opt-in flag is set
+sonnet_xs_gated="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
+    FLEET_DOMAIN_FILTER="" FLEET_EFFORT_FILTER="" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
+    CHUMP_MIXED_FLEET_XS_GATE=1 \
+    python3 "$PICK_SCRIPT" 2>/dev/null || true)"
+rm -f "$tmpf"
+if [[ -z "$sonnet_xs_gated" ]]; then
+    ok "sonnet refuses effort=xs under CHUMP_MIXED_FLEET_XS_GATE=1 opt-in"
+else
+    fail "sonnet should refuse effort=xs under mixed-fleet opt-in but picked: '$sonnet_xs_gated'"
 fi
 
 # sonnet accepts m
