@@ -209,6 +209,7 @@ run_test_script 3 "$SCRIPTS_CI/run-feature-smokes.sh"
 
 # State-machine / coordination local checks
 run_test_script 3 "$SCRIPTS_CI/test-cascade-rebase-debounce.sh"
+run_test_script 3 "$SCRIPTS_CI/test-cascade-rebase-keystone-trigger.sh"
 run_test_script 3 "$SCRIPTS_CI/test-cascade-cancellation.sh"
 run_test_script 3 "$SCRIPTS_CI/test-fleet-wedge-escalation.sh"
 run_test_script 3 "$SCRIPTS_CI/test-gap-closure-consistency.sh"

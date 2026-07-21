@@ -106,6 +106,17 @@ by the merge-driver layer first — the cascade auto-resolver is the
 *secondary* fallback that fires when the driver can't run (because the
 conflict surfaced during `git rebase`, not during a `git merge`).
 
+## Regression guard (META-145)
+
+`scripts/ci/test-cascade-rebase-keystone-trigger.sh` pins the three
+acceptance criteria of "cascade rebase auto-trigger" (META-131 slice
+META-145) directly to this wiring: the keystone-file config is
+non-empty and the workflow fires on push-to-main (AC1), `cascade_rebase_if_hot`
+is invoked unconditionally and iterates every open PR (AC2), and the
+`cascade_rebase_triggered` / `cascade_rebase_skipped_duplicate` event
+kinds are registered so actions and failures are audited (AC3). Runs
+as part of `scripts/ci/run-local-ci.sh` Tier 3.
+
 ## Related machinery
 
 - `scripts/dev/take-both-resolve.py` (INFRA-1920) — operator hand-tool
