@@ -117,6 +117,27 @@ conflict surfaced during `git rebase`, not during a `git merge`).
 - `scripts/coord/cascade-rebase-trigger-paths.txt` (INFRA-711) — the
   config that decides which main-branch commits trigger cascade.
 
+## Gap traceability (META-145)
+
+META-131 sliced out META-145 ("Implement Cascade Rebase Auto-Trigger")
+expecting new work extending INFRA-2207. By claim time the three
+acceptance criteria were already fully satisfied by machinery documented
+above:
+
+1. **Monitor keystone-file changes on `main`** — `cascade_rebase_if_hot`
+   in `queue-driver.sh` (see "Trigger path" above), config-driven via
+   `cascade-rebase-trigger-paths.txt` (INFRA-711).
+2. **Auto-rebase all open PRs on trigger** — the three-path resolution
+   (server-side fast-forward, local rebase + auto-resolve, operator
+   escalation) covered above (INFRA-2207, INFRA-2255).
+3. **Log actions and failures** — `cascade_rebase_triggered`,
+   `cascade_rebase_skipped_duplicate`, `cascade_auto_resolved`, and
+   `cascade_resolve_skipped_semantic` ambient events (see "Event-kind
+   summary" above).
+
+No new implementation was needed; META-145 closes as already-shipped
+against this existing machinery rather than duplicating it.
+
 ## Why this matters
 
 Before INFRA-2255, cascade fired and then ~half the open PRs went
