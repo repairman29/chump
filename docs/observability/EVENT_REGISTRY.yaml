@@ -6481,6 +6481,44 @@ events:
     fields_required: [ts, kind, check_name, added_at, grace_until, grace_window_mins]
     docs: docs/process/REQUIRED_CHECK_ADDITION.md
 
+  # ── META-146 (META-131 slice): ruleset change watchdog alerting ───────────
+  - kind: ruleset_changed
+    effect_metric: self
+    emitter: scripts/coord/required-check-monitor.sh (META-146)
+    trigger: >
+      Any modification (add and/or remove) to main's required CI checks,
+      detected by diffing the current branch-protection required-contexts
+      against the prior snapshot (.chump-locks/required-check-snapshot.json).
+      Fires once per detection cycle with the full before/after diff, in
+      addition to any per-check required_check_added events.
+    consumers: [aggregator-watchdog, ops-audit, fleet-brief]
+    fields_required: [ts, kind, actor, ruleset_id, old_required_checks, new_required_checks, reason]
+    docs: docs/design/CI_VERIFIED_AGGREGATOR.md
+
+  - kind: ruleset_required_empty
+    effect_metric: self
+    emitter: scripts/coord/ruleset-empty-watchdog.sh (META-146)
+    trigger: >
+      Combined required_status_checks (classic branch-protection + any
+      active ruleset) on main transitioned from non-empty (or unknown) to
+      EMPTY — main is silently unprotected. Precedent: 2026-05-29 manual
+      ruleset edit dropped required checks with no alert for hours
+      (INFRA-2201).
+    consumers: [ops-audit, fleet-brief, operator-recall]
+    fields_required: [ts, kind, ruleset_id, prior_check_count]
+    docs: docs/design/CI_VERIFIED_AGGREGATOR.md
+
+  - kind: ruleset_required_restored
+    effect_metric: self
+    emitter: scripts/coord/ruleset-empty-watchdog.sh (META-146)
+    trigger: >
+      Combined required_status_checks on main transitioned from EMPTY back
+      to non-empty. Pairs with ruleset_required_empty to close the outage
+      window; outage_duration_s measures how long main was unprotected.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, ruleset_id, restored_check_count, outage_duration_s]
+    docs: docs/design/CI_VERIFIED_AGGREGATOR.md
+
   # ── INFRA-1939 wedge guard (bot-merge graphql exhaustion) ────────────────
   # Emitted by scripts/coord/bot-merge.sh at script top when the last 200
   # ambient events show a `graphql_exhausted` within CHUMP_GRAPHQL_WEDGE_LOOKBACK_S

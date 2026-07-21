@@ -106,13 +106,50 @@ _detect_new_checks() {
         fi
     done <<< "$current_checks"
 
-    if [[ -z "$new_checks" ]]; then
+    # Find checks in prev but no longer in current (META-146 AC #1: removals
+    # are a "modification" too — the ruleset_changed event must fire on both).
+    local removed_checks=""
+    while IFS= read -r check; do
+        [[ -z "$check" ]] && continue
+        if ! echo "$current_checks" | grep -qxF "$check"; then
+            removed_checks="${removed_checks}${check}"$'\n'
+        fi
+    done <<< "$prev_checks"
+
+    if [[ -z "$new_checks" && -z "$removed_checks" ]]; then
         return 0
     fi
 
-    # AC #1 + AC #2: for each new check, emit event and write grace entry
     local now
     now="$(_ts)"
+
+    # META-146 AC #1: emit a single kind=ruleset_changed covering the full
+    # before/after diff, on ANY modification (add and/or remove), so
+    # aggregator-watchdog-class consumers don't need to reconstruct the diff
+    # from per-check required_check_added events alone.
+    local old_json new_json
+    old_json="$(printf '%s' "$prev_checks" | python3 -c "import json,sys; print(json.dumps(sorted([l for l in sys.stdin.read().splitlines() if l])))")"
+    new_json="$(printf '%s' "$current_checks" | python3 -c "import json,sys; print(json.dumps(sorted([l for l in sys.stdin.read().splitlines() if l])))")"
+    local reason
+    reason="$(python3 -c "
+added = len('''${new_checks}'''.strip().splitlines())
+removed = len('''${removed_checks}'''.strip().splitlines())
+parts = []
+if added: parts.append(f'{added} added')
+if removed: parts.append(f'{removed} removed')
+print(', '.join(parts) or 'no-op')
+")"
+    # scanner-anchor: "kind":"ruleset_changed"
+    _emit_ambient "$(printf \
+        '{"ts":"%s","kind":"ruleset_changed","actor":"unknown","ruleset_id":"branch_protection","old_required_checks":%s,"new_required_checks":%s,"reason":"%s"}' \
+        "$now" "$old_json" "$new_json" "$reason")"
+
+    if [[ -z "$new_checks" ]]; then
+        _update_snapshot "$current_checks"
+        return 0
+    fi
+
+    # AC #1 + AC #2 (INFRA-1395): for each new check, emit event and write grace entry
     local grace_until
     grace_until="$(date -u -v+"${GRACE_WINDOW_MINS}"M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
         || date -u -d "+${GRACE_WINDOW_MINS} minutes" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \

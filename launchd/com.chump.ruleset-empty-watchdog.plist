@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- META-146: ruleset-empty watchdog — pages if main required_status_checks empty > 2min -->
+<!-- Install: bash scripts/setup/install-ruleset-empty-watchdog.sh        -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.ruleset-empty-watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPO_ROOT/scripts/coord/ruleset-empty-watchdog.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPO_ROOT</string>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>StandardOutPath</key>
+    <string>REPO_ROOT/.chump-locks/ruleset-empty-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPO_ROOT/.chump-locks/ruleset-empty-watchdog.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

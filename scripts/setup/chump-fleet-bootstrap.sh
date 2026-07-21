@@ -73,6 +73,10 @@ REQUIRED_DAEMONS=(
     "com.chump.wake-recovery|scripts/setup/install-wake-recovery.sh"
     "com.chump.fleet-pool-keeper|scripts/setup/install-fleet-pool-keeper.sh"
     "com.chump.chumpd|scripts/setup/install-chumpd.sh"
+    # META-146: ruleset-empty watchdog — pages the operator when main's
+    # required_status_checks (branch-protection + active rulesets) has been
+    # empty for >2min (INFRA-2201-class silent-unprotected-main incident).
+    "com.chump.ruleset-empty-watchdog|scripts/setup/install-ruleset-empty-watchdog.sh"
 )
 UID_VAL="$(id -u)"
 
