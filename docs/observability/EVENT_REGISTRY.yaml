@@ -2014,9 +2014,24 @@ events:
     consumers: [waste-tally, watchdog]
     fields_required: [ts, kind, outcome, stuck_pr_count, duration_ms, gap_reserve_calls, failure_class]
     docs: |
-      Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh
-      (runnable standalone; covers no_op/dry_run/bad_args outcome paths
-      and asserts failure_class on each).
+      INFRA-3117 answers (this event was the "TODO" placeholder gap; answers
+      already existed in code/comments, this just makes them registry-visible):
+        - emitted on: every exit path via `trap ... EXIT` in the detector
+          script (success, no-op, dry-run, bad-args, and error) — see
+          outcome field values: no_op | dry_run | cluster_filed | help |
+          gap_id_extract_failed | gap_reserve_failed | bad_args | error.
+        - cost tracked via: gap_reserve_calls field (count of gap-reserve
+          mutations this run performed); operator reads it off ambient.jsonl
+          without grepping logs.
+        - failure_class taxonomy: none (no_op/dry_run/cluster_filed/help,
+          not a failure) | transient (gap_id_extract_failed/error, retry may
+          succeed as-is) | permanent (gap_reserve_failed/bad_args, retry
+          repeats until root cause fixed). Defined in
+          scripts/coord/pr-stuck-cluster-detector.sh:_pscd_failure_class.
+        - smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh
+          (runnable standalone; covers no_op/dry_run/bad_args outcome paths
+          and asserts failure_class on each; wired into `chump preflight`
+          per INFRA-2925).
 
   - kind: fleet_auth_fallback
     effect_metric: self
