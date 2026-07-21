@@ -3,7 +3,8 @@
 #
 # Verifies that:
 #   1. haiku workers skip effort=m/l/xl gaps at pick time
-#   2. sonnet workers skip effort=xs gaps at pick time
+#   2. sonnet workers pick effort=xs gaps by default (INFRA-2998: all-sonnet
+#      fleet); refusal is opt-in via CHUMP_MIXED_FLEET_XS_GATE=1
 #   3. _resolve_model.py returns the correct model class per routing.yaml
 #
 # Exit 0 = all checks pass; exit 1 = any failure.
@@ -88,8 +89,12 @@ else
     fail "haiku should refuse effort=l but picked: '$haiku_l'"
 fi
 
-# ── 2. sonnet refuses xs ────────────────────────────────────────────────────
-GAP_JSON_XS='[{"id":"TEST-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1}]'
+# ── 2. sonnet picks xs by default (INFRA-2998) ─────────────────────────────
+# The sonnet-refuses-xs gate assumed a MIXED fleet where haiku handles xs/s.
+# run-fleet.sh defaults to an all-sonnet fleet (FLEET_MODEL=sonnet), so the
+# gate is now opt-in via CHUMP_MIXED_FLEET_XS_GATE=1 — default (unset) is
+# sonnet picks xs.
+GAP_JSON_XS='[{"id":"TEST-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1,"acceptance_criteria":"has real criteria"}]'
 tmpf="$(mktemp -t routing-test.XXXXXX)"
 printf '%s' "$GAP_JSON_XS" > "$tmpf"
 sonnet_xs="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
@@ -97,10 +102,25 @@ sonnet_xs="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
     ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
     python3 "$PICK_SCRIPT" 2>/dev/null || true)"
 rm -f "$tmpf"
-if [[ -z "$sonnet_xs" ]]; then
-    ok "sonnet refuses effort=xs"
+if [[ "$sonnet_xs" == "TEST-XS" ]]; then
+    ok "sonnet picks effort=xs by default (all-sonnet fleet, INFRA-2998)"
 else
-    fail "sonnet should refuse effort=xs but picked: '$sonnet_xs'"
+    fail "sonnet should pick effort=xs by default but got: '$sonnet_xs'"
+fi
+
+# sonnet refuses xs when the mixed-fleet opt-in gate is explicitly enabled
+tmpf="$(mktemp -t routing-test.XXXXXX)"
+printf '%s' "$GAP_JSON_XS" > "$tmpf"
+sonnet_xs_gated="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
+    FLEET_DOMAIN_FILTER="" FLEET_EFFORT_FILTER="" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
+    CHUMP_MIXED_FLEET_XS_GATE=1 \
+    python3 "$PICK_SCRIPT" 2>/dev/null || true)"
+rm -f "$tmpf"
+if [[ -z "$sonnet_xs_gated" ]]; then
+    ok "sonnet refuses effort=xs when CHUMP_MIXED_FLEET_XS_GATE=1"
+else
+    fail "sonnet should refuse effort=xs under mixed-fleet gate but picked: '$sonnet_xs_gated'"
 fi
 
 # sonnet accepts m
@@ -167,12 +187,14 @@ else
 fi
 
 # ── 5. mixed fleet simulation: pick from shared pool ───────────────────────
-# Pool has xs, s, m, l. Haiku should pick xs or s; sonnet should pick m or l.
+# Pool has xs, s, m, l. Haiku should pick xs or s; sonnet (all-sonnet fleet
+# default, INFRA-2998) is no longer gated off xs, so it may pick any of them —
+# effort_rank sorts xs first, so it picks xs here.
 POOL='[
-  {"id":"POOL-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1},
-  {"id":"POOL-S", "domain":"INFRA","priority":"P1","effort":"s", "status":"open","created_at":2},
-  {"id":"POOL-M", "domain":"INFRA","priority":"P1","effort":"m", "status":"open","created_at":3},
-  {"id":"POOL-L", "domain":"INFRA","priority":"P1","effort":"l", "status":"open","created_at":4}
+  {"id":"POOL-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1,"acceptance_criteria":"has real criteria"},
+  {"id":"POOL-S", "domain":"INFRA","priority":"P1","effort":"s", "status":"open","created_at":2,"acceptance_criteria":"has real criteria"},
+  {"id":"POOL-M", "domain":"INFRA","priority":"P1","effort":"m", "status":"open","created_at":3,"acceptance_criteria":"has real criteria"},
+  {"id":"POOL-L", "domain":"INFRA","priority":"P1","effort":"l", "status":"open","created_at":4,"acceptance_criteria":"has real criteria"}
 ]'
 tmpf="$(mktemp -t routing-test.XXXXXX)"
 printf '%s' "$POOL" > "$tmpf"
@@ -194,10 +216,10 @@ sonnet_pool="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER=""
     ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
     python3 "$PICK_SCRIPT" 2>/dev/null || true)"
 rm -f "$tmpf"
-if [[ "$sonnet_pool" == "POOL-S" ]] || [[ "$sonnet_pool" == "POOL-M" ]] || [[ "$sonnet_pool" == "POOL-L" ]]; then
-    ok "mixed pool: sonnet picks s/m/l (got $sonnet_pool)"
+if [[ "$sonnet_pool" == "POOL-XS" ]] || [[ "$sonnet_pool" == "POOL-S" ]] || [[ "$sonnet_pool" == "POOL-M" ]] || [[ "$sonnet_pool" == "POOL-L" ]]; then
+    ok "mixed pool: sonnet picks xs/s/m/l (got $sonnet_pool)"
 else
-    fail "mixed pool: sonnet should pick s/m/l, got: '$sonnet_pool'"
+    fail "mixed pool: sonnet should pick xs/s/m/l, got: '$sonnet_pool'"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
