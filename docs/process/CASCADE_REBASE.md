@@ -85,6 +85,7 @@ machinery) takes over.
 | `cascade_rebase_skipped_duplicate` | Worker lost the per-SHA debounce race. | audit-log |
 | `cascade_auto_resolved` (INFRA-2255) | Local rebase + allowlist auto-resolve succeeded on a PR. | audit-log, fleet-brief |
 | `cascade_resolve_skipped_semantic` (INFRA-2255) | At least one conflict was outside the allowlist; cascade refused to touch the PR. | audit-log, operator-recall |
+| `cascade_rebase_pr_failed` (META-145) | A specific PR's cascade auto-resolve attempt failed (branch resolve, worktree, rebase, or push step). Carries `pr`, `reason`, `triggered_by` — before META-145 these failures were only visible as an aggregate `pr_fail` count on `cascade_rebase_triggered`. | audit-log |
 
 ## Extending the allowlist
 

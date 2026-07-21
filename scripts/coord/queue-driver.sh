@@ -168,7 +168,7 @@ cascade_rebase_if_hot() {
                 # INFRA-2255: server-side update-branch failed (DIRTY add-both).
                 # Try local rebase + auto-resolve via the allowlist before
                 # giving up. This kills today's manual rebase loop.
-                if cascade_auto_resolve_pr "$pr"; then
+                if cascade_auto_resolve_pr "$pr" "$triggered_by"; then
                     echo "queue-driver: ✓ cascade auto-resolved PR #$pr"
                     ok=$((ok + 1))
                     auto_resolved=$((auto_resolved + 1))
@@ -200,9 +200,27 @@ cascade_rebase_if_hot() {
 # Allowlist source-of-truth lives in auto-resolve-add-both.sh; we re-check
 # here so we can emit kind=cascade_resolve_skipped_semantic with the
 # offending file list before delegating.
+#
+# META-145: every early-return failure path below emits
+# kind=cascade_rebase_pr_failed with a `reason` field so per-PR cascade
+# failures are individually auditable in ambient.jsonl, not just folded
+# into the aggregate pr_fail count on cascade_rebase_triggered. The
+# out-of-scope semantic-conflict path is the one exception — it already
+# emits its own kind=cascade_resolve_skipped_semantic event.
 cascade_auto_resolve_pr() {
     local pr="$1"
+    local triggered_by="${2:-}"
     local branch
+
+    _cascade_emit_pr_failed() {
+        local reason="$1"
+        local amb="$REPO_ROOT/.chump-locks/ambient.jsonl"
+        local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        # scanner-anchor: "kind":"cascade_rebase_pr_failed"
+        _ambient_write "$amb" \
+            "$(printf '{"ts":"%s","kind":"cascade_rebase_pr_failed","pr":%s,"reason":"%s","triggered_by":"%s"}' \
+                "$ts" "$pr" "$reason" "$triggered_by")"
+    }
     branch=$(cache_lookup_pr "$pr" 2>/dev/null | python3 -c '
 import json, sys
 try:
@@ -215,6 +233,7 @@ except Exception:
         branch=$(chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
     fi
     if [[ -z "$branch" ]]; then
+        _cascade_emit_pr_failed "branch_resolve_failed"
         return 1
     fi
 
@@ -225,6 +244,7 @@ except Exception:
     tmpdir=$(mktemp -d)
     if ! git -C "$REPO_ROOT" worktree add --quiet "$tmpdir" "origin/$branch" 2>&1; then
         rm -rf "$tmpdir"
+        _cascade_emit_pr_failed "worktree_add_failed"
         return 1
     fi
 
@@ -239,6 +259,7 @@ except Exception:
         _push_rc=$?
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        [[ $_push_rc -ne 0 ]] && _cascade_emit_pr_failed "push_failed_after_clean_rebase"
         return $_push_rc
     fi
 
@@ -252,6 +273,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        _cascade_emit_pr_failed "rebase_odd_state"
         return 1
     fi
 
@@ -290,6 +312,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        _cascade_emit_pr_failed "auto_resolve_script_failed"
         return 1
     fi
 
@@ -304,6 +327,7 @@ except Exception:
         git rebase --abort 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        _cascade_emit_pr_failed "rebase_continue_failed"
         return 1
     fi
 
@@ -321,6 +345,7 @@ except Exception:
                 "$_now" "$pr" "$file_count" "${in_scope% }")"
         return 0
     fi
+    _cascade_emit_pr_failed "push_failed_after_resolve"
     return 1
 }
 

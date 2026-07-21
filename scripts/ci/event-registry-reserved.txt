@@ -514,6 +514,7 @@ curator_sentinel_removed          # reason: INFRA-2239 emitted when sentinel pru
 # Cascade detector / unblock automation (INFRA-2070)
 cascade_auto_resolved             # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh when a cascade is auto-resolved via successful rebase wave. Scanner-anchor in cascade-unblock-detector.sh.
 cascade_resolve_skipped_semantic  # reason: INFRA-2070 emitted by scripts/coord/cascade-unblock-detector.sh when semantic-conflict detection skips an otherwise-rebasable PR. Scanner-anchor in cascade-unblock-detector.sh.
+cascade_rebase_pr_failed          # reason: META-145 emitted by scripts/coord/queue-driver.sh (cascade_auto_resolve_pr) for each per-PR cascade-rebase failure path (branch_resolve_failed, worktree_add_failed, rebase_odd_state, auto_resolve_script_failed, rebase_continue_failed, push_failed_after_clean_rebase, push_failed_after_resolve). Carries pr, reason, triggered_by. Scanner-anchor in queue-driver.sh.
 
 # Consensus / deliberator (INFRA-2274, META-157)
 consensus_resolved                # reason: INFRA-2274 emitted by ConsensusCoordinator when quorum reached and decision final. Carries corr_id, decision, votes_for, votes_against. Scanner-anchor: crates/chump-coord/src/consensus.rs.
