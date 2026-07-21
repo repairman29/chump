@@ -450,8 +450,15 @@ def main() -> int:
             continue
         # INFRA-471: model-class effort gate (routing.yaml drives pick policy).
         # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
-        # sonnet workers refuse effort=xs — cheap models handle cleanup; don't burn frontier tokens.
         # opus is unconstrained.
+        # INFRA-2998: the sonnet-refuses-xs half of this gate assumed a MIXED
+        # fleet where haiku workers pick up xs/s work. run-fleet.sh defaults
+        # FLEET_MODEL=sonnet and INFRA-2997 deleted the routing.yaml routes that
+        # downgraded xs/s to haiku post-pick — the real fleet is all-sonnet, so
+        # that gate just orphaned every non-P0-MISSION xs gap. Only enforce it
+        # when a mixed fleet is explicitly opted into via
+        # CHUMP_MIXED_FLEET_XS_GATE=1 (e.g. an operator running a haiku+sonnet
+        # split fleet who wants sonnet workers to leave xs for haiku).
         # MISSION-026: P0 mission-linked gaps bypass the sonnet xs-effort gate so
         # xs-effort P0 MISSION gaps (e.g. MISSION-018) are never permanently blocked
         # by worker tier. The rationale for the original rule still holds for P1+
@@ -467,7 +474,8 @@ def main() -> int:
         # it starves forever — the literal mechanism of MISSION-026.
         if worker_model == "haiku" and e in ("m", "l", "xl") and not _is_p0_mission:
             continue
-        if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
+        _mixed_fleet_xs_gate = os.environ.get("CHUMP_MIXED_FLEET_XS_GATE", "") == "1"
+        if _mixed_fleet_xs_gate and worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
             continue
         # Conservative: skip gaps with non-empty depends_on.
         # INFRA-397: depends_on arrives as a JSON-encoded string from

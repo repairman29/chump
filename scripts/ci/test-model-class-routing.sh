@@ -3,7 +3,9 @@
 #
 # Verifies that:
 #   1. haiku workers skip effort=m/l/xl gaps at pick time
-#   2. sonnet workers skip effort=xs gaps at pick time
+#   2. sonnet workers pick effort=xs gaps by default (all-sonnet fleet,
+#      INFRA-2998) and only skip them under the CHUMP_MIXED_FLEET_XS_GATE=1
+#      opt-in (mixed haiku+sonnet fleet)
 #   3. _resolve_model.py returns the correct model class per routing.yaml
 #
 # Exit 0 = all checks pass; exit 1 = any failure.
@@ -88,7 +90,11 @@ else
     fail "haiku should refuse effort=l but picked: '$haiku_l'"
 fi
 
-# ── 2. sonnet refuses xs ────────────────────────────────────────────────────
+# ── 2. sonnet picks xs by default; refuses xs only under mixed-fleet opt-in ──
+# INFRA-2998: the default all-sonnet fleet (run-fleet.sh FLEET_MODEL=sonnet,
+# no haiku route left after INFRA-2997) must NOT orphan xs gaps. The gate is
+# now opt-in via CHUMP_MIXED_FLEET_XS_GATE=1 for operators running a mixed
+# haiku+sonnet fleet who want sonnet to leave xs for haiku.
 GAP_JSON_XS='[{"id":"TEST-XS","domain":"INFRA","priority":"P1","effort":"xs","status":"open","created_at":1}]'
 tmpf="$(mktemp -t routing-test.XXXXXX)"
 printf '%s' "$GAP_JSON_XS" > "$tmpf"
@@ -97,10 +103,23 @@ sonnet_xs="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
     ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
     python3 "$PICK_SCRIPT" 2>/dev/null || true)"
 rm -f "$tmpf"
-if [[ -z "$sonnet_xs" ]]; then
-    ok "sonnet refuses effort=xs"
+if [[ "$sonnet_xs" == "TEST-XS" ]]; then
+    ok "sonnet picks effort=xs by default (all-sonnet fleet, INFRA-2998)"
 else
-    fail "sonnet should refuse effort=xs but picked: '$sonnet_xs'"
+    fail "sonnet should pick effort=xs by default but got: '$sonnet_xs'"
+fi
+
+tmpf="$(mktemp -t routing-test.XXXXXX)"
+printf '%s' "$GAP_JSON_XS" > "$tmpf"
+sonnet_xs_gated="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
+    FLEET_DOMAIN_FILTER="" FLEET_EFFORT_FILTER="" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" CHUMP_MIXED_FLEET_XS_GATE=1 \
+    python3 "$PICK_SCRIPT" 2>/dev/null || true)"
+rm -f "$tmpf"
+if [[ -z "$sonnet_xs_gated" ]]; then
+    ok "sonnet refuses effort=xs under CHUMP_MIXED_FLEET_XS_GATE=1 opt-in"
+else
+    fail "sonnet should refuse effort=xs under mixed-fleet opt-in but picked: '$sonnet_xs_gated'"
 fi
 
 # sonnet accepts m
@@ -187,6 +206,9 @@ else
     fail "mixed pool: haiku should pick xs/s, got: '$haiku_pool'"
 fi
 
+# INFRA-2998: default all-sonnet fleet — sonnet is unconstrained on effort,
+# so it picks the lowest-effort (xs) gap same as the priority/effort sort
+# would for any other model.
 tmpf="$(mktemp -t routing-test.XXXXXX)"
 printf '%s' "$POOL" > "$tmpf"
 sonnet_pool="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
@@ -194,10 +216,24 @@ sonnet_pool="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER=""
     ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" \
     python3 "$PICK_SCRIPT" 2>/dev/null || true)"
 rm -f "$tmpf"
-if [[ "$sonnet_pool" == "POOL-S" ]] || [[ "$sonnet_pool" == "POOL-M" ]] || [[ "$sonnet_pool" == "POOL-L" ]]; then
-    ok "mixed pool: sonnet picks s/m/l (got $sonnet_pool)"
+if [[ "$sonnet_pool" == "POOL-XS" ]]; then
+    ok "default all-sonnet fleet: sonnet picks xs from mixed pool (got $sonnet_pool)"
 else
-    fail "mixed pool: sonnet should pick s/m/l, got: '$sonnet_pool'"
+    fail "default all-sonnet fleet: sonnet should pick xs (lowest effort), got: '$sonnet_pool'"
+fi
+
+# Under the mixed-fleet opt-in, sonnet leaves xs for haiku and picks s/m/l.
+tmpf="$(mktemp -t routing-test.XXXXXX)"
+printf '%s' "$POOL" > "$tmpf"
+sonnet_pool_gated="$(GAP_JSON_FILE="$tmpf" FLEET_MODEL=sonnet FLEET_PRIORITY_FILTER="" \
+    FLEET_DOMAIN_FILTER="" FLEET_EFFORT_FILTER="" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX=1 COOLDOWN_DIR="" CHUMP_MIXED_FLEET_XS_GATE=1 \
+    python3 "$PICK_SCRIPT" 2>/dev/null || true)"
+rm -f "$tmpf"
+if [[ "$sonnet_pool_gated" == "POOL-S" ]] || [[ "$sonnet_pool_gated" == "POOL-M" ]] || [[ "$sonnet_pool_gated" == "POOL-L" ]]; then
+    ok "mixed-fleet opt-in: sonnet picks s/m/l (got $sonnet_pool_gated)"
+else
+    fail "mixed-fleet opt-in: sonnet should pick s/m/l, got: '$sonnet_pool_gated'"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────

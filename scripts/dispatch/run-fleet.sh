@@ -35,8 +35,9 @@
 #                           src/provider_cascade.rs (free tiers) — requires
 #                           CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND=1 (INFRA-459:
 #                           cascade bank too small for dev workload 2026-05-04).
-#   FLEET_MODEL             (default haiku) model passed to claude -p. Use
-#                           sonnet/opus for harder gaps.
+#   FLEET_MODEL             (default sonnet, see L285) model passed to claude
+#                           -p. Set FLEET_MODEL=haiku for a cost-sensitive
+#                           sweep; opus for harder gaps.
 #   CARGO_TARGET_DIR        recommended: shared target across worktrees
 #                           (see INFRA-210 — exported below if unset)
 #
