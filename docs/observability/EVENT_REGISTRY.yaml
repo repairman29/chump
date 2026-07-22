@@ -2032,6 +2032,10 @@ events:
           (runnable standalone; covers no_op/dry_run/bad_args outcome paths
           and asserts failure_class on each; wired into `chump preflight`
           per INFRA-2925).
+      INFRA-3217 is a duplicate placeholder gap filed against the same
+      pr-stuck-cluster incident (8 PRs blocked >2h as of 2026-06-30) with
+      the identical 4 TODO questions — closed as answered-by-the-above,
+      no new content needed.
 
   - kind: fleet_auth_fallback
     effect_metric: self
