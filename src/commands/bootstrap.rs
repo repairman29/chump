@@ -11,6 +11,30 @@
 //! With --skip-arch-decision: defaults to Rust/minimal. Without it: exits 2 with TODO
 //! (LLM wiring is a INFRA-2267 follow-up).
 //!
+//! ## Observability contract (INFRA-1784)
+//!
+//! - **Events on success/failure/timeout**: `bootstrap_initiated` (start),
+//!   `bootstrap_completed` (success, classic mode), `chump_bootstrap_complete`
+//!   (success, template mode, INFRA-1881), `bootstrap_failed` (any failure —
+//!   there is no separate timeout event; `ArchDecisionTimeout` is a
+//!   `failure_class` value on `bootstrap_failed`, since a timeout is just one
+//!   more terminal failure mode from the caller's perspective).
+//! - **Cost tracking**: bootstrap makes zero LLM calls today (the only live
+//!   path is `--skip-arch-decision`; unguarded arch-decision is a TODO exit
+//!   pending INFRA-2267). Once that LLM call lands it runs inside the calling
+//!   session and is captured automatically by the existing session-level
+//!   ledger (`src/session_ledger.rs` + `chump cost-watch`) — no
+//!   bootstrap-specific cost plumbing is needed; do not add one.
+//! - **Failure-class taxonomy**: `FailureClass` below tags every failure
+//!   transient (bare re-run expected to succeed: `ArchDecisionTimeout`,
+//!   `GapReserveFailed`, `ScaffoldingBuildCheck`) or permanent (needs
+//!   operator/different args: `ScaffoldingWriteFailed`, `GitInitFailed`).
+//!   Both `failure_class` and `failure_kind` (transient|permanent) ship as
+//!   fields on `bootstrap_failed`.
+//! - **Smoke test**: `scripts/ci/test-bootstrap-smoke.sh` — asserts the
+//!   success-path events (Phase 4) and the failure-path event + its
+//!   `failure_class`/`failure_kind` fields (Phase 2).
+//!
 //! Template mode (INFRA-1881): `chump bootstrap <path> --template rust` treats the
 //! first positional arg as the target directory, derives the project name from its
 //! basename, writes a complete Rust crate (Cargo.toml / src/main.rs / README.md /
@@ -173,6 +197,11 @@ impl BootstrapArgs {
 }
 
 // ── Failure classes ───────────────────────────────────────────────────────────
+//
+// INFRA-1784: each class is tagged transient (retryable — a re-run of the same
+// command is expected to succeed once the underlying condition clears) or
+// permanent (re-running with the same args will fail again; needs operator
+// intervention or different args).
 
 #[derive(Debug)]
 enum FailureClass {
@@ -192,6 +221,18 @@ impl FailureClass {
             FailureClass::GapReserveFailed => "gap_reserve_failed",
             FailureClass::GitInitFailed => "git_init_failed",
         }
+    }
+
+    /// True when a bare re-run is expected to fix it (network/lock/timeout
+    /// conditions); false when it needs operator intervention or different
+    /// args (bad target dir, permissions, non-empty dir).
+    fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            FailureClass::ArchDecisionTimeout
+                | FailureClass::GapReserveFailed
+                | FailureClass::ScaffoldingBuildCheck
+        )
     }
 }
 
@@ -910,11 +951,17 @@ fn cleanup_files(files: &[PathBuf], _target_dir: &Path) {
 
 /// Emit a bootstrap_failed event.
 fn emit_failure(kind: &str, class: FailureClass, intent: &str, target_dir: &Path) {
+    let failure_kind = if class.is_transient() {
+        "transient"
+    } else {
+        "permanent"
+    };
     let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
         kind: kind.to_string(),
         source: Some("chump-bootstrap".to_string()),
         fields: vec![
             ("failure_class".to_string(), class.as_str().to_string()),
+            ("failure_kind".to_string(), failure_kind.to_string()),
             ("intent".to_string(), intent.to_string()),
             ("target_dir".to_string(), target_dir.display().to_string()),
         ],

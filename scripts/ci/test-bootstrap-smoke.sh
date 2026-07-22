@@ -70,6 +70,10 @@ fi
 
 # ── Phase 2: non-empty dir bails non-zero ────────────────────────────────────
 echo "── Phase 2: non-empty dir guard ──"
+ambient_before_fail=0
+if [[ -f "$AMBIENT_LOG" ]]; then
+    ambient_before_fail=$(wc -l < "$AMBIENT_LOG")
+fi
 NONEMPTY_DIR=$(mktemp -d)
 echo "existing" > "$NONEMPTY_DIR/existing-file.txt"
 if ! "$CHUMP_BIN" bootstrap "test intent" --dir "$NONEMPTY_DIR" --skip-arch-decision 2>/dev/null; then
@@ -84,6 +88,29 @@ else
     fail "non-empty dir should have returned non-zero"
 fi
 rm -rf "$NONEMPTY_DIR"
+
+# INFRA-1784: assert the failure path is observable — bootstrap_failed event
+# with failure_class + failure_kind (transient|permanent) fields.
+if [[ -f "$AMBIENT_LOG" ]]; then
+    fail_events=$(tail -n +"$((ambient_before_fail+1))" "$AMBIENT_LOG" 2>/dev/null || echo "")
+    if echo "$fail_events" | grep -q '"bootstrap_failed"'; then
+        ok "ambient.jsonl has bootstrap_failed event on guard failure"
+        if echo "$fail_events" | grep '"bootstrap_failed"' | grep -q '"failure_class":"scaffolding_write_failed"'; then
+            ok "bootstrap_failed carries failure_class=scaffolding_write_failed"
+        else
+            fail "bootstrap_failed missing expected failure_class field"
+        fi
+        if echo "$fail_events" | grep '"bootstrap_failed"' | grep -q '"failure_kind":"permanent"'; then
+            ok "bootstrap_failed carries failure_kind=permanent"
+        else
+            fail "bootstrap_failed missing expected failure_kind field"
+        fi
+    else
+        fail "ambient.jsonl missing bootstrap_failed event on guard failure"
+    fi
+else
+    echo "  SKIP: ambient.jsonl not found at $AMBIENT_LOG (not a blocking failure)"
+fi
 
 # ── Phase 3: successful bootstrap ────────────────────────────────────────────
 echo "── Phase 3: successful bootstrap ──"
