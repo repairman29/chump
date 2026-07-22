@@ -4117,6 +4117,12 @@ events:
     trigger: branch has commits since base but ALL are INFRA-472 auto-staging — refuses pr create
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, branch, commits]
+  - kind: zero_commit_branch_blocked
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (CREDIBLE-162)
+    trigger: branch has ZERO commits since base (agent cycle produced no work) — refuses pr create loudly instead of dying silently on grep -c under set -e
+    consumers: [fleet-brief, waste-tally, tier-scorecard]
+    fields_required: [ts, kind, branch, gap]
 
   # ── INFRA-1219: PR create dedup gate ───────────────────────────────────────
   - kind: pr_dedup_blocked
