@@ -1851,8 +1851,10 @@ Operator or sibling worker can rescue this branch via:
             [[ -z "$_head_ts" ]] && continue
 
             # Scan comments for [handoff:apply] newer than HEAD commit
-            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
-            _handoff_body="$(printf '%s' "$_pr_json" | python3 - "$_head_ts" 2>/dev/null <<'PYEOF' || true
+            # RESILIENT-180: temp-file script, not heredoc-in-$() — same
+            # bash 5.2 runtime parse failure as the PY778 block below.
+            _reh_py="$(mktemp "${TMPDIR:-/tmp}/pyeof.XXXXXX")"
+            cat > "$_reh_py" <<'PYEOF'
 import sys, json
 from datetime import datetime, timezone
 
@@ -1877,7 +1879,9 @@ for c in reversed(comments):
         print(body)
         break
 PYEOF
-)"
+            _handoff_body="$(printf '%s' "$_pr_json" \
+                | python3 "$_reh_py" "$_head_ts" 2>/dev/null || true)"
+            rm -f "$_reh_py"
 
             [[ -z "$_handoff_body" ]] && continue
 
@@ -1902,9 +1906,13 @@ if m:
             # files changed in this PR branch (vs merge-base with main) is
             # < 50%, the branch was likely recycled for unrelated work.
             # Skip auto-apply and emit review_handoff_branch_diverged.
-            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
-            _778_overlap_pct="$(printf '%s' "$_diff_block" \
-                | python3 - "$_head_sha" "$REPO_ROOT" <<'PY778' 2>/dev/null || echo 100
+            # RESILIENT-180: the Python must live in a temp file, NOT a heredoc
+            # inside the $() — bash 5.2 (Linux) rejects that construct at
+            # runtime expansion ("syntax error near unexpected token ||") and
+            # the error aborts the whole worker (chumpd crash-loop → slot
+            # parked). macOS bash tolerated it, which is why it shipped.
+            _778_py="$(mktemp "${TMPDIR:-/tmp}/py778.XXXXXX")"
+            cat > "$_778_py" <<'PY778'
 import sys, subprocess, re
 
 head_sha = sys.argv[1]
@@ -1937,7 +1945,9 @@ union = target_files | branch_files
 pct   = int(len(target_files & branch_files) * 100 / len(union))
 print(str(pct))
 PY778
-)" || true
+            _778_overlap_pct="$(printf '%s' "$_diff_block" \
+                | python3 "$_778_py" "$_head_sha" "$REPO_ROOT" 2>/dev/null || echo 100)"
+            rm -f "$_778_py"
             _778_overlap_pct="${_778_overlap_pct:-100}"
 
             if [[ "$_778_overlap_pct" =~ ^[0-9]+$ ]] && [[ "$_778_overlap_pct" -lt 50 ]]; then
