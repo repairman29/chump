@@ -10,6 +10,15 @@
 #      comment-only mention -> exits 0
 #   5. pre-commit stage is a preview (exit 0); --strict makes it exit 1
 #   6. --json emits machine-readable verdicts
+#   7. --stage ci reads trailers from the commit range
+#   8. pipefail-race: printf|grep -q in a hot-path script -> blocked;
+#      '# pipefail-sweep-allowed' marker -> passes (CREDIBLE-157 batch)
+#   9. path-filter-allowlist: file under a top-level dir missing from the
+#      ci.yml code: block -> blocked; after adding the pattern -> passes
+#  10. install-manifest: unmapped scripts/setup/install-*.sh -> blocked;
+#      after mapping in the optional allowlist -> passes
+#  11. event-registry: unregistered kind literal in a prod path -> blocked;
+#      registered -> passes; orphan registry entry (no emit) -> blocked
 #
 # Rule-level semantics are covered by Rust unit tests in src/verify/.
 # Depth: happy-path + edge (bypass, comment-exemption, strict). Gap: no
@@ -150,6 +159,134 @@ git -C "$R3" -c user.email=t@t -c user.name=t commit -q --allow-empty \
 run_verify "$R3" --stage ci --base main >/dev/null 2>&1 \
     || fail "case7b: trailer in commit range should satisfy ci stage"
 ok "case7b: ci stage reads trailers from merge-base..HEAD"
+
+# ═══ CREDIBLE-157 batch: pipefail-race / path-filter-allowlist /
+# ═══ install-manifest / event-registry ═══════════════════════════════════════
+
+# ── Case 8: pipefail-race in a hot-path script ───────────────────────────────
+R4="$TMP/r4"
+new_fixture_repo "$R4"
+mkdir -p "$R4/scripts/coord"
+printf 'if printf %%s "$x" | grep -q y; then :; fi\n' > "$R4/scripts/coord/racy.sh"
+git -C "$R4" add scripts/coord/racy.sh
+printf 'fix: racy\n' > "$R4/msg"
+if run_verify "$R4" --stage commit-msg --msg-file "$R4/msg" >/dev/null 2>&1; then
+    fail "case8a: printf|grep -q in scripts/coord should exit 1"
+fi
+ok "case8a: pipefail-race blocks hot-path printf|grep -q"
+
+printf 'if printf %%s "$x" | grep -q y; then :; fi  # pipefail-sweep-allowed\n' \
+    > "$R4/scripts/coord/racy.sh"
+git -C "$R4" add scripts/coord/racy.sh
+run_verify "$R4" --stage commit-msg --msg-file "$R4/msg" >/dev/null 2>&1 \
+    || fail "case8b: pipefail-sweep-allowed marker should exit 0"
+ok "case8b: allowlist marker exempts the line"
+
+# ── Case 9: path-filter-allowlist against a fixture ci.yml ───────────────────
+R5="$TMP/r5"
+new_fixture_repo "$R5"
+mkdir -p "$R5/.github/workflows" "$R5/new-feature-dir"
+cat > "$R5/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  changes:
+    steps:
+      - uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - '.github/workflows/**'
+YAML
+echo "x" > "$R5/new-feature-dir/thing.rs"
+git -C "$R5" add .github/workflows/ci.yml new-feature-dir/thing.rs
+printf 'feat: new dir\n' > "$R5/msg"
+out="$(run_verify "$R5" --stage commit-msg --msg-file "$R5/msg" 2>&1)" && \
+    fail "case9a: uncovered new-feature-dir should exit 1"
+case "$out" in
+    *"- 'new-feature-dir/**'"*) : ;;
+    *) fail "case9a: remediation must name the exact allowlist line. got: $out" ;;
+esac
+ok "case9a: path-filter blocks + names the exact - 'dir/**' line"
+
+cat > "$R5/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  changes:
+    steps:
+      - uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - '.github/workflows/**'
+              - 'new-feature-dir/**'
+YAML
+git -C "$R5" add .github/workflows/ci.yml
+run_verify "$R5" --stage commit-msg --msg-file "$R5/msg" >/dev/null 2>&1 \
+    || fail "case9b: covered dir should exit 0"
+ok "case9b: passes once the pattern is added"
+
+# ── Case 10: install-manifest mapping ────────────────────────────────────────
+R6="$TMP/r6"
+new_fixture_repo "$R6"
+mkdir -p "$R6/scripts/setup"
+printf 'REQUIRED_DAEMONS=(\n)\n' > "$R6/scripts/setup/chump-fleet-bootstrap.sh"
+printf '# optional\n' > "$R6/scripts/setup/optional-installers-allowlist.txt"
+printf '# deprecated\n' > "$R6/scripts/setup/deprecated-installers-allowlist.txt"
+printf '#!/bin/bash\n' > "$R6/scripts/setup/install-fixture-daemon.sh"
+git -C "$R6" add scripts/setup
+printf 'feat: installer\n' > "$R6/msg"
+if run_verify "$R6" --stage commit-msg --msg-file "$R6/msg" >/dev/null 2>&1; then
+    fail "case10a: unmapped installer should exit 1"
+fi
+ok "case10a: install-manifest blocks unmapped installer"
+
+printf '# optional\ninstall-fixture-daemon.sh\n' \
+    > "$R6/scripts/setup/optional-installers-allowlist.txt"
+git -C "$R6" add scripts/setup/optional-installers-allowlist.txt
+run_verify "$R6" --stage commit-msg --msg-file "$R6/msg" >/dev/null 2>&1 \
+    || fail "case10b: optional-allowlist mapping should exit 0"
+ok "case10b: passes once mapped in optional allowlist"
+
+# ── Case 11: event-registry pairing ──────────────────────────────────────────
+# Kind-literal fragments are split so THIS script never contains a contiguous
+# "kind":"..." literal (the legacy staged-diff gate scans *.sh).
+_KQ='"ki'
+_KQ="${_KQ}nd\""
+R7="$TMP/r7"
+new_fixture_repo "$R7"
+mkdir -p "$R7/docs/observability" "$R7/scripts/coord" "$R7/scripts/ci"
+printf 'events:\n' > "$R7/docs/observability/EVENT_REGISTRY.yaml"
+printf '# reserved\n' > "$R7/scripts/ci/event-registry-reserved.txt"
+printf 'printf %%s '\''{%s:"fixture_rogue"}'\'' >> log\n' "$_KQ" \
+    > "$R7/scripts/coord/emit.sh"
+git -C "$R7" add .
+printf 'feat: emit\n' > "$R7/msg"
+if run_verify "$R7" --stage commit-msg --msg-file "$R7/msg" >/dev/null 2>&1; then
+    fail "case11a: unregistered kind literal should exit 1"
+fi
+ok "case11a: event-registry blocks emit-without-register"
+
+printf 'events:\n  - %s: fixture_rogue\n' 'ki''nd' \
+    > "$R7/docs/observability/EVENT_REGISTRY.yaml"
+git -C "$R7" add docs/observability/EVENT_REGISTRY.yaml
+run_verify "$R7" --stage commit-msg --msg-file "$R7/msg" >/dev/null 2>&1 \
+    || fail "case11b: registered kind should exit 0"
+ok "case11b: passes once the kind is registered"
+
+# Orphan direction: commit the emit first, then stage ONLY a registry entry
+# for a kind with no emit anywhere.
+git -C "$R7" -c user.email=t@t -c user.name=t commit -q -m "seed" >/dev/null 2>&1
+printf 'events:\n  - %s: fixture_rogue\n  - %s: fixture_orphan\n' 'ki''nd' 'ki''nd' \
+    > "$R7/docs/observability/EVENT_REGISTRY.yaml"
+git -C "$R7" add docs/observability/EVENT_REGISTRY.yaml
+printf 'docs: register orphan\n' > "$R7/msg"
+out="$(run_verify "$R7" --stage commit-msg --msg-file "$R7/msg" 2>&1)" && \
+    fail "case11c: orphan registry entry should exit 1"
+case "$out" in
+    *register-without-emit*fixture_orphan*) : ;;
+    *) fail "case11c: expected register-without-emit diagnostic. got: $out" ;;
+esac
+ok "case11c: event-registry blocks register-without-emit"
 
 echo
 echo "All CREDIBLE-155 chump-verify e2e tests passed."

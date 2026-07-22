@@ -51,7 +51,7 @@ pre-port env var, which remains only on the fallback path for ported gates.
 | 13 | cargo-fmt auto-fix + cargo-check build guard | coordination audit 2026-04-17 | pre-commit blocks 5-6 | `CHUMP_CHECK_BUILD=0` | pending (candidate: stays in `chump preflight`, INFRA-1670) |
 | 14 | credential-pattern guard | INFRA-018 | pre-commit block 8 | `CHUMP_CREDENTIAL_CHECK=0` | pending |
 | 15 | pre-deploy smoke for infra changes | CREDIBLE-001 | pre-commit block 9 | env | pending |
-| 16 | event-registry guard + effect_metric completeness | INFRA-754 / INFRA-1517 / INFRA-1237 | pre-commit blocks 10/10b + CI | `CHUMP_REGISTRY_GATE_MODE` | pending |
+| 16 | event-registry guard + effect_metric completeness | INFRA-754 / INFRA-1517 / INFRA-1237 | pre-commit blocks 10/10b + CI | `CHUMP_REGISTRY_GATE_MODE` | **PORTED (parallel-run)** → rule `event-registry` (CREDIBLE-157: diff-scoped, both directions — emit-without-register AND register-without-emit for entries added in the diff; scan limited to the INFRA-1287 production-path set so scripts/ci fixtures never false-positive; a registry entry for a kind already emitted elsewhere in the tree passes — reconciliation commits stay legal. Legacy shell gates stay: pre-commit block 10 and the repo-wide CI coverage audit catch history committed under bypass; effect_metric completeness (block 10b) stays shell — it checks entry fields, not pairing) |
 | 17 | observability budget guard | INFRA-755 / INFRA-2425 | pre-commit block 11 | env + trailer | pending |
 | 18 | default-flip advisory | INFRA-762 | pre-commit block 12 | advisory | pending |
 | 19 | gap-divergence guard | INFRA-783 | pre-commit block 13 | env | pending |
@@ -66,6 +66,9 @@ pre-port env var, which remains only on the fallback path for ported gates.
 | 28 | bypass-trailer schema validator | INFRA-2407 | commit-msg hook | `CHUMP_BYPASS_TRAILER_CHECK=0` | pending (candidate: fold into engine trailer parsing) |
 | 29 | AC-completeness guard | pre-commit-ac-completeness.sh | pre-commit | env | pending |
 | 30 | redundancy / no-new-duplicates gate | META-063 | pre-commit | env | pending |
+| 31 | pipefail-race sweep (printf\|grep -q in hot-path scripts) | INFRA-1658 (6h debugging the INFRA-755 false-negative chain) | CI (`scripts/ci/test-pipefail-race-sweep.sh`) | `# pipefail-sweep-allowed` line marker | **PORTED (parallel-run)** → rule `pipefail-race` (CREDIBLE-157: diff-scoped over added lines in scripts/coord|git-hooks|dispatch, same marker semantics; repo-wide CI sweep stays to catch pre-existing occurrences) |
+| 32 | path-filter allowlist structural coverage | INFRA-272 / INFRA-682 (skipped != passing wedges the merge) | CI (`scripts/ci/check-path-filter-coverage.sh` via test-path-filter-allowlist.sh) | none | **PORTED (parallel-run)** → rule `path-filter-allowlist` (CREDIBLE-157: fires on the diff that introduces paths under an uncovered top level; remediation names the exact `- 'dir/**'` line; repo-wide CI sweep stays as the tree-state invariant) |
+| 33 | install-script manifest mapping | INFRA-1810 | CI (`scripts/ci/test-install-script-manifest.sh`) | none | **PORTED (parallel-run)** → rule `install-manifest` (CREDIBLE-157: fires on the diff that ADDS scripts/setup/install-*.sh; manifests read from the working tree so mapping in the same commit satisfies it; repo-wide CI audit stays) |
 
 ## Porting a gate (the recipe)
 

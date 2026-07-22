@@ -6,7 +6,11 @@
 //! the rule) applies Verify-Bypass trailers and emits the audit event.
 
 pub mod docs_delta;
+pub mod event_registry;
+pub mod install_manifest;
 pub mod no_new_bypass_env_vars;
+pub mod path_filter_allowlist;
+pub mod pipefail_race;
 pub mod test_lag;
 
 use super::VerifyContext;
@@ -36,5 +40,9 @@ pub fn registry() -> Vec<Box<dyn Rule>> {
         Box::new(docs_delta::DocsDelta),
         Box::new(test_lag::TestLag),
         Box::new(no_new_bypass_env_vars::NoNewBypassEnvVars),
+        Box::new(pipefail_race::PipefailRace),
+        Box::new(path_filter_allowlist::PathFilterAllowlist),
+        Box::new(install_manifest::InstallManifest),
+        Box::new(event_registry::EventRegistry),
     ]
 }
