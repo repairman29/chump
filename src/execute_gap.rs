@@ -374,9 +374,33 @@ fn activate_free_tier_provider(spec: &FreeTierProviderSpec) {
 ///    (INFRA-733 follow-up: free-tier models must not call push tools —
 ///    too many schema tokens and observed hallucination of wrong tool names)
 fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
-    // Try to read the gap YAML to inline it
-    let gap_yaml = std::fs::read_to_string(repo_root.join(format!("docs/gaps/{gap_id}.yaml")))
-        .unwrap_or_else(|_| format!("(gap YAML not found — work on gap {gap_id})"));
+    // EFFECTIVE-311: the per-file YAML mirrors were retired — reading them
+    // handed every open-model dispatch "(gap YAML not found)" as its ENTIRE
+    // task spec, so models explored read-only and shipped nothing. state.db
+    // is canonical; the YAML file remains only as a legacy fallback.
+    // Follow-up (same gap): dispatches run INSIDE a linked worktree where
+    // <worktree>/.chump/state.db doesn't exist — GapStore::open would create
+    // an EMPTY db there and the model stayed blind. Resolve the MAIN checkout
+    // (shared .git parent), which owns the canonical state.db.
+    let canonical_root = crate::repo_path::main_checkout_root();
+    let gap_yaml = chump_gap_store::GapStore::open(&canonical_root)
+        .ok()
+        .and_then(|store| store.get(gap_id).ok().flatten())
+        .map(|row| {
+            format!(
+                "id: {}\ntitle: {}\npriority: {}\neffort: {}\ndescription: |\n  {}\nacceptance_criteria: |\n  {}",
+                row.id,
+                row.title,
+                row.priority,
+                row.effort,
+                row.description.replace('\n', "\n  "),
+                row.acceptance_criteria.replace('\n', "\n  "),
+            )
+        })
+        .or_else(|| {
+            std::fs::read_to_string(repo_root.join(format!("docs/gaps/{gap_id}.yaml"))).ok()
+        })
+        .unwrap_or_else(|| format!("(gap spec not found — work on gap {gap_id})"));
 
     let overlay = maybe_overlay_from_env().unwrap_or_default();
 
