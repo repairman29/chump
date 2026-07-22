@@ -48,6 +48,32 @@ for _hb in /tmp/chump-fleet-worker-*.heartbeat; do
     (( _hb_age <= 180 )) && workers=$((workers + 1))
 done
 mode=$(cat "$MODE_FILE" 2>/dev/null || echo "off")
+
+# ── EU fleet (chumpd-eu, 2026-07-22 migration) ──────────────────────────────
+# The fleet's primary home is the Helsinki host. Refresh its status over ssh
+# in the BACKGROUND on a TTL (never block the menu on the network), read the
+# cached copy every call. The host-side emitter is scripts/ops/chump-eu-status.sh
+# (deployed at /root/chump-eu-status.sh).
+EU_HOST="${CHUMPBAR_EU_HOST:-root@204.168.229.237}"
+EU_CACHE="$HOME/.chump/chumpbar-eu.json"
+EU_TTL_S="${CHUMPBAR_EU_TTL_S:-120}"
+eu_cache_age=$(( now - $(stat -f %m "$EU_CACHE" 2>/dev/null || echo 0) ))
+if (( eu_cache_age > EU_TTL_S )); then
+    ( ssh -o BatchMode=yes -o ConnectTimeout=4 "$EU_HOST" 'bash /root/chump-eu-status.sh' \
+        > "$EU_CACHE.tmp" 2>/dev/null && [ -s "$EU_CACHE.tmp" ] && mv "$EU_CACHE.tmp" "$EU_CACHE" & )
+fi
+eu_ok=0; eu_broken=0; eu_mode="?"; eu_last10=""; eu_lines_json="[]"
+if [[ -s "$EU_CACHE" ]]; then
+    eu_ok=$(sed -E 's/.*"eu_ok":([0-9]+).*/\1/' "$EU_CACHE" 2>/dev/null || echo 0)
+    eu_broken=$(sed -E 's/.*"eu_broken":([0-9]+).*/\1/' "$EU_CACHE" 2>/dev/null || echo 0)
+    eu_mode=$(sed -E 's/.*"eu_mode":"([^"]*)".*/\1/' "$EU_CACHE" 2>/dev/null || echo "?")
+    eu_last10=$(sed -E 's/.*"eu_last10":"([^"]*)".*/\1/' "$EU_CACHE" 2>/dev/null || echo "")
+    eu_lines_json=$(sed -E 's/.*"eu_lines":(\[[^]]*\]).*/\1/' "$EU_CACHE" 2>/dev/null || echo "[]")
+    [[ "$eu_lines_json" == \[* ]] || eu_lines_json="[]"
+    _eu_stale_min=$(( eu_cache_age / 60 ))
+    (( eu_cache_age > 600 )) && eu_mode="${eu_mode} (stale ${_eu_stale_min}m)"
+fi
+
 last_merge_epoch=$(git log origin/main -1 --format=%ct 2>/dev/null || echo 0)
 last_merge_min=$(( (now - last_merge_epoch) / 60 ))
 ships_24h=$(git log origin/main --since='24 hours ago' --oneline 2>/dev/null | wc -l | tr -d ' ')
@@ -60,6 +86,9 @@ open_gaps=$(sqlite3 .chump/state.db \
 # Log lines look like: [worker:1 15:10:19] picked gap INFRA-1730
 worker_lines=()
 fleet_dir=$(ls -td /tmp/chump-fleet-*/ 2>/dev/null | head -1)
+# Only show local worker lines when local heartbeats are actually live —
+# otherwise yesterday's dead fleet dir renders ghost "warming up" rows.
+(( workers == 0 )) && fleet_dir=""
 if [[ -n "$fleet_dir" ]]; then
     for log in "$fleet_dir"/agent-[0-9].log; do
         [[ -f "$log" ]] || continue
@@ -81,10 +110,15 @@ fi
 
 recent_ships=$(git log origin/main -3 --format='%s' 2>/dev/null | cut -c1-60)
 
-if [[ "$mode" == "off" ]]; then
+# Icon reflects the WHOLE fleet: EU workers count as workers. The laptop
+# dial being "off" no longer means the fleet is off — Helsinki grinds on.
+total_workers=$(( workers + eu_ok ))
+if (( total_workers == 0 )) && [[ "$mode" == "off" ]]; then
     icon="⚫"
-elif (( workers == 0 )); then
+elif (( total_workers == 0 )); then
     icon="🔴"
+elif (( eu_broken > 0 )); then
+    icon="🟠"
 elif (( last_merge_min <= 120 )); then
     icon="🟢"
 else
@@ -102,6 +136,14 @@ for _l in "${worker_lines[@]:-}"; do
     [[ -n "$_l" ]] || continue
     _wd_json+="\"$(_esc "$_l")\","
 done
+# EU worker lines come pre-escaped/pre-formatted from the host emitter.
+_eu_inner="${eu_lines_json#[}"; _eu_inner="${_eu_inner%]}"
+if [[ -n "$_eu_inner" ]]; then
+    _wd_json+="${_eu_inner},"
+fi
+if [[ -n "$eu_last10" ]]; then
+    _wd_json+="\"🇫🇮 fleet: ${eu_ok}⚙ ${eu_broken}✗  mode=$(_esc "$eu_mode")  last10: $(_esc "$eu_last10")\","
+fi
 _wd_json="[${_wd_json%,}]"
 
 _rs_json=""
@@ -112,5 +154,5 @@ done <<< "$recent_ships"
 _rs_json="[${_rs_json%,}]"
 
 printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s}\n' \
-    "$icon" "$(_esc "$mode")" "${workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
+    "$icon" "$(_esc "local:$mode eu:$eu_mode")" "${total_workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
     "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json"
