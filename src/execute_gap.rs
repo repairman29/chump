@@ -507,14 +507,16 @@ fn validate_gap_id(gap_id: &str) -> Result<()> {
         }
     }
 
-    // Classic DOMAIN-NUMBER form
-    let Some((prefix, num)) = gap_id.split_once('-') else {
+    // Classic DOMAIN-NUMBER form. INFRA-3404: split on the LAST hyphen so
+    // double-hyphen domains (ZERO-WASTE-015) validate; the prefix charset
+    // therefore admits '-' as well.
+    let Some((prefix, num)) = gap_id.rsplit_once('-') else {
         return Err(anyhow!("gap id missing '-': {gap_id}"));
     };
     if prefix.is_empty()
         || !prefix
             .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
     {
         return Err(anyhow!(
             "gap id prefix must be uppercase letters/digits: {gap_id}"
@@ -1013,6 +1015,13 @@ mod tests {
         assert!(validate_gap_id("COG-025").is_ok());
         assert!(validate_gap_id("AUTO-013").is_ok());
         assert!(validate_gap_id("EVAL-031").is_ok());
+    }
+
+    #[test]
+    fn validate_gap_id_accepts_double_hyphen_domains() {
+        // INFRA-3404: split on the LAST hyphen, not the first.
+        assert!(validate_gap_id("ZERO-WASTE-015").is_ok());
+        assert!(validate_gap_id("ZERO-WASTE-1").is_ok());
     }
 
     #[test]
