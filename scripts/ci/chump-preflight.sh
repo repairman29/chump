@@ -69,7 +69,9 @@ if [[ -n "${CHUMP_WEB_TOKEN:-}" ]]; then
   CURL_AUTH=(-H "Authorization: Bearer ${CHUMP_WEB_TOKEN}")
 fi
 
-code=$(curl -sS -o "$STACK_JSON" -w "%{http_code}" --max-time 20 "${CURL_AUTH[@]}" "$BASE/api/stack-status" || echo 000)
+# INFRA-3405: ${ARR[@]+...} guard — macOS bash 3.2 treats an empty array's
+# [@] expansion under set -u as unbound and kills the job.
+code=$(curl -sS -o "$STACK_JSON" -w "%{http_code}" --max-time 20 ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} "$BASE/api/stack-status" || echo 000)
 if [[ "$code" != "200" ]]; then
   echo "FAIL: GET /api/stack-status HTTP $code (token wrong? see CHUMP_WEB_TOKEN)"
   exit 1

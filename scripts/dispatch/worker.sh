@@ -1524,11 +1524,42 @@ Operator or sibling worker can rescue this branch via:
         fi
     fi
 
+    # EFFECTIVE-310: failure→decompose reflex. After a whole-gap failure on
+    # chump-local (open-model backend), record a strike; at the threshold
+    # (default 2, CHUMP_DECOMPOSE_STRIKE_THRESHOLD) have the frontier model
+    # decompose the gap into xs/s slices instead of retrying whole. The
+    # decompose call strips OPENAI_* so build_provider falls through to the
+    # Claude path — "frontier plans, open models execute".
+    # Sets _decomposed_this_cycle=1 so INFRA-267 doesn't ALSO burn a claude
+    # whole-gap attempt on a gap we just sliced.
+    _decomposed_this_cycle=0
+    _effective_003_reflex() {
+        [[ "$FLEET_BACKEND" == "chump-local" ]] || return 0
+        [[ "${CHUMP_DECOMPOSE_REFLEX:-1}" != "0" ]] || return 0
+        local _strike_rc=0
+        chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
+        [[ "$_strike_rc" -eq 10 ]] || return 0
+        log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
+        if env -u OPENAI_API_BASE -u OPENAI_MODEL -u OPENAI_API_KEY \
+            chump gap decompose "$GAP_ID" --apply >> "$cycle_log" 2>&1; then
+            _decomposed_this_cycle=1
+            chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
+            printf '{"ts":"%s","kind":"gap_auto_decomposed","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","trigger_rc":%d}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$FLEET_BACKEND" "$rc" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            log "EFFECTIVE-310: $GAP_ID decomposed + parent demoted — sub-gaps pickable next cycle"
+        else
+            log "EFFECTIVE-310: decompose failed for $GAP_ID — falling through to existing handling"
+        fi
+    }
+
     # FLEET-043: track consecutive dispatch failures for circuit breaker.
     # Reset on success, increment on any failure.
     if [ "$rc" -eq 0 ]; then
         log "$FLEET_BACKEND exited CLEAN (rc=0) for $GAP_ID"
         _dispatch_fail_count=0
+        # EFFECTIVE-310: clean cycle wipes the strike slate for this gap.
+        chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
     elif [ "$rc" -eq 124 ]; then
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
         if [ "$_is_wedge" -eq 1 ]; then
@@ -1536,9 +1567,13 @@ Operator or sibling worker can rescue this branch via:
         else
             log "WARN: $FLEET_BACKEND exited TIMEOUT (rc=124, ${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
         fi
+        _effective_003_reflex
     else
         log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
+
+        # EFFECTIVE-310: strike + possible frontier decompose (see above).
+        _effective_003_reflex
 
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
@@ -1557,6 +1592,7 @@ Operator or sibling worker can rescue this branch via:
         # duplicating that whole block.
         if [[ "$FLEET_BACKEND" == "chump-local" ]] \
            && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
+           && [[ "$_decomposed_this_cycle" -eq 0 ]] \
            && command -v claude >/dev/null 2>&1; then
             # INFRA-502: priority lookup via 'chump gap show' (state.db
             # canonical post-INFRA-498). Fall back to legacy YAML path
@@ -1851,8 +1887,10 @@ Operator or sibling worker can rescue this branch via:
             [[ -z "$_head_ts" ]] && continue
 
             # Scan comments for [handoff:apply] newer than HEAD commit
-            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
-            _handoff_body="$(printf '%s' "$_pr_json" | python3 - "$_head_ts" 2>/dev/null <<'PYEOF' || true
+            # RESILIENT-180: temp-file script, not heredoc-in-$() — same
+            # bash 5.2 runtime parse failure as the PY778 block below.
+            _reh_py="$(mktemp "${TMPDIR:-/tmp}/pyeof.XXXXXX")"
+            cat > "$_reh_py" <<'PYEOF'
 import sys, json
 from datetime import datetime, timezone
 
@@ -1877,7 +1915,9 @@ for c in reversed(comments):
         print(body)
         break
 PYEOF
-)"
+            _handoff_body="$(printf '%s' "$_pr_json" \
+                | python3 "$_reh_py" "$_head_ts" 2>/dev/null || true)"
+            rm -f "$_reh_py"
 
             [[ -z "$_handoff_body" ]] && continue
 
@@ -1902,9 +1942,13 @@ if m:
             # files changed in this PR branch (vs merge-base with main) is
             # < 50%, the branch was likely recycled for unrelated work.
             # Skip auto-apply and emit review_handoff_branch_diverged.
-            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
-            _778_overlap_pct="$(printf '%s' "$_diff_block" \
-                | python3 - "$_head_sha" "$REPO_ROOT" <<'PY778' 2>/dev/null || echo 100
+            # RESILIENT-180: the Python must live in a temp file, NOT a heredoc
+            # inside the $() — bash 5.2 (Linux) rejects that construct at
+            # runtime expansion ("syntax error near unexpected token ||") and
+            # the error aborts the whole worker (chumpd crash-loop → slot
+            # parked). macOS bash tolerated it, which is why it shipped.
+            _778_py="$(mktemp "${TMPDIR:-/tmp}/py778.XXXXXX")"
+            cat > "$_778_py" <<'PY778'
 import sys, subprocess, re
 
 head_sha = sys.argv[1]
@@ -1937,7 +1981,9 @@ union = target_files | branch_files
 pct   = int(len(target_files & branch_files) * 100 / len(union))
 print(str(pct))
 PY778
-)" || true
+            _778_overlap_pct="$(printf '%s' "$_diff_block" \
+                | python3 "$_778_py" "$_head_sha" "$REPO_ROOT" 2>/dev/null || echo 100)"
+            rm -f "$_778_py"
             _778_overlap_pct="${_778_overlap_pct:-100}"
 
             if [[ "$_778_overlap_pct" =~ ^[0-9]+$ ]] && [[ "$_778_overlap_pct" -lt 50 ]]; then

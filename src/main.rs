@@ -12853,6 +12853,49 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // EFFECTIVE-310: `chump gap strike <GAP-ID>` — failure→decompose
+            // reflex counter. The worker calls this after a whole-gap failure
+            // on chump-local; exit code 10 signals "threshold reached, run
+            // the frontier decompose instead of retrying whole".
+            "strike" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!(
+                        "Usage: chump gap strike <GAP-ID> [--backend <name>] [--reset] [--show]"
+                    );
+                    eprintln!();
+                    eprintln!("Increments the per-gap failure strike counter (default backend");
+                    eprintln!(
+                        "chump-local). Exits 10 when count >= CHUMP_DECOMPOSE_STRIKE_THRESHOLD"
+                    );
+                    eprintln!("(default 2) — the caller should decompose instead of retrying.");
+                    eprintln!("  --reset   Clear all strikes for the gap (called on clean cycles)");
+                    eprintln!("  --show    Print the current count without incrementing");
+                    std::process::exit(2);
+                });
+                let backend = flag("--backend").unwrap_or_else(|| "chump-local".to_string());
+                let threshold: i64 = std::env::var("CHUMP_DECOMPOSE_STRIKE_THRESHOLD")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(2);
+                if args.iter().any(|a| a == "--reset") {
+                    store.clear_strikes(&gap_id)?;
+                    println!("strikes cleared for {}", gap_id);
+                    return Ok(());
+                }
+                let n = if args.iter().any(|a| a == "--show") {
+                    store.strike_count(&gap_id, &backend)?
+                } else {
+                    store.record_strike(&gap_id, &backend)?
+                };
+                println!(
+                    "strikes={} threshold={} gap={} backend={}",
+                    n, threshold, gap_id, backend
+                );
+                if !args.iter().any(|a| a == "--show") && n >= threshold {
+                    std::process::exit(10);
+                }
+                return Ok(());
+            }
             // INFRA-2137: `chump gap requeue <GAP-ID>` — move bisect_quarantined
             // → ready_to_ship after operator review.
             "requeue" => {
