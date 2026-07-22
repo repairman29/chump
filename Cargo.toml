@@ -124,7 +124,7 @@ chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
 # META-175: JetStream durable consumer per role — needed by web_server handle_fleet_wire_health.
 chump-coord = { path = "crates/chump-coord", version = "0.2.0" }
-async-nats = "0.49"
+async-nats = "0.50"
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
@@ -149,7 +149,7 @@ serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 toml = { version = "1.1", features = ["parse"] }
 base64 = "0.22"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
@@ -163,15 +163,15 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 patch = { version = "0.7", default-features = false }
-jsonschema = { version = "0.46", default-features = false }
+jsonschema = { version = "0.48", default-features = false }
 serde_yaml = "0.9"
 mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "46"
-wasmtime-wasi = "46"
+wasmtime = "47"
+wasmtime-wasi = "47"
 wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
