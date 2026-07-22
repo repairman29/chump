@@ -625,6 +625,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-1773: `chump brain stats`/`chump brain query` run-event
+        // observability (outcome/failure_class/cost_usd) — spawns the
+        // built chump binary against the real local dbs (read-only),
+        // ~1-2s, no network. Scoped to src/main.rs.
+        "scripts/ci/test-chump-brain-cli.sh",
     ];
     candidates
         .iter()

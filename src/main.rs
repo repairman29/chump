@@ -739,6 +739,8 @@ fn print_help() {
         "  mission-grade      current pillar grades (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE)"
     );
     println!("  lesson-grade       lesson-learning quality score");
+    println!("  brain <stats|query <term>> [--limit N] [--json]");
+    println!("                     unified read-only view over memory_db + reflection lessons + per-bot routing_outcomes (INFRA-1773)");
     println!("  ci-summary         last-N CI run outcomes");
     println!("  verify --stage <s> unified policy gate: pre-commit|commit-msg|ci (CREDIBLE-155)");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
@@ -13762,6 +13764,190 @@ async fn main() -> Result<()> {
             );
         }
         return Ok(());
+    }
+
+    // `chump brain stats` / `chump brain query <term>` (INFRA-1773) —
+    // unified read-only surface over the three durable stores an agent's
+    // "mind" is spread across: memory_db (episodic/semantic facts),
+    // reflection_db (chump_improvement_targets, the "what to do
+    // differently next time" lessons), and routing_outcomes in
+    // .chump/state.db (per-backend/model "bot" performance history).
+    // First incremental slice toward the "mega-brain" stretch goal in the
+    // gap title — read-only today, `--json` for scripting, no mutation.
+    if args.get(1).map(String::as_str) == Some("brain") {
+        let start = std::time::Instant::now();
+        let sub = args.get(2).map(String::as_str).unwrap_or("");
+        let want_json = args.iter().any(|a| a == "--json");
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let limit: usize = flag("--limit")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(10);
+
+        let emit_brain_event = |outcome: &str, failure_class: &str, result_count: u64| {
+            tool_policy::emit_ambient_json(
+                "chump_brain_cli_run",
+                serde_json::json!({
+                    "subcommand": sub,
+                    "outcome": outcome,
+                    "failure_class": failure_class,
+                    "duration_ms": start.elapsed().as_millis() as u64,
+                    "result_count": result_count,
+                    // Read-only local sqlite queries — no LLM/API spend, so
+                    // cost is always 0.0. Documented explicitly (rather than
+                    // omitted) so `chump kpi report` cost rollups don't have
+                    // to special-case a missing field.
+                    "cost_usd": 0.0,
+                }),
+            );
+        };
+
+        match sub {
+            "stats" => {
+                let repo_root = repo_path::repo_root();
+                let memory_count = memory_db::keyword_search_reranked("", 100)
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let reflection_count = reflection_db::load_recent_high_priority_targets(20, None)
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let routing_count = gap_store::GapStore::open(&repo_root)
+                    .and_then(|s| s.routing_scoreboard())
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "memory_rows": memory_count,
+                            "reflection_lessons": reflection_count,
+                            "routing_outcome_routes": routing_count,
+                        })
+                    );
+                } else {
+                    println!("chump brain stats:");
+                    println!("  memory_db rows (episodic/semantic)  : {memory_count}");
+                    println!("  reflection lessons (high/med prio)  : {reflection_count}");
+                    println!("  routing_outcomes routes (per-bot)   : {routing_count}");
+                }
+                emit_brain_event(
+                    "success",
+                    "none",
+                    (memory_count + reflection_count + routing_count) as u64,
+                );
+                return Ok(());
+            }
+            "query" => {
+                let term = match args.get(3) {
+                    Some(t) if !t.is_empty() => t.clone(),
+                    _ => {
+                        eprintln!("usage: chump brain query <term> [--limit N] [--json]");
+                        emit_brain_event("error", "permanent", 0);
+                        std::process::exit(1);
+                    }
+                };
+                let repo_root = repo_path::repo_root();
+
+                let memory_hits = match memory_db::keyword_search_reranked(&term, limit) {
+                    Ok(rows) => rows,
+                    Err(e) => {
+                        eprintln!("chump brain query: memory_db query failed: {e:#}");
+                        emit_brain_event("error", "transient", 0);
+                        std::process::exit(1);
+                    }
+                };
+                let term_lc = term.to_lowercase();
+                let reflection_hits: Vec<_> =
+                    reflection_db::load_recent_high_priority_targets(20, None)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|t| t.directive.to_lowercase().contains(&term_lc))
+                        .take(limit)
+                        .collect();
+                let routing_hits: Vec<_> = match gap_store::GapStore::open(&repo_root) {
+                    Ok(store) => match store.routing_scoreboard() {
+                        Ok(entries) => entries
+                            .into_iter()
+                            .filter(|e| {
+                                e.task_class.to_lowercase().contains(&term_lc)
+                                    || e.backend.to_lowercase().contains(&term_lc)
+                                    || e.model.to_lowercase().contains(&term_lc)
+                            })
+                            .take(limit)
+                            .collect(),
+                        Err(e) => {
+                            eprintln!("chump brain query: routing_outcomes query failed: {e:#}");
+                            emit_brain_event("error", "transient", 0);
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("chump brain query: cannot open state.db: {e:#}");
+                        emit_brain_event("error", "transient", 0);
+                        std::process::exit(1);
+                    }
+                };
+
+                let total = (memory_hits.len() + reflection_hits.len() + routing_hits.len()) as u64;
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "term": term,
+                            "memory": memory_hits.iter().map(|r| serde_json::json!({
+                                "id": r.id, "content": r.content, "source": r.source,
+                                "confidence": r.confidence, "verified": r.verified,
+                            })).collect::<Vec<_>>(),
+                            "reflection": reflection_hits.iter().map(|t| serde_json::json!({
+                                "directive": t.directive,
+                                "priority": t.priority.as_str(),
+                                "scope": t.scope,
+                            })).collect::<Vec<_>>(),
+                            "routing": routing_hits.iter().map(|e| serde_json::json!({
+                                "task_class": e.task_class, "backend": e.backend,
+                                "model": e.model, "success_rate": e.success_rate,
+                            })).collect::<Vec<_>>(),
+                        })
+                    );
+                } else {
+                    println!("chump brain query \"{term}\" ({total} hits):");
+                    println!("-- memory ({}) --", memory_hits.len());
+                    for r in &memory_hits {
+                        println!("  [{}] {}", r.source, r.content);
+                    }
+                    println!("-- reflection ({}) --", reflection_hits.len());
+                    for t in &reflection_hits {
+                        println!("  [{}] {}", t.priority.as_str(), t.directive);
+                    }
+                    println!("-- routing ({}) --", routing_hits.len());
+                    for e in &routing_hits {
+                        println!(
+                            "  [{}/{}] {} ({:.1}% success)",
+                            e.backend,
+                            e.model,
+                            e.task_class,
+                            e.success_rate * 100.0
+                        );
+                    }
+                }
+                emit_brain_event("success", "none", total);
+                return Ok(());
+            }
+            "" => {
+                eprintln!("usage: chump brain <stats|query> [args]");
+                emit_brain_event("error", "permanent", 0);
+                std::process::exit(1);
+            }
+            other => {
+                eprintln!("chump brain: unknown subcommand '{other}' (expected stats|query)");
+                emit_brain_event("error", "permanent", 0);
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump dispatch simulate <task_class> <count>` (COG-037) — sample

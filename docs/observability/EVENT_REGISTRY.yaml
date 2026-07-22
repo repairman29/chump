@@ -2033,6 +2033,40 @@ events:
           and asserts failure_class on each; wired into `chump preflight`
           per INFRA-2925).
 
+  - kind: chump_brain_cli_run
+    effect_metric: self
+    emitter: src/main.rs (`chump brain stats` / `chump brain query`, INFRA-1773)
+    trigger: every invocation of `chump brain <sub>`, both subcommands, any exit path
+    consumers: [waste-tally, kpi-report]
+    fields_required: [ts, kind, subcommand, outcome, failure_class, duration_ms, result_count, cost_usd]
+    docs: |
+      INFRA-1773 answers (this is the first incremental slice of the
+      "unified query/mutate over memory_db + routing_outcomes +
+      reflection_db + per-bot" surface — read-only today, `stats`/`query`
+      only; mutation is a follow-up slice):
+        - emitted on: every exit path of the `brain` subcommand handler in
+          src/main.rs — success (stats/query returned, possibly zero hits)
+          and error (bad/missing args, or a query failure against any of
+          the three backing stores). See outcome field: success | error.
+        - cost tracked via: `cost_usd` field, always 0.0 — `brain` only
+          runs local sqlite reads (memory_db::keyword_search_reranked,
+          reflection_db::load_recent_high_priority_targets,
+          GapStore::routing_scoreboard), no LLM/API calls. Recorded
+          explicitly rather than omitted so `chump kpi report` cost
+          rollups don't special-case a missing field. `result_count`
+          tracks how much data was returned/summarized per call.
+        - failure_class taxonomy: none (success, whether or not any hits
+          were found) | permanent (missing/empty `query` term, or an
+          unknown subcommand — retrying with the same args repeats the
+          failure) | transient (a backing store failed to open or query —
+          e.g. state.db locked by a concurrent writer — retry may
+          succeed as-is). Defined inline at each exit path in the
+          `chump brain` handler in src/main.rs.
+        - smoke test: scripts/ci/test-chump-brain-cli.sh (runnable
+          standalone; exercises `stats`, `query <term>`, `query` with no
+          term, and an unknown subcommand; asserts outcome/failure_class
+          on each; wired into `chump preflight`).
+
   - kind: fleet_auth_fallback
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (INFRA-622)
