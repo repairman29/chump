@@ -155,6 +155,23 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         cfg.home.display()
     );
 
+    // MISSION-051 / RESILIENT-184: backend selection. CHUMPD_FLEET_BACKEND
+    // lets an operator run the fleet on an open model (chump-local) instead
+    // of the Claude subscription.
+    let backend = std::env::var("CHUMPD_FLEET_BACKEND").unwrap_or_else(|_| "claude".into());
+    // RESILIENT-184: the model/effort gate in _pick_and_claim_gap.py is
+    // keyed on FLEET_MODEL. The sonnet default made chump-local (MiniMax-M3)
+    // workers REFUSE xs gaps (sonnet-xs gate, "don't burn frontier tokens on
+    // cleanup") while ACCEPTING m-effort gaps M3 can't finish — exactly
+    // backwards. Open models want the haiku gate (blocks m/l/xl, allows
+    // xs/s) and an xs,s effort filter. Frozen-picker symptom on chumpd-eu
+    // 2026-07-22: 0 patches across cycles, all on m-effort/empty-desc gaps.
+    let (fleet_model, effort_filter) = if backend == "chump-local" {
+        ("haiku", "xs,s")
+    } else {
+        ("sonnet", "xs,s,m")
+    };
+
     Command::new("/bin/bash")
         .arg(&worker)
         .current_dir(&cfg.repo)
@@ -166,9 +183,9 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
         .env("FLEET_LOG_DIR", &cfg.log_dir)
         .env("FLEET_TIMEOUT_S", "1800")
         .env("FLEET_PRIORITY_FILTER", "P0,P1")
-        .env("FLEET_EFFORT_FILTER", "xs,s,m")
-        .env("FLEET_BACKEND", "claude")
-        .env("FLEET_MODEL", "sonnet")
+        .env("FLEET_EFFORT_FILTER", effort_filter)
+        .env("FLEET_BACKEND", &backend)
+        .env("FLEET_MODEL", fleet_model)
         .env("FLEET_SESSION", "chumpd")
         .env("FLEET_INLINE_BRIEFING", "1")
         .env("CHUMP_AGENT_HARNESS", "claude")
