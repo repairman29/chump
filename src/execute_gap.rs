@@ -378,7 +378,12 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     // handed every open-model dispatch "(gap YAML not found)" as its ENTIRE
     // task spec, so models explored read-only and shipped nothing. state.db
     // is canonical; the YAML file remains only as a legacy fallback.
-    let gap_yaml = chump_gap_store::GapStore::open(repo_root)
+    // Follow-up (same gap): dispatches run INSIDE a linked worktree where
+    // <worktree>/.chump/state.db doesn't exist — GapStore::open would create
+    // an EMPTY db there and the model stayed blind. Resolve the MAIN checkout
+    // (shared .git parent), which owns the canonical state.db.
+    let canonical_root = crate::repo_path::main_checkout_root();
+    let gap_yaml = chump_gap_store::GapStore::open(&canonical_root)
         .ok()
         .and_then(|store| store.get(gap_id).ok().flatten())
         .map(|row| {
