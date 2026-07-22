@@ -248,11 +248,15 @@ _bm_cleanup() {
     # META-156 AC#7: emit bot_merge_completed roll-up on any exit path.
     _bm_completed_emit 2>/dev/null || true
     # META-156 AC#6: kill budget-warn watchdog subprocesses on exit.
-    [[ -n "${_BM_BUDGET_WARN_PID:-}" ]] && kill "$_BM_BUDGET_WARN_PID" 2>/dev/null || true
-    [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
-    [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
-    # INFRA-1422: cancel any live stage-budget watchdog on exit.
-    [[ -n "${__STAGE_BUDGET_PID:-}" ]] && kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
+    # EFFECTIVE-312: kill each watchdog's CHILDREN first (pkill -P) — their
+    # sleep grandchildren inherit the INFRA-860 flock fd and hold the global
+    # bot-merge.lock forever after the subshell dies (cycle-11 evidence: an
+    # orphan 'sleep 300' held the lock and timed out the next ship's flock).
+    for _cl_pid in "${_BM_BUDGET_WARN_PID:-}" "${_BM_HEALTH_PID:-}" "${_BM_WATCHDOG_PID:-}" "${__STAGE_BUDGET_PID:-}"; do
+        [[ -n "$_cl_pid" ]] || continue
+        pkill -P "$_cl_pid" 2>/dev/null || true
+        kill "$_cl_pid" 2>/dev/null || true
+    done
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" "${_BM_PROGRESS_FILE:-}" 2>/dev/null || true
     # INFRA-1035: if the last transition was "start" (no matching "done"),
     # we crashed mid-step — record that so bot-merge-recover.sh can report it.
