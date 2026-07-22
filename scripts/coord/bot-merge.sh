@@ -117,6 +117,21 @@ __STAGE_BUDGET_PID=""
 # META-156 AC#6: budget-warn watchdog PID.
 _BM_BUDGET_WARN_PID=""
 
+_BM_STAGE_BUDGET_S="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
+
+# RESILIENT-210: stage_start accepts an optional second positional argument
+# PER_STAGE_BUDGET_S. When supplied, it overrides the per-stage budget used by
+# the watchdog launched (via _bm_health_write) for the current stage. When
+# omitted, the watchdog defaults to CHUMP_BOT_MERGE_STAGE_BUDGET_S (300s),
+# preserving backward compatibility with existing single-arg callers.
+stage_start() {
+    local stage_name="${1:-}"
+    local PER_STAGE_BUDGET_S="${2:-${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}}"
+    __STAGE_LABEL="$stage_name"
+    _BM_STAGE_BUDGET_S="$PER_STAGE_BUDGET_S"
+    _bm_health_write
+}
+
 # ── INFRA-2272: per-step progress ledger + gtimeout wrapper ──────────────────
 # See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4
 #
