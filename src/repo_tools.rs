@@ -447,6 +447,29 @@ impl Tool for WriteFileTool {
             fs::create_dir_all(parent).map_err(|e| anyhow!("create_dir_all failed: {}", e))?;
         }
 
+        // INFRA-3407: shrink guard for free-tier dispatch. EFFECTIVE-005
+        // removed write_file from the slim tool set because Llama-class
+        // models replaced whole files with truncated content; re-admitting it
+        // for stronger models (CHUMP_FREE_TIER_WRITE_FILE=1) requires this
+        // guard: refuse an overwrite that loses more than half of an existing
+        // file, and tell the model to patch instead.
+        if mode == "overwrite"
+            && std::env::var("CHUMP_FREE_TIER_WRITE_FILE").as_deref() == Ok("1")
+            && path.is_file()
+        {
+            let old_len = fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+            if old_len > 200 && content.len() < old_len / 2 {
+                return Ok(format!(
+                    "REFUSED: write_file would shrink {} from {} to {} bytes (>50% loss). \
+                     This usually means the content is truncated. Use patch_file for \
+                     targeted edits, or include the ENTIRE corrected file.",
+                    path.display(),
+                    old_len,
+                    content.len()
+                ));
+            }
+        }
+
         let baseline = if test_aware::test_aware_enabled() {
             Some(
                 test_aware::capture_baseline()
@@ -599,10 +622,40 @@ impl Tool for PatchFileTool {
                 None
             };
 
-        let (new_content, mode) = match (&strict_result, &fuzzy_result, &headerless_result) {
-            (Ok(nc), _, _) => (nc.clone(), "applied"),
-            (_, Some(Ok(nc)), _) => (nc.clone(), "applied-fuzzy"),
-            (_, _, Some(Ok(nc))) => (nc.clone(), "applied-headerless"),
+        // INFRA-3407 tier-d: content-anchored application. Open models guess
+        // hunk line numbers (off by far more than fuzzy's ±3) while their
+        // quoted context is usually right — anchor by the context/remove
+        // block instead. Unique-match-only, so a wrong-but-plausible hunk
+        // can't land in the wrong place. Observed on chumpd-eu: 10/10 M3
+        // patch failures pre-tier-d.
+        let anchored_result: Option<Result<String, patch_apply::PatchApplyError>> = if strict_result
+            .is_err()
+            && fuzzy_result.as_ref().is_none_or(|r| r.is_err())
+            && headerless_result.as_ref().is_none_or(|r| r.is_err())
+        {
+            tracing::info!(
+                path = %path_str,
+                "patch_file tiers a-c failed, attempting tier-d content-anchored apply"
+            );
+            let d = diff_owned.clone();
+            let c = content.clone();
+            tokio::task::spawn_blocking(move || patch_apply::apply_unified_diff_anchored(&c, &d))
+                .await
+                .ok()
+        } else {
+            None
+        };
+
+        let (new_content, mode) = match (
+            &strict_result,
+            &fuzzy_result,
+            &headerless_result,
+            &anchored_result,
+        ) {
+            (Ok(nc), _, _, _) => (nc.clone(), "applied"),
+            (_, Some(Ok(nc)), _, _) => (nc.clone(), "applied-fuzzy"),
+            (_, _, Some(Ok(nc)), _) => (nc.clone(), "applied-headerless"),
+            (_, _, _, Some(Ok(nc))) => (nc.clone(), "applied-anchored"),
             _ => {
                 let e = strict_result.as_ref().unwrap_err();
                 chump_log::log_patch_file(
@@ -610,12 +663,27 @@ impl Tool for PatchFileTool {
                     diff.len(),
                     "mismatch-all-tiers",
                 );
+                // INFRA-3407: capture the failing payload when the operator
+                // asks for it — the structured log records only path+len, so
+                // patch-fidelity tuning had no evidence to work from.
+                if let Ok(dir) = std::env::var("CHUMP_PATCH_DEBUG_DIR") {
+                    let _ = fs::create_dir_all(&dir);
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let _ = fs::write(
+                        format!("{dir}/patch-fail-{stamp}-{}.diff", std::process::id()),
+                        format!("# target: {}\n{diff}", path.display()),
+                    );
+                }
                 let mut msg = patch_recovery_message(&content, diff, e);
                 msg.push_str(
-                    "\n\nNote: patch_file also failed with fuzzy matching (whitespace-tolerant, ±3 line context drift) \
-                     and headerless-diff parsing (tier-c, INFRA-785). \
-                     Try using read_file to get the exact current content, then use write_file to write \
-                     the corrected version directly.",
+                    "\n\nNote: patch_file also failed with fuzzy matching (±3 line drift), \
+                     headerless parsing, and content-anchored matching (INFRA-3407 — your \
+                     context lines don't appear in the file, or appear more than once). \
+                     Call read_file on this file NOW, copy the exact lines you want to \
+                     change into the diff's context/remove lines, and retry patch_file.",
                 );
                 return Ok(msg);
             }

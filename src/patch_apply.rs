@@ -233,6 +233,94 @@ pub fn apply_unified_diff_fuzzy(old: &str, diff: &str) -> Result<String, PatchAp
     apply_patch_strict(old, &p).or_else(|_strict_err| apply_patch_fuzzy(old, &p))
 }
 
+/// INFRA-3407 tier-d: content-anchored application. Ignores `@@` line numbers
+/// ENTIRELY and locates each hunk by searching the whole file for its
+/// context+remove line sequence (whitespace-trimmed). Open models guess hunk
+/// line numbers — often off by far more than the ±3 the fuzzy tier tolerates —
+/// while their quoted context is usually right. Refuses ambiguous hunks (the
+/// anchor sequence must match at exactly one position) so a wrong-but-
+/// plausible patch can't land silently in the wrong place.
+pub fn apply_unified_diff_anchored(old: &str, diff: &str) -> Result<String, PatchApplyError> {
+    let p = parse_single_file_patch(diff)?;
+    apply_patch_anchored(old, &p)
+}
+
+fn apply_patch_anchored<'a>(old: &str, patch: &Patch<'a>) -> Result<String, PatchApplyError> {
+    let old_lines: Vec<&str> = old.lines().collect();
+    // Build (anchor_lines, replacement_lines) per hunk. Anchor = the sequence
+    // of Context + Remove lines in order; replacement = Context + Add lines.
+    let mut edits: Vec<(usize, usize, Vec<String>)> = Vec::new(); // (start, len, replacement)
+    for (hunk_index, hunk) in patch.hunks.iter().enumerate() {
+        let mut anchor: Vec<&str> = Vec::new();
+        let mut replacement: Vec<String> = Vec::new();
+        for line in &hunk.lines {
+            match line {
+                Line::Context(s) => {
+                    anchor.push(s);
+                    replacement.push((*s).to_string());
+                }
+                Line::Remove(s) => anchor.push(s),
+                Line::Add(s) => replacement.push((*s).to_string()),
+            }
+        }
+        if anchor.is_empty() {
+            return Err(PatchApplyError::InvalidHunk {
+                message: format!(
+                    "hunk {hunk_index}: no context/remove lines — cannot anchor by content"
+                ),
+            });
+        }
+        // Find every whitespace-trimmed match of the anchor sequence.
+        let mut matches: Vec<usize> = Vec::new();
+        if old_lines.len() >= anchor.len() {
+            'outer: for start in 0..=(old_lines.len() - anchor.len()) {
+                for (k, a) in anchor.iter().enumerate() {
+                    if old_lines[start + k].trim() != a.trim() {
+                        continue 'outer;
+                    }
+                }
+                matches.push(start);
+            }
+        }
+        match matches.len() {
+            1 => edits.push((matches[0], anchor.len(), replacement)),
+            0 => {
+                return Err(PatchApplyError::ContextMismatch {
+                    hunk_index,
+                    old_line_1based: hunk.old_range.start as usize,
+                    expected: anchor.first().map(|s| (*s).to_string()).unwrap_or_default(),
+                    actual: None,
+                });
+            }
+            n => {
+                return Err(PatchApplyError::InvalidHunk {
+                    message: format!(
+                        "hunk {hunk_index}: anchor matches {n} positions — ambiguous, refusing"
+                    ),
+                });
+            }
+        }
+    }
+    // Apply edits back-to-front so earlier offsets stay valid; refuse overlaps.
+    edits.sort_by_key(|(s, _, _)| *s);
+    for w in edits.windows(2) {
+        if w[0].0 + w[0].1 > w[1].0 {
+            return Err(PatchApplyError::InvalidHunk {
+                message: "anchored hunks overlap — refusing".to_string(),
+            });
+        }
+    }
+    let mut out: Vec<String> = old_lines.iter().map(|s| s.to_string()).collect();
+    for (start, len, replacement) in edits.into_iter().rev() {
+        out.splice(start..start + len, replacement);
+    }
+    let mut joined = out.join("\n");
+    if old.ends_with('\n') {
+        joined.push('\n');
+    }
+    Ok(joined)
+}
+
 /// Apply with fuzzy matching: trims whitespace before comparing context/remove lines,
 /// and allows ±3 lines of context drift when a line doesn't match at the expected position.
 fn apply_patch_fuzzy<'a>(old: &str, patch: &Patch<'a>) -> Result<String, PatchApplyError> {
@@ -641,5 +729,69 @@ But after they are produced,
         let with_prelude = format!("Here is the diff for you:\n{}", HEADERLESS_DIFF);
         let got = apply_unified_diff_headerless(LAO, &with_prelude).unwrap();
         assert!(got.contains("The door of all subtleties!"));
+    }
+
+    // ── INFRA-3407 tier-d: content-anchored application ─────────────────────
+
+    #[test]
+    fn anchored_ignores_wildly_wrong_line_numbers() {
+        // Same edit as RAW_DIFF's first hunk but with a garbage @@ start line
+        // (models guess line numbers) — anchored tier must still land it.
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ -97,3 +97,3 @@
+ The Nameless is the origin of Heaven and Earth;
+-The Named is the mother of all things.
++The named is the mother of all things.
+";
+        let err = apply_unified_diff_fuzzy(LAO, diff);
+        assert!(err.is_err(), "fuzzy ±3 cannot absorb a 96-line offset");
+        let got = apply_unified_diff_anchored(LAO, diff).unwrap();
+        assert!(got.contains("The named is the mother of all things."));
+        assert!(!got.contains("The Named is the mother of all things."));
+    }
+
+    #[test]
+    fn anchored_tolerates_indentation_drift() {
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ -1,2 +1,2 @@
+ Therefore let there always be non-being,
+-so we may see their subtlety,
++so we may see their SUBTLETY,
+";
+        // Model dropped the two-space indent on the remove line; trim-match
+        // still anchors it. Replacement uses the model's own lines verbatim.
+        let got = apply_unified_diff_anchored(LAO, diff).unwrap();
+        assert!(got.contains("SUBTLETY"));
+    }
+
+    #[test]
+    fn anchored_refuses_ambiguous_anchor() {
+        let doubled = format!("{LAO}{LAO}");
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ -1,1 +1,1 @@
+-The Named is the mother of all things.
++The named is the mother of all things.
+";
+        let err = apply_unified_diff_anchored(&doubled, diff).unwrap_err();
+        assert!(matches!(err, PatchApplyError::InvalidHunk { .. }));
+    }
+
+    #[test]
+    fn anchored_refuses_unmatched_anchor() {
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ -1,1 +1,1 @@
+-This line does not exist anywhere.
++Replacement.
+";
+        let err = apply_unified_diff_anchored(LAO, diff).unwrap_err();
+        assert!(matches!(err, PatchApplyError::ContextMismatch { .. }));
     }
 }
