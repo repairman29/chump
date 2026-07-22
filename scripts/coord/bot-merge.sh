@@ -2084,6 +2084,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
 
             if [[ "$_already_in_lease_wt" -eq 1 ]]; then
                 info "INFRA-1901: already inside claimed worktree for $gid (lease=$_lease_wt) — skipping chump claim re-invocation"
+                _BM_OWN_CLAIM=1
                 chump session-track --start "$gid" >/dev/null 2>&1 || true
                 continue
             fi
@@ -2109,6 +2110,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                         | awk '{print $NF}' | head -1)"
                     if [[ -n "${CHUMP_SESSION_ID:-}" && "$_claim_lease_session" == "$CHUMP_SESSION_ID" ]]; then
                         info "CREDIBLE-160: lease already held by our session ($CHUMP_SESSION_ID) — reusing existing worktree + branch"
+                        _BM_OWN_CLAIM=1
                         chump session-track --start "$gid" >/dev/null 2>&1 || true
                         continue
                     fi
@@ -2147,6 +2149,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                         # unpushed work. The claim is already ours; no-op and reuse
                         # the existing worktree + branch for the ship steps.
                         info "INFRA-2744: re-claim no-op — gap $gid already held by our session ($CHUMP_SESSION_ID); reusing existing worktree + branch"
+                        _BM_OWN_CLAIM=1
                     else
                         red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
                         red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
@@ -2165,6 +2168,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                     exit "$_claim_rc"
                 fi
             fi
+            [[ "$_claim_rc" -eq 0 ]] && _BM_OWN_CLAIM=1
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.
             chump session-track --start "$gid" >/dev/null 2>&1 || true
@@ -2285,8 +2289,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
         # gap YAMLs are no longer added as new files in PRs; state.db is canonical.
         # Always run preflight here so we catch gaps completed on main while rebasing.
         if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
-            red "Gap was completed on main while we rebased — nothing left to push."
-            _bm_fail "preflight" 10 "gap completed on main during rebase"
+            # EFFECTIVE-312: when THIS run claimed the gap (the claim step above
+            # set _BM_OWN_CLAIM=1), preflight's
+            # live-claim failure is our own lease — not "completed on main".
+            if [[ "${_BM_OWN_CLAIM:-0}" -eq 1 ]]; then
+                info "EFFECTIVE-312: post-rebase preflight failed on OUR OWN live lease — continuing ship"
+            else
+                red "Gap was completed on main while we rebased — nothing left to push."
+                _bm_fail "preflight" 10 "gap completed on main during rebase"
+            fi
         fi
     fi
 else

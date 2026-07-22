@@ -476,6 +476,35 @@ fn build_free_tier_agent() -> Result<ChumpAgent> {
 /// Uses `--fast` to skip local clippy/test — CI is the gate, and free-tier
 /// dispatch runs against tight task-budget walls (INFRA-252 / INFRA-733).
 async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()> {
+    // EFFECTIVE-312: open models routinely patch_file and then skip the
+    // git_commit step (observed: first sighted M3 cycle patched 1 file,
+    // committed nothing). Uncommitted agent work would either vanish or be
+    // swept into an INFRA-472 staging commit that INFRA-997 then refuses to
+    // ship. Auto-commit it honestly instead so real work reaches the PR.
+    let dirty = tokio::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_root)
+        .output()
+        .await
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    if dirty {
+        eprintln!("[execute-gap] EFFECTIVE-312: uncommitted agent changes — auto-committing");
+        let _ = tokio::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .status()
+            .await;
+        let _ = tokio::process::Command::new("git")
+            .args([
+                "commit",
+                "-m",
+                &format!("{gap_id}: agent changes (auto-committed — model skipped git_commit)"),
+            ])
+            .current_dir(repo_root)
+            .status()
+            .await;
+    }
     let script = repo_root.join("scripts/coord/bot-merge.sh");
     eprintln!("[execute-gap] free-tier ship: bot-merge.sh --gap {gap_id} --fast --auto-merge");
     let status = tokio::process::Command::new("bash")
