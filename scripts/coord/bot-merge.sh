@@ -2064,7 +2064,10 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                     for _lf in "$LOCK_DIR"/*.json; do
                         [[ -f "$_lf" ]] || continue
                         if [[ "$(lease_gap_id "$_lf")" == "$gid" ]]; then
-                            _lease_wt="$(lease_worktree "$_lf")"
+                            # EFFECTIVE-312: lockfiles without a worktree field
+                            # make lease_worktree's grep pipeline fail — under
+                            # pipefail+set -e the bare assignment is fatal.
+                            _lease_wt="$(lease_worktree "$_lf" 2>/dev/null || true)"
                             # EFFECTIVE-312: bare [[ ]] && break as the loop
                             # body's last statement leaks rc=1 into the for
                             # loop under set -e — the silent claim-step killer
