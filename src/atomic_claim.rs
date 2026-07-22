@@ -2304,11 +2304,16 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
 
     let conn = rusqlite::Connection::open(&db_path)
         .with_context(|| format!("opening {}", db_path.display()))?;
+    // CREDIBLE-159: under fleet load the un-timed read hit SQLITE_BUSY and
+    // .unwrap_or(0) turned that into "gap not found" — every bot-merge claim
+    // on chumpd-eu died on an existence lie while the row sat in the table.
+    // Busy-wait up to 5s, and propagate real errors as errors.
+    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM gaps WHERE id = ?1", [gap_id], |r| {
             r.get(0)
         })
-        .unwrap_or(0);
+        .with_context(|| format!("state.db busy/unreadable while looking up {gap_id} — retry"))?;
 
     if count == 0 {
         // Gap not in DB but YAML may have it — seed.
@@ -2319,7 +2324,9 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
             .query_row("SELECT COUNT(*) FROM gaps WHERE id = ?1", [gap_id], |r| {
                 r.get(0)
             })
-            .unwrap_or(0);
+            .with_context(|| {
+                format!("state.db busy/unreadable on re-check for {gap_id} — retry")
+            })?;
         if count_after == 0 {
             bail!(
                 "gap {} not found in state.db or docs/gaps/ — reserve it first with `chump gap reserve --domain D --title T`",
