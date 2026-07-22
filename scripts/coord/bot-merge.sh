@@ -1888,8 +1888,11 @@ if [[ "$_BM_MODE" == "A" ]]; then
                     "SELECT status FROM gaps WHERE id='${_bm_route_gap}'" 2>/dev/null || true)"
                 [[ "$_bm_ack" == "ready_to_ship" ]] && _bm_a_enqueued=1
             fi
+            # CREDIBLE-158: record the ACTUAL branch — the integrator's
+            # StateDbWorkBoard reads this branch:<name> token; without it the
+            # slug-guess fallback fetches a branch that doesn't exist.
             CHUMP_REPO="$_bm_canon_repo" chump gap set "$_bm_route_gap" --notes-append \
-                "Mode: batched (chump-integrator-daemon will pick up)" 2>/dev/null || true
+                "Mode: batched (chump-integrator-daemon will pick up) branch:${BRANCH}" 2>/dev/null || true
         fi
         if [[ "$_bm_a_enqueued" == "1" ]]; then
             _ambient_write "$_bm_a_amb" \
