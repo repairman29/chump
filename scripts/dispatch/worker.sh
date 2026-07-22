@@ -1345,13 +1345,41 @@ Operator or sibling worker can rescue this branch via:
             fi  # INFRA-1045: end of claude-p harness block
             ;;
         chump-local)
-            log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local) → $cycle_log"
+            # ── EFFECTIVE-314: cost-tiered model escalation ladder ───────────
+            # CHUMP_MODEL_ESCALATION_LADDER = comma-separated model IDs,
+            # cheapest-first (e.g. "minimax/minimax-m3,z-ai/glm-5.2"). Each
+            # prior whole-gap failure on this gap (tracked by the EFFECTIVE-310
+            # strike counter) bumps this attempt one rung up the ladder:
+            #   strike 0 → cheapest, strike 1 → next, … capped at the top rung.
+            # After the open ladder is exhausted the existing INFRA-267 (P0
+            # fallback to claude) + EFFECTIVE-310 (decompose via claude) paths
+            # provide the Claude ceiling. Empirical basis (2026-07-22): M3
+            # never converged on real fleet gaps; GLM-5.2 reached patch_file
+            # where M3 didn't — so escalation pays. No ladder set = unchanged.
+            _cl_model="${OPENAI_MODEL:-}"
+            if [[ -n "${CHUMP_MODEL_ESCALATION_LADDER:-}" ]]; then
+                IFS=',' read -r -a _ladder <<< "$CHUMP_MODEL_ESCALATION_LADDER"
+                _strikes="$(chump gap strike "$GAP_ID" --show 2>/dev/null \
+                    | grep -oE 'strikes=[0-9]+' | cut -d= -f2 || echo 0)"
+                _strikes="${_strikes:-0}"
+                _rung=$(( _strikes < ${#_ladder[@]} ? _strikes : ${#_ladder[@]} - 1 ))
+                _cl_model="${_ladder[$_rung]}"
+                if [[ "$_rung" -gt 0 ]]; then
+                    log "EFFECTIVE-314: $GAP_ID at escalation rung $_rung (strikes=$_strikes) → model=$_cl_model"
+                    printf '{"ts":"%s","kind":"model_tier_escalated","source":"worker.sh","agent":"%s","gap_id":"%s","strikes":%s,"rung":%d,"model":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$_strikes" "$_rung" "$_cl_model" \
+                        >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+                fi
+            fi
+            log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local, model=${_cl_model:-default}) → $cycle_log"
             (
                 cd "$wt_path" || exit 99
                 # COG-025: route inference through src/provider_cascade.rs
                 # so this gap is carried by free-tier providers (Cerebras,
                 # Groq, Together, etc.). Reflection rows tag backend=chump-local
                 # so COG-026 A/B can split outcomes.
+                # EFFECTIVE-314: per-attempt model override from the escalation ladder.
+                [[ -n "$_cl_model" ]] && export OPENAI_MODEL="$_cl_model"
                 # shellcheck disable=SC2086
                 $TO chump --execute-gap "$GAP_ID"
             ) >"$cycle_log" 2>&1
