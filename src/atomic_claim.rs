@@ -1002,6 +1002,63 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.6b. INFRA-1763: predictive collision — git-diff intersection across
+    // active leases. Unlike INFRA-1394 (static AC-text hot-file match) and
+    // INFRA-1116 (declared --paths overlap), this reads each sibling's LIVE
+    // git diff (files it has actually touched vs the base branch, committed
+    // or not) and intersects that with this claim's declared --paths. Catches
+    // the case where a sibling's real edits have drifted outside what it
+    // declared. Before the worktree is created so we never leave a dangling
+    // worktree on refusal. Reuses --force-overlap as the bypass flag.
+    {
+        let claim_paths_vec: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if let Some(diff_result) = check_diff_intersection(
+            &args.repo_root,
+            &args.gap_id,
+            &session_id,
+            &claim_paths_vec,
+            &args.base_branch,
+        ) {
+            emit_claim_diff_intersection_event(
+                &ambient_log,
+                &args.gap_id,
+                &diff_result.sibling_gap,
+                &diff_result.sibling_session,
+                &diff_result.overlap_paths,
+                args.force_overlap,
+            );
+
+            eprintln!(
+                "[claim] INFRA-1763: PREDICTED COLLISION — live diff overlap for {}",
+                args.gap_id
+            );
+            eprintln!(
+                "[claim]   sibling session {} (gap {}) has actually edited: {}",
+                diff_result.sibling_session,
+                diff_result.sibling_gap,
+                diff_result.overlap_paths.join(", ")
+            );
+            eprintln!(
+                "[claim]   These files intersect your declared --paths — high-confidence collision."
+            );
+
+            if !args.force_overlap {
+                eprintln!(
+                    "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
+                );
+                std::process::exit(16);
+            } else {
+                eprintln!(
+                    "[claim]   --force-overlap set; proceeding despite predicted diff collision."
+                );
+            }
+        }
+    }
+
     // 5.7. INFRA-1692: pre-flight team-nugget search.
     //
     // Marcus M-D arc: when an operator runs `chump claim GAP-ID`, surface
@@ -3302,6 +3359,185 @@ fn emit_claim_hot_file_overlap_event(
          \"claim_gap\":\"{cg}\",\"sibling_gap\":\"{sg}\",\
          \"sibling_session\":\"{ss}\",\"overlap_paths\":{op}}}\n",
         ts = ts,
+        cg = json_escape(claim_gap),
+        sg = json_escape(sibling_gap),
+        ss = json_escape(sibling_session),
+        op = paths_json,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1763: predictive collision — live git-diff intersection ───────────
+
+/// Result of a git-diff intersection scan against sibling leases.
+struct DiffIntersectionResult {
+    sibling_session: String,
+    sibling_gap: String,
+    overlap_paths: Vec<String>,
+}
+
+/// Files a sibling's worktree has actually touched: committed diff vs the
+/// merge-base with `base_branch`, unioned with any uncommitted working-tree
+/// changes. Best-effort — returns an empty set on any git failure (missing
+/// worktree, detached state, etc.) so a broken sibling never blocks a claim.
+fn worktree_diff_files(worktree: &Path, base_branch: &str) -> Vec<String> {
+    if !worktree.is_dir() {
+        return vec![];
+    }
+    let wt_str = worktree.to_string_lossy().to_string();
+    let mut files = std::collections::BTreeSet::new();
+
+    let committed = Command::new("git")
+        .args([
+            "-C",
+            &wt_str,
+            "diff",
+            "--name-only",
+            &format!("{base_branch}...HEAD"),
+        ])
+        .output();
+    if let Ok(out) = committed {
+        if out.status.success() {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                let l = line.trim();
+                if !l.is_empty() {
+                    files.insert(l.to_string());
+                }
+            }
+        }
+    }
+
+    let working = Command::new("git")
+        .args(["-C", &wt_str, "diff", "--name-only", "HEAD"])
+        .output();
+    if let Ok(out) = working {
+        if out.status.success() {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                let l = line.trim();
+                if !l.is_empty() {
+                    files.insert(l.to_string());
+                }
+            }
+        }
+    }
+
+    files.into_iter().collect()
+}
+
+/// INFRA-1763: for each active sibling lease recorded in state.db's `leases`
+/// table, compute its LIVE git-diff file set and intersect it with this
+/// claim's declared `--paths`. Unlike INFRA-1394 (static AC-text hot-file
+/// match) and INFRA-1116 (declared-paths-vs-declared-paths overlap), this
+/// checks a sibling's ACTUAL edited files — catches collisions a sibling's
+/// declared scope doesn't reveal because their real work has drifted outside
+/// what they declared at claim time.
+fn check_diff_intersection(
+    repo_root: &Path,
+    gap_id: &str,
+    own_session: &str,
+    claim_paths: &[String],
+    base_branch: &str,
+) -> Option<DiffIntersectionResult> {
+    if claim_paths.is_empty() {
+        return None;
+    }
+    let db_path = repo_root.join(".chump/state.db");
+    if !db_path.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open(&db_path).ok()?;
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut stmt = conn
+        .prepare(
+            "SELECT session_id, gap_id, worktree FROM leases \
+             WHERE session_id != ?1 AND gap_id != ?2 AND expires_at > ?3",
+        )
+        .ok()?;
+    let rows: Vec<(String, String, String)> = stmt
+        .query_map(rusqlite::params![own_session, gap_id, now_secs], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .ok()?
+        .flatten()
+        .collect();
+
+    for (sibling_session, sibling_gap, worktree_str) in rows {
+        if worktree_str.is_empty() {
+            continue;
+        }
+        let diff_files = worktree_diff_files(Path::new(&worktree_str), base_branch);
+        if diff_files.is_empty() {
+            continue;
+        }
+        let mut overlap: Vec<String> = claim_paths
+            .iter()
+            .filter(|cp| {
+                diff_files.iter().any(|df| {
+                    df == cp.as_str()
+                        || (cp.ends_with('/') && df.starts_with(cp.as_str()))
+                        || (!cp.ends_with('/') && df.starts_with(&format!("{cp}/")))
+                })
+            })
+            .cloned()
+            .collect();
+        if !overlap.is_empty() {
+            overlap.sort();
+            overlap.dedup();
+            return Some(DiffIntersectionResult {
+                sibling_session,
+                sibling_gap,
+                overlap_paths: overlap,
+            });
+        }
+    }
+    None
+}
+
+/// INFRA-1763: emit kind=claim_diff_intersection_predicted (or
+/// `_bypassed` when `--force-overlap` was used) to ambient.jsonl.
+/// Best-effort — never blocks the claim flow.
+fn emit_claim_diff_intersection_event(
+    ambient_log: &Path,
+    claim_gap: &str,
+    sibling_gap: &str,
+    sibling_session: &str,
+    overlap_paths: &[String],
+    forced: bool,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlap_paths).unwrap_or_else(|_| "[]".to_string());
+    let kind = if forced {
+        "claim_diff_intersection_bypassed"
+    } else {
+        "claim_diff_intersection_predicted"
+    };
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
+         \"claim_gap\":\"{cg}\",\"sibling_gap\":\"{sg}\",\
+         \"sibling_session\":\"{ss}\",\"overlap_paths\":{op}}}\n",
+        ts = ts,
+        kind = kind,
         cg = json_escape(claim_gap),
         sg = json_escape(sibling_gap),
         ss = json_escape(sibling_session),
