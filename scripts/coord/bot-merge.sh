@@ -2097,6 +2097,27 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
             _claim_out=""
             _claim_out="$(chump claim "$gid" $_claim_extra 2>&1)" || _claim_rc=$?
             if [[ "$_claim_rc" -ne 0 ]]; then
+                # CREDIBLE-160: an INFRA-1970 lease conflict with OUR OWN
+                # session is the NORMAL case for fleet workers — the worker's
+                # pick already claimed the gap under the same CHUMP_SESSION_ID
+                # this process inherits. Recognize it and reuse the worktree +
+                # branch instead of dying (previously fell through to a silent
+                # claim_failed exit, blocking every chumpd-eu ship).
+                if printf '%s' "$_claim_out" | grep -qi "already claimed by session"; then  # pipefail-sweep-allowed
+                    _claim_lease_session="$(printf '%s' "$_claim_out" \
+                        | grep -oiE "already claimed by session [^ ]+" \
+                        | awk '{print $NF}' | head -1)"
+                    if [[ -n "${CHUMP_SESSION_ID:-}" && "$_claim_lease_session" == "$CHUMP_SESSION_ID" ]]; then
+                        info "CREDIBLE-160: lease already held by our session ($CHUMP_SESSION_ID) — reusing existing worktree + branch"
+                        chump session-track --start "$gid" >/dev/null 2>&1 || true
+                        continue
+                    fi
+                    red "CREDIBLE-160: gap $gid lease held by DIFFERENT session (${_claim_lease_session:-unknown}, ours: ${CHUMP_SESSION_ID:-<unset>})"
+                    printf '%s\n' "$_claim_out" >&2
+                    _bm_step_done "claim" "$_claim_rc"
+                    _BM_TERMINAL_STATE="claim_failed_session_mismatch"
+                    exit "$_claim_rc"
+                fi
                 _claim_worktree_exists=0
                 if printf '%s' "$_claim_out" | grep -qi "worktree.*already\|already.*worktree\|worktree path already"; then  # pipefail-sweep-allowed
                     _claim_worktree_exists=1
