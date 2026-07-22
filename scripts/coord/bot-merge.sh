@@ -3062,7 +3062,10 @@ _bm_step_start "pr_create"
 # INFRA-1082: cache-first branch→PR-number lookup; REST fallback on miss.
 EXISTING_PR=""
 if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
-    _bm_exist_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null)"
+    # EFFECTIVE-312: on hosts without the webhook cache feed the lookup
+    # errors on miss — bare assignment under set -e killed the ship at
+    # pr_create (cycle-10 xtrace).
+    _bm_exist_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null || true)"
     if [[ -n "$_bm_exist_meta" ]]; then
         EXISTING_PR="$(printf '%s' "$_bm_exist_meta" | \
             python3 -c "import sys,json; print(json.load(sys.stdin).get('number','') or '')" \
