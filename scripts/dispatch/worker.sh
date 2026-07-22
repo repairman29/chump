@@ -1378,8 +1378,20 @@ Operator or sibling worker can rescue this branch via:
                 # so this gap is carried by free-tier providers (Cerebras,
                 # Groq, Together, etc.). Reflection rows tag backend=chump-local
                 # so COG-026 A/B can split outcomes.
-                # EFFECTIVE-314: per-attempt model override from the escalation ladder.
-                [[ -n "$_cl_model" ]] && export OPENAI_MODEL="$_cl_model"
+                # EFFECTIVE-314: per-attempt model override. Setting only
+                # OPENAI_MODEL is NOT enough — execute_gap's free-tier rotation
+                # reads CHUMP_FREE_TIER_PROVIDERS and re-activates the first
+                # provider in that list, clobbering OPENAI_MODEL. So pin the
+                # provider list to a SINGLE entry for the escalated model,
+                # reusing the "@base:KEY_ENV" suffix from the existing list.
+                if [[ -n "$_cl_model" ]]; then
+                    export OPENAI_MODEL="$_cl_model"
+                    if [[ -n "${CHUMP_FREE_TIER_PROVIDERS:-}" ]]; then
+                        _prov_suffix="${CHUMP_FREE_TIER_PROVIDERS%%,*}"   # first entry
+                        _prov_suffix="@${_prov_suffix#*@}"               # strip model, keep @base:KEY
+                        export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix}"
+                    fi
+                fi
                 # shellcheck disable=SC2086
                 $TO chump --execute-gap "$GAP_ID"
             ) >"$cycle_log" 2>&1
