@@ -1002,6 +1002,42 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.6b. INFRA-1763: Lease-time predictive collision detection — git-diff
+    // intersection across active leases. Advisory-only (never blocks); see
+    // docs/design/COLLISION_PREDICTION_SCHEMA.md. Bypass:
+    // CHUMP_CLAIM_GIT_DIFF_COLLISION_SKIP=1.
+    if std::env::var("CHUMP_CLAIM_GIT_DIFF_COLLISION_SKIP").as_deref() != Ok("1") {
+        let claim_paths_vec: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !claim_paths_vec.is_empty() {
+            for collision in check_git_diff_collision(
+                &lock_dir,
+                &args.repo_root,
+                &args.gap_id,
+                &session_id,
+                &claim_paths_vec,
+            ) {
+                eprintln!(
+                    "[claim] INFRA-1763: predicted collision with {} (session {}) — shared paths: {}",
+                    collision.sibling_gap,
+                    collision.sibling_session,
+                    collision.shared_paths.join(", ")
+                );
+                emit_collision_predicted_event(
+                    &ambient_log,
+                    &args.gap_id,
+                    &session_id,
+                    &collision.sibling_gap,
+                    &collision.sibling_session,
+                    &collision.shared_paths,
+                );
+            }
+        }
+    }
+
     // 5.7. INFRA-1692: pre-flight team-nugget search.
     //
     // Marcus M-D arc: when an operator runs `chump claim GAP-ID`, surface
@@ -3306,6 +3342,240 @@ fn emit_claim_hot_file_overlap_event(
         sg = json_escape(sibling_gap),
         ss = json_escape(sibling_session),
         op = paths_json,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1763: Lease-time predictive collision detection ───────────────────
+//
+// The hot-file check above (INFRA-1394) compares DECLARED paths (the
+// `paths[]` field a sibling lease writes at claim time) against a curated
+// list of known-hot files. It has two blind spots: (a) a sibling's
+// declared paths can be stale or overly broad (`src/`) while their actual
+// edits are narrower or elsewhere, and (b) it only fires for the curated
+// hot-file list, not for arbitrary path overlap.
+//
+// This check closes both gaps by reading each sibling's ACTUAL uncommitted
+// git diff in their worktree and intersecting it against the new claim's
+// declared `--paths`. It is advisory-only (never blocks the claim) since
+// it is a new signal without an established false-positive rate yet —
+// see docs/design/COLLISION_PREDICTION_SCHEMA.md for the wire format this
+// implements (`kind=collision_predicted`, evidence.source=lease_overlap).
+
+/// Result of a git-diff-based collision check against one sibling lease.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitDiffCollisionResult {
+    sibling_session: String,
+    sibling_gap: String,
+    shared_paths: Vec<String>,
+}
+
+/// Resolve a sibling lease's `worktree` field to a real filesystem path,
+/// trying the conventions used across the codebase in order. Returns
+/// `None` if no candidate resolves to a directory containing a `.git`
+/// entry (worktree or full repo) — best-effort, never errors.
+fn resolve_sibling_worktree_path(repo_root: &Path, worktree_field: &str) -> Option<PathBuf> {
+    if worktree_field.is_empty() {
+        return None;
+    }
+    let candidates: Vec<PathBuf> = if worktree_field.starts_with('/') {
+        vec![PathBuf::from(worktree_field)]
+    } else {
+        vec![
+            // Sibling to the main repo root, e.g. /tmp/chump-infra-1234.
+            repo_root
+                .parent()
+                .map(|p| p.join(worktree_field))
+                .unwrap_or_else(|| repo_root.join(worktree_field)),
+            // Claude Code convention: .claude/worktrees/<name>.
+            repo_root.join(".claude/worktrees").join(worktree_field),
+            // atomic_claim.rs convention: ${CHUMP_WORKTREE_BASE}/chump-<gap-lower>.
+            std::env::var("CHUMP_WORKTREE_BASE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("/tmp"))
+                .join(worktree_field),
+        ]
+    };
+    candidates.into_iter().find(|c| c.join(".git").exists())
+}
+
+/// Return the set of repo-relative paths a sibling worktree has actually
+/// touched (uncommitted): tracked modifications + staged changes +
+/// untracked files. Best-effort — returns an empty vec on any git failure
+/// (missing worktree, not a git repo, etc.) so callers never treat an
+/// error as a false collision.
+fn git_diff_changed_files(worktree_path: &Path) -> Vec<String> {
+    let mut files = std::collections::BTreeSet::new();
+    if let Ok(out) = run_git(worktree_path, &["diff", "--name-only", "HEAD"]) {
+        for line in out.lines() {
+            let l = line.trim();
+            if !l.is_empty() {
+                files.insert(l.to_string());
+            }
+        }
+    }
+    if let Ok(out) = run_git(
+        worktree_path,
+        &["status", "--porcelain", "--untracked-files=all"],
+    ) {
+        for line in out.lines() {
+            // Porcelain format: "XY path" (or "XY orig -> path" for renames).
+            let rest = line.get(3..).unwrap_or("").trim();
+            let path = rest.rsplit(" -> ").next().unwrap_or(rest).trim();
+            if !path.is_empty() {
+                files.insert(path.to_string());
+            }
+        }
+    }
+    files.into_iter().collect()
+}
+
+/// Does `file` fall under lease-declared `pattern`? Mirrors the
+/// prefix/glob semantics documented in crates/chump-agent-lease (exact
+/// match, trailing-slash directory prefix, or trailing `/**`).
+fn path_matches_claim_pattern(file: &str, pattern: &str) -> bool {
+    if pattern == "**" {
+        return true;
+    }
+    if pattern == file {
+        return true;
+    }
+    if let Some(dir) = pattern.strip_suffix("/**") {
+        return file.starts_with(dir);
+    }
+    if let Some(dir) = pattern.strip_suffix('/') {
+        return file.starts_with(dir) && file[dir.len()..].starts_with('/');
+    }
+    false
+}
+
+/// INFRA-1763: For every OTHER live lease, resolve its worktree and check
+/// whether its actual (uncommitted) git diff intersects the new claim's
+/// declared `paths[]`. Returns one result per sibling with a nonempty
+/// intersection.
+fn check_git_diff_collision(
+    lock_dir: &Path,
+    repo_root: &Path,
+    gap_id: &str,
+    own_session: &str,
+    claim_paths: &[String],
+) -> Vec<GitDiffCollisionResult> {
+    let mut results = Vec::new();
+    if claim_paths.is_empty() {
+        return results;
+    }
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return results;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem == "ambient" {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+        let sid = val
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sid.is_empty() || sid == own_session {
+            continue;
+        }
+        let sibling_gap = val
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sibling_gap == gap_id {
+            continue;
+        }
+        let worktree_field = val
+            .get("worktree")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let Some(wt_path) = resolve_sibling_worktree_path(repo_root, &worktree_field) else {
+            continue;
+        };
+        let changed = git_diff_changed_files(&wt_path);
+        if changed.is_empty() {
+            continue;
+        }
+        let mut shared: Vec<String> = claim_paths
+            .iter()
+            .flat_map(|pattern| {
+                changed
+                    .iter()
+                    .filter(move |f| path_matches_claim_pattern(f, pattern))
+            })
+            .cloned()
+            .collect();
+        if shared.is_empty() {
+            continue;
+        }
+        shared.sort();
+        shared.dedup();
+        results.push(GitDiffCollisionResult {
+            sibling_session: sid,
+            sibling_gap,
+            shared_paths: shared,
+        });
+    }
+    results
+}
+
+/// INFRA-1763: Emit `kind=collision_predicted` per
+/// docs/design/COLLISION_PREDICTION_SCHEMA.md (schema_version
+/// collision-prediction-v1). Best-effort — never blocks the claim flow.
+fn emit_collision_predicted_event(
+    ambient_log: &Path,
+    my_gap: &str,
+    my_session: &str,
+    sibling_gap: &str,
+    sibling_session: &str,
+    shared_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(shared_paths).unwrap_or_else(|_| "[]".to_string());
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"collision_predicted\",\
+         \"schema_version\":\"collision-prediction-v1\",\
+         \"agents\":[{{\"session\":\"{s1}\",\"current_gap\":\"{g1}\"}},\
+         {{\"session\":\"{s2}\",\"current_gap\":\"{g2}\"}}],\
+         \"predicted_collision_ts\":\"{ts}\",\"confidence\":0.95,\
+         \"evidence\":{{\"source\":\"lease_overlap\",\
+         \"details\":\"git-diff intersection across active leases at claim time\",\
+         \"shared_paths\":{sp},\"lookahead_window_s\":0}},\
+         \"recommended_action\":\"dispatch_handoff\",\"session\":\"{s1}\"}}\n",
+        ts = ts,
+        s1 = json_escape(my_session),
+        g1 = json_escape(my_gap),
+        s2 = json_escape(sibling_session),
+        g2 = json_escape(sibling_gap),
+        sp = paths_json,
     );
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -6037,5 +6307,225 @@ mod release_lease_tests {
             .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
             .unwrap();
         assert_eq!(surviving, "EFFECTIVE-216");
+    }
+
+    // ── INFRA-1763: git-diff collision prediction tests ──────────────────────
+
+    #[test]
+    fn path_matches_claim_pattern_exact_and_dir_and_glob() {
+        assert!(path_matches_claim_pattern("src/foo.rs", "src/foo.rs"));
+        assert!(!path_matches_claim_pattern("src/foo.rs", "src/bar.rs"));
+        assert!(path_matches_claim_pattern("src/foo/bar.rs", "src/foo/"));
+        assert!(!path_matches_claim_pattern("src/foobar.rs", "src/foo/"));
+        assert!(path_matches_claim_pattern("src/foo/bar.rs", "src/foo/**"));
+        assert!(path_matches_claim_pattern("anything", "**"));
+    }
+
+    fn init_git_repo(path: &Path) {
+        std::fs::create_dir_all(path).unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(path)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.local"])
+            .current_dir(path)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(path)
+            .status()
+            .unwrap();
+        std::fs::write(path.join("README.md"), "init").unwrap();
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(path)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(path)
+            .status()
+            .unwrap();
+    }
+
+    #[test]
+    fn git_diff_changed_files_finds_tracked_and_untracked_edits() {
+        let tmp = mk_test_tmp("gitdiff");
+        init_git_repo(&tmp);
+        // Modify a tracked file.
+        std::fs::write(tmp.join("README.md"), "changed").unwrap();
+        // Add an untracked file.
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        std::fs::write(tmp.join("src/new_file.rs"), "fn main() {}").unwrap();
+
+        let changed = git_diff_changed_files(&tmp);
+        assert!(changed.contains(&"README.md".to_string()));
+        assert!(changed.contains(&"src/new_file.rs".to_string()));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn git_diff_changed_files_empty_when_no_changes() {
+        let tmp = mk_test_tmp("gitdiff-clean");
+        init_git_repo(&tmp);
+        let changed = git_diff_changed_files(&tmp);
+        assert!(changed.is_empty());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn git_diff_changed_files_empty_on_non_git_dir() {
+        let tmp = mk_test_tmp("not-a-git-repo");
+        let changed = git_diff_changed_files(&tmp);
+        assert!(changed.is_empty());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn check_git_diff_collision_detects_overlap_with_sibling_worktree() {
+        let root = mk_test_tmp("collision-root");
+        let lock_dir = root.join(".chump-locks");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+
+        // Sibling's worktree: a real git repo with an uncommitted edit to
+        // src/shared.rs — NOT declared in its lease's paths[] (simulating a
+        // stale/absent declaration the hot-file check would miss).
+        let sibling_wt = root.join("sibling-wt");
+        init_git_repo(&sibling_wt);
+        std::fs::create_dir_all(sibling_wt.join("src")).unwrap();
+        std::fs::write(sibling_wt.join("src/shared.rs"), "actual edit").unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let exp = iso8601_from_unix(now + 3_600);
+        std::fs::write(
+            lock_dir.join("sibling-session.json"),
+            format!(
+                r#"{{"session_id":"sibling-session","gap_id":"INFRA-OTHER","paths":[],"expires_at":"{}","worktree":"sibling-wt"}}"#,
+                exp
+            ),
+        )
+        .unwrap();
+
+        let claim_paths = vec!["src/shared.rs".to_string()];
+        let results = check_git_diff_collision(
+            &lock_dir,
+            &root,
+            "INFRA-MINE",
+            "my-session",
+            &claim_paths,
+        );
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].sibling_session, "sibling-session");
+        assert_eq!(results[0].sibling_gap, "INFRA-OTHER");
+        assert_eq!(results[0].shared_paths, vec!["src/shared.rs".to_string()]);
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn check_git_diff_collision_empty_when_no_path_overlap() {
+        let root = mk_test_tmp("collision-noop");
+        let lock_dir = root.join(".chump-locks");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+
+        let sibling_wt = root.join("sibling-wt");
+        init_git_repo(&sibling_wt);
+        std::fs::write(sibling_wt.join("unrelated.rs"), "edit").unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let exp = iso8601_from_unix(now + 3_600);
+        std::fs::write(
+            lock_dir.join("sibling-session2.json"),
+            format!(
+                r#"{{"session_id":"sibling-session2","gap_id":"INFRA-OTHER2","paths":[],"expires_at":"{}","worktree":"sibling-wt"}}"#,
+                exp
+            ),
+        )
+        .unwrap();
+
+        let claim_paths = vec!["src/shared.rs".to_string()];
+        let results = check_git_diff_collision(
+            &lock_dir,
+            &root,
+            "INFRA-MINE2",
+            "my-session",
+            &claim_paths,
+        );
+        assert!(results.is_empty());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn check_git_diff_collision_skips_self_session() {
+        let root = mk_test_tmp("collision-self");
+        let lock_dir = root.join(".chump-locks");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let exp = iso8601_from_unix(now + 3_600);
+        std::fs::write(
+            lock_dir.join("my-session.json"),
+            format!(
+                r#"{{"session_id":"my-session","gap_id":"INFRA-OTHER","paths":[],"expires_at":"{}","worktree":"whatever"}}"#,
+                exp
+            ),
+        )
+        .unwrap();
+
+        let claim_paths = vec!["src/shared.rs".to_string()];
+        let results = check_git_diff_collision(
+            &lock_dir,
+            &root,
+            "INFRA-MINE3",
+            "my-session",
+            &claim_paths,
+        );
+        assert!(results.is_empty(), "must not collide with own lease");
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn emit_collision_predicted_event_writes_schema_compliant_json() {
+        let tmp = mk_test_tmp("collision-emit");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_collision_predicted_event(
+            &ambient,
+            "INFRA-MINE",
+            "my-session",
+            "INFRA-OTHER",
+            "sibling-session",
+            &["src/shared.rs".to_string()],
+        );
+        let body = std::fs::read_to_string(&ambient).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+        assert_eq!(parsed["kind"], "collision_predicted");
+        assert_eq!(parsed["schema_version"], "collision-prediction-v1");
+        assert_eq!(parsed["evidence"]["source"], "lease_overlap");
+        assert_eq!(
+            parsed["evidence"]["shared_paths"],
+            serde_json::json!(["src/shared.rs"])
+        );
+        assert_eq!(parsed["agents"][0]["session"], "my-session");
+        assert_eq!(parsed["agents"][1]["session"], "sibling-session");
+        assert!(parsed["confidence"].as_f64().unwrap() > 0.0);
+        assert!(parsed["recommended_action"].is_string());
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

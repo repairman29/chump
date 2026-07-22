@@ -5137,6 +5137,31 @@ events:
       app.js, main.rs. The list is tunable in scripts/coord/lib/hot-files.yaml.
       Pairs with INFRA-1389 merge drivers (same region → no conflict) but the
       proactive block here saves the rebase cycle entirely for non-merge-driver paths.
+  # ── INFRA-1763: lease-time predictive collision detection ─────────────────
+  - kind: collision_predicted
+    effect_metric: self
+    emitter: src/atomic_claim.rs emit_collision_predicted_event (INFRA-1763)
+    trigger: >
+      chump claim computed the actual (uncommitted) git diff of every OTHER
+      live lease's worktree and found it intersects the new claim's declared
+      --paths. Unlike claim_hot_file_overlap (declared paths[] vs a curated
+      hot-file list), this compares REAL edits against arbitrary declared
+      paths, so it catches sibling leases whose paths[] is stale, empty, or
+      too broad/narrow to reflect what they're actually touching.
+      Advisory-only — never blocks the claim. failure_class: transient
+      (resolves once either session releases/commits); cost is bounded to
+      one `git diff` + one `git status` per sibling lease (typically <5,
+      each <50ms) — negligible relative to claim's existing fetch/doctor
+      calls. Bypass: CHUMP_CLAIM_GIT_DIFF_COLLISION_SKIP=1.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, schema_version, agents, predicted_collision_ts, confidence, evidence, recommended_action, session]
+    docs: |
+      Wire format defined in docs/design/COLLISION_PREDICTION_SCHEMA.md
+      (schema_version collision-prediction-v1). This is the first emitter
+      of that schema (evidence.source=lease_overlap only; the other three
+      evidence sources — path_pattern_match, gap_dependency_chain,
+      skill_starvation — remain unimplemented follow-ups). Smoke test:
+      scripts/ci/test-collision-prediction.sh.
   # ── INFRA-1437: disk_critical auto-action ─────────────────────────────────
   - kind: disk_critical_auto_remediated
     effect_metric: self
