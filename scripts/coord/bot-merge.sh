@@ -2065,7 +2065,11 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                         [[ -f "$_lf" ]] || continue
                         if [[ "$(lease_gap_id "$_lf")" == "$gid" ]]; then
                             _lease_wt="$(lease_worktree "$_lf")"
-                            [[ -n "$_lease_wt" ]] && break
+                            # EFFECTIVE-312: bare [[ ]] && break as the loop
+                            # body's last statement leaks rc=1 into the for
+                            # loop under set -e — the silent claim-step killer
+                            # (proven by cycle-7 xtrace on chumpd-eu).
+                            if [[ -n "$_lease_wt" ]]; then break; fi
                         fi
                     done
                 fi
