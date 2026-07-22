@@ -1476,7 +1476,13 @@ fi
 # failure without hitting "lease conflict". Guards are evaluated at exit time
 # so late-set CHUMP_SESSION_ID values are captured. On successful ship, the
 # explicit rm near the end of the script fires first; the trap is a no-op there.
-trap '[[ "${DRY_RUN:-0}" -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
+# ZERO-WASTE-023: bash keeps ONE EXIT trap — this line used to REPLACE the
+# '_bm_cleanup' EXIT trap set earlier, so no exit path ever killed the
+# heartbeat/watchdog subshells. Every bot-merge exit orphaned a heartbeat
+# loop that appended "⏳ alive — step=<stale>" to the cycle log every 30s
+# forever (30+ ghost processes on chumpd-eu masqueraded as init hangs).
+# Chain _bm_cleanup here instead of clobbering it.
+trap '_bm_cleanup; [[ "${DRY_RUN:-0}" -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" == "HEAD" ]]; then
