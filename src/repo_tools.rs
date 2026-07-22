@@ -646,16 +646,48 @@ impl Tool for PatchFileTool {
             None
         };
 
+        // INFRA-3409 tier-e: repair malformed `@@` hunk headers (missing or
+        // garbage line-range numbers) and retry. This is a PARSE-time repair,
+        // not an apply-time one — a bare `@@` fails `Patch::from_single`
+        // immediately, so tiers a-d never even get a chance to run (every one
+        // of them calls the same parser first). `looks_headerless` doesn't
+        // catch this either: the diff can have perfectly good `---`/`+++`
+        // file headers and still carry a broken `@@` line. Found via
+        // CHUMP_PATCH_DEBUG_DIR capture on chumpd-eu, 2026-07-22 — the FIRST
+        // real M3 patch failure payload had exactly this shape.
+        let repaired_result: Option<Result<String, patch_apply::PatchApplyError>> = if strict_result
+            .is_err()
+            && fuzzy_result.as_ref().is_none_or(|r| r.is_err())
+            && headerless_result.as_ref().is_none_or(|r| r.is_err())
+            && anchored_result.as_ref().is_none_or(|r| r.is_err())
+        {
+            tracing::info!(
+                path = %path_str,
+                "patch_file tiers a-d failed, attempting tier-e header-repair apply"
+            );
+            let d = diff_owned.clone();
+            let c = content.clone();
+            tokio::task::spawn_blocking(move || {
+                patch_apply::apply_unified_diff_repaired_headers(&c, &d)
+            })
+            .await
+            .ok()
+        } else {
+            None
+        };
+
         let (new_content, mode) = match (
             &strict_result,
             &fuzzy_result,
             &headerless_result,
             &anchored_result,
+            &repaired_result,
         ) {
-            (Ok(nc), _, _, _) => (nc.clone(), "applied"),
-            (_, Some(Ok(nc)), _, _) => (nc.clone(), "applied-fuzzy"),
-            (_, _, Some(Ok(nc)), _) => (nc.clone(), "applied-headerless"),
-            (_, _, _, Some(Ok(nc))) => (nc.clone(), "applied-anchored"),
+            (Ok(nc), _, _, _, _) => (nc.clone(), "applied"),
+            (_, Some(Ok(nc)), _, _, _) => (nc.clone(), "applied-fuzzy"),
+            (_, _, Some(Ok(nc)), _, _) => (nc.clone(), "applied-headerless"),
+            (_, _, _, Some(Ok(nc)), _) => (nc.clone(), "applied-anchored"),
+            (_, _, _, _, Some(Ok(nc))) => (nc.clone(), "applied-repaired-headers"),
             _ => {
                 let e = strict_result.as_ref().unwrap_err();
                 chump_log::log_patch_file(
@@ -680,10 +712,11 @@ impl Tool for PatchFileTool {
                 let mut msg = patch_recovery_message(&content, diff, e);
                 msg.push_str(
                     "\n\nNote: patch_file also failed with fuzzy matching (±3 line drift), \
-                     headerless parsing, and content-anchored matching (INFRA-3407 — your \
-                     context lines don't appear in the file, or appear more than once). \
-                     Call read_file on this file NOW, copy the exact lines you want to \
-                     change into the diff's context/remove lines, and retry patch_file.",
+                     headerless parsing, content-anchored matching, and hunk-header repair \
+                     (INFRA-3407 — your context lines don't appear in the file, or appear \
+                     more than once). Call read_file on this file NOW, copy the exact lines \
+                     you want to change into the diff's context/remove lines, and retry \
+                     patch_file.",
                 );
                 return Ok(msg);
             }

@@ -503,9 +503,100 @@ pub fn looks_headerless(diff: &str) -> bool {
     !diff_has_filename_headers(diff) && diff.lines().any(|l| l.starts_with("@@"))
 }
 
+/// INFRA-3409: repair hunk headers with missing/garbage line-range numbers
+/// (observed on chumpd-eu: MiniMax M3 emitting a bare `@@` with no numbers at
+/// all) BEFORE parsing. This is a parse-time repair, not an apply-time one —
+/// a malformed `@@` line fails `Patch::from_single` immediately, so
+/// strict/fuzzy/headerless/anchored never get a chance to run at all
+/// (`parse_single_file_patch` is the first call in every one of them).
+/// `looks_headerless` doesn't catch this case either: the diff can have
+/// perfectly good `---`/`+++` file headers and still have a broken `@@` line.
+///
+/// Recomputes self-consistent `-old_start,old_count +new_start,new_count`
+/// values by counting the hunk's own context/remove/add lines and stacking
+/// hunks sequentially. The absolute start-line values don't need to be
+/// CORRECT: strict/fuzzy may seek to the wrong spot in the file and simply
+/// fail over to the anchored tier, which ignores range info entirely and
+/// matches by content only.
+fn repair_hunk_headers(diff: &str) -> String {
+    let lines: Vec<&str> = diff.lines().collect();
+    let mut out = String::with_capacity(diff.len() + 64);
+    let mut i = 0;
+    let mut old_cursor: usize = 1;
+    let mut new_cursor: usize = 1;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.starts_with("@@") {
+            let mut j = i + 1;
+            let mut old_count = 0usize;
+            let mut new_count = 0usize;
+            while j < lines.len() && !lines[j].starts_with("@@") {
+                let l = lines[j];
+                if l.starts_with('\\') {
+                    // "\ No newline at end of file" — not a content line.
+                } else if l.starts_with('-') && !l.starts_with("---") {
+                    old_count += 1;
+                } else if l.starts_with('+') && !l.starts_with("+++") {
+                    new_count += 1;
+                } else {
+                    // Context line (including a blank line, which unified
+                    // diff represents as a lone space or an empty line).
+                    old_count += 1;
+                    new_count += 1;
+                }
+                j += 1;
+            }
+            out.push_str(&format!(
+                "@@ -{old_cursor},{old_count} +{new_cursor},{new_count} @@\n"
+            ));
+            for l in &lines[i + 1..j] {
+                out.push_str(l);
+                out.push('\n');
+            }
+            old_cursor += old_count;
+            new_cursor += new_count;
+            i = j;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+            i += 1;
+        }
+    }
+    out
+}
+
+/// INFRA-3409 tier-e: parse+apply after repairing malformed hunk headers.
+/// Tries strict, then fuzzy, then content-anchored (in that order — cheap
+/// to attempt all three since the diff is already small).
+pub fn apply_unified_diff_repaired_headers(
+    old: &str,
+    diff: &str,
+) -> Result<String, PatchApplyError> {
+    let repaired = repair_hunk_headers(diff);
+    let p = parse_single_file_patch(&repaired)?;
+    apply_patch_strict(old, &p)
+        .or_else(|_| apply_patch_fuzzy(old, &p))
+        .or_else(|_| apply_patch_anchored(old, &p))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bare_at_at_hunk_header_fails_at_parse_before_any_tier() {
+        // Real payload captured from chumpd-eu (INFRA-3407 CHUMP_PATCH_DEBUG_DIR,
+        // 2026-07-22): MiniMax M3 sometimes emits `@@` with NO numeric range at
+        // all, instead of `@@ -l,c +l,c @@`. This fails at PARSE — before any
+        // apply tier (strict/fuzzy/headerless/anchored) gets a chance, since
+        // every one of them calls parse_single_file_patch first. Confirms tier-e
+        // (repair_hunk_headers) is necessary, not redundant with tier-d.
+        let diff = "--- a/bin/chump\n+++ b/bin/chump\n@@\n old\n+added\n other\n";
+        assert!(matches!(
+            parse_single_file_patch(diff),
+            Err(PatchApplyError::Parse(_))
+        ));
+    }
 
     static LAO: &str = "\
 The Way that can be told of is not the eternal Way;
@@ -793,5 +884,60 @@ But after they are produced,
 ";
         let err = apply_unified_diff_anchored(LAO, diff).unwrap_err();
         assert!(matches!(err, PatchApplyError::ContextMismatch { .. }));
+    }
+
+    // ── INFRA-3409 tier-e: hunk-header repair ────────────────────────────────
+
+    #[test]
+    fn tier_e_repairs_bare_at_at_and_applies() {
+        // Same malformed diff as the earlier parse-failure test, targeting
+        // real content this time — tier-e must repair the header AND land
+        // the edit.
+        let diff = "--- a/lao\n+++ b/lao\n@@\n The Nameless is the origin of Heaven and Earth;\n-The Named is the mother of all things.\n+The named is the mother of all things.\n";
+        assert!(
+            apply_unified_diff_fuzzy(LAO, diff).is_err(),
+            "fuzzy can't help — parse fails before fuzzy ever runs"
+        );
+        let got = apply_unified_diff_repaired_headers(LAO, diff).unwrap();
+        assert!(got.contains("The named is the mother of all things."));
+        assert!(!got.contains("The Named is the mother of all things."));
+    }
+
+    #[test]
+    fn tier_e_handles_multiple_malformed_hunks() {
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ garbage @@
+-The Way that can be told of is not the eternal Way;
++THE WAY THAT CAN BE TOLD.
+@@
+-The two are the same,
++THE TWO ARE THE SAME.
+";
+        let got = apply_unified_diff_repaired_headers(LAO, diff).unwrap();
+        assert!(got.contains("THE WAY THAT CAN BE TOLD."));
+        assert!(got.contains("THE TWO ARE THE SAME."));
+    }
+
+    #[test]
+    fn tier_e_falls_through_to_anchored_when_repaired_position_is_wrong() {
+        // Two hunks: the first is correctly-headered, the second is bare `@@`
+        // and targets content far past what sequential-stacking would place
+        // it at. Repaired-strict/fuzzy will seek the wrong spot for hunk 2;
+        // tier-e must fall through to anchored internally and still land it.
+        let diff = "\
+--- a/lao
++++ b/lao
+@@ -1,1 +1,1 @@
+-The Way that can be told of is not the eternal Way;
++THE WAY.
+@@
+-But after they are produced,
++BUT AFTER THEY ARE PRODUCED.
+";
+        let got = apply_unified_diff_repaired_headers(LAO, diff).unwrap();
+        assert!(got.contains("THE WAY."));
+        assert!(got.contains("BUT AFTER THEY ARE PRODUCED."));
     }
 }
