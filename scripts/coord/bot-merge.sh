@@ -248,11 +248,15 @@ _bm_cleanup() {
     # META-156 AC#7: emit bot_merge_completed roll-up on any exit path.
     _bm_completed_emit 2>/dev/null || true
     # META-156 AC#6: kill budget-warn watchdog subprocesses on exit.
-    [[ -n "${_BM_BUDGET_WARN_PID:-}" ]] && kill "$_BM_BUDGET_WARN_PID" 2>/dev/null || true
-    [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
-    [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
-    # INFRA-1422: cancel any live stage-budget watchdog on exit.
-    [[ -n "${__STAGE_BUDGET_PID:-}" ]] && kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
+    # EFFECTIVE-312: kill each watchdog's CHILDREN first (pkill -P) — their
+    # sleep grandchildren inherit the INFRA-860 flock fd and hold the global
+    # bot-merge.lock forever after the subshell dies (cycle-11 evidence: an
+    # orphan 'sleep 300' held the lock and timed out the next ship's flock).
+    for _cl_pid in "${_BM_BUDGET_WARN_PID:-}" "${_BM_HEALTH_PID:-}" "${_BM_WATCHDOG_PID:-}" "${__STAGE_BUDGET_PID:-}"; do
+        [[ -n "$_cl_pid" ]] || continue
+        pkill -P "$_cl_pid" 2>/dev/null || true
+        kill "$_cl_pid" 2>/dev/null || true
+    done
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" "${_BM_PROGRESS_FILE:-}" 2>/dev/null || true
     # INFRA-1035: if the last transition was "start" (no matching "done"),
     # we crashed mid-step — record that so bot-merge-recover.sh can report it.
@@ -2064,8 +2068,15 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                     for _lf in "$LOCK_DIR"/*.json; do
                         [[ -f "$_lf" ]] || continue
                         if [[ "$(lease_gap_id "$_lf")" == "$gid" ]]; then
-                            _lease_wt="$(lease_worktree "$_lf")"
-                            [[ -n "$_lease_wt" ]] && break
+                            # EFFECTIVE-312: lockfiles without a worktree field
+                            # make lease_worktree's grep pipeline fail — under
+                            # pipefail+set -e the bare assignment is fatal.
+                            _lease_wt="$(lease_worktree "$_lf" 2>/dev/null || true)"
+                            # EFFECTIVE-312: bare [[ ]] && break as the loop
+                            # body's last statement leaks rc=1 into the for
+                            # loop under set -e — the silent claim-step killer
+                            # (proven by cycle-7 xtrace on chumpd-eu).
+                            if [[ -n "$_lease_wt" ]]; then break; fi
                         fi
                     done
                 fi
@@ -2084,6 +2095,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
 
             if [[ "$_already_in_lease_wt" -eq 1 ]]; then
                 info "INFRA-1901: already inside claimed worktree for $gid (lease=$_lease_wt) — skipping chump claim re-invocation"
+                _BM_OWN_CLAIM=1
                 chump session-track --start "$gid" >/dev/null 2>&1 || true
                 continue
             fi
@@ -2109,6 +2121,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                         | awk '{print $NF}' | head -1)"
                     if [[ -n "${CHUMP_SESSION_ID:-}" && "$_claim_lease_session" == "$CHUMP_SESSION_ID" ]]; then
                         info "CREDIBLE-160: lease already held by our session ($CHUMP_SESSION_ID) — reusing existing worktree + branch"
+                        _BM_OWN_CLAIM=1
                         chump session-track --start "$gid" >/dev/null 2>&1 || true
                         continue
                     fi
@@ -2147,6 +2160,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                         # unpushed work. The claim is already ours; no-op and reuse
                         # the existing worktree + branch for the ship steps.
                         info "INFRA-2744: re-claim no-op — gap $gid already held by our session ($CHUMP_SESSION_ID); reusing existing worktree + branch"
+                        _BM_OWN_CLAIM=1
                     else
                         red "META-156 AC#2: re-claim failure — worktree already exists and is owned by a DIFFERENT session."
                         red "  Our session: ${CHUMP_SESSION_ID:-<unset>}"
@@ -2165,6 +2179,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
                     exit "$_claim_rc"
                 fi
             fi
+            [[ "$_claim_rc" -eq 0 ]] && _BM_OWN_CLAIM=1
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.
             chump session-track --start "$gid" >/dev/null 2>&1 || true
@@ -2285,8 +2300,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
         # gap YAMLs are no longer added as new files in PRs; state.db is canonical.
         # Always run preflight here so we catch gaps completed on main while rebasing.
         if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
-            red "Gap was completed on main while we rebased — nothing left to push."
-            _bm_fail "preflight" 10 "gap completed on main during rebase"
+            # EFFECTIVE-312: when THIS run claimed the gap (the claim step above
+            # set _BM_OWN_CLAIM=1), preflight's
+            # live-claim failure is our own lease — not "completed on main".
+            if [[ "${_BM_OWN_CLAIM:-0}" -eq 1 ]]; then
+                info "EFFECTIVE-312: post-rebase preflight failed on OUR OWN live lease — continuing ship"
+            else
+                red "Gap was completed on main while we rebased — nothing left to push."
+                _bm_fail "preflight" 10 "gap completed on main during rebase"
+            fi
         fi
     fi
 else
@@ -3044,7 +3066,10 @@ _bm_step_start "pr_create"
 # INFRA-1082: cache-first branch→PR-number lookup; REST fallback on miss.
 EXISTING_PR=""
 if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
-    _bm_exist_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null)"
+    # EFFECTIVE-312: on hosts without the webhook cache feed the lookup
+    # errors on miss — bare assignment under set -e killed the ship at
+    # pr_create (cycle-10 xtrace).
+    _bm_exist_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null || true)"
     if [[ -n "$_bm_exist_meta" ]]; then
         EXISTING_PR="$(printf '%s' "$_bm_exist_meta" | \
             python3 -c "import sys,json; print(json.load(sys.stdin).get('number','') or '')" \
