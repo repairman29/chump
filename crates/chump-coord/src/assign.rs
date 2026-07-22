@@ -181,6 +181,42 @@ fn envelope_for(row: &GapRow, seq: u32, replicas: u32) -> WorkEnvelope {
     }
 }
 
+/// INFRA-1120 AC-4/AC-8: consult live capability manifests for `row` and, if
+/// a capability-matched session is found via [`crate::capability::route_by_skill`],
+/// emit `kind=capability_routed` to `.chump-locks/ambient.jsonl`. No-op
+/// (and no emission) when the gap has no `skills_required` or no manifest
+/// matches — that's a routing miss, not a routing decision.
+fn log_capability_routing(row: &GapRow, manifests: &[&crate::capability::CapabilityManifest]) {
+    for skill in parse_skills(&row.skills_required) {
+        if let Some(m) = crate::capability::route_by_skill(manifests, &skill) {
+            let ts = chrono::Utc::now().to_rfc3339();
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"capability_routed","gap_id":"{gap_id}","session_id":"{sid}","skill":"{skill}"}}"#,
+                ts = ts,
+                gap_id = row.id,
+                sid = m.session_id,
+                skill = skill,
+            );
+            let _ = append_ambient_line(&line);
+            return;
+        }
+    }
+}
+
+fn append_ambient_line(line: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let path = std::env::var("CHUMP_AMBIENT_LOG")
+        .unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string());
+    if let Some(dir) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(f, "{}", line)
+}
+
 /// One cycle of the assign daemon: read open gaps, publish to NATS for any
 /// gap not currently claimed.
 ///
@@ -198,12 +234,19 @@ pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usiz
         .map(|(id, _)| id)
         .collect();
 
+    // INFRA-1120 AC-4: consult live capability manifests once per cycle and
+    // log a routing decision per gap (kind=capability_routed) whenever a
+    // published session's skills match the gap's skills_required.
+    let manifests = client.list_capabilities().await.unwrap_or_default();
+    let manifest_refs: Vec<&crate::capability::CapabilityManifest> = manifests.iter().collect();
+
     for row in rows {
         if claimed.contains(&row.id) {
             continue;
         }
         let subject = subject_for(&row);
         let replicas = replicas_for(&row);
+        log_capability_routing(&row, &manifest_refs);
         for seq in 1..=replicas {
             let env = envelope_for(&row, seq, replicas);
             let payload: Bytes = serde_json::to_vec(&env)?.into();

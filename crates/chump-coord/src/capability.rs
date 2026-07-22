@@ -56,7 +56,7 @@ pub const CAPABILITIES_BUCKET: &str = "chump_capabilities";
 /// Heartbeat interval — 30 seconds.
 pub const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
-// scanner-anchor: capability_published capability_heartbeat
+// scanner-anchor: capability_published capability_heartbeat capability_expired
 
 /// Manifest published by every worker session to the `chump_capabilities`
 /// NATS KV bucket. Stale entries (heartbeat_at > ttl_seconds old) are
@@ -187,7 +187,61 @@ pub async fn publish_manifest(kv: &kv::Store, manifest: &CapabilityManifest) -> 
     if let Err(e) = append_file_audit(manifest) {
         eprintln!("[capability] file audit write failed (non-fatal): {}", e);
     }
+    emit_capability_published(manifest);
     Ok(())
+}
+
+/// Emit an ambient `capability_published` event for `manifest`. Best-effort —
+/// a write failure is silently swallowed (forensics, not critical path).
+fn emit_capability_published(manifest: &CapabilityManifest) {
+    let ts = Utc::now().to_rfc3339();
+    let skills = serde_json::to_string(&manifest.skills).unwrap_or_else(|_| "[]".to_string());
+    let line = format!(
+        r#"{{"ts":"{ts}","kind":"capability_published","session_id":"{sid}","schema_version":"{sv}","harness":"{harness}","model_tier":"{model_tier}","skills":{skills}}}"#,
+        ts = ts,
+        sid = manifest.session_id,
+        sv = manifest.schema_version,
+        harness = manifest.harness,
+        model_tier = manifest.model_tier,
+        skills = skills,
+    );
+    let _ = append_ambient(&line);
+}
+
+/// Emit an ambient `capability_expired` event for a manifest excluded from
+/// [`list_capabilities`] because its heartbeat is older than `ttl_seconds`.
+fn emit_capability_expired(manifest: &CapabilityManifest, now: DateTime<Utc>) {
+    let ts = now.to_rfc3339();
+    let age_seconds = now
+        .signed_duration_since(manifest.heartbeat_at)
+        .num_seconds();
+    let line = format!(
+        r#"{{"ts":"{ts}","kind":"capability_expired","session_id":"{sid}","heartbeat_at":"{hb}","ttl_seconds":{ttl},"age_seconds":{age}}}"#,
+        ts = ts,
+        sid = manifest.session_id,
+        hb = manifest.heartbeat_at.to_rfc3339(),
+        ttl = manifest.ttl_seconds,
+        age = age_seconds,
+    );
+    let _ = append_ambient(&line);
+}
+
+/// Append `line` to `.chump-locks/ambient.jsonl` (honouring `CHUMP_LOCKS_DIR`
+/// for test isolation). Best-effort — I/O errors are the caller's problem to
+/// ignore since ambient emission is forensic, not critical path.
+fn append_ambient(line: &str) -> std::io::Result<()> {
+    let path = chump_locks_capabilities_dir()
+        .parent()
+        .map(|p| p.join("ambient.jsonl"))
+        .unwrap_or_else(|| PathBuf::from(".chump-locks/ambient.jsonl"));
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(f, "{}", line)
 }
 
 /// Append a JSON snapshot of `manifest` to `.chump-locks/capabilities/<session-id>.jsonl`.
@@ -304,8 +358,12 @@ pub async fn list_capabilities(kv: &kv::Store) -> Result<Vec<CapabilityManifest>
             if let Ok(m) = serde_json::from_slice::<CapabilityManifest>(&bytes) {
                 if m.is_alive(now) {
                     out.push(m);
+                } else {
+                    // Stale manifests: excluded from routing per AC-3, but
+                    // still logged so ops can distinguish "no sessions" from
+                    // "sessions expired" (AC-8 capability_expired).
+                    emit_capability_expired(&m, now);
                 }
-                // Stale manifests: silently excluded per AC-3.
             }
         }
     }

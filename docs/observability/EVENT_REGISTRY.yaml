@@ -6956,6 +6956,34 @@ events:
     expected_volume: "1 per worker per 30s"
     status: stable
     # payload: {session_id: string, heartbeat_at: RFC3339, ttl_seconds: int}
+  - kind: capability_expired
+    effect_metric: resilient
+    emitter: crates/chump-coord/src/capability.rs (INFRA-1120) list_capabilities()
+    trigger: >
+      Emitted when list_capabilities() finds a manifest in the chump_capabilities
+      KV bucket whose heartbeat_at is older than its ttl_seconds — the session is
+      treated as dead and excluded from routing decisions (AC-3). Lets ops
+      distinguish "no sessions publishing" from "sessions expired" without
+      grepping the KV bucket directly. scanner-anchor present in capability.rs.
+    consumers: [picker, fleet-doctor, ops-audit]
+    fields_required: [ts, kind, session_id, heartbeat_at, ttl_seconds, age_seconds]
+    expected_volume: "0 in steady state; spikes on worker crash/restart"
+    status: stable
+    # payload: {session_id: string, heartbeat_at: RFC3339, ttl_seconds: int, age_seconds: int}
+  - kind: capability_routed
+    effect_metric: effective
+    emitter: crates/chump-coord/src/assign.rs (INFRA-1120) log_capability_routing()
+    trigger: >
+      Emitted by the FLEET-034 assign daemon once per cycle per gap when a live
+      capability manifest's skills match the gap's skills_required (via
+      capability::route_by_skill()). Satisfies AC-4 ("picker actively consults
+      manifests for >=1 routing decision per gap"). No emission on a routing
+      miss (gap has no skills_required, or no manifest matches).
+    consumers: [ops-audit, kpi-report, release-gate-tracker]
+    fields_required: [ts, kind, gap_id, session_id, skill]
+    expected_volume: "<=1 per open gap per assign_cycle (5s poll interval)"
+    status: stable
+    # payload: {gap_id: string, session_id: string, skill: string}
 
   - kind: cascade_unblocked
     effect_metric: resilient
