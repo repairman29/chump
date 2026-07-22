@@ -3064,7 +3064,20 @@ fi
 # (rare — operator confirms staging IS the work): CHUMP_ALLOW_STAGING_ONLY_PR=1.
 if [[ -z "$EXISTING_PR" && "${CHUMP_ALLOW_STAGING_ONLY_PR:-0}" != "1" ]]; then
     _commit_subjects=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --pretty=format:'%s' 2>/dev/null)
-    _total_commits=$(echo "$_commit_subjects" | grep -cE '.')
+    # CREDIBLE-162: grep -c exits 1 on zero matches — unguarded under
+    # set -e this killed bot-merge SILENTLY whenever the branch had no
+    # commits (e.g. an agent cycle that never committed). Guard it and
+    # refuse the empty branch LOUDLY instead.
+    _total_commits=$(echo "$_commit_subjects" | grep -cE '.' || true)
+    if [[ "$_total_commits" -eq 0 ]]; then
+        red "CREDIBLE-162: refusing to gh pr create — branch $BRANCH has ZERO commits since $BASE_BRANCH."
+        red "          The agent cycle produced no committed work; nothing to ship."
+        _ambient_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        printf '{"ts":"%s","kind":"zero_commit_branch_blocked","branch":"%s","gap":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "${GAP_ID:-unknown}" \
+            >> "$_ambient_path" 2>/dev/null || true
+        _bm_fail "pr-create" 17 "zero-commit branch — agent produced no work (CREDIBLE-162)"
+    fi
     _staging_commits=$(echo "$_commit_subjects" | grep -cE '^auto: bot-merge pre-rebase staging' || true)
     if [[ "$_total_commits" -gt 0 && "$_total_commits" -eq "$_staging_commits" ]]; then
         red "INFRA-997: refusing to gh pr create — branch $BRANCH has $_total_commits commit(s) since $BASE_BRANCH"
