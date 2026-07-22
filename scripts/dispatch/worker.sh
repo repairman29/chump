@@ -1524,11 +1524,42 @@ Operator or sibling worker can rescue this branch via:
         fi
     fi
 
+    # EFFECTIVE-310: failure→decompose reflex. After a whole-gap failure on
+    # chump-local (open-model backend), record a strike; at the threshold
+    # (default 2, CHUMP_DECOMPOSE_STRIKE_THRESHOLD) have the frontier model
+    # decompose the gap into xs/s slices instead of retrying whole. The
+    # decompose call strips OPENAI_* so build_provider falls through to the
+    # Claude path — "frontier plans, open models execute".
+    # Sets _decomposed_this_cycle=1 so INFRA-267 doesn't ALSO burn a claude
+    # whole-gap attempt on a gap we just sliced.
+    _decomposed_this_cycle=0
+    _effective_003_reflex() {
+        [[ "$FLEET_BACKEND" == "chump-local" ]] || return 0
+        [[ "${CHUMP_DECOMPOSE_REFLEX:-1}" != "0" ]] || return 0
+        local _strike_rc=0
+        chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
+        [[ "$_strike_rc" -eq 10 ]] || return 0
+        log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
+        if env -u OPENAI_API_BASE -u OPENAI_MODEL -u OPENAI_API_KEY \
+            chump gap decompose "$GAP_ID" --apply >> "$cycle_log" 2>&1; then
+            _decomposed_this_cycle=1
+            chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
+            printf '{"ts":"%s","kind":"gap_auto_decomposed","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","trigger_rc":%d}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$FLEET_BACKEND" "$rc" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            log "EFFECTIVE-310: $GAP_ID decomposed + parent demoted — sub-gaps pickable next cycle"
+        else
+            log "EFFECTIVE-310: decompose failed for $GAP_ID — falling through to existing handling"
+        fi
+    }
+
     # FLEET-043: track consecutive dispatch failures for circuit breaker.
     # Reset on success, increment on any failure.
     if [ "$rc" -eq 0 ]; then
         log "$FLEET_BACKEND exited CLEAN (rc=0) for $GAP_ID"
         _dispatch_fail_count=0
+        # EFFECTIVE-310: clean cycle wipes the strike slate for this gap.
+        chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
     elif [ "$rc" -eq 124 ]; then
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
         if [ "$_is_wedge" -eq 1 ]; then
@@ -1536,9 +1567,13 @@ Operator or sibling worker can rescue this branch via:
         else
             log "WARN: $FLEET_BACKEND exited TIMEOUT (rc=124, ${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
         fi
+        _effective_003_reflex
     else
         log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
+
+        # EFFECTIVE-310: strike + possible frontier decompose (see above).
+        _effective_003_reflex
 
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
@@ -1557,6 +1592,7 @@ Operator or sibling worker can rescue this branch via:
         # duplicating that whole block.
         if [[ "$FLEET_BACKEND" == "chump-local" ]] \
            && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
+           && [[ "$_decomposed_this_cycle" -eq 0 ]] \
            && command -v claude >/dev/null 2>&1; then
             # INFRA-502: priority lookup via 'chump gap show' (state.db
             # canonical post-INFRA-498). Fall back to legacy YAML path

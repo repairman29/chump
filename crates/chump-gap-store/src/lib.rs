@@ -260,6 +260,62 @@ impl GapStore {
         Ok(())
     }
 
+    /// EFFECTIVE-310: lazily create the per-gap failure strike table.
+    /// Strikes count consecutive whole-gap failures on a given backend
+    /// (chump-local today). At the threshold the worker's decompose
+    /// reflex fires instead of another whole-gap retry.
+    fn ensure_strike_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS gap_strikes (
+                gap_id  TEXT NOT NULL,
+                backend TEXT NOT NULL DEFAULT 'chump-local',
+                count   INTEGER NOT NULL DEFAULT 0,
+                last_at INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (gap_id, backend)
+             )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// EFFECTIVE-310: increment the strike counter for (gap_id, backend)
+    /// and return the new count.
+    pub fn record_strike(&self, gap_id: &str, backend: &str) -> Result<i64> {
+        self.ensure_strike_table()?;
+        let ts = unix_now();
+        self.conn.execute(
+            "INSERT INTO gap_strikes (gap_id, backend, count, last_at)
+             VALUES (?1, ?2, 1, ?3)
+             ON CONFLICT(gap_id, backend)
+             DO UPDATE SET count = count + 1, last_at = ?3",
+            params![gap_id, backend, ts],
+        )?;
+        self.strike_count(gap_id, backend)
+    }
+
+    /// EFFECTIVE-310: current strike count for (gap_id, backend); 0 if none.
+    pub fn strike_count(&self, gap_id: &str, backend: &str) -> Result<i64> {
+        self.ensure_strike_table()?;
+        let n: i64 = self
+            .conn
+            .query_row(
+                "SELECT count FROM gap_strikes WHERE gap_id = ?1 AND backend = ?2",
+                params![gap_id, backend],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        Ok(n)
+    }
+
+    /// EFFECTIVE-310: clear all strikes for a gap (any backend). Called on a
+    /// clean cycle so a later transient failure starts from zero.
+    pub fn clear_strikes(&self, gap_id: &str) -> Result<()> {
+        self.ensure_strike_table()?;
+        self.conn
+            .execute("DELETE FROM gap_strikes WHERE gap_id = ?1", params![gap_id])?;
+        Ok(())
+    }
+
     pub fn open(repo_root: &Path) -> Result<Self> {
         let path = Self::db_path(repo_root);
         if let Some(parent) = path.parent() {
