@@ -334,7 +334,7 @@ jobs:
           cargo build -p chump-desktop
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
 
