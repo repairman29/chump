@@ -414,15 +414,19 @@ Your ONLY job is to make code changes that satisfy the gap below, then commit.
 ```
 
 ## Workflow (follow exactly, ONE tool call per response)
-Step 1: read_file — read the file that needs changing.
-Step 2: patch_file — apply your change as a unified diff patch. \
+Step 1: grep_repo — search for a function name, error string, or key phrase \
+   from the gap to FIND the file that needs changing. Do NOT guess file paths \
+   or walk directories with list_dir — search first.
+Step 2: read_file — read the file grep_repo pointed you to.
+Step 3: patch_file — apply your change as a unified diff patch. \
    Provide the old text and new text. Do NOT rewrite the entire file.
-Step 3: git_commit — commit with message \"{gap_id}: <short summary>\". \
+Step 4: git_commit — commit with message \"{gap_id}: <short summary>\". \
    This automatically stages modified files.
-Step 4: Respond with the single word: done
+Step 5: Respond with the single word: done
 
 ## Rules
 - ONE tool call per response. Do NOT call multiple tools at once.
+- START with grep_repo to locate code — it is far faster than list_dir.
 - NEVER write documentation, plans, or markdown files.
 - NEVER explain what you will do — just call the tool.
 - NEVER create new files (no chump-plan.md, no docs/*.md).
@@ -647,7 +651,7 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     let free_tier = is_free_tier_model();
     if free_tier {
         let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
-        eprintln!("[execute-gap] free-tier mode: model={model}, 5-tool slim profile");
+        eprintln!("[execute-gap] free-tier mode: model={model}, slim dispatch profile");
         // INFRA-784: signal the agent loop to insert inter-request delays so we
         // don't exhaust the provider's RPM quota on multi-step dispatches.
         // CHUMP_FREE_TIER_DELAY_MS takes precedence if set; this is the fallback

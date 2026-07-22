@@ -356,6 +356,128 @@ impl Tool for ListDirTool {
     }
 }
 
+/// EFFECTIVE-313: read-only repo search for free-tier dispatch. Free-tier
+/// agents (MiniMax-M3 class) get `list_dir` + `read_file` but NOT `run_cli`
+/// (cold-worktree cargo-build cost), so before this tool they had to locate
+/// code by blindly walking directories — burning their whole iteration
+/// budget on `list_dir`/`read_file` and never reaching `patch_file`. This
+/// gives them one targeted `git grep` instead. Deliberately NOT a `run_cli`
+/// escape hatch: it runs exactly `git grep -n -I --no-color` with a
+/// fixed-or-regex pattern and an optional pathspec, nothing else.
+pub struct GrepRepoTool;
+
+#[async_trait]
+impl Tool for GrepRepoTool {
+    fn name(&self) -> String {
+        "grep_repo".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Search the repository for a pattern and return matching file:line results. \
+         Use this FIRST to locate the code you need to change, instead of walking \
+         directories with list_dir. Args: pattern (required), optional path_glob \
+         (e.g. '*.rs' or 'src/'), optional fixed (true = literal string, false = \
+         regex; default true). Returns up to 100 file:line: matches."
+            .to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "pattern": { "type": "string", "description": "Text or regex to search for" },
+                "path_glob": { "type": "string", "description": "Optional pathspec to limit the search, e.g. '*.rs' or 'src/foo/'" },
+                "fixed": { "type": "boolean", "description": "true = literal string match (default), false = regex" }
+            },
+            "required": ["pattern"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let pattern = input
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("missing or empty pattern"))?;
+        let path_glob = input
+            .get("path_glob")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        // Default to literal-string matching — open models over-escape regex.
+        let fixed = input.get("fixed").and_then(|v| v.as_bool()).unwrap_or(true);
+
+        let root = repo_path::repo_root();
+        const MAX_MATCHES: usize = 100;
+
+        // `git grep -n -I --no-color` — line numbers, skip binary files, no
+        // color codes. `-F` for fixed strings, `-E` for extended regex.
+        // `-e <pattern>` terminates option parsing so a pattern beginning
+        // with `-` can't inject flags. Pathspec (if any) after `--`.
+        let mut args: Vec<String> =
+            vec!["grep".into(), "-n".into(), "-I".into(), "--no-color".into()];
+        if fixed {
+            args.push("-F".into());
+        } else {
+            args.push("-E".into());
+        }
+        args.push("-e".into());
+        args.push(pattern.to_string());
+        if let Some(ref glob) = path_glob {
+            args.push("--".into());
+            args.push(glob.clone());
+        }
+
+        let output = tokio::process::Command::new("git")
+            .args(&args)
+            .current_dir(&root)
+            .output()
+            .await
+            .map_err(|e| anyhow!("git grep failed to launch: {}", e))?;
+
+        // git grep exit codes: 0 = matches, 1 = no matches, >1 = real error.
+        match output.status.code() {
+            Some(0) => {}
+            Some(1) => {
+                return Ok(format!(
+                    "No matches for {:?}{}. Try a shorter/different pattern, \
+                     set fixed=false for a regex, or widen path_glob.",
+                    pattern,
+                    path_glob
+                        .as_ref()
+                        .map(|g| format!(" in {g}"))
+                        .unwrap_or_default()
+                ));
+            }
+            _ => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow!(
+                    "git grep error: {}",
+                    stderr.trim().lines().next().unwrap_or("unknown")
+                ));
+            }
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        let total = lines.len();
+        let shown: Vec<&str> = lines.into_iter().take(MAX_MATCHES).collect();
+        let mut out = shown.join("\n");
+        if total > MAX_MATCHES {
+            out.push_str(&format!(
+                "\n… {} more matches (showing first {}). Narrow with path_glob or a longer pattern.",
+                total - MAX_MATCHES,
+                MAX_MATCHES
+            ));
+        }
+        Ok(out)
+    }
+}
+
 pub struct WriteFileTool;
 
 #[async_trait]
@@ -1480,5 +1602,126 @@ mod tests {
         // Unknown tool names should return base error only — no snippet enrichment
         assert_eq!(out, "Tool error: some error");
         let _ = fs::remove_dir_all("target/chump_enrich_unknown_tool_test");
+    }
+
+    // ── EFFECTIVE-313: grep_repo ─────────────────────────────────────────────
+
+    /// git grep only searches TRACKED files, so a grep_repo test must init a
+    /// repo and commit its fixtures. Returns the canonicalized repo dir.
+    fn grep_test_repo(name: &str) -> PathBuf {
+        let dir = test_dir(name);
+        let _ = fs::remove_dir_all(&dir);
+        let dir = {
+            let _ = fs::create_dir_all(&dir);
+            dir.canonicalize().unwrap_or(dir)
+        };
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap();
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@t.t"]);
+        git(&["config", "user.name", "t"]);
+        fs::write(dir.join("alpha.rs"), "fn find_me() {}\nlet other = 1;\n").unwrap();
+        fs::write(dir.join("beta.rs"), "fn also_find_me() {}\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", "init"]);
+        dir
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn grep_repo_finds_matches_with_line_numbers() {
+        let dir = grep_test_repo("chump_grep_basic_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = GrepRepoTool
+            .execute(json!({ "pattern": "find_me" }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        // Both files contain "find_me" (find_me and also_find_me), with line 1.
+        assert!(out.contains("alpha.rs:1:"), "got: {out}");
+        assert!(out.contains("beta.rs:1:"), "got: {out}");
+        let _ = fs::remove_dir_all("target/chump_grep_basic_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn grep_repo_respects_path_glob() {
+        let dir = grep_test_repo("chump_grep_glob_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = GrepRepoTool
+            .execute(json!({ "pattern": "find_me", "path_glob": "beta.rs" }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.contains("beta.rs:1:"), "got: {out}");
+        assert!(
+            !out.contains("alpha.rs"),
+            "glob should exclude alpha: {out}"
+        );
+        let _ = fs::remove_dir_all("target/chump_grep_glob_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn grep_repo_no_match_returns_friendly_message() {
+        let dir = grep_test_repo("chump_grep_nomatch_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = GrepRepoTool
+            .execute(json!({ "pattern": "zzz_does_not_exist_zzz" }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.starts_with("No matches"), "got: {out}");
+        let _ = fs::remove_dir_all("target/chump_grep_nomatch_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn grep_repo_fixed_string_does_not_interpret_regex() {
+        let dir = grep_test_repo("chump_grep_fixed_test");
+        // A literal parens pattern would be a regex error under -E; -F treats
+        // it as a literal string and matches "find_me()".
+        fs::write(dir.join("alpha.rs"), "fn find_me() {}\n").unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-aqm", "x"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let out = GrepRepoTool
+            .execute(json!({ "pattern": "find_me()", "fixed": true }))
+            .await
+            .unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.contains("alpha.rs:1:"), "got: {out}");
+        let _ = fs::remove_dir_all("target/chump_grep_fixed_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn grep_repo_missing_pattern_errors() {
+        let out = GrepRepoTool.execute(json!({})).await;
+        assert!(out.is_err());
     }
 }

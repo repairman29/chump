@@ -36,7 +36,7 @@ use crate::repo_allowlist_tool::{
     repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool,
 };
 use crate::repo_path;
-use crate::repo_tools::{ListDirTool, PatchFileTool, ReadFileTool, WriteFileTool};
+use crate::repo_tools::{GrepRepoTool, ListDirTool, PatchFileTool, ReadFileTool, WriteFileTool};
 use crate::run_test_tool::RunTestTool;
 use crate::sandbox_tool::{sandbox_enabled, SandboxTool};
 use crate::schedule_db;
@@ -121,7 +121,7 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 /// Minimal tool set for free-tier dispatched agents (Groq, Cerebras, NVIDIA,
 /// etc.). Non-Claude models get confused by 30+ tools and pick wrong ones
 /// (observed: Llama 3.3 70B called `ask_jeff` instead of `read_file` with
-/// the full tool inventory). 5 tools is the sweet spot: read → edit → commit.
+/// the full tool inventory). Kept tight: search → read → edit → commit.
 ///
 /// Deliberately excludes `run_cli` and `run_test` — cold worktrees need a
 /// full `cargo build` from scratch (3-5 min), which causes agent timeouts.
@@ -131,7 +131,17 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 /// with truncated/placeholder content. patch_file is safer: the model only
 /// specifies the diff, not the full file. Use write_file only for new files
 /// (which we don't need for most xs gaps).
-const DISPATCH_FREE_TOOL_KEYS: &[&str] = &["read_file", "list_dir", "patch_file", "git_commit"];
+/// EFFECTIVE-313: grep_repo added — free-tier models had no way to SEARCH the
+/// repo (run_cli is excluded for cold-worktree build cost), so they burned
+/// their whole iteration budget on blind list_dir/read_file and never reached
+/// patch_file. grep_repo is read-only (git grep -n, not a run_cli hatch).
+const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
+    "read_file",
+    "grep_repo",
+    "list_dir",
+    "patch_file",
+    "git_commit",
+];
 
 /// INFRA-3407: opt-in write_file for stronger open models (MiniMax-M3 class).
 /// EFFECTIVE-005's removal stays the default; `CHUMP_FREE_TIER_WRITE_FILE=1`
@@ -356,6 +366,9 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(ListDirTool), "list_dir").when_enabled(repo_path::repo_root_is_explicit)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(GrepRepoTool), "grep_repo").when_enabled(repo_path::repo_root_is_explicit)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(WriteFileTool), "write_file").when_enabled(repo_path::repo_root_is_explicit)
