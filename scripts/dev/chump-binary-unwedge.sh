@@ -40,6 +40,11 @@ set -euo pipefail
 TIMEOUT="${CHUMP_DOCTOR_TIMEOUT:-5}"
 QUIET="${CHUMP_DOCTOR_QUIET:-0}"
 FORCE="${CHUMP_DOCTOR_FORCE:-0}"
+# RESILIENT-181: GNU coreutils timeout is 'gtimeout' (homebrew) on macOS but
+# plain 'timeout' on Linux. Hardcoding gtimeout made every probe fail on
+# Linux hosts (command not found), falsely diagnosing a healthy binary as
+# wedged — which then failed every ship on chumpd-eu.
+PTIMEOUT="$(command -v gtimeout || command -v timeout)"
 PROBE_CASCADE=0
 PROBE_RESOURCES=0
 for arg in "$@"; do
@@ -76,10 +81,10 @@ probe() {
   # We want a launch that exercises dyld but does the minimum useful work.
   # `--version` is fastest (INFRA-148); fall back to `gap list --status open`
   # if --version isn't supported by an old binary.
-  if gtimeout "$TIMEOUT" "$bin" --version >/dev/null 2>&1; then
+  if "$PTIMEOUT" "$TIMEOUT" "$bin" --version >/dev/null 2>&1; then
     return 0
   fi
-  if gtimeout "$TIMEOUT" "$bin" gap list --status open --json >/dev/null 2>&1; then
+  if "$PTIMEOUT" "$TIMEOUT" "$bin" gap list --status open --json >/dev/null 2>&1; then
     return 0
   fi
   return 1
@@ -88,7 +93,10 @@ probe() {
 heal() {
   local bin="$1"
   local inode
-  inode=$(stat -f '%i' "$bin" 2>/dev/null || echo unknown)
+  # RESILIENT-181: GNU stat first (-c); BSD fallback (-f). On Linux,
+  # `stat -f '%i' FILE` stats a file literally named '%i' then dumps
+  # multi-line filesystem info — which became a garbage mv target.
+  inode=$(stat -c '%i' "$bin" 2>/dev/null || stat -f '%i' "$bin" 2>/dev/null || echo unknown)
   local wedged="${bin}.wedged-inode-${inode}"
 
   log "binary at $bin (inode $inode) appears wedged at _dyld_start"
@@ -107,7 +115,7 @@ heal() {
   fi
   mv "$bin" "$wedged"
   mv "$tmp" "$bin"
-  log "replaced; new inode=$(stat -f '%i' "$bin" 2>/dev/null || echo ?)"
+  log "replaced; new inode=$(stat -c '%i' "$bin" 2>/dev/null || stat -f '%i' "$bin" 2>/dev/null || echo ?)"
 }
 
 reap_zombies() {
