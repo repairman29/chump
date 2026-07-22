@@ -133,11 +133,23 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 /// (which we don't need for most xs gaps).
 const DISPATCH_FREE_TOOL_KEYS: &[&str] = &["read_file", "list_dir", "patch_file", "git_commit"];
 
+/// INFRA-3407: opt-in write_file for stronger open models (MiniMax-M3 class).
+/// EFFECTIVE-005's removal stays the default; `CHUMP_FREE_TIER_WRITE_FILE=1`
+/// re-admits write_file WITH the >50%-shrink guard in repo_tools, so
+/// truncated whole-file rewrites are refused instead of landed.
+fn free_tier_write_file_enabled() -> bool {
+    std::env::var("CHUMP_FREE_TIER_WRITE_FILE").as_deref() == Ok("1")
+}
+
 /// Register the slim free-tier dispatch tool set. Used by `execute_gap.rs`
 /// when `OPENAI_MODEL` resolves to a non-Claude family (INFRA-733).
 pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
+    let mut keys: Vec<&str> = DISPATCH_FREE_TOOL_KEYS.to_vec();
+    if free_tier_write_file_enabled() {
+        keys.push("write_file");
+    }
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
-        .filter(|e| DISPATCH_FREE_TOOL_KEYS.contains(&e.sort_key))
+        .filter(|e| keys.contains(&e.sort_key))
         .collect();
     entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
     for entry in entries {
