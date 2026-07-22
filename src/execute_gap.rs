@@ -497,6 +497,10 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
             .await;
         let _ = tokio::process::Command::new("git")
             .args([
+                "-c",
+                "user.name=chump-fleet",
+                "-c",
+                "user.email=fleet@chump.local",
                 "commit",
                 "-m",
                 &format!("{gap_id}: agent changes (auto-committed — model skipped git_commit)"),
