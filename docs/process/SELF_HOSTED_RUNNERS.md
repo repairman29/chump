@@ -490,79 +490,77 @@ saw one ACP-on-M4 silent-stdout failure (INFRA-1561 in flight) force rolling
 back the master switch, forfeiting 75% of the migration value across the
 other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.
 
-## Current state — degraded ubuntu-only mode (2026-05-21, INFRA-1655)
+## Root cause found + recovery in progress (2026-07-21/22, INFRA-1655)
 
-**Repo variable state as of 2026-05-21T06:00Z:**
+### Root cause
+
+The "0-step CANCELLED in <30s" pattern from the 2026-05-20 Marcus
+cron-loop session was **not** a runner/checkout/disk/network problem on
+`jeffs-macbook-air-10-X`. It was GitHub Actions' own concurrency-group
+cancellation.
+
+Before INFRA-1852 (2026-05-23, PR #2446), `ci.yml`'s `concurrency.group`
+for PR events was keyed on the **PR number**. During a cron-loop session
+that pushes several fixup commits to the same PR in quick succession,
+every new push cancelled the *entire* in-flight workflow run for the
+previous commit — including jobs that hadn't started a single step yet
+(`changes`, which was the one lane still routed to self-hosted at the
+time). A cancelled-before-first-step job reports as a near-instant
+"CANCELLED" with no failed step visible, which is exactly the symptom
+this gap describes as an `actions/checkout@v6` flake — the checkout step
+never actually ran; the *job* was killed before it got there.
+
+INFRA-1852 re-keyed the concurrency group on `github.sha` instead of the
+PR number (`.github/workflows/ci.yml` line ~47), so a fixup push no
+longer cancels the prior commit's in-flight self-hosted job. That fix
+shipped 3 days after this gap's incident but the self-hosted toggles
+were never flipped back — this session (2026-07-21) closes that loop.
+
+**Verification (2026-07-22):** all 4 runners (`jeffs-macbook-air-10`,
+`-2`, `-3`, `-4`) are online. `CHUMP_SELF_HOSTED_ENABLED` was already
+`true` (flipped back 2026-05-24, undocumented). The `changes` job — the
+only lane actually routed to self-hosted under that state — has
+succeeded on every recent CI run checked (5-9s each, zero CANCELLED/
+checkout failures). No reproduction of the flake was possible because
+the underlying concurrency bug is gone.
+
+### Repo variable state as of 2026-07-22T02:06Z
 
 | Variable | Value | Effect |
 |---|---|---|
-| `CHUMP_SELF_HOSTED_ENABLED` | `false` | Master kill-switch flipped off |
-| `RUNNER_AUDIT` | (deleted) | audit lane → ubuntu-latest |
-| `RUNNER_COVERAGE` | (deleted) | coverage lane → ubuntu-latest |
-| `RUNNER_E2E_PWA` | (deleted) | e2e-pwa lane → ubuntu-latest |
-| `RUNNER_E2E_GOLDEN_PATH` | (deleted) | golden-path lane → ubuntu-latest |
-| `RUNNER_TAURI_COWORK_E2E` | (deleted) | tauri lane → ubuntu-latest |
+| `CHUMP_SELF_HOSTED_ENABLED` | `true` | Master switch on (unchanged, was already flipped 2026-05-24) |
+| `RUNNER_E2E_PWA` | `["self-hosted","macos-arm64","chump-fleet"]` | **Canary lane, just restored this session** |
+| `RUNNER_AUDIT` | (unset) | audit lane → ubuntu-latest, not yet restored |
+| `RUNNER_COVERAGE` | (unset) | coverage lane → ubuntu-latest, not yet restored |
+| `RUNNER_E2E_GOLDEN_PATH` | (unset) | golden-path lane → ubuntu-latest, not yet restored |
+| `RUNNER_TAURI_COWORK_E2E` | (unset) | tauri lane → ubuntu-latest, not yet restored |
 
-**All CI runs on github-hosted ubuntu-latest. M4 hardware is idle.**
+### Remaining steps (one-at-a-time, per lane-flip protocol below)
 
-### Why this was done
+`RUNNER_E2E_PWA` was flipped as the canary (lowest-risk, non-required
+gate). Watch it over the next several PR cycles for any recurrence
+before restoring the rest. **Don't batch** — if one fails, you want to
+know which lane. Restore order, waiting one PR cycle between each:
 
-During the 2026-05-20 Marcus cron-loop session, the self-hosted runners
-`jeffs-macbook-air-10-2/-10-3` repeatedly failed `actions/checkout@v6` in
-<30s. Pattern: 0-step jobs ending in `CANCELLED` or `FAILURE` with no
-visible failed step. This pattern recurred across multiple PRs over
-several hours, blocking the queue.
+```bash
+gh variable set RUNNER_AUDIT --body '["self-hosted","macos-arm64","chump-fleet"]'
+# wait one PR cycle, confirm green
+gh variable set RUNNER_COVERAGE --body '["self-hosted","macos-arm64","chump-fleet"]'
+# wait one PR cycle, confirm green
+gh variable set RUNNER_E2E_GOLDEN_PATH --body '["self-hosted","macos-arm64","chump-fleet"]'
+gh variable set RUNNER_TAURI_COWORK_E2E --body '["self-hosted","macos-arm64","chump-fleet"]'
+```
 
-The INFRA-1567 per-lane toggle was meant to be the precise rollback tool
-for exactly this scenario, but #2297 (the PR that shipped INFRA-1567) was
-itself stuck in the same loop. Master-toggle bypass was used to escape
-the chicken-and-egg.
-
-### Required steps to restore self-hosted routing
-
-Don't blindly flip the variables back. Follow this order:
-
-1. **Diagnose** `jeffs-macbook-air-10-X` (INFRA-1655). Likely root causes:
-   - Stale runner-token registration (verify `gh api repos/.../actions/runners`)
-   - Disk full (the M4 cache may have grown unbounded)
-   - macOS keychain auth desync (gh CLI loses creds)
-   - Network blip on `git clone` against a saturated upstream
-
-2. **One-lane canary first.** Pick the lowest-risk lane (suggest
-   `RUNNER_E2E_PWA` — non-required gate, failure won't block PRs):
-   ```bash
-   gh variable set RUNNER_E2E_PWA --body '["self-hosted","macos-arm64","chump-fleet"]'
-   ```
-   Watch one PR cycle. Confirm checkout succeeds, no 0-step CANCELLED.
-
-3. **Restore the rest, one at a time.** Don't batch — if one fails, you
-   want to know which.
-   ```bash
-   gh variable set RUNNER_AUDIT --body '["self-hosted","macos-arm64","chump-fleet"]'
-   # wait one PR cycle
-   gh variable set RUNNER_COVERAGE --body '["self-hosted","macos-arm64","chump-fleet"]'
-   # wait one PR cycle
-   gh variable set RUNNER_E2E_GOLDEN_PATH --body '["self-hosted","macos-arm64","chump-fleet"]'
-   gh variable set RUNNER_TAURI_COWORK_E2E --body '["self-hosted","macos-arm64","chump-fleet"]'
-   ```
-
-4. **Flip master last.** Only after all 5 lane-vars have passed a clean
-   PR cycle:
-   ```bash
-   gh variable set CHUMP_SELF_HOSTED_ENABLED --body true
-   ```
-   Emit ambient event:
-   ```bash
-   printf '{"ts":"%s","kind":"runner_health_restored"}\n' \
-     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .chump-locks/ambient.jsonl
-   ```
+Tracked as a follow-up gap (see Related gaps) since it spans multiple
+real PR cycles and can't be safely compressed into one session.
 
 ### Operator note
 
 Hardware economics matter — the dual RTX 6000 Blackwell roadmap is
 predicated on local compute being load-bearing. Every day the M4 lanes
-are off is a day the runner-cost migration value is lost. Treat
-INFRA-1655 as a P1 unblocker, not a parking-lot item.
+are off is a day the runner-cost migration value is lost. The root cause
+is fixed; the remaining work is disciplined lane-by-lane restoration,
+not further diagnosis.
 
 ---
 

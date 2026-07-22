@@ -5111,6 +5111,17 @@ events:
     consumers: [fleet-brief, ops-audit]
     effect_metric: self
     fields_required: [ts, kind, reason, host]
+  # ── INFRA-1655: self-hosted runner lane restoration after flake root-cause ─
+  - kind: runner_health_restored
+    emitter: manual (session closing out INFRA-1655 / INFRA-3403 lane-restore steps)
+    trigger: >
+      A self-hosted-runner lane that was rolled back to ubuntu-latest due to
+      a flake/outage is confirmed healthy and restored (fully or as a canary
+      lane) per docs/process/SELF_HOSTED_RUNNERS.md. Fields carry the gap ID
+      and a free-text detail of what was restored / what remains.
+    consumers: [fleet-brief, ops-audit]
+    effect_metric: self
+    fields_required: [ts, kind, gap, detail]
   # ── INFRA-1535: self-hosted runner migration pipeline ─────────────────────
   - kind: runner_migration_step
     emitter: scripts/coord/chump-runner-migration-pipeline.sh (INFRA-1535)
