@@ -86,11 +86,17 @@ pub async fn build_integration_branch(
             .with_context(|| format!("git fetch failed for {}", candidate.gap_id))?;
 
         if !fetch_status.success() {
-            bail!(
-                "git fetch origin {} failed (exit {})",
-                candidate.branch,
-                fetch_status
+            // CREDIBLE-158: a missing/renamed branch must not dead-letter the
+            // whole queue — record it like a conflict and ship the rest.
+            eprintln!(
+                "[integrator] git fetch origin {} failed (exit {}) — skipping {}",
+                candidate.branch, fetch_status, candidate.gap_id
             );
+            conflicts.push(ConflictRecord {
+                gap_id: candidate.gap_id.clone(),
+                conflicted_files: vec![format!("(fetch failed: {})", candidate.branch)],
+            });
+            continue;
         }
 
         // 2. Record pre-merge HEAD.

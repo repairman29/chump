@@ -153,19 +153,29 @@ impl StateDbWorkBoard {
         let entries = rows
             .into_iter()
             .map(|row| {
-                // Derive branch name from gap ID slug.
-                let slug = row
-                    .title
-                    .to_lowercase()
-                    .chars()
-                    .map(|c| if c.is_alphanumeric() { c } else { '-' })
-                    .collect::<String>();
-                let slug = slug.trim_matches('-').to_string();
-                let branch = format!(
-                    "chump/{}-{}",
-                    row.id.to_lowercase(),
-                    &slug[..slug.len().min(30)]
-                );
+                // CREDIBLE-158: prefer the actual branch recorded by bot-merge
+                // Mode A ("branch:<name>" token in notes). The slug guess below
+                // matches almost no real branch and dead-lettered the queue.
+                let recorded_branch = row
+                    .notes
+                    .split_whitespace()
+                    .find(|w| w.starts_with("branch:") && w.len() > 7)
+                    .map(|w| w[7..].to_string());
+                let branch = recorded_branch.unwrap_or_else(|| {
+                    // Fallback: derive branch name from gap ID slug.
+                    let slug = row
+                        .title
+                        .to_lowercase()
+                        .chars()
+                        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                        .collect::<String>();
+                    let slug = slug.trim_matches('-').to_string();
+                    format!(
+                        "chump/{}-{}",
+                        row.id.to_lowercase(),
+                        &slug[..slug.len().min(30)]
+                    )
+                });
 
                 // Extract LOC estimate from notes if present ("loc:NNN").
                 let estimated_loc = row
