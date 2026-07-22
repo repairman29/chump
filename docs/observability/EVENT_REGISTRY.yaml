@@ -2014,8 +2014,9 @@ events:
     consumers: [waste-tally, watchdog]
     fields_required: [ts, kind, outcome, stuck_pr_count, duration_ms, gap_reserve_calls, failure_class]
     docs: |
-      INFRA-3117 answers (this event was the "TODO" placeholder gap; answers
-      already existed in code/comments, this just makes them registry-visible):
+      INFRA-3117 / INFRA-3200 answers (both were "TODO" placeholder gaps
+      for this same pr-stuck-cluster-detector event; answers already
+      existed in code/comments, this just makes them registry-visible):
         - emitted on: every exit path via `trap ... EXIT` in the detector
           script (success, no-op, dry-run, bad-args, and error) — see
           outcome field values: no_op | dry_run | cluster_filed | help |
