@@ -147,6 +147,7 @@ install_linux_deps() {
   # includes the Tauri desktop crate (until ZERO-WASTE-026 splits it out).
   run "install build + fleet system deps" _sudo apt-get install -y \
     build-essential pkg-config git curl wget python3 sqlite3 \
+    libssl-dev \
     libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
 
   # gh (GitHub CLI) via the official apt repo, if not already present.
