@@ -949,11 +949,26 @@ fn refresh_clone(clone_dir: &Path) -> Result<()> {
         );
         return Ok(());
     }
-    let branch = detect_default_branch(&cd);
-    // Hard-reset the working tree to the freshly-fetched default branch and drop
-    // any untracked leftovers from a prior run (prevents scope-crept PRs).
+    // MISSION-057: `git fetch` does NOT update origin/HEAD, so a clone made when
+    // the repo default was a feature branch keeps a stale origin/HEAD. Refresh it
+    // so default-branch detection is authoritative.
     let _ = Command::new("git")
-        .args(["-C", &cd, "reset", "--hard", &format!("origin/{branch}")])
+        .args(["-C", &cd, "remote", "set-head", "origin", "--auto"])
+        .status();
+    let branch = detect_default_branch(&cd);
+    // MISSION-057: SWITCH ONTO the default branch (checkout -B), not just reset the
+    // current one. `reset --hard` moves content but keeps the pre-existing local
+    // branch NAME — which then leaked into the PR base (fix/rls-recursion-test-
+    // proven) and every PR opened DIRTY. Drop untracked leftovers too.
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "checkout",
+            "-B",
+            &branch,
+            &format!("origin/{branch}"),
+        ])
         .status();
     let _ = Command::new("git")
         .args(["-C", &cd, "clean", "-fd"])
@@ -1056,41 +1071,13 @@ fn read_oauth_token_file() -> Option<String> {
 
 /// Detect the default branch of the cloned repo.
 fn detect_base_branch(clone_dir: &Path) -> String {
-    let out = Command::new("git")
-        .args([
-            "-C",
-            &clone_dir.to_string_lossy(),
-            "rev-parse",
-            "--abbrev-ref",
-            "HEAD",
-        ])
-        .output();
-    if let Ok(o) = out {
-        let branch = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if !branch.is_empty() && branch != "HEAD" {
-            return branch;
-        }
-    }
-    // Try symbolic-ref to get origin's HEAD.
-    let out2 = Command::new("git")
-        .args([
-            "-C",
-            &clone_dir.to_string_lossy(),
-            "remote",
-            "show",
-            "origin",
-        ])
-        .output();
-    if let Ok(o) = out2 {
-        let text = String::from_utf8_lossy(&o.stdout);
-        for line in text.lines() {
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("HEAD branch:") {
-                return rest.trim().to_string();
-            }
-        }
-    }
-    "main".to_string()
+    // MISSION-057: the PR base MUST be the repo's remote DEFAULT branch — not the
+    // clone's current local branch (`rev-parse HEAD`). refresh_clone resets the
+    // working tree to origin/<default> but a stale local branch NAME (e.g.
+    // fix/rls-recursion-test-proven) survived and leaked into the PR base, so
+    // every improve PR opened DIRTY/unmergeable. Use the authoritative resolver
+    // (origin/HEAD, refreshed by refresh_clone, then main/master fallback).
+    detect_default_branch(&clone_dir.to_string_lossy())
 }
 
 /// Build a human-readable description of the gap for the implement-agent prompt.
