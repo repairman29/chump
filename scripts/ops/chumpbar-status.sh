@@ -15,6 +15,12 @@
 
 set -uo pipefail
 
+# Optional persistent config (CHUMPBAR_HOSTS, CHUMPBAR_SSH_TIMEOUT, …). The
+# menu-bar binary runs this script with a minimal GUI env, so a sourced file is
+# the durable place to declare multi-host fleets — e.g. a node reachable only via
+# an ssh ProxyJump alias (closetjunky at a remote site, tunnelled through helsinki).
+[ -f "$HOME/.chump/chumpbar.env" ] && . "$HOME/.chump/chumpbar.env"
+
 # Under launchd/app contexts LANG is unset → cut/sed slice BYTES, which can
 # bisect a multibyte char (em-dashes in commit subjects) and emit invalid
 # UTF-8 that strict decoders (Swift String) reject wholesale. Force UTF-8.
@@ -84,7 +90,7 @@ for _spec in ${_host_specs[@]+"${_host_specs[@]}"}; do
     if (( _age > REMOTE_TTL_S )); then
         # Emitter may live in the user's home OR /root; try both. Pass the
         # host's label so its worker lines are prefixed with it.
-        ( ssh -o BatchMode=yes -o ConnectTimeout=4 "$_addr" \
+        ( ssh -o BatchMode=yes -o ConnectTimeout="${CHUMPBAR_SSH_TIMEOUT:-15}" "$_addr" \
             "CHUMP_FLEET_LABEL='$_label' bash ~/chump-eu-status.sh 2>/dev/null || CHUMP_FLEET_LABEL='$_label' bash /root/chump-eu-status.sh" \
             > "$_cache.tmp" 2>/dev/null && [ -s "$_cache.tmp" ] && mv "$_cache.tmp" "$_cache" & )
     fi

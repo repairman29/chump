@@ -457,6 +457,15 @@ impl GapStore {
                 ON routing_outcomes(recorded_at);
         ",
         )?;
+        // INFRA-1770: cost_usd per dispatch attempt, so the (eventual)
+        // INFRA-1764 router can score routes by
+        // (success_rate * value) / cost_per_attempt instead of success_rate
+        // alone. ALTER TABLE ADD is idempotent — duplicate-column errors are
+        // ignored so re-running migrate() on an existing DB is safe.
+        let _ = self.conn.execute(
+            "ALTER TABLE routing_outcomes ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+            [],
+        );
         // M1 (INFRA-059): add ISO-date columns alongside existing unix timestamps.
         // The YAML uses author-provided date strings (`opened_date: '2026-04-25'`);
         // round-trip preserves them verbatim instead of reformatting from unix ts.
@@ -4544,6 +4553,11 @@ pub struct RoutingOutcomeRow {
     pub outcome: String,
     pub pr_number: Option<u32>,
     pub duration_s: i64,
+    /// INFRA-1770: estimated USD cost of this one dispatch attempt (LLM
+    /// spend). `0.0` when unknown/unmeasured — callers should prefer a real
+    /// measured cost (e.g. `session_ledger::cost_usd_from_tokens`) over the
+    /// effort-tier default when one is available.
+    pub cost_usd: f64,
 }
 
 /// One aggregated row from the `(task_class, backend, model, provider_pfx)`
@@ -4559,6 +4573,17 @@ pub struct ScoreboardEntry {
     pub total: u64,
     pub success_rate: f64,
     pub last_seen: String,
+    /// INFRA-1770: mean `cost_usd` across every attempt on this route.
+    pub avg_cost_usd: f64,
+    /// INFRA-1770: `(success_rate * value) / avg_cost_usd`, the score the
+    /// (eventual) INFRA-1764 router is meant to rank routes by instead of
+    /// success_rate alone — a route that ships reliably but burns 10x the
+    /// budget of an equally-reliable cheaper route should rank lower.
+    /// `value` is the mean priority weight of attempts on this route (P0=4
+    /// … P3=1, default 2), a proxy for how much a shipped gap on this route
+    /// was actually worth. `0.0` when `avg_cost_usd` is `0.0` (no cost data
+    /// yet — most historical rows predate this column).
+    pub route_score: f64,
 }
 
 impl GapStore {
@@ -4570,8 +4595,8 @@ impl GapStore {
             .execute(
                 "INSERT INTO routing_outcomes
                     (recorded_at, task_class, priority, effort, backend, model,
-                     provider_pfx, gap_id, outcome, pr_number, duration_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     provider_pfx, gap_id, outcome, pr_number, duration_s, cost_usd)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     row.recorded_at,
                     row.task_class,
@@ -4584,6 +4609,7 @@ impl GapStore {
                     row.outcome,
                     row.pr_number,
                     row.duration_s,
+                    row.cost_usd,
                 ],
             )
             .context("insert routing_outcomes row")?;
@@ -4600,7 +4626,12 @@ impl GapStore {
                     SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
                     SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures,
                     COUNT(*) AS total,
-                    MAX(recorded_at) AS last_seen
+                    MAX(recorded_at) AS last_seen,
+                    AVG(cost_usd) AS avg_cost_usd,
+                    AVG(CASE priority
+                        WHEN 'P0' THEN 4.0 WHEN 'P1' THEN 3.0
+                        WHEN 'P2' THEN 2.0 WHEN 'P3' THEN 1.0
+                        ELSE 2.0 END) AS avg_value
              FROM routing_outcomes
              GROUP BY task_class, backend, model, provider_pfx
              ORDER BY total DESC, successes DESC",
@@ -4614,8 +4645,17 @@ impl GapStore {
             let failures: i64 = r.get(5)?;
             let total: i64 = r.get(6)?;
             let last_seen: String = r.get::<_, Option<String>>(7)?.unwrap_or_default();
+            let avg_cost_usd: f64 = r.get::<_, Option<f64>>(8)?.unwrap_or(0.0);
+            let avg_value: f64 = r.get::<_, Option<f64>>(9)?.unwrap_or(2.0);
             let success_rate = if total > 0 {
                 successes as f64 / total as f64
+            } else {
+                0.0
+            };
+            // INFRA-1770: score routes by (success_rate * value) / cost —
+            // undefined (0.0) until real cost_usd data accumulates.
+            let route_score = if avg_cost_usd > 0.0 {
+                (success_rate * avg_value) / avg_cost_usd
             } else {
                 0.0
             };
@@ -4629,6 +4669,8 @@ impl GapStore {
                 total: total as u64,
                 success_rate,
                 last_seen,
+                avg_cost_usd,
+                route_score,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -6458,6 +6500,7 @@ meta:
             outcome: outcome.into(),
             pr_number: pr,
             duration_s: 60,
+            cost_usd: 2.0,
         }
     }
 
@@ -6474,6 +6517,24 @@ meta:
         assert_eq!(board[0].total, 1);
         assert!((board[0].success_rate - 1.0).abs() < f64::EPSILON);
         assert_eq!(board[0].last_seen, "2026-04-27T12:00:00Z");
+        assert!((board[0].avg_cost_usd - 2.0).abs() < f64::EPSILON);
+        // priority=P1 -> value=3.0; score = (1.0 success * 3.0 value) / 2.0 cost.
+        assert!((board[0].route_score - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn routing_outcomes_route_score_is_zero_without_cost_data() {
+        let (store, _dir) = test_store();
+        let mut row = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(7), "", "");
+        row.cost_usd = 0.0;
+        store.record_routing_outcome(&row).unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 1);
+        assert_eq!(board[0].avg_cost_usd, 0.0);
+        assert_eq!(
+            board[0].route_score, 0.0,
+            "score is undefined (0.0) when no cost data has accumulated yet"
+        );
     }
 
     #[test]
