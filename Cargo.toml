@@ -177,8 +177,14 @@ sha2 = "0.11.0"
 hex = "0.4.3"
 
 [profile.release]
-# Keep debug info for profiling (flamegraph, cargo-profiler). Strip in CI if needed.
-debug = true
+# ZERO-WASTE-025: ship without debug symbols. Measured 2026-07-23: the
+# debug=true binary was 906MB, of which 847MB (94%) was debug tables —
+# stripped it's 59MB. strip="debuginfo" drops the debug tables but KEEPS
+# the symbol table, so panic backtraces still show function names. Anyone
+# who needs full profiling debug info builds with the `release-with-debug`
+# profile below (which overrides this).
+debug = false
+strip = "debuginfo"
 lto = "thin"
 codegen-units = 1
 
