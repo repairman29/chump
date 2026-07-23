@@ -6,7 +6,7 @@
 //!
 //! ## Scope precedence (most-restrictive wins)
 //!
-//! Three scopes are layered. The effective policy is the most-restrictive
+//! Four scopes are layered. The effective policy is the most-restrictive
 //! of any that match:
 //!
 //!   1. **Fleet** — the workspace default (today: enabled = true). Lives
@@ -18,6 +18,11 @@
 //!   3. **Repo** — the per-repo override. Lives at
 //!      `<repo>/.chump/auto_merge_policy.toml`. Repos with regulated
 //!      consumers (financial, medical) hard-disable auto-merge here.
+//!   4. **Lane** ([`Lane`], INFRA-1767) — the PR's merge-risk tier
+//!      (internal / user-facing / critical), computed at check time, not
+//!      read from disk. `Critical` defaults to `enabled = false` so a
+//!      wide-open fleet/operator/repo chain can never silently auto-merge
+//!      a high-blast-radius change.
 //!
 //! "Most restrictive" means: if ANY scope sets `enabled = false`, the
 //! effective policy is disabled. If ANY scope sets
@@ -176,12 +181,13 @@ impl Policy {
 }
 
 /// A scope label used in audit logs + ambient emits. Order matches
-/// precedence: Fleet first, Operator second, Repo third.
+/// precedence: Fleet first, Operator second, Repo third, Lane fourth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     Fleet,
     Operator,
     Repo,
+    Lane,
 }
 
 impl Scope {
@@ -190,29 +196,106 @@ impl Scope {
             Scope::Fleet => "fleet",
             Scope::Operator => "operator",
             Scope::Repo => "repo",
+            Scope::Lane => "lane",
         }
     }
 }
 
-/// Layered policy across the three scopes. Resolves the effective
-/// (most-restrictive) policy via [`Self::effective`].
+/// INFRA-1767: merge-risk tier for a PR. Each lane carries a baseline
+/// policy that feeds into the [`PolicyChain`] as an additional
+/// most-restrictive-wins scope, so a `Critical` PR can never silently
+/// auto-merge even if fleet/operator/repo scopes are wide open.
+///
+/// * `Internal`   — fleet-internal tooling/docs/scripts. Lowest risk if
+///                  wrong; auto-merge is the default.
+/// * `UserFacing` — behavior a human operator/customer will notice.
+///                  Requires a human review acknowledgement by default.
+/// * `Critical`   — auth, billing, data-loss-adjacent, or anything the
+///                  operator has flagged as high-blast-radius. Disabled
+///                  by default; must be explicitly enabled per-repo or
+///                  per-operator to ever auto-merge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Lane {
+    #[default]
+    Internal,
+    UserFacing,
+    Critical,
+}
+
+impl Lane {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Lane::Internal => "internal",
+            Lane::UserFacing => "user-facing",
+            Lane::Critical => "critical",
+        }
+    }
+
+    /// Parses `"internal"`, `"user-facing"`, `"critical"` (case-insensitive,
+    /// `_` and `-` interchangeable). Unrecognized input errors rather than
+    /// silently defaulting — a typo'd lane should never fall back to the
+    /// most-permissive tier.
+    pub fn parse(s: &str) -> anyhow::Result<Self> {
+        let norm = s.to_ascii_lowercase().replace('_', "-");
+        match norm.as_str() {
+            "internal" => Ok(Lane::Internal),
+            "user-facing" | "userfacing" => Ok(Lane::UserFacing),
+            "critical" => Ok(Lane::Critical),
+            other => anyhow::bail!("invalid lane: {other}; expected internal|user-facing|critical"),
+        }
+    }
+
+    /// The lane's baseline policy, layered into [`PolicyChain::effective`]
+    /// alongside fleet/operator/repo. Fleet/operator/repo can only make
+    /// this MORE restrictive (most-restrictive-wins), never less.
+    pub fn default_policy(self) -> Policy {
+        match self {
+            Lane::Internal => Policy {
+                enabled: true,
+                require_human_review: false,
+                trust_threshold_pr_count: 0,
+                reviewed_pr_count: 0,
+            },
+            Lane::UserFacing => Policy {
+                enabled: true,
+                require_human_review: true,
+                trust_threshold_pr_count: 0,
+                reviewed_pr_count: 0,
+            },
+            Lane::Critical => Policy {
+                enabled: false,
+                require_human_review: true,
+                trust_threshold_pr_count: 0,
+                reviewed_pr_count: 0,
+            },
+        }
+    }
+}
+
+/// Layered policy across the three on-disk scopes plus the lane baseline.
+/// Resolves the effective (most-restrictive) policy via [`Self::effective`].
 #[derive(Debug, Clone)]
 pub struct PolicyChain {
     pub fleet: Policy,
     pub operator: Policy,
     pub repo: Policy,
+    pub lane: Policy,
+    pub lane_kind: Lane,
 }
 
 impl PolicyChain {
-    /// Read the chain from the three canonical file locations. Each file is
-    /// optional; missing files yield `Policy::default()` for that scope.
+    /// Read the chain from the three canonical file locations plus the
+    /// given lane's baseline. Each file is optional; missing files yield
+    /// `Policy::default()` for that scope.
     ///
     /// * `repo_root` is the repository root; canonical files are
     ///   `<repo>/.chump/fleet-policy.toml` and
     ///   `<repo>/.chump/auto_merge_policy.toml`.
     /// * `home_dir` is the operator's home dir; canonical file is
     ///   `<home>/.chump/auto_merge_policy.toml`.
-    pub fn load(repo_root: &Path, home_dir: &Path) -> anyhow::Result<Self> {
+    /// * `lane` is the merge-risk tier (INFRA-1767); use `Lane::Internal`
+    ///   to reproduce pre-lane behavior.
+    pub fn load(repo_root: &Path, home_dir: &Path, lane: Lane) -> anyhow::Result<Self> {
         let fleet_path = repo_root.join(".chump").join("fleet-policy.toml");
         let operator_path = home_dir.join(".chump").join("auto_merge_policy.toml");
         let repo_path = repo_root.join(".chump").join("auto_merge_policy.toml");
@@ -221,18 +304,21 @@ impl PolicyChain {
             fleet: Policy::from_file(fleet_path)?,
             operator: Policy::from_file(operator_path)?,
             repo: Policy::from_file(repo_path)?,
+            lane: lane.default_policy(),
+            lane_kind: lane,
         })
     }
 
-    /// Compute the effective policy by combining the three scopes with
+    /// Compute the effective policy by combining the four scopes with
     /// most-restrictive-wins semantics. Returns the effective `Policy`
-    /// plus the `Scope` that contributed the strictest gate (used for
+    /// plus the `Scope`s that contributed the strictest gate (used for
     /// audit-log "blocked by which scope" disclosure).
     pub fn effective(&self) -> (Policy, Vec<Scope>) {
         let scopes = [
             (Scope::Fleet, &self.fleet),
             (Scope::Operator, &self.operator),
             (Scope::Repo, &self.repo),
+            (Scope::Lane, &self.lane),
         ];
         // Most-restrictive of `enabled` and `require_human_review` is the
         // boolean AND / OR respectively. trust_threshold is the max.
@@ -422,6 +508,8 @@ mod tests {
             fleet,
             operator,
             repo,
+            lane: Lane::Internal.default_policy(),
+            lane_kind: Lane::Internal,
         }
     }
 
@@ -515,9 +603,61 @@ mod tests {
             .save_to_file(home_dir.join(".chump").join("auto_merge_policy.toml"))
             .unwrap();
 
-        let chain = PolicyChain::load(repo_root, &home_dir).unwrap();
+        let chain = PolicyChain::load(repo_root, &home_dir, Lane::Internal).unwrap();
         assert!(chain.operator.require_human_review);
         let res = chain.require_auto_merge_allowed();
         assert!(res.is_err());
+    }
+
+    // ── Lane tests (INFRA-1767) ─────────────────────────────────────────
+
+    #[test]
+    fn lane_parse_accepts_synonyms() {
+        assert_eq!(Lane::parse("internal").unwrap(), Lane::Internal);
+        assert_eq!(Lane::parse("user-facing").unwrap(), Lane::UserFacing);
+        assert_eq!(Lane::parse("user_facing").unwrap(), Lane::UserFacing);
+        assert_eq!(Lane::parse("USERFACING").unwrap(), Lane::UserFacing);
+        assert_eq!(Lane::parse("Critical").unwrap(), Lane::Critical);
+        assert!(Lane::parse("bogus").is_err());
+    }
+
+    #[test]
+    fn lane_internal_allows_by_default() {
+        let chain = chain_with(Policy::default(), Policy::default(), Policy::default());
+        assert!(chain.require_auto_merge_allowed().is_ok());
+    }
+
+    #[test]
+    fn lane_user_facing_requires_review_by_default() {
+        let mut chain = chain_with(Policy::default(), Policy::default(), Policy::default());
+        chain.lane = Lane::UserFacing.default_policy();
+        chain.lane_kind = Lane::UserFacing;
+        let res = chain.require_auto_merge_allowed();
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contributing.contains(&Scope::Lane));
+    }
+
+    #[test]
+    fn lane_critical_blocks_even_with_permissive_fleet_operator_repo() {
+        let mut chain = chain_with(Policy::default(), Policy::default(), Policy::default());
+        chain.lane = Lane::Critical.default_policy();
+        chain.lane_kind = Lane::Critical;
+        let res = chain.require_auto_merge_allowed();
+        assert!(res.is_err());
+        let blocked = res.unwrap_err();
+        assert!(blocked.contributing.contains(&Scope::Lane));
+        assert!(blocked.reason.contains("disabled"));
+    }
+
+    #[test]
+    fn lane_critical_cannot_be_overridden_permissive_by_other_scopes() {
+        // Even if fleet/operator/repo are maximally permissive, the
+        // Critical lane's enabled=false must still win (most-restrictive).
+        let mut chain = chain_with(Policy::default(), Policy::default(), Policy::default());
+        chain.lane = Lane::Critical.default_policy();
+        chain.lane_kind = Lane::Critical;
+        let (eff, _) = chain.effective();
+        assert!(!eff.enabled);
+        assert!(!eff.is_auto_merge_allowed());
     }
 }
