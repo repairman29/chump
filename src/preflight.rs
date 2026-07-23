@@ -237,7 +237,12 @@ fn scope_from_paths(paths: &[String]) -> Scope {
             || lower.starts_with("crates/")
             || lower.starts_with("chump-tool-macro/")
             || lower.starts_with("tests/")
-            || lower.starts_with("wasm/");
+            || lower.starts_with("wasm/")
+            // INFRA-1787 AC#3: env-var-coverage lives in the rust-scope gate
+            // bucket, but its allowlist file is a scripts/ path — without this
+            // special case, a diff touching only env-vars-internal.txt (no
+            // .rs files) would fall into scripts-only scope and skip the gate.
+            || lower == "scripts/ci/env-vars-internal.txt";
         let is_scripts = lower.ends_with(".sh")
             || lower.starts_with("scripts/")
             || lower.starts_with(".github/workflows/")
@@ -2224,6 +2229,19 @@ mod tests {
         assert!(s.rust);
         assert!(!s.scripts);
         assert!(s.docs);
+    }
+
+    #[test]
+    fn scope_from_paths_env_vars_internal_txt_triggers_rust_scope() {
+        // INFRA-1787 AC#3: touching only the env-var allowlist (no .rs files)
+        // must still trigger the rust-scope bucket so env-var-coverage runs.
+        let paths = vec!["scripts/ci/env-vars-internal.txt".to_string()];
+        let s = scope_from_paths(&paths);
+        assert!(
+            s.rust,
+            "env-vars-internal.txt alone should trigger rust scope"
+        );
+        assert!(s.scripts);
     }
 
     #[test]
