@@ -2214,6 +2214,38 @@ events:
     trigger: an event needs operator attention
     consumers: [discord, telegram messaging adapter]
 
+  - kind: operator_page
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
+    trigger: >
+      a session raises a structured human-in-the-loop interrupt tiered
+      info | action | block, distinct from operator_recall's halt-class-only
+      scope (T1-T3 style decisions rather than T4 fleet-wide halts).
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
+      - severity   # info | action | block
+      - title
+      - message
+      - cost_usd_at_page
+
+  - kind: operator_page_ack
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh --ack (INFRA-1774)
+    trigger: operator (or automation) acknowledges a raised operator_page
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
+      - ack_by
+
+  - kind: operator_page_timeout
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh --check-timeouts (INFRA-1774)
+    trigger: an operator_page's timeout_secs elapsed with no matching ack
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
+
   - kind: escalation
     effect_metric: self
     emitter: operator-agent (INFRA-737, future)
