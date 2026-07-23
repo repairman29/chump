@@ -1201,3 +1201,8 @@ CHUMP_FREE_TIER_PROVIDERS
 CHUMP_MODEL_ESCALATION_LADDER
 # detected in: (standard input)
 CHUMP_OAUTH_TOKEN_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CASCADE_ENABLED
