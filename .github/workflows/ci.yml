@@ -103,6 +103,12 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
       tauri: ${{ steps.filter.outputs.tauri }}
+      # ZERO-WASTE-027: chump-desktop is a fully-isolated leaf (nothing in the
+      # workspace depends on it, and it depends on nothing in the workspace),
+      # so it can only be affected by desktop/** (or a lockfile/toolchain bump).
+      # clippy/cargo-test exclude it unless this is true — skipping its 64-crate
+      # Tauri/webkit compile on the ~majority of PRs that never touch it.
+      desktop: ${{ steps.filter.outputs.desktop }}
       rust: ${{ steps.filter.outputs.rust }}
       scripts: ${{ steps.filter.outputs.scripts }}
       acp: ${{ steps.filter.outputs.acp }}
@@ -179,6 +185,15 @@ jobs:
               - 'src/**'
               - 'desktop/**'
               - 'e2e-tauri/**'
+            # ZERO-WASTE-027: only paths that can affect the isolated
+            # chump-desktop leaf. Workflow changes included so a ci.yml edit
+            # always exercises the full-workspace path (belt-and-suspenders).
+            desktop:
+              - 'desktop/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/**'
             rust:
               - 'src/**'
               - 'crates/**'
@@ -1222,7 +1237,18 @@ jobs:
           prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
 
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # ZERO-WASTE-027: exclude the isolated chump-desktop leaf unless the diff
+        # touches it (desktop path-filter) or this is a push to main / merge_group
+        # (full-workspace backstop). Skips the Tauri/webkit compile on Rust PRs.
+        env:
+          DESKTOP_CHANGED: ${{ needs.changes.outputs.desktop }}
+        run: |
+          EXCLUDE="--exclude chump-desktop"
+          if [ "$DESKTOP_CHANGED" = "true" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+            EXCLUDE=""
+          fi
+          echo "clippy scope: --workspace ${EXCLUDE:-（full）}"
+          cargo clippy --workspace $EXCLUDE --all-targets -- -D warnings
 
   # ── Shard 3: cargo test ───────────────────────────────────────────────────
   # `cargo test --workspace`. Runs in parallel with clippy and fast-checks.
@@ -1343,13 +1369,21 @@ jobs:
         id: cargo-test
         env:
           RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
+          # ZERO-WASTE-027: see clippy step — exclude the isolated chump-desktop
+          # leaf unless the diff touches it or this is push/merge_group.
+          DESKTOP_CHANGED: ${{ needs.changes.outputs.desktop }}
         run: |
           _TRIAGE_OUT="$(mktemp /tmp/cargo-test-output.XXXXXX)"
           echo "log_path=$_TRIAGE_OUT" >> "$GITHUB_OUTPUT"
+          EXCLUDE="--exclude chump-desktop"
+          if [ "$DESKTOP_CHANGED" = "true" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+            EXCLUDE=""
+          fi
+          echo "test scope: --workspace ${EXCLUDE:-（full）}"
           if [ "${CARGO_NEXTEST_DISABLE:-0}" = "1" ]; then
-            bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace $EXCLUDE 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           else
-            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
+            bash scripts/ci/cargo-test-with-rerun.sh -- cargo nextest run --workspace $EXCLUDE 2>&1 | tee "$_TRIAGE_OUT"; exit "${PIPESTATUS[0]}"
           fi
 
       # CREDIBLE-013: CI failure triage — classify failures as flake / real /
