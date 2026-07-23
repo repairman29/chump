@@ -7,6 +7,11 @@ export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=en_US.UTF-8
 REPO="${CHUMP_REPO:-/root/Chump}"
 now=$(date +%s)
 
+# Per-host label for the worker lines (multi-host ChumpBar). Passed by the
+# laptop as CHUMP_FLEET_LABEL; defaults to the 🇫🇮 flag for the original
+# single-host (Helsinki) deployment.
+LABEL="${CHUMP_FLEET_LABEL:-🇫🇮}"
+
 _esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
 # chumpd status: worker slots + mode
@@ -38,9 +43,9 @@ if [[ -n "$fleet_dir" ]]; then
         if [[ -n "$gap" ]]; then
             title=$(sqlite3 "$REPO/.chump/state.db" \
                 "SELECT substr(title,1,44) FROM gaps WHERE id='$gap'" 2>/dev/null || true)
-            lines+="\"🇫🇮 W${agent} ${marker} ${gap}: $(_esc "$title")\","
+            lines+="\"${LABEL} W${agent} ${marker} ${gap}: $(_esc "$title")\","
         else
-            lines+="\"🇫🇮 W${agent} ${marker} warming up\","
+            lines+="\"${LABEL} W${agent} ${marker} warming up\","
         fi
     done
 fi
