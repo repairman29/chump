@@ -155,6 +155,55 @@ else
     fail "blocked branch missing kind: $block_out"
 fi
 
+# ── Test 8: INFRA-1767 lane defaults ────────────────────────────────────────
+# Reset to a fully-permissive fleet/operator/repo chain so only the lane
+# baseline is under test.
+"$BIN" set --scope repo --enabled true --require-human-review false >/dev/null
+"$BIN" set --scope operator --enabled true --require-human-review false --trust-threshold 0 >/dev/null
+
+echo ""
+echo "Test 8a: --lane internal allows by default"
+if "$BIN" check --lane internal >/dev/null 2>&1; then
+    pass "internal lane allowed"
+else
+    fail "internal lane should allow with permissive fleet/operator/repo"
+fi
+
+echo ""
+echo "Test 8b: --lane user-facing blocks by default (requires human review)"
+uf_out=$("$BIN" check --lane user-facing 2>&1 || true)
+if echo "$uf_out" | grep -q '"kind":"auto_merge_policy_blocked"' && echo "$uf_out" | grep -q '"lane":"user-facing"'; then
+    pass "user-facing lane blocked with lane in payload"
+else
+    fail "user-facing lane should block by default: $uf_out"
+fi
+
+echo ""
+echo "Test 8c: --lane critical blocks even with fully permissive other scopes"
+crit_out=$("$BIN" check --lane critical 2>&1 || true)
+if echo "$crit_out" | grep -q '"kind":"auto_merge_policy_blocked"' && echo "$crit_out" | grep -q '"failure_class":"permanent_by_design"'; then
+    pass "critical lane blocked with permanent_by_design failure class"
+else
+    fail "critical lane should block with permanent_by_design: $crit_out"
+fi
+
+echo ""
+echo "Test 8d: invalid --lane value errors rather than defaulting permissive"
+if "$BIN" check --lane bogus >/dev/null 2>&1; then
+    fail "invalid lane should not silently succeed"
+else
+    pass "invalid lane rejected"
+fi
+
+echo ""
+echo "Test 8e: show --lane critical reports lane in JSON"
+show_out=$("$BIN" show --json --lane critical)
+if python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['lane']=='critical' and d['effective']['auto_merge_allowed'] is False" "$show_out" 2>/dev/null; then
+    pass "show --lane critical reports lane + blocked"
+else
+    fail "show --lane critical malformed: $show_out"
+fi
+
 # ── Summary ────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
