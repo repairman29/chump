@@ -87,6 +87,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod fleet_mode;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
@@ -7026,6 +7027,21 @@ async fn main() -> Result<()> {
                     0
                 };
                 std::process::exit(code);
+            }
+            "mode" => {
+                // INFRA-1718: fleet-mode surface — auth + backend + cost
+                // ceiling snapshot so agents stop misrouting work to a
+                // broken cascade or an unusable auth path. Read-only, no
+                // network/gh calls.
+                let want_json = args.iter().any(|a| a == "--json");
+                let effort_tier = flag("--effort").unwrap_or_default();
+                let mode = fleet_mode::compute(&effort_tier);
+                if want_json {
+                    println!("{}", fleet_mode::render_json(&mode));
+                } else {
+                    println!("{}", fleet_mode::render_line(&mode));
+                }
+                std::process::exit(if mode.auth_usable { 0 } else { 1 });
             }
             "doctor" => {
                 // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
