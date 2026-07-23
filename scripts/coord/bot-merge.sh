@@ -3970,7 +3970,10 @@ See docs/process/HITL_APPROVAL.md for the full operator flow." 2>/dev/null || tr
                 # INFRA-1377: auto-merge-armer.sh detects merge queue and adjusts
                 # merge strategy accordingly (omits --squash, skips REST-direct).
                 stage_start "auto-merge-armer.sh --pr $TARGET_PR"
-                if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then
+                # INFRA-1732: run_timed_hb wrapper (delegates to `gh pr merge` inside
+                # auto-merge-armer.sh) so a wedge emits bot_merge_hang, not just the
+                # slower stage-budget botmerge_wedged watchdog.
+                if ! run_timed_hb "auto-merge-arm" 60 "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then  # gh pr merge
                     red "auto-merge-armer failed (see above)."
                     exit 2
                 fi
