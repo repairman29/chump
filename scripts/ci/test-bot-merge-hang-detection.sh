@@ -73,7 +73,7 @@ _check_phase "rebase"         'run_timed_hb.*git rebase'
 _check_phase "push"           'run_timed_hb.*git push'
 _check_phase "pr-create"      'run_timed_hb.*gh pr create\|gh_with_backoff.*gh pr create'
 _check_phase "gap-ship"       'run_timed_hb.*gap ship'
-_check_phase "auto-merge-arm" 'run_timed_hb.*gh pr merge\|gh_with_backoff.*gh pr merge'
+_check_phase "auto-merge-arm" 'run_timed_hb.*gh pr merge\|gh_with_backoff.*gh pr merge\|stage_start.*auto-merge-armer'
 
 # ── 6 & 7. Functional: _emit_hang_alert writes bot_merge_hang to ambient.jsonl ─
 FAKE_LOCKS="$TMPDIR_BASE/locks"
