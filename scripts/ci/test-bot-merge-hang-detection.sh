@@ -90,13 +90,15 @@ REPO_ROOT='$FAKE_LOCKS'
 GAP_IDS=(INFRA-587)
 DRY_RUN=0
 
+source '$ROOT/scripts/coord/lib/ambient-write.sh'
+
 $(grep -A 12 '^_emit_hang_alert()' scripts/coord/bot-merge.sh)
 
 # Also need red() for the stderr line (non-fatal)
 red() { printf '[bot-merge] %s\n' \"\$*\" >&2; }
 
 _emit_hang_alert 'git rebase' 60
-" 2>/dev/null
+" 2>/dev/null || true
 
 if [[ -f "$FAKE_AMBIENT" ]]; then
     check "_emit_hang_alert creates ambient.jsonl entry" "ok"
@@ -136,7 +138,7 @@ else
 fi
 
 # ── 8. run_timed_hb calls _emit_hang_alert on exit code 124 ──────────────────
-if grep -A20 '^run_timed_hb()' scripts/coord/bot-merge.sh | grep -q '_emit_hang_alert'; then
+if awk '/^run_timed_hb\(\)/{f=1} f{print} f && /^}/{exit}' scripts/coord/bot-merge.sh | grep -q '_emit_hang_alert'; then
     check "run_timed_hb calls _emit_hang_alert on timeout (exit 124)" "ok"
 else
     check "run_timed_hb calls _emit_hang_alert on timeout (exit 124)" "run_timed_hb body does not call _emit_hang_alert"
