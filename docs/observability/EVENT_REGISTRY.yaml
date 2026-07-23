@@ -700,6 +700,16 @@ events:
     consumers: [paramedic, fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, missing_daemons, missing_count, host]
 
+  - kind: fleet_bootstrap_auto_install
+    effect_metric: self
+    emitter: scripts/setup/chump-fleet-bootstrap.sh --auto-tick (INFRA-1808)
+    trigger: the hourly dev.chump.bootstrap-auto-install launchd job
+      (scripts/setup/install-bootstrap-auto-launchd.sh) ran the bootstrap
+      unattended. Distinct from fleet_bootstrap_ran so operators/audit-log
+      consumers can tell an unattended auto-tick from a manual run.
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, installed_count, manifest_missing_count, daemon_missing_count]
+
   - kind: picker_used_priority
     effect_metric: self
     emitter: scripts/dispatch/_pick_gap.py + _pick_and_claim_gap.py (INFRA-1258)

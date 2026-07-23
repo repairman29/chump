@@ -255,6 +255,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
 | `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |
 | `./scripts/coord/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
+| `./scripts/setup/chump-fleet-bootstrap.sh` | Fleet-daemon installer — installs every required launchd job/git hook so the fleet is actually running, not just present on disk. An hourly `dev.chump.bootstrap-auto-install` launchd job re-runs this automatically once installed (INFRA-1808), but a fresh machine still needs one manual run to bootstrap the bootstrapper. |
 
 ---
 

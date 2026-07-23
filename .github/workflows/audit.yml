@@ -551,6 +551,14 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-fleet-bootstrap.sh
 
+      - name: install-*.sh scripts must be executable (INFRA-1808)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-install-scripts-executable.sh
+
+      - name: hourly bootstrap-auto-install launchd job (INFRA-1808)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-bootstrap-auto-install.sh
+
       - name: PWA flake quarantine wiring (INFRA-1332)
         if: matrix.shard == 3
         run: bash scripts/ci/test-pwa-flake-quarantine.sh

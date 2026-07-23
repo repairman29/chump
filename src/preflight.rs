@@ -625,6 +625,15 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-1808: every scripts/setup/install-*.sh must be mode 0755 —
+        // guards against the exact perm-bit failure mode that left
+        // install-bot-merge-watchdog.sh un-runnable for days. Pure git
+        // ls-files + stat, ~1s, no network.
+        "scripts/ci/test-install-scripts-executable.sh",
+        // INFRA-1808: hourly bootstrap-auto-install launchd job — plist
+        // shape + manifest self-install entry + ambient emit smoke test.
+        // launchctl stubbed via PATH; ~1-2s, no network.
+        "scripts/ci/test-bootstrap-auto-install.sh",
     ];
     candidates
         .iter()

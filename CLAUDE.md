@@ -76,6 +76,14 @@ bash scripts/coord/freshness-preamble.sh         # META-115: FRESH/STALE/CRITICA
 bash scripts/dev/mission-scoreboard.sh           # MISSION-014: did yesterday move docs/MISSION.md?
 ```
 
+**Auto-bootstrap (INFRA-1808):** once `chump-fleet-bootstrap.sh` has been run
+manually at least once, it self-installs an hourly `dev.chump.bootstrap-auto-install`
+launchd job (`scripts/setup/install-bootstrap-auto-launchd.sh`) that re-runs the
+bootstrap unattended (`--auto-tick`, idempotent installers, emits
+`kind=fleet_bootstrap_auto_install` per run) — so this stops being a manual
+step going forward. **A fresh machine still needs one manual run** to
+bootstrap the bootstrapper; the pre-flight `--check` above is that trigger.
+
 **Freshness discipline** — before any "X is missing" claim, run [`verify-existence`](./.claude/skills/verify-existence/SKILL.md)
 or `git ls-tree origin/main path/to/X`. Local `ls` lies when your checkout is 40+
 commits behind. Full rules + anti-patterns + decision table in

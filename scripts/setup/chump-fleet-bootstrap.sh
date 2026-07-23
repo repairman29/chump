@@ -80,6 +80,7 @@ MODE="install"   # install | check
 ONLY=""
 SKIP=""
 PRI_FILTER=""
+AUTO_TICK=0   # INFRA-1808: set by the hourly auto-bootstrap launchd job
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -87,6 +88,7 @@ while [[ $# -gt 0 ]]; do
         --only)     ONLY="$2"; shift 2 ;;
         --skip)     SKIP="$2"; shift 2 ;;
         --priority) PRI_FILTER="$2"; shift 2 ;;
+        --auto-tick) AUTO_TICK=1; shift ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
@@ -143,8 +145,22 @@ INSTALLED_LIST=()
 FAILED=0
 FAILED_LIST=()
 MISSING_AT_CHECK=()
+MANIFEST_MISSING_COUNT=0   # INFRA-1808: manifest entries whose check failed this run (any mode)
 
 cd "$REPO_ROOT"
+
+# INFRA-1808: resilience against the exact perm-bit failure mode that let
+# install-bot-merge-watchdog.sh ship at mode 0644 and sit unrun for days.
+# Before invoking any install-*.sh referenced by a manifest `install` command
+# (or a REQUIRED_DAEMONS installer path), force it executable. chmod is a
+# no-op if already +x, so this is always safe to run.
+chmod_install_scripts_in() {
+    local cmd="$1"
+    local script
+    for script in $(grep -oE '[^ ]*scripts/setup/install-[A-Za-z0-9_.-]*\.sh' <<<"$cmd"); do
+        [[ -f "$REPO_ROOT/$script" ]] && chmod +x "$REPO_ROOT/$script" 2>/dev/null || true
+    done
+}
 
 # Process P0 first, then P1, then P2 (rough dep ordering — manifest authors
 # put depends_on in the right column anyway).
@@ -164,6 +180,8 @@ for pri in P0 P1 P2 P3; do
             continue
         fi
 
+        MANIFEST_MISSING_COUNT=$((MANIFEST_MISSING_COUNT + 1))
+
         if [[ "$MODE" == "check" ]]; then
             MISSING_AT_CHECK+=("$id")
             echo "  MISSING $id  (would run: $install)"
@@ -171,6 +189,7 @@ for pri in P0 P1 P2 P3; do
         fi
 
         # Install.
+        chmod_install_scripts_in "$install"
         echo "[bootstrap] installing $id ($pri_actual): $install"
         if eval "$install" >/dev/null 2>&1; then
             INSTALLED=$((INSTALLED + 1))
@@ -206,6 +225,7 @@ for entry in "${REQUIRED_DAEMONS[@]}"; do
         echo "  MISSING daemon:$label  (run: bash $installer)"
     else
         # install mode: run the installer idempotently.
+        chmod +x "$REPO_ROOT/$installer" 2>/dev/null || true
         echo "[bootstrap] installing daemon $label: bash $installer"
         if bash "$REPO_ROOT/$installer" >/dev/null 2>&1; then
             INSTALLED=$((INSTALLED + 1))
@@ -250,6 +270,18 @@ if [[ -d "$(dirname "$AMBIENT")" ]]; then
             "$missing_labels" \
             "${#MISSING_DAEMONS[@]}" \
             "$(hostname -s 2>/dev/null || echo unknown)" \
+            >> "$AMBIENT" 2>/dev/null || true
+    fi
+
+    # INFRA-1808: the hourly auto-bootstrap launchd job (installed by
+    # install-bootstrap-auto-launchd.sh) passes --auto-tick so every
+    # unattended run leaves an audit trail distinct from manual runs.
+    if [[ "$AUTO_TICK" == "1" ]]; then
+        printf '{"ts":"%s","kind":"fleet_bootstrap_auto_install","installed_count":%d,"manifest_missing_count":%d,"daemon_missing_count":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$INSTALLED" \
+            "$MANIFEST_MISSING_COUNT" \
+            "${#MISSING_DAEMONS[@]}" \
             >> "$AMBIENT" 2>/dev/null || true
     fi
 fi
