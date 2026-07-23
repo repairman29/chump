@@ -66,6 +66,12 @@ Each new inbox line arrives as a `<task-notification>` that wakes the loop. Oper
 
 **Why it matters**: validated 2026-05-24 by curator-opus-target — Monitor `bo2mnd8z0` delivered a wizard DM in 0s vs the prior 5m cron poll. Operator's explicit fix to the operator-as-messenger antipattern (INFRA-1860/INFRA-1879).
 
+**Also on first turn (and on any role-switch within this shell)** — emit a role card (INFRA-2017, RCA Change 2 follow-up) so peers dedupe this physical session by `session_id` instead of alias:
+```
+bash scripts/coord/role-card-emit.sh --role curator-opus-target --lane EFFECTIVE --wake-mode event-driven [--claim <active-gap-id>]
+```
+Peers read the latest per-session card via `scripts/dev/role-card-query.sh`.
+
 ## Standard 5-step work-your-lane protocol
 
 Run this every iteration (cap: 12 minutes wall-clock per iter; if hit, broadcast STUCK and let next tick retry):
