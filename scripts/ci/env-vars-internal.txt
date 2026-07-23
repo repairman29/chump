@@ -404,6 +404,7 @@ CHUMP_CLAIM_FUZZY_THRESHOLD
 
 # INFRA-1442: claim-time fuzzy-match disable
 CHUMP_CLAIM_NO_FUZZY
+CHUMP_CLAIM_NO_NATS
 
 # INFRA-1454: agent-bash sandbox opt-in (macOS sandbox-exec wrap)
 CHUMP_AGENT_SANDBOX
