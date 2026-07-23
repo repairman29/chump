@@ -118,6 +118,7 @@ mod health_server;
 mod hitl_escalation;
 mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
+mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
@@ -1314,6 +1315,14 @@ async fn main() -> Result<()> {
     // Extracted to commands::dispatch_external (INFRA-3289, slice 1 of INFRA-3287).
     if let Some(code) = commands::dispatch_external::try_dispatch(&args) {
         std::process::exit(code);
+    }
+
+    // `chump ingest <repo-path>` (INFRA-1780, phase 1a of INFRA-1746) —
+    // repo validation + read-only safety only. No filesystem mutation, no
+    // network calls. Later phases add the actual scanning/writing.
+    if args.get(1).map(String::as_str) == Some("ingest") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(ingest::run(&sub_args));
     }
 
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
