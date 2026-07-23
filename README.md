@@ -1,5 +1,24 @@
 # Chump
 
+```
+                 _..._
+            .-~       ~-.
+          .'             `.
+         /   o       o     \
+        |          _          |
+        |        _( )_( )    |
+        |       (_) o o (_)  |
+        |         (_) (_)    |
+        \    ___  .~     ~.  /
+         \  |===\ |       | /
+          `. \__/  \     / /
+            `.______\___/ /
+              |        |  |
+              |________|  |
+            _/'_________'.|
+           |______________|
+```
+
 **Chump is a multi-agent fleet coordinator + gap registry. Bring your own coding agent** (Claude Code, opencode, Codex CLI, Aider, goose, or manual commits).
 
 Runs on your hardware. Your keys, your data, your machine.
