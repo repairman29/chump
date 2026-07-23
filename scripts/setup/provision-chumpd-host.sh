@@ -171,6 +171,14 @@ install_linux_deps() {
     export PATH="$HOME/.cargo/bin:$PATH"
   fi
 
+  # RESILIENT-191: the `claude` backend dispatches via the Claude Code CLI
+  # (`claude -p`). Install it (user-level, official native installer) so a
+  # claude-backend node ships out of the box. Harmless for chump-local nodes.
+  if ! command -v claude >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/claude" ]]; then
+    run "install Claude Code CLI (native, user-level)" bash -c "curl -fsSL https://claude.ai/install.sh | bash"
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+
   ensure_swap
 }
 
@@ -340,6 +348,29 @@ else
   # RESILIENT-185: also build the chumpd supervisor binary the service runs.
   ( cd "$CHUMPD_PROVISION_DIR" && env ${BUILD_ENV[@]+"${BUILD_ENV[@]}"} cargo build --release -p chumpd )
   log "OK: built chumpd"
+
+  # RESILIENT-191: put `chump` on PATH. Worker loops call bare `chump gap …`;
+  # without this they log "chump binary not on PATH" and stall every cycle.
+  if [[ -x "$CHUMPD_PROVISION_DIR/target/release/chump" ]]; then
+    mkdir -p "$HOME/.local/bin"
+    cp -f "$CHUMPD_PROVISION_DIR/target/release/chump" "$HOME/.local/bin/chump"
+    export PATH="$HOME/.local/bin:$PATH"
+    log "OK: installed chump -> $HOME/.local/bin/chump"
+  fi
+
+  # RESILIENT-191: materialize the local gap DB from the tracked YAML mirror
+  # (state.db is gitignored; the registry travels as .chump/state.sql). Best-effort
+  # + time-bounded: `chump restore --from-sql` currently probes a model endpoint at
+  # startup, so it can fail on a node whose backend secrets aren't filled yet — the
+  # runbook (docs/process/ADD_A_FLEET_NODE.md §2) covers the post-secrets re-run.
+  if [[ ! -s "$CHUMPD_PROVISION_DIR/.chump/state.db" && -f "$CHUMPD_PROVISION_DIR/.chump/state.sql" ]]; then
+    if ( cd "$CHUMPD_PROVISION_DIR" && timeout 60 "$HOME/.local/bin/chump" restore --from-sql >/dev/null 2>&1 ); then
+      log "OK: materialized state.db from state.sql ($(sqlite3 "$CHUMPD_PROVISION_DIR/.chump/state.db" "SELECT COUNT(*) FROM gaps WHERE status='open'" 2>/dev/null) open gaps)"
+    else
+      warn "could not materialize state.db yet (restore needs a reachable backend) —" \
+           "fill secrets then re-run: cd $CHUMPD_PROVISION_DIR && chump restore --from-sql"
+    fi
+  fi
 fi
 
 # ── chumpd availability gate (BLOCKED-until-MISSION-051) ─────────────────
@@ -402,8 +433,17 @@ CHUMPD_FLEET_BACKEND=claude
 # --- GitHub access for PR ops (set ONE) ---
 # GH_TOKEN=TODO_github_token
 #
-# --- If backend=claude: subscription OAuth token file (copy from your laptop) ---
-# CHUMP_OAUTH_TOKEN_FILE=%h/.chump/oauth-token.json
+# --- If backend=claude: long-lived subscription OAuth token (from `claude setup-token`).
+# This is the whole auth story for the claude backend — no refreshing token file.
+# Force the oauth path so a stale/absent API key can't outrank it (project auth memory).
+# CLAUDE_CODE_OAUTH_TOKEN=TODO_claude_oauth_token
+# CHUMP_AUTH_MODE=oauth
+#
+# --- Cross-machine coordination (optional; set on every node to share one queue).
+# Point at the hub's TAILNET ip (nats-broker-install.sh prints how to propagate).
+# Bump the timeout on high-latency (home-NAT / DERP) links or claims fall back local.
+# CHUMP_NATS_URL=nats://chump:TODO_secret@100.x.y.z:4222
+# CHUMP_NATS_TIMEOUT_MS=8000
 #
 # --- If backend=chump-local: open-model routing (EFFECTIVE-314 cost ladder) ---
 # OPENAI_API_BASE=https://openrouter.ai/api/v1
@@ -423,6 +463,15 @@ ENVEOF
     sed -e "s|__REPO_ROOT__|$CHUMPD_PROVISION_DIR|g" -e "s|__HOME__|$HOME|g" \
       "$TEMPLATE" > "$UNIT_DST"
     log "wrote $UNIT_DST"
+    # RESILIENT-191: workers spawned by the --user service inherit a minimal PATH
+    # that lacks ~/.local/bin (chump, claude) and ~/.cargo/bin. Drop in a PATH so
+    # `chump gap …` and `claude -p` resolve, or every cycle stalls "not on PATH".
+    mkdir -p "$UNIT_DIR/chumpd.service.d"
+    cat > "$UNIT_DIR/chumpd.service.d/path.conf" <<PATHDROP
+[Service]
+Environment=PATH=$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+PATHDROP
+    log "wrote PATH drop-in (chumpd.service.d/path.conf)"
     run "daemon-reload" systemctl --user daemon-reload
     run "enable chumpd.service (not started — fill chumpd.env first, then: systemctl --user start chumpd)" systemctl --user enable chumpd.service
     # RESILIENT-185: linger keeps the --user service running after SSH logout —
