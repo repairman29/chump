@@ -737,6 +737,13 @@ bootstrap_initiated
 bootstrap_completed
 bootstrap_failed
 
+# INFRA-1780 — chump ingest phase 1a emits via crate::ambient_emit::emit()
+# with the same Rust struct-init `kind: "X".to_string()` syntax as bootstrap
+# above; same scanner limitation. Real emit sites: src/ingest.rs.
+ingest_initiated
+ingest_validated
+ingest_failed
+
 
 # ── MISSION-012: auto-deploy daemon ──────────────────────────────────────────
 binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
