@@ -2002,6 +2002,10 @@ events:
     trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
     consumers: [waste-tally, fleet-brief, watchdog]
     fields_required: [ts, kind, count]
+    docs: "Full event lifecycle (pr_stuck -> pr_stuck_cluster ->
+      pr_stuck_announced -> rescue/resolve/exempt), cost tracking via
+      chump waste-tally, and failure-class taxonomy:
+      docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md (INFRA-1749)"
 
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost

@@ -8975,6 +8975,45 @@ async fn main() -> Result<()> {
                             .unwrap_or_default()
                     });
                 let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
+
+                // RESILIENT-190: cross-machine collision guard. When a NATS
+                // broker is configured (CHUMP_NATS_URL), acquire a cluster-wide
+                // atomic claim BEFORE the local flock so two machines never pick
+                // the same gap. Degrades to local-only if NATS is unreachable
+                // (connect_or_skip). Escape hatch: CHUMP_CLAIM_NO_NATS=1. --force
+                // bypasses (recovery). Same-session holds stay idempotent.
+                let nats_claim: Option<chump_coord::CoordClient> = if !force
+                    && std::env::var("CHUMP_NATS_URL").is_ok()
+                    && std::env::var("CHUMP_CLAIM_NO_NATS").is_err()
+                {
+                    match chump_coord::CoordClient::connect_or_skip().await {
+                        Some(coord) => match coord.try_claim_gap(&gap_id, &session_id).await {
+                            Ok(true) => Some(coord),
+                            Ok(false) => {
+                                // Already held in the cluster — us (re-entrant) or another machine?
+                                match coord.gap_claim(&gap_id).await {
+                                    Ok(Some(held)) if held.session_id == session_id => Some(coord),
+                                    Ok(Some(held)) => {
+                                        eprintln!(
+                                            "chump gap claim: {gap_id} already claimed by session {} on another machine (NATS-KV) — skipping",
+                                            held.session_id
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                    _ => Some(coord),
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[chump-coord] cluster claim check failed ({e:#}) — proceeding local-only");
+                                None
+                            }
+                        },
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+
                 match store.claim(&gap_id, &session_id, &worktree, ttl) {
                     Ok(()) => {
                         println!("claimed {} for session {}", gap_id, session_id);
@@ -8986,6 +9025,11 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                     Err(e) => {
+                        // Roll back the cluster claim so a local failure doesn't
+                        // wedge the gap cluster-wide until the KV TTL expires.
+                        if let Some(coord) = &nats_claim {
+                            let _ = coord.release_gap(&gap_id).await;
+                        }
                         eprintln!("chump gap claim: {e:#}");
                         std::process::exit(1);
                     }
