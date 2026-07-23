@@ -16,6 +16,7 @@ pub mod bootstrap;
 pub mod config;
 pub mod consensus_tally;
 pub mod contract_scan;
+pub mod demo;
 pub mod dispatch_authoring;
 pub mod dispatch_external;
 pub mod durable_execution;
