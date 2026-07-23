@@ -53,19 +53,19 @@ class ChumpOperatorPagePanel extends HTMLElement {
   }
 
   _severityStyle(sev) {
-    if (sev === 'block') return { color: '#ef4444', label: 'BLOCK' };
-    if (sev === 'action') return { color: '#f59e0b', label: 'ACTION' };
-    return { color: '#22c55e', label: 'INFO' };
+    if (sev === 'block') return { color: 'var(--error)', label: 'BLOCK' };
+    if (sev === 'action') return { color: 'var(--warn)', label: 'ACTION' };
+    return { color: 'var(--success)', label: 'INFO' };
   }
 
   _render({ loading, error, data }) {
     const base = `
       font-family: var(--font, monospace);
       font-size: 12px;
-      color: var(--text, #e5e5ea);
-      background: var(--bg-secondary, #1a1a1c);
-      border: 1px solid var(--border, #2a2a2e);
-      border-radius: 8px;
+      color: var(--text);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 10px 14px;
     `;
 
@@ -74,7 +74,7 @@ class ChumpOperatorPagePanel extends HTMLElement {
       return;
     }
     if (error) {
-      this.innerHTML = `<div style="${base}"><span style="color:#ef4444">operator-page unavailable: ${error}</span></div>`;
+      this.innerHTML = `<div style="${base}"><span style="color:var(--error)">operator-page unavailable: ${error}</span></div>`;
       return;
     }
 
@@ -95,7 +95,7 @@ class ChumpOperatorPagePanel extends HTMLElement {
         ? `<span style="opacity:.5">$${p.cost_usd_at_page} at page</span>`
         : '';
       return `
-        <div style="padding:6px 0;border-top:1px solid var(--border, #2a2a2e)">
+        <div style="padding:6px 0;border-top:1px solid var(--border)">
           <div>
             <span style="color:${s.color};font-weight:700">${s.label}</span>
             ${gap}<strong>${p.title || ''}</strong>
@@ -104,7 +104,7 @@ class ChumpOperatorPagePanel extends HTMLElement {
           <div style="display:flex;justify-content:space-between;align-items:center">
             ${cost}
             <button data-corr="${p.corr_id}" style="
-              background:${s.color};color:#000;border:none;border-radius:4px;
+              background:${s.color};color:var(--bg);border:none;border-radius:var(--radius-sm);
               padding:2px 8px;font-size:11px;cursor:pointer;">Ack</button>
           </div>
         </div>`;
