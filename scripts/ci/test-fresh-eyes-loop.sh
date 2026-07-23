@@ -87,6 +87,19 @@ rc=0; CHUMP_AMBIENT_LOG="$A" CHUMP_FRESH_EYES_BRIEF_CMD="$HEALTHY" CHUMP_FRESH_E
     CHUMP_FRESH_EYES_BACKLOG="$TMP/bk.jsonl" bash "$LOOP" audit >/dev/null 2>&1 || rc=$?
 _check "all-clear exits 1" 1 "$rc"
 
+echo "[test-fresh-eyes] RESILIENT-188 — no bash-4-only expansions (blind-mirror guard)"
+# macOS system bash is 3.2; ${v,,}/${v^^}/${v^}/${v,} throw "bad substitution"
+# there, silently killing comparators while the loop still exits 1 (all-clear).
+# This static check is portable — it fails on reintroduction under ANY runner's
+# bash, unlike a runtime /bin/bash probe (CI's /bin/bash is modern and wouldn't
+# catch it). Complements the runtime coverage above (C1/C4 exercise the healthy
+# brief, which is what invoked the broken expansion).
+if grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*(,,|,|\^\^|\^)\}' "$LOOP" >&2; then
+    printf '  FAIL bash-4-only case-conversion expansion present in %s (see above)\n' "$LOOP"; FAIL=$((FAIL+1))
+else
+    printf '  ok   no bash-4-only \${var,,}/\${var^^} expansions in fresh-eyes-loop.sh\n'; PASS=$((PASS+1))
+fi
+
 echo
 printf '[test-fresh-eyes] %d passed, %d failed\n' "$PASS" "$FAIL"
 [[ "$FAIL" -eq 0 ]] || exit 1

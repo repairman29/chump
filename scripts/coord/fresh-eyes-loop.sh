@@ -148,7 +148,13 @@ _brief_says_healthy() {
     txt="$(timeout 20 bash -c "$BRIEF_CMD" 2>/dev/null || true)"
     [[ -z "$txt" ]] && return 1
     # "looks healthy" subsumes "fleet looks healthy" — keep patterns disjoint.
-    local lower="${txt,,}"
+    # RESILIENT-188: the bash-4-only in-place lowercase expansion is unavailable
+    # on macOS system bash (3.2) and threw "bad substitution", silently killing
+    # every comparator that calls this while the loop still exited 1 (all-clear)
+    # — the mirror lying the exact way fresh-eyes exists to catch. Use a portable
+    # tr-based lowercase instead. (Guarded by test-fresh-eyes-loop.sh.)
+    local lower
+    lower="$(printf '%s' "$txt" | tr '[:upper:]' '[:lower:]')"
     case "$lower" in
         *"no urgent action"*|*"looks healthy"*) return 0 ;;
     esac
@@ -267,11 +273,27 @@ _run_cycle() {
     fi
     FINDINGS_FILE="$(mktemp)"
 
-    comparator_1 || true
-    comparator_4 || true
-    comparator_3 || true
-    comparator_5 || true
-    comparator_2 || true
+    # RESILIENT-188: a comparator returning non-zero means it FAILED TO EXECUTE
+    # (e.g. a shell-incompat abort), not "no disagreement" — the no-op paths all
+    # `return 0`. Count those failures so a blind mirror can't masquerade as
+    # all-clear (the exact failure this gap fixed). `|| true` swallowed the abort.
+    local degraded=0
+    comparator_1 || degraded=$((degraded + 1))
+    comparator_4 || degraded=$((degraded + 1))
+    comparator_3 || degraded=$((degraded + 1))
+    comparator_5 || degraded=$((degraded + 1))
+    comparator_2 || degraded=$((degraded + 1))
+
+    if [[ "$degraded" -gt 0 ]]; then
+        # The mirror can't see clearly — surface it as its own hi finding so the
+        # cycle never returns 1 (all-clear) on a degraded run. Reuse the existing
+        # fresh_eyes_disagreement kind (comparator_id 0) to avoid registering a
+        # new ambient kind.
+        printf 'WARN: %d comparator(s) failed to execute this cycle — mirror degraded, exit code is not trustworthy as all-clear.\n' \
+            "$degraded" >&2
+        _add_finding hi 0 fresh_eyes_disagreement \
+            "${degraded} comparator(s) failed to execute under this shell — mirror is blind; 'all-clear' cannot be trusted this cycle"
+    fi
 
     _emit "fresh_eyes_tick" '"window_min":'"$WINDOW_MIN"
 
