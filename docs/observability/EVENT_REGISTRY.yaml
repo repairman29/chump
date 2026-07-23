@@ -3819,6 +3819,14 @@ events:
     trigger: a gap hits the chump-local strike threshold (CHUMP_DECOMPOSE_STRIKE_THRESHOLD, default 2 whole-gap failures) and the frontier model decomposes it into xs/s sub-gaps via 'chump gap decompose --apply'
     consumers: [tier-scorecard (model×effort split), ambient glance]
     fields_required: [ts, kind, source, agent, gap_id, backend, trigger_rc]
+  - kind: model_tier_escalated
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-314 cost-tiered escalation ladder)
+    emitter_paths: [scripts/dispatch/worker.sh]
+    trigger: a chump-local dispatch is bumped to a higher rung of CHUMP_MODEL_ESCALATION_LADDER because the gap has prior EFFECTIVE-310 strikes (strike count indexes the ladder; cheapest model at strike 0)
+    consumers: [tier-scorecard (escalation-rate per model), ambient glance]
+    fields_required: [ts, kind, source, agent, gap_id, strikes, rung, model]
   - kind: gap_abandoned
     effect_metric: self
     emitter: scripts/ops/gap-lifecycle-manager.sh (INFRA-870)
