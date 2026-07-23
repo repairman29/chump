@@ -6680,10 +6680,30 @@ events:
     trigger: >
       Emitted by `chump-policy check` when the layered policy chain
       blocks auto-merge. Carries the contributing scope(s) so the
-      operator can see WHICH scope (fleet / operator / repo) drove the
-      block — kills the "silent auto-merge refused, why?" debugging tax.
+      operator can see WHICH scope (fleet / operator / repo / lane) drove
+      the block — kills the "silent auto-merge refused, why?" debugging
+      tax. Since INFRA-1767, also carries `lane` and `failure_class`
+      (`permanent_by_design` for a lane-only Critical block, vs.
+      `transient_review_or_trust_gate` for a review/trust-count gate that
+      clears on its own).
     consumers: [ops-audit, bot-merge.sh integration]
     fields_required: [ts, kind, reason, contributing]
+
+  - kind: bot_merge_lane_resolved
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh (INFRA-1767)
+    trigger: >
+      Emitted once per bot-merge.sh invocation, immediately after CLI
+      flags are parsed, disclosing which merge-risk lane (internal /
+      user-facing / critical) the run resolved to and whether
+      auto-merge was requested implicitly (lane default) or explicitly
+      (`--auto-merge` passed). Precedes the `chump-policy check --lane
+      <lane>` gate later in the run — this event is the "what lane did
+      we even think we were in" audit trail independent of whether the
+      policy chain ultimately allowed or blocked.
+    consumers: [ops-audit, bot-merge.sh integration]
+    fields_required: [ts, kind, lane, auto_merge_requested, auto_merge_explicit, session]
+    expected_volume: "1 per bot-merge.sh run"
 
   # ── Integration-cycle pipeline (META-124 / INFRA-2130) ────────────────────
   - kind: integration_cycle_started
