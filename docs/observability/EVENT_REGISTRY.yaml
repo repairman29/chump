@@ -8070,6 +8070,56 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, failure_class, intent, target_dir]
     # payload: {failure_class: str, intent: str, target_dir: str}
+
+  # ── INFRA-1780: chump ingest phase 1a (repo validation, read-only) ────────
+
+  - kind: ingest_initiated
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_initiated"
+    trigger: >
+      `chump ingest <repo-path>` begins execution. Fires immediately after
+      CLI args are parsed and before any validation or filesystem access.
+      Fields: repo_path, budget_usd (the raw --budget-usd value, default
+      "10.0").
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, budget_usd]
+    # payload: {repo_path: str, budget_usd: str}
+    status: stable
+
+  - kind: ingest_validated
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_validated"
+    trigger: >
+      `chump ingest <repo-path>` confirmed the target is a directory
+      containing .git. Phase 1a makes zero LLM/API calls, so cost_usd_cents
+      is always 0; later ingest phases that do network/LLM work will emit
+      their own cost. Fields: repo_path, cost_usd_cents, elapsed_ms.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, cost_usd_cents, elapsed_ms]
+    # payload: {repo_path: str, cost_usd_cents: int, elapsed_ms: int}
+    status: stable
+
+  - kind: ingest_failed
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_failed"
+    trigger: >
+      `chump ingest <repo-path>` failed validation. failure_class is one of:
+      path_not_found (target does not exist), not_a_git_repo (target exists
+      but is not a directory containing .git), invalid_budget (--budget-usd
+      was not a positive finite number). All three are permanent
+      (transient=false) in phase 1a; the transient boolean field is shared
+      with downstream network-calling phases which may set it true on
+      timeout/rate-limit style failures. Fields: repo_path, failure_class,
+      transient, elapsed_ms, error.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, failure_class, transient, elapsed_ms, error]
+    # payload: {repo_path: str, failure_class: str, transient: bool,
+    #           elapsed_ms: int, error: str}
+    status: stable
+
   - kind: sccache_hit_rate_low
     effect_metric: credible
     emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)
