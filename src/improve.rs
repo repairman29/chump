@@ -201,12 +201,15 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
     // If --gap is specified, that's the pre-selected work description.
     // Otherwise load the most-recent onboard scan from the canonical location.
-    let picked = pick_gap(&opts, &clone_dir)?;
+    // MISSION-056: pick_gap returns a RANKED LIST of candidates. The top is what
+    // a dry-run reports; --apply dedups each in order and takes the first UNDONE.
+    let candidates = pick_gap(&opts, &clone_dir)?;
+    let top = &candidates[0];
 
-    println!("[improve] picked: {}", picked.title);
+    println!("[improve] picked: {}", top.title);
     println!(
         "[improve] evidence: {} §{}",
-        picked.source_of_evidence.input_path, picked.source_of_evidence.section
+        top.source_of_evidence.input_path, top.source_of_evidence.section
     );
 
     if !opts.apply {
@@ -214,7 +217,7 @@ fn run_inner(args: &[String]) -> Result<i32> {
         println!("[improve] Stage 3: IMPLEMENT — skipped in dry-run.");
         println!("[improve] Stage 4: VERIFY-MERGE — skipped in dry-run.");
         println!("\n[improve] dry-run complete. Pass --apply to execute.");
-        emit_cycle_complete(&opts.owner_repo, &picked.title, "dry_run", None);
+        emit_cycle_complete(&opts.owner_repo, &top.title, "dry_run", None);
         return Ok(0);
     }
 
@@ -225,17 +228,47 @@ fn run_inner(args: &[String]) -> Result<i32> {
     refresh_clone(&clone_dir)?;
 
     // ── Stage 2: DEDUP ────────────────────────────────────────────────────
-    println!("\n[improve] Stage 2: DEDUP — checking work isn't already done...");
+    // MISSION-056: dedup EACH ranked candidate and take the first that isn't
+    // already shipped. Before this, improve dedup'd ONLY the top gap and stopped
+    // on redundant — so it looped forever on an already-done gap and never
+    // advanced to new work (the scoreboard-① blocker: `chump improve` picked the
+    // same already-shipped RLS gap 3 runs running, SKIP every time).
+    println!("\n[improve] Stage 2: DEDUP — finding the first candidate that isn't already done...");
 
     let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
-    let dedup_result = dedup_check(&opts.owner_repo, &clone_dir, &picked, &gh_bin)?;
-    if let DedupResult::Redundant { reason } = dedup_result {
-        println!("[improve] SKIP (redundant): {reason}");
-        emit_redundant_work_skipped(&opts.owner_repo, &picked.title, &reason);
-        emit_cycle_complete(&opts.owner_repo, &picked.title, "skipped_redundant", None);
-        return Ok(0);
+    let mut chosen: Option<ProposedGap> = None;
+    for cand in &candidates {
+        match dedup_check(&opts.owner_repo, &clone_dir, cand, &gh_bin)? {
+            DedupResult::Redundant { reason } => {
+                println!("[improve] SKIP (redundant): {} — {reason}", cand.title);
+                emit_redundant_work_skipped(&opts.owner_repo, &cand.title, &reason);
+            }
+            DedupResult::NotRedundant => {
+                chosen = Some(cand.clone());
+                break;
+            }
+        }
     }
-    println!("[improve] dedup PASS — work is not already done.");
+    let picked = match chosen {
+        Some(p) => p,
+        None => {
+            println!(
+                "[improve] all {} candidate(s) already shipped — nothing new to do this cycle",
+                candidates.len()
+            );
+            emit_cycle_complete(
+                &opts.owner_repo,
+                "(all candidates redundant)",
+                "skipped_redundant",
+                None,
+            );
+            return Ok(0);
+        }
+    };
+    println!(
+        "[improve] dedup PASS — picked '{}' (not already done).",
+        picked.title
+    );
 
     // ── Stage 3: IMPLEMENT ────────────────────────────────────────────────
     println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
@@ -274,12 +307,13 @@ fn run_inner(args: &[String]) -> Result<i32> {
 /// If `--gap` was specified, synthesise a minimal `ProposedGap` from the gap
 /// title/ID. Otherwise reads the most-recent onboard scan from `clone_dir`'s
 /// parent (the canonical external-repo directory).
-fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
+fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<Vec<ProposedGap>> {
     use chump_handoff::external_repo_schema::{Confidence, Effort, Priority, SourceOfEvidence};
 
     if let Some(ref gap_id) = opts.gap_id {
         // Synthesise a gap from the provided ID so downstream stages work uniformly.
-        return Ok(ProposedGap {
+        // Operator chose the work explicitly — single candidate, no dedup-advance.
+        return Ok(vec![ProposedGap {
             title: gap_id.clone(),
             domain: "EFFECTIVE".to_string(),
             priority: Priority::P1,
@@ -296,7 +330,7 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
             ],
             layer: None,
             doctrine_justification: None,
-        });
+        }]);
     }
 
     // EFFECTIVE-288 GREEN-FIRST doctrine (operator, 2026-06-22): before picking
@@ -311,7 +345,9 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
         println!(
             "[improve] GREEN-FIRST: repo not green ('{top}' failing across open PRs) — fixing before any new work"
         );
-        return Ok(green);
+        // Green-first is a FORCED single pick — a broken gate must be fixed, no
+        // dedup-advance past it.
+        return Ok(vec![green]);
     }
 
     // Repo is green (or gh unavailable) — proceed to scan-based feature picking.
@@ -324,7 +360,7 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
 /// the L1<L2<L3 doctrine order. Kept separate + unit-tested directly so the
 /// scan-pick tests never depend on live `gh` state (the green-first gh call
 /// lives only in `pick_gap`).
-fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
+fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<Vec<ProposedGap>> {
     // Read the latest onboard scan from the external-repo directory.
     // The scan lives at <external-repo-dir>/scans/onboard-scan-<ts>.json
     // where <external-repo-dir> is clone_dir's parent (the repo root, not /clone/).
@@ -356,9 +392,14 @@ fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
             confidence_sort_key(&a.confidence).cmp(&confidence_sort_key(&b.confidence))
         })
     });
-    gaps.into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("onboard scan contains no proposed gaps"))
+    // MISSION-056: return the FULL ranked list, not just the top. The caller
+    // dedups each candidate in order and takes the first UNDONE one — without
+    // this, `chump improve` loops forever on an already-shipped top gap and
+    // never advances to new work (the scoreboard-① blocker).
+    if gaps.is_empty() {
+        anyhow::bail!("onboard scan contains no proposed gaps");
+    }
+    Ok(gaps)
 }
 
 /// Gather failing CI checks across the target repo's open PRs, tallied by check
@@ -1200,7 +1241,9 @@ mod tests {
             clone_dir: Some(clone_dir),
         };
 
-        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
+        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap())
+            .unwrap()
+            .remove(0);
         // Should pick the first (highest-confidence) gap.
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
     }
@@ -1219,7 +1262,7 @@ mod tests {
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(picked.title, "EFFECTIVE-177");
     }
 
@@ -1406,7 +1449,7 @@ Some prose from the agent.
         };
 
         // Run just the pick stage + dedup logic without spawning any processes.
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
 
         // Dedup on an empty clone dir should pass (no code present).
@@ -1625,7 +1668,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L1: foundation gate unmet",
             "doctrine-order picking must select L1 first, even if it appears last in the scan"
@@ -1662,7 +1705,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L1 high-conf",
             "within L1, high-confidence gap must be picked before low-confidence"
@@ -1697,7 +1740,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L3 low-conf",
             "L3 (even low-confidence) must be picked before an untagged gap"
