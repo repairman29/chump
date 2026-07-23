@@ -997,10 +997,14 @@ CHUMP_GH_BIN
 # CHUMP_IMPROVE_GH_BIN     — path to gh CLI passed through to verify-merge (default: gh)
 # CHUMP_IMPROVE_CHUMP_BIN  — path to chump binary for verify-merge delegation (default: auto-resolve)
 # CHUMP_IMPROVE_DISABLED   — Category-B kill-switch; set to 1 to disable the subcommand (INFRA-2429)
+# CHUMP_IMPROVE_FIX_RETRIES — MISSION-059: max escalating fix attempts on a HELD PR before closing it (default 2)
+# CHUMP_IMPROVE_MODEL_LADDER — MISSION-059: comma-separated model-escalation ladder for fix retries (default: claude-sonnet-4-5,opus)
 CHUMP_IMPROVE_CLAUDE_BIN
 CHUMP_IMPROVE_GH_BIN
 CHUMP_IMPROVE_CHUMP_BIN
 CHUMP_IMPROVE_DISABLED
+CHUMP_IMPROVE_FIX_RETRIES
+CHUMP_IMPROVE_MODEL_LADDER
 
 # EFFECTIVE-201: 0→1 audit doctrine layer + standard-mission injection
 # No new env vars — the doctrine layer field is schema-only, not runtime-configurable.
