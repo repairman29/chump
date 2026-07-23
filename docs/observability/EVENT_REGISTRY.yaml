@@ -8564,3 +8564,12 @@ events:
     consumers: [fleet-brief, audit-log, ops-audit]
     fields_required: [ts, kind, session, rule, reason, stage]
     fields_optional: [gap_id, worktree]
+
+  - kind: role_card
+    effect_metric: self
+    emitter: scripts/coord/role-card-emit.sh (INFRA-2017)
+    trigger: first turn of a curator/orchestrator session, and any
+      role-switch within the same shell (same physical session_id, new
+      alias) — RCA Change 2 follow-up (COLLISION_RCA_2026-05-24.md)
+    consumers: [role-card-query.sh, dispatch-dedup]
+    fields_required: [ts, kind, session_id, aliases, primary_lane, active_claim, wake_mode]
