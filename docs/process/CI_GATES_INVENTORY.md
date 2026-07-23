@@ -35,6 +35,7 @@
 | `scripts/ci/test-*.sh` (changed-only) | `fast-checks` + `audit` jobs | `chump preflight --with-tests` (scoped to diff) | Opt-in flag |
 | **event-registry-audit** | `audit` job | `chump preflight` (auto-gated on diff) | **INFRA-1731 shipped #2377** |
 | `test-fleet-pause-autolift.sh` | `test` job shard | pure shell sandbox, no GitHub API | **RESILIENT-066** |
+| `test-env-vars-internal-coverage.sh` | `audit` job | `chump preflight` (auto-gated on diff; `CHUMP_PREFLIGHT_SKIP_ENVVARS=1` bypass) | **INFRA-1787 shipped #2397** |
 
 ## Tier B — hook-mirrored, not in preflight
 
@@ -52,7 +53,6 @@ this week was one of these.
 
 | # | Gate (CI script) | What it checks | Local mirror? | Frequency observed | Filed gap |
 |---|---|---|---|---|---|
-| 1 | `test-env-vars-internal-coverage.sh` | Every `CHUMP_*` env var referenced in code is documented in `scripts/ci/env-vars-internal.txt` (DOC-026) | NO | **5+ this week** (#2363, #2367, #2381, etc. all batch-allowlists) | **INFRA-1787** |
 | 2 | `test-infra-124-docs-delta-trailer.sh` | PRs touching `docs/` carry a `Net-new-docs: +N` trailer (INFRA-124) | NO | 2+ this week | **INFRA-1788** |
 | 3 | `test-chump-subcommand-help.sh` | Every `chump <subcmd> --help` exits 0 (INFRA-1246) | NO | Rare but high-blast-radius regression (shipped 2× this quarter) | **INFRA-1789** |
 | 4 | `test-markdown-intra-doc-links.sh` (changed-only) | No broken `.md` links in files modified by this PR (DOC-039) | NO | 1-2 per week | **INFRA-1790** |
