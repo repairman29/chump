@@ -781,6 +781,8 @@ external_merge_held      # reason: CREDIBLE-096 emitted by src/external_verify_m
 # Reserved here so the register-without-emit coverage gate does not flag these.
 improve_cycle_complete   # reason: EFFECTIVE-177 emitted at end of every improve cycle (dry-run or apply); fields: repo, gap, verdict, pr
 redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage decided the work is already in the target repo; fields: repo, gap, reason
+improve_pr_remediation   # reason: MISSION-059 no-abandon loop — one per fix attempt on a HELD improve PR; fields: repo, pr, class, action, attempt, model
+improve_pr_closed        # reason: MISSION-059 no-abandon loop — the improve loop closed a PR it could not get green after the retry budget; fields: repo, pr, pr_url, reason
 
 # ── INFRA-918: bot-merge rebase-before-test telemetry ────────────────────────
 # Emitted by scripts/coord/bot-merge.sh before the cargo test phase.

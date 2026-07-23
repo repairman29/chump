@@ -287,16 +287,29 @@ fn run_inner(args: &[String]) -> Result<i32> {
     let pr_num =
         pr_number.ok_or_else(|| anyhow::anyhow!("could not parse PR number from URL: {pr_url}"))?;
 
-    let verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
-
+    let mut verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
     println!("[improve] verdict: {verdict}");
+
+    // MISSION-059: NEVER abandon a HELD PR. Drive it to a terminal state
+    // (merged or closed) instead of walking away red. remediate_held classifies
+    // the CI failure (composing ci_summary::classify_log, INFRA-506), reruns
+    // flakes for free, or re-spawns an escalating-model agent to fix real defects
+    // on the SAME branch — re-verifying after each attempt. If still red after
+    // the retry budget, it CLOSES the PR with a reason. This is what makes the
+    // loop CONVERGE (land work) rather than merely TRY: a held PR that blocks a
+    // dependent task is resolved in-cycle, never skipped, never left open-red.
+    if verdict != "verified" {
+        verdict = remediate_held(&opts, &clone_dir, &picked, pr_num, &pr_url)?;
+    }
+
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
 
-    if verdict == "verified" {
-        Ok(0)
-    } else {
-        // HELD — non-zero exit so callers can detect failure.
-        Ok(1)
+    match verdict.as_str() {
+        // Both are clean terminal states — no open-red PR left behind.
+        "verified" | "closed" => Ok(0),
+        // Should not reach here (remediate_held always returns verified|closed),
+        // but keep the non-zero signal for any unforeseen path.
+        _ => Ok(1),
     }
 }
 
@@ -913,6 +926,406 @@ fn emit_redundant_work_skipped(repo: &str, gap_title: &str, reason: &str) {
     });
 }
 
+/// Emit `kind=improve_pr_remediation` — one per fix attempt on a HELD PR.
+///
+/// scanner-anchor: kind=improve_pr_remediation (MISSION-059)
+fn emit_pr_remediation(
+    repo: &str,
+    pr_num: u64,
+    class: &str,
+    action: &str,
+    attempt: usize,
+    model: &str,
+) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_remediation".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("class".to_string(), class.to_string()),
+            ("action".to_string(), action.to_string()),
+            ("attempt".to_string(), attempt.to_string()),
+            ("model".to_string(), model.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Emit `kind=improve_pr_closed` — the loop closed a PR it could not get green
+/// (terminal, no-abandon).
+///
+/// scanner-anchor: kind=improve_pr_closed (MISSION-059)
+fn emit_pr_closed(repo: &str, pr_num: u64, pr_url: &str, reason: &str) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_closed".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("pr_url".to_string(), pr_url.to_string()),
+            ("reason".to_string(), reason.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+// ── MISSION-059: no-abandon PR remediation ─────────────────────────────────
+//
+// The improve loop must OWN every PR it opens to a terminal state — merged or
+// closed — never left open-red. On a HELD verdict we compose the CI-failure
+// classifier (ci_summary::classify_log, INFRA-506) with two remediation paths:
+//   * flake / infra-broken → RERUN the failed checks (no model spend — the
+//     scale lever: transient failures cost nothing to clear).
+//   * test-coupling / real-bug → re-spawn a fix agent on the SAME branch with
+//     an ESCALATING model (sonnet → opus, mirroring the work-tier cost ladder
+//     EFFECTIVE-314 — harder fixes get a more capable model, just like the work).
+// After a bounded retry budget with no green, CLOSE the PR with a reason.
+
+/// Remediation action for a CI-failure class.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum Remediation {
+    /// Transient / infra failure — rerun the failed checks, spend no model.
+    Rerun,
+    /// A real defect (or unknown) the agent must fix on the same branch.
+    AgentFix,
+}
+
+/// Map a `ci_summary::classify_log` class to a remediation action.
+///
+/// Unknown/empty classes fall through to `AgentFix` — the safe default: try a
+/// real fix rather than blindly rerun a failure we could not read.
+pub(crate) fn remediation_for_class(class: &str) -> Remediation {
+    match class {
+        "flake" | "infra-broken" => Remediation::Rerun,
+        _ => Remediation::AgentFix, // test-coupling | real-bug | unknown
+    }
+}
+
+/// The model-escalation ladder for fix retries. Attempt `i` (0-based) uses
+/// `ladder[min(i, len-1)]` — later attempts escalate to a more capable (costlier)
+/// model. Configurable via `CHUMP_IMPROVE_MODEL_LADDER` (comma-separated).
+pub(crate) fn fix_model_ladder() -> Vec<String> {
+    std::env::var("CHUMP_IMPROVE_MODEL_LADDER")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .collect::<Vec<String>>()
+        })
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| vec!["claude-sonnet-4-5".to_string(), "opus".to_string()])
+}
+
+/// Pick the model for a 0-based fix attempt, clamping to the last ladder rung.
+pub(crate) fn model_for_attempt(attempt: usize, ladder: &[String]) -> &str {
+    if ladder.is_empty() {
+        return "claude-sonnet-4-5";
+    }
+    &ladder[attempt.min(ladder.len() - 1)]
+}
+
+/// How many fix attempts before we close the PR. `CHUMP_IMPROVE_FIX_RETRIES`
+/// (default 2). Clamped to at least 1 so we always try before closing.
+fn fix_retries() -> usize {
+    std::env::var("CHUMP_IMPROVE_FIX_RETRIES")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(2)
+        .max(1)
+}
+
+/// The `gh` binary — injectable for tests via `CHUMP_IMPROVE_GH_BIN`.
+fn improve_gh_bin() -> String {
+    std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string())
+}
+
+/// Extract the `databaseId` of the first run whose `conclusion` is `"failure"`
+/// from a `gh run list --json databaseId,conclusion` array. Pure — unit-tested.
+pub(crate) fn find_failed_run_id(json: &str) -> Option<u64> {
+    for frag in json.split('{').skip(1) {
+        if !frag.contains("\"conclusion\":\"failure\"") {
+            continue;
+        }
+        if let Some(pos) = frag.find("\"databaseId\":") {
+            let rest = &frag[pos + "\"databaseId\":".len()..];
+            let digits: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(n) = digits.parse::<u64>() {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// The PR's head branch ref (`gh pr view <n> --json headRefName`).
+fn pr_head_branch(opts: &Opts, pr_num: u64) -> Option<String> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "view",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--json",
+            "headRefName",
+            "-q",
+            ".headRefName",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+/// The most-recent failed run id for a head branch (via `gh run list`).
+fn latest_failed_run_id(opts: &Opts, head_branch: &str) -> Option<u64> {
+    if head_branch.is_empty() {
+        return None;
+    }
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "run",
+            "list",
+            "--repo",
+            &opts.owner_repo,
+            "--branch",
+            head_branch,
+            "--limit",
+            "10",
+            "--json",
+            "databaseId,conclusion",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    find_failed_run_id(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Fetch the failing-check log for the PR's latest run. Best-effort: empty on
+/// any gh failure (the classifier treats empty as `real-bug` → AgentFix, the
+/// safe default).
+fn fetch_failing_log(opts: &Opts, head_branch: &str) -> String {
+    let Some(id) = latest_failed_run_id(opts, head_branch) else {
+        return String::new();
+    };
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "run",
+            "view",
+            &id.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--log-failed",
+        ])
+        .output();
+    match out {
+        Ok(o) => {
+            let raw = String::from_utf8_lossy(&o.stdout).into_owned();
+            if raw.len() > 65_536 {
+                raw[..65_536].to_string()
+            } else {
+                raw
+            }
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Rerun the failed jobs of the PR's latest failed run (flake path).
+fn rerun_failed_checks(opts: &Opts, head_branch: &str) -> Result<()> {
+    if let Some(id) = latest_failed_run_id(opts, head_branch) {
+        let _ = Command::new(improve_gh_bin())
+            .args([
+                "run",
+                "rerun",
+                &id.to_string(),
+                "--repo",
+                &opts.owner_repo,
+                "--failed",
+            ])
+            .status();
+        println!("[improve] reran failed jobs of run {id} (flake path — no model spend)");
+    } else {
+        println!("[improve] no failed run id found to rerun; will re-verify as-is");
+    }
+    Ok(())
+}
+
+/// Close a PR with a reason comment (the no-abandon terminal state).
+fn close_pr(opts: &Opts, pr_num: u64, reason: &str) -> Result<()> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "close",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--comment",
+            reason,
+        ])
+        .output()
+        .with_context(|| format!("gh pr close #{pr_num}"))?;
+    if !out.status.success() {
+        bail!(
+            "gh pr close #{pr_num} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+/// The fix-agent prompt: check out the EXISTING branch, fix the ROOT CAUSE of
+/// the CI failure, push to the same branch — do NOT open a new PR or merge.
+fn build_fix_prompt(
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    failing_log: &str,
+) -> String {
+    format!(
+        "You are fixing a FAILING pull request in the repository `{repo}`.\n\n\
+PR #{pr_num} (branch `{head_branch}`) implements: {gap_title}\n\
+Its CI is RED. Your job is to make CI GREEN by fixing the ROOT CAUSE — on the SAME branch.\n\n\
+STRICT RULES:\n\
+1. `git fetch origin && git checkout {head_branch}` — work on the EXISTING branch. \
+Do NOT create a new branch and do NOT open a new PR.\n\
+2. Diagnose the failure from the CI log below and fix the underlying cause in the code. \
+Do NOT disable the failing check, weaken an assertion, or delete the test to go green.\n\
+3. Commit with a clear message and `git push` to update the existing PR.\n\
+4. Do NOT merge and do NOT close the PR — just push the fix.\n\
+5. If the failure is a genuine flake unrelated to this diff, prefer a real fix; \
+only as a last resort make a trivial no-op commit to trigger a fresh run.\n\n\
+--- FAILING CI LOG (truncated) ---\n{failing_log}\n--- END LOG ---\n\n\
+Output nothing but a one-line summary of what you changed."
+    )
+}
+
+/// Re-spawn a fix agent on the PR's branch with an escalating model.
+fn fix_pr(
+    clone_dir: &Path,
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    failing_log: &str,
+    model: &str,
+) -> Result<()> {
+    let claude_bin =
+        std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+    let log_excerpt: String = failing_log.chars().take(6000).collect();
+    let prompt = build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt);
+    let prompt_file = write_temp_prompt(&prompt)?;
+
+    let mut cmd = Command::new(&claude_bin);
+    cmd.arg("-p")
+        .arg(std::fs::read_to_string(&prompt_file)?)
+        .arg("--dangerously-skip-permissions")
+        .args(["--model", model])
+        .current_dir(clone_dir);
+    configure_claude_auth_env(&mut cmd);
+
+    let out = cmd
+        .output()
+        .with_context(|| format!("spawn `{claude_bin} -p` (fix, is claude CLI on PATH?)"))?;
+    let _ = std::fs::remove_file(&prompt_file);
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!(
+            "claude -p (fix) exited {} — {}",
+            out.status.code().unwrap_or(-1),
+            stderr.trim().lines().next().unwrap_or("(no output)")
+        );
+    }
+    Ok(())
+}
+
+/// MISSION-059: drive a HELD PR to a terminal state instead of abandoning it.
+///
+/// Loops up to `CHUMP_IMPROVE_FIX_RETRIES` times: classify the CI failure, rerun
+/// flakes (cheap) or re-spawn an escalating-model fix agent on the same branch,
+/// then re-verify. Returns the final verdict: `"verified"` (merged) or
+/// `"closed"` (closed with a reason after the budget is exhausted).
+fn remediate_held(
+    opts: &Opts,
+    clone_dir: &Path,
+    gap: &ProposedGap,
+    pr_num: u64,
+    pr_url: &str,
+) -> Result<String> {
+    let retries = fix_retries();
+    let ladder = fix_model_ladder();
+    let head_branch = pr_head_branch(opts, pr_num).unwrap_or_default();
+
+    println!(
+        "\n[improve] MISSION-059: PR #{pr_num} HELD — remediating (no-abandon, up to {retries} attempt(s), branch={head_branch})"
+    );
+
+    for attempt in 0..retries {
+        let log = fetch_failing_log(opts, &head_branch);
+        let class = crate::ci_summary::classify_log(&log, false);
+        let action = remediation_for_class(class);
+        let model = model_for_attempt(attempt, &ladder);
+        println!(
+            "[improve] remediate {}/{}: class={class} action={action:?} model={model}",
+            attempt + 1,
+            retries
+        );
+        emit_pr_remediation(
+            &opts.owner_repo,
+            pr_num,
+            class,
+            &format!("{action:?}"),
+            attempt + 1,
+            model,
+        );
+
+        match action {
+            Remediation::Rerun => rerun_failed_checks(opts, &head_branch)?,
+            Remediation::AgentFix => fix_pr(
+                clone_dir,
+                &opts.owner_repo,
+                pr_num,
+                &head_branch,
+                &gap.title,
+                &log,
+                model,
+            )?,
+        }
+
+        // Re-verify: verify_and_merge polls check-runs until terminal, so this
+        // waits out a rerun or the pushed fix's fresh CI before judging.
+        let verdict = verify_and_merge(opts, pr_num, &gap.title)?;
+        println!("[improve] remediate {} → verdict: {verdict}", attempt + 1);
+        if verdict == "verified" {
+            return Ok("verified".to_string());
+        }
+    }
+
+    // Budget exhausted — CLOSE the PR (terminal, no open-red left behind).
+    let reason = format!(
+        "chump improve (MISSION-059): could not get CI green after {retries} escalating fix \
+         attempt(s); closing rather than leaving this PR open-red. The underlying work will be \
+         re-proposed on a future cycle. Reopen after manual triage if the diff is salvageable."
+    );
+    close_pr(opts, pr_num, &reason)?;
+    emit_pr_closed(&opts.owner_repo, pr_num, pr_url, &reason);
+    println!("[improve] PR #{pr_num} CLOSED after {retries} attempt(s) (no-abandon)");
+    Ok("closed".to_string())
+}
+
 // ── Utilities ────────────────────────────────────────────────────────────
 
 /// Resolve the directory where the repo is cloned.
@@ -1160,6 +1573,82 @@ mod tests {
     };
     use std::fs;
     use tempfile::TempDir;
+
+    // ── MISSION-059: no-abandon remediation helpers ────────────────────────
+
+    #[test]
+    fn mission059_remediation_flake_and_infra_rerun() {
+        assert_eq!(remediation_for_class("flake"), Remediation::Rerun);
+        assert_eq!(remediation_for_class("infra-broken"), Remediation::Rerun);
+    }
+
+    #[test]
+    fn mission059_remediation_realbug_coupling_and_unknown_agentfix() {
+        assert_eq!(remediation_for_class("real-bug"), Remediation::AgentFix);
+        assert_eq!(
+            remediation_for_class("test-coupling"),
+            Remediation::AgentFix
+        );
+        // Unknown/empty is the safe default: attempt a real fix, not a blind rerun.
+        assert_eq!(remediation_for_class(""), Remediation::AgentFix);
+        assert_eq!(remediation_for_class("weird"), Remediation::AgentFix);
+    }
+
+    #[test]
+    fn mission059_model_escalates_then_clamps() {
+        let ladder = vec!["sonnet".to_string(), "opus".to_string()];
+        // Attempt 0 = cheap, attempt 1 = escalated, attempt 2+ clamps to last.
+        assert_eq!(model_for_attempt(0, &ladder), "sonnet");
+        assert_eq!(model_for_attempt(1, &ladder), "opus");
+        assert_eq!(model_for_attempt(2, &ladder), "opus");
+        assert_eq!(model_for_attempt(99, &ladder), "opus");
+    }
+
+    #[test]
+    fn mission059_model_empty_ladder_has_safe_default() {
+        assert_eq!(model_for_attempt(0, &[]), "claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn mission059_default_ladder_is_sonnet_then_opus() {
+        // Guard the default (env-independent shape): cheap first, escalate second.
+        let ladder = fix_model_ladder();
+        assert!(!ladder.is_empty());
+        assert!(ladder[0].contains("sonnet"), "first rung cheap: {ladder:?}");
+        assert!(
+            ladder.last().unwrap().contains("opus"),
+            "last rung escalated: {ladder:?}"
+        );
+    }
+
+    #[test]
+    fn mission059_find_failed_run_id_picks_first_failure() {
+        let json = r#"[{"databaseId":111,"conclusion":"success"},{"databaseId":222,"conclusion":"failure"},{"databaseId":333,"conclusion":"failure"}]"#;
+        assert_eq!(find_failed_run_id(json), Some(222));
+    }
+
+    #[test]
+    fn mission059_find_failed_run_id_none_when_all_green() {
+        let json = r#"[{"databaseId":111,"conclusion":"success"},{"databaseId":222,"conclusion":"success"}]"#;
+        assert_eq!(find_failed_run_id(json), None);
+        assert_eq!(find_failed_run_id("[]"), None);
+    }
+
+    #[test]
+    fn mission059_fix_prompt_forbids_new_pr_and_pins_branch() {
+        let p = build_fix_prompt(
+            "owner/repo",
+            42,
+            "chump/feature-x",
+            "Add retry",
+            "error[E0308]",
+        );
+        assert!(p.contains("chump/feature-x"), "pins the head branch");
+        assert!(p.contains("#42"));
+        assert!(p.contains("Do NOT create a new branch"));
+        assert!(p.contains("Do NOT merge"));
+        assert!(p.contains("error[E0308]"), "includes the failing log");
+    }
 
     fn sample_scan(owner_repo: &str) -> OnboardScan {
         OnboardScan {
