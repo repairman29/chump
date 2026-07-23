@@ -480,6 +480,10 @@ fn build_free_tier_agent() -> Result<ChumpAgent> {
 /// Uses `--fast` to skip local clippy/test — CI is the gate, and free-tier
 /// dispatch runs against tight task-budget walls (INFRA-252 / INFRA-733).
 async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()> {
+    // INFRA-3406: the agent run pins CHUMP_REPO to the worktree so file
+    // tools write HERE — but bot-merge's claim/registry paths need the MAIN
+    // checkout. Restore it for the ship subprocess.
+    std::env::set_var("CHUMP_REPO", crate::repo_path::main_checkout_root());
     // EFFECTIVE-312: open models routinely patch_file and then skip the
     // git_commit step (observed: first sighted M3 cycle patched 1 file,
     // committed nothing). Uncommitted agent work would either vanish or be
@@ -652,6 +656,20 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     if free_tier {
         let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
         eprintln!("[execute-gap] free-tier mode: model={model}, slim dispatch profile");
+        // INFRA-3406: file tools (read/patch/git_commit) resolve paths via
+        // CHUMP_REPO — inherited as the MAIN checkout from worker env, so
+        // every model patch and commit landed OUTSIDE the dispatch worktree
+        // (found stranded in /root/Chump after 15 cycles of "zero-commit
+        // branch"). Point the tools at THIS worktree; the canonical state.db
+        // is still resolved via main_checkout_root() (git-common-dir),
+        // unaffected.
+        if let Ok(cwd) = std::env::current_dir() {
+            std::env::set_var("CHUMP_REPO", &cwd);
+            eprintln!(
+                "[execute-gap] INFRA-3406: tool root pinned to worktree {}",
+                cwd.display()
+            );
+        }
         // INFRA-784: signal the agent loop to insert inter-request delays so we
         // don't exhaust the provider's RPM quota on multi-step dispatches.
         // CHUMP_FREE_TIER_DELAY_MS takes precedence if set; this is the fallback
