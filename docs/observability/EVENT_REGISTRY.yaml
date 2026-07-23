@@ -8194,6 +8194,43 @@ events:
     #           elapsed_ms: int, error: str}
     status: stable
 
+  # ── INFRA-1778: chump ingest-preflight (gh auth + push-access safety rail) ─
+
+  - kind: ingest_preflight_started
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_started"
+    trigger: >
+      `chump ingest-preflight <target>` begins execution. Fires immediately
+      after CLI args are parsed, before any gh/git subprocess call.
+      cost_usd is always "0.00" — this command makes zero LLM calls.
+      Fields: target, cost_usd.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target, cost_usd]
+    # payload: {target: str, cost_usd: str}
+    status: stable
+
+  - kind: ingest_preflight_result
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_result"
+    trigger: >
+      `chump ingest-preflight <target>` completed (success or failure).
+      failure_class is empty on success, else one of: gh_not_installed,
+      not_authenticated, unresolvable_repo, repo_not_found_or_no_access,
+      no_push_access (all permanent, transient=false, exit code 1), or
+      transient_api_error (retryable, transient=true, exit code 3).
+      resolved_repo is the owner/repo slug once resolved (empty if
+      resolution never ran, e.g. gh_not_installed). cost_usd is always
+      "0.00". Fields: target, resolved_repo, has_push_access, failure_class,
+      transient, elapsed_ms, cost_usd, error.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target, resolved_repo, has_push_access, failure_class, transient, elapsed_ms, cost_usd, error]
+    # payload: {target: str, resolved_repo: str, has_push_access: bool,
+    #           failure_class: str, transient: bool, elapsed_ms: int,
+    #           cost_usd: str, error: str}
+    status: stable
+
   - kind: sccache_hit_rate_low
     effect_metric: credible
     emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)
