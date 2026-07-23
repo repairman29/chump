@@ -1211,3 +1211,6 @@ CHUMP_CASCADE_ENABLED
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_HOME_FIXTURE
+CHUMP_OPERATOR_PAGE_AUTO_ACK_SECS
+# detected in: (standard input)
+CHUMP_SESSION_COST_USD
