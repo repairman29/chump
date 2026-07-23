@@ -1713,6 +1713,27 @@ events:
     consumers: [fleet-brief, audit-log, PWA <chump-view-audit-findings>]
     fields_required: [ts, kind, feature_id, feature_class, plumbing_ok, heartbeat_ok, effect_ok, effect_metric_name, effect_observed, effect_expected_min, severity, note]
 
+  - kind: ingest_librarian_started
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep invoked against a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo_path]
+
+  - kind: ingest_librarian_completed
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep finished and triage.md was written
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo_path, files_scanned, dead_code_candidate_count, redundant_script_group_count, cost_usd_cents, elapsed_ms]
+
+  - kind: ingest_librarian_failed
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep aborted (bad path, not a git repo, invalid budget, or IO error writing the report)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo_path, failure_class, transient, message]
+
   - kind: pillar_imbalance
     effect_metric: self
     emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-720)
