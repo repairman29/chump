@@ -404,6 +404,35 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
 
     let overlay = maybe_overlay_from_env().unwrap_or_default();
 
+    // RESILIENT-187: weak free-tier models (glm-5.2, minimax-m3, …) emit
+    // structurally-broken unified diffs — blank context lines missing the
+    // leading space ("corrupt patch at line N"), wrong hunk counts, and
+    // overlapping hunks. Neither git apply, GNU patch, nor our strict→fuzzy→
+    // tier-c applier can rescue a truly-broken diff, so the patch lands in
+    // $CHUMP_PATCH_DEBUG_DIR, the model retries patch_file until the cycle
+    // wall, zero commits result, and bot-merge refuses (CREDIBLE-162). When
+    // CHUMP_FREE_TIER_WRITE_FILE is set, steer the model to write_file
+    // (whole-file rewrite) instead — no diff structure means nothing to
+    // corrupt. Capable free models keep the leaner patch_file path.
+    let write_mode = std::env::var("CHUMP_FREE_TIER_WRITE_FILE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let (edit_step, edit_rule) = if write_mode {
+        (
+            "Step 3: write_file — rewrite the ENTIRE file with your change applied. \
+   Emit the complete new file contents, not a diff. This avoids the diff/context \
+   mismatches that weaker models produce.",
+            "- Use write_file (full file contents) for ALL modifications — never emit a unified diff.",
+        )
+    } else {
+        (
+            "Step 3: patch_file — apply your change as a unified diff patch. \
+   Provide the old text and new text. Do NOT rewrite the entire file.",
+            "- Use patch_file for ALL modifications — it only changes what you specify.",
+        )
+    };
+
     format!(
         "{overlay}You are a code agent working in a Rust repository. \
 Your ONLY job is to make code changes that satisfy the gap below, then commit.
@@ -418,8 +447,7 @@ Step 1: grep_repo — search for a function name, error string, or key phrase \
    from the gap to FIND the file that needs changing. Do NOT guess file paths \
    or walk directories with list_dir — search first.
 Step 2: read_file — read the file grep_repo pointed you to.
-Step 3: patch_file — apply your change as a unified diff patch. \
-   Provide the old text and new text. Do NOT rewrite the entire file.
+{edit_step}
 Step 4: git_commit — commit with message \"{gap_id}: <short summary>\". \
    This automatically stages modified files.
 Step 5: Respond with the single word: done
@@ -430,11 +458,13 @@ Step 5: Respond with the single word: done
 - NEVER write documentation, plans, or markdown files.
 - NEVER explain what you will do — just call the tool.
 - NEVER create new files (no chump-plan.md, no docs/*.md).
-- Use patch_file for ALL modifications — it only changes what you specify.
-- You MUST read a file with read_file BEFORE patching it.
+{edit_rule}
+- You MUST read a file with read_file BEFORE editing it.
 - After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,
+        edit_step = edit_step,
+        edit_rule = edit_rule,
         gap_id = gap_id,
     )
 }
