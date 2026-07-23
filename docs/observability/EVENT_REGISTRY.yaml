@@ -8573,3 +8573,15 @@ events:
       alias) — RCA Change 2 follow-up (COLLISION_RCA_2026-05-24.md)
     consumers: [role-card-query.sh, dispatch-dedup]
     fields_required: [ts, kind, session_id, aliases, primary_lane, active_claim, wake_mode]
+  # ── INFRA-2391: shelfware-resolution audit trail ────────────────────────
+  - kind: shelfware_resolved
+    effect_metric: self
+    emitter: manual append by the agent shipping the resolution (no
+      long-running daemon owns this; it is a one-shot audit event per
+      resolved crate)
+    trigger: >
+      A crate flagged shelfware (built but never wired/invoked) is either
+      wired into a real entry point or deleted. One event per resolution,
+      recording which action was taken and the PR that did it.
+    consumers: [quartermaster, ops-audit]
+    fields_required: [ts, kind, crate, action, pr]
