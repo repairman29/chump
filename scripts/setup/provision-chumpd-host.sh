@@ -391,6 +391,11 @@ else
 # chumpd.env — chumpd service environment. chmod 0600. NO SECRET VALUES IN GIT.
 # Fill in the TODO_ values before starting chumpd, then: systemctl --user start chumpd
 #
+# Repo checkout this node operates on. MUST be set — without it chumpd falls
+# back to its $HOME/Projects/Chump default and drives a phantom path (the exact
+# root-of-roots path-confusion class from the EU migration). Injected below.
+CHUMP_REPO=__CHUMP_REPO__
+#
 # Backend: "claude" (Claude subscription/API) or "chump-local" (open models via OpenRouter)
 CHUMPD_FLEET_BACKEND=claude
 #
@@ -409,8 +414,10 @@ CHUMPD_FLEET_BACKEND=claude
 # CHUMP_MODEL_ESCALATION_LADDER=minimax/minimax-m3,z-ai/glm-5.2
 # CHUMP_DECOMPOSE_STRIKE_THRESHOLD=2
 ENVEOF
+      # Substitute the real checkout path (heredoc is quoted, so do it here).
+      sed -i.bak "s|__CHUMP_REPO__|$CHUMPD_PROVISION_DIR|g" "$CHUMPD_ENV" && rm -f "$CHUMPD_ENV.bak"
       chmod 600 "$CHUMPD_ENV"
-      log "wrote $CHUMPD_ENV template — fill in TODO_ secrets before starting chumpd"
+      log "wrote $CHUMPD_ENV template (CHUMP_REPO=$CHUMPD_PROVISION_DIR) — fill in TODO_ secrets before starting chumpd"
     fi
     run "mkdir -p $UNIT_DIR" mkdir -p "$UNIT_DIR"
     sed -e "s|__REPO_ROOT__|$CHUMPD_PROVISION_DIR|g" -e "s|__HOME__|$HOME|g" \
@@ -435,8 +442,14 @@ fi
 CHUMPD_BIN="$CHUMPD_PROVISION_DIR/target/release/chumpd"
 if [[ -x "$CHUMPD_BIN" ]]; then
   log "-- validation dry-run (CHUMPD_TAKEOVER=0, mode=off) --"
-  if CHUMPD_TAKEOVER=0 "$CHUMPD_BIN" --mode=off --dry-run; then
-    log "OK: chumpd validation dry-run passed"
+  # chumpd --dry-run --mode=off brings up the supervisor loop and STAYS up (it
+  # never self-exits), so run it under a bounded timeout: coming up cleanly and
+  # surviving the window IS the pass signal. timeout's 124 (SIGTERM window
+  # elapsed) therefore counts as success; any other non-zero is a real failure.
+  _rc=0
+  CHUMPD_TAKEOVER=0 timeout 15 "$CHUMPD_BIN" --mode=off --dry-run || _rc=$?
+  if [[ "$_rc" -eq 0 || "$_rc" -eq 124 || "$_rc" -eq 143 ]]; then
+    log "OK: chumpd validation dry-run passed (came up cleanly, rc=$_rc)"
   else
     warn "chumpd validation dry-run failed or --mode=off/--dry-run flags don't exist yet" \
          "in this build — check MISSION-051's actual CLI surface once it ships."
