@@ -13840,12 +13840,21 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         println!(
-            "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>8}{:>20}",
-            "class", "backend", "model", "provider", "succ", "fail", "rate%", "last_seen"
+            "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>8}{:>10}{:>8}{:>20}",
+            "class",
+            "backend",
+            "model",
+            "provider",
+            "succ",
+            "fail",
+            "rate%",
+            "avg_cost",
+            "score",
+            "last_seen"
         );
         for e in &entries {
             println!(
-                "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>7.1}%{:>20}",
+                "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>7.1}%{:>9.4}${:>7.2} {:>20}",
                 if e.task_class.is_empty() {
                     "-"
                 } else {
@@ -13861,6 +13870,8 @@ async fn main() -> Result<()> {
                 e.successes,
                 e.failures,
                 e.success_rate * 100.0,
+                e.avg_cost_usd,
+                e.route_score,
                 e.last_seen
             );
         }
