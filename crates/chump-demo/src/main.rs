@@ -26,11 +26,11 @@
 //! Out of scope for v0 (deferred to follow-up gaps):
 //!
 //! * Loom/asciinema recording (operator-side action; META-072 final AC).
-//! * `chump fleet demo-loop` wiring into src/main.rs (contested file;
-//!   ship as standalone `chump-demo` binary first, then alias once
-//!   main.rs lease window opens).
 //! * Live dashboard integration (Rust route work — pair with INFRA-1338's
 //!   /api/fleet-status once available).
+//!
+//! Wired as `chump demo` (forwards to this binary) via
+//! src/commands/demo.rs — INFRA-2391.
 //!
 //! Failure modes documented at docs/demos/META-072-failure-modes.md.
 
