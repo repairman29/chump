@@ -106,6 +106,7 @@ use chump_gap_store as gap_store;
 extern crate chump_ship;
 mod audit;
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
+mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
@@ -1324,6 +1325,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("ingest") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(ingest::run(&sub_args));
+    }
+
+    // `chump cartograph <target-repo-path> [--json]` (INFRA-1782, phase 2 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/ARCHITECTURE.md. No LLM calls, no network
+    // calls; the only write is ARCHITECTURE.md itself.
+    if args.get(1).map(String::as_str) == Some("cartograph") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(cartographer::run(&sub_args));
     }
 
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
