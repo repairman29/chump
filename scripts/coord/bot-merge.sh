@@ -31,7 +31,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 # full pre-merge checklist, pushes to origin, and opens (or updates) a GitHub PR.
 #
 # Usage:
-#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--skip-tests] [--dry-run] [--no-merge-driver]
+#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--lane internal|user-facing|critical] [--skip-tests] [--dry-run] [--no-merge-driver]
 #                              [--branch-prefix PREFIX] [--pr-template PATH] [--required-checks CHECK1,CHECK2,...]
 #
 #   --stack-on PREV-GAP-ID
@@ -80,6 +80,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 #                  these names are considered blockers (others are advisory).
 #                  When unset, any FAILURE/ERROR check blocks auto-merge.
 #                  Env: BM_REQUIRED_CHECKS
+#   --lane {internal,user-facing,critical}
+#                  INFRA-1767: merge-risk tier, gates the auto-merge default
+#                  AND the crates/chump-policy check (`chump-policy check
+#                  --lane ...`). internal (default) auto-merges without
+#                  needing --auto-merge; user-facing needs an explicit
+#                  --auto-merge; critical needs --auto-merge AND an explicit
+#                  operator/repo policy opt-in (chump-policy's Critical
+#                  baseline defaults enabled=false — most-restrictive-wins
+#                  over any permissive fleet/operator/repo scope).
+#                  Emits kind=bot_merge_lane_resolved to ambient.jsonl.
+#                  Env: BM_LANE
 #
 # Requirements: gh CLI authenticated, GITHUB_TOKEN in env or gh keyring, cargo.
 #
@@ -489,6 +500,15 @@ REQUIRED_CHECKS="${BM_REQUIRED_CHECKS:-}"
 NEXT_IS_BRANCH_PREFIX=0
 NEXT_IS_PR_TEMPLATE=0
 NEXT_IS_REQUIRED_CHECKS=0
+# INFRA-1767: tiered merge lane. internal (default) = auto-merge on by
+# default; user-facing = auto-merge only when explicitly requested;
+# critical = auto-merge default OFF, and chump-policy's Critical-lane
+# baseline (crates/chump-policy) refuses to arm it even if --auto-merge
+# is passed, unless the operator has explicitly opted a scope in.
+LANE="${BM_LANE:-internal}"
+LANE_EXPLICIT=0
+AUTO_MERGE_EXPLICIT=0
+NEXT_IS_LANE=0
 # INFRA-996: bypass dup-PR check when the prior PR is known-closed during this run.
 FORCE_DUPLICATE=${CHUMP_FORCE_DUPLICATE:-0}
 GAP_IDS=()
@@ -540,11 +560,18 @@ for arg in "$@"; do
         NEXT_IS_PROGRESS_FILE=0
         continue
     fi
+    if [[ $NEXT_IS_LANE -eq 1 ]]; then
+        LANE="$arg"
+        LANE_EXPLICIT=1
+        NEXT_IS_LANE=0
+        continue
+    fi
     case "$arg" in
         --gap)             NEXT_IS_GAP=1 ;;
         --stack-on)        NEXT_IS_STACK_ON=1 ;;
         --progress-file)   NEXT_IS_PROGRESS_FILE=1 ;;
-        --auto-merge)         AUTO_MERGE=1 ;;
+        --lane)               NEXT_IS_LANE=1 ;;      # INFRA-1767: internal|user-facing|critical
+        --auto-merge)         AUTO_MERGE=1; AUTO_MERGE_EXPLICIT=1 ;;
         --skip-tests)         SKIP_TESTS=1 ;;
         --fast)               FAST=1; SKIP_TESTS=1 ;;
         --dry-run)            DRY_RUN=1 ;;
@@ -562,6 +589,41 @@ for arg in "$@"; do
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
+
+# ── INFRA-1767: tiered merge lane — normalize + apply auto-merge default ────
+# internal|user-facing|critical, matching crates/chump-policy's Lane enum.
+# Bad values fail loudly here rather than silently falling back to the most
+# permissive lane.
+case "$LANE" in
+    internal|user-facing|user_facing) LANE="internal" ;;
+    critical) : ;;
+    *)
+        if [[ "$LANE" != "internal" ]]; then
+            echo "bot-merge: invalid --lane '$LANE' (expected internal|user-facing|critical)" >&2
+            exit 2
+        fi
+        ;;
+esac
+if [[ "$LANE" == "user_facing" ]]; then LANE="user-facing"; fi
+if [[ "$AUTO_MERGE_EXPLICIT" -eq 0 ]]; then
+    case "$LANE" in
+        internal)
+            # Auto-merge-by-default lane (RESILIENT-190 doctrine: lowest
+            # blast radius if wrong). Still subject to the chump-policy
+            # gate below like any other lane.
+            AUTO_MERGE=1
+            ;;
+        user-facing|critical)
+            # No auto-merge unless the caller explicitly opts in via
+            # --auto-merge; the chump-policy gate further blocks critical
+            # by default even when opted in.
+            AUTO_MERGE=0
+            ;;
+    esac
+fi
+printf '{"ts":"%s","kind":"bot_merge_lane_resolved","lane":"%s","auto_merge_requested":%s,"auto_merge_explicit":%s,"session":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LANE" "$AUTO_MERGE" "$AUTO_MERGE_EXPLICIT" "${CHUMP_SESSION_ID:-unknown}" \
+    >> "${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}" 2>/dev/null || true
 
 # INFRA-993: default disabled. Set --allow-mass-delete to permit a push that
 # would otherwise be blocked by the scratch-commit guard (legit large-deletion
@@ -3774,9 +3836,9 @@ print(f"{incomplete} {failed} {total}")
                     fi
                 done
                 if [[ -n "$_chump_policy_bin" ]] && [[ "${CHUMP_BYPASS_AUTO_MERGE_POLICY:-0}" != "1" ]]; then
-                    stage_start "INFRA-2155: chump-policy check (PR $TARGET_PR)"
+                    stage_start "INFRA-2155: chump-policy check (PR $TARGET_PR, lane=$LANE)"
                     _policy_out=""
-                    if _policy_out=$(CHUMP_REPO="$REPO_ROOT" "$_chump_policy_bin" check 2>/dev/null); then
+                    if _policy_out=$(CHUMP_REPO="$REPO_ROOT" "$_chump_policy_bin" check --lane "$LANE" 2>/dev/null); then
                         info "  policy → allowed; arming auto-merge"
                         # Forward the emit to ambient.jsonl for the audit trail.
                         printf '%s\n' "$_policy_out" >> "$REPO_ROOT/.chump-locks/ambient.jsonl" 2>/dev/null || true
