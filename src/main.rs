@@ -1362,6 +1362,16 @@ async fn main() -> Result<()> {
         std::process::exit(commands::voice::run(&sub_args));
     }
 
+    // `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) —
+    // wires the META-072 chump-demo crate (Track-3 autonomous-throughput
+    // demo loop) in as a first-class subcommand instead of leaving it as an
+    // undiscoverable standalone binary. Execs the sibling chump-demo binary
+    // built by this workspace, forwarding args + exit code.
+    if args.get(1).map(String::as_str) == Some("demo") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::demo::run(&sub_args));
+    }
+
     // `chump config [show] [--json]` (INFRA-2371) — runtime cascade /
     // privacy / MCP snapshot. Pure read; never invokes an LLM, so it's
     // safe to run when the cascade is wedged. Solves the daily-friction

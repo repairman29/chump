@@ -754,6 +754,11 @@ jobs:
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
         run: bash scripts/ci/test-chump-subcommand-help.sh
 
+      - name: chump demo subcommand smoke (INFRA-2391)
+        # Wires crates/chump-demo (META-072) as `chump demo`; asserts --help
+        # and an end-to-end --dry-run both exit 0.
+        run: bash scripts/ci/test-chump-demo-smoke.sh
+
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
 

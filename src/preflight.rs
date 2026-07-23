@@ -630,6 +630,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
+        // end-to-end --dry-run both exit 0. Pure local, no network.
+        "scripts/ci/test-chump-demo-smoke.sh",
     ];
     candidates
         .iter()
