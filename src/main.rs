@@ -121,6 +121,7 @@ mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
 mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
 mod ingest_librarian; // INFRA-1781: Phase 1 Librarian audit + triage report (INFRA-1746 phase 1b)
+mod ingest_preflight; // INFRA-1778: chump ingest-preflight <target> (Column A safety rail — auth + push-access check)
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
@@ -1325,6 +1326,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("ingest") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(ingest::run(&sub_args));
+    }
+
+    // `chump ingest-preflight <owner/repo|url|local-path>` (INFRA-1778,
+    // Column A safety rail) — verifies gh is installed, the operator is
+    // authenticated, the target repo resolves, and the operator has push
+    // access, before any ingest work begins. Zero LLM calls, read-only.
+    if args.get(1).map(String::as_str) == Some("ingest-preflight") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(ingest_preflight::run(&sub_args));
     }
 
     // `chump cartograph <target-repo-path> [--json]` (INFRA-1782, phase 2 of

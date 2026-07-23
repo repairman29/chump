@@ -8162,6 +8162,38 @@ events:
     #           elapsed_ms: int, error: str}
     status: stable
 
+  - kind: ingest_preflight_started
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_started"
+    trigger: >
+      `chump ingest-preflight <owner/repo|url|local-path>` begins execution.
+      Fires immediately after CLI args are parsed, before any gh/git call.
+      Fields: target (the raw positional argument as given).
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target]
+    # payload: {target: str}
+    status: stable
+
+  - kind: ingest_preflight_result
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_result"
+    trigger: >
+      `chump ingest-preflight <owner/repo|url|local-path>` completed (success
+      or failure). Makes zero LLM calls, so cost_usd is always "0.00".
+      has_push_access is "true" only on full success; failure_class is one
+      of: gh_not_installed, not_authenticated, unresolvable_repo,
+      repo_not_found_or_no_access, no_push_access (all permanent, exit code
+      1), or transient_api_error (retryable, exit code 3). Empty string on
+      success. Fields: target, has_push_access, elapsed_ms, cost_usd,
+      failure_class.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target, has_push_access, elapsed_ms, cost_usd, failure_class]
+    # payload: {target: str, has_push_access: bool, elapsed_ms: int,
+    #           cost_usd: str, failure_class: str}
+    status: stable
+
   - kind: sccache_hit_rate_low
     effect_metric: credible
     emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)

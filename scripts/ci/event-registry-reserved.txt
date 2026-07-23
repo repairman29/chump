@@ -744,6 +744,12 @@ ingest_initiated
 ingest_validated
 ingest_failed
 
+# INFRA-1778 — chump ingest-preflight emits via the same crate::ambient_emit::emit()
+# Rust struct-init `kind: "X".to_string()` syntax; same scanner limitation.
+# Real emit sites: src/ingest_preflight.rs.
+ingest_preflight_started
+ingest_preflight_result
+
 
 # ── MISSION-012: auto-deploy daemon ──────────────────────────────────────────
 binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
