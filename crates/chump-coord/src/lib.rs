@@ -168,6 +168,26 @@ pub struct CoordClient {
     pub capabilities_kv: kv::Store,
 }
 
+/// Parse credentials out of a `nats://[user[:pass]@]host:port` URL.
+/// Returns `Some((user, Some(pass)))` for user/password auth,
+/// `Some((token, None))` for the token-only `nats://token@host` form,
+/// or `None` when the URL carries no userinfo.
+fn parse_nats_creds(url: &str) -> Option<(String, Option<String>)> {
+    let after = url
+        .strip_prefix("nats://")
+        .or_else(|| url.strip_prefix("tls://"))
+        .unwrap_or(url);
+    let at = after.find('@')?;
+    let creds = &after[..at];
+    if creds.is_empty() {
+        return None;
+    }
+    match creds.split_once(':') {
+        Some((u, p)) => Some((u.to_string(), Some(p.to_string()))),
+        None => Some((creds.to_string(), None)),
+    }
+}
+
 impl CoordClient {
     /// Connect to NATS and initialise the KV bucket + JetStream stream.
     pub async fn connect() -> Result<Self> {
@@ -181,11 +201,26 @@ impl CoordClient {
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_GAP_TTL_SECS);
 
-        let nats =
-            tokio::time::timeout(Duration::from_millis(timeout_ms), async_nats::connect(&url))
-                .await
-                .map_err(|_| anyhow!("NATS connect timed out after {}ms ({})", timeout_ms, url))?
-                .map_err(|e| anyhow!("NATS connect failed: {}", e))?;
+        // RESILIENT-190: async_nats (0.49) takes auth from ConnectOptions, NOT
+        // from the URL's userinfo — `connect(url)` opens the TCP socket but sends
+        // no credentials, so an authenticated broker rejects it with
+        // "authorization violation". Parse `nats://user:pass@host` (or the
+        // token-only `nats://token@host`) out of the URL and set it explicitly.
+        // Bonus: the token never appears in the timeout error message below.
+        let mut opts = async_nats::ConnectOptions::new();
+        if let Some((user, pass)) = parse_nats_creds(&url) {
+            opts = match pass {
+                Some(p) => opts.user_and_password(user, p),
+                None => opts.token(user),
+            };
+        }
+        let nats = tokio::time::timeout(
+            Duration::from_millis(timeout_ms),
+            opts.connect(url.as_str()),
+        )
+        .await
+        .map_err(|_| anyhow!("NATS connect timed out after {}ms", timeout_ms))?
+        .map_err(|e| anyhow!("NATS connect failed: {}", e))?;
 
         let js = jetstream::new(nats.clone());
 
@@ -434,5 +469,41 @@ impl CoordClient {
     /// per gap during the 7-day release gate).
     pub async fn list_capabilities(&self) -> Result<Vec<capability::CapabilityManifest>> {
         capability::list_capabilities(&self.capabilities_kv).await
+    }
+}
+
+#[cfg(test)]
+mod parse_creds_tests {
+    use super::parse_nats_creds;
+
+    #[test]
+    fn user_and_password() {
+        assert_eq!(
+            parse_nats_creds("nats://chump:secret@1.2.3.4:4222"),
+            Some(("chump".to_string(), Some("secret".to_string())))
+        );
+    }
+
+    #[test]
+    fn token_only() {
+        assert_eq!(
+            parse_nats_creds("nats://deadbeef@host:4222"),
+            Some(("deadbeef".to_string(), None))
+        );
+    }
+
+    #[test]
+    fn no_userinfo_is_none() {
+        assert_eq!(parse_nats_creds("nats://127.0.0.1:4222"), None);
+    }
+
+    #[test]
+    fn tls_scheme_and_empty_userinfo() {
+        assert_eq!(
+            parse_nats_creds("tls://u:p@host:4222"),
+            Some(("u".to_string(), Some("p".to_string())))
+        );
+        // A stray leading '@' with empty creds carries no auth.
+        assert_eq!(parse_nats_creds("nats://@host:4222"), None);
     }
 }

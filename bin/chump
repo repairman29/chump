@@ -42,6 +42,15 @@ else
         # Resolve symlinks so we detect indirect self-references.
         _resolved="$(cd "$_dir" 2>/dev/null && pwd -P || echo "$_dir")"
         [[ "$_resolved" == "$_SHIM_DIR" ]] && continue
+        # INFRA-3351: skip PATH entries whose chump file is ALSO a copy of
+        # this shim (e.g. another worktree's bin/chump ahead of us on PATH).
+        # Otherwise shim A resolves to shim B; shim B's recursion guard fires
+        # immediately and execs CHUMP_REAL_BINARY (still shim A's path) -
+        # an infinite 2-shim exec loop masquerading as a syspolicyd wedge.
+        if [[ -x "$_dir/chump" ]] \
+            && head -n 60 "$_dir/chump" 2>/dev/null | grep -q 'INFRA-469'; then
+            continue
+        fi
         if [[ -x "$_dir/chump" ]]; then
             _REAL="$_dir/chump"
             break

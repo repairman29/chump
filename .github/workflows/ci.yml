@@ -904,9 +904,6 @@ jobs:
       - name: paramedic stale-branch auto-rebase (INFRA-1429)
         run: bash scripts/ci/test-stale-branch-rebase.sh
 
-      - name: paramedic stale-branch auto-rebase (INFRA-1429)
-        run: bash scripts/ci/test-stale-branch-rebase.sh
-
       - name: inspect/resume/scrap surface (INFRA-1456)
         run: bash scripts/ci/test-inspect-resume-scrap.sh
 
