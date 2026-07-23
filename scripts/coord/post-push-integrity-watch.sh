@@ -195,6 +195,24 @@ except Exception as e:
         continue
     fi
 
+    # ZERO-WASTE-027 follow-up: do NOT reopen a PR whose gap already SHIPPED.
+    # This watchdog exists to rescue ACCIDENTAL stale-push auto-closes — it must
+    # not fight an operator or curator intentionally closing a superseded
+    # duplicate (e.g. the INFRA-3406 dupes #3244/#3249 whose real fix merged as
+    # #3256). If the gap named in the title is done/shipped, the close was
+    # deliberate; leave it closed. Mirrors closed-pr-watchdog.sh's guard, which
+    # already skips done gaps. Without this, an intentional close is reopened
+    # within WINDOW_S, looping forever.
+    _gap_id="$(printf '%s' "$title" | grep -oE '[A-Z]+(-[A-Z]+)*-[0-9]+' | head -1)"
+    if [[ -n "$_gap_id" ]] && command -v sqlite3 >/dev/null 2>&1 && [[ -f "$REPO_ROOT/.chump/state.db" ]]; then
+        _gap_status="$(sqlite3 "$REPO_ROOT/.chump/state.db" \
+            "SELECT status FROM gaps WHERE id='$_gap_id' LIMIT 1;" 2>/dev/null || true)"
+        if [[ "$_gap_status" == "done" || "$_gap_status" == "shipped" ]]; then
+            log "SKIP reopen PR #$pr_num — gap $_gap_id already $_gap_status (superseded dupe / intentional close, not a stale-push auto-close)"
+            continue
+        fi
+    fi
+
     # This is an incident: a chump/* PR was closed (not merged) within our window.
     INCIDENTS=$((INCIDENTS + 1))
     log "INCIDENT: PR #$pr_num branch=$branch state_reason=$state_reason closed_at=$closed_at"
