@@ -756,6 +756,10 @@ binary_auto_deploy_failed   # reason: MISSION-012 emitted by scripts/ops/auto-de
 # and misses these. Reserved until the regex is generalized. Real emit sites: src/onboard.rs.
 external_repo_scheduled
 external_repo_unscheduled
+# MISSION-058 — chump onboard --iter-once mission-loop emits via crate::ambient_emit::emit()
+# from src/onboard.rs (same struct-init `kind: "X".to_string()` pattern the audit regex misses).
+external_repo_iter_started
+external_repo_iter_done
 # CREDIBLE-013 — CI failure triage emits from scripts/ci/ path which is excluded
 # from the audit's PROD_PATHS scan (same pattern as CREDIBLE-085 sccache entries).
 # The emit is real (post-build triage step in CI cargo-test job), just not
