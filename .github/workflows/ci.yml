@@ -1321,6 +1321,15 @@ jobs:
         id: r2detect
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          # ZERO-WASTE-027 (2026-07-24): sccache is OFF by default in CI. Measured
+          # Rust hit rate = 0.00% (777 misses / 0 hits; the "8%" was C/C++ only) —
+          # per-run CARGO_TARGET_DIR paths (INFRA-2118) poison the keys so they
+          # never repeat, same 0.00%-Rust problem the fleet already retreated from
+          # (ZERO-WASTE-021). Running it anyway pays sccache-server-start + R2 auth
+          # + a hit-rate monitor that warns every run, for ~zero Rust benefit.
+          # Re-enable ONLY once builds use stable paths (ZW-021's own criterion):
+          # set repo variable CHUMP_CI_SCCACHE=true.
+          SCCACHE_ENABLED: ${{ vars.CHUMP_CI_SCCACHE || 'false' }}
         run: |
           # RESILIENT-041 (2026-05-30): tightened length check from `-n` to `>= 16`.
           # A misconfigured secret stored as a single character used to pass `-n`
@@ -1328,7 +1337,10 @@ jobs:
           # → cargo metadata exit 101 → cargo-test exit 102 → queue-wide trunk-RED.
           # Length floor of 16 routes garbage creds through the existing graceful
           # no-cache fallback instead of crashing the toolchain.
-          if [ "${#R2_KEY}" -ge 16 ]; then
+          if [ "$SCCACHE_ENABLED" != "true" ]; then
+            echo "configured=false (sccache disabled in CI — ZERO-WASTE-027; set vars.CHUMP_CI_SCCACHE=true to re-enable)" >&2
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#R2_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
