@@ -1343,16 +1343,56 @@ impl GapStore {
                 }
             }
             // Atomically bump the counter and read the assigned number.
-            self.conn.execute(
-                "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
-                params![domain_upper],
-            )?;
-            let num: i64 = self.conn.query_row(
-                "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
-                params![domain_upper],
-                |r| r.get(0),
-            )?;
-            let new_id = format!("{}{:03}", prefix, num);
+            //
+            // INFRA-1954: state.db (plus the open-PR/lease sources above) is
+            // blind to a gap that already shipped and was later dropped from
+            // the live registry — e.g. state.db rebuilt from an older
+            // `.chump/state.sql` snapshot, or a domain counter that never saw
+            // the closed row. Git commit history never forgets, so before
+            // committing to a candidate ID, check whether it already appears
+            // in a past commit message on any ref; if so, skip it and try the
+            // next number. Bounded retry (not unbounded) so a persistently
+            // broken git binary can't hang reserve forever.
+            const MAX_GIT_HISTORY_SKIPS: u32 = 50;
+            let mut new_id = String::new();
+            for _ in 0..MAX_GIT_HISTORY_SKIPS {
+                self.conn.execute(
+                    "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
+                    params![domain_upper],
+                )?;
+                let num: i64 = self.conn.query_row(
+                    "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
+                    params![domain_upper],
+                    |r| r.get(0),
+                )?;
+                let candidate = format!("{}{:03}", prefix, num);
+                if git_id_referenced(&self.repo_root, &candidate) {
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reused_from_git_history_avoided\",\
+                         \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                    continue;
+                }
+                new_id = candidate;
+                break;
+            }
+            if new_id.is_empty() {
+                bail!(
+                    "reserve({domain}) failed: {MAX_GIT_HISTORY_SKIPS} consecutive candidate \
+                     IDs were all found referenced in git history — investigate \
+                     CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
+                );
+            }
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -3812,6 +3852,37 @@ fn list_open_pr_titles() -> Result<Vec<String>> {
         .filter(|l| !l.trim().is_empty())
         .map(|l| l.to_string())
         .collect())
+}
+
+/// INFRA-1954: has `id` (e.g. `"INFRA-1953"`) ever been referenced in a
+/// commit message on any ref? `reserve_with_external`'s counter-based dedup
+/// only sees rows currently in state.db plus in-flight leases/open-PR
+/// titles — it is blind to a gap that shipped, whose commit landed on main,
+/// but whose row later disappeared from state.db (e.g. a rebuild from an
+/// older `.chump/state.sql` snapshot). Git commit history never forgets, so
+/// it's the last line of defense against handing out that same ID again.
+///
+/// Skips entirely (returns `false`) when `repo_root` has no `.git` — most
+/// unit tests run against a bare tempdir and shelling out to git there is
+/// pure overhead with no repo to search. Any git failure (binary missing,
+/// corrupt repo, etc.) is non-fatal — this is defense-in-depth on top of the
+/// DB-based counter, not the primary correctness mechanism, so a git hiccup
+/// must not brick reserve. Opt out via `CHUMP_RESERVE_GIT_HISTORY_CHECK=0`.
+fn git_id_referenced(repo_root: &Path, id: &str) -> bool {
+    if std::env::var("CHUMP_RESERVE_GIT_HISTORY_CHECK").as_deref() == Ok("0") {
+        return false;
+    }
+    if !repo_root.join(".git").exists() {
+        return false;
+    }
+    let output = std::process::Command::new("git")
+        .args(["log", "--all", "--oneline", "-F", "--grep", id, "-1"])
+        .current_dir(repo_root)
+        .output();
+    match output {
+        Ok(out) => out.status.success() && !out.stdout.is_empty(),
+        Err(_) => false,
+    }
 }
 
 /// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
@@ -6813,6 +6884,73 @@ meta:
             .reserve_verified("INFRA", "fast", "P1", "s", "any-session")
             .unwrap();
         assert_eq!(id, "INFRA-001");
+    }
+
+    // ── INFRA-1954: git-history reuse guard ─────────────────────────────
+
+    /// Reproduces the 2026-05-25 Cold Water incident: state.db has no row
+    /// for the domain (fresh/rebuilt counter), so the naive next ID would be
+    /// `<PREFIX>-001` — but that ID was already used by a gap that shipped
+    /// and whose commit is sitting in git history. reserve() must skip it
+    /// and hand out `<PREFIX>-002` instead.
+    #[test]
+    fn reserve_skips_id_already_referenced_in_git_history() {
+        let dir = TempDir::new().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .status()
+                .unwrap();
+        };
+        git(&["init", "--initial-branch=main", "--quiet"]);
+        git(&["config", "user.email", "test@test.local"]);
+        git(&["config", "user.name", "test"]);
+        git(&[
+            "commit",
+            "--allow-empty",
+            "-m",
+            "feat(COLDWATER-001): already shipped and removed from the registry",
+        ]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        let store = GapStore::open(dir.path()).unwrap();
+
+        let id = store.reserve("COLDWATER", "re-reserve", "P1", "s").unwrap();
+        assert_eq!(
+            id, "COLDWATER-002",
+            "should skip COLDWATER-001 (found in git history), got {id}"
+        );
+    }
+
+    /// Sanity check on the other side: when the candidate ID does NOT appear
+    /// anywhere in git history, reserve() proceeds normally without skipping.
+    #[test]
+    fn reserve_does_not_skip_id_absent_from_git_history() {
+        let dir = TempDir::new().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .status()
+                .unwrap();
+        };
+        git(&["init", "--initial-branch=main", "--quiet"]);
+        git(&["config", "user.email", "test@test.local"]);
+        git(&["config", "user.name", "test"]);
+        git(&["commit", "--allow-empty", "-m", "chore: unrelated commit"]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        let store = GapStore::open(dir.path()).unwrap();
+
+        let id = store.reserve("FRESHDOM", "brand new", "P1", "s").unwrap();
+        assert_eq!(id, "FRESHDOM-001");
     }
 
     // ── INFRA-208: dump preserves unknown hand-curated fields ──────────
