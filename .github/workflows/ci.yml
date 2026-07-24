@@ -701,8 +701,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-fast-checks
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
@@ -1220,8 +1226,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-clippy
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -1288,8 +1300,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-cargo-test
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # INFRA-2094: install cargo-nextest (parallel test runner, ~60% faster)
       - name: Install cargo-nextest
