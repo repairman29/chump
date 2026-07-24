@@ -1230,3 +1230,5 @@ CHUMP_HOME_FIXTURE
 CHUMP_OPERATOR_PAGE_AUTO_ACK_SECS
 # detected in: (standard input)
 CHUMP_SESSION_COST_USD
+# CHUMP_PREFLIGHT_DISK_FLOOR_GB — RESILIENT-196: refuse to start a cargo build below N GB free (default 15; 0 disables)
+CHUMP_PREFLIGHT_DISK_FLOOR_GB

@@ -804,3 +804,4 @@ token_discipline_bypass       # reason: INFRA-1590 CSS token-discipline trailer 
 # Emitted by scripts/coord/post-rebase-verify.sh when a rebase silently drops file content.
 # scanner-anchor: "kind":"rebase_hunk_dropped"
 rebase_hunk_dropped           # reason: INFRA-1526 post-rebase hunk-drop detector; fields: file, lines_dropped, original_commit, rebased_commit
+disk_floor_breach        # reason: RESILIENT-196 — preflight refused to start a build below the disk floor; fields: free_gb, floor_gb
