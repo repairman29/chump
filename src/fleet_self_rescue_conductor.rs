@@ -227,24 +227,29 @@ pub fn tick(repo_root: &Path, execute: bool, grace_secs: u64) -> Outcome {
     );
     println!("[conductor] WEDGE: {reason} — proposed self-rescue (corr={corr})");
 
-    // 4. objection window (a single -1 vetoes). Skipped in dry-run.
-    if execute && grace_secs > 0 {
-        std::thread::sleep(std::time::Duration::from_secs(grace_secs));
-    }
-    let objections = count_objections(repo_root, &corr);
-    if objections > 0 {
-        let o = objections.to_string();
-        emit(
-            repo_root,
-            "conductor_standdown",
-            &[("corr_id", &corr), ("objections", &o)],
-        );
-        println!("[conductor] {objections} objection(s) — standing down (veto respected)");
-        return Outcome::StoodDown;
-    }
-
-    // 5. decide + act (gated)
+    // 4 & 5. Objection window + act — only when EXECUTING.
+    // In dry-run there is no real objection window (we never wait for votes),
+    // so counting objections 0s after posting is meaningless AND non-deterministic
+    // on a live host: count_objections can observe a *concurrent* conductor's
+    // votes, or a same-second `now_unix()` corr_id collision, and return >0. That
+    // flaked `wedge_via_pause_dryrun_does_not_act` (~40% of cargo-test runs) and
+    // blocked innocent PRs. A dry-run just proposes + reports — there is nothing
+    // to veto because nothing is acted on.
     if execute {
+        if grace_secs > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(grace_secs));
+        }
+        let objections = count_objections(repo_root, &corr);
+        if objections > 0 {
+            let o = objections.to_string();
+            emit(
+                repo_root,
+                "conductor_standdown",
+                &[("corr_id", &corr), ("objections", &o)],
+            );
+            println!("[conductor] {objections} objection(s) — standing down (veto respected)");
+            return Outcome::StoodDown;
+        }
         let pp = pause_path(repo_root);
         if pp.exists() {
             let bak = pp.with_file_name(format!(
