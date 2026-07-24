@@ -709,6 +709,145 @@ pub(crate) fn configure_claude_auth_env(cmd: &mut Command) -> bool {
     true
 }
 
+// ── MISSION-063: named agent identity (provable zero-touch attribution) ─────
+//
+// Today every BEAST-MODE merge is authored + merged by the operator's token, so
+// the git trail can't tell "the loop did it" apart from "Jeff did it" — ① is
+// asserted, not measured. Give the loop a NAMED identity and author its commits
+// under it: `git log --format='%an <%ae>'` then proves zero-human-touch, and the
+// agents get rad workshop names.
+
+/// A named Chump agent — the author identity the improve loop commits under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentIdentity {
+    pub codename: String,
+    pub name: String,
+    pub email: String,
+    pub node: String,
+}
+
+/// Workshop-robot roster for the default codename (own-your-tools foundry vibe).
+pub(crate) const AGENT_ROSTER: &[&str] = &[
+    "Sprocket", "Bolt", "Gizmo", "Rivet", "Cog", "Ratchet", "Widget", "Gasket", "Piston", "Tinker",
+];
+
+/// Deterministic roster pick from a node name (sum-of-bytes hash — stable per node).
+pub(crate) fn roster_pick(node: &str) -> &'static str {
+    if AGENT_ROSTER.is_empty() {
+        return "Chump";
+    }
+    let h: usize = node.bytes().map(|b| b as usize).sum();
+    AGENT_ROSTER[h % AGENT_ROSTER.len()]
+}
+
+/// Short, dns-safe node token (before first dot, lowercased, alnum+dash).
+pub(crate) fn sanitize_node(s: &str) -> String {
+    let short = s.split('.').next().unwrap_or(s);
+    let cleaned: String = short
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "node".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Resolve this node's short hostname for identity + email.
+fn agent_node() -> String {
+    for var in ["CHUMP_AGENT_NODE", "HOSTNAME"] {
+        if let Ok(h) = std::env::var(var) {
+            if !h.trim().is_empty() {
+                return sanitize_node(&h);
+            }
+        }
+    }
+    if let Ok(o) = Command::new("hostname").output() {
+        if o.status.success() {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !s.is_empty() {
+                return sanitize_node(&s);
+            }
+        }
+    }
+    "node".to_string()
+}
+
+/// Pure identity builder (env-free — unit-testable without racing on process
+/// env). `name_override`/`email_override` come from `CHUMP_AGENT_NAME`/
+/// `CHUMP_AGENT_EMAIL`; empty/whitespace is treated as absent.
+pub(crate) fn build_identity(
+    name_override: Option<&str>,
+    email_override: Option<&str>,
+    node: &str,
+) -> AgentIdentity {
+    let node = sanitize_node(node);
+    let codename = name_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| roster_pick(&node).to_string());
+    let name = format!("Chump · {codename}");
+    let email = email_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{}@{}.chump.fleet", codename.to_ascii_lowercase(), node));
+    AgentIdentity {
+        codename,
+        name,
+        email,
+        node,
+    }
+}
+
+/// Compute the agent identity from the environment: env overrides
+/// (`CHUMP_AGENT_NAME` / `CHUMP_AGENT_EMAIL`), else a stable roster default
+/// keyed on hostname.
+pub(crate) fn agent_identity() -> AgentIdentity {
+    let node = agent_node();
+    build_identity(
+        std::env::var("CHUMP_AGENT_NAME").ok().as_deref(),
+        std::env::var("CHUMP_AGENT_EMAIL").ok().as_deref(),
+        &node,
+    )
+}
+
+impl AgentIdentity {
+    /// `Chump-Agent: <codename>@<node>` — grep-able commit trailer / signature.
+    pub(crate) fn trailer(&self) -> String {
+        format!("Chump-Agent: {}@{}", self.codename, self.node)
+    }
+
+    /// Set GIT_AUTHOR_*/GIT_COMMITTER_* on a spawned command so the agent's
+    /// commits (and thus the squash-merge commit) are authored by this agent,
+    /// not the operator's token.
+    fn apply_git_env(&self, cmd: &mut Command) {
+        cmd.env("GIT_AUTHOR_NAME", &self.name)
+            .env("GIT_AUTHOR_EMAIL", &self.email)
+            .env("GIT_COMMITTER_NAME", &self.name)
+            .env("GIT_COMMITTER_EMAIL", &self.email);
+    }
+
+    /// Instruction appended to a spawned agent's prompt so it stamps the
+    /// signature trailer on every commit body.
+    fn prompt_signature(&self) -> String {
+        format!(
+            "\n\nCOMMIT SIGNATURE (MISSION-063): you are the Chump agent \"{}\". \
+Add this exact trailer as the LAST line of every commit message body you create:\n{}\n",
+            self.name,
+            self.trailer()
+        )
+    }
+}
+
 // ── Implement stage ───────────────────────────────────────────────────────
 
 /// Stage 3: Spawn a capable agent in the repo clone to implement the gap and
@@ -730,7 +869,19 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         fork_owner: None, // direct-push to a branch; operator can set fork via --gap override
     };
 
-    let prompt = ExternalRepoContract::prompt(&input);
+    // MISSION-063: sign commits as a named Chump agent (provable zero-touch).
+    let id = agent_identity();
+    let prompt = format!(
+        "{}{}",
+        ExternalRepoContract::prompt(&input),
+        id.prompt_signature()
+    );
+    println!(
+        "[improve] agent identity: {} <{}>  (trailer: {})",
+        id.name,
+        id.email,
+        id.trailer()
+    );
 
     // Resolve claude binary — injectable for tests.
     let claude_bin =
@@ -745,6 +896,8 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         .arg("--dangerously-skip-permissions")
         .args(["--model", "claude-sonnet-4-5"])
         .current_dir(clone_dir);
+    // MISSION-063: author the agent's commits under its identity, not the token.
+    id.apply_git_env(&mut cmd);
 
     // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
     // gateway vars so the spawned agent authenticates from any context.
@@ -894,10 +1047,14 @@ pub(crate) fn parse_verdict(stdout: &str) -> Option<&'static str> {
 ///
 /// scanner-anchor: kind=improve_cycle_complete (EFFECTIVE-177)
 fn emit_cycle_complete(repo: &str, gap_title: &str, verdict: &str, pr_url: Option<&str>) {
+    // MISSION-063: stamp WHICH named agent ran this cycle so the fleet log (not
+    // just git) attributes work to a Chump agent.
+    let id = agent_identity();
     let mut fields = vec![
         ("repo".to_string(), repo.to_string()),
         ("gap".to_string(), gap_title.to_string()),
         ("verdict".to_string(), verdict.to_string()),
+        ("agent".to_string(), format!("{}@{}", id.codename, id.node)),
     ];
     if let Some(url) = pr_url {
         fields.push(("pr".to_string(), url.to_string()));
@@ -1225,7 +1382,13 @@ fn fix_pr(
     let claude_bin =
         std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
     let log_excerpt: String = failing_log.chars().take(6000).collect();
-    let prompt = build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt);
+    // MISSION-063: fixes are signed by the same named agent as the original work.
+    let id = agent_identity();
+    let prompt = format!(
+        "{}{}",
+        build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt),
+        id.prompt_signature()
+    );
     let prompt_file = write_temp_prompt(&prompt)?;
 
     let mut cmd = Command::new(&claude_bin);
@@ -1234,6 +1397,7 @@ fn fix_pr(
         .arg("--dangerously-skip-permissions")
         .args(["--model", model])
         .current_dir(clone_dir);
+    id.apply_git_env(&mut cmd);
     configure_claude_auth_env(&mut cmd);
 
     let out = cmd
@@ -1648,6 +1812,65 @@ mod tests {
         assert!(p.contains("Do NOT create a new branch"));
         assert!(p.contains("Do NOT merge"));
         assert!(p.contains("error[E0308]"), "includes the failing log");
+    }
+
+    // ── MISSION-063: named agent identity ──────────────────────────────────
+
+    #[test]
+    fn mission063_roster_pick_is_stable_and_in_roster() {
+        let a = roster_pick("closetjunky");
+        let b = roster_pick("closetjunky");
+        assert_eq!(a, b, "same node → same codename (stable)");
+        assert!(AGENT_ROSTER.contains(&a), "pick is from the roster");
+        // Different nodes generally differ (not a hard guarantee, but these do).
+        assert_ne!(roster_pick("helsinki"), roster_pick("closetjunky-xyz"));
+    }
+
+    #[test]
+    fn mission063_sanitize_node_shortens_and_cleans() {
+        assert_eq!(sanitize_node("ClosetJunky.local"), "closetjunky");
+        assert_eq!(sanitize_node("host_name!!"), "host-name--");
+        assert_eq!(sanitize_node(""), "node");
+    }
+
+    #[test]
+    fn mission063_env_override_wins() {
+        // Explicit codename + email override the roster/derived defaults.
+        let id = build_identity(Some("Zapp"), Some("zapp@example.test"), "rig7");
+        assert_eq!(id.codename, "Zapp");
+        assert_eq!(id.name, "Chump · Zapp");
+        assert_eq!(id.email, "zapp@example.test");
+        assert_eq!(id.node, "rig7");
+        assert_eq!(id.trailer(), "Chump-Agent: Zapp@rig7");
+    }
+
+    #[test]
+    fn mission063_blank_override_falls_back_to_default() {
+        // Whitespace-only overrides are treated as absent.
+        let id = build_identity(Some("  "), Some(""), "closetjunky");
+        assert!(AGENT_ROSTER.contains(&id.codename.as_str()));
+        assert!(id.email.ends_with("@closetjunky.chump.fleet"));
+    }
+
+    #[test]
+    fn mission063_email_default_derived_from_codename_and_node() {
+        let id = build_identity(Some("Rivet"), None, "closetjunky");
+        assert_eq!(id.email, "rivet@closetjunky.chump.fleet");
+        assert_eq!(id.name, "Chump · Rivet");
+    }
+
+    #[test]
+    fn mission063_prompt_signature_carries_trailer_and_name() {
+        let id = AgentIdentity {
+            codename: "Rivet".into(),
+            name: "Chump · Rivet".into(),
+            email: "rivet@closetjunky.chump.fleet".into(),
+            node: "closetjunky".into(),
+        };
+        let sig = id.prompt_signature();
+        assert!(sig.contains("Chump · Rivet"));
+        assert!(sig.contains("Chump-Agent: Rivet@closetjunky"));
+        assert!(sig.contains("LAST line of every commit"));
     }
 
     fn sample_scan(owner_repo: &str) -> OnboardScan {
