@@ -75,6 +75,20 @@ pub fn run(args: &[String]) -> i32 {
             }
         };
     }
+    // MISSION-058: the per-repo scheduled loop BODY. The plist
+    // (com.chump.external-repo-loop) fires `chump onboard --iter-once <repo>` on a
+    // cadence; each firing runs ONE `chump improve <owner/repo> --apply` cycle,
+    // gated on the operator kill-switch — so a provisioned node autonomously works
+    // its mission repos with zero hand-config. Was the "not yet implemented" stub.
+    if args.iter().any(|a| a == "--iter-once") {
+        return match run_iter_once(args) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("chump onboard --iter-once: {e:#}");
+                1
+            }
+        };
+    }
     match run_inner(args) {
         Ok(()) => 0,
         Err(e) => {
@@ -166,7 +180,9 @@ fn print_usage() {
     println!("  --unschedule <path>      Unload the plist and remove from the schedule list");
     println!("  --list-scheduled [--json]  Show all scheduled repos");
     println!();
-    println!("NOTE: --iter-once (the worker loop body) is owned by INFRA-2276.");
+    println!(
+        "--iter-once <repo>       Run ONE improve cycle (the scheduled loop body, MISSION-058)."
+    );
     println!("      The plist will load successfully but the worker is a no-op until");
     println!("      INFRA-2276 ships.");
 }
@@ -183,6 +199,97 @@ fn print_usage() {
 /// Requires the multi-thread flavor (chump's `#[tokio::main]` default).
 fn block_on_in_runtime<F: std::future::Future>(fut: F) -> F::Output {
     tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fut))
+}
+
+/// `chump onboard --iter-once <repo-url-or-path>` — MISSION-058 scheduled loop body.
+///
+/// Runs ONE autonomous improve cycle (`chump improve <owner/repo> --apply`) on the
+/// target repo, gated on the operator kill-switch (`~/.chump/AUTONOMY_LEVEL >= 1`,
+/// fail-closed — same control the fleet workers respect, RESILIENT-073). The plist
+/// installed by `--schedule` calls this on a cadence, so a provisioned node works
+/// its mission repos with zero hand-config.
+fn run_iter_once(args: &[String]) -> Result<()> {
+    // The repo arg is the last non-flag positional (the plist passes the repo dir).
+    let repo_arg = args
+        .iter()
+        .rfind(|a| !a.starts_with("--"))
+        .cloned()
+        .ok_or_else(|| anyhow!("usage: chump onboard --iter-once <repo-url-or-path>"))?;
+
+    // Operator kill-switch (fail-closed): AUTONOMY_LEVEL must be >= 1.
+    let al_path = format!(
+        "{}/.chump/AUTONOMY_LEVEL",
+        std::env::var("HOME").unwrap_or_default()
+    );
+    let al: u32 = std::fs::read_to_string(&al_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    if al < 1 {
+        eprintln!(
+            "[onboard --iter-once] AUTONOMY_LEVEL={al} (<1) — mission loop paused, skipping cycle"
+        );
+        return Ok(());
+    }
+
+    // Derive owner/repo: a URL -> extract_owner_repo; a path -> …/<owner>/<repo>[/clone].
+    let owner_repo = if repo_arg.contains("://") || repo_arg.contains("github.com") {
+        extract_owner_repo(&repo_arg)?
+    } else {
+        owner_repo_from_path(&repo_arg)?
+    };
+
+    eprintln!("[onboard --iter-once] improve cycle on {owner_repo} (AUTONOMY_LEVEL={al})");
+    // scanner-anchor: "kind":"external_repo_iter_started"
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "external_repo_iter_started".to_string(),
+        source: Some("chump-onboard-iter".to_string()),
+        fields: vec![("repo".to_string(), owner_repo.clone())],
+        ..Default::default()
+    });
+
+    let rc = crate::improve::run(&[owner_repo.clone(), "--apply".to_string()]);
+
+    // scanner-anchor: "kind":"external_repo_iter_done"
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "external_repo_iter_done".to_string(),
+        source: Some("chump-onboard-iter".to_string()),
+        fields: vec![
+            ("repo".to_string(), owner_repo),
+            ("rc".to_string(), rc.to_string()),
+        ],
+        ..Default::default()
+    });
+
+    if rc == 0 {
+        Ok(())
+    } else {
+        // Non-zero is expected on "all candidates redundant" / HELD — not a hard
+        // error for a scheduled loop; log and succeed so the timer keeps firing.
+        eprintln!("[onboard --iter-once] improve cycle rc={rc} (no ship this cycle) — will retry next tick");
+        Ok(())
+    }
+}
+
+/// Derive `<owner>/<repo>` from a local external-repo path
+/// (`…/external/<owner>/<repo>` or `…/external/<owner>/<repo>/clone`).
+fn owner_repo_from_path(path: &str) -> Result<String> {
+    let p = std::path::Path::new(path.trim_end_matches('/'));
+    let base = if p.file_name().and_then(|s| s.to_str()) == Some("clone") {
+        p.parent().unwrap_or(p)
+    } else {
+        p
+    };
+    let repo = base
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("cannot derive repo from path: {path}"))?;
+    let owner = base
+        .parent()
+        .and_then(|pp| pp.file_name())
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("cannot derive owner from path: {path}"))?;
+    Ok(format!("{owner}/{repo}"))
 }
 
 fn run_inner(args: &[String]) -> Result<()> {
@@ -704,9 +811,8 @@ fn run_schedule(args: &[String]) -> Result<()> {
     println!("  label:   {label}");
     println!("  plist:   {}", install_path.display());
     println!();
-    println!("NOTE: --iter-once (worker loop body) is not yet implemented;");
-    println!("      the plist will run at 03:17 daily but the worker is a no-op");
-    println!("      until INFRA-2276 ships.");
+    println!("The plist fires `chump onboard --iter-once` on a cadence (MISSION-058):");
+    println!("      each tick runs one `chump improve <repo> --apply`, gated on AUTONOMY_LEVEL.");
 
     // Emit ambient event
     let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
@@ -1687,6 +1793,25 @@ mod tests {
     #[test]
     fn test_extract_owner_repo_bad_url() {
         assert!(extract_owner_repo("https://github.com/ehippy").is_err());
+    }
+
+    #[test]
+    fn test_owner_repo_from_path() {
+        // MISSION-058: --iter-once gets a local repo path from the plist/timer.
+        assert_eq!(
+            owner_repo_from_path("/home/jeff/.chump/external/repairman29/BEAST-MODE").unwrap(),
+            "repairman29/BEAST-MODE"
+        );
+        // trailing /clone is stripped
+        assert_eq!(
+            owner_repo_from_path("/home/jeff/.chump/external/ehippy/derelict/clone").unwrap(),
+            "ehippy/derelict"
+        );
+        // trailing slash tolerated
+        assert_eq!(
+            owner_repo_from_path("/root/.chump/external/foo/bar/").unwrap(),
+            "foo/bar"
+        );
     }
 
     #[test]

@@ -477,6 +477,53 @@ PATHDROP
     # RESILIENT-185: linger keeps the --user service running after SSH logout —
     # essential for a headless cabinet box you're not logged into.
     run "enable-linger (survive logout)" loginctl enable-linger "$(id -un)"
+
+    # ── MISSION-058: self-running mission improve loop ───────────────────────
+    # A systemd --user timer runs ONE `chump improve <repo> --apply` cycle per tick
+    # (via `chump onboard --iter-once`), gated on AUTONOMY_LEVEL — so a provisioned
+    # node autonomously works its mission repos with ZERO hand-config. Target repos:
+    # CHUMP_MISSION_REPOS (comma-separated owner/repo); default = the MISSION-010
+    # proof target. Cadence: CHUMP_MISSION_IMPROVE_INTERVAL_MIN (default 30).
+    if [[ "$MODE" != "dry-run" ]]; then
+      MISSION_REPOS="${CHUMP_MISSION_REPOS:-repairman29/BEAST-MODE}"
+      IMPROVE_INTERVAL_MIN="${CHUMP_MISSION_IMPROVE_INTERVAL_MIN:-30}"
+      CHUMP_BIN_PATH="$HOME/.local/bin/chump"
+      IFS=',' read -r -a _mrepos <<< "$MISSION_REPOS"
+      for _mr in "${_mrepos[@]}"; do
+        _mr="$(echo "$_mr" | xargs)"; [[ -n "$_mr" ]] || continue
+        _slug="$(echo "$_mr" | tr '/' '_' | tr 'A-Z' 'a-z')"
+        _repo_dir="$HOME/.chump/external/${_mr}"
+        # register + first-scan (idempotent) so the improve loop has a scan to pick from
+        "$CHUMP_BIN_PATH" repos add "$_mr" >/dev/null 2>&1 || true
+        if [[ ! -d "$_repo_dir/scans" ]]; then
+          log "onboard $_mr (first scan for the mission loop)"
+          ( set -a; [[ -f "$HOME/.chump/chumpd.env" ]] && source "$HOME/.chump/chumpd.env"; set +a
+            "$CHUMP_BIN_PATH" onboard "$_mr" --apply >/dev/null 2>&1 ) \
+            || warn "onboard $_mr failed (fill chumpd.env secrets, then: chump onboard $_mr --apply)"
+        fi
+        cat > "$UNIT_DIR/mission-improve-${_slug}.service" <<SVCEOF
+[Unit]
+Description=chump mission improve loop — ${_mr} (MISSION-058)
+[Service]
+Type=oneshot
+Environment=PATH=$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-$HOME/.chump/chumpd.env
+ExecStart=$CHUMP_BIN_PATH onboard --iter-once $_repo_dir
+SVCEOF
+        cat > "$UNIT_DIR/mission-improve-${_slug}.timer" <<TMREOF
+[Unit]
+Description=fire the ${_mr} improve loop every ${IMPROVE_INTERVAL_MIN}min (MISSION-058)
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=${IMPROVE_INTERVAL_MIN}min
+Persistent=true
+[Install]
+WantedBy=timers.target
+TMREOF
+        run "enable mission-improve timer for $_mr" systemctl --user enable "mission-improve-${_slug}.timer"
+        log "MISSION-058: mission loop scheduled for $_mr (every ${IMPROVE_INTERVAL_MIN}min, gated on AUTONOMY_LEVEL)"
+      done
+    fi
   else
     warn "scripts/setup/chumpd.service template not found — skipping systemd install"
   fi
