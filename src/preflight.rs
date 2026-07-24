@@ -438,12 +438,13 @@ BYPASS:
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
 
 GATES (in order):
-    1. cargo fmt --check               (scope: rust)
-    2. cargo clippy -- -D warnings     (scope: rust)
-    3. cargo check --all-targets        (scope: rust)
-    4. event-registry-audit            (scope: rust, INFRA-1731)
-    5. docs-delta-trailer              (--pre-commit only, INFRA-1788)
-    6. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
+    1. event-registry-audit            (scope: ALWAYS, INFRA-1731/MISSION-064)
+    2. env-var-coverage                (scope: ALWAYS, INFRA-1787/MISSION-064)
+    3. cargo fmt --check               (scope: rust)
+    4. cargo clippy -- -D warnings     (scope: rust)
+    5. cargo check --all-targets        (scope: rust)
+    6. docs-delta-trailer              (--pre-commit only, INFRA-1788)
+    7. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
 
 EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
@@ -730,6 +731,50 @@ pub fn run(argv: &[String]) -> i32 {
     }
 
     let mut steps: Vec<Step> = vec![];
+
+    // MISSION-064: env-var-coverage (INFRA-1787) + event-registry-audit
+    // (INFRA-1731) are ALWAYS-ON (AlwaysFast), not rust-scoped. A scripts- or
+    // docs-scoped PR that introduces a new CHUMP_* env var or ambient kind
+    // (common in shell) must be caught locally, not on a ~15-min CI round-trip
+    // (docs/strategy/CI_REVIEW_2026-05-29.md Lever 4 — the cheapest high-value
+    // lever). Per-gate skip flags preserved.
+    if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
+        eprintln!("[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)");
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "preflight_registry_bypassed".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![(
+                "reason".to_string(),
+                "CHUMP_PREFLIGHT_SKIP_REGISTRY=1".to_string(),
+            )],
+            ..Default::default()
+        });
+    } else {
+        steps.push(step(
+            "event-registry-audit",
+            &["bash", "scripts/ci/test-event-registry-coverage.sh"],
+            GateKind::AlwaysFast,
+        ));
+    }
+    if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
+        eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "preflight_envvars_bypassed".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![(
+                "reason".to_string(),
+                "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
+            )],
+            ..Default::default()
+        });
+    } else {
+        steps.push(step(
+            "env-var-coverage",
+            &["bash", "scripts/ci/test-env-var-coverage.sh"],
+            GateKind::AlwaysFast,
+        ));
+    }
+
     if scope.includes(GateKind::Rust) {
         steps.push(step(
             "cargo fmt --check",
@@ -760,55 +805,8 @@ pub fn run(argv: &[String]) -> i32 {
             &["cargo", "check", "--workspace", "--all-targets"],
             GateKind::Rust,
         ));
-        // INFRA-1731: event-registry-audit local gate. Catches
-        // register-without-emit (orphan) failures BEFORE push so operators
-        // don't burn a CI round-trip on an audit fail. The audit script
-        // itself respects CHUMP_REGISTRY_GATE_MODE; gate-specific skip is
-        // CHUMP_PREFLIGHT_SKIP_REGISTRY=1 (with audit-trail emit).
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
-            eprintln!(
-                "[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)"
-            );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_registry_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_REGISTRY=1".to_string(),
-                )],
-                ..Default::default()
-            });
-        } else {
-            steps.push(step(
-                "event-registry-audit",
-                &["bash", "scripts/ci/test-event-registry-coverage.sh"],
-                GateKind::Rust,
-            ));
-        }
-        // INFRA-1787: env-var-coverage local gate. Catches CHUMP_* env vars
-        // referenced in Rust/scripts but not documented in
-        // scripts/ci/env-vars-internal.txt — the #1 most-frequent CI audit
-        // fail class (5+ failures/week pre-mirror). Skip via
-        // CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit (mirrors the
-        // INFRA-1731 pattern shipped at #2377).
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
-            eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_envvars_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
-                )],
-                ..Default::default()
-            });
-        } else {
-            steps.push(step(
-                "env-var-coverage",
-                &["bash", "scripts/ci/test-env-var-coverage.sh"],
-                GateKind::Rust,
-            ));
-        }
+        // MISSION-064: event-registry-audit + env-var-coverage moved to the
+        // ALWAYS-ON section above (they now run for any scope, not just rust).
         // INFRA-1789: chump-subcommand-help regression gate. Catches the
         // class of failures where a subcommand registers but `chump <subcmd>
         // --help` falls through to the LLM agent or fails on "missing
