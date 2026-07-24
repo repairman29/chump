@@ -195,6 +195,32 @@ Use **tailnet** IPs so the menu bar works from anywhere, not just your home LAN.
 
 ---
 
+## The mission loop — the node works external repos on its own (🤖, MISSION-058)
+
+The provisioner installs a **systemd `--user` timer per mission repo** that fires one
+`chump improve <repo> --apply` cycle every ~30 min (via `chump onboard --iter-once`),
+**gated on `AUTONOMY_LEVEL`**. So once §6's autonomy is opted in, the node autonomously
+scouts → implements → opens-on-`main` → verify-merges real fixes into its mission repos
+— with **zero hand-config**. This is what keeps scoreboard ① green on its own.
+
+Configure at provision time (env):
+```bash
+CHUMP_MISSION_REPOS="repairman29/BEAST-MODE,owner/other"   # default: BEAST-MODE
+CHUMP_MISSION_IMPROVE_INTERVAL_MIN=30                       # cadence
+```
+Inspect / drive on the node:
+```bash
+systemctl --user list-timers 'mission-improve-*'           # scheduled loops
+journalctl --user -u 'mission-improve-*' -n 40             # last cycles
+# pause the mission loop (and the whole fleet): echo 0 > ~/.chump/AUTONOMY_LEVEL
+```
+
+> **Gotcha — first scan.** The loop needs an onboard scan to pick from; the provisioner
+> runs `chump onboard <repo> --apply` once. If secrets weren't filled yet, re-run it:
+> `chump onboard repairman29/BEAST-MODE --apply`.
+
+---
+
 ## Operator checkpoint summary
 
 Only these five need you personally; everything else is scripted:
