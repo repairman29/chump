@@ -227,6 +227,13 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // main and fails CI gates that were already fixed on real main.
     refresh_clone(&clone_dir)?;
 
+    // ── Stage 1.5: SHEPHERD ───────────────────────────────────────────────
+    // MISSION-061: before implementing NEW work, drive the loop's own open PRs
+    // from prior cycles to a terminal state. Dep-bound: a held/behind PR opened
+    // last cycle may block this cycle's work, so resolve blockers first. Bounded
+    // + identity-filtered (only touches PRs a Chump agent authored).
+    shepherd_own_prs(&opts, &clone_dir);
+
     // ── Stage 2: DEDUP ────────────────────────────────────────────────────
     // MISSION-056: dedup EACH ranked candidate and take the first that isn't
     // already shipped. Before this, improve dedup'd ONLY the top gap and stopped
@@ -299,7 +306,7 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // loop CONVERGE (land work) rather than merely TRY: a held PR that blocks a
     // dependent task is resolved in-cycle, never skipped, never left open-red.
     if verdict != "verified" {
-        verdict = remediate_held(&opts, &clone_dir, &picked, pr_num, &pr_url)?;
+        verdict = remediate_held(&opts, &clone_dir, &picked.title, pr_num, &pr_url)?;
     }
 
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
@@ -1425,7 +1432,7 @@ fn fix_pr(
 fn remediate_held(
     opts: &Opts,
     clone_dir: &Path,
-    gap: &ProposedGap,
+    gap_title: &str,
     pr_num: u64,
     pr_url: &str,
 ) -> Result<String> {
@@ -1463,7 +1470,7 @@ fn remediate_held(
                 &opts.owner_repo,
                 pr_num,
                 &head_branch,
-                &gap.title,
+                gap_title,
                 &log,
                 model,
             )?,
@@ -1471,7 +1478,7 @@ fn remediate_held(
 
         // Re-verify: verify_and_merge polls check-runs until terminal, so this
         // waits out a rerun or the pushed fix's fresh CI before judging.
-        let verdict = verify_and_merge(opts, pr_num, &gap.title)?;
+        let verdict = verify_and_merge(opts, pr_num, gap_title)?;
         println!("[improve] remediate {} → verdict: {verdict}", attempt + 1);
         if verdict == "verified" {
             return Ok("verified".to_string());
@@ -1488,6 +1495,270 @@ fn remediate_held(
     emit_pr_closed(&opts.owner_repo, pr_num, pr_url, &reason);
     println!("[improve] PR #{pr_num} CLOSED after {retries} attempt(s) (no-abandon)");
     Ok("closed".to_string())
+}
+
+// ── MISSION-061: external PR shepherd ──────────────────────────────────────
+//
+// Before implementing NEW work each cycle, sweep the loop's OWN open PRs and
+// drive any held/behind one to terminal (merged or closed). This composes what
+// we already built: 059 remediate_held (the per-PR fix engine) + 063 agent
+// identity (the ownership filter — only touch a Chump agent's PRs, never a
+// human's) + a rebase-BEHIND step. It answers the dep-bound problem: a held PR
+// from a prior cycle can block this cycle's work, so resolve blockers first.
+
+/// A minimal open-PR record from `gh pr list --json`.
+struct OpenPr {
+    number: u64,
+    title: String,
+    url: String,
+    merge_state: String,
+    #[allow(dead_code)]
+    head_branch: String,
+}
+
+/// Max own-PRs to remediate per cycle (`CHUMP_IMPROVE_SWEEP_MAX`, default 3) so
+/// the sweep can't starve new work.
+fn sweep_max() -> usize {
+    std::env::var("CHUMP_IMPROVE_SWEEP_MAX")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(3)
+}
+
+/// Email domain that marks a commit as agent-authored (`CHUMP_AGENT_EMAIL_DOMAIN`,
+/// default `chump.fleet` — matches the 063 identity `<code>@<node>.chump.fleet`).
+fn agent_email_domain() -> String {
+    std::env::var("CHUMP_AGENT_EMAIL_DOMAIN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "chump.fleet".to_string())
+}
+
+/// Pure ownership test: does this commit-author email belong to a Chump agent?
+pub(crate) fn email_is_agent(email: &str, domain: &str) -> bool {
+    let e = email.trim().to_ascii_lowercase();
+    let d = domain.trim().to_ascii_lowercase();
+    !d.is_empty() && (e.ends_with(&format!("@{d}")) || e.ends_with(&format!(".{d}")))
+}
+
+/// Split a top-level JSON array into its object substrings (string- and
+/// nesting-aware). Pure — unit-tested.
+pub(crate) fn split_top_objects(json: &str) -> Vec<String> {
+    let mut objs = Vec::new();
+    let bytes = json.as_bytes();
+    let (mut depth, mut start, mut in_str, mut esc) = (0i32, 0usize, false, false);
+    for (i, &b) in bytes.iter().enumerate() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if b == b'\\' {
+                esc = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'{' => {
+                if depth == 0 {
+                    start = i;
+                }
+                depth += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    objs.push(json[start..=i].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    objs
+}
+
+/// Extract a `"field":"value"` string from a flat JSON object (unescapes basics).
+pub(crate) fn json_str_field(obj: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{field}\":\"");
+    let start = obj.find(&needle)? + needle.len();
+    let mut out = String::new();
+    let mut chars = obj[start..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => {
+                if let Some(n) = chars.next() {
+                    match n {
+                        'n' => out.push('\n'),
+                        't' => out.push('\t'),
+                        '"' => out.push('"'),
+                        '\\' => out.push('\\'),
+                        '/' => out.push('/'),
+                        o => out.push(o),
+                    }
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    None
+}
+
+/// Extract a `"field":<int>` unsigned integer from a flat JSON object.
+pub(crate) fn json_int_field(obj: &str, field: &str) -> Option<u64> {
+    let needle = format!("\"{field}\":");
+    let start = obj.find(&needle)? + needle.len();
+    let digits: String = obj[start..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
+}
+
+/// List open PRs on the repo (best-effort; empty on any gh failure).
+fn list_open_prs(opts: &Opts) -> Vec<OpenPr> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            &opts.owner_repo,
+            "--state",
+            "open",
+            "--limit",
+            "40",
+            "--json",
+            "number,title,url,mergeStateStatus,headRefName",
+        ])
+        .output();
+    let json = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => return Vec::new(),
+    };
+    split_top_objects(&json)
+        .iter()
+        .filter_map(|o| {
+            Some(OpenPr {
+                number: json_int_field(o, "number")?,
+                title: json_str_field(o, "title").unwrap_or_default(),
+                url: json_str_field(o, "url").unwrap_or_default(),
+                merge_state: json_str_field(o, "mergeStateStatus").unwrap_or_default(),
+                head_branch: json_str_field(o, "headRefName").unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+/// Ownership filter: is the PR's latest commit authored by a Chump agent? This
+/// is the guardrail that keeps the shepherd from ever touching a human's PR.
+fn pr_authored_by_agent(opts: &Opts, pr_num: u64) -> bool {
+    let domain = agent_email_domain();
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "view",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--json",
+            "commits",
+            "-q",
+            ".commits[-1].authors[].email",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .any(|l| email_is_agent(l, &domain)),
+        _ => false,
+    }
+}
+
+/// Rebase a BEHIND PR onto its base (branch-protection "require up-to-date").
+fn rebase_behind_pr(opts: &Opts, pr_num: u64) {
+    let _ = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "update-branch",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--rebase",
+        ])
+        .status();
+    println!("[improve] shepherd: rebased BEHIND PR #{pr_num}");
+}
+
+/// MISSION-061: sweep the loop's own open PRs and drive each to terminal.
+fn shepherd_own_prs(opts: &Opts, clone_dir: &Path) {
+    if std::env::var("CHUMP_IMPROVE_SHEPHERD").as_deref() == Ok("0") {
+        return;
+    }
+    let max = sweep_max();
+    if max == 0 {
+        return;
+    }
+    let prs = list_open_prs(opts);
+    let mut acted = 0usize;
+    for pr in &prs {
+        if acted >= max {
+            break;
+        }
+        // CLEAN = mergeable + green → auto-merge will land it; nothing to do.
+        if pr.merge_state == "CLEAN" || pr.merge_state == "HAS_HOOKS" {
+            continue;
+        }
+        // GUARDRAIL: never touch a PR a human authored.
+        if !pr_authored_by_agent(opts, pr.number) {
+            continue;
+        }
+        acted += 1;
+        println!(
+            "[improve] MISSION-061 shepherd: PR #{} state={} — {}",
+            pr.number, pr.merge_state, pr.title
+        );
+        emit_shepherd_swept(&opts.owner_repo, pr.number, &pr.merge_state);
+
+        if pr.merge_state == "BEHIND" {
+            rebase_behind_pr(opts, pr.number);
+        }
+
+        match verify_and_merge(opts, pr.number, &pr.title) {
+            Ok(v) if v == "verified" => {
+                println!("[improve] shepherd: #{} verified + merged", pr.number)
+            }
+            Ok(_) => {
+                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, pr.number, &pr.url) {
+                    eprintln!("[improve] shepherd: remediate #{} failed: {e}", pr.number);
+                }
+            }
+            Err(e) => eprintln!("[improve] shepherd: verify #{} failed: {e}", pr.number),
+        }
+    }
+    if acted > 0 {
+        println!("[improve] MISSION-061 shepherd: swept {acted} own PR(s) before new work");
+    }
+}
+
+/// Emit `kind=improve_pr_swept` — one per own-PR the shepherd resolves.
+///
+/// scanner-anchor: kind=improve_pr_swept (MISSION-061)
+fn emit_shepherd_swept(repo: &str, pr_num: u64, state: &str) {
+    let id = agent_identity();
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_swept".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("state".to_string(), state.to_string()),
+            ("agent".to_string(), format!("{}@{}", id.codename, id.node)),
+        ],
+        ..Default::default()
+    });
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────
@@ -1871,6 +2142,73 @@ mod tests {
         assert!(sig.contains("Chump · Rivet"));
         assert!(sig.contains("Chump-Agent: Rivet@closetjunky"));
         assert!(sig.contains("LAST line of every commit"));
+    }
+
+    // ── MISSION-061: external shepherd ─────────────────────────────────────
+
+    #[test]
+    fn mission061_email_is_agent_matches_only_agent_domain() {
+        // Agent emails (from 063: <code>@<node>.chump.fleet) match; humans don't.
+        assert!(email_is_agent(
+            "rivet@closetjunky.chump.fleet",
+            "chump.fleet"
+        ));
+        assert!(email_is_agent("bolt@chump.fleet", "chump.fleet"));
+        assert!(email_is_agent(
+            "  Gizmo@Helsinki.Chump.Fleet ",
+            "chump.fleet"
+        ));
+        // Never match a human's PR — this is the guardrail.
+        assert!(!email_is_agent("jeff@gmail.com", "chump.fleet"));
+        assert!(!email_is_agent("noreply@github.com", "chump.fleet"));
+        // A domain that merely contains the string but isn't the suffix.
+        assert!(!email_is_agent("x@chump.fleet.evil.com", "chump.fleet"));
+        assert!(!email_is_agent("anything", ""));
+    }
+
+    #[test]
+    fn mission061_split_top_objects_handles_nesting_and_strings() {
+        let json = r#"[{"number":17,"title":"a}b","url":"u1","mergeStateStatus":"BLOCKED","headRefName":"br1"},{"number":18,"title":"c","authors":[{"email":"x@y"}]}]"#;
+        let objs = split_top_objects(json);
+        assert_eq!(
+            objs.len(),
+            2,
+            "two top-level objects despite nested braces and a brace char inside a string"
+        );
+        assert!(objs[0].contains("\"number\":17"));
+        assert!(objs[1].contains("authors"));
+    }
+
+    #[test]
+    fn mission061_json_field_extractors() {
+        let obj = r#"{"number":17,"title":"fix: a \"quoted\" thing","url":"https://x/17","mergeStateStatus":"BEHIND"}"#;
+        assert_eq!(json_int_field(obj, "number"), Some(17));
+        assert_eq!(
+            json_str_field(obj, "title"),
+            Some("fix: a \"quoted\" thing".to_string())
+        );
+        assert_eq!(json_str_field(obj, "url"), Some("https://x/17".to_string()));
+        assert_eq!(
+            json_str_field(obj, "mergeStateStatus"),
+            Some("BEHIND".to_string())
+        );
+        assert_eq!(json_int_field(obj, "missing"), None);
+    }
+
+    #[test]
+    fn mission061_parse_open_pr_list_shape() {
+        let json = r#"[{"number":17,"title":"t17","url":"u17","mergeStateStatus":"BLOCKED","headRefName":"b17"},{"number":18,"title":"t18","url":"u18","mergeStateStatus":"CLEAN","headRefName":"b18"}]"#;
+        let objs = split_top_objects(json);
+        let nums: Vec<u64> = objs
+            .iter()
+            .filter_map(|o| json_int_field(o, "number"))
+            .collect();
+        assert_eq!(nums, vec![17, 18]);
+        let states: Vec<String> = objs
+            .iter()
+            .filter_map(|o| json_str_field(o, "mergeStateStatus"))
+            .collect();
+        assert_eq!(states, vec!["BLOCKED".to_string(), "CLEAN".to_string()]);
     }
 
     fn sample_scan(owner_repo: &str) -> OnboardScan {

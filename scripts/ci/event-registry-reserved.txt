@@ -787,6 +787,7 @@ improve_cycle_complete   # reason: EFFECTIVE-177 emitted at end of every improve
 redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage decided the work is already in the target repo; fields: repo, gap, reason
 improve_pr_remediation   # reason: MISSION-059 no-abandon loop — one per fix attempt on a HELD improve PR; fields: repo, pr, class, action, attempt, model
 improve_pr_closed        # reason: MISSION-059 no-abandon loop — the improve loop closed a PR it could not get green after the retry budget; fields: repo, pr, pr_url, reason
+improve_pr_swept         # reason: MISSION-061 external shepherd — one per own open PR swept to terminal before new work; fields: repo, pr, state, agent
 
 # ── INFRA-918: bot-merge rebase-before-test telemetry ────────────────────────
 # Emitted by scripts/coord/bot-merge.sh before the cargo test phase.
