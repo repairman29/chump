@@ -1235,7 +1235,43 @@ jobs:
           prefix-key: "v1-trunk"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # INFRA-3421: sccache compile cache on clippy (was cargo-test-only). clippy
+      # compiles the whole workspace + all test/bench/example targets, so it is
+      # the biggest single compile job. Same proven R2-detect → install →
+      # degrade-safe probe pattern as cargo-test; per-step RUSTC_WRAPPER on the
+      # build below (NOT workflow-level — L68-71). No hit-rate gate here (stays
+      # cargo-test's job); the probe's no-cache fallback keeps clippy shipping
+      # even if R2 is unreachable (INFRA-2288).
+      - name: Detect R2 secret presence
+        id: r2detect
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+        run: |
+          # RESILIENT-041: length floor of 16 routes garbage creds through the
+          # graceful no-cache fallback instead of crashing the toolchain.
+          if [ "${#R2_KEY}" -ge 16 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install sccache
+        if: steps.r2detect.outputs.configured == 'true'
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: sccache health probe
+        # INFRA-2288: probe startup; degrade to no-cache (never fail the job).
+        if: steps.r2detect.outputs.configured == 'true'
+        run: |
+          if ! sccache --start-server 2>/dev/null; then
+            echo "::warning::sccache --start-server failed; clippy runs no-cache (INFRA-2288)"
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          fi
+
       - name: cargo clippy
+        # INFRA-3421: per-step RUSTC_WRAPPER pairs sccache with its install above.
+        env:
+          RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   # ── Shard 3: cargo test ───────────────────────────────────────────────────
@@ -1321,6 +1357,15 @@ jobs:
         id: r2detect
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          # ZERO-WASTE-027 (2026-07-24): sccache is OFF by default in CI. Measured
+          # Rust hit rate = 0.00% (777 misses / 0 hits; the "8%" was C/C++ only) —
+          # per-run CARGO_TARGET_DIR paths (INFRA-2118) poison the keys so they
+          # never repeat, same 0.00%-Rust problem the fleet already retreated from
+          # (ZERO-WASTE-021). Running it anyway pays sccache-server-start + R2 auth
+          # + a hit-rate monitor that warns every run, for ~zero Rust benefit.
+          # Re-enable ONLY once builds use stable paths (ZW-021's own criterion):
+          # set repo variable CHUMP_CI_SCCACHE=true.
+          SCCACHE_ENABLED: ${{ vars.CHUMP_CI_SCCACHE || 'false' }}
         run: |
           # RESILIENT-041 (2026-05-30): tightened length check from `-n` to `>= 16`.
           # A misconfigured secret stored as a single character used to pass `-n`
@@ -1328,7 +1373,10 @@ jobs:
           # → cargo metadata exit 101 → cargo-test exit 102 → queue-wide trunk-RED.
           # Length floor of 16 routes garbage creds through the existing graceful
           # no-cache fallback instead of crashing the toolchain.
-          if [ "${#R2_KEY}" -ge 16 ]; then
+          if [ "$SCCACHE_ENABLED" != "true" ]; then
+            echo "configured=false (sccache disabled in CI — ZERO-WASTE-027; set vars.CHUMP_CI_SCCACHE=true to re-enable)" >&2
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#R2_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
