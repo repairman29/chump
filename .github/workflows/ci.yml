@@ -1235,7 +1235,43 @@ jobs:
           prefix-key: "v1-trunk"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # INFRA-3421: sccache compile cache on clippy (was cargo-test-only). clippy
+      # compiles the whole workspace + all test/bench/example targets, so it is
+      # the biggest single compile job. Same proven R2-detect → install →
+      # degrade-safe probe pattern as cargo-test; per-step RUSTC_WRAPPER on the
+      # build below (NOT workflow-level — L68-71). No hit-rate gate here (stays
+      # cargo-test's job); the probe's no-cache fallback keeps clippy shipping
+      # even if R2 is unreachable (INFRA-2288).
+      - name: Detect R2 secret presence
+        id: r2detect
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+        run: |
+          # RESILIENT-041: length floor of 16 routes garbage creds through the
+          # graceful no-cache fallback instead of crashing the toolchain.
+          if [ "${#R2_KEY}" -ge 16 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install sccache
+        if: steps.r2detect.outputs.configured == 'true'
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: sccache health probe
+        # INFRA-2288: probe startup; degrade to no-cache (never fail the job).
+        if: steps.r2detect.outputs.configured == 'true'
+        run: |
+          if ! sccache --start-server 2>/dev/null; then
+            echo "::warning::sccache --start-server failed; clippy runs no-cache (INFRA-2288)"
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          fi
+
       - name: cargo clippy
+        # INFRA-3421: per-step RUSTC_WRAPPER pairs sccache with its install above.
+        env:
+          RUSTC_WRAPPER: ${{ steps.r2detect.outputs.configured == 'true' && 'sccache' || '' }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   # ── Shard 3: cargo test ───────────────────────────────────────────────────
