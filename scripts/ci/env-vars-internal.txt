@@ -1011,6 +1011,12 @@ CHUMP_IMPROVE_MODEL_LADDER
 CHUMP_AGENT_NAME
 CHUMP_AGENT_EMAIL
 CHUMP_AGENT_NODE
+# CHUMP_IMPROVE_SHEPHERD      — MISSION-061: set 0 to disable the pre-pick own-PR shepherd sweep (default on)
+# CHUMP_IMPROVE_SWEEP_MAX     — MISSION-061: max own PRs remediated per cycle before new work (default 3)
+# CHUMP_AGENT_EMAIL_DOMAIN    — MISSION-061: commit-author email domain that marks a PR as agent-owned (default chump.fleet)
+CHUMP_IMPROVE_SHEPHERD
+CHUMP_IMPROVE_SWEEP_MAX
+CHUMP_AGENT_EMAIL_DOMAIN
 
 # EFFECTIVE-201: 0→1 audit doctrine layer + standard-mission injection
 # No new env vars — the doctrine layer field is schema-only, not runtime-configurable.
