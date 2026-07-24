@@ -549,7 +549,11 @@ CMD="${1:-tick}"
 shift || true
 
 case "$CMD" in
-    tick)                    cmd_tick "$@" ;;
+    tick)
+        # INFRA-1798: read + act on own inbox as the first step of every cycle.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble infra-watcher 2>/dev/null || true
+        cmd_tick "$@"
+        ;;
     audit-daemons)           cmd_audit_daemons "$@" ;;
     audit-daemon-health)     cmd_audit_daemon_health "$@" ;;
     check-runners)           cmd_check_runners "$@" ;;

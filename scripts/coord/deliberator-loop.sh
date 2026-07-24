@@ -623,7 +623,11 @@ cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
 
 case "$cmd" in
-    tick)       _cmd_tick "$@" ;;
+    tick)
+        # INFRA-1798: read + act on own inbox as the first step of every cycle.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble deliberator 2>/dev/null || true
+        _cmd_tick "$@"
+        ;;
     audit)      _cmd_audit "$@" ;;
     heartbeat)  _cmd_heartbeat "$@" ;;
     help|-h|--help) _cmd_help; exit 0 ;;

@@ -505,7 +505,11 @@ SUBCOMMAND="${1:-tick}"
 shift || true
 
 case "$SUBCOMMAND" in
-    tick)                   cmd_tick ;;
+    tick)
+        # INFRA-1798: read + act on own inbox as the first step of every cycle.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble observability 2>/dev/null || true
+        cmd_tick
+        ;;
     audit-event-registry)   cmd_audit_event_registry ;;
     reaper-cadence-audit)   cmd_reaper_cadence_audit ;;
     cost-leaderboard-rollup) cmd_cost_leaderboard_rollup ;;

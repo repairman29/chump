@@ -219,6 +219,7 @@ run_test_script 3 "$SCRIPTS_CI/test-paramedic-rules.sh"
 run_test_script 3 "$SCRIPTS_CI/test-preflight-scope-docs.sh"
 run_test_script 3 "$SCRIPTS_CI/test-preflight-scope-scripts.sh"
 run_test_script 3 "$SCRIPTS_CI/test-preflight-scope-rust.sh"
+run_test_script 3 "$SCRIPTS_CI/test-inbox-glance-act.sh"
 
 # Gap registry health
 run_step 3 "gap audit-priorities" \

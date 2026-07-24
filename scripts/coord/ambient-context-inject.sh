@@ -86,6 +86,98 @@ for e in out[-5:]:
     # Advance cursor regardless (best-effort)
     mkdir -p "$_LOCK_DIR_PROBE" 2>/dev/null || true
     printf '%s\n' "$TOTAL" > "$CURSOR_FILE" 2>/dev/null || true
+
+    # ── INFRA-1798: inbox glance-and-act ──────────────────────────────────
+    # A2A_MASTER_PLAN Tier-0 0.3: "chump-inbox.sh read" must be the
+    # MANDATORY first step of every curator/worker/autopilot cycle, and the
+    # agent must ACT on what it finds — not just read it. The digest above
+    # only skims the fleet-wide ambient stream; this drains the role's own
+    # addressed DM inbox (.chump-locks/inbox/<session>.jsonl) and acts:
+    #   - HANDOFF/STUCK addressed to me → ack via broadcast.sh --to <sender> DONE
+    #   - open FEEDBACK kind=proposal I haven't voted on → chump vote 0 (abstain
+    #     with reason; CLAUDE.md sanctions abstain-with-reason as counting
+    #     toward quorum for out-of-lane proposals)
+    # Best-effort throughout: any failure here must never break the calling
+    # loop's tick. Disable with CHUMP_GLANCE_ACT=0.
+    if [[ "${CHUMP_GLANCE_ACT:-1}" != "0" ]]; then
+        _GA_DIR="$(dirname "${BASH_SOURCE[0]:-$0}")"
+        _GA_INBOX_SH="$_GA_DIR/chump-inbox.sh"
+        _GA_BCAST_SH="$_GA_DIR/broadcast.sh"
+        _GA_SESSION="${CHUMP_SESSION_ID:-curator-opus-${ROLE}-$(date -u +%Y-%m-%d)}"
+
+        # 1. Drain the inbox (advances cursor + emits kind=inbox_advance itself).
+        if [[ -x "$_GA_INBOX_SH" ]]; then
+            _GA_DRAINED="$(CHUMP_SESSION_ID="$_GA_SESSION" bash "$_GA_INBOX_SH" read 2>/dev/null || true)"
+            if [[ -n "$_GA_DRAINED" && -x "$_GA_BCAST_SH" ]]; then
+                printf '%s\n' "$_GA_DRAINED" | while IFS= read -r _ga_msg; do
+                    [[ -z "$_ga_msg" ]] && continue
+                    python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+if d.get("event") in ("HANDOFF", "STUCK"):
+    frm = d.get("session") or d.get("from") or ""
+    gap = d.get("gap") or ""
+    if frm and gap:
+        print(f"{frm}\t{gap}")
+' "$_ga_msg" 2>/dev/null
+                done | while IFS=$'\t' read -r _ga_from _ga_gap; do
+                    [[ -z "$_ga_from" || -z "$_ga_gap" ]] && continue
+                    CHUMP_SESSION_ID="$_GA_SESSION" bash "$_GA_BCAST_SH" --to "$_ga_from" DONE "$_ga_gap" "ack:${ROLE}" >/dev/null 2>&1 || true
+                done
+            fi
+        fi
+
+        # 2. Vote on open proposals I haven't voted on yet (cap 3/cycle).
+        _GA_CHUMP_BIN="${CHUMP_BIN:-$(command -v chump 2>/dev/null || echo "")}"
+        _GA_FEEDBACK_LOG="${CHUMP_FEEDBACK_LOG:-$_LOCK_DIR_PROBE/feedback.jsonl}"
+        _GA_VOTE_SRC="$_GA_FEEDBACK_LOG"
+        [[ -f "$_GA_VOTE_SRC" ]] || _GA_VOTE_SRC="$_AMBIENT_PROBE"
+        if [[ -n "$_GA_CHUMP_BIN" && -x "$_GA_CHUMP_BIN" && -f "$_GA_VOTE_SRC" ]]; then
+            _GA_OPEN_CORRS="$(python3 - "$_GA_VOTE_SRC" "$_GA_SESSION" <<'PY' 2>/dev/null || true
+import json, sys
+path, me = sys.argv[1], sys.argv[2]
+proposals, resolved, voted = {}, set(), set()
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            corr = d.get("corr_id")
+            if not corr:
+                continue
+            kind = d.get("kind")
+            if d.get("event") == "FEEDBACK" and kind == "proposal":
+                proposals[corr] = True
+            elif kind == "consensus_result":
+                resolved.add(corr)
+            elif d.get("event") == "FEEDBACK" and kind in ("vote", "preference") and d.get("session") == me:
+                voted.add(corr)
+except Exception:
+    pass
+for c in list(proposals):
+    if c not in resolved and c not in voted:
+        print(c)
+PY
+)"
+            if [[ -n "$_GA_OPEN_CORRS" ]]; then
+                printf '%s\n' "$_GA_OPEN_CORRS" | head -3 | while IFS= read -r _ga_corr; do
+                    [[ -z "$_ga_corr" ]] && continue
+                    CHUMP_FLEET_RECV_SIDE_V0=1 CHUMP_SESSION_ID="$_GA_SESSION" \
+                        "$_GA_CHUMP_BIN" vote "$_ga_corr" 0 \
+                        --reason "${ROLE}: auto-glance abstain, no lane-specific stance — counts toward quorum" \
+                        >/dev/null 2>&1 || true
+                done
+            fi
+        fi
+    fi
     exit 0
 fi
 

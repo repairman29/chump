@@ -386,7 +386,11 @@ cmd_tick() {
 # ── dispatcher ────────────────────────────────────────────────────────────
 
 case "$cmd" in
-    tick)            cmd_tick ;;
+    tick)
+        # INFRA-1798: read + act on own inbox as the first step of every cycle.
+        "$(dirname "$0")/ambient-context-inject.sh" --tick-preamble quartermaster 2>/dev/null || true
+        cmd_tick
+        ;;
     run)             cmd_run ;;
     trigger-check)   cmd_trigger_check ;;
     drain-deferred)  cmd_drain_deferred ;;
