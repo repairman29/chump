@@ -477,7 +477,17 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
-    // Gate 6: Check disk space (must have >5GB free)
+    // Gate 6: Disk-space ADMISSION control (ZERO-WASTE-028).
+    // A `chump claim` provisions a worktree with an isolated CARGO_TARGET_DIR
+    // (INFRA-2183) that grows to 1–7 GB. Creating one when disk is already tight
+    // is how the machine oscillates to 100% full — at which point the reaper,
+    // the fleet, AND cargo all wedge. The upstream fix is backpressure: REFUSE
+    // to create the worktree below the floor so the worker backs off and idles
+    // (recoverable) instead of overcommitting (unrecoverable). Was warn-only,
+    // which is why claims kept succeeding past the floor.
+    // Escape hatch is the floor itself: CHUMP_DISK_FLOOR_GB=0 admits any disk
+    // (a legitimate config knob, not a bypass-class var — no new bypass per the
+    // INFRA-2429 zero-bypass thesis).
     match check_disk_space(&args.worktree_base) {
         Ok(msg) => {
             gates.push(GateResult {
@@ -489,10 +499,14 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         Err(msg) => {
             gates.push(GateResult {
                 gate: "disk_space".to_string(),
-                status: "warn".to_string(),
-                message: msg,
+                status: "fail".to_string(),
+                message: format!(
+                    "{msg} — refusing to create a worktree below the disk floor. \
+                     Free space (e.g. reclaim orphaned worktree targets) or lower \
+                     CHUMP_DISK_FLOOR_GB (set to 0 to admit any disk)."
+                ),
             });
-            has_warn = true;
+            has_fail = true;
         }
     }
 
@@ -3584,9 +3598,14 @@ fn check_base_branch(repo_root: &Path, remote: &str, base_branch: &str) -> Resul
 
 /// Check available disk space (must have >5GB free in worktree base).
 fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
-    // Use 'df' to check available space
+    // Use 'df' to check available space.
+    // ZERO-WASTE-028: `-Bk` is a GNU-only flag — on macOS (BSD df) it errors
+    // ("invalid option -- B"), stdout is empty, parsing bails to Ok(), and the
+    // gate goes SILENTLY INERT. That is why the Mac fleet host filled to 2% free
+    // while the gate "passed" every claim. `-k` (1024-byte blocks, Available in
+    // column 4) is portable across BSD and GNU df.
     let output = std::process::Command::new("df")
-        .arg("-Bk")
+        .arg("-k")
         .arg(worktree_base)
         .output();
 
@@ -3599,15 +3618,21 @@ fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
                 if parts.len() >= 4 {
                     if let Ok(avail_kb) = parts[3].parse::<u64>() {
                         let avail_gb = avail_kb / (1024 * 1024);
-                        if avail_gb >= 5 {
+                        // ZERO-WASTE-028: floor shared with the rest of the disk
+                        // subsystem (CHUMP_DISK_FLOOR_GB, same var `chump disk`
+                        // uses; default 5 GB).
+                        let floor_gb: u64 = std::env::var("CHUMP_DISK_FLOOR_GB")
+                            .ok()
+                            .and_then(|v| v.trim().parse::<f64>().ok())
+                            .map(|f| f.max(0.0) as u64)
+                            .unwrap_or(5);
+                        if avail_gb >= floor_gb {
                             Ok(format!(
-                                "Available disk space: {}GB (>5GB required)",
-                                avail_gb
+                                "Available disk space: {avail_gb}GB (>= {floor_gb}GB floor)"
                             ))
                         } else {
                             Err(format!(
-                                "Insufficient disk space: {}GB (need >5GB)",
-                                avail_gb
+                                "Insufficient disk space: {avail_gb}GB (need >= {floor_gb}GB floor)"
                             ))
                         }
                     } else {
@@ -6143,6 +6168,28 @@ mod release_lease_tests {
     //! NATS-KV leg is a best-effort `chump-coord release` shell-out.)
     use super::*;
     use tempfile::tempdir;
+
+    // ZERO-WASTE-028: the disk admission gate must actually fire. Two regressions
+    // this guards: (1) `df -Bk` was BSD-invalid → gate silently inert on macOS;
+    // (2) the floor must be env-driven and enforce a real pass/fail boundary.
+    // The absurd-floor case only returns Err if `df` truly parsed a number, so
+    // this also catches any relapse to a df flag that produces no output.
+    #[test]
+    fn disk_gate_floor_env_enforces_pass_and_fail() {
+        let dir = tempdir().expect("tempdir");
+        // floor 0 → any real disk passes
+        std::env::set_var("CHUMP_DISK_FLOOR_GB", "0");
+        let ok = check_disk_space(dir.path());
+        assert!(ok.is_ok(), "floor=0 must pass, got {ok:?}");
+        // absurd floor → must block (proves df parsed a real avail number too)
+        std::env::set_var("CHUMP_DISK_FLOOR_GB", "9999999");
+        let err = check_disk_space(dir.path());
+        assert!(
+            err.is_err(),
+            "absurd floor must block (and df must have parsed real avail), got {err:?}"
+        );
+        std::env::remove_var("CHUMP_DISK_FLOOR_GB");
+    }
 
     fn setup_db(repo_root: &Path) {
         let chump_dir = repo_root.join(".chump");
