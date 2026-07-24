@@ -1235,3 +1235,4 @@ CHUMP_SESSION_COST_USD
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_FLEET_STATE
+CHUMP_RESERVE_GIT_HISTORY_CHECK
