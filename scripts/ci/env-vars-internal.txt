@@ -1005,6 +1005,12 @@ CHUMP_IMPROVE_CHUMP_BIN
 CHUMP_IMPROVE_DISABLED
 CHUMP_IMPROVE_FIX_RETRIES
 CHUMP_IMPROVE_MODEL_LADDER
+# CHUMP_AGENT_NAME  — MISSION-063: override the improve loop's agent codename (default: stable roster pick by hostname)
+# CHUMP_AGENT_EMAIL — MISSION-063: override the agent's git author email (default: <codename>@<node>.chump.fleet)
+# CHUMP_AGENT_NODE  — MISSION-063: override the node token used in the identity (default: hostname)
+CHUMP_AGENT_NAME
+CHUMP_AGENT_EMAIL
+CHUMP_AGENT_NODE
 
 # EFFECTIVE-201: 0→1 audit doctrine layer + standard-mission injection
 # No new env vars — the doctrine layer field is schema-only, not runtime-configurable.
