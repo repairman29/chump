@@ -1,0 +1,8 @@
+- id: INFRA-2982
+  domain: INFRA
+  title: "ZERO-WASTE: pickable"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    1. verify it works

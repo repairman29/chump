@@ -38554,7 +38554,7 @@ gaps:
 - id: INFRA-2987
   domain: INFRA
   title: "CREDIBLE: pickable-2"
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
