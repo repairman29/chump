@@ -933,6 +933,12 @@ async fn main() -> Result<()> {
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
+    // SIGPIPE handling for CLI tools (Broken Pipe panics).
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     // CREDIBLE-019: --verbose / --debug global flags (processed first so they
     // take effect even alongside --version or --help).
     // --verbose: escalate RUST_LOG to debug (human stderr).
@@ -17940,5 +17946,29 @@ mod tests {
         // Derived tag is also None.
         let external_repo_tag: Option<String> = external_repo.map(|v| format!("external_repo:{v}"));
         assert!(external_repo_tag.is_none());
+    }
+
+    #[test]
+    fn credible004_priority_rank_mapping() {
+        assert_eq!(super::priority_rank("P0"), 0);
+        assert_eq!(super::priority_rank("P1"), 1);
+        assert_eq!(super::priority_rank("P2"), 2);
+        assert_eq!(super::priority_rank("OTHER"), 99);
+    }
+
+    #[test]
+    fn credible004_is_test_domain_checks() {
+        assert!(super::is_test_domain("TEST-123"));
+        assert!(super::is_test_domain("SPIKE"));
+        assert!(super::is_test_domain("infra-B1TEST"));
+        assert!(!super::is_test_domain("INFRA-123"));
+    }
+
+    #[test]
+    fn credible004_vague_ac_detection() {
+        assert!(super::is_vague_ac_entry("TBD"));
+        assert!(super::is_vague_ac_entry("todo: stuff"));
+        assert!(super::is_vague_ac_entry("N/A"));
+        assert!(!super::is_vague_ac_entry("Implement X with Y"));
     }
 }
