@@ -1,0 +1,13 @@
+- id: CREDIBLE-093
+  domain: CREDIBLE
+  title: "STUCK: EFFECTIVE-025 fleet-status rate-limit test fails in CI but PASSES locally — env-specific (blocks 2 PRs)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. scripts/dispatch/fleet-status.sh render_rate_limit() falls through to direct 'gh api rate_limit' path when snapshot function exists BUT returns 0/empty values (CI repro: api-rate-limit-gate.sh sourcing path-resolution fails in fake-repo test env, function defined with default 0)"
+    - "2. test-fleet-status-rate-limit.sh passes against current main + #3048 EFFECTIVE-087 fleet-cockpit changes"
+    - 3. Verified by re-running audit.yml shard 2 on the bootstrap branch; pass
+  closed_pr: 3052
+  outcome_id: CREDIBLE-000
+

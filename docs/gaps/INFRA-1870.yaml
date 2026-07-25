@@ -1,0 +1,19 @@
+- id: INFRA-1870
+  domain: INFRA
+  title: "CI/QA: cascade-cancellation visibility — emit kind=ci_cascade_cancelled when GH supersedes a workflow (INFRA-1861 slice e)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "When a GH Actions workflow is cancelled (concurrency-cancel-in-progress per ci.yml), emit ambient kind=ci_cascade_cancelled {workflow_run_id, pr_number, predecessor_sha, reason: superseded"
+    - user
+    - timeout}
+    - "Implementation: new scripts/ops/github-webhook-receiver.py handler for workflow_run.completed events with conclusion=cancelled"
+    - chump-coord watch shows live ci_cascade_cancelled events; chump fleet brief includes 'cancelled count last 24h' metric
+    - "Smoke test: stub a workflow_run cancelled event via the webhook receiver, assert ambient emit"
+    - allowlist or register kind=ci_cascade_cancelled in EVENT_REGISTRY.yaml
+    - "Parent: INFRA-1861 slice (e)"
+  closed_date: '2026-05-24'
+  closed_pr: 2491
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: RESILIENT-064
+  domain: RESILIENT
+  title: mesh-worker execute-mode needs autonomously-executable filter (skip operator-gated/MISSION gaps)
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "mesh-worker execute mode (CHUMP_MESH_WORKER_EXECUTE=1) skips a routed gap that is NOT autonomously-executable, checked BEFORE any chump --execute-gap spawn: AC matches operator-gated patterns (operator picks/confirms/decides/chooses), gap is MISSION/COG mission-class, AC contains TODO/TBD/placeholder text, or depends_on is unmet."
+    - a skipped gap emits an observable ambient event (kind=mesh_worker_skipped_nonexecutable) with the skip reason, registered in EVENT_REGISTRY with a scanner-anchor — the skip is auditable, never silent.
+    - "route-only mode is unchanged: the filter gates EXECUTION only (route-only still records mesh_worker_routed for any matched gap)."
+    - when a routed gap is filtered out, the worker proceeds to the next mesh-routed gap or exits cleanly to retry next tick — no busy-spin, no stall.
+    - "CI test: a synthetic gap whose AC contains \"operator picks\" is skipped by execute mode (emits skip event, does NOT call chump --execute-gap); a clean executable gap is NOT skipped."
+    - "docs: the autonomously-executable criteria are documented (scripts/coord/README.md or A2A_ROADMAP.md) so future authors know what the mesh will and will not auto-run."
+  closed_date: '2026-07-21'
+  closed_pr: 3212
+  outcome_id: RESILIENT-000
+

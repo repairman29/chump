@@ -1,0 +1,12 @@
+- id: INFRA-2791
+  domain: INFRA
+  title: "INFRA: wire test-a2a-always-on.sh into CI + mirror in preflight.rs (INFRA-2515 follow-up)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/ci/test-a2a-always-on.sh runs in CI: an explicit `run: bash scripts/ci/test-a2a-always-on.sh` step added to a .github/workflows/ job (e.g. ci.yml audit or the deliberator test cluster near test-deliberator-tick-emits.sh)"
+    - the new ci.yml step satisfies the INFRA-1867 preflight-CI parity gate by mirroring it in src/preflight.rs (preferred, per CLAUDE.md §parity allowlist) rather than parking it in preflight-ci-parity-exceptions.txt
+    - bash scripts/ci/test-preflight-ci-parity.sh exits 0 with the new gate counted as Mirrored
+  outcome_id: MISSION-010
+

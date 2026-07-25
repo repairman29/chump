@@ -1,0 +1,18 @@
+- id: INFRA-1560
+  domain: INFRA
+  title: "CREDIBLE: 'chump fleet doctor' is a phantom command — fleet --help advertises it but the subcommand list omits it; CLAUDE.md:125 and CLAUDE_GOTCHAS.md:610 reference it as canonical"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Verified: chump fleet --help summary line says 'worker control — up/status/down/doctor …' but the actual subcommand list only includes up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon — no doctor. Operators following CLAUDE.md:125 ('Validate: chump fleet doctor — exits non-zero if no valid auth path found') and CLAUDE_GOTCHAS.md:610 ('chump fleet doctor — Fleet-wide health report — agents, leases, queue — Operator daily check / dashboards') hit a missing subcommand. Likely the doctor verb was renamed/removed during the fleet up/down/scale refactor (INFRA-610) but the help string and external doc references were never cleaned. Three possible fixes: (a) restore the doctor subcommand if the auth-validation logic still exists in tree, (b) update docs to point at the real replacement (likely 'chump health --slo-check' which exists and 'exits non-zero on breach' per CLAUDE.md), (c) both — restore as an alias plus doc update.
+  acceptance_criteria:
+    - Investigate src/main.rs fleet subcommand dispatch and determine whether the doctor verb logic still exists or was migrated
+    - "If migrated: update CLAUDE.md:125 and docs/process/CLAUDE_GOTCHAS.md:610 to reference the actual replacement command (likely 'chump health --slo-check') and remove 'doctor' from the fleet --help summary line in src/main.rs"
+    - "If logic deleted entirely: same doc updates plus a one-line acknowledgement in docs/process/CLAUDE_GOTCHAS.md explaining the removal so the next reader of the audit trail isn't confused"
+    - scripts/ci/test-cli-help-truth.sh asserts that every verb in the fleet --help summary line also appears in the fleet --help subcommand list (catches this class of doc-vs-impl drift going forward)
+  notes: |
+    SUPERSEDED 2026-05-17 by INFRA-1427 (PR #2184, commit cb3bd8cd8). chump fleet doctor + --strict variant both ship via scripts/coord/fleet-doctor-strict.sh dispatched from src/main.rs:2189. The 'phantom' was binary staleness — my local /opt/homebrew/bin/chump was built 2026-05-15, before INFRA-1427 merged. Source on origin/main has fleet_doctor_validate() in src/auth.rs:223 + run_doctor_probe() in src/atomic_claim.rs:1357 wired into the fleet dispatch. CLAUDE.md:125 doc reference is now accurate; CLAUDE_GOTCHAS.md:610 line about 'chump fleet doctor' is also now correct. Doc cleanup absorbed into Wave 0 / INFRA-1576 (doc staleness markers gap).
+  closed_date: '2026-05-17'
+  outcome_id: MISSION-010
+

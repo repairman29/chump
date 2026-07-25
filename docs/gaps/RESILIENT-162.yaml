@@ -1,0 +1,13 @@
+- id: RESILIENT-162
+  domain: RESILIENT
+  title: chump binary re-wedges immediately after chump-binary-unwedge.sh — bot-merge cannot recover
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+  - '1. chump-binary-unwedge.sh --force replaces the binary AND kills any lingering wedged process so the new inode is actually
+    used; 2. bot-merge.sh detects re-wedge within the first 30s init step and retries unwedge once before aborting; 3. CI
+    smoke test: run two concurrent chump calls → verify no wedge on the second'
+  outcome_id: RESILIENT-000
+  closed_date: '2026-07-25'
+  closed_pr: 3265

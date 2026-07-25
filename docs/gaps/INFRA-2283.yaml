@@ -1,0 +1,17 @@
+- id: INFRA-2283
+  domain: INFRA
+  title: "RESILIENT P0: pin Rust toolchain to 1.95.0 — upstream v1.96.0 manifest references rustc-codegen-cranelift which isn't available for x86_64-unknown-linux-gnu (queue-wide Rust CI wedge 2026-05-30 08:17Z+)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Change every occurrence of dtolnay/rust-toolchain@stable in .github/workflows/ci.yml to dtolnay/rust-toolchain@1.95.0 (last known good stable before the 1.96.0 manifest break)
+    - "Verify 4 references in ci.yml: Install Rust toolchain steps at lines ~590, ~653, ~1111, ~1256 (counts current as of 2026-05-30 main HEAD)"
+    - Optionally also pin in .github/workflows/pr-triage-bot.yml line 149 if it uses @stable
+    - "Smoke verify locally: nothing to test (workflow runs only on GH); document the fix shape in the commit body so reviewers can re-trace"
+    - "After merge: next CI run on any Rust PR succeeds at 'Install Rust toolchain' step (PR #2848 currently fails at 08:17Z evidence)"
+    - File a follow-up gap to TRACK the upstream resolution and un-pin once Rust v1.97.0 ships with a clean manifest
+  notes: |
+    [2026-05-30T08:26:20Z] Filed 2026-05-30T08:30Z by curator-opus-shepherd. Pattern-14 evidence: PR #2848 (INFRA-2068) fast-checks job 78635935578 step 'Install Rust toolchain' fails with: error: component 'rustc-codegen-cranelift' for target 'x86_64-unknown-linux-gnu' is unavailable for download for channel 'stable'. Confirmed cross-PR: same failure shape on PR #2844, #2838, #2837, #2819. This is the queue-wide wedge stalling tonight's full Rust ship batch (6+ ARMED PRs with FAIL=5-10 each blocked on this one step). Same incident class as today's earlier sccache R2 (cross-PR same failure → root-cause to one config line).
+  outcome_id: MISSION-010
+

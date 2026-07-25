@@ -1,0 +1,17 @@
+- id: INFRA-1682
+  domain: INFRA
+  title: "RESILIENT: chump gap audit-priorities exits with 'Invalid column type Text at index: 12, name: closed_at' on current schema"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Reproduced 2026-05-22 17:50Z+ during auto-pilot loop: chump gap audit-priorities (with or without --json) exits 1 immediately printing 'Invalid column type Text at index: 12, name: closed_at'. Tried after both stale-binary state (60c73838e9cd 2026-05-17 binary) AND fresh-rebuild — bug persists. Bypasses META-046 health check and the curator's audit pass. Likely a recent schema migration added closed_at as TEXT but the deserialization in audit-priorities expects a different type (or NULL handling). Blocks fleet-health auto-curation tier (META-046 + opus-curator audit_gaps phase).
+  acceptance_criteria:
+    - "chump gap audit-priorities exits 0 when state.db has gaps with closed_at column populated (currently fails with 'Invalid column type Text at index: 12, name: closed_at')"
+    - root cause identified in src/gap_store.rs audit-priorities query path — likely a SQLite row.get<>() type mismatch for closed_at (TEXT in schema, expected something else in deserialization)
+    - smoke test scripts/ci/test-gap-audit-priorities-closed-at.sh creates a fixture state.db with a closed gap, runs audit-priorities, asserts exit 0
+    - no regression to existing test-gap-audit-priorities.sh
+  closed_date: '2026-05-22'
+  closed_pr: 2331
+  outcome_id: MISSION-010
+

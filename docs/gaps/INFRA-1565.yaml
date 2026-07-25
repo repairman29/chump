@@ -1,0 +1,18 @@
+- id: INFRA-1565
+  domain: INFRA
+  title: "EFFECTIVE: wire crates/chump-xml-adapter into response processing — scaffold complete, extracts XML tool_call tags to OpenAI format for non-native-tool-call models, never invoked"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    crates/chump-xml-adapter (~100 LOC lib.rs, EFFECTIVE-003) extracts tool_call / function_call XML tags from LLM output and converts to OpenAI-compatible ToolCall format. Per-model config flag xml_tool_tags gates use. Important for models that emit XML tool calls instead of native function calls (some local Ollama models, older Mistral checkpoints). Scaffold ships complete with two simple functions; not yet integrated into the inference response-processing pipeline. Pairs with the offline+local-LLM mission since those models are the ones most likely to need XML extraction.
+  acceptance_criteria:
+    - "src/provider_cascade.rs or the response-processing layer (wherever tool calls are parsed from CompletionResponse) consults the per-model xml_tool_tags config flag and routes XML-emitting model output through crates/chump-xml-adapter::extract_tool_calls before native parsing"
+    - Per-model config xml_tool_tags lives in chump-config.toml (or wherever model config lives today — verify path); defaults to false; documented in docs/operations/INFERENCE_PROFILES.md
+    - Unit test in crates/chump-xml-adapter exercises a synthetic LLM response with both XML-tagged and untagged tool calls and asserts conversion correctness
+    - Integration test using a mock Ollama-style XML-emitting model proves end-to-end tool extraction works in the inference loop
+    - docs/operations/INFERENCE_PROFILES.md gains a section on XML-tool-tag-emitting models with sample config
+  notes: |
+    wave: 4 (chump-xml-adapter wire-up — agent inference quality, customer-facing)
+  outcome_id: MISSION-010
+

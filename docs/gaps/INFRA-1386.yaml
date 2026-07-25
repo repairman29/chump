@@ -1,0 +1,14 @@
+- id: INFRA-1386
+  domain: INFRA
+  title: "ZERO-WASTE: e2e-battle-sim disposition — PROMOTE to required or KEEP-ADVISORY (nightly-only)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Decision made and documented: e2e-battle-sim is either PROMOTED to required OR KEPT-ADVISORY (nightly-only) with written rationale"
+    - "If PROMOTE: ci.yml updated to include e2e-battle-sim in required checks; advisory comment removed; docs/process/CI_GATES.md updated"
+    - "If KEEP-ADVISORY: docs/process/CI_GATES.md has a row for e2e-battle-sim with rationale (flake rate, infrastructure cost, signal value) and a review-by date"
+    - "Flake rate data: scripts/ci/check-gate-fire-rate.sh --gate e2e-battle-sim --window 30d run and result cited"
+    - Done = disposition decision in docs/process/CI_GATES.md
+  outcome_id: MISSION-010
+

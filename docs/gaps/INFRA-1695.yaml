@@ -1,0 +1,17 @@
+- id: INFRA-1695
+  domain: INFRA
+  title: "EFFECTIVE: Content Bots dispatcher — scripts/content-bots/run-bot.sh reads bots.yaml + invokes LLM with right prompt + emits 3 ambient event kinds (META-066 phase 2)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/content-bots/run-bot.sh <bot_id> [<task_payload>] reads docs/agents/content-bots/bots.yaml + loads the bot's prompt manifest + invokes claude -p (or configured backend) with the system prompt + task payload
+    - "emits 3 ambient event kinds at phase boundaries: content_bot_invoked {bot_id, task_id, ts}, content_bot_output {bot_id, task_id, output_path, tokens, ts}, content_bot_pipeline_step {from_bot, to_bot, output_path, ts}"
+    - 3 event kinds registered in docs/observability/EVENT_REGISTRY.yaml with emitter_paths + fields_required
+    - dispatcher honors bots.yaml model_tier when invoking (haiku/sonnet/opus)
+    - "smoke test scripts/ci/test-content-bots-dispatcher.sh: stub bot prompt, invoke with synthetic task, assert ambient events emitted with correct fields"
+    - exits non-zero with structured error if bot_id not in bots.yaml or bot is disabled per current toggle state
+  closed_date: '2026-05-22'
+  closed_pr: 2346
+  outcome_id: MISSION-010
+

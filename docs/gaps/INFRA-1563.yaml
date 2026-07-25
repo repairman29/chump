@@ -1,0 +1,22 @@
+- id: INFRA-1563
+  domain: INFRA
+  title: "EFFECTIVE: /api/decisions backend endpoint — PWA calls it, returns 404, no operator-decision queue surfaces (sibling to INFRA-1338 /api/roadmap)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    web/v2/app.js lines 1909, 2855-2884 attempt to render a decisions queue UI component that calls GET /api/decisions; the backend endpoint does not exist, the call 404s, and the frontend has no error handling. Sibling to INFRA-1338 (/api/roadmap endpoint, P2/m) which has the same shape but for roadmap data. Operator-decisions queue is part of the Phase 3 Orchestrator MVP doctrine (operator types high-level intents → orchestrator surfaces decisions for confirmation). Today the queue UI is dead.
+  acceptance_criteria:
+    - "New GET /api/decisions endpoint in src/web_server.rs returns JSON array of pending operator decisions with shape {id, kind: gap_demote"
+    - gap_promote
+    - merge_approval
+    - scope_clarify, gap_id?, pr_number?, summary, priority, created_at}
+    - "Source of decisions: scan .chump-locks/ambient.jsonl for kind=operator_decision_needed events (new event kind, register in docs/observability/EVENT_REGISTRY.yaml) emitted by orchestrator/picker/bot-merge when operator input is required"
+    - web/v2/app.js decisions queue component renders the response and removes the endpoint-pending error placeholder; POST /api/decisions/{id}/resolve writes the operator response back as kind=operator_decision_resolved
+    - "scripts/ci/test-decisions-endpoint.sh smoke test: emit a synthetic operator_decision_needed event, GET /api/decisions, assert it appears, POST resolve, assert it disappears"
+    - docs/process/CLAUDE_GOTCHAS.md gains a Decisions queue subsection documenting the contract
+  notes: |
+    wave: 0b (/api/decisions endpoint — operator-decision queue is the human-in-loop for self-doctor)
+  skills_required: pwa,backend,rust
+  outcome_id: MISSION-010
+

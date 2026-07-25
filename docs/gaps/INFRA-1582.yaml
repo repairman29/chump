@@ -1,0 +1,19 @@
+- id: INFRA-1582
+  domain: INFRA
+  title: "CREDIBLE: chump gap show should distinguish 'never existed' from 'closed and reaped' — current 'not found' message misled at least one agent into a misdiagnosis gap (INFRA-1575)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    INFRA-1575 was filed 2026-05-16 on a faulty premise: chump gap show INFRA-1296 returned "gap not found" so I concluded the design doc references unfiled work. Reality: INFRA-1296 shipped via PR #1967 then got reaped from state.db and docs/gaps/*.yaml after closure. The "not found" message is indistinguishable from typo or never-existed states. At fleet scale (the closer-pr-batcher reaps high volume daily), agents and operators will hit this regularly. Fix: chump gap show should query the done-history index too and report "closed via PR #N on YYYY-MM-DD, reaped" when an ID was shipped. Bonus: chump gap show --include-reaped flag for explicit history queries.
+  acceptance_criteria:
+    - "chump gap show <ID> when the ID is not in active state.db falls back to scanning git history for \"feat\\(<ID>\\)\" or \"fix\\(<ID>\\)\" commit subjects and reports \"closed via PR #N (commit <sha>) on YYYY-MM-DD\" if found"
+    - "If neither active nor git-history match, output stays \"gap not found\" but adds a hint line \"no record in active registry or recent commit history — check spelling or chump gap list --include-done\""
+    - chump gap list grows a --include-done flag that shows closed gaps alongside open ones with status=done
+    - "scripts/ci/test-gap-show-reaped-distinction.sh seeds a synthetic git commit feat(TEST-A): X, asserts chump gap show TEST-A reports the closure rather than not-found"
+    - "docs/process/CLAUDE_GOTCHAS.md gains a note: \"chump gap show not found can mean shipped+reaped — verify with git log --all --oneline "
+    - " grep <ID> before assuming the gap never existed\""
+  notes: |
+    wave: 0b (chump gap show reaped-distinction — operator observability for the self-doctor loop)
+  outcome_id: MISSION-010
+

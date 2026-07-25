@@ -1,0 +1,16 @@
+- id: INFRA-1798
+  domain: INFRA
+  title: "EFFECTIVE: cron-loop autopilot prompt reads opus-message inbox at iter start — 'Glance' phase addendum (INFRA-1796 dogfood)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Receive-and-act-by-default, loop-discipline half (sibling of CREDIBLE-114, the PreToolUse hard-enforcement half). Per A2A_MASTER_PLAN_2026-06-03 Tier-0 step 0.3: 'chump-inbox.sh read' must be the MANDATORY first step of every curator/worker/autopilot cycle, and the agent must ACT on what it finds (ack handoffs, vote on open proposals) — not read-only. This is the 'demand side' the whole A2A layer was missing: agents broadcast 57 proposals over 24d but never read/voted, so consensus_result stayed 0 (the closing bug is fixed in CREDIBLE-122). Success is the OUTCOME metric, not a green check: inbox_advance > 0 and consensus_result firing organically.
+  acceptance_criteria:
+    - Every curator/worker/autopilot loop (scripts/coord/*-loop.sh + the work-your-lane / SUBAGENT prompt) runs scripts/coord/chump-inbox.sh read as the FIRST step of each cycle, before picking new work (A2A_MASTER_PLAN Tier-0 0.3).
+    - "After draining, the agent ACTS on each item: ack HANDOFF/STUCK via broadcast.sh --to <sender> DONE, and cast chump vote <corr_id> +1|-1|0 --reason on every open FEEDBACK kind=proposal it has not yet voted on. Read-without-act does NOT satisfy this."
+    - Each drained cycle emits kind=inbox_advance with the count of items processed, so the outcome is measurable (the master-plan load-bearing gate is inbox_advance > 0 fleet-wide).
+    - "OUTCOME verification (not signal): over a soak window with >=1 open proposal and >=2 live agents, consensus_result events fire and at least one proposal reaches quorum (>1 distinct voter). consensus_result count must climb from its current floor."
+    - "Smoke test: a single loop cycle with 1 unread proposal in the inbox results in (a) the proposal read, (b) a chump vote emitted for it, (c) an inbox_advance event — asserted by a scripts/ci/test-*.sh that drives the real loop, not a hand-written fixture."
+  outcome_id: MISSION-010
+

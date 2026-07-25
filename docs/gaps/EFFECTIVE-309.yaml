@@ -1,0 +1,15 @@
+- id: EFFECTIVE-309
+  domain: EFFECTIVE
+  title: "EFFECTIVE: OpenRouter frontier-open tier — Kimi K2.7-code serves xs/s cascade with two-week honest ship-rate scorecard vs sonnet"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator decision 2026-07-22 (Option A from hosting investigation): route xs/s gaps to near-frontier open models per-token via OpenRouter before renting any GPU. Wiring: (1) src/auth.rs first-class 'openrouter' provider (OPENROUTER_API_KEY / OPENROUTER_API_BASE default https://openrouter.ai/api/v1); (2) routing.yaml xs+s routes gain first candidate backend=chump-local model=moonshotai/kimi-k2.7-code provider_pfx=OPENROUTER (fallback kimi-k2.6, then existing GROQ/TOGETHER free tier, then claude); (3) chumpd spawn_worker loads ~/.chump/providers.env (0600, KEY=VALUE) into child env — the RESILIENT-173-compliant key path, keys never in argv; (4) scorecard: cycle_end events carry model= — a scripts/dev/tier-scorecard.sh compares ships/attempts per model over a window. Budget guard: operator loaded $25 credits; OpenRouter's own limits stop overrun.
+  acceptance_criteria:
+    - openrouter provider resolves key+base from env with sane default base
+    - xs/s routing candidates try kimi-k2.7-code first and fall through the cascade on failure
+    - chumpd children see OPENROUTER_API_KEY from providers.env, and ps -ef shows NO key material in argv
+    - one real xs gap ships end-to-end via the OpenRouter tier (PR merged, cycle_end model=kimi)
+    - tier-scorecard.sh prints ships/attempts/rc-classes per model for the last N days
+

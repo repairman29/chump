@@ -1,0 +1,19 @@
+- id: RESILIENT-040
+  domain: RESILIENT
+  title: "RESILIENT P1: pre-Sonnet-spawn claim check — supervisor refuses to dispatch on gap already claimed by another session"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Risk 10 of 10. Curator A reads ambient inject 'decompose broken' + files fix gap. Meanwhile curator-supervisor already spawned Sonnet for same fingerprint. Now: two Sonnets racing on the same gap, OR Sonnet trying to claim an already-claimed gap, OR two PRs solving the same problem.
+  acceptance_criteria:
+    - "Before spawn_sonnet, supervisor checks .chump-locks/claim-<gap-id>-*.json: if claimed by OTHER session, skip spawn + emit ambient kind=curator_supervisor_spawn_skipped_claim_collision"
+    - "Before file_curator_gap, supervisor greps state.db for OPEN gaps with same fingerprint in title/description: if found, skip filing + emit kind=curator_supervisor_gap_already_filed"
+    - Both skips counted toward circuit-breaker (RESILIENT-035) as 'detection-without-action' so a flapping role still trips the breaker even when remediation is a no-op
+    - "Smoke test: pre-create lease + file gap matching fingerprint; run supervisor; assert spawn_skipped_claim_collision OR gap_already_filed event emitted; assert no claude -p spawn"
+  depends_on: [INFRA-2239]
+  notes: |
+    [2026-06-04T00:26:09Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2834
+  outcome_id: RESILIENT-000
+

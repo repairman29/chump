@@ -1,0 +1,16 @@
+- id: INFRA-2039
+  domain: INFRA
+  title: "RESILIENT P3: broadcast.sh second positional becomes gap= field in JSON when content is a free-form message — breaks gap-ID indexing/filtering"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "Observed (2026-05-25): bash scripts/coord/broadcast.sh DONE \"RCA shipped: https://github.com/repairman29/chump/pull/2549 ...\" printed [broadcast] DONE gap=RCA shipped... — free-form message content tagged as gap-ID field in serialized output AND in resulting JSON line on ambient.jsonl."
+    - "Root cause: broadcast.sh positional-arg parser treats positional-2 as gap-ID by default. When content is a free-form status message (not a gap-ID), field name is wrong."
+    - "Operator impact: ambient.jsonl filters that select by gap field get noise from prose-as-gap-ID broadcasts. Inbox renderers that link gap to docs/gaps/ID.yaml render broken links. Today session emitted 3 such broadcasts (RCA done, RCA-collision-resolved, gap-filing summary) — all parse as gap=<prose>."
+    - "Fix: broadcast.sh detects whether second positional matches gap-ID regex (uppercase letters + dash + digits). If yes: store as gap field. If no: store as body or message field. Alternative: require explicit --gap and --message flags; deprecate positional second arg over one release."
+    - "Smoke test scripts/ci/test-broadcast-gap-vs-message.sh — broadcast.sh DONE INFRA-1234 → assert gap=INFRA-1234 + no body field. broadcast.sh DONE \"free-form prose message\" → assert body=free-form prose message + no gap field."
+    - Pairs with — docs/process/OPUS_MESSAGE_PROTOCOL.md (event-type doctrine), INFRA-1998 (chump-messaging Rust absorption — benefits from clean typed message body before absorption).
+    - Done definition — free-form messages stored in body field; gap field reserved for valid gap-IDs; smoke test green.
+  outcome_id: MISSION-010
+

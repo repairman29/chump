@@ -1,0 +1,14 @@
+- id: INFRA-2043
+  domain: INFRA
+  title: "RESILIENT P0: INFRA-2016 inbox-check-urgent hook is on PostToolUse but PostToolUse stdout is SUPPRESSED by Claude Code — must move to PreToolUse for stdout-to-context injection; wizard self-test 2026-05-27T13:09Z proved hook fires + audit event emits + URGENT message reaches the file, but Claude session never sees it injected. The 'magical' live A2A is half-built; mid-session agents still don't auto-see CRIT"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

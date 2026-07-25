@@ -1,0 +1,15 @@
+- id: INFRA-2363
+  domain: INFRA
+  title: "chump voice subcommand — RE-ship after PR #2840 rebase silently dropped src/commands/voice.rs + main.rs dispatch arm"
+  status: closed
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    FALSE POSITIVE: my local main worktree was 31 commits behind origin/main. Voice IS correctly shipped on origin/main — both src/commands/voice.rs and the main.rs dispatch arm at line 1281 exist. This gap closed without ship action. The real bug is that main-worktree-drift-detector daemon is dead (exit=78) — captured in INFRA-2365.
+  outcome_id: MISSION-010
+

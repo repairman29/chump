@@ -1,0 +1,14 @@
+- id: INFRA-2179
+  domain: INFRA
+  title: "RESILIENT P2: picker claimed dependency chain in parallel (INFRA-2174→2175→2176) violating depends_on — should advisory-skip claimable gaps whose unsatisfied deps are also unclaimed"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "1. Observed 2026-05-29T13:45Z: curators claimed INFRA-2174 (chump-fleet-recorder), INFRA-2175 (depends_on INFRA-2174), and INFRA-2176 (depends_on INFRA-2175) all simultaneously. The 2176 claim cannot ship until 2174+2175 merge — wasted worktree allocation + curator runtime."
+    - 2. Investigate scripts/dispatch/worker.sh and gap picker logic — does depends_on get checked? If yes, why did this slip? If no, add the check.
+    - "3. Add advisory soft-skip: when picker is evaluating a gap, if its depends_on entries are themselves open AND unclaimed, prefer claiming the upstream gap instead. Only proceed with the downstream if upstream is either done OR claimed by a sibling (so downstream worker can ride the cascade)."
+    - 4. Emit kind=picker_dep_chain_violation when a gap is claimed whose unclaimed deps are still open (audit signal — not blocking).
+    - 5. Add scripts/ci/test-picker-respects-depends-on.sh — fixture state.db with 3 chained gaps, run picker N=3 times, assert claims happen in dependency order (not all 3 in parallel).
+  outcome_id: MISSION-010
+

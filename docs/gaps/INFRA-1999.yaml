@@ -1,0 +1,22 @@
+- id: INFRA-1999
+  domain: INFRA
+  title: "ZERO-WASTE P1: new chump-github-cache crate replaces scripts/coord/lib/github_cache.sh (493 LOC bash) + scripts/ops/github-webhook-receiver.py (656 LOC Python) — sqlx-typed SQLite + axum webhook receiver + typed structs for cached GitHub JSON subset; 2-week parallel-run + DNS cutover, zero FFI"
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - New crate crates/chump-github-cache/ added to workspace; depends on sqlx with sqlite + runtime-tokio + macros + migrate features, axum 0.7, serde + derive, octocrab 0.38, thiserror
+    - "Public GithubCache trait: async lookup_pr(u64) -> Option PrState + async lookup_checks(sha) -> Vec CheckRun + async query_open_prs() -> Vec PrSummary + async query_open_prs_by_title(str) -> Vec PrSummary + async query_behind_prs() -> Vec u64 + async refresh_open_prs() (bulk refill via REST not GraphQL)"
+    - "Concrete SqliteCache impl uses sqlx::query! compile-time-checked queries against .chump/github_cache.db; migrations in chump-github-cache/migrations/"
+    - Webhook receiver binary chump-webhook-receiver replaces scripts/ops/github-webhook-receiver.py (656 LOC); axum 0.7 HTTP server; verifies GitHub HMAC signature; persists pull_request + check_run + workflow_run events into the same SQLite the readers use
+    - Typed structs in schema.rs cover ONLY the cached subset of GitHub JSON (PR id/number/state/head_sha/merge_state/title; CheckRun name/conclusion/status; WorkflowRun id/status/conclusion); strict serde with deny_unknown_fields false to tolerate GitHub schema additions but still parse-error if expected fields go missing
+    - Python receiver scripts/ops/github-webhook-receiver.py runs in PARALLEL writing to the same SQLite for 2 weeks; both writers idempotent via UPSERT on primary key
+    - "After 2-week parallel run with sqlite_diff showing zero divergence, cutover PR (a) flips DNS or proxy from python:8080 to rust:9876, (b) decommissions python receiver, (c) removes scripts/coord/lib/github_cache.sh (493 LOC) since the trait now has its own callers"
+    - Backward-compat shims keep cache_lookup_pr + cache_query_open_prs + cache_query_behind_prs callable from bash via chump-github-cache-cli; existing scripts/coord/queue-driver.sh etc keep working unchanged
+    - "Smoke test scripts/ci/test-github-cache-rust-parity.sh: 10 cached PR lookups via both bash and Rust paths; assert identical JSON output"
+    - Feature flag CHUMP_GITHUB_CACHE_RUST=1; emits kind=rust_migration_landed gap=INFRA-1999 on cutover; zero FFI used (no PyO3)
+  depends_on: [INFRA-1998]
+  closed_date: '2026-05-29'
+  closed_pr: 2633
+  outcome_id: MISSION-010
+

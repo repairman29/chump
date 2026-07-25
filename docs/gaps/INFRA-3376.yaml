@@ -1,0 +1,9 @@
+- id: INFRA-3376
+  domain: INFRA
+  title: "META-070: mirror observability-fleet-signals fast-checks scripts (20) into chump preflight"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. For each of the 20 observability-fleet-signals scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#observability-fleet-signals-infra-3376, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-observability-mirrors.sh asserts all 20 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+

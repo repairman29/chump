@@ -1,0 +1,43 @@
+- id: META-195
+  domain: META
+  title: "productize admin-merge-by-consensus: flip INFRA-2274 shadow→enforce + add AdminMergeProposal decision type"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    REPLACE operator-in-the-loop admin-merge with consensus-based admin-merge so the fleet itself decides when to bypass required checks. Today's session (2026-05-30) had 6 admin-merges by operator (or claude-as-operator) — each one hid a real CI failure signal and reinforced the bypass-when-blocked habit. The system can't tell us what's brittle if we keep bypassing the signal.
+    
+    EXISTING SUBSTRATE (all shipped, no rewrites needed):
+    - crates/chump-coord/src/consensus.rs — ConsensusCoordinator + DecisionType + Vote + ConsensusDecision
+    - chump vote + chump consensus-tally CLI (META-159)
+    - curator-opus-deliberator role (META-162)
+    - INFRA-2274 — consensus merge gate wired into scripts/coord/bot-merge.sh in SHADOW mode (votes recorded, not enforced)
+    
+    WHAT'S MISSING:
+    1. AdminMergeProposal decision type — a new DecisionType variant that bot-merge.sh emits when it (or operator-as-claude) wants to bypass required checks
+    2. Auto-vote logic in curators — each role (shepherd, ci-audit, deliberator, target, handoff) auto-votes based on visible signals:
+       - shared-class fail across N≥3 PRs → 'approve' (it's trunk-RED contagion, bypass is legit)
+       - unique fail to THIS PR → 'reject' (real bug, fix don't bypass)
+       - trunk-RED active per .chump-locks/trunk-red-detector-state.json → 'approve with safety-rail' (admin-merge with 'integration_trunk_red_emergency' tag)
+       - operator explicit override flag → 'approve' regardless
+    3. Tally + threshold logic in bot-merge.sh:
+       - Open vote window (60s default, configurable via CHUMP_ADMIN_MERGE_VOTE_WAIT_S)
+       - Quorum: 3+ curators voted
+       - Threshold: 3/4 approve (configurable)
+       - Quorum-not-reached → fall back to operator-as-tie-breaker (current HITL path)
+    4. Flip INFRA-2274 from SHADOW to ENFORCE — gated on (a) test coverage, (b) operator approval after observing N=10 shadow-mode votes
+    
+    PROCESS:
+    - Phase 1 (DESIGN): docs/design/CONSENSUS_ADMIN_MERGE.md — full spec, ~150 LOC. Operator approves shape.
+    - Phase 2 (CODE): AdminMergeProposal type + auto-vote in 4 curator-opus-*-loop.sh + tally in bot-merge.sh. Single PR, ~400 LOC.
+    - Phase 3 (OBSERVE): leave in shadow mode for 24h; collect N=10+ votes; operator reviews tally distribution
+    - Phase 4 (ENFORCE): flip CHUMP_INFRA_2274_MODE from shadow to enforce; emit operator notification on each enforcement decision
+    
+    OPERATOR TRIGGER: file 2026-05-30, action after current PR queue clears. NOT urgent — observation is the precursor.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

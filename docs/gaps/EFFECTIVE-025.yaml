@@ -1,0 +1,12 @@
+- id: EFFECTIVE-025
+  domain: EFFECTIVE
+  title: wire chump fleet autopilot CLI subcommand to bash orchestrator (CLI parity with PWA toggle)
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Add chump fleet autopilot to chump fleet subcommand list (src/main.rs + src/fleet_cmd.rs)\",\"Subcommand proxies to bash scripts/coord/fleet-autopilot.sh with passthrough args (start/stop/status/restart/heartbeat)\",\"chump fleet autopilot status --json returns same JSON shape as the bash version\",\"CLI smoke: chump fleet autopilot status exits 0 with parseable output even when no daemons loaded\",\"Update chump --help to list autopilot under FLEET section\",\"Pairs with META-090 (#2569) bash orchestrator landed today\"]"
+  closed_date: '2026-05-29'
+  closed_pr: 2692
+  outcome_id: EFFECTIVE-000
+

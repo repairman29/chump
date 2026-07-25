@@ -1,0 +1,16 @@
+- id: INFRA-2533
+  domain: INFRA
+  title: "RESILIENT P1: off-rails path-scope fails-OPEN when claim.paths is undeclared — stop blocking every commit that didn't pass --paths (the #2 friction this session); enforce only when paths explicitly declared"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - the pre-commit off-rails (RESILIENT-026) path-scope check WARNS (does not block) when the claim lease has an empty/unset paths array — path-scoping is opt-in, enforced only when paths were explicitly declared via chump claim --paths
+    - a normal 'chump claim <id>' (no --paths) no longer requires CHUMP_OFF_RAILS_CHECK=0 to commit in-scope work
+    - when paths ARE declared, an out-of-scope staged file still blocks (protection preserved)
+    - the commit-subject gap-id check (RESILIENT-025) is unchanged
+    - tested
+  closed_date: '2026-06-05'
+  closed_pr: 2990
+  outcome_id: MISSION-010
+

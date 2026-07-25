@@ -1,0 +1,15 @@
+- id: META-200
+  domain: META
+  title: "META-131 sub: move coverage job from per-PR required-needs to nightly-only workflow"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - ci.yml coverage job has if condition limiting it to schedule and workflow_dispatch events only, not pull_request
+    - A new .github/workflows/coverage-nightly.yml exists with daily cron at 6am UTC and workflow_dispatch trigger containing the full coverage job body
+    - Per-PR CI run duration for a Rust-only PR no longer waits 6-8 min for llvm-cov
+    - coverage-nightly.yml workflow can be manually triggered via workflow_dispatch
+  closed_date: '2026-06-08'
+  closed_pr: 2877
+  outcome_id: MISSION-010
+

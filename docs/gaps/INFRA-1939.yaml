@@ -1,0 +1,15 @@
+- id: INFRA-1939
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh exit-144 silent wedge under graphql_exhausted — subagents burn 150K+ tokens stuck polling instead of falling through to INFRA-028 manual recovery"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "bot-merge.sh detects when GraphQL is exhausted (kind=graphql_exhausted in ambient or remaining_graphql under 100) AND its own retries are being throttled; instead of silently polling exits with non-zero status + clear stderr message 'WEDGE: bot-merge cannot proceed under graphql_exhausted; fall through to manual INFRA-028 recovery'"
+    - "Subagent dispatch instructions in docs/process/SUBAGENT_DISPATCH.md include explicit timeout + fallthrough: if bot-merge.sh has not produced a progress marker for 12 min (current CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S 900s), the subagent MUST switch to manual INFRA-028 path (git push --force-with-lease + gh pr create + gh pr merge --auto --squash + chump gap ship) without continuing to poll"
+    - "Evidence from 2026-05-24T16:00Z onwards: 2 of 4 parallel Sonnet implementers (ci-audit INFRA-1923, md-links INFRA-1925) stuck in 'waiting for monitor notification' loops burning 144K + 157K tokens respectively producing zero artifacts on disk while handoff/decompose siblings recognized the wedge and recovered via manual path"
+    - "Smoke test scripts/ci/test-bot-merge-graphql-wedge.sh asserts: when graphql_exhausted event is in ambient AND bot-merge is invoked the script exits non-zero with the WEDGE message within 60s rather than polling forever"
+    - Pairs with INFRA-1080 call criticality + INFRA-1040 GraphQL exhaustion handling for the upstream prevention layer
+  closed_date: '2026-05-28'
+  outcome_id: MISSION-010
+

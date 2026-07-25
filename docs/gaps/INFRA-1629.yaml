@@ -1,0 +1,12 @@
+- id: INFRA-1629
+  domain: INFRA
+  title: "RESILIENT: rescue cluster — check 'cargo-test-required' failing on 7 PRs: [2288, 2283, 2"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Resolve PR cluster: check 'cargo-test-required' failing on 7 PRs: [2288, 2283, 2276, 2275, 2270]"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

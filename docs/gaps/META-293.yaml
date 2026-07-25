@@ -1,0 +1,12 @@
+- id: META-293
+  domain: META
+  title: main worktree cleanup — 107 untracked yaml + 0 commits behind
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  closed_date: '2026-07-21'
+  closed_pr: 3178
+  outcome_id: MISSION-010
+

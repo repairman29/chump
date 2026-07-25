@@ -1,0 +1,42 @@
+- id: META-125
+  domain: META
+  title: "[UMBRELLA] Live A2A consensus pipeline — curators-as-NATS-subscribers + chump consensus ask/vote/resolve + auto-roadmap-rerank (seconds not weeks)"
+  status: done
+  priority: P1
+  effort: xl
+  acceptance_criteria:
+    - "UMBRELLA per docs/strategy/LIVE_A2A_CONSENSUS_2026-05-29.md (to be drafted as child C1).\n\n## Problem statement (operator-named 2026-05-29)\n\nToday's A2A surface fakes liveness. broadcast.sh dual-publishes to NATS + inboxes; the NATS leg is theoretically real-time but NO curator runs a persistent NATS subscriber. They poll inboxes at session-start, which means cross-curator deliberation has a 4-24h latency floor. Decisions that should take seconds (does this strategy pivot the roadmap? do 9 curators concur?) take days, and the meantime is lost productivity. Today's META-124 broadcasts: sent at 13:18, evidence shows zero curator subscribers active, replies blocked on next session-start for each.\n\nThe substrate FOR live consensus exists (INFRA-2102 NATS substrate, INFRA-1803 consensus voting ported from proprietary, chump-coord watch + help-request + work-board). It's not wired into a real-time decision surface.\n\n## Three goals\n\n1. **Curators-as-NATS-subscribers** — each canonical curator-opus-* role runs a persistent subscriber daemon that listens on chump.events.consensus.> (or chump.curator.<role>.>) and triggers the curator's reasoning loop on receipt. Wakes the role in seconds, not days.\n\n2. **chump consensus subcommand** — new CLI: ask/vote/resolve/pivot lifecycle. Operator (or another curator) can fire a strategic question to N curators, set quorum + timeout, get a confidence-weighted aggregate decision back within seconds.\n\n3. **Auto roadmap re-rank** — when consensus pivots a decision, gap-store mutations happen automatically: re-rank priorities, mark superseded work as backlog with rationale, surface new top-of-queue gaps. No manual operator intervention to re-sequence.\n\n## Lifecycle of a chump consensus decision\n\n  1. ASK: chump consensus ask \"<question>\" --quorum 5 --timeout 60s --tag <strategic-tag>\n       - Generates consensus_id (uuid)\n       - Publishes to chump.events.consensus.ask with question + tag + timeout\n       - Emits ambient kind=consensus_ask_started\n\n  2. ROUTE: subscriber daemons receive on their chump.curator.<role>.consensus subject\n       - Each curator's daemon evaluates: does this question fall in my lane? confidence high/med/low?\n       - If yes: triggers per-role reasoning (could be claude -p, MLX local, or pre-trained quick-vote model)\n       - Reasoning produces: {vote: agree/disagree/abstain, confidence: high/med/low, rationale: string}\n\n  3. VOTE: chump consensus vote <consensus-id> --vote agree --confidence high --rationale \"...\"\n       - Publishes to chump.events.consensus.vote.<consensus-id>\n       - Emits ambient kind=consensus_vote_cast\n\n  4. AGGREGATE: chump-consensus-aggregator-daemon waits for quorum OR timeout\n       - At timeout: tallies votes, computes confidence-weighted decision\n       - Emits ambient kind=consensus_resolved with full breakdown\n\n  5. PIVOT (optional): chump consensus roadmap-pivot <consensus-id>\n       - For decisions that re-rank work:\n         - re-prioritize gaps matching the consensus topic tag\n         - mark superseded gaps as backlogged with rationale\n         - surface new top-of-queue\n       - Emits ambient kind=roadmap_rerank_applied\n\n## Children (10 sub-gaps, sequenced)\n\nWAVE 1 (foundation — parallel-safe):\n- C1 Strategy doc docs/strategy/LIVE_A2A_CONSENSUS_2026-05-29.md (Opus self — design call)\n- C2 NATS subject taxonomy: chump.events.consensus.{ask,vote,resolved}.>, chump.curator.<role>.consensus\n- C3 9 new ambient event kinds: consensus_ask_started, consensus_routed_to_curator, consensus_vote_cast, consensus_quorum_reached, consensus_timeout, consensus_resolved, consensus_decision_emitted, roadmap_rerank_proposed, roadmap_rerank_applied\n- C4 chump-curator-subscriber daemon — Rust binary in crates/chump-curator-subscriber; per-role NATS subscriber + per-role reasoning hook; runs as launchd KeepAlive per role\n\nWAVE 2 (depends on C2-C4):\n- C5 chump consensus ask subcommand — publishes question, returns consensus_id, optionally blocks-and-waits for resolve\n- C6 chump consensus vote subcommand — for curators to publish their vote\n- C7 chump consensus resolve / status subcommands — aggregator + queryable state\n- C8 chump-consensus-aggregator-daemon — Rust binary; subscribes to chump.events.consensus.vote.>; computes confidence-weighted decision at quorum-or-timeout; emits decision\n- C9 install-chump-consensus-launchd.sh for the aggregator daemon\n\nWAVE 3 (depends on Wave 1+2):\n- C10 chump consensus roadmap-pivot — applies decision to gap-store priority + backlog; backlog gaps gain rationale field linking to consensus_id; chump session-summary surfaces last-N decisions\n\n## Connection to META-124 (integration cycles)\n\nMETA-124 sets the SHIP rhythm (batched cycles). META-125 sets the DECIDE rhythm (consensus cycles). They compose:\n- Strategic decisions go to consensus (META-125) for curator weigh-in\n- Tactical work goes to integration cycles (META-124) for batched ship\n- Roadmap re-rank from consensus feeds the integration scheduler\n\n## Success criteria\n\n"
+    - " Metric "
+    - " Today "
+    - " Target "
+    - " How measured "
+    - "\n"
+    - "---"
+    - "---"
+    - "---"
+    - "---"
+    - "\n"
+    - " Consensus question to decision wall time "
+    - " 4-24h (next session-start latency) "
+    - " <90s (timeout default) "
+    - " new ambient timing "
+    - "\n"
+    - " Quorum hit rate "
+    - " N/A "
+    - " >80% (5 of 9 curators) "
+    - " consensus_quorum_reached count "
+    - "\n"
+    - " Roadmap re-rank coverage "
+    - " 0 (manual) "
+    - " >70% of pivoted decisions auto-apply "
+    - " roadmap_rerank_applied count "
+    - "\n"
+    - " Operator hand-trigger reduction "
+    - " N/A "
+    - " Operator types fewer chump gap set commands per week "
+    - " chump kpi report --consensus "
+    - "\n\n## Open questions for operator (before C4 implementation)\n\n1. **Curator-subscriber substrate** — Rust binary OR per-role claude -p in tmux? Rust = cleaner, ~weeks; claude -p = today, higher cost but simpler.\n2. **Default quorum** — 5 of 9 curators (drafted) or weighted by lane-relevance?\n3. **Vote confidence weighting** — equal weight per vote OR weight by curator's lane match to question?\n4. **Auto-pivot threshold** — apply re-rank automatically when consensus_resolved has agree>=70%, or always require operator confirmation?\n5. **Backlog gap rationale schema** — JSON field on gap OR separate audit log?\n\n## Cross-references\n\n- META-124 (integration cycles) — DECIDE rhythm + SHIP rhythm compose\n- INFRA-2102 (NATS A2A substrate) — foundation for live subscribers\n- INFRA-1803 (consensus voting from proprietary) — primitive we extend\n- INFRA-1115 (mailboxes) — fallback for offline curators\n- INFRA-2144..2150 (A2A housekeeping bugs) — preconditions; broadcast surface needs polish first\n- META-046 (PM curation role) — operator's lane; consensus complements not replaces"
+  closed_date: '2026-06-05'
+  closed_pr: 2781
+  outcome_id: MISSION-010
+

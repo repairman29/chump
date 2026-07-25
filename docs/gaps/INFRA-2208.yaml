@@ -1,0 +1,19 @@
+- id: INFRA-2208
+  domain: INFRA
+  title: "RESILIENT: AGENTS.md no-idle curator policy — every loop tick ships something or BLOCKED with reason"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Operator directive (2026-05-29): no idle curators in loops. Every scheduled-job / /loop / babysit-prs tick must end in a shipped change, a dispatched Sonnet, a defensible BLOCKED with a clear unblock requirement, OR a documented pickup of the next-best gap. 'Standing by', 'queue quiet', and 'conserving tokens for later' are not valid end-states. Codify in AGENTS.md as an extension of the existing Mission Driver section (item 8) so every curator's session-start + loop-tick reads it. Broadcast already on NATS via WARN at 2026-05-29T23:4xZ.
+  acceptance_criteria:
+    - AGENTS.md Mission Driver section gets a new bullet 8 or sub-section 'Loop discipline — no idle ticks' that lists the four valid end-states (shipped change / dispatched Sonnet / defensible BLOCKED / next-best gap pickup)
+    - Section explicitly rejects 'standing by' / 'queue quiet' / 'conserving tokens for later' as end-states; calls out that throughput is the constraint, not token budget
+    - "Section names the diagnostic: if 3 consecutive loop ticks produce no shipped work + no dispatch + no BLOCKED, broadcast a STUCK on NATS and stop the loop pending operator review"
+    - Section cross-references INFRA-2202 (comms policy) for the 'broadcast on NATS, not inbox' rule
+    - No code change; doc-only
+    - chump preflight before push
+  closed_date: '2026-05-30'
+  closed_pr: 2760
+  outcome_id: MISSION-010
+

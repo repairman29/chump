@@ -1,0 +1,28 @@
+- id: RESILIENT-050
+  domain: RESILIENT
+  title: "P0: stale-pr-reaper MUST hold during trunk-RED — destroyed 28 legitimate PRs at 2026-05-30T15:46Z"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    INCIDENT 2026-05-30T15:45-15:46Z: scripts/ops/stale-pr-reaper.sh (INFRA-1410 SLO enforcer) auto-closed 28 in-flight PRs in 60 seconds because they were BLOCKED for >2h30m. The PRs were BLOCKED because TRUNK WAS RED — every PR's required checks (cargo-test, coverage) were failing on a known root cause (chump-integrator test_conflict_aborts_with_structured_error regression). Hotfix PR #2866 was in CI; once it lands, all 28 would have cascade-merged.
+    
+    Instead, the reaper destroyed all 28. Operator caught it, daemon was force-unloaded, all 28 PRs reopened + auto-merge re-armed at 2026-05-30T15:51Z. Time-cost of incident: ~10 min operator + ~5 min recovery automation.
+    
+    ROOT CAUSE: stale-pr-reaper does not check trunk-RED state before bouncing. INFRA-1410 SLO is meant to flush PRs stuck on their OWN merits (not the queue-wide blocker class).
+    
+    FIX: stale-pr-reaper.sh must, before bouncing any PR:
+      1. Check trunk-RED state (latest run on main, conclusion==failure for cargo-test or similar required-check class)
+      2. If trunk-RED → emit kind=reaper_holding_for_trunk_red to ambient + skip ALL bounces this cycle (do NOT close PRs whose BLOCKED state is downstream of trunk-RED, not their own bug)
+      3. If trunk-GREEN but THIS PR has a unique failure (not the same as 5+ other PRs) → proceed with bounce
+      4. Add config flag CHUMP_REAPER_HOLD_TRUNK_RED (default ON) for emergency override
+    
+    Coordination: trunk-red-detector daemon (META-177 Lane C, in PR #2863 — ALSO reaped, now reopened) ships the trunk-RED state file at .chump-locks/trunk-red-detector-state.json. Reaper reads that file.
+    
+    URGENCY: P0. Daemon currently disabled via launchctl unload. Must ship the trunk-RED gate before re-enabling, OR keep reaper disabled until fix lands.
+  acceptance_criteria:
+    - stale-pr-reaper.sh checks trunk-RED state before bouncing; emits reaper_holding_for_trunk_red when trunk is RED; test passes
+  closed_date: '2026-06-05'
+  closed_pr: 2867
+  outcome_id: RESILIENT-000
+

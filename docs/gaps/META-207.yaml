@@ -1,0 +1,42 @@
+- id: META-207
+  domain: META
+  title: no-operator-escalation protocol — codify in AGENTS.md + CLAUDE.md + SUBAGENT_DISPATCH.md; default mode is team consensus via FEEDBACK; operator-escalation has 4 explicit legitimate triggers; add detector + audit event
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    OPERATOR DIRECTIVE 2026-05-30T17:30Z (verbatim): 'Make sure the don't escalate to the human protocol is locked in for agents. I'm not here to babysit. I'm here for results.'
+    
+    Operator pain pattern over this session (and prior): every time an agent (orchestrator or sub-agent) asks the operator a question that the team can answer via consensus, the operator's attention is wasted. Every AskUserQuestion call where the answer is 'route this to the team' is a discipline failure.
+    
+    CURRENT STATE: ad-hoc. AGENTS.md mentions 'do not ask the operator first' in the gap-filing context (line 450) but lacks a top-level escalation discipline. CLAUDE.md references 'operator escape hatches' as audit-events but doesn't specify when escalation is legitimate vs not. SUBAGENT_DISPATCH.md has no-clarifying-questions for sub-agents but doesn't extend to orchestrator-level escalation discipline.
+    
+    CODIFICATION needed in 3 docs simultaneously:
+      1. AGENTS.md — top-level operator-decision-of-record section
+      2. CLAUDE.md — Claude-Code-specific overlay mirroring same rule
+      3. SUBAGENT_DISPATCH.md — explicit sub-agent inheritance
+    
+    FOUR LEGITIMATE ESCALATION TRIGGERS (the ONLY ones):
+      T1. Irreversible third-party action with no consensus mandate (financial spend, deploy to production beyond chump itself, external communication to partners/customers)
+      T2. Credential rotation requiring operator's hands-on-keyboard (cannot be done by any agent; secrets are write-only via gh)
+      T3. Operator-explicit-domain decisions: legal/license, partnership, pricing/business model, public branding/messaging
+      T4. Halt-class fleet condition where consensus mechanism itself is unsafe to use (e.g., trunk-RED AND auth-storm AND queue-starve simultaneously)
+    
+    EVERYTHING ELSE → team consensus via FEEDBACK kind=proposal/vote, deliberator-loop tallies, consensus_resolved event drives action.
+    
+    ENFORCEMENT:
+      - Detector emits kind=operator_escalation_unjustified when an agent calls AskUserQuestion / operator-recall outside the 4 triggers
+      - Audit leaderboard at scripts/dev/operator-escalation-leaderboard.sh shows agents-per-day with unjustified escalations
+      - SLO target: < 1 unjustified escalation per fleet-day
+  acceptance_criteria:
+    - "1. AGENTS.md gains a top-level '## No-operator-escalation discipline (operator-decision-of-record 2026-05-30)' section listing the 4 legitimate triggers with examples of legitimate vs illegitimate cases\n2. CLAUDE.md gains a mirrored 'No-escalation (CLAUDE-overlay)' section pointing to AGENTS.md as canonical + Claude-Code-specific guidance about AskUserQuestion tool use\n3. SUBAGENT_DISPATCH.md extends 'no-clarifying-questions' to 'no-escalation' — sub-agents must use consensus mechanism (broadcast FEEDBACK kind=proposal) instead of returning 'I need to ask operator'\n4. scripts/dev/operator-escalation-leaderboard.sh — bash script that counts kind=operator_escalation_unjustified events per role per day, prints top-3\n5. EVENT_REGISTRY: kind=operator_escalation_unjustified registered with fields (role, escalation_kind, trigger_matched: T1"
+    - T2
+    - T3
+    - T4
+    - "none); detector documented\n6. Smoke test: scripts/ci/test-no-escalation-doctrine.sh — asserts the 3 doc files have the specific anchor headers + example pairs\n7. chump preflight green; raw-gh allowlist for the leaderboard script if needed\n8. Commit subject includes the 4 trigger codes (T1-T4) so the doctrine is searchable"
+  notes: |
+    Filed 2026-05-30T17:30Z by orchestrator under operator escalation-pain directive. Self-acknowledgement: orchestrator violated this discipline minutes before the operator directive by calling AskUserQuestion on the 4-option restrategy menu when consensus broadcast was the right path. This gap codifies the rule so future orchestrators don't repeat. Scope intentionally tight (3 docs + 1 detector + 1 test). Not a P0 — fleet's been running without explicit rule for months — but P1 because compounding operator-attention waste is real.
+  closed_date: '2026-05-30'
+  closed_pr: 2881
+  outcome_id: MISSION-010
+

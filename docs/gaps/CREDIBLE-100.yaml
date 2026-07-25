@@ -1,0 +1,15 @@
+- id: CREDIBLE-100
+  domain: CREDIBLE
+  title: "CREDIBLE: chump improve verify_and_merge fabricates verified — trusts spawned exit-code not the bar Verdict: line; a stale chump bin misroutes external verify-merge to the brain (chat reply, exit 0) so verdict=verified while the bar never runs (BEAST PR#2 untested). Fix: current_exe + parse Verdict: + bail on misfire"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "verify_and_merge keys off the bar real Verdict: line (Verdict: MERGE→verified, Verdict: HELD→held), NOT the spawned process exit code"
+    - "no Verdict: line in the sub-invocation output (misfire/stale-binary→brain) → bail loudly; NEVER default to verified"
+    - "sub-invocation uses std::env::current_exe() (running binary has the subcommand); CHUMP_IMPROVE_CHUMP_BIN kept for test injection"
+    - "unit test parse_verdict (MERGE/HELD/garbage); test-chump-improve.sh stub prints Verdict: MERGE + a no-verdict stub makes the orchestrator bail"
+  closed_pr: 3072
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

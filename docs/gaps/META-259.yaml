@@ -1,0 +1,17 @@
+- id: META-259
+  domain: META
+  title: "META: Apply path-filters to pwa-visual-diff, editor-integration, acp-real-clients, voice-lint workflows (META-258 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `pwa-visual-diff.yml` workflow is configured to run only when changes are in `web/v2/**`.
+    - The `editor-integration.yml` workflow is configured to run only when changes are in `changes.acp`.
+    - The `acp-real-clients.yml` workflow is configured to run only when changes are in `changes.acp`.
+    - The `voice-lint.yml` workflow is configured to run only when changes are in `changes.docs` OR `scripts/coord/broadcast`.
+    - Verify that these workflows do not run on pull requests that do not touch the specified paths.
+    - Verify that these workflows run successfully on pull requests that touch the specified paths.
+  closed_date: '2026-05-31'
+  closed_pr: 2900
+  outcome_id: MISSION-010
+

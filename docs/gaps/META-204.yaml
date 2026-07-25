@@ -1,0 +1,13 @@
+- id: META-204
+  domain: META
+  title: "META-131 sub: PR-level CI customization — ci.yml-only PRs skip Rust suite"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The fast-checks, clippy, and cargo-test jobs each skip when changes.outputs.ci_config_only is true, using the existing ci_config_only output from the changes job
+    - The fast-checks-stub, clippy-stub, and cargo-test-stub jobs fire on ci_config_only PRs so branch protection required checks still pass
+    - A PR touching only .github/workflows/ci.yml completes required checks via stub path in under 2 minutes rather than running the full Rust suite
+    - The changes job ci_config_only output (already present at line 112) is already wired; this gap only adds the if-condition consumers
+  outcome_id: MISSION-010
+

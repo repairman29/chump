@@ -1,0 +1,11 @@
+- id: INFRA-2195
+  domain: INFRA
+  title: "EFFECTIVE P1: META-128/C4 docs/process/DISK_COST_MODEL.yaml — seed per-action disk cost estimates from today's measurements"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New docs/process/DISK_COST_MODEL.yaml with per-action-class disk cost estimates seeded from today's session measurements.\n- Schema: {action_class: {avg_gb, p95_gb, observed_n, last_updated, notes}}.\n- Seed with measured/observed values: chump_claim_worktree=0.05, cargo_build_debug=2.0, cargo_build_release=0.8, integration_cycle_per_gap=1.5, preflight_full=0.5, cross_build_linux=0.8, sonnet_dispatch_with_worktree=2.5, e2e_pwa=0.3, cargo_test_full=1.2.\n- Companion script scripts/dev/measure-disk-cost.sh that runs an action and records actual GB into ~/.chump/disk-cost-observed.jsonl rolling log.\n- Observability curator lane owns auto-tune updates from the rolling log (file follow-up gap if not present).\n- Voice-lint clean (markdown anchor doc).\n- Cross-references META-128 C2 (the daemon reads this), C3 chump disk plan CLI (consumes this)."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

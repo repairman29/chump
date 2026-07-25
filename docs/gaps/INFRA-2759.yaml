@@ -1,0 +1,38 @@
+- id: INFRA-2759
+  domain: INFRA
+  title: "RESILIENT: trunk red — main ci.yml failing on [cargo-test,cargo-test-required,test] (fp=251e90da8daa)"
+  status: closed
+  priority: P0
+  effort: s
+  description: |
+    Trunk-sentinel detected main ci.yml has been RED for 5m.
+    
+      - Run ID: 26989258044
+      - Head SHA: c934db912062a9058a775475a2531b3ea4a211bf
+      - Failing jobs: cargo-test,cargo-test-required,test
+      - Fingerprint: 251e90da8daa
+    
+    This gap was auto-filed by scripts/coord/trunk-sentinel-daemon.sh. The
+    fingerprint above is sha256(sorted failing-job names) so a second tick with
+    the same failure set will NOT re-file. A different failure pattern (a new
+    failing job appears) WILL file a new gap.
+    
+    Recommended workflow:
+      1. Inspect the run: gh run view 26989258044
+      2. Identify the root commit (gh log origin/main --oneline -5).
+      3. Either revert the offending commit OR file a forward fix.
+      4. When main is green again the sentinel will emit trunk_recovered and
+         close this gap.
+    
+    This is a fleet-halt-class wedge: every other PR currently in flight will
+    land BEHIND a red trunk; bot-merge will refuse to arm new ones until green.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-05T05:25:12Z] Stale: trunk recovered 10 commits ago (sentinel auto-close hook missed). Filed against c934db912; main at 3cdf57214; last 3 ci.yml runs green.
+  skills_required: fix_trunk,ci_repair
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: META-230
+  domain: META
+  title: "META: Implement PR listing in auto-admin-merge-daemon (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - auto-admin-merge-daemon.sh uses 'gh pr list --state open' to retrieve all open PRs in 'repairman29/chump'.
+    - For each retrieved PR, its number and title are logged.
+  depends_on: [META-229]
+  outcome_id: MISSION-010
+

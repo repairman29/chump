@@ -1,0 +1,12 @@
+- id: INFRA-2003
+  domain: INFRA
+  title: "RESILIENT P0: event-registry strict-mode trunk-red — 6 violations block every PR after THE FLOOR Phase 1 flipped strict (#2587)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Add scanner-anchor comment in src/version.rs near the binary_refresh_started emit, so the event-registry coverage scanner recognizes the emit (matches existing pattern in scripts/coord/transient-retrigger.sh:scanner-anchor: kind:transient_auto_retriggered)."
+  closed_date: '2026-05-29'
+  closed_pr: 2593
+  outcome_id: MISSION-010
+

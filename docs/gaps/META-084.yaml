@@ -1,0 +1,13 @@
+- id: META-084
+  domain: META
+  title: "META: Implement observability smoke test command (META-073 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Command 'coordination:smoke-test' verifies event emission, routing, lesson exchange"
+    - Test generates mock agents and validates end-to-end flow
+    - Returns 0 on success, logs detailed failure otherwise
+  depends_on: [META-076, META-078, META-080]
+  outcome_id: MISSION-010
+

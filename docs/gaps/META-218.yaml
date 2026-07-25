@@ -1,0 +1,13 @@
+- id: META-218
+  domain: META
+  title: "META: Assemble full admin-merge policy logic in daemon (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `auto-admin-merge-daemon.sh` script integrates all policy checks (fix-class, consensus, no conflict, no T-trigger, no HOLD) into a single decision-making flow.
+    - The daemon only attempts an admin-merge if ALL policy conditions defined in `AUTO_ADMIN_MERGE_POLICY.md` are met.
+    - The daemon logs the outcome of each policy check for every PR evaluated.
+  depends_on: [META-213, META-214, META-215, META-216, META-217]
+  outcome_id: MISSION-010
+

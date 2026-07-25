@@ -1,0 +1,12 @@
+- id: META-212
+  domain: META
+  title: "META: Create `scripts/coord/auto-admin-merge-daemon.sh` skeleton (META-209 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - File `scripts/coord/auto-admin-merge-daemon.sh` is created and is executable.
+    - The script contains a basic infinite loop that fetches open PRs (e.g., using `gh pr list --state open`).
+    - "The script includes basic logging for its operational status (e.g., 'Daemon started', 'Checking PR #X')."
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: INFRA-1441
+  domain: INFRA
+  title: "RESILIENT: pre-push INFRA-719 guard recognizes CHUMP_BYPASS_BOT_MERGE=1 + Bot-Merge-Bypass commit trailer"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15/16 every push session: pre-push hook scripts/git-hooks/pre-push REFUSES direct push of gap branches (INFRA-719 gate), forcing operator to use bot-merge.sh. But bot-merge.sh stalls (INFRA-1399), so I had to set CHUMP_BYPASS_BOT_MERGE=1 on EVERY push, with no audit trail beyond the env var presence.\",\"scripts/git-hooks/pre-push: when CHUMP_BYPASS_BOT_MERGE=1, also require a `Bot-Merge-Bypass: <reason>` trailer in the HEAD commit body (same pattern as Rust-First-Bypass, Obs-Bypass-Reason). If trailer missing, fail with hint.\",\"If trailer present, emit kind=bot_merge_bypassed with {pr, reason, author} so audit trail captures every bypass\",\"Register kind=bot_merge_bypassed in EVENT_REGISTRY.yaml\",\"Update docs/process/AGENTS.md + CLAUDE.md to list the trailer convention next to Rust-First-Bypass/Obs-Bypass-Reason\",\"Smoke test scripts/ci/test-pre-push-bot-merge-bypass.sh: push with CHUMP_BYPASS_BOT_MERGE=1 + no trailer → fail; with trailer → pass + event emitted\",\"Out of scope: removing the INFRA-719 guard entirely (bot-merge.sh is still preferred path)\"]"
+  closed_pr: 2182
+  outcome_id: MISSION-010
+

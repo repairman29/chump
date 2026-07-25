@@ -1,0 +1,14 @@
+- id: INFRA-1530
+  domain: INFRA
+  title: "RESILIENT: harden write_coord_shim test helper against Linux ETXTBSY race (PR #2173 coverage flake)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Surfaced 2026-05-16T18:00 in PR #2173 coverage job: atomic_claim::tests::nats_dual_write_transient_error_treated_as_skipped panicked with Text file busy (os error 26). Cause: Linux ETXTBSY when exec()ing a file whose inode is still under writeback. Reproduced once across 50 PRs on the same CI pass — heavy-load flake."
+    - "Fix src/atomic_claim.rs::tests::write_coord_shim: (1) OpenOptions write+truncate+write_all+flush+sync_all, (2) drop FD before chmod, (3) open + sync_all parent dir for dirent durability. Replaces single fs::write call."
+    - "Already validated locally: 41/41 atomic_claim tests pass including the previously-flaking one."
+    - "#2173 merged 2026-05-16T18:24 with the flake unfixed (coverage is not a required check), so no PR-blocking urgency, but the flake will recur. Picker for this gap: cherry-pick from the deleted chump/infra-1434-claim re-push (commit f85c10f5 if recoverable) or rewrite from this AC."
+    - "Out of scope: changing how nats_dual_write_with_bin spawns (production path is fine, only the test helper is flaky)"
+  outcome_id: MISSION-010
+

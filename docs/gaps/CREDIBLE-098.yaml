@@ -1,0 +1,15 @@
+- id: CREDIBLE-098
+  domain: CREDIBLE
+  title: "CREDIBLE: make chump preflight CI-FAITHFUL — run the full local-runnable ci.yml gate set (test-preflight-ci-parity.sh + per-PR new test-*.sh with binary resolved via cargo metadata + the guard steps), so 'preflight passed' == 'CI will pass'. Today it runs a SUBSET (fmt/clippy/check + some tests), which is the root of the recurring local-green/CI-red round-trips (#3058 binary-discovery, #3066 parity). Agents/Sonnets run preflight → catch these before push"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-20'
+  closed_pr: 3137
+  outcome_id: CREDIBLE-000
+

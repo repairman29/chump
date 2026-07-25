@@ -1,0 +1,10 @@
+- id: EFFECTIVE-156
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire install-auto-deploy-launchd.sh into role curator-opus-infra-watcher"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. Edit the role-doc for curator-opus-infra-watcher to reference install-auto-deploy-launchd.sh (shipped in commit 3e871d9f0b2c) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'install-auto-deploy-launchd.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  outcome_id: EFFECTIVE-000
+

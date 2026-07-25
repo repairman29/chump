@@ -1,0 +1,18 @@
+- id: INFRA-2237
+  domain: INFRA
+  title: "RESILIENT P0: chump rotate-sccache-r2-token — operator-button to rotate Cloudflare R2 token + update GH secrets atomically (replaces 5-step manual dance)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/ops/rotate-sccache-r2-token.sh: rotates the chump-sccache-ci R2 token via Cloudflare API + updates both R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY GH secrets atomically"
+    - Requires CHUMP_CF_API_TOKEN env var (CF API token with Workers R2 Storage Edit scope); refuses with operator message if unset
+    - Requires CHUMP_R2_ACCOUNT_ID env var (32-char hex); falls back to gh secret get R2_ACCOUNT_ID if unset
+  notes: |
+    [2026-05-30T03:20:32Z] Filed by curator-opus-shepherd-2026-05-29 to unwedge the 40-PR queue. Today's root cause: R2_ACCESS_KEY_ID secret was wrong (cycle 7), operator updated it 2026-05-29T12:25Z but the matching R2_SECRET_ACCESS_KEY in GH wasn't touched since 2026-05-28T02:46Z — pair mismatch. This script eliminates the half-update class of error by rotating BOTH halves of the pair atomically.
+    [2026-05-30T10:06:54Z] [2026-05-30T10:00Z] Promoted P1→P0 after the exact incident this gap was filed to prevent occurred (RESILIENT-041 sccache trunk-RED 2026-05-29T23:09Z→2026-05-30T09:55Z). The 5-step manual dance ran during a 10h substrate outage; the operator paste-the-cred dance happened in chat. Each minute this gap stays open is operator-action-debt waiting to fire again. Additional ACs needed: hourly cron validation of R2 cred (curl HEAD against bucket; if 401/403 → emit kind=secret_health_check_failed + auto-page) — this is the chump-self-detects companion to the rotation script.
+    [2026-05-30T10:10:27Z] [2026-05-30T10:13Z] REVERTING incorrect P0-promotion + expanded ACs from 10:00Z. The core script SHIPPED in PR #2793 merged 2026-05-30T03:48Z (scripts/ops/rotate-sccache-r2-token.sh + scripts/ci/test-rotate-sccache-r2-token.sh + docs/process/SCCACHE_R2_CACHE.md). Original 3 ACs are likely already satisfied; gap may be close-eligible. The real defense-in-depth gap (validate output of rotation, harden r2detect) is being addressed by PR #2858 in flight. Curator-opus mistake: didn't check git log / gh pr list / gap status before proposing 'this needs to be built.' FAFO-validation discipline gap filed as RESILIENT-048.
+    [2026-06-04T00:26:24Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2793
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: META-089
+  domain: META
+  title: "MISSION P0: docs/process/OPERATOR_PLAYBOOK.md — productize the wizard→curators→sub-agents hierarchy so any operator can run a Chump fleet (5-track program + Oracle role + JIT + sub-agent dispatch hygiene + retirement criteria)"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - docs/process/OPERATOR_PLAYBOOK.md with 8 sections covering hierarchy 5-tracks Oracle JIT dispatch hygiene auto-rescue retirement
+    - Onboarding checklist for 30-min new operator runs scripts/setup/install-operator-fleet.sh and has wizard+curators+daemons running
+    - Reference architecture mermaid diagram showing operator → wizard → curators → sub-agents → PRs message flow
+    - Concrete copy-pasteable examples for each role
+    - Anti-patterns section enumerating today's lessons (wizard scheduler antipattern curator burning Opus context on bash etc)
+    - Smoke test scripts/ci/test-operator-playbook-structure.sh asserts 8 sections mermaid parses no dangling gap-id references retirement criteria count is 5
+    - Linked from CLAUDE.md as new-operator entry point
+    - Done definition Marcus can read it and run a fleet without my help
+  closed_date: '2026-05-24'
+  closed_pr: 2474
+  outcome_id: MISSION-010
+

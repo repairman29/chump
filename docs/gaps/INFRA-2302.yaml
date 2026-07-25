@@ -1,0 +1,32 @@
+- id: INFRA-2302
+  domain: INFRA
+  title: "fix(INFRA-2130 installer): plist template has invalid XML comments + path substitution uses fallback not found binary"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Two bugs in chump-integrator-daemon installer (shipped in PR #2868) discovered 2026-05-30 during operator-on-behalf install:
+    
+    BUG 1: Invalid XML comments in .chump/launchd/com.chump.integrator-daemon.plist
+      - XML comments cannot contain '--' anywhere except the closing delimiter
+      - The plist comments include '--uninstall', '--live', '--status', '--check' (from the docstring listing flag invocations)
+      - python3 plistlib.load() fails with: xml.parsers.expat.ExpatError: not well-formed (invalid token): line 14, column 58
+      - Effect: install script bombs at plist parse step
+      - Workaround used: stripped all comments from installed plist via sed
+    
+    BUG 2: scripts/setup/install-integrator-daemon.sh substitutes __CARGO_BIN__/chump-integrator with $CARGO_BIN/chump-integrator (defaulting to ~/.cargo/bin/) instead of with the binary path it just found via _find_integrator()
+      - Effect: installed plist points to ~/.cargo/bin/chump-integrator which doesn't exist
+      - Daemon fails with: /bin/bash: /Users/jeffadkins/.cargo/bin/chump-integrator: No such file or directory
+      - Workaround used: sed-fixed the installed plist directly
+    
+    Both bugs were masked locally because the Sonnet's tests focused on shell logic, not actual launchctl bootstrap + first-run.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-04T00:26:08Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2869
+  outcome_id: MISSION-010
+

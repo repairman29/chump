@@ -1,0 +1,58 @@
+- id: INFRA-1583
+  domain: INFRA
+  title: "EFFECTIVE: chump-mcp-code MCP server — structured code intelligence for the fleet; eliminates the INFRA-1575 misdiagnosis class (agents claiming features missing when they shipped); 100x token savings on existence queries"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    PROBLEM (verified in-session 2026-05-16): agents in this codebase burn 5-8K input tokens reading a 1500-LOC file just to answer "does symbol X exist". Even then, existence claims hallucinate — INFRA-1575 was filed claiming the A2A 10-gap implementation chain "missing from state.db", when in fact all 10 shipped (PRs #1900, #1960, #1967, #1969, #1972, #1991, #1992, #1994, #1997, #1998, #2004) and got reaped from the active registry after closure. The agent had enough data to answer correctly (broadcast.sh exists, /api/broadcast registered, git log shows the commits) but stopped at one shallow signal and inferred absence. Same class as CLAUDE.md INFRA-238 cautionary tale. At fleet scale, this pattern produces hours of waste per week: misdiagnosis gaps, wrong-AC filings (6 patched in this session via CHUMP_ALLOW_GAP_REWRITE), and operators losing trust in agent claims.
+    
+    ROOT CAUSE: no structured query layer over the code surface. Agents reach for grep + filename inference because nothing better is one MCP-call away. The fleet has 7 in-tree MCP servers (gaps, coord, memory, github, eval, tavily, adb) but none of them answer "does this function exist, who calls it, what handles this route, has this gap-ID ever shipped".
+    
+    SOLUTION: new crate crates/mcp-servers/chump-mcp-code exposing ~10 targeted MCP tools backed by tree-sitter + .chump/state.db storage, with optional embeddings + rust-analyzer wrapping in later phases. Pairs with INFRA-1582 (chump gap show reaped-distinction — same retrieval theme).
+    
+    ROUGH DECOMPOSITION FOR CHUMP GAP DECOMPOSE AT CLAIM TIME (do not pre-slice as sub-gaps per CLAUDE.md two-phase decompose):
+    
+      Phase 1 — Minimum viable (would have prevented INFRA-1575):
+        (a) Scaffold crates/mcp-servers/chump-mcp-code following the chump-mcp-gaps pattern; JSON-RPC over stdio
+        (b) tree-sitter Rust + bash + python parsers wired with sqlite storage in .chump/code_index.db
+        (c) Tool: code.find_symbol(name) returns array of {file, line, kind: fn|struct|trait|enum|const|var, lang}
+        (d) Tool: code.callers_of(symbol) returns array of {file, line, caller_fn}
+        (e) Tool: code.gap_history(gap_id) returns {status: open|done|reaped|never_existed, shipped_pr?, commits?, files_touched?, closed_date?, reaped_date?} — subsumes the INFRA-1582 fix
+    
+      Phase 2 — Truth grounding (would have prevented the dead-route audit work + EVENT_REGISTRY truth bug):
+        (f) Tool: code.route_handler(path) — backed by parsing src/web_server.rs handle_* registrations + scanning web/v2/ + desktop/src-tauri/ + tests/ for callers; returns {handler_fn, file:line, frontend_callers, internal_callers, test_only: bool}
+        (g) Tool: code.event_kind(kind) — backed by grep for "kind\":\"X\"" patterns; returns {emitters: [{file, line}], consumers: [{file, line}], registry_status: active|gated|undeclared, emitter_paths_match_registry: bool}
+        (h) Tool: code.cli_handler(subcommand) returns {file, line, parent_dispatch_file_line} for chump CLI verbs
+    
+      Phase 3 — Advanced lookups:
+        (i) Tool: code.trait_impls(trait_name) returns array of {impl_type, file, line, crate}
+        (j) Tool: code.symbol_history(symbol) returns timeline of {commit_sha, date, action: added|removed|modified, blame_author}
+        (k) Tool: code.dead_code_scan() returns array of {file, line, symbol, reason: no_callers|no_emitters|registered_unused_route|...}
+    
+      Phase 4 — Semantic + LSP (heaviest, biggest payoff for natural-language queries):
+        (l) Embeddings index (sqlite-vss or lancedb) over chunked files; tool: code.semantic_search(query) returns top-K {file, line_range, snippet, score}
+        (m) rust-analyzer LSP wrapper for trait/type queries that tree-sitter cannot resolve
+    
+    NON-CODE COMPANION: prompt-rule integration in AGENTS.md / CLAUDE.md Mission Driver section requiring runtime verification before filing "missing" claims. The tool makes the rule cheap to follow; the rule prevents new misdiagnoses. Both are required.
+    
+    DEPENDENCIES: INFRA-1582 (chump gap show reaped distinction) is subsumed by Phase 1 tool (e) — once code.gap_history ships, the chump gap show CLI delegates to it.
+  acceptance_criteria:
+    - New crate crates/mcp-servers/chump-mcp-code with Cargo.toml registered as workspace member; binary spawns under crates/chump-mcp-lifecycle SessionMcpPool (depends on INFRA-1553 wire-up or independent stdio invocation)
+    - tree-sitter parsers for Rust + bash + python wired with incremental indexing on git post-commit hook; index stored in .chump/code_index.db separate from state.db
+    - "Phase 1 tools shipped: code.find_symbol, code.callers_of, code.gap_history — each with end-to-end smoke test in scripts/ci/test-mcp-code-phase1.sh that spawns the server, calls the tool via JSON-RPC, asserts response shape"
+    - "code.gap_history specifically resolves the INFRA-1575 misdiagnosis pattern: calling code.gap_history with INFRA-1296 returns status=done shipped_pr=1967 closed_date=YYYY-MM-DD reaped_date=YYYY-MM-DD (subsumes INFRA-1582; close that gap when this AC lands)"
+    - "Phase 2 tools shipped: code.route_handler, code.event_kind, code.cli_handler — each with smoke test demonstrating the dead-route audit (INFRA-1569) and EVENT_REGISTRY truth audit (INFRA-1550) can be performed via these tools instead of bespoke grep"
+    - "Phase 3 tools shipped: code.trait_impls, code.symbol_history, code.dead_code_scan — each with smoke test"
+    - "Phase 4 tools shipped (optional sub-gap if effort exceeds budget): code.semantic_search via embeddings + rust-analyzer LSP wrapper for type queries beyond tree-sitter resolution"
+    - Bootstrap manifest entry in scripts/setup/bootstrap-manifest.yaml installs the indexer as a git post-commit hook; chump-fleet-bootstrap.sh --check verifies presence
+    - EVENT_REGISTRY.yaml entries for new ambient events (code_index_built, code_index_query, code_index_stale) with emitter_paths set
+    - "AGENTS.md Filing meta-patterns section gains a Runtime verification before missing-claim subsection requiring agents to call code.find_symbol + code.gap_history + route/event lookups before filing any \"feature X does not exist\" gap; cross-references INFRA-238 and INFRA-1575 as cautionary precedents"
+    - docs/process/CODE_INTELLIGENCE.md (new) documents the tool surface, the rule, and a worked example showing the A2A misdiagnosis prevented by code.gap_history
+    - Post-merge regression test scripts/ci/test-misdiagnosis-prevention.sh replays the A2A scenario (claim INFRA-1296 missing, run code.gap_history, assert the tool returns status=done shipped_pr) and proves the new tooling closes the failure mode
+    - "Token-cost regression test: scripts/ci/test-mcp-code-token-efficiency.sh measures input-token cost for the canonical \"does symbol X exist\" query path (file read vs MCP call) and asserts MCP path is <500 tokens vs >5000 for file read; documents the 10x+ improvement in CHANGELOG.md"
+  depends_on: [INFRA-1582]
+  notes: |
+    wave: 4+ (chump-mcp-code; depends on Wave 0/0b/1/2 stability)
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1383
+  domain: INFRA
+  title: "RESILIENT: release.yml publish-homebrew-formula step needs HOMEBREW_TAP_TOKEN secret — silently failed for v0.1.2 release with 'Input required and not supplied: token', leaving brew tap stuck at v0.1.1 even after a successful release"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Repro: tag push -> .github/workflows/release.yml -> publish-homebrew-formula job fails at the actions/checkout step with 'Input required and not supplied: token' (run 25945898025/job for v0.1.2). The step uses 'token: ${{ secrets.HOMEBREW_TAP_TOKEN }}' which is empty in repo secrets."
+    - "Operator action: create a PAT (classic, scope: 'public_repo' for repairman29/homebrew-chump) and add as repo secret HOMEBREW_TAP_TOKEN at https://github.com/repairman29/chump/settings/secrets/actions. Document in docs/process/RELEASE.md so it's reproducible if the secret rotates."
+    - "Add a workflow-level guard: pre-flight step in release.yml that fails fast with a clear message ('HOMEBREW_TAP_TOKEN missing — release will publish binaries but brew tap will not auto-update; see INFRA-1383') when the secret is empty, BEFORE the artifact builds. Today's failure burned 35 min of runner time on builds before the publish step exposed the missing secret."
+    - "Verify on next release: tag push -> publish-homebrew-formula succeeds -> commit appears on github.com/repairman29/homebrew-chump within 5 min of tag push."
+    - "Manual workaround used today (2026-05-15) for v0.1.2: downloaded chump.rb from the release assets, copied into the homebrew-chump tap, committed + pushed manually as Jeff. Document this as the standard fallback procedure until the secret is in place."
+    - "Ambient event: emit kind=fleet_release_publish_failed with the failed_secret name on this failure mode so the dashboard catches it next time."
+  closed_date: '2026-05-16'
+  closed_pr: 2130
+  outcome_id: MISSION-010
+

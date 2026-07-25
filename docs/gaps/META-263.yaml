@@ -1,0 +1,14 @@
+- id: META-263
+  domain: META
+  title: "META: Update GitHub branch protection rules for CI required checks (META-258 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - GitHub branch protection rules for the main branch are updated to reflect any changes in the context names of required CI checks (specifically for `clippy`, `cargo-test`, `fast-checks`, `audit`).
+    - All previously required checks remain required under their new context names.
+    - Verify that pull requests cannot be merged without the successful completion of all required checks.
+  depends_on: [META-261]
+  closed_date: '2026-05-31'
+  outcome_id: MISSION-010
+

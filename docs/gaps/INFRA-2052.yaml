@@ -1,0 +1,16 @@
+- id: INFRA-2052
+  domain: INFRA
+  title: "CREDIBLE P2: operator_recovery_requested event schema mismatch — recovery-queue-emit.sh emits prs=CSV+cluster_gap_id+authorizing_session whereas chump ambient emit naturally emits pr=N+source+session; recovery-queue-service.sh may consume only the INFRA-1993 shape, dropping direct ambient emits; document canonical schema + add schema-aware consumer"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Document the canonical schema for kind=operator_recovery_requested events in a new section of docs/observability/EVENT_REGISTRY.yaml (or wherever per-kind schemas are formally specified). REQUIRED fields ts kind authorizing_session reason. OPTIONAL fields prs (CSV string) or pr (single int) or both. OPTIONAL cluster_gap_id. The schema must explicitly tolerate BOTH (a) one-event-per-PR with pr=N (chump ambient emit shape) and (b) one-event-per-cluster with prs=CSV (INFRA-1993 recovery-queue-emit.sh shape)
+    - "recovery-queue-service.sh consumer is schema-aware: when an event has prs=CSV it processes each PR in the CSV; when an event has pr=N (single) it processes just that PR; when both present prs wins. Today (2026-05-27) the daemon may consume only the INFRA-1993 prs+cluster_gap_id+authorizing_session shape and silently drop events with the chump-ambient-emit pr+source+session shape — verify this assumption via grep + fix"
+    - "Field-name reconciliation: today's two shapes are inconsistent. Specifically (1) recovery-queue-emit.sh emits authorizing_session whereas chump ambient emit emits session; (2) recovery-queue-emit.sh emits source=recovery_queue_emit literal whereas chump ambient emit emits source from --source flag (e.g. curator-opus-shepherd-2026-05-23). The daemon should accept BOTH forms; the canonical schema doc must list both as valid"
+    - "Real-world trigger today 2026-05-27 14:03Z: shepherd inline-emitted operator_recovery_requested via chump ambient emit operator_recovery_requested --source curator-opus-shepherd-2026-05-23 --field pr=2633 --field reason=... ; PR #2633 did land at 14:30Z but it may have been wizard's manual admin-merge after seeing shepherd's 14:10Z A2A DONE, not auto-recovery-queue-service consumption. Investigation: was the chump-ambient-emit-shape event consumed by the daemon at all, or did it sit unconsumed?"
+    - "Smoke test scripts/ci/test-operator-recovery-schema.sh: emit one event in each shape (chump ambient emit form + recovery-queue-emit.sh form); start a recovery-queue-service.sh in mock-mode (no actual admin-merge); assert BOTH events get processed (i.e. each one results in the mock executing-cycle log entry). Currently expected to fail until reconciliation lands"
+    - Pairs with INFRA-1993 (the emit producer) and recovery-queue-service.sh (the consumer); this gap is the contract / schema reconciliation between them
+    - "Documentation: docs/process/RECOVERY_QUEUE_PROTOCOL.md if it exists OR add to docs/process/THE_FLOOR_PRIMITIVES.md describing the dual-shape acceptance rule; cross-link from chump ambient emit --help"
+  outcome_id: MISSION-010
+

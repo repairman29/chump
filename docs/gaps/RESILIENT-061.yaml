@@ -1,0 +1,19 @@
+- id: RESILIENT-061
+  domain: RESILIENT
+  title: "RESILIENT: deliberator tick never emits consensus_result — bad-math crash blocks ALL fleet consensus"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Verified 2026-06-03 (operator-commissioned 'verify then deploy' of the A2A/consensus layer). consensus_result count in ambient.jsonl = 0, EVER. Running 'CHUMP_FLEET_RECV_SIDE_V0=1 bash scripts/coord/deliberator-loop.sh tick' prints '(eval): bad math expression: operator expected at 0' in the '## Pending proposals' loop and emits NO consensus_result. The tally CLI ('chump consensus-tally') works read-only and produces CORRECT verdicts (e.g. corr_id=audit-queue-wedge-20260603 verdict=NO_QUORUM), so the bug is NOT in the tally math — it is in the deliberator daemon's per-proposal EPOCH arithmetic (lines ~294-333: window_cutoff / line_epoch=_iso_to_epoch(ts) / deadline_epoch fed into bash (( )) with no numeric guard; one malformed/edge-case proposal ts poisons the batch). NET IMPACT: the fleet cannot reach automated consensus on ANY proposal — including the live ci-jail-out-without-bypass-2026-06-03 and audit-queue-wedge proposals it is currently using to decide how to escape CI jail. COMPOUNDING: 'chump vote' is gated off when CHUMP_FLEET_RECV_SIDE_V0 is unset (verified: 'feature flag off, vote not emitted'), so proposals also starve for quorum (only 1 of 12 inbox proposals has any votes). Secondary: the tick is O(all inbox lines x jq-fork-per-field) and timed out at 30s under trace — slow enough to miss its own cadence.
+  acceptance_criteria:
+    - CHUMP_FLEET_RECV_SIDE_V0=1 bash scripts/coord/deliberator-loop.sh tick runs to completion with no 'bad math expression' error
+    - given a synthetic proposal whose votes meet quorum, the tick emits kind=consensus_result to ambient.jsonl (consensus_result count goes 0 -> >=1, verified end-to-end)
+    - a malformed proposal ts (empty / fractional-seconds / non-ISO) is skipped gracefully via a numeric guard, NOT crashing the batch — one bad input must not poison the whole tick
+    - new CI test scripts/ci/test-deliberator-tick-emits.sh feeds a quorum-meeting fixture and asserts consensus_result is emitted, and feeds a malformed-ts proposal and asserts no crash + no emission
+    - the tick does not re-fork jq per field per line in a way that exceeds its schedule interval (bound the per-tick cost or document the window)
+  notes: |
+    [2026-06-04T00:06:13Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2992
+  outcome_id: RESILIENT-000
+

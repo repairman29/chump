@@ -1,0 +1,11 @@
+- id: INFRA-3369
+  domain: INFRA
+  title: "META-070: preflight mirror for gap-registry & claim-lifecycle audit-job scripts (10 scripts, cluster 1/5)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster gap-registry-claim-lifecycle).
+  acceptance_criteria:
+    - "1. src/preflight.rs gains a gap_registry_claim_lifecycle gate covering the 10 unmirrored scripts: test-claim-fuzzy-match.sh, test-gap-divergence-guard.sh, test-gap-doctor-safe-sweep.sh, test-gap-id-cross-session.sh, test-gap-id-lease-uniqueness.sh, test-gap-reserve-concurrency.sh, test-gap-reserve-padding.sh, test-gap-status-flip.sh, test-infra-1025-atomic-claim.sh, test-pick-and-claim-lockdir.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_GAP_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-gap-lifecycle.sh smoke asserts the gate runs all 10 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+

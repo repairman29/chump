@@ -1,0 +1,16 @@
+- id: INFRA-2424
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete CHUMP_IGNORE_WASTE_PAUSE — slo_breach blocks claim only, not reserve"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - slo_breach pause gates chump claim only, not chump gap reserve (gaps inert until claimed — filing never blocks)
+    - Remove CHUMP_IGNORE_WASTE_PAUSE env var; the pause is enforced where it matters (claim) and not where it does not (reserve)
+    - "Audit: which other commands consult slo_breach state? Document each in scripts/coord/lib/chump-slo.sh"
+    - "Smoke test: with slo_breach=true, chump gap reserve succeeds; chump claim refuses with clear message"
+  notes: |
+    [2026-06-04T00:06:15Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2964
+  outcome_id: MISSION-010
+

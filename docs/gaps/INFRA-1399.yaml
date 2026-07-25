@@ -1,0 +1,11 @@
+- id: INFRA-1399
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh stall-and-fallthrough — detect own 5-min silence on test gate, fall through to direct push with audit trailer"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15 + 2026-05-16: bot-merge.sh stalls indefinitely on the pre-push cargo-test gate when the test suite times out under sibling contention. Killed 3 bot-merge processes this session, each running 5-15 min before manual intervention.\",\"scripts/coord/bot-merge.sh: add per-phase timeout watchdog. If the current phase (test-gate, push, arm-auto-merge) takes > CHUMP_BOT_MERGE_PHASE_TIMEOUT_S (default 300s) without progress markers, emit kind=bot_merge_stall_detected to ambient and exit 1 with hint to use CHUMP_BYPASS_BOT_MERGE=1.\",\"Alternatively: bot-merge.sh skips the test gate (delegates to CI on the PR side) and is purely push+arm. Pre-push test gate becomes opt-in. Decision documented in docs/process/BOT_MERGE_CONTRACT.md.\",\"Register kind=bot_merge_stall_detected in docs/observability/EVENT_REGISTRY.yaml\",\"Smoke test scripts/ci/test-bot-merge-stall-fallthrough.sh: synthetic 6-min sleep in test-gate-stub, assert bot-merge.sh exits with hint within ~5 min instead of hanging.\",\"Out of scope: re-architecting the test gate itself (separate gap)\"]"
+  closed_pr: 2169
+  outcome_id: MISSION-010
+

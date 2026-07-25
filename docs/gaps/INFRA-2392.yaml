@@ -1,0 +1,13 @@
+- id: INFRA-2392
+  domain: INFRA
+  title: "EFFECTIVE: META-072 chump-demo crate shelfware — wire as subcommand OR delete"
+  status: closed
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

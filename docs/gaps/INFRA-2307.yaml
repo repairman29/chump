@@ -1,0 +1,14 @@
+- id: INFRA-2307
+  domain: INFRA
+  title: integrator-daemon should skip design/docs-only PRs (don't batch through CI when no Rust code touched)
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-30'
+  outcome_id: MISSION-010
+

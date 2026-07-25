@@ -1,0 +1,13 @@
+- id: INFRA-2335
+  domain: INFRA
+  title: "fix-trunk: dispatcher looks for kind=trunk_red but sentinel emits trunk_red_persistent — contract mismatch"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. dispatcher's python kind-filter matches trunk_red_persistent and trunk_state_change(state=TRUNK_RED)\n2. Manual tick run while INFRA-2333 is open emits fix_trunk_dispatched\n3. Sonnet process visible in ps -ef\n4. Admin-merge as trunk-red rescue"
+  notes: |
+    [2026-06-04T00:16:29Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2918
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-2207
+  domain: INFRA
+  title: "EFFECTIVE P1: cascade-rebase-trigger-paths.txt missing bootstrap-manifest.yaml + event-registry-reserved.txt — every keystone fix today required manual cascade-rebase. Should be a JIT-automatic"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. Add scripts/setup/bootstrap-manifest.yaml to scripts/coord/cascade-rebase-trigger-paths.txt — proven necessary by #2752 keystone today (10 PRs stuck on pr-hygiene fail until manual cascade-rebase)"
+    - 2. Add scripts/ci/event-registry-reserved.txt — every PR runs event-registry-coverage check against this file; main update should cascade
+    - 3. Add scripts/git-hooks/pre-commit — affects every PR's pre-commit hook run
+    - 4. Add scripts/setup/install-hooks.sh — same reason
+    - "5. Forensic: investigate why ci.yml cascade did NOT fire when #2738 (INFRA-2200 fix) landed on main at 22:41Z — ci.yml IS in trigger list. Likely either queue-driver wasn't running OR per-SHA debounce lock from earlier worker. File follow-up if structural"
+    - "6. Test: scripts/ci/test-cascade-trigger-paths.sh — assert all 4 newly-added paths present in trigger file"
+  notes: |
+    [2026-06-04T00:26:18Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2754
+  outcome_id: MISSION-010
+

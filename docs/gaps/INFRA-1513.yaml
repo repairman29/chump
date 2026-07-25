@@ -1,0 +1,15 @@
+- id: INFRA-1513
+  domain: INFRA
+  title: "CREDIBLE: detect drift in canonical .gitignore IP-protection rules"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - scripts/ci/test-gitignore-ip-drift.sh (or equivalent CI check) reads a canonical set of IP-protection rules from docs/infra/GITIGNORE_IP_RULES.yaml (to be created) and asserts each rule is present in .gitignore
+    - "Canonical rules cover the known IP categories: proprietary/ directory exclusion, *.sagemaker, *.colab, any local-inference model weights (*.gguf, *.safetensors), operator-private config overrides"
+    - If any rule is missing from .gitignore, the check exits non-zero and prints which rule is absent and the expected .gitignore pattern
+    - Check added to .github/workflows/ci.yml in the audit or fast-checks shard; PR that removes a rule from .gitignore without also removing it from GITIGNORE_IP_RULES.yaml fails CI
+    - "Escape hatch: a rule in GITIGNORE_IP_RULES.yaml can be marked optional: true; optional rules that are absent from .gitignore produce WARN, not FAIL"
+    - Done = check green on main; docs/infra/GITIGNORE_IP_RULES.yaml committed with the initial rule set
+  outcome_id: MISSION-010
+

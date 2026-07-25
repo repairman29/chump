@@ -1,0 +1,16 @@
+- id: INFRA-2476
+  domain: INFRA
+  title: "EFFECTIVE P1: FLEET-034 Phase 2 — wire NATS push work-routing end-to-end (run chump-coord assign as a daemon + un-stub the chump-worker consumer)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - chump-coord assign runs as a launchd daemon (com.chump.coord-assign) publishing WorkEnvelopes to chump.work.> from open state.db gaps
+    - chump-worker.rs replaces the Phase-1 stub (~line 165) with a real jetstream_consumer subscribe_for_role consume loop that claims via the existing NATS-KV try_claim_gap and falls back to PULL only on connect failure (degrade-clean per FLEET-034)
+    - "end-to-end proof: file a gap -> assign publishes an envelope -> a worker consumes+claims it via the mesh (not the pull scan); chump-coord watch shows work_envelope_published + work_claimed"
+    - "offline fallback preserved: CHUMP_NATS_URL unset or broker down -> both sides cleanly fall to pull and exit 0"
+  notes: |
+    [2026-06-03T23:58:34Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 2979
+  outcome_id: MISSION-010
+

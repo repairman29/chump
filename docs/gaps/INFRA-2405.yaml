@@ -1,0 +1,18 @@
+- id: INFRA-2405
+  domain: INFRA
+  title: "RESILIENT P0: chump contract-scan — detect cross-PR state-file/IPC schema mismatch (anti-Bug-1)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - New Rust subcommand `chump contract-scan [--in-flight] [--against <pr>]` in src/commands/contract_scan.rs
+    - "Detects 3 schema-delta classes: (a) JSON file writes under .chump/*.json with python heredoc json.dumps payloads, (b) struct definitions in src/*.rs serialized to disk via serde, (c) ambient event kind payloads emitted in scripts/coord/*.sh"
+    - For each detected writer, scans for consumers via git grep across src/*.rs + scripts/*.sh + crates/*.rs
+    - "Output: list of (writer_path, key_set, reader_paths, missing_keys, extra_keys); exit 1 if any reader has missing-keys (the silent-inert pattern)"
+    - "Smoke test scripts/ci/test-contract-scan.sh: synthetic writer with {a, b}, synthetic reader expecting {a, c} → assert exit 1 with missing-key c reported; both align → exit 0"
+    - "Cite INFRA-2404 (today bug 1) in commit body: exactly this gate would have caught INFRA-2397/INFRA-2398 cross-PR contract mismatch before either merged"
+  notes: |
+    [2026-06-04T00:06:17Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2955
+  outcome_id: MISSION-010
+

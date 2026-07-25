@@ -1,0 +1,18 @@
+- id: META-114
+  domain: META
+  title: "RESILIENT: freshness discipline umbrella — eliminate the 7-layer staleness problem (git main / state.db / chump binary / launchd plists / YAML gaps / fleet-registry / docs) that bit shepherd 3+ times in 2026-05-27 session via stale-local-tree false-positives + AC overwrite + chump-vs-binary drift"
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "Umbrella for the 4 sub-gaps closing the staleness-class root cause: META-115 (per-session source-freshness preamble), INFRA-2053 (chump gap sync bidirectional), INFRA-2054 (chump --rebuild-if-stale binary self-update gate), DOC-059 (FRESHNESS_DISCIPLINE.md doctrine doc)"
+    - "Catalogues the 7 staleness layers shepherd identified 2026-05-27: (1) git main local checkout not pulled; (2) state.db AC-overwrite via chump gap reserve / set; (3) chump binary lagging behind main commits; (4) launchd plists installed but missing-StartInterval or not-yet-reloaded; (5) YAML gap files diverged from state.db; (6) active leases / fleet-registry stale across machines (NATS gap); (7) docs CLAUDE.md / playbook doctrine evolving mid-session without re-read"
+    - "Each layer maps to at least one sub-gap or existing fix: layer 1 -> META-115 + DOC-059; layer 2 -> INFRA-2053 + existing INFRA-2022 (gap-set AC-overwrite); layer 3 -> INFRA-2054; layer 4 -> existing META-110 cluster (chump cron health) + INFRA-1929; layer 5 -> INFRA-2053; layer 6 -> existing META-061 NATS-primary delivery + INFRA-1118-1123; layer 7 -> DOC-059 + existing CLAUDE.md mandatory-preflight section"
+    - "Done definition for umbrella close: (a) all 4 sub-gaps MERGED + verified by the per-session preamble running on at least 3 curator sessions for 24h without staleness-class incident; (b) shepherd's 'file missing' findings audit (today's session had 3 stale-tree false-positives) is verifiable-zero in the next equivalent session via verify-existence skill enforcement; (c) docs/process/FRESHNESS_DISCIPLINE.md cross-linked from CLAUDE.md mandatory preflight section; (d) ambient kind=freshness_preamble_passed appears at every curator session-start (signal that the discipline is running)"
+    - "Pillar mapping: RESILIENT (eliminates a recurring root-cause class — stale state causing false claims + wasted work + wrong-tree debugging like today's recovery-queue-emit.sh confusion) + EFFECTIVE (cycles saved per session by not chasing phantom-missing-files) + ZERO-WASTE (the verify-existence skill exists today but isn't used systematically; this umbrella forces the discipline)"
+    - "Non-goals for umbrella: full real-time NATS sync of leases / state.db / ambient (that's META-061 scope, much larger). Phase 1 here is the per-session-preamble + bidirectional gap-sync + binary-staleness-gate — the 80% that eliminates today's surface-level damage"
+  depends_on: [META-115, INFRA-2053, INFRA-2054, DOC-059]
+  closed_date: '2026-06-05'
+  closed_pr: 2663
+  outcome_id: MISSION-010
+

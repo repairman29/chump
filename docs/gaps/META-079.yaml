@@ -1,0 +1,13 @@
+- id: META-079
+  domain: META
+  title: "META: Define cross-agent lesson propagation message format (META-073 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Message includes agent ID, lesson type, context tags, success metric delta
+    - Format supports encrypted payload for sensitive strategies
+  closed_date: '2026-05-29'
+  closed_pr: 2457
+  outcome_id: MISSION-010
+

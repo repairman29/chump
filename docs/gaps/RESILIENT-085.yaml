@@ -1,0 +1,24 @@
+- id: RESILIENT-085
+  domain: RESILIENT
+  title: test-system-integration.sh pollutes caller worktree — set GIT_DIR/GIT_WORK_TREE before chump-commit invocation
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    test-system-integration.sh invokes chump-commit.sh expecting it to operate on the isolated $TMP/repo. But chump-commit.sh resolves REPO_ROOT via git rev-parse --show-toplevel from its CWD — and its CWD is the CALLER's worktree (chump-commit.sh's line 246: cd $REPO_ROOT). So 4 test commits (chore: initial commit, init, test(INFRA-849): integration test commit, feat($GAP_ID): integration-test ship marker) land directly in the calling worktree's git history.
+    
+    Then any subsequent `git push HEAD:branch` pushes them. This is what polluted #3007 / #3006 / #2975 — every push during my session re-polluted the branches with garbage commits. Authors: Integration Test <test@integration.local> and Test <test@local>.
+    
+    Verified: branches are STABLE across 30s after my last push, so no active daemon — it's purely push-driven.
+    
+    Fix: in test-system-integration.sh, before invoking chump-commit.sh, set GIT_DIR=$GIT_REPO/.git GIT_WORK_TREE=$GIT_REPO (and similarly for the ship-repo path that creates 'feat($GAP_ID): integration-test ship marker'). Verify that the operator's main worktree git log is unchanged after running the test.
+  acceptance_criteria:
+    - 1. Run `bash scripts/ci/test-system-integration.sh` from main worktree
+    - 2. Verify git log -3 unchanged before+after (no test commits land)
+    - 3. Test still PASSES its 6 assertions
+    - 4. Add regression test scripts/ci/test-integration-doesnt-pollute-caller.sh that asserts git log unchanged after running the integration test
+    - 5. emit kind=integration_test_isolation_verified once fix lands
+  closed_date: '2026-06-05'
+  closed_pr: 3027
+  outcome_id: RESILIENT-000
+

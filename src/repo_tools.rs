@@ -1647,8 +1647,8 @@ mod tests {
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
         // Both files contain "find_me" (find_me and also_find_me), with line 1.
-        assert!(out.contains("alpha.rs:1:"), "got: {out}");
-        assert!(out.contains("beta.rs:1:"), "got: {out}");
+        assert!(out.contains("alpha.rs:1:fn find_me() {}"), "got: {out}");
+        assert!(out.contains("beta.rs:1:fn also_find_me() {}"), "got: {out}");
         let _ = fs::remove_dir_all("target/chump_grep_basic_test");
     }
 
@@ -1699,11 +1699,19 @@ mod tests {
         // A literal parens pattern would be a regex error under -E; -F treats
         // it as a literal string and matches "find_me()".
         fs::write(dir.join("alpha.rs"), "fn find_me() {}\n").unwrap();
+        // Fixed: GrepRepoTool uses `git grep` which requires files to be tracked/committed
+        // or it won't find them if it defaults to repo-wide scan.
         std::process::Command::new("git")
-            .args(["commit", "-aqm", "x"])
+            .args(["add", "alpha.rs"])
             .current_dir(&dir)
             .output()
             .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "update alpha"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         let prev_home = std::env::var("CHUMP_HOME").ok();
         std::env::set_var("CHUMP_REPO", &dir);

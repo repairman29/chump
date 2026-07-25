@@ -1,0 +1,15 @@
+- id: DOC-061
+  domain: DOC
+  title: "EFFECTIVE: cross-link FRESHNESS_DISCIPLINE.md from CLAUDE.md mandatory-preflight + AGENTS.md harness-contract — DOC-059 deferred these from lease scope (only covered FRESHNESS_DISCIPLINE.md + CLAUDE_GOTCHAS.md); this is the follow-up"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Add a 'Freshness discipline' bullet to CLAUDE.md mandatory-preflight section linking to docs/process/FRESHNESS_DISCIPLINE.md and noting per-session preamble (META-115) + verify-existence skill as the canonical surfaces
+    - Add a sibling reference to AGENTS.md (harness-contract or similar section) cross-linking docs/process/FRESHNESS_DISCIPLINE.md for non-Claude-Code harnesses
+    - Single-commit docs PR; intent-atomic; no code touched; no event-registry changes
+    - "Verification: markdown-intra-doc-links CI gate passes (no broken refs); both edits ~2-5 lines each"
+    - "Source: deferred from DOC-059 #2657 because its lease only covered FRESHNESS_DISCIPLINE.md + CLAUDE_GOTCHAS.md; this is the explicit follow-up sub-gap noted in #2657's PR body"
+  closed_date: '2026-05-29'
+  closed_pr: 2660
+

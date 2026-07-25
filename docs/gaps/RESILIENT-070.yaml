@@ -1,0 +1,13 @@
+- id: RESILIENT-070
+  domain: RESILIENT
+  title: "RESILIENT P1: ghost-gap-reaper — launchd cadence + actually-closes fix (manual run produced zero output)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Per docs/design/FARMER_2026-06-03.md. The reaper that closes shipped-but-open gaps is broken: a manual run of scripts/coord/ghost-gap-reaper.sh produced zero output while 21 ghosts sat (operator closed them by hand). Make it (a) actually close every status=open gap that has a numeric closed_pr, and (b) run on a launchd cadence so ghost-gap count never accumulates to the L2-SLO-5 breach that triggers the pause-deadlock.
+  acceptance_criteria:
+    - ghost-gap-reaper closes every status=open gap with a numeric closed_pr (verified on a synthetic fixture)
+    - runs on a launchd StartInterval so ghost-gap count stays under the SLO threshold
+  outcome_id: RESILIENT-000
+

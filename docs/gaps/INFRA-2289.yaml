@@ -1,0 +1,21 @@
+- id: INFRA-2289
+  domain: INFRA
+  title: "RESILIENT: auto-merge ARM-drop watcher daemon — re-arm PRs whose autoMergeRequest dropped due to conflict-rebase race (today: PR #2840 silently DIRTY-unarmed for hours after rebase)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New scripts/coord/auto-merge-arm-watcher.sh — polls every CHUMP_AM_WATCHER_INTERVAL_S (default 600s = 10 min) for OPEN PRs in repairman29/chump with autoMergeRequest=null AND head_sha matching a successful auto-rebase event in last 30 min
+    - "For each matching PR: emit kind=auto_merge_arm_dropped + re-arm via gh pr merge <N> --auto --squash; emit kind=auto_merge_arm_restored on success"
+    - "Safety guards: skip PRs labelled CHUMP_HOLD, skip PRs with operator commit in last 30min, max CHUMP_AM_WATCHER_RATE_PER_HOUR (default 10) re-arms per hour"
+    - Install launchd plist com.chump.auto-merge-arm-watcher via scripts/setup/install-auto-merge-arm-watcher.sh (mirrors INFRA-2280 META-118 daemon install pattern)
+    - "Smoke test scripts/ci/test-auto-merge-arm-watcher.sh: synth PR fixture with mss=BLOCKED autoMergeRequest=null + recent auto-rebase event; assert watcher re-arms; assert CHUMP_HOLD label is honored; assert rate limit caps at 10/hr"
+    - Register kind=auto_merge_arm_dropped + kind=auto_merge_arm_restored in EVENT_REGISTRY.yaml + event-registry-reserved.txt (use scanner-anchor pattern if leases conflict)
+    - Pair with INFRA-2272 bot-merge per-step ledger and INFRA-1399 git-push timeout — together they cover the bot-merge surface end-to-end (stall detection in 1399/2272, re-arm in 2289)
+  notes: |
+    [2026-05-30T08:46:08Z] Filed 2026-05-30 by curator-opus-shepherd. Today's PR #2840 hit conflicts during auto-rebase against #2838 (both touched src/main.rs); auto-merge silently dropped its ARM. Nobody noticed for hours. This watcher detects + re-arms within 10 min of the rebase landing.
+    [2026-05-30T16:20:59Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2857 auto-closed) respawn-handled:2857
+    [2026-06-04T00:16:23Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2857
+  outcome_id: MISSION-010
+

@@ -1,0 +1,20 @@
+- id: RESILIENT-104
+  domain: RESILIENT
+  title: "RESILIENT: ~9 fleet daemons crash-loop SILENTLY (integrator-daemon exit=127, ~8 daemons exit=78) while bootstrap --check reports them healthy — silently-dead-but-reported-alive; no chump verb surfaces last-exit"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    2026-06-05 daemon inventory (launchctl list | grep chump → 95 loaded) showed com.chump.integrator-daemon last_exit=127 (command-not-found — this is the 'integrator daemon unhealthy' that bot-merge fell-open on during the INFRA-2744 ship) and ~8 daemons last_exit=78 (EX_CONFIG: curator-supervisor, main-health-watchdog, fleet-recorder, auto-merge-rearm, overnight-research, transient-retrigger, soak-checkpoint, github-liaison...). They are launchd-loaded (some KeepAlive), so chump-fleet-bootstrap.sh --check reports them registered/present and every liveness check reads GREEN — but they exit non-zero on EVERY run, doing nothing. This is the 'silently-dead-but-reported-alive' class: the dashboard says healthy while the work isn't happening. No chump verb surfaces it — I had to read raw launchctl. Bootstrap --check verifies REGISTRATION, not last-exit-status.
+  acceptance_criteria:
+    - chump daemons --status [--json] lists every fleet daemon with last-exit-code + crash-loop flag (non-zero last exit AND recent restart) + last-heartbeat age; harness-neutral (launchd now, structured for systemd later)
+    - chump-fleet-bootstrap.sh --check and/or fleet-doctor-strict FAILS or WARNS when a required daemon's last exit is non-zero — today the integrator-daemon=127 + exit=78 cohort pass as healthy; they must not
+    - the specific crash-loopers found 2026-06-05 (integrator-daemon=127 + the exit=78 cohort) are root-caused and fixed OR de-registered if obsolete (a crash-looping daemon lies; it is worse than an absent one)
+    - a detector emits a daemon_crash_loop signal when a daemon exits non-zero N times in a window, surfaced in ambient + the fleet brief
+  notes: |
+    MISSION-010 Gate0 (substrate trustworthy / self-heals from HARM, not just death). Sibling of RESILIENT-099/100/103 (the farm fighting the operator this session). com.chump.daemon-exit-loop-watcher (INFRA-2417) + daemon-silence-monitor (INFRA-2352) exist — verify whether they already catch this class and just aren't surfaced, or have a hole that lets exit=78/127 pass. Faces the chump daemons --status verb in EFFECTIVE-178. Evidence: this session's launchctl snapshot.
+    [2026-06-05 reframe] NOT a clean build — the detector + doctor-gate ALREADY EXIST: daemon-exit-loop-watcher-daemon.sh (INFRA-2417, detects consecutive non-zero exits + files P0) and fleet-doctor-strict.sh (daemon last-exit!=0 check). Yet integrator-daemon=127 + the exit=78 cohort persist 37h+. So the real task is: DEBUG why the existing detector isn't catching/surfacing these (is the watcher itself running? is it one of the exit=78 crash-loopers? threshold too high? gaps filed-but-invisible?), then fix. AC1 (chump daemons --status) can wrap the existing watcher's output. Do NOT build a parallel daemons-status (META-063 dup).
+  closed_date: '2026-07-21'
+  closed_pr: 3077
+  outcome_id: RESILIENT-000
+

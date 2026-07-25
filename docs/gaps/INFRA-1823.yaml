@@ -1,0 +1,18 @@
+- id: INFRA-1823
+  domain: INFRA
+  title: "MISSION: productize Harvester into Chump engine (chump harvest CLI subcommand, decompose-hook integration, scheduled rebuild, ambient observability)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Add chump harvest CLI subcommand with at least scan, check GAP-ID, brief SOURCE TARGET, deep-scan CLUSTER actions — usable from any harness (Claude Code, opencode, codex, manual)
+    - chump harvest scan refreshes docs/arsenal/raw/github_repos.json and runs scripts/arsenal/build.py; exit 0 on success, exit non-zero if alerts of severity high are present
+    - "chump harvest check accepts either a gap ID or a free-form topic; reads docs/arsenal/GLOBAL_ARSENAL.json clusters and primitives_index; returns overlap report with file:line citations"
+    - chump gap decompose calls chump harvest check internally as a pre-flight; if overlap found, includes the citation in the decomposition output so the implementing worker sees the prior art
+    - "Scheduled rebuild: scripts/launchd/com.chump.harvester-scan.plist runs python3 scripts/arsenal/build.py weekly; emits ambient event kind=arsenal_rebuilt with counts of repos, clusters, dups, alerts"
+    - Event kind=arsenal_rebuilt registered in docs/observability/EVENT_REGISTRY.yaml
+    - "Coverage push: deep-scan remaining 45 of 76 fleet repos via a one-time parallel-explorer pass; update GLOBAL_ARSENAL.json with extracted_primitives per repo"
+    - Smoke test scripts/ci/test-harvester-cli.sh exercises scan, check, brief, deep-scan; each subcommand exits 0 on synthetic happy path and exit 2 on bad input
+    - "Documentation: chump harvest --help, docs/arsenal/HARVESTER.md updated with CLI surface, CLAUDE.md references the CLI in addition to the slash command and agent"
+  outcome_id: MISSION-010
+

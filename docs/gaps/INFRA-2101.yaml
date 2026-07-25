@@ -1,0 +1,12 @@
+- id: INFRA-2101
+  domain: INFRA
+  title: "RESILIENT P0: refresh-runner-binary.sh builds from local working tree instead of origin/main — silent staleness root cause (CREDIBLE-076 followup)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/setup/refresh-runner-binary.sh builds chump from origin/main HEAD, not from the operator's local working tree. Reproduce pre-fix: `git fetch origin main; (operator-WIP local main is 100+ commits behind); refresh-runner-binary.sh runs; ambient logs `runner_binary_refreshed` with prev_sha == new_sha (binary never advances despite main advancing).\n2. Fix path: create a detached worktree at origin/main HEAD (via `git worktree add -d /tmp/chump-binary-refresh origin/main`), `cargo build --release --bin chump` in that worktree, `cp target/release/chump /opt/homebrew/bin/chump`. Worktree is throwaway — delete after install.\n3. The hardcopy chain `~/.cargo/bin/chump → /opt/homebrew/bin/chump` is unnecessary when building --release; install target/release/chump directly.\n4. Emit a NEW ambient kind=runner_binary_advance with `{prev_sha, new_sha, main_sha, delta_commits}`; alert if `new_sha != main_sha[:N]` (the actual install regressed instead of advancing).\n5. Local validation: run the script; verify prev_sha != new_sha when origin/main has advanced past local; verify `chump --version` reports the new SHA.\n6. Document the failure mode in CLAUDE_GOTCHAS.md so the operator doesn't waste time wondering why the binary lags despite a \"successful\" refresh."
+  closed_date: '2026-05-29'
+  closed_pr: 2694
+  outcome_id: MISSION-010
+

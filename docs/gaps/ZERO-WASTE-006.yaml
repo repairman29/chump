@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-006
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: dedup gate for the autonomous-improve loop (META-063 external) — before Chump implements a picked gap in a target repo, check (a) it isn't already done in the repo, (b) no existing primitive solves it (target repo OR Chump arsenal via harvester); emit redundant_work_skipped + drop the gap if duplicate. Loop STAGE 2, not advisory"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3066
+  outcome_id: ZERO-WASTE-000
+

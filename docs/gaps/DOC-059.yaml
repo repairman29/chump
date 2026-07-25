@@ -1,0 +1,18 @@
+- id: DOC-059
+  domain: DOC
+  title: "EFFECTIVE P1: docs/process/FRESHNESS_DISCIPLINE.md — codify the always-git-ls-tree-origin-main not-local-tree rule for existence checks; verify-existence skill as canonical surface; mandates per-session preamble; cross-link from CLAUDE.md mandatory-preflight + CLAUDE_GOTCHAS"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "New file docs/process/FRESHNESS_DISCIPLINE.md with sections: (1) The 7 staleness layers (catalogued from META-114 umbrella); (2) The verify-at-source rule (always git ls-tree origin/main not local ls; verify-existence skill is the canonical surface); (3) The per-session preamble (scripts/coord/freshness-preamble.sh from META-115, FRESH/STALE/CRITICAL_STALE classification); (4) The binary-staleness gate (chump self-check-staleness from INFRA-2054); (5) The gap-store sync rule (chump gap sync from INFRA-2053, never edit state.db OR YAML in isolation); (6) Real-world failure modes documented as anti-patterns (today's recovery-queue-emit.sh phantom-missing + ls-vs-git-ls-tree confusion)"
+    - "Verify-at-source rule documented with examples: WRONG = bash -c ls scripts/coord/recovery-queue-emit.sh + exit-code-1 + file-missing claim filed. RIGHT = git ls-tree origin/main scripts/coord/recovery-queue-emit.sh OR invoking verify-existence skill which does both. Includes the precedent 2026-05-27 when shepherd + wizard BOTH made the same false-positive call against stale local trees"
+    - "Decision-rule table (≥6 rows) covering: file-missing claim before filing gap (verify-existence skill mandatory); gap-AC discrepancy (chump gap sync --pull); binary suspected stale (chump self-check-staleness); 50+ commits behind main (freshness-preamble refusal class); plist missing StartInterval (chump cron health from INFRA-2046); operator-described primitive not yet in main (verify-existence + check origin/main before assuming aspirational)"
+    - "Anti-patterns subsection lists FOUR failure modes: (a) bash ls against local-stale-tree returning false-missing — fix via git ls-tree origin/main; (b) chump gap reserve creating TODO AC stub + my YAML Write atomic-but-state.db lags — fix via chump gap sync; (c) chump binary 2.8h old + new CLI flag missing — fix via chump self-check-staleness; (d) launchd plist on-disk but never-fired due to missing StartInterval — fix via chump cron health"
+    - "Cross-links added: CLAUDE.md MANDATORY pre-flight section adds a freshness bullet pointing to scripts/coord/freshness-preamble.sh + docs/process/FRESHNESS_DISCIPLINE.md; AGENTS.md gets a parallel reference under harness-contract; docs/process/CLAUDE_GOTCHAS.md adds a Stale-source class entry that cross-links FROM gotchas TO FRESHNESS_DISCIPLINE.md (mirrors DOC-058 SCHEDULING_LAYERS pattern per wizard 2026-05-27 13:27Z)"
+    - "Example walkthrough taking today's recovery-queue-emit.sh phantom-missing as the case study: (a) shepherd ls returned no-such-file from local; (b) shepherd filed INFRA-2047 as new gap; (c) verify-at-source check via git ls-tree origin/main showed file IS there; (d) shepherd closed INFRA-2047 as superseded; (e) lesson: the per-session preamble would have flagged 48 commits behind BEFORE the false-positive was filed"
+    - "Verification: chump preflight markdown-intra-doc-links gate passes (no broken refs); the verify-existence skill invocation is shown verbatim as the canonical surface; rendered Markdown readable in PWA docs viewer"
+    - "Length target: 200-400 lines, operator-readable. Concrete > abstract; today's session findings as case-studies > generic best-practices framing"
+  closed_date: '2026-05-29'
+  closed_pr: 2657
+

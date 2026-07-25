@@ -1,0 +1,17 @@
+- id: EFFECTIVE-029
+  domain: EFFECTIVE
+  title: "EFFECTIVE P1: ambient-context-inject lane-discipline filter — role only sees own-lane + cross-lane-tagged broadcasts"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Risk 4 of 10. ambient-context-inject injects ALL fanout broadcasts to every role. ci-audit reads md-links broadcasts → drifts off-lane to file CI gaps in md-links territory. Reach asymmetry shipped in INFRA-2263 encourages reading but didn't add stay-in-lane guardrail.
+  acceptance_criteria:
+    - "Per-role lane manifest in scripts/coord/lane-manifest.toml: each role declares own-lane subjects (e.g. ci-audit: ci-failure flake-rerun trunk-red; md-links: docs/* broken-link)"
+    - "--tick-preamble filters by lane: digest includes (a) addressed-to-role events AND (b) own-lane broadcasts AND (c) broadcasts tagged cross_lane=true. Drops everything else"
+    - "broadcast.sh --cross-lane flag adds cross_lane:true to event payload (sender opt-in to fleet-wide visibility)"
+    - "Smoke test: synth 3 broadcasts (own-lane / off-lane / off-lane-with-cross-lane); preamble for role; assert digest contains 2 (own-lane + cross-lane-flagged), not the 3rd"
+  closed_date: '2026-07-20'
+  closed_pr: 3054
+  outcome_id: EFFECTIVE-000
+

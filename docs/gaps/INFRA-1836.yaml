@@ -1,0 +1,17 @@
+- id: INFRA-1836
+  domain: INFRA
+  title: "RESILIENT: CHUMP_NO_BYPASS=1 strict mode — disables ALL CHUMP_*_SKIP + --no-verify paths globally during active-ship windows"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New env CHUMP_NO_BYPASS=1 — when set, ALL bypass paths refuse to bypass and exit non-zero with diagnostic
+    - "Affected envs (current state of repo): CHUMP_PREFLIGHT_SKIP, CHUMP_PREFLIGHT_SKIP_REGISTRY/ENVVARS/SUBCMDHELP/MDLINKS/ACGATE/PRSCOPE/CLAUDELEAK/CANARY/GAPSINT, CHUMP_GAP_CHECK, CHUMP_CHECK_BUILD, CHUMP_OBS_BUDGET_BYPASS, CHUMP_EVENT_REGISTRY_CHECK, CHUMP_DOCS_DELTA_CHECK, CHUMP_BYPASS_BOT_MERGE, CHUMP_REGISTRY_GATE_MODE override, CHUMP_FMT_CHECK, CHUMP_TEST_GATE, CHUMP_AUTO_FMT"
+    - Plus --no-verify on chump-owned push wrappers (chump-commit.sh / bot-merge.sh)
+    - "When CHUMP_NO_BYPASS=1 is active AND a bypass is attempted: emit kind=no_bypass_violation {bypass_kind, would_have_skipped} + exit 1"
+    - Operator activates strict mode during 'active-ship sprint windows' via direct env or chump fleet-mode --strict subcommand
+    - "Smoke test: scripts/ci/test-no-bypass-strict.sh asserts each bypass-env refuses under CHUMP_NO_BYPASS=1"
+  closed_date: '2026-05-29'
+  closed_pr: 2439
+  outcome_id: MISSION-010
+

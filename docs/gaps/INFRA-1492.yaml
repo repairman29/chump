@@ -1,0 +1,17 @@
+- id: INFRA-1492
+  domain: INFRA
+  title: "CREDIBLE: 103 of 742 shell scripts missing 'set -e' — silent failures emit success exit codes"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real bug 2026-05-16: scan of scripts/coord/*.sh + scripts/ci/*.sh finds 103/742 (~14%) lack 'set -e' (or '-euo pipefail'). Without it, a failed command does NOT abort the script — the script continues past the failure and emits exit code 0. This causes the fleet to THINK operations succeeded when they didn't. Examples found: audit-branch-protection.sh, auth-tier-audit.sh, cargo-test-with-rerun.sh, check-mass-deletion.sh, check-path-filter-coverage.sh. Risk: any of these may be silently dropping work in production runs.
+  acceptance_criteria:
+    - scripts/ci/test-shell-set-e-coverage.sh enumerates all .sh under scripts/, asserts each has 'set -e' (or '-eu' / '-euo pipefail') in first 30 lines
+    - Fail the gate if any script under scripts/coord/ or scripts/ci/ is missing
+    - Allowlist file scripts/ci/set-e-exemptions.txt for legitimate exceptions (interactive helpers etc)
+    - "Bulk-fix sweep: add 'set -euo pipefail' to the 103 offenders"
+    - Run on every scripts/ commit via path filter
+  closed_pr: 2291
+  outcome_id: MISSION-010
+

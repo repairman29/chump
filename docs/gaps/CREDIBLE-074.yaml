@@ -1,0 +1,13 @@
+- id: CREDIBLE-074
+  domain: CREDIBLE
+  title: "CREDIBLE P2: curator sub-agent dispatch rate telemetry — emit kind=sub_agent_dispatched on each Agent-tool call; chump fleet dispatch-hygiene CLI reports per-curator ratio (Opus-only vs Sonnet-delegated)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: CREDIBLE-000
+

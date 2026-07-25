@@ -1,0 +1,10 @@
+- id: INFRA-2472
+  domain: INFRA
+  title: "RESILIENT P1: lease files are filesystem-local — NATS mesh era needs cross-machine lease registry to prevent invisible collisions"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "[\"Trigger: 2026-06-02 ~00:10Z operator confirmed NATS is ON and BASH_CALL events streaming mesh-wide; but local find .chump-locks/ shows 0 active leases despite Sonnets N/O/P having claimed (their lease files exist only on their machine)\",\"Audit: src/atomic_claim.rs lease creation writes to local .chump-locks/ only — no NATS publish\",\"Real fix: claim either (a) publishes lease assertion via chump-coord to a NATS KV subject like chump.leases.<gap-id> with TTL, OR (b) writes to a shared SQLite/postgres registry that all machines consult\",\"All pre-push hooks + atomic_claim path-overlap checks (INFRA-2434 in flight) MUST consult the shared registry, not just local .chump-locks/\",\"Smoke test scripts/ci/test-multi-machine-lease.sh: simulate 2 sessions on different machines claiming same gap; second one refuses; first ones lease visible to second\",\"Companion to INFRA-2446 (lease-selection by branch) — that gap fixes the local-pick logic; this gap fixes the visibility scope\"]"
+  outcome_id: MISSION-010
+

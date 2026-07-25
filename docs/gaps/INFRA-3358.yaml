@@ -1,0 +1,11 @@
+- id: INFRA-3358
+  domain: INFRA
+  title: "META-070: mirror doc/CI-hygiene guard audit-job gates into chump preflight (cluster E)"
+  status: closed
+  priority: P2
+  effort: m
+  description: |
+    Cluster E from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the doc/CI-hygiene/credential/format guard scripts run in ci.yml's pr-hygiene (audit) job into src/preflight.rs. 38 scripts, see cluster E list in the survey doc (doc-freshness, no-claude-leak, docs-delta, credential-pattern, css-token, git-identity, workflow guards, etc).
+  acceptance_criteria:
+    - 1. All 38 cluster-E scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 38 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster E shipped, and META-086 self-closes on this being the last sub-gap shipped. Given the size (38 scripts), splitting into 2-3 PRs by sub-theme (privacy/credential guards vs format/doc guards vs workflow-structure guards) is acceptable if each is intent-atomic.
+

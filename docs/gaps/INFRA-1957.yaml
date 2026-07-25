@@ -1,0 +1,11 @@
+- id: INFRA-1957
+  domain: INFRA
+  title: "MISSION P1: ship Harvester productization stack (scripts/arsenal/* + docs/arsenal/* + .claude/skills/*) — .claude/agents/harvester.md on main has broken references until this lands"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Ship the Harvester productization stack referenced by .claude/agents/harvester.md (which shipped in #2531 INFRA-1936 but references nonexistent files). 22 staged + 5 untracked skill files in main worktree."
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

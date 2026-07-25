@@ -1,0 +1,17 @@
+- id: INFRA-1459
+  domain: INFRA
+  title: "RESILIENT: stale auto-merge detector — periodically re-arm PRs where autoMergeRequest got dropped (today: #2069 lost arming silently after merge cycle)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Paramedic daemon (INFRA-1375) new action type RE_ARM_AUTO_MERGE: detect PRs where mergeStateStatus=BLOCKED AND autoMergeRequest=null AND PR has at least one prior arming in audit log"
+    - Re-arm via gh pr merge <pr> --auto --squash (or --merge-queue when CHUMP_MERGE_QUEUE_ENABLED=1)
+    - "Skip PRs with do-not-paramedic label OR with intentional disable trailer 'No-Auto-Merge: <reason>' in latest commit"
+    - Emit kind=auto_merge_rearmed {pr, prior_arm_count, reason_unarmed_if_known}; register in EVENT_REGISTRY.yaml
+    - "Today's case: #2069 lost arming after a merge cycle; user noticed manually. Should be detected within 60s of paramedic loop"
+    - Smoke test scripts/ci/test-rearm-detector.sh stubbing gh — fixture PR with auto=null but prior arm in event log gets re-armed call
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

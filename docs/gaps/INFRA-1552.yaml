@@ -1,0 +1,19 @@
+- id: INFRA-1552
+  domain: INFRA
+  title: "EFFECTIVE: wire FAILURE_MODES.yaml (217 rules) into orchestrate.rs classify_failure — replace hardcoded 3-rule fallback; gives META-051 pattern detector a real taxonomy"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    docs/process/FAILURE_MODES.yaml contains ~217 rules with confidence scores and auto_actions (fix|rerun|file_gap). failure_catalog.rs loads it, but orchestrate.rs::classify_failure() falls back to a hardcoded 3-rule classifier for nearly every CI failure. Result: rich taxonomy starves, dashboards see raw alerts, the META-051 pattern detector has no failure_class to aggregate on. Pairs naturally with META-051 — that gap is the consumer of this gap's output.
+  acceptance_criteria:
+    - "src/orchestrate.rs::classify_failure() consults the FAILURE_MODES.yaml catalog before falling back to the hardcoded rules, returning the highest-confidence rule match"
+    - Each match emits failure_class field on the surrounding ambient event (kind=ci_failure_classified) for downstream consumers including META-051 pattern detector
+    - Unknown / no-match failures emit kind=failure_class_unknown with the raw log snippet so the catalog can be extended deliberately rather than silently
+    - At least 70% of CI failures over a 24h post-merge window are classified by the YAML catalog (measured via ambient counts)
+    - scripts/ci/test-failure-mode-classifier.sh feeds 10 representative failure log snippets and asserts each returns the expected failure_class
+    - docs/process/FAILURE_MODES.yaml gains a 'last_matched_at' optional field updated by the runtime so unused rules can be culled later
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

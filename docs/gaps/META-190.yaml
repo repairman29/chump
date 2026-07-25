@@ -1,11 +1,11 @@
 - id: META-190
   domain: META
-  title: "META: Implement auto-admin-merge on consensus quorum (META-180 slice)"
-  status: open
+  title: 'META: Implement auto-admin-merge on consensus quorum (META-180 slice)'
+  status: done
   priority: P1
   effort: s
-  depends_on: [[]]
-  acceptance_criteria:
-    1. Daemon detects when quorum is reached for a PR's consensus vote.
-    2. Upon quorum, `admin-merge` is automatically fired for the PR.
-    3. `pr_consensus_quorum` event is emitted when quorum is reached.
+  depends_on:
+  - []
+  acceptance_criteria: 1. Daemon detects when quorum is reached for a PR's consensus vote. 2. Upon quorum, `admin-merge` is
+    automatically fired for the PR. 3. `pr_consensus_quorum` event is emitted when quorum is reached.
+  closed_date: '2026-07-25'

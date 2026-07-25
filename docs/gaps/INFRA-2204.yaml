@@ -1,0 +1,19 @@
+- id: INFRA-2204
+  domain: INFRA
+  title: "EFFECTIVE: fleet-scrubber segment-detail panel — fix duration=0s + No-events lookup"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Two UI bugs in the segment-detail panel of web/fleet-scrubber/index.html visible on the live scrubber (http://localhost:7070/scrubber/) after INFRA-2189 normalization landed: (1) duration field shows '0s' for segments with a clearly non-zero start->end span (the field is computed from start/end after normalization but the math reads the wrong field); (2) the events list shows 'No events.' even when the segment spans real events — the lookup filters allEvents by session_id+window but the window comparison is off (likely ISO-string comparison instead of epoch math, or off-by-one on boundary inclusion).
+  acceptance_criteria:
+    - Segment-detail duration row computes (end_ts - start_ts) in seconds and renders properly (e.g. '5m 43s' not '0s'); use ts_ms epoch math, not ISO string subtraction
+    - Segment-detail events panel filters allEvents by session_id == segment.session_id AND ts_ms within [start_ts_ms, end_ts_ms] (inclusive both sides); falls back to showing the last 3 events on either side of the window when zero events match (so panel never says 'No events' for a real segment)
+    - Hover tooltip duration matches the panel duration (consistency)
+    - "Smoke test scripts/ci/test-fleet-scrubber.sh extends with: simulate segment click via JS event in puppeteer-like assertion OR assert the helper functions exist by string-grep in index.html"
+    - No regression on fixture mode — ?fixtures=1 still renders the panel correctly with ISO-string dates
+  notes: |
+    [2026-06-04T00:26:21Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2750
+  outcome_id: MISSION-010
+

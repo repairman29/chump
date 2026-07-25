@@ -1,0 +1,13 @@
+- id: INFRA-1600
+  domain: INFRA
+  title: "RESILIENT: PR check-failure auto-rescue daemon — webhook-driven known-handler dispatcher (today the 3rd cascade-fix-via-COS-manual pattern)"
+  status: done
+  priority: P0
+  effort: l
+  acceptance_criteria:
+    - "[\"Today (2026-05-16/17) the operator/COS manually diagnosed + fixed three cascade patterns within 4h: (a) ci.yml merge-driver row-add (INFRA-1490, 10+ DIRTY), (b) runner ghost-ship + ACP cascade (INFRA-1540, 6 fails), (c) cargo fmt + adjacent-string-literal + CARGO_TARGET_DIR (tonight, 4 fails, 3 fix PRs). 3-strike pattern.\",\"Build crates/chump-pr-rescue/ Rust daemon (NOT shell; mutates state). Subscribes to .chump/github_cache.db check_runs table via SQLite WAL trigger OR 5s poll. For each conclusion=failure row on PRs authored by the operator:\",\"Match check_runs.name + log_excerpt against a known_fix_handlers.yaml registry. Initial handler set (3-strike-justified):\",\"  - fast-checks-cargo-fmt-diff → run cargo fmt --bin chump from worktree, push --force-with-lease\",\"  - cargo-test-adjacent-string-literal-eprintln → grep src/main.rs for adjacent Usage: strings, combine, commit, push\",\"  - chump-binary-not-found-on-self-hosted → check if PR has scripts/ci/lib/discover-chump-bin.sh source; if not, cherry-pick from main\",\"  - tauri-cowork-e2e-flake → re-run failed; if 2nd fail, no action (operator triages)\",\"  - ACP-protocol-smoke-timeout → run gh run rerun --failed\",\"On miss (unhandled failure pattern): emit kind=pr_failure_unhandled with {pr, check_name, log_excerpt} and post chat message to operator\",\"Cool-down: max 1 auto-action per PR per 30 min; max 3 auto-rescues per PR lifetime\",\"Idempotency: every action logged to ambient as kind=pr_auto_rescue_invoked {pr, handler, outcome, ts}\",\"Run as launchd service com.chump.pr-rescue, polls every 5s\",\"CI smoke test scripts/ci/test-pr-rescue-daemon.sh: synthetic failed check_runs row + mock gh; assert daemon invokes the right handler\",\"Wave 3 work — requires stable runners (Wave 1) + autoscale (Wave 2-ish). DO NOT claim until INFRA-1535 ships.\"]"
+  notes: |
+    Superseded — MVP daemon shipped via #2294 (INFRA-1618). See INFRA-1618 for the active-fix handler iteration.
+  closed_pr: 2294
+  outcome_id: MISSION-010
+

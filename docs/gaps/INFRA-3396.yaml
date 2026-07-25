@@ -1,0 +1,10 @@
+- id: INFRA-3396
+  domain: INFRA
+  title: test-model-class-routing.sh fixtures missing acceptance_criteria, 4 assertions silently broken by INFRA-1259 AC-vague gate
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "[\"scripts/ci/test-model-class-routing.sh fixtures for haiku-picks-xs/s, sonnet-picks-m, and the mixed-pool tests add an acceptance_criteria field so they are not silently filtered by the INFRA-1259 AC-vague gate in _pick_gap.py\",\"All previously-failing assertions in the script (haiku xs/s pick, sonnet m pick, mixed-pool haiku/sonnet picks) pass for the right reason (effort-gate logic), not because AC is missing\",\"Script is wired into either chump preflight or a CI workflow step so future regressions are caught (currently unwired, per INFRA-2998 investigation)\"]"
+  closed_pr: 3227
+

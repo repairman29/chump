@@ -1,0 +1,21 @@
+- id: META-098
+  domain: META
+  title: "MISSION P1: daily self-productization ritual — A2A wave each session iterates curator roles asking each to file delta-AC for what changed in their lane in last 24h (today operator did this manually to spawn META-097; should be a cron daemon — 'automate today so we innovate tomorrow')"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Background — 2026-05-24 operator manually orchestrated an A2A wave that asked each curator role to add concrete AC for productizing themselves. This spawned META-097 (productize remaining 5 curators) which 4 sibling workers immediately picked up (INFRA-1922/1923/1924/1925). Operator's stated principle: 'automate today so we can innovate tomorrow.' The manual A2A wave should become a recurring ritual so the fleet self-productizes daily without operator initiation"
+    - "New scripts/coord/daily-self-productize.sh — once per day (launchd 24h cadence) iterates curator roles (target, handoff, ci-audit, shepherd, decompose, md-links). For each role, scans ambient.jsonl + recent ship history for events in that lane in last 24h, then sends A2A broadcast.sh DM to curator-opus-<role>-<today> asking: 'What changed in your lane today that should be captured as durable AC in .claude/agents/<role>.md or .claude/skills/<role>/SKILL.md? File a follow-up gap if material'"
+    - Bypass — CHUMP_DAILY_PRODUCTIZE_DISABLED=1 short-circuits silently
+    - "Cost budget — wave is bounded: max 6 broadcast.sh calls per run (one per role); no LLM call directly from this script (the curator's own session does the actual contemplation when it receives the inbox message)"
+    - Idempotent — same day won't re-trigger; state in .chump-locks/daily-self-productize-state.jsonl tracks last_run_date so a re-fire on the same day is a no-op
+    - Drift signal — emit kind=daily_self_productize_wave with field roles_paged after each successful wave so consumers (fleet-brief, ops-audit) see the wave-cadence over time
+    - "Install — scripts/setup/install-daily-self-productize-launchd.sh; plist fires once per day at non-:00 minute (3 9 * * * pattern equivalent)"
+    - Smoke test scripts/ci/test-daily-self-productize.sh — mocks broadcast.sh to record calls, asserts 6 roles paged, asserts idempotent-on-rerun, asserts bypass works, asserts ambient kind=daily_self_productize_wave emitted
+    - Pattern reference — INFRA-1898 pulse consumer daemon (same lane, periodic A2A wave); INFRA-1257 hourly planner (same install pattern). META-097 was the manual-precedent that proved the wave works
+    - Done definition — fleet-brief shows kind=daily_self_productize_wave once per day; over the following 30 days, each .claude/agents/<role>.md grows by ≥3 commits with delta-AC additions distilled from lane activity (i.e. the agents productize themselves measurably, not just trigger the cron and no-op)
+  closed_date: '2026-05-29'
+  closed_pr: 2513
+  outcome_id: MISSION-010
+

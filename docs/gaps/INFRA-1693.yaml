@@ -1,0 +1,21 @@
+- id: INFRA-1693
+  domain: INFRA
+  title: "CREDIBLE: NUGGET_DATAFLOW.md privacy doc + data-flow diagram (INFRA-1473 AC #10)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Follow-up to INFRA-1473 #2337 AC #10. Write a data-flow doc that lists exactly which fields leave the operator machine when an embedding API is configured, and which stay local.
+  acceptance_criteria:
+    - docs/security/NUGGET_DATAFLOW.md exists
+    - "Data-flow diagram (mermaid or ASCII) shows: operator agent -> chump nugget add -> [if OPENAI_API_KEY set] OpenAI embeddings endpoint -> back to operator -> Supabase project -> team-shared nuggets table"
+    - "Fields-leaving-machine table: title, body, kind (sent to OpenAI for embedding when key set); team_id, repo_url, author_user_id, embedding (sent to Supabase)"
+    - "Fields-staying-local table: nothing in nugget itself stays local in default mode; offline mode (embed=Skip) sends only metadata + body to Supabase, no OpenAI call"
+    - "Operator-action table: how to disable embedding (unset OPENAI_API_KEY), how to delete a nugget (chump nugget delete), how to export all team data (GDPR — INFRA-1695)"
+    - "Links: META-065 (SOC 2 posture), INFRA-1695 (GDPR export)"
+  notes: |
+    Closes INFRA-1473 AC #10. Pairs with INFRA-1691, INFRA-1692, INFRA-1694.
+  closed_date: '2026-05-22'
+  closed_pr: 2354
+  outcome_id: MISSION-010
+

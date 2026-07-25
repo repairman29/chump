@@ -1,0 +1,16 @@
+- id: INFRA-2932
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-20"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Events: pr_stuck_cluster_detector_run emitted on every invocation (no_op/dry_run/apply/bad_args exit paths) — scripts/coord/pr-stuck-cluster-detector.sh (INFRA-2754)"
+    - "Cost: gap_reserve_calls field tracks mutation cost per run; consumers=[waste-tally, watchdog] per EVENT_REGISTRY.yaml"
+    - "Failure-class: failure_class field (none|transient|permanent) distinguishes failure kinds — INFRA-2906"
+    - "Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh — 3 tests covering no_op/dry_run/bad_args outcome paths, all passing"
+  notes: |
+    [2026-07-20T16:11:48Z] Resolved by prior work already on main: INFRA-2754 (events), INFRA-2906 (failure_class taxonomy), INFRA-2913 (EVENT_REGISTRY doc + smoke test pointer, PR #3224). This gap was a duplicate instance of the same pr-stuck-cluster observability template filed against an earlier 2026-06-20 incident; verified smoke test passes on current main, no code change needed. Closed as resolved-by-prior-ship, no new PR.
+  closed_pr: 3224
+  outcome_id: MISSION-010
+

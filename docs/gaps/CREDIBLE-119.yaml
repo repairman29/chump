@@ -1,0 +1,16 @@
+- id: CREDIBLE-119
+  domain: CREDIBLE
+  title: "CREDIBLE: chump fleet doctor exits 0 (auth OK) while BOTH auth probes actually fail — masked a 46h outage"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    2026-06-07: the fleet had been dead ~46h (last gap-claim 2026-06-05T23:47Z) because BOTH auth credentials expired — .env ANTHROPIC_API_KEY (108-char real key) fails authentication AND ~/.chump/oauth-token.json (3 days stale) fails. Yet 'chump fleet doctor' exited 0 ('valid auth path found'). It validates credential PRESENCE, not VALIDITY — so it reported healthy through a 2-day outage. Ground truth: run-fleet's INFRA-621 probe ('probing auth path... authentication failed') correctly rejects BOTH paths. fleet doctor must make the same live probe call (a cheap authenticated request) before reporting auth OK, or it is a looks-healthy-but-isnt lie per DURABLE_FIX_DOCTRINE.md.
+  acceptance_criteria:
+    - chump fleet doctor performs a LIVE authenticated probe (the same check run-fleet's INFRA-621 does) before reporting auth OK — not just credential-presence
+    - "when both ANTHROPIC_API_KEY and the OAUTH token fail authentication, fleet doctor exits NON-ZERO with a clear 'auth dead: both paths rejected' message"
+    - "regression test: with an invalid api-key + invalid oauth token, fleet doctor exits non-zero"
+  notes: |
+    Sibling of RESILIENT-054 (auth floor) + INFRA-2031 (gh-auth false-positive). This is the DOCTOR-side lie: the health check that should have screamed stayed green.
+  outcome_id: CREDIBLE-000
+

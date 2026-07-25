@@ -1,0 +1,17 @@
+- id: INFRA-2406
+  domain: INFRA
+  title: "RESILIENT P0: pre-merge cross-PR contract gate (refuse merge on cross-PR contract mismatch)"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "GitHub Actions step in fast-checks: bash scripts/ci/test-cross-pr-contract.sh runs chump contract-scan --in-flight against all currently-open PRs"
+    - "On detected cross-PR mismatch: emit kind=cross_pr_contract_mismatch with {writer_pr, reader_pr, writer_keys, reader_keys, missing_keys}; fail the gate"
+    - Manifest of known-safe IPC surfaces tracked in scripts/ci/contract-surfaces.txt (one path per line); only files in this manifest are scanned (keeps scope bounded)
+    - "On gate failure: bot-merge.sh refuses to arm auto-merge, prints clear remediation pointing both PR authors to reconcile"
+    - "Bypass: CHUMP_CROSS_PR_CONTRACT_BYPASS=1 + Bypass-Tier:T2 trailer (will get caught by Layer 1 once shipped)"
+    - "Smoke test: 2 mock PRs with mismatched contracts → gate exits 1; aligned → gate exits 0"
+    - "Depends on: INFRA-2405"
+  closed_date: '2026-06-02'
+  outcome_id: MISSION-010
+

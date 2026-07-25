@@ -1,0 +1,16 @@
+- id: INFRA-1805
+  domain: INFRA
+  title: "EFFECTIVE: enrich CapabilityManifest schema (chump-capability-v2) with token_budget_remaining + compute_available + healthy fields (RobotState patterns from chump-proprietary)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Bump CapabilityManifest schema constant: CAPABILITY_SCHEMA_VERSION = 'chump-capability-v2'"
+    - "New optional fields (None in v1, populated in v2): token_budget_remaining: Option<u64>, compute_available_pct: Option<u8>, bandwidth_kbps: Option<u32>, healthy: bool (default true)"
+    - "Migration: v1 manifests parse cleanly into v2 (all new fields are Option / default-true). v2 readers fall back gracefully for v1 entries during transition"
+    - Update tests/a2a_layer2c_schema.rs to assert v1 → v2 forward compatibility (parse v1 JSON fixture, check new fields are None/default)
+    - Patterns sourced from chump-proprietary RobotState (battery + compute_available + bandwidth_bps + healthy fields); adapted to LLM-agent semantics (battery → token_budget_remaining, compute_pct → compute_available_pct)
+    - Cite chump-proprietary attribution in the v2 doc block
+    - "Pairs with INFRA-1760 (#2405); ships when v1 schema lands"
+  outcome_id: MISSION-010
+

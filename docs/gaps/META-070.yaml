@@ -1,0 +1,26 @@
+- id: META-070
+  domain: META
+  title: "MISSION P0: quality firewall completion — chump preflight at full CI parity"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Quality firewall = chump preflight at full CI parity. Goal: every deterministic CI gate has a local preflight mirror; auto-fix where possible (chump-commit.sh runs cargo fmt --all per INFRA-1833); bypass requires audited reason (INFRA-1834); strict mode disables all bypasses (INFRA-1836)"
+    - "Sub-gap manifest (all filed, mostly shipped/in-flight):\\n  Tier-C mirrors from INFRA-1762: 1787 done "
+    - " 1788 open "
+    - " 1789 done "
+    - " 1790 open "
+    - " 1791 done "
+    - " 1792 open "
+    - " 1793 open "
+    - " 1794 open (P3, last unclaimed)\\n  Mandate-vs-suggest design: 1833 done "
+    - " 1834-1837 open\\n  Yaml-cascade prevention: 1831 done (#2420)"
+    - "Done when: (a) all 8 Tier-C gates merged, (b) auto-fmt-on-commit shipped (INFRA-1833), (c) --no-verify reason-required + audit shipped (INFRA-1834), (d) bypass-frequency auditor shipped (INFRA-1837)"
+    - "Stretch: INFRA-1835 preflight tree-sha cache + INFRA-1836 strict-mode are nice-to-have polish; not strictly required for 'firewall complete'"
+    - "Smoke: a fresh checkout that runs chump-commit.sh on broken Rust code auto-formats; pre-push hook (INFRA-1671 #2316) blocks push if preflight fails; CI's same gates pass because preflight ran them first"
+  notes: |
+    Demoted from P0 to P1 by curator 2026-05-23: umbrella for quality-firewall completion, but the actual work is in sub-gaps INFRA-1831/1841/1842 which carry the AC. Per CLAUDE.md P0 budget cap = 5.
+  closed_date: '2026-05-25'
+  closed_pr: 2558
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: INFRA-2198
+  domain: INFRA
+  title: "EFFECTIVE P1: META-128/C7 chump fleet up + auto-scale disk-aware — scaler reads inventory before sizing"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- Modify chump fleet up subcommand (src/main.rs fleet handler or src/fleet.rs — grep for 'fleet up') to call chump disk plan BEFORE allocating N workers.\n- For N requested: call chump disk plan sonnet_dispatch_with_worktree --count N. If OK → proceed unchanged. If WAIT → print warning + ask via CHUMP_FLEET_ACCEPT_WAIT=1 or downsize automatically. If REFUSE → compute max-safe-N from chump disk budget --for sonnet_dispatch_with_worktree, downsize, log kind=fleet_scale_changed with reason=disk_budget.\n- New chump fleet auto-scale subcommand (or chump fleet up --auto): cron-fireable every 5 min via launchd installer chump-fleet-autoscale-launchd.sh. Reads current N workers + disk inventory; if disk < 20 GB → scale down 1; if disk > 60 GB AND ship-rate healthy (chump fleet-velocity --window 1h) → scale up 1. Max delta 1 per tick to avoid thrash.\n- Backwards compat: when ~/.chump/disk-inventory.json missing, chump fleet up runs unchanged (fall through with WARN).\n- 4+ unit tests covering: REFUSE downsize, WAIT proceed-or-downsize, OK silent, auto-scale up + down + no-change cases.\n- Register kind=fleet_scale_changed in EVENT_REGISTRY.yaml + scripts/ci/event-registry-reserved.txt.\n- Cross-references META-128 (umbrella), INFRA-2193 daemon, INFRA-2196 CLI, INFRA-2197 chump claim integration sibling."
+  closed_date: '2026-05-30'
+  outcome_id: MISSION-010
+

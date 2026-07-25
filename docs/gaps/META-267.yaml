@@ -1,0 +1,12 @@
+- id: META-267
+  domain: META
+  title: Merge 3 e2e jobs into matrixed job to reach <=16 ci.yml jobs (META-258 tail)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "ci.yml job count drops from 18 to 16 after merging e2e-pwa, e2e-battle-sim, e2e-golden-path into a single matrixed e2e job with strategy.matrix.suite=[pwa,battle-sim,golden-path]; test-e2e aggregator needs: updated to point at new e2e job; branch-protection required contexts unaffected (test/audit/ACP remain); yaml lints clean"
+  closed_date: '2026-05-31'
+  closed_pr: 2905
+  outcome_id: MISSION-010
+

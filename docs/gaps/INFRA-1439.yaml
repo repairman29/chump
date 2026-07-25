@@ -1,0 +1,12 @@
+- id: INFRA-1439
+  domain: INFRA
+  title: "RESILIENT: chump claim --force-recover handles stale-worktree + stale-branch race idempotently"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: chump claim PRODUCT-127 hit `worktree path already exists` + `branch already exists` races multiple times this session. Each required manual git worktree remove --force + git branch -D + reclaim, ~30s per occurrence.\",\"Add --force-recover flag to chump claim: when set, BEFORE the atomic-claim step, automatically: (a) git worktree remove --force on the target path if dir exists, (b) git branch -D on the branch if it exists locally and is not the current branch, (c) rm -rf the target path if step (a) failed, (d) proceed with normal atomic-claim.\",\"Without --force-recover (default), preserves current strict behavior (operator must clean up manually to avoid masking real conflicts)\",\"Emit kind=chump_claim_force_recover with original error + recovery actions taken\",\"Smoke test tests/cli_claim_force_recover.rs: set up a fake stale-worktree + stale-branch state for a gap, run chump claim --force-recover, assert success + recovery event emitted\",\"Register chump_claim_force_recover in EVENT_REGISTRY.yaml\",\"Out of scope: making --force-recover the default (would mask real races)\"]"
+  closed_date: '2026-05-16'
+  closed_pr: 2174
+  outcome_id: MISSION-010
+

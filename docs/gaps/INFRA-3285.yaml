@@ -1,0 +1,15 @@
+- id: INFRA-3285
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 10 PRs blocked >2h as of 2026-07-05"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Duplicate of INFRA-3117 (shipped in #3228 / commit e26644fe6): the same 4 TODO ACs (events emitted, cost tracking, failure-class taxonomy, smoke test) for pr_stuck_cluster_detector_run are already answered inline in docs/observability/EVENT_REGISTRY.yaml. No code change needed.
+  outcome_id: MISSION-010
+

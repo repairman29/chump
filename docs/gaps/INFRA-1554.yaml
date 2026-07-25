@@ -1,0 +1,20 @@
+- id: INFRA-1554
+  domain: INFRA
+  title: "CREDIBLE: synthesis-pass gap-filing truth — 'filed: INFRA-1305' in 2026-05-14 synthesis doesn't exist in state.db; synthesis must atomically create gaps it claims to file"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Verified: scripts/dev/synthesis-pass.sh exists AND launchd/com.chump.synthesis-pass.plist is checked into repo (synthesis IS auto-running, not the wiring problem my original description suggested). The actual bug is the truth of gap-ID claims in synthesis output: docs/syntheses/2026-05-14-dedup-gate-vs-orphan-closer.md says 'filed: INFRA-1305' but state.db has no INFRA-1305 and grep finds no code reference. META-054 was marked done despite 95 retag sub-actions never being atomically tracked. The synthesis agent generates filings as text rather than invoking chump gap reserve. Fix: make filings atomic (synthesis must call chump gap reserve and capture the returned ID into the markdown) and add a post-hoc validator that catches any 'filed:' reference whose target doesn't exist in state.db.
+  acceptance_criteria:
+    - scripts/dev/synthesis-pass.sh (or whatever generates docs/syntheses/*) invokes chump gap reserve for each filing recommendation and captures the actual returned gap ID into the synthesis markdown — no hallucinated IDs
+    - "New scripts/ci/test-synthesis-truth.sh greps docs/syntheses/*.md for 'filed: <GAP-ID>' patterns and asserts each referenced gap exists in state.db (status open or done both acceptable)"
+    - "Backfill audit: run the validator against existing docs/syntheses/ files, report orphaned references, and either reconcile (file the missing gap) or annotate the synthesis with a correction note"
+    - EVENT_REGISTRY.yaml entry for kind=synthesis_gap_filed emitted by synthesis-pass with {synthesis_path, gap_id, title}
+    - docs/process/SYNTHESIS_CONTRACT.md (new) documents the filing-atomicity rule and references the CI gate
+  notes: |
+    wave: 0 (truth gate — synthesis-pass filing-atomicity must be true before planning loop trusts its own output)
+  closed_date: '2026-05-22'
+  closed_pr: 2336
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-2835
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 5 PRs blocked >2h as of 2026-06-09"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "pr-stuck-cluster-detector.sh emits kind=pr_stuck_cluster_detector_run ambient event on every invocation (no-op, dry-run, cluster-filed, and error paths) with fields: outcome, stuck_pr_count, duration_ms."
+    - Run event includes gap_reserve_calls field so mutation cost (chump gap reserve invocations) is visible to the operator without grepping logs.
+    - "Error paths distinguish failure class via the outcome field: gap_reserve_failed (permanent — chump gap reserve returned nonzero) vs gap_id_extract_failed (transient — reserve succeeded but ID unparseable from output)."
+    - scripts/ci/test-pr-stuck-cluster-observability.sh smoke-tests that the ambient event fires for the no-stuck-events and cluster-detected paths; runnable standalone (verified passing).
+  notes: |
+    Duplicate of INFRA-2754 (same detector re-firing on a later 5-PR cluster instance). Observability AC already implemented + merged via PR #3221 (c0aa28709). Verified scripts/ci/test-pr-stuck-cluster-observability.sh passes on current main. No new code required — closing as satisfied by prior work.
+  closed_date: '2026-07-20'
+  closed_pr: 3221
+  outcome_id: MISSION-010
+

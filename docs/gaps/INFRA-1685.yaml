@@ -1,0 +1,17 @@
+- id: INFRA-1685
+  domain: INFRA
+  title: "RESILIENT: war-room.sh bash 3.2 incompat — declare -A fails on macOS default bash + add --quiet flag (INFRA-1547 narrow follow-up)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Narrow follow-up to INFRA-1547 (5 ACs; this gap is the script-side prerequisite — bash compat fix + --quiet flag). Verified 2026-05-22 19:57Z: 'bash war-room.sh --json --quiet' fails with 'declare: -A: invalid option' on macOS bash 3.2.57. Without this fix, INFRA-1547's SessionStart hook integration can't reliably invoke war-room.sh because every Claude Code session on macOS hits the bash 3.2 path.
+  acceptance_criteria:
+    - war-room.sh emits clear actionable error message (referencing 'requires bash >= 4' + brew install hint) and exits 64 (EX_USAGE) when invoked under bash < 4
+    - "under bash >= 4 the script does NOT crash with the cryptic 'declare: -A: invalid option' message"
+    - smoke test scripts/ci/test-war-room-quiet.sh asserts both contracts (legacy-bash path + native-bash path)
+    - "scope-note: this gap covers ONLY the precondition + error contract; the full associative-array rewrite to native bash 3.2 compat (and the --quiet flag from INFRA-1547's original AC #1) are tracked separately"
+  closed_date: '2026-05-22'
+  closed_pr: 2335
+  outcome_id: MISSION-010
+

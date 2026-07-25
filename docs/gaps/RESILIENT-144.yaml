@@ -1,0 +1,17 @@
+- id: RESILIENT-144
+  domain: RESILIENT
+  title: "RESILIENT: pr-rescue-false-close reopens intentional PR closes (no intentional-close signal) — daemon close/reopen oscillation; only branch-deletion is terminal"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    scripts/coord/pr-rescue-false-close.sh (INFRA-1406) reopens ANY closed PR whose head branch still exists on remote (it only skips on state=MERGED or branch-deleted). So an intentional close (redundant/superseded/broken PR) is silently reverted within ~60s — the curator's terminal action becomes a no-op. Worse: observed close/reopen OSCILLATION on PR #3117 at 2026-06-09T01:29:32Z closed then 01:30:07Z reopened, 35s apart, NO human involved — an auto-closer and pr-rescue-false-close.sh fighting over the same PR, burning gh API. The only terminal close today is to delete the remote branch first (then the rescue refuses). Evidence: #3108 + #3117 had to be branch-deleted via 'gh api -X DELETE git/refs/heads/<b>' to make the close stick this cycle.
+  acceptance_criteria:
+    - pr-rescue-false-close.sh honors an intentional-close signal (do-not-reopen/wontfix/superseded label, close-comment marker, or gap status closed/superseded) and does NOT reopen such PRs.
+    - "Oscillation guard: if a PR flapped closed<->open >=2x in <10m, stop and emit kind=pr_close_reopen_oscillation instead of reopening."
+    - Document terminal-close procedure (close + delete branch, or the do-not-reopen signal) in the shepherd playbook.
+    - "Smoke test: a closed PR carrying the do-not-reopen signal is NOT reopened by the rescue."
+  closed_date: '2026-07-21'
+  closed_pr: 3178
+  outcome_id: RESILIENT-000
+

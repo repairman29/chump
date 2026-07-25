@@ -1,0 +1,20 @@
+- id: MISSION-009
+  domain: MISSION
+  title: "MISSION: A2A / Fleet-Coordination master plan — deploy the best-in-class coordination layer"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Operator-commissioned 2026-06-03 (make A2A working, the BEST we can literally build, deploy asap). Umbrella owning deployment of docs/design/A2A_MASTER_PLAN_2026-06-03.md. Core finding: A2A is a fully-built publish bus with ZERO subscribers — ~15 primitives exist as working tested code (INFRA-1118 done, INFRA-1120 ready_to_ship, INFRA-1121 done, INFRA-1119/1122/1123/1826/1825/2515 open) but are gated behind two never-set env flags with no subscribe-side / no call-sites / no inbox-drain. Fix = Tier 0 (turn on what is built, mostly config) then Tier 1 (frontier upgrades). The Tier-1 reliability layer ALSO closes the CI self-audit deadlock class that ate the 2026-06-03 session. SEQUENCE (soup-to-nuts in the doc): Tier0 = ship INFRA-1120 (ready) + flip flags via META-157/INFRA-2515 + ship INFRA-1119 (RPC) + activate INFRA-1825 capability-publish loop + wire inbox-drain into loops; Tier1 = the new frontier gaps L6/L5/L2/L3a/L3b/L4 filed alongside this. Related existing: META-061, META-157, META-125, INFRA-1118..1123, INFRA-1825, INFRA-1826, INFRA-2515.
+  acceptance_criteria:
+    - "Tier 0 verified LOAD-BEARING on the mesh: consensus_result events fire, inbox_advance count > 0, chump_capabilities KV populated, RPC no longer returns NotImplemented"
+    - all Tier-1 frontier layers (L6 supervision+durable+guardrail, L5 event bus, L2 task-states, L3a bidding, L3b budget, L4 ontology) shipped per the doc
+    - "the CI self-audit deadlock class is closed: a red trunk auto-recovers via L6 supervision/self-rescue without a human admin override"
+    - the deployment milestones M1-M4 in the doc are each hit and independently verified
+  notes: |
+    [2026-06-08T01:09:59Z] RESEARCH VALIDATION 2026-06: our deterministic deliberator (chump consensus-tally Rust, NOT an LLM) is the research's #1 highest-leverage CORRECT choice — an LLM-deliberator amplifies sycophancy + hallucinates consensus + is a single point of failure (arXiv 2508.17536, 2510.07517, CONSENSAGENT ACL-2025). Keep the tally deterministic; reserve LLM deliberation only for no-quorum disagreement, then debate-then-vote with anonymization + counter-argument-forcing (anti-sycophancy). Quorum sweet spot 3-5 agents (N>=3f+1 adversarial). Cutting-edge refinements folded into CREDIBLE-114 (drain-then-proceed), EFFECTIVE-039 (epsilon-greedy+budgets), EFFECTIVE-037 (consumer offsets), EFFECTIVE-038 (input_required SLA); new EFFECTIVE-229 (response-required tracking). Full sources in session research synthesis.
+    [2026-06-08T01:40:45Z] Frontier-research synthesis now COMMITTED: docs/design/A2A_COORDINATION_RESEARCH_2026-06-08.md (DOC-067, PR #3101) — validates this umbrella against the 2026 frontier (Google A2A, MCP, LangGraph/AutoGen/Magentic-One, Contract-Net, actor mailboxes, event sourcing, LLM consensus) + folds cutting-edge refinements into CREDIBLE-114/EFFECTIVE-037/038/039 + new EFFECTIVE-229. The master plan doc (A2A_MASTER_PLAN_2026-06-03.md) is now also committed (was local-only).
+  closed_date: '2026-07-21'
+  closed_pr: 3101
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: INFRA-2343
+  domain: INFRA
+  title: "fix-trunk: cut v0.1.3 release tag to clear check-release-staleness gate"
+  status: closed
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1) Replace 3 pipefail-race-prone 'printf ,%s, X "
+    - " grep -q ,FP,' patterns in scripts/coord/trunk-sentinel-daemon.sh (lines 649, 661, 684) with bash-native substring matching: [[ \",$prev_filed_fps,\" == *,$fingerprint,* ]]; 2) test-pipefail-race-sweep.sh passes locally (0 violations); 3) fast-checks job goes green on main; 4) Functional behavior preserved — fingerprint membership check still works for filed/dispatched/recalled tracking; 5) Update gap notes: release-staleness failure (16d>14d) is continue-on-error and NOT the real fast-checks failure"
+  skills_required: bash,git,fix_trunk
+  outcome_id: MISSION-010
+

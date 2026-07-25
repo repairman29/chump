@@ -1,0 +1,16 @@
+- id: RESILIENT-132
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge interactive ship non-viable on degraded substrate (9 failure modes; lease corrupts every cycle)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Shipping CREDIBLE-128 (a verified test-fix) via bot-merge hit 9 distinct failures, proving interactive manual shipping is non-viable on the current degraded substrate. (1) silent wedge: an early crash orphans the heartbeat subshell which holds the output pipe open, so the run LOOKS alive but is dead; (2) import-not-found: a freshly-claimed worktree lacks the gap YAML/state.db entry; (3) ID collision: stale local state.db handed out CREDIBLE-127 which was closed on origin/main; (4) preflight cargo-test exceeds its 300s budget (INFRA-1422) on a cold worktree under build contention; (5) the stage-timeout SIGTERM releases the lease; (6) re-claim fails worktree/branch-exists; (7) re-claim hits a ghost NATS-KV claim (chump-coord status shows 0 refs but chump claim conflicts); (8) chump gap import returns fatal non-zero whenever pre-existing title-similar fixture dups (INFRA-002/race-a, INFRA-1268) are present, which bot-merge treats as a claim failure; (9) bot-merge HANGS after Tests-passed before push with no children and no network = a non-tty-safe read/stdin hang (RESILIENT-121 class). Root: bot-merge/claim/lease are fragile to interactive ops and re-corrupt the lease every cycle; the fleet survives identical wedges via farmer/paramedic/watchdog recovery. Adjacent rot: integrator-daemon launchd job is exit-127, main-preflight-watchdog state 116h stale. Verified CREDIBLE-128 code preserved at branch credible-128-work (9d2e933d4).
+  acceptance_criteria:
+    - bot-merge push/post-test stages are non-tty-safe (stdin from /dev/null) so they never hang headless
+    - bot-merge preflight pre-builds the test target or uses a contention-aware budget so cold worktrees do not trip the 300s stage timeout
+    - chump gap import is non-fatal (warn not error) on pre-existing title-similar fixture dups so it never blocks claim
+    - a bot-merge stage timeout does NOT release the gap lease
+    - integrator-daemon launchd job runs cleanly (no exit-127)
+  outcome_id: RESILIENT-000
+

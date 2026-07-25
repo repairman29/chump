@@ -1,0 +1,20 @@
+- id: RESILIENT-062
+  domain: RESILIENT
+  title: "RESILIENT: deliberator scans prunable ambient.jsonl but proposals live in feedback.jsonl (53 vs 6) — consumer reads wrong file"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Verified 2026-06-03 (post RESILIENT-061 fix, while proving consensus end-to-end). PRODUCER/CONSUMER FILE MISMATCH: scripts/coord/broadcast.sh writes 'FEEDBACK kind=proposal' canonically to .chump-locks/feedback.jsonl (line 520, 'the dedicated feedback.jsonl that the curator reads' — INFRA-1272 territory). But scripts/coord/deliberator-loop.sh scans AMBIENT='${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}' (line 64). Ground-truth counts: feedback.jsonl has 53 proposals, ambient.jsonl has 6. ambient.jsonl is the high-volume audit stream that the reaper/prune daemons trim, so proposals AGE OUT before the deliberator can tally them — and the durable proposal store (feedback.jsonl) is invisible to the consumer. This is INDEPENDENT of RESILIENT-061 (the bad-math crash, fixed in PR #2992): even with the tick fixed, it tallies only the fraction of proposals that survive in ambient, missing the canonical 53. Same producer/consumer wiring class as META-163 (fan-out globs sentinel files no producer creates). Design ref: docs/strategy/FLEET_RECV_SIDE_2026-05-30.md §3. Decision to make: either (a) point the deliberator scan at the durable feedback.jsonl, or (b) make broadcast.sh's proposal path reliably dual-write every proposal to a NON-pruned stream the deliberator reads. Prefer (a) — read the durable store, don't tally off an audit log that gets reaped.
+  acceptance_criteria:
+    - producer (broadcast.sh proposal path) and consumer (deliberator-loop.sh tick scan) agree on ONE durable proposal store — proposals are not tallied off the reaper-pruned ambient.jsonl
+    - "a proposal emitted via 'broadcast.sh FEEDBACK kind=proposal' is visible to 'deliberator-loop.sh tick' and reaches tally (verify end-to-end: broadcast a test proposal, run tick, confirm it appears in the Pending-proposals scan)"
+    - the deliberator no longer silently misses proposals that exist in feedback.jsonl but have been reaped from ambient.jsonl
+    - new/extended CI test asserts a freshly-broadcast proposal is seen by the deliberator scan within its window (not dependent on ambient retention)
+  depends_on: [RESILIENT-061]
+  notes: |
+    
+    MISSION-010 Gate1 (consensus actually fires) — co-prioritized 2026-06-05: this is THE blocker making fleet consensus emit 0 verdicts ever; deliberator reads ambient.jsonl while FEEDBACK proposals live in feedback.jsonl. Mission-linked for picker boost.
+  closed_pr: 3074
+  outcome_id: RESILIENT-000
+

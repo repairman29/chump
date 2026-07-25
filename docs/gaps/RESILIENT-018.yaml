@@ -1,0 +1,17 @@
+- id: RESILIENT-018
+  domain: RESILIENT
+  title: "PREVENTER: gh-api-in-ci must guard on GH_TOKEN presence — any test/script that calls gh api or gh pr from inside a GitHub Actions workflow must check GH_TOKEN is set and skip-with-WARN if not (precedent: e2e-pwa fails persistently because chump::github_rate_limit calls gh api rate_limit and CI workflow doesn't set GH_TOKEN, see INFRA-1846; affected #2508 + every PR touching code paths e2e-pwa exercises)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New scripts/ci/lib/ci-guards.sh helper exports check_gh_token_or_skip with single-line use: source the lib then call check_gh_token_or_skip "
+    - ""
+    - " exit 0 (exit 0 = pass with WARN, not fail)"
+    - All test scripts that call gh api or gh pr from inside scripts/ci/ MUST source ci-guards.sh and call check_gh_token_or_skip first; lint gate scripts/ci/test-gh-in-ci-guarded.sh greps for raw gh-api or gh-pr in scripts/ci/test-NAME.sh that don't source ci-guards.sh and FAILs
+    - "Specific fix for e2e-pwa: scripts/ci/test-e2e-pwa.sh or whatever invokes chump::github_rate_limit must skip the rate-limit fetch when GH_TOKEN is unset; emit ambient kind=ci_gh_token_missing_skip with workflow_name + job_name"
+    - "Smoke test scripts/ci/test-gh-token-guard.sh: run guard with GH_TOKEN unset (asserts skip + emit), run with GH_TOKEN set (asserts no-skip)"
+    - "Retroactive: grep scripts/ci/test-NAME.sh for raw gh-api or gh-pr calls; 5+ scripts likely need migration; file follow-up gaps per script"
+    - Pairs with INFRA-1846 (e2e-pwa advisory-promotion analysis) but addresses class-of-failure not single-job; allows e2e-pwa to be made required-without-flake
+  outcome_id: RESILIENT-000
+

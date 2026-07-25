@@ -1,0 +1,12 @@
+- id: META-215
+  domain: META
+  title: "META: Implement consensus tally check in daemon (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `auto-admin-merge-daemon.sh` script can execute `chump consensus-tally <PR_NUMBER>`.
+    - The script can parse the output of `chump consensus-tally` to determine if `consensus_resolved` is true and `quorum>=3` is met for a given PR.
+  depends_on: [META-212]
+  outcome_id: MISSION-010
+

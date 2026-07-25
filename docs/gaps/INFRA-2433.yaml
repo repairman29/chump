@@ -1,0 +1,15 @@
+- id: INFRA-2433
+  domain: INFRA
+  title: "ZERO-WASTE: crate-graph-aware test selection — nextest -p <changed crates + reverse-deps> on the PR path; keep full --workspace on merge/main"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Finding (2026-06-02 Kaizen audit, lane L3): the 35-member single-lockfile workspace runs 'cargo nextest run --workspace' on every change (retests all 35 crates), and the dorny/paths-filter diff gate is BYPASSED on the push/merge path (|| github.event_name=='push'). There is no crate-graph-aware selection. Proposal: a scripts/ci/select-crates.sh that maps changed files -> owning crate -> reverse-dependency closure via 'cargo metadata' + git diff, feeding -p flags to nextest on the per-PR path; keep the full --workspace run on the merge_group/main path as the safety net (main must stay fully green for bisect). DISTINCT from and complementary to: INFRA-2243 (nextest --partition SHARDING: parallelize the full suite across runners) and INFRA-2241 (prebuilt chump-ci docker image: cut per-job setup). Selection SHRINKS the suite; sharding PARALLELIZES it; docker cuts setup. sccache/R2 (INFRA-2093) attacks build TIME on cache hit and is orthogonal — it still compiles+tests all 35 crates. Win scales with dependency fan-out (a leaf-crate change wins big; a chump-coord/chump-gap-store change wins little — do not promise a fixed % ). Priority left P2 pending fleet consensus.
+  acceptance_criteria:
+    - scripts/ci/select-crates.sh maps git-diff changed files to owning crate + reverse-dep closure via cargo metadata
+    - per-PR CI runs nextest -p <selected crates> instead of --workspace; the full --workspace run is retained on the merge_group/main path
+    - a leaf-crate-only PR demonstrably tests fewer than all 35 crates
+    - "safety: under-selection cannot let a break reach main because the merge/main path still runs --workspace"
+  outcome_id: MISSION-010
+

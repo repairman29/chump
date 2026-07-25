@@ -1,0 +1,11 @@
+- id: INFRA-1398
+  domain: INFRA
+  title: "RESILIENT: pre-commit gates auto-bypass when irrelevant to staged file types (obs-budget for CI tests, fmt for non-Rust)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: every PR this session needed CHUMP_OBS_BUDGET_BYPASS=1 because pre-commit-obs-budget.sh counts scripts/ci/test-*.sh CI-test additions as feature LOC needing observability emit. CI-test scripts ARE the observability — they assert behavior, not generate runtime events\",\"scripts/git-hooks/pre-commit-obs-budget.sh: skip the gate when ALL staged files match scripts/ci/test-*.sh OR docs/**/*.md OR are tracked by the YAML-only set. Net: no false-positive bypasses needed for CI-test-only PRs\",\"Same pattern: CHUMP_FMT_CHECK=0 was needed when staging shell scripts + ci.yml (no Rust files). scripts/git-hooks/pre-commit cargo-fmt-check should detect zero Rust files staged and exit 0\",\"Smoke test scripts/ci/test-precommit-gate-auto-skip.sh: stage only test-*.sh files, assert obs-budget gate exits 0 without bypass; stage only .sh + .md, assert fmt gate exits 0 without bypass\",\"Out of scope: removing the gates entirely; only adding precise file-type predicates that match the gate is actually testing\"]"
+  closed_pr: 2154
+  outcome_id: MISSION-010
+

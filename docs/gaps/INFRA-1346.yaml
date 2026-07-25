@@ -1,0 +1,16 @@
+- id: INFRA-1346
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh shadow-validates chump ship plan — emit ship_plan_divergence events (pre-slice-4 of INFRA-1229)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - At bot-merge.sh main-flow entry, call `chump ship plan --pr <TARGET_PR> --gap <GAP_ID> --json` once per invocation with a 10s timeout. The call is BEST-EFFORT — its failure (binary missing, gh rate-limit, timeout, anything) must never block bot-merge.sh.
+    - "Emit kind=ship_plan_advisory to .chump-locks/ambient.jsonl with body {ts, kind, source:\"bot-merge.sh\", pr, gap, plan_action, plan_json_truncated_to_2kb}. Register the kind in docs/observability/EVENT_REGISTRY.yaml so INFRA-1237 strict-emit gate passes."
+    - Add an opt-out env var CHUMP_BOT_MERGE_SHADOW_PLAN=0 for ops to disable the probe if it adds gh call load during quota crunches.
+    - "Document in docs/process/CLAUDE_GOTCHAS.md (existing Auto-merge rollup-FAILURE trap section or new sibling section): the advisory stream is the pre-slice-4 validation channel for INFRA-1229. Operators can grep ship_plan_advisory events vs the subsequent bash decisions to find divergences."
+    - "CI smoke test scripts/ci/test-bot-merge-shadow-plan.sh: drives a synthetic bot-merge.sh invocation against a fake `chump ship plan` (returning a canned ShipPlan), asserts exactly one ship_plan_advisory event is emitted with the expected fields. NO live gh calls."
+    - "Out of scope: per-decision-point comparison (every bot-merge.sh sub-action contrasted against planner) — that adds N events per run. Start with one advisory event per run; expand if signal warrants."
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

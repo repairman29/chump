@@ -1,0 +1,18 @@
+- id: INFRA-1822
+  domain: INFRA
+  title: "EFFECTIVE: investigate repairman29/registry ACP fork (276 commits ahead of upstream) — plan Chump coord/ACP alignment"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Compare repairman29/registry HEAD vs agentclientprotocol/registry HEAD; document the 276 divergent commits at a category level (added features, changed protocols, removed assumptions) in docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+    - Read upstream ACP spec at agentclientprotocol/registry README + any /spec or /docs dirs; document the spec surface (capability manifest schema, registration flow, auth methods, versioning)
+    - Compare ACP spec surface against Chump's coord layer in crates/chump-coord (current shape from INFRA-1758, INFRA-1759, INFRA-1760, INFRA-1761, INFRA-1802, INFRA-1803 work) — identify overlap and gaps
+    - "Decision document: (a) align Chump coord to ACP spec (becomes interoperable with broader ecosystem, may require breaking changes), (b) bridge: implement ACP-compat adapter on top of existing chump-coord (interop without breaking), (c) ignore: continue independent path (rationale required)"
+    - "If (a) or (b): file follow-up gaps to enact the alignment, scoped per-layer of A2A_ROADMAP (META-061)"
+    - "If (c): document explicitly so future contributors know the decision was deliberate, not oversight"
+    - Coordinate with active sibling leases on crates/chump-coord (INFRA-1758/1759/1802/1803) — alignment work will rebase or supersede some of their output
+  notes: |
+    2026-05-23 verdict: (c) IGNORE — Chump coord and ACP solve different problems (N:M workers over NATS vs 1:1 editor-agent over stdio). Investigation doc shipped at docs/arsenal/cross-pollination/CP-007-acp-alignment.md. **Correction:** the original 'fork is 276 commits ahead' claim was inverted — repairman29/registry is 0 ahead, 276 BEHIND upstream (stale fork, not divergent). Gap stays open until the CP-007 doc commits to main; then close via chump gap ship --update-yaml. Two narrow follow-ups documented in CP-007 for if/when ACP-side demand appears: INFRA-NEW-ACP-INBOUND-SHIM and INFRA-NEW-CHUMP-IN-ACP-REGISTRY (don't file preemptively).
+  outcome_id: MISSION-010
+

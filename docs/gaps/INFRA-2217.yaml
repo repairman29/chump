@@ -1,0 +1,20 @@
+- id: INFRA-2217
+  domain: INFRA
+  title: "EFFECTIVE: fleet-scrubber lane sort — most-recently-active first (Marcus-grade UX polish)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Live observation on http://localhost:7070/scrubber/ — the per-session lanes render in whatever order they fall out of the API response (effectively sqlite ORDER BY session_id ASC). Result: my chump-Chump-* session sits randomly mid-list, sub-Sonnets are scattered, curators clump together. For Marcus-grade demo + my own daily use, the most-recently-active session should be at the top, with stale/idle sessions sinking to the bottom. Sort key: MAX(events.ts_ms) per session_id, DESC. Implementation: server-side in /api/segments response (return lanes already sorted) OR client-side in the scrubber render (after fetchData, sort allSegments groups by max ts). Server-side is cheaper to render but a frontend sort is simpler and doesn't require an API contract change.
+  acceptance_criteria:
+    - fleet-scrubber renders per-session lanes ordered by most-recent-event-in-visible-window DESC
+    - Stale sessions with no events in visible window sort to the bottom (or hidden entirely behind a 'show stale' toggle)
+    - My own session (the one logged into chump.events.> currently) gets a subtle highlight (label color or border) so the operator can spot themselves
+    - Smoke test extends scripts/ci/test-fleet-scrubber.sh to assert the lane order matches the recency of fixture data
+    - chump preflight green before push
+  depends_on: [INFRA-2204]
+  notes: |
+    [2026-06-04T00:26:23Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2783
+  outcome_id: MISSION-010
+

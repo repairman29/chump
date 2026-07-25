@@ -1,0 +1,11 @@
+- id: INFRA-1540
+  domain: INFRA
+  title: "RESILIENT: INFRA-1534 ghost-ship — runners registered but ci.yml never migrated + cache + security guard + telemetry missing"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "[\"Diagnosed 2026-05-16 21:45Z: INFRA-1534 closed-by #2229 marked done but only 4 of 10 AC delivered. 4 macos-arm64 runners online + busy with housekeeping (Release, Repo-health, Gap-Status-Guard) but ZERO ci.yml jobs reference self-hosted. CI bottleneck (9 queued + 5 in_progress) still active. PRs continue to stall on github-hosted runner contention.\",\"Deliver INFRA-1534 AC #7 (security guard) FIRST: every workflow stanza using self-hosted MUST include `if: github.event.pull_request.head.repo.fork == false`. Without this, fork PRs run arbitrary code on operators MacBook.\",\"Deliver INFRA-1534 AC #4 (persistent cache): provision /var/cache/chump-runner/cargo-target via setup script (operator runs once per runner); cargo target-dir env set so cache hits across runs. Without this, every macOS run cold-rebuilds and the 5-10x speedup vanishes.\",\"Deliver INFRA-1534 AC #2 (migrate ci.yml jobs): identify which of the ~30 ubuntu-latest jobs in .github/workflows/ci.yml can run on macOS-arm64 as-is (no apt-get, no Linux paths) and add a matrix or per-job `runs-on: [self-hosted, macos-arm64]`. Jobs that depend on apt stay on ubuntu-latest until Pi mesh lands.\",\"Deliver INFRA-1534 AC #6 (telemetry): emit kind=self_hosted_runner_run {runner_label, workflow, duration_s, cache_hit} as a final step in each migrated job. Lets fleet doctor surface whether runners are doing work.\",\"Pi mesh registration (AC #3) split out as INFRA-NEW: requires physical Pi setup, operator action. Track separately.\",\"CI test scripts/ci/test-ci-jobs-on-self-hosted.sh: parse ci.yml, assert at least N jobs reference self-hosted label + security guard present.\",\"Update docs/process/SELF_HOSTED_RUNNERS.md migration table: which jobs migrated, which deferred, why.\",\"Out of scope: rewriting Linux-only jobs to be cross-platform. Those wait for Pi mesh.\"]"
+  closed_date: '2026-05-17'
+  outcome_id: MISSION-010
+

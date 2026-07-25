@@ -1,0 +1,19 @@
+- id: INFRA-2397
+  domain: INFRA
+  title: "RESILIENT: main-preflight-watchdog daemon — cron preflight against origin/main (catch 5-gate trunk-red in 10min, not weeks)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - New script scripts/coord/main-preflight-watchdog-daemon.sh — runs chump preflight (full mode) against origin/main in a fresh /tmp worktree every CHUMP_MAIN_PREFLIGHT_INTERVAL_S (default 600s)
+    - "On gate failure: dedup via sha256 of failing-gate-set, file P0 INFRA-NEW-MAIN-RED-{gate} gap if not already open with same fingerprint, emit kind=main_preflight_red to ambient.jsonl"
+    - "On gate recovery (transition red->green): emit kind=main_preflight_recovered, close auto-filed gaps (registered in state file at .chump/main-preflight-state.json)"
+    - "Bypass: CHUMP_MAIN_PREFLIGHT_DISABLED=1 (audit-logged)"
+    - Install via scripts/setup/install-main-preflight-watchdog-daemon-launchd.sh + scripts/launchd/com.chump.main-preflight-watchdog.plist with StartInterval=600
+    - Add to scripts/setup/optional-installers-allowlist.txt + REQUIRED_DAEMONS (this IS required given INFRA-2396 paid 47-condition tax)
+    - "Smoke test scripts/ci/test-main-preflight-watchdog.sh: mock failing gate, assert kind=main_preflight_red emitted with correct gate label"
+  notes: |
+    [2026-06-04T00:06:19Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2943
+  outcome_id: MISSION-010
+

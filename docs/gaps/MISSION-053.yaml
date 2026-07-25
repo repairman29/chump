@@ -1,0 +1,13 @@
+- id: MISSION-053
+  domain: MISSION
+  title: fleet self-coherence + autonomous ops — stop operator hand-driving (MISSION-010)
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+  - The change described by "fleet self-coherence + autonomous ops — stop operator hand-driving (MISSION-010)" is implemented
+    in the relevant MISSION code path(s).
+  - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+  - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-25'
+  closed_pr: 3178

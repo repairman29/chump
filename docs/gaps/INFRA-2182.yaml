@@ -1,0 +1,13 @@
+- id: INFRA-2182
+  domain: INFRA
+  title: "RESILIENT P2: infra-watcher KeepAlive false-positive — audit-daemons subcheck treats absence-of-StartInterval as CRITICAL without inspecting KeepAlive=true long-runners (4 actions-runners, nats-server, smee-tunnel, fleet-daemon)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Modify scripts/coord/infra-watcher-loop.sh audit-daemons subcheck: treat KeepAlive=true plists as satisfying scheduling requirement (don't flag missing StartInterval as CRITICAL). Specifically: 4 actions-runners, nats-server, smee-tunnel, fleet-daemon, curator-jit-scheduler, github-webhook-receiver are legitimately KeepAlive long-runners. Verify: after fix, infra-watcher run reports 0 CRITICAL findings for those 9 (currently 9 false-positives per infra-watcher self-audit 2026-05-29)."
+  notes: |
+    [2026-06-04T00:26:27Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2728
+  outcome_id: MISSION-010
+

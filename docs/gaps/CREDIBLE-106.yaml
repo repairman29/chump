@@ -1,0 +1,17 @@
+- id: CREDIBLE-106
+  domain: CREDIBLE
+  title: "CREDIBLE P0 UMBRELLA: diagnose-before-file hard gates — agents need enforcement, not more doctrine (the 2026-06-05 lazy-theory pattern)"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Operator framing 2026-06-05 22:55Z: 'We're getting fucked by ourselves... harden up the procedures.' The reality-check doctrine already exists (CLAUDE.md §reality-check-before-alarm-class-action, CREDIBLE-090). The compliance doesn't. This umbrella adds 3 ENFORCED gates instead of more words. Pairs with CREDIBLE-105 (durable-fix-doctrine doc, sibling in flight). PROOF the gates would work: every diagnosis-laziness failure I committed today (5+ instances catalogued in /tmp/diagnose-before-file-proposal.md) maps to exactly one gate. SUB-GAPS: (1) Gate 1 'chump gap reserve --priority P0/P1 RESILIENT/MISSION/CREDIBLE requires --evidence flag' (Rust, ~80 LOC, audit-priorities flags empty-evidence gaps); (2) Gate 2 'halt-class emitters must source scripts/lib/halt-class-emit.sh wrapper that calls reality-check.sh first' (bash, ~50 LOC + retrofit pass); (3) Gate 3 'docs/observability/HALT_CLASS_PREDICATES.yaml manifest + scripts/ci/test-halt-class-predicates.sh' (yaml + bash test, ~100 LOC). Each gate has an explicit BYPASS for legitimate cases (CHUMP_GAP_RESERVE_NO_EVIDENCE=1 + trailer, CHUMP_HALT_CLASS_SKIP=1 + trailer, manifest-allowlist entry). Empirical case study: RESILIENT-115 #3089 documents one full diagnose-laziness reversal — my first theory (Keychain rename) was wrong; live-test caught it. That's the discipline these gates would have caught up-front.
+  acceptance_criteria:
+    - "Gate 1 implemented: chump gap reserve refuses P0/P1 RESILIENT/MISSION/CREDIBLE without --evidence flag containing command-output pairs"
+    - "Gate 2 implemented: scripts/lib/halt-class-emit.sh wrapper exists; all halt-class emitters refactored to use it; CI gate refuses pushes that emit class=halt without going through wrapper"
+    - "Gate 3 implemented: docs/observability/HALT_CLASS_PREDICATES.yaml lists each kind with required-pre-emit-checks; test-halt-class-predicates.sh asserts each emitter source-file references the documented checks"
+    - "Test: re-run the 5 diagnosis-laziness failures from /tmp/diagnose-before-file-proposal.md — each one would now be blocked by exactly one gate"
+  closed_date: '2026-07-20'
+  closed_pr: 3095
+  outcome_id: MISSION-010
+

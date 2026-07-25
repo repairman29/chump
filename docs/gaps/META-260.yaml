@@ -1,0 +1,19 @@
+- id: META-260
+  domain: META
+  title: "META: Migrate coverage job, ftue-clean-machine-2026, repo-health, no-anthropic-smoke, branch-protection-drift to nightly schedule (META-258 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The `coverage` job in `ci.yml` is removed from `on:push` and `on:pull_request` triggers."
+    - "The `ftue-clean-machine-2026.yml` workflow is removed from `on:push` and `on:pull_request` triggers."
+    - "The `repo-health.yml` workflow is removed from `on:push` and `on:pull_request` triggers."
+    - "The `no-anthropic-smoke.yml` workflow is removed from `on:push` and `on:pull_request` triggers."
+    - "The `branch-protection-drift.yml` workflow is removed from `on:push` and `on:pull_request` triggers."
+    - "All 5 items (coverage job, 4 workflows) are configured to run `on:schedule` with cron `0 6 * * * UTC` (either in their original files or consolidated into `ci-nightly.yml`)."
+    - Verify that these workflows/jobs no longer run on `push` or `pull_request` events.
+    - Verify that these workflows/jobs run successfully on the nightly schedule.
+  closed_date: '2026-05-31'
+  closed_pr: 2901
+  outcome_id: MISSION-010
+

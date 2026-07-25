@@ -1,0 +1,18 @@
+- id: INFRA-2127
+  domain: INFRA
+  title: "RESILIENT P0: sccache R2_ACCESS_KEY_ID secret is 53 chars (should be 32) — trunk-RED for cargo-test on any Rust PR (INFRA-2093 followup)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - 1. Operator rotates current R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY in Cloudflare R2 dashboard (current key was pasted in chat, treat as leaked)
+    - "2. Re-paste via shell to avoid whitespace contamination (GH preserves trailing newlines/hidden chars from browser copy): printf '%s' '<32-char-key>' "
+    - " gh secret set R2_ACCESS_KEY_ID -R repairman29/chump  AND  printf '%s' '<secret>' "
+    - " gh secret set R2_SECRET_ACCESS_KEY -R repairman29/chump"
+    - "3. Canary: trigger cargo-test on any Rust PR (close+reopen #2700 or push empty commit). Read sccache log line 'Credential access key has length N'. Expected: N=32. If still N>32, problem is elsewhere (workflow injection, sccache version, S3 endpoint mismatch)."
+    - "4. Add defensive guard in .github/workflows/ci.yml line ~1171: after R2_KEY presence check, length-check (must equal 32 exactly) before setting RUSTC_WRAPPER=sccache. If mismatched, log warning + skip sccache (RUSTC_WRAPPER='') so cargo-test still runs natively. Emit ambient kind=sccache_cred_malformed."
+    - 5. Document the printf-vs-paste discipline + dashboard token-type distinction in docs/process/SCCACHE_R2_CACHE.md so this footgun is recorded for the next operator-action cycle.
+  notes: |
+    CLOSED not-a-bug (operator-verified 2026-06-02 via CF R2 dashboard): bucket chump-sccache shows 522GB cached + 141k/155k Class A/B ops June 1-2 — R2 authenticates fine, key is NOT malformed. The '53-char/should-be-32' premise was stale/unverified. Did NOT ship the len==32 validation (would reject a valid non-32 key + break rotations). No live bug; no re-rotation needed.
+  outcome_id: MISSION-010
+

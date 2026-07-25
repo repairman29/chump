@@ -1,0 +1,14 @@
+- id: INFRA-1697
+  domain: INFRA
+  title: "EFFECTIVE: Content Bots fleet integration — workers with WORKER_SKILLS=content-bot,<bot_id> pick content tasks (META-066 phase 4, mirrors INFRA-1622)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - scripts/dispatch/_pick_and_claim_gap.py extended to recognize WORKER_SKILLS=content-bot,<bot_id> patterns and route content-bot tasks (gaps with skills_required containing the bot_id) to those workers
+    - scripts/dispatch/run-fleet.sh accepts CHUMP_CONTENT_BOT_WORKERS=N to launch N workers tagged with content-bot skills (analogous to CHUMP_PWA_WORKERS from INFRA-1622)
+    - smoke test scripts/ci/test-content-bot-fleet-routing.sh asserts content-bot-tagged gaps preferentially route to content-bot-tagged workers
+  closed_date: '2026-05-22'
+  closed_pr: 2347
+  outcome_id: MISSION-010
+

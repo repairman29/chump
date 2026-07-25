@@ -1,0 +1,17 @@
+- id: INFRA-1703
+  domain: INFRA
+  title: "ZERO-WASTE: clear 6 stale open_with_closed_pr — 3 ship via re-impl, 3 clear-stale-field"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "For INFRA-1428 (re-impl via merged #2357), INFRA-1458 (re-impl via merged #1482), INFRA-1503 (re-impl via merged #2333): update state.db to set status=done and closed_pr=<correct merged PR>; mirror change into the YAML via chump gap show or direct edit"
+    - "For INFRA-1412, INFRA-1597, INFRA-1598 (P0/RESILIENT, no re-impl found, closed_pr points at CLOSED-unmerged PR): clear the closed_pr field in state.db (status stays open since work isn't done)"
+    - "After: chump gap audit-priorities --json "
+    - " jq .open_with_closed_pr returns 0"
+    - Existing test scripts/ci/test-gap-audit-priorities.sh continues to pass
+    - No new event kinds; no Rust code change; purely state.db + YAML bookkeeping
+  notes: |
+    moot: state.db is gitignored per-worktree; main checkout audit count was stale vs canonical sibling state; no real work needed
+  outcome_id: MISSION-010
+

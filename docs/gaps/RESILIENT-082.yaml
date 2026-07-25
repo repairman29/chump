@@ -1,0 +1,21 @@
+- id: RESILIENT-082
+  domain: RESILIENT
+  title: "RESILIENT P1: CI path-filtering — docs/gaps/yaml-only PRs skip clippy/e2e/ACP (free the 4-core runner pool; the REAL capacity fix — GitHub merge-queue is impossible on this personal account)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-03 (conductor, with evidence): the throughput collapse has TWO causes. (1) pr-shepherd strict-false rebase churn — FIXED this session (rebase budget 0, RESILIENT-081 for the durable strict-aware fix). (2) THIS gap: the fleet is gap/doc-heavy (the 93%-meta ship-mix), so most PRs change only docs/gaps/*.yaml or *.md and ZERO Rust — yet they run the FULL heavy Rust CI on the 4-core self-hosted pool. EVIDENCE: #3014 (6 files, all docs/gaps, 0 rust) and #3017 (0 rust) each ran audit-shard(1-4) [all 4 cores], clippy-required, and ACP protocol smoke — work a YAML change cannot break. cargo-test is ALREADY skipped on these (partial path-filtering exists), proving the pattern works; audit/clippy/e2e/ACP are simply not filtered yet. With ~10 such PRs in flight, the 4-core pool is saturated by needless work and real Rust PRs (e.g. the farmer #3005) starve. CRITICAL CONTEXT: the previously-assumed durable fix — GitHub native merge queue (RESILIENT merge-queue cluster, CREDIBLE-086) — is STRUCTURALLY IMPOSSIBLE here: verified repo owner type=User (personal account), required_merge_queue absent, POST returns 422. Merge queue is org/enterprise-only. So path-filtering — NOT a merge queue — is the viable durable capacity fix on this account. MECHANISM: add job-level guards (paths-filter or `if:` on a changed-files check) so clippy, cargo-test, e2e, and ACP-protocol SKIP when the PR touches no *.rs / Cargo.toml / Cargo.lock / build.rs / src/ files; KEEP the gap-integrity/registry audit for docs/gaps/*.yaml (it IS relevant to YAML). Preserve branch protection by reusing the existing *-required wrapper pattern (the job that reports SUCCESS when the real job is skipped — cargo-test-required already does this). Re-enable nothing that reduces coverage for Rust PRs.
+  acceptance_criteria:
+    - a PR changing only docs/gaps/*.yaml or *.md does NOT run clippy/cargo-test/e2e/ACP-protocol (they report skipped/neutral, not a full run) — verified on a real 0-rust PR
+    - the gap-integrity/registry audit STILL runs on gap-YAML PRs (correctness preserved)
+    - required status checks still report a passing conclusion when skipped so branch protection is satisfied (reuse the *-required wrapper pattern)
+    - a PR touching *.rs/Cargo*/src/ runs the full matrix unchanged
+    - "measured: on a gap/doc-only PR the self-hosted audit shards are not co-occupied by clippy/e2e/ACP, freeing the 4-core pool"
+    - the merge-queue cluster (GitHub native) is reconciled to not-viable on a personal account (ref CREDIBLE-086) and this gap is recorded as the capacity fix that supersedes it
+  notes: |
+    RESILIENT-082: PR #3020 open, pending conductor review before merge (change gates all CI). AC6: merge-queue cluster reconciled as not-viable on personal account (org/enterprise-only per GitHub docs); path-filtering is the durable capacity fix.
+    [2026-06-03T23:58:32Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 3020
+  outcome_id: RESILIENT-000
+

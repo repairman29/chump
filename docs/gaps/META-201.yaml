@@ -1,0 +1,15 @@
+- id: META-201
+  domain: META
+  title: "META-131 sub: extract composite GitHub action for checkout+toolchain+sccache setup"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3085
+  outcome_id: MISSION-010
+

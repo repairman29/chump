@@ -1,0 +1,11 @@
+- id: INFRA-1438
+  domain: INFRA
+  title: "RESILIENT: arm-auto-merge.sh verifies post-arm via gh pr view (silent-arm failures observed under GraphQL exhaustion)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced earlier this session: `gh pr merge $PR --auto --squash` sometimes returns 0 silently but no auto-merge gets enabled. Observed once on PR #2073. Detected only by running `gh pr view $PR --json autoMergeRequest` post-call and seeing null.\",\"scripts/coord/arm-auto-merge.sh wrapper: (a) calls gh pr merge --auto --squash, (b) sleeps 2s, (c) calls gh pr view --json autoMergeRequest and asserts non-null, (d) on failure retries once with 30s backoff, (e) returns non-zero exit if still null after retry\",\"Emit kind=auto_merge_arm_verified with pr_number + attempt_count\",\"Replace existing call sites: scripts/coord/bot-merge.sh, any other `gh pr merge --auto` invocations\",\"Smoke test scripts/ci/test-arm-auto-merge.sh: stub gh that returns success on merge but null on view (simulating GraphQL exhaustion); assert wrapper retries + reports failure\",\"Register kind=auto_merge_arm_verified in EVENT_REGISTRY.yaml\",\"Out of scope: handling permanent failure beyond retry (separate gap if needed)\"]"
+  closed_pr: 2187
+  outcome_id: MISSION-010
+

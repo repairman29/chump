@@ -1,0 +1,18 @@
+- id: RESILIENT-032
+  domain: RESILIENT
+  title: chump claim/gap reserve in fresh worktree cannot see locally-reserved-but-unpushed gaps — sub-agents reach for next-free-on-origin and collide with shepherd's local-only reservations
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Today's PR #2643 (INFRA-2051 wizard outcome detection) shipped under wrong gap YAML name (INFRA-2045.yaml) because the sub-agent's chump gap reserve couldn't see my locally-filed INFRA-2051 in their fresh-worktree state.db. Root cause: state.db is updated by chump gap commands LOCALLY but not auto-committed to git. Sub-agents do git worktree add origin/main → fresh worktree gets the LAST-PUSHED state.db, missing any locally-reserved gaps. Agent's chump claim INFRA-2051 fails → agent falls back to chump gap reserve → gets next-free-on-origin slot, which collides with my and shepherd's local-only reservations. Result: gap-ID collisions invisible until shepherd or I push our work and discover the conflict.\n\nFIX OPTIONS:\n(a) chump claim auto-syncs state.db from origin first (git fetch origin main + git show origin/main:.chump/state.db > local; then attempt claim); risk: blows away local pending reservations\n(b) chump gap reserve atomically commits the reservation (orchestrator-side) — but adds commit-noise; would still need sync in sub-agent\n(c) Reserved-but-unpushed gaps written to a dedicated unpushed-reservations.json that ANY chump CLI call merges-into-view before lookup — simpler than full state.db sync\n(d) Just document the pitfall + add a SUBAGENT_DISPATCH.md rule: 'Opus must commit + push gap YAML BEFORE dispatching agent' (operator-discipline, not code-discipline)\n\nRecommend (c) — small JSON, race-free, no commit noise, sub-agent reads it on every chump call.
+  acceptance_criteria:
+    - chump gap reserve writes the new gap to BOTH .chump/state.db AND .chump-locks/unpushed-reservations.json
+    - "chump claim / chump gap show / chump --briefing read unpushed-reservations.json AFTER state.db lookup (defense-in-depth: even fresh-worktree sub-agents see the reservation)"
+    - Sub-agent fresh worktrees inherit unpushed-reservations.json from operator's main checkout via symlink or rsync at chump claim time
+    - When operator commits + pushes the gap YAML to main, the entry is auto-removed from unpushed-reservations.json on next pull
+    - "Smoke test scripts/ci/test-gap-reserve-visibility.sh: reserve a gap in main checkout, spawn a fresh worktree, chump gap show <ID> succeeds in the fresh worktree"
+  closed_date: '2026-07-21'
+  closed_pr: 3081
+  outcome_id: RESILIENT-000
+

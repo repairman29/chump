@@ -1,0 +1,9 @@
+- id: INFRA-3362
+  domain: INFRA
+  title: "META-070 Tier-C: mirror C4 fleet-daemon/resilience audit-job smoke tests into chump preflight"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Run chump gap decompose INFRA-3362 to split the 42-script C4 fleet-daemon/resilience cluster (docs/process/AUDIT_JOB_DECOMPOSITION.md C4 table) into ship-sized sub-slices — do not mirror all 42 in one PR\n2. Each sub-slice extends src/preflight.rs audit-gate discovery list, gated behind its own CHUMP_PREFLIGHT_SKIP_* env var\n3. Each sub-slice ships its own scripts/ci/test-preflight-audit-c4-<slice>.sh smoke test\n4. This gap self-closes when all C4 sub-slices have shipped"
+

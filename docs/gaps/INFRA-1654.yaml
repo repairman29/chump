@@ -1,0 +1,33 @@
+- id: INFRA-1654
+  domain: INFRA
+  title: "PR #2296 stuck [CI-RED] — CI red for 64m"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2296
+    
+    Detected by stuck-pr-filer (2026-05-20T06:49:21Z).
+    
+    Trigger: CI red for 64m
+    At least one required check has been failing for 64m (threshold 20m). Failing check: audit.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2296 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1486
+    Branch: chump/infra-1486-claim
+    Failing check: audit
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-22'
+  closed_pr: 2296
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

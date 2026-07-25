@@ -1,0 +1,14 @@
+- id: EFFECTIVE-220
+  domain: EFFECTIVE
+  title: "chump preflight: per-gate cargo output truncated at ~23k bytes — error line cut off, real diagnostic invisible (blocked 4 preflight retries today)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`chump preflight` per-gate output capture must preserve the FINAL N lines (where errors usually live) rather than truncating mid-stream. Current behavior: each gate output truncated at ~23k bytes WITH the truncation midway, leaving the real error line cut off."
+    - "Alternative: write full per-gate output to a deterministic file path (e.g. `target/preflight-logs/<gate>.log`) and print the path on FAIL so the operator can `cat` it."
+    - "Regression repro: artificially produce a 30k-byte cargo error stream and verify the user-visible truncated output contains the LAST 5 lines (the conclusion + \"error: could not compile\" lines), not just the middle."
+  notes: |
+    Empirical evidence 2026-06-05: 4 preflight retries today (EFFECTIVE-216, RESILIENT-118) each showed truncated cargo output ending mid-"Checking" line, no error visible. Had to re-run cargo clippy --workspace directly to see the actual diagnostic (turned out clippy was fine; failures were sccache/reaper races). Truncation made root-cause diagnosis 10× slower than necessary.
+  outcome_id: EFFECTIVE-000
+

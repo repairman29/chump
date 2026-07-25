@@ -1,0 +1,20 @@
+- id: INFRA-1549
+  domain: INFRA
+  title: "RESILIENT: wire chump-agent-lease crate into worker.sh edit path — 863 LOC of path-level lease coordination has zero callers; fleet uses ad-hoc .chump-locks JSON instead"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    STRUCTURAL FINDING (Phase A read, 2026-05-16): scripts/dispatch/worker.sh is OPAQUE to individual Edit/Write tool calls — it spawns 'claude -p <prompt> --dangerously-skip-permissions' at lines 1010-1013, and all file edits happen inside that subprocess. worker.sh sees only the gap-level coarse lease (.chump-locks/<session>.json) — NOT per-path. Therefore chump-agent-lease's path-level claim_paths API cannot be wired by modifying worker.sh; the only place that sees individual Edit/Write calls is the Claude Code PreToolUse hook (same integration point we just used for ambient-context-inject in FLEET-022). Correct wire-up: PreToolUse Edit|Write hook in .claude/settings.json that invokes 'chump claim-paths <file>' via CLI before each edit, with lease_overlap emitted on collision. crates/chump-agent-lease/src/lib.rs (863 LOC) has the right primitives (claim_paths, heartbeat, gap_id_is_claimed_by_other) but needs a 'chump claim-paths' CLI wrapper in src/main.rs to be invokable from a hook command.
+  acceptance_criteria:
+    - "New 'chump claim-paths <file...> [--ttl N]' subcommand added in src/main.rs that delegates to crates/chump-agent-lease::claim_paths and returns non-zero on collision with stderr line 'LEASE_OVERLAP gap=<other-gap> session=<other-session>'"
+    - .claude/settings.json hooks.PreToolUse[] gains an Edit
+    - Write matcher entry (sibling to the FLEET-022 ambient-context-inject hook) invoking 'chump claim-paths' with the tool_input.file_path piped in via jq — non-zero exit short-circuits the tool call with a denial message
+    - chump-agent-lease publishes lease_acquired / lease_released / lease_overlap ambient events that docs/observability/EVENT_REGISTRY.yaml documents (emitter_paths includes src/main.rs and crates/chump-agent-lease/src/lib.rs)
+    - scripts/dispatch/worker.sh emits a session-level heartbeat via 'chump claim-paths --heartbeat' on each cycle (the gap-level lease stays as today; path-level leases nest under the session)
+    - scripts/ci/test-agent-lease-pretooluse.sh spawns two mock Claude sessions claiming the same path, asserts exactly one wins the chump claim-paths CLI call and the loser emits lease_overlap
+    - "Migration note in docs/process/CLAUDE_GOTCHAS.md explains the layering: gap-level lease (.chump-locks/<session>.json) for coarse-grained worker coordination, path-level lease (crates/chump-agent-lease) for in-session Edit/Write coordination"
+  notes: |
+    wave: 0b (path-level lease via PreToolUse hook — prevents the stomp class self-doctor cannot recover from)
+  outcome_id: MISSION-010
+

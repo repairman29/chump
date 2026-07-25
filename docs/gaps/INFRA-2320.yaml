@@ -1,0 +1,13 @@
+- id: INFRA-2320
+  domain: INFRA
+  title: "trunk-red rescue: revert ci.yml action versions @v6/@v7/@v5 → @v4 — GHA Invalid-workflow-file"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. .github/workflows/ci.yml: actions/checkout@v6 → @v4 (all instances)\n2. .github/workflows/ci.yml: actions/setup-node@v6 → @v4 (all instances)\n3. .github/workflows/ci.yml: actions/cache@v5 → @v4 (all instances)\n4. .github/workflows/ci.yml: actions/upload-artifact@v7 → @v4 (all instances)\n5. YAML still parses (python3 -c 'import yaml; yaml.safe_load(open(...))')\n6. One PR rebased after merge reaches green CI (proof of fix)\n7. pr-shepherd-daemon launchd job re-armed"
+  notes: |
+    [2026-06-04T00:16:31Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2908
+  outcome_id: MISSION-010
+

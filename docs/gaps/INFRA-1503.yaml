@@ -1,0 +1,11 @@
+- id: INFRA-1503
+  domain: INFRA
+  title: "ZERO-WASTE: chump claim aborts early when gap has an OPEN PR — 2 consecutive sessions wasted creating duplicate worktrees on 2026-05-16"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: claimed INFRA-1400 + INFRA-1411 back-to-back; both had OPEN PRs from siblings I could not see through preflight (it checks state.db status, not GitHub PR state). chump claim cloned a worktree, restored a branch from origin, ran cargo + ran Edit no-ops, then I discovered PR #2177 and PR #2218 were already shipping the same gap. Net: ~20 min × 2 sessions wasted.\",\"Add an early check in chump claim path: gh pr list --search 'head:chump/<gap-slug>-claim is:open' OR cache lookup via .chump/github_cache.db. If a non-draft OPEN PR exists for the canonical claim branch name, abort with: 'ERROR: PR #<N> already OPEN for <gap-id> by <author> — gap is in-flight. Pick a different gap or wait. (override: --allow-duplicate-pr)'\",\"Emit kind=claim_aborted_pr_in_flight {gap_id, existing_pr, existing_author} to ambient.jsonl\",\"Smoke test scripts/ci/test-claim-aborts-on-open-pr.sh: synthetic repo + mocked gh response with open PR; assert claim exits 2 + emits event.\",\"Out of scope: rewriting preflight to consult GitHub more broadly (separate gap, m-effort)\"]"
+  closed_pr: 2333
+  outcome_id: MISSION-010
+

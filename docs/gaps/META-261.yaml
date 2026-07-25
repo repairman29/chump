@@ -1,0 +1,17 @@
+- id: META-261
+  domain: META
+  title: "META: Collapse clippy, cargo-test, fast-checks, audit stub/required CI jobs in ci.yml (META-258 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `clippy-stub` and `clippy-required` jobs are removed from `ci.yml`.
+    - The `cargo-test-stub` and `cargo-test-required` jobs are removed from `ci.yml`.
+    - The `fast-checks-stub` and `fast-checks-required` jobs are removed from `ci.yml`.
+    - The `audit-stub` and `audit-required` jobs are removed from `ci.yml`.
+    - The corresponding parent jobs (`clippy`, `cargo-test`, `fast-checks`, `audit`) are configured to be natively required by GitHub's branch protection rules (if their context names change, this will be handled in a subsequent slice).
+    - Verify that pull requests are still correctly gated on the successful completion of `clippy`, `cargo-test`, `fast-checks`, and `audit`.
+  closed_date: '2026-05-31'
+  closed_pr: 2903
+  outcome_id: MISSION-010
+

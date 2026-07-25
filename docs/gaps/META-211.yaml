@@ -1,0 +1,14 @@
+- id: META-211
+  domain: META
+  title: "META: Provision `chump-fleet-bot` GitHub identity and PAT (META-209 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - GitHub account `chump-fleet-bot` is created.
+    - "A Personal Access Token (PAT) with `admin:repo` scope for the `repairman29/chump` repository is generated for `chump-fleet-bot`."
+    - The PAT is securely stored in a designated secret (e.g., `chump-fleet-bot-pat`) accessible by the daemon.
+  closed_date: '2026-07-21'
+  closed_pr: 3113
+  outcome_id: MISSION-010
+

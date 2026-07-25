@@ -1,0 +1,11 @@
+- id: INFRA-3349
+  domain: INFRA
+  title: "MISSION-ZERO-WASTE: pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-20"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-20\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

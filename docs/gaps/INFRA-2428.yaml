@@ -1,0 +1,16 @@
+- id: INFRA-2428
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete CHUMP_CLAIM_IGNORE_MAIN_HEALTH — claim during red routes claimer to trunk fix"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "When chump claim hits red main: route claimer to the trunk-fix gap (P0 INFRA-NEW-MAIN-RED-* that main-preflight-watchdog filed) instead of refuse-or-bypass"
+    - Remove CHUMP_CLAIM_IGNORE_MAIN_HEALTH env var from src/atomic_claim.rs
+    - "Print: [claim] main is RED on <gate>; routing you to the trunk-fix gap <id>. Claim it instead, or wait for fix."
+    - "Smoke test: with mock RED state, chump claim INFRA-X exits with redirect message + trunk-fix gap_id; no env-var bypass"
+  notes: |
+    [2026-06-04T00:06:16Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2966
+  outcome_id: MISSION-010
+

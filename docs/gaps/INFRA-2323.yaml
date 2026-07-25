@@ -1,0 +1,15 @@
+- id: INFRA-2323
+  domain: INFRA
+  title: "self-hosted runner ghost-online detector — alarm when busy=true but jobs:[]"
+  status: closed
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    duplicate of INFRA-2224 — same class, same fix. INFRA-2224 carries the incident detail + P1 promotion.
+  outcome_id: MISSION-010
+

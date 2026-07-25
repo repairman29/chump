@@ -1,0 +1,15 @@
+- id: INFRA-2037
+  domain: INFRA
+  title: "RESILIENT P2: chump-commit.sh line 671/710 _staged_paths unbound variable — non-fatal but pollutes log + suggests latent path bug"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Observed (2026-05-25): scripts/coord/chump-commit.sh docs/process/COLLISION_RCA_2026-05-24.md -m ... emitted: line 671: _staged_paths unbound variable; line 710: _staged_paths unbound variable. Commit succeeded (hash 0cb55ee68) despite the errors."
+    - "Root cause hypothesis: chump-commit.sh runs under set -u (treat unset variables as error). _staged_paths is declared in one code branch but referenced in another that does not hit the declaration. Likely single-file vs multi-file vs auto-leased-gaps path divergence."
+    - "Fix: trace all _staged_paths references in scripts/coord/chump-commit.sh; ensure initialized to empty array at top of any function/branch that may reference it. Use parameter-expansion guard for safety."
+    - Smoke test scripts/ci/test-chump-commit-set-u.sh — run chump-commit.sh against (a) single-file change, (b) multi-file change, (c) commit message referencing gap-IDs (triggers auto-lease path); assert no unbound-variable warnings on stderr.
+    - Pairs with — INFRA-1715 (worker.sh similar pattern, line 1481 _pre_cycle_sha unbound), INFRA-1853 (chump-commit.sh CHUMP_ env auto-append), INFRA-1902 (chump-commit.sh auto-lease side-effect, same area).
+    - Done definition — no unbound-variable warnings on stderr across single/multi/zero-file invocations including gap-ID-mention commit messages; smoke test green.
+  outcome_id: MISSION-010
+

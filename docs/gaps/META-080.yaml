@@ -1,0 +1,12 @@
+- id: META-080
+  domain: META
+  title: "META: Implement lesson sharing endpoint (in-memory store) (META-073 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Agents can POST lessons to shared endpoint
+    - Agents can GET relevant lessons by task tag
+    - Lessons expire after 24 hours by default
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: RESILIENT-107
+  domain: RESILIENT
+  title: "RESILIENT P1: refresh-runner-binary worktree (/tmp/chump-binary-refresh-*) reaped mid-build by stale-worktree-reaper — MISSION-012 auto-deploy fails after 12min"
+  status: closed
+  priority: P1
+  effort: xs
+  description: |
+    VERIFIED 2026-06-05 17:33Z (musher session, post-MISSION-033 #3073 deploy attempt). MISSION-012 auto-deploy daemon (com.chump.auto-deploy) invokes scripts/ops/refresh-runner-binary.sh which creates a worktree at /tmp/chump-binary-refresh-<PID>/ then runs 'cargo build --release --bin chump' in it. Build takes 10-12 min. PROBLEM: /tmp/chump-binary-refresh-* matches the pattern stale-worktree-reaper.sh + active-target-reaper.sh scan (any /tmp/chump-*/). Mid-build, the reaper deletes the worktree's target/release/deps/ which causes: 'error: couldn't create a temp dir: No such file or directory (os error 2) at path /tmp/chump-binary-refresh-65988/target/release/deps/rustcA7kAs9'. Net: MISSION-012 deploy FAILS every time on this machine; binary stays stale. Repro today: 17:21Z and 17:29Z auto-deploy ticks both failed in 12 min with identical error. FIX: drop a .chump-no-reap sentinel file (stale-worktree-reaper.sh already honors it — see scripts/ops/active-target-reaper.sh:23 'Skip if .chump-no-reap exists') in /tmp/chump-binary-refresh-<PID>/ at the start of refresh-runner-binary.sh, before cargo build runs. 1-line fix.
+  acceptance_criteria:
+    - scripts/ops/refresh-runner-binary.sh touches /tmp/chump-binary-refresh-<PID>/.chump-no-reap before cargo build
+    - MISSION-012 deploy run-on-stale-binary succeeds end-to-end on this machine; chump --version after run matches origin/main HEAD
+    - "Test: simulate concurrent stale-worktree-reaper.sh run while refresh-runner-binary.sh is building — build still succeeds"
+  notes: |
+    [2026-06-05T19:38:49Z] Shipped #3082. 1-line .chump-no-reap sentinel touch unblocks MISSION-012 auto-deploy on this machine.
+  closed_pr: 3082
+  outcome_id: MISSION-012
+

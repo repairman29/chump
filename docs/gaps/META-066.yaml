@@ -1,0 +1,22 @@
+- id: META-066
+  domain: META
+  title: Content Bots Suite — productize 4 specialist content agents (PMM/DocuBot/Evangelist/CopyBot) with toggle plumbing + pipeline
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Productize the engineering Code Custodian alongside 4 specialist content bots so Chump can be deployed to customer repos with TOGGLE-ABLE marketing/docs/copy generation. Bot system prompts provided by operator 2026-05-22 21:15Z: PMM (Product Marketer), DocuBot (Tech Writer), Evangelist (Dev Advocate), CopyBot (Conversion). Pipeline: Code → PMM → (DocuBot || Evangelist) → CopyBot. Each bot stays in its persona; the engineering agent stays pure-technical. Decomposes into INFRA-1690 (manifests + prompts foundation), plus follow-up gaps for toggle infra, dispatcher, pipeline, PWA UI. See project memory project_content_bots_suite.md.
+  acceptance_criteria:
+    - 4 bot prompt manifests at docs/agents/content-bots/{pmm,docubot,evangelist,copybot}.md with the operator-provided system prompts as canonical text
+    - bots.yaml manifest at docs/agents/content-bots/bots.yaml defining bot_id, prompt_path, model_tier, default_enabled (all default=false), pipeline_predecessors[]
+    - per-repo opt-in mechanism — .chump-config.toml supports [content_bots] section with enabled list; CHUMP_CONTENT_BOTS env override
+    - dispatcher script scripts/content-bots/run-bot.sh that reads bots.yaml + invokes the right LLM with the right prompt
+    - fleet integration — workers with WORKER_SKILLS=content-bot,<bot_id> filter pick content tasks (analogous to PWA-routing via INFRA-1622)
+    - pipeline orchestration — PMM Bot output feeds DocuBot + Evangelist Bot in parallel; CopyBot consumes their outputs (asynchronous via ambient events)
+    - "3 new event kinds in EVENT_REGISTRY.yaml: content_bot_invoked, content_bot_output, content_bot_pipeline_step"
+    - PWA toggle UI — operator-facing per-repo on/off switches with per-bot daily cost estimate (deferred to follow-up)
+    - smoke test scripts/ci/test-content-bots-toggle.sh asserts default-off behavior + opt-in via env activates the right pipeline
+  closed_date: '2026-05-29'
+  closed_pr: 2001
+  outcome_id: MISSION-010
+

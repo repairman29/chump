@@ -1,0 +1,15 @@
+- id: RESILIENT-088
+  domain: RESILIENT
+  title: "RESILIENT P1: run-fleet INFRA-621 auth-probe false-fails on VALID auth (retired model name → 404) — halts fleet launch unnecessarily"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    VERIFIED 2026-06-04 (conductor): run-fleet's INFRA-621 launch-time auth probe reported 'ANTHROPIC_API_KEY authentication failed' and halted the launch — but the key is VALID (direct test: HTTP 200 on https://api.anthropic.com/v1/models, returns the model list incl. claude-opus-4-8). The probe almost certainly tests auth by calling a HARDCODED model that has since been RETIRED (Anthropic retires old model IDs) → the call 404s → the probe misreads 404 as an auth failure → halts the fleet on perfectly good credentials. Had to bypass with CHUMP_FLEET_FORCE_LAUNCH=1. FIX: the auth probe must be model-INDEPENDENT — hit GET /v1/models (a clean 200/401 auth signal with no model dependency), OR resolve a current model from /v1/models before probing, OR treat 404 (model-not-found) as auth-OK (not auth-fail). Same fragility class as EFFECTIVE-123 (onboard) + RESILIENT-086 (auth_dead): the fleet's auth checks are brittle to oauth-staleness, stale tokens, and retired models while a valid API-key floor exists.
+  acceptance_criteria:
+    - run-fleet's auth probe passes on a valid ANTHROPIC_API_KEY regardless of any specific model's retirement (uses /v1/models or treats 404 as auth-OK)
+    - a retired-model 404 is never misread as auth failure
+    - the fleet launches on valid credentials WITHOUT needing CHUMP_FLEET_FORCE_LAUNCH=1
+    - "test: valid key + retired-model probe → launch proceeds"
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,22 @@
+- id: INFRA-2165
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C16 chump --briefing umbrella-context injection — surface parent META gap AC + recent integration_cycle_started events to spawned workers (Wave 1)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump --briefing <GAP-ID> detects when the gap's depends_on or title references a META umbrella (regex ^META-\d+ in depends_on OR title contains META-NNN/CN) and surfaces a new 'Umbrella context' section in the briefing output BEFORE 'Recent File Activity'.
+    - Umbrella context section contains (a) parent META gap title + status (b) full parent acceptance_criteria truncated to 80 lines with ellipsis hint to chump gap show <META-ID> (c) last 5 ambient events with kind in integration_cycle_started/integration_candidates_selected/integration_cycle_shipped/bisect_quarantine from .chump-locks/ambient.jsonl within last 24h.
+    - Implementation in src/briefing.rs (verify location via grep before slicing). Reuses existing gap-store lookups (no new SQL surface). Ambient read uses existing helper if present else 50-line scan.
+    - "Graceful degradation: if parent META not found log to debug and continue (do not fail briefing). If ambient.jsonl missing omit events subsection silently."
+    - Test fixture tests/briefing_umbrella_context.rs creates synthetic INFRA-XXXX with depends_on=[META-YYY] synthetic META-YYY with AC synthetic ambient.jsonl with 3 integration_cycle_started events; assert briefing output contains parent AC + event manifest.
+    - "Smoke test: chump --briefing INFRA-2130 (after this ships) shows META-124 AC + Mode A reminder + any integration_cycle_started events from operator dry-run. Smoke step added to scripts/ci/test-briefing.sh (create if missing)."
+    - Cargo fmt + clippy -D warnings + check clean. chump preflight green.
+    - "Doc update: docs/process/SUBAGENT_DISPATCH.md gets one-line note that --briefing now injects umbrella context — parallel Sonnets on META-124 sub-gaps no longer need 'read META-124 first' in dispatch prompt."
+    - Cross-references META-124 (parent) INFRA-2129 (strategy doc) INFRA-2132 (event kinds must include integration_cycle_* before surfacing them) Wave-1 siblings INFRA-2131/INFRA-2132 (ship same wave).
+  depends_on: [META-124]
+  notes: |
+    [2026-06-04T00:26:20Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2734
+  outcome_id: MISSION-010
+

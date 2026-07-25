@@ -1,0 +1,13 @@
+- id: INFRA-2199
+  domain: INFRA
+  title: "EFFECTIVE P2: META-128/C8 NATS routing by disk headroom (chump-coord assign daemon extension, Bet 5 multi-node)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

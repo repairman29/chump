@@ -1,0 +1,17 @@
+- id: EFFECTIVE-037
+  domain: EFFECTIVE
+  title: "EFFECTIVE: A2A L5 — event-sourcing coordination bus (typed subjects + subscriptions + corr_id sagas)"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Tier-1 L5 per docs/design/A2A_MASTER_PLAN_2026-06-03.md — the highest-leverage upgrade: convert ambient.jsonl from write-only telemetry into a typed domain-event log on NATS JetStream with SUBSCRIPTIONS. Builds on INFRA-1118 (delivery, done). Today agents broadcast telemetry into the void; they do not react to each other.
+  acceptance_criteria:
+    - ambient/mesh events are typed domain events on named NATS subjects (e.g. chump.gap.claimed, chump.test.failed, chump.pr.merged)
+    - agents SUBSCRIBE to relevant subjects and react automatically (gap.claimed -> overlap-scan, test.failed -> ci-audit, pr.merged -> ship) instead of polling
+    - each event carries a corr_id; a failed step triggers saga compensation (replay compensating events by corr_id)
+    - a subscribed reaction is demonstrated firing end-to-end with no polling loop
+  notes: |
+    [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): event-sourcing proven (Temporal $5B Feb-2026). ADD: each agent = named CONSUMER GROUP with committed read OFFSET (crashed agent replays from last offset = no msg loss); at-least-once + IDEMPOTENCY KEYS (no double-process on replay); DEAD-LETTER topic after N retries + alert. The bus-consuming deliberator must be a DURABLE consumer + DETERMINISTIC FOLD over the log (not an LLM snapshot — recoverable mid-tally). Refs: arXiv 2602.08009 (RAPS), Temporal.
+  outcome_id: EFFECTIVE-000
+

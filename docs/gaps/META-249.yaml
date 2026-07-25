@@ -1,0 +1,17 @@
+- id: META-249
+  domain: META
+  title: "META: Implement CI gate `test-rescue-class-cites-procedure.sh` for PR body §5/§6 citations (META-247 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Create `scripts/ci/test-rescue-class-cites-procedure.sh` with executable permissions.
+    - Script correctly identifies rescue-class PRs based on title patterns (e.g., `fix(...rescue)`, `fix(...trunk-red)`, `unblock`, `fix(...allowlist)`, `filed-by-pr-shepherd`).
+    - Script reads the PR body (e.g., using `gh pr view --json body -q .body`).
+    - Script asserts that the literal string '§5' AND '§6' are present in the PR body.
+    - Script exits with code 1 and a clear remediation message if citations are missing.
+    - Integrate the script into the main CI workflow (e.g., `.github/workflows/ci.yml`).
+    - Test with a rescue-class PR that includes '§5' and '§6' (CI should pass).
+    - Test with a rescue-class PR that omits '§5' or '§6' (CI should fail with the expected message).
+  outcome_id: MISSION-010
+

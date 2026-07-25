@@ -1,0 +1,15 @@
+- id: DOC-066
+  domain: DOC
+  title: "DOC P2: SCHEDULING_LAYERS.md needs a 'dynamic-mode /loop best practice' section — Monitor-on-ambient + ScheduleWakeup heartbeat hybrid (the pattern that actually works under busy REPL)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    docs/process/SCHEDULING_LAYERS.md covers session-bound vs fleet-durable, but doesn't document the BEST PRACTICE for a busy-REPL operator-presence loop: Monitor on .chump-locks/ambient.jsonl (event-driven primary wake) + ScheduleWakeup at 1200-1800s (heartbeat fallback). Discovered 2026-06-05: my CronCreate-based /loop didn't fire reliably because REPL was non-idle during Sonnet dispatches + Monitor PR-merge watches. Switching to fire-and-forget dispatches (no merge-watch Monitors) + Monitor-on-ambient for halt-class events + ScheduleWakeup heartbeat IS the correct pattern per /loop dynamic-mode spec. Add as §dynamic-mode-best-practice with the filter pattern (exclude false-positive classes like AUTH_DEAD pre-RESILIENT-113) and the no-merge-watch-monitor rule.
+  acceptance_criteria:
+    - SCHEDULING_LAYERS.md gains §dynamic-mode-best-practice section
+    - Documents Monitor on ambient.jsonl + ScheduleWakeup heartbeat as the canonical operator-presence /loop pattern
+    - Cross-ref to CLAUDE.md §Mission Driver
+  closed_date: '2026-07-20'
+  closed_pr: 3091
+

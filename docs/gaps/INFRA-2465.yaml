@@ -1,0 +1,10 @@
+- id: INFRA-2465
+  domain: INFRA
+  title: "META P0: every new substrate layer ships with deprecation timer + migration leaderboard + runtime trap — kill the shelfware-by-default class"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "[\"Doctrine doc docs/process/SUBSTRATE_LAYER_RULES.md — codifies the 3 mandatory companions for any new substrate layer: (1) deprecation timer on the old path (expiration-dated allowlist entries; CI fails on any unmigrated raw caller after the date), (2) migration leaderboard (daily count of consumers per layer split by old-path vs new-path; quartermaster auto-files P1 cleanup gap when migration rate flatlines >= 7d), (3) runtime trap on old path (every old-path invocation emits kind=<layer>_directive_violated to ambient with caller script + args)\",\"Update CLAUDE.md + AGENTS.md with a Substrate Layer Discipline section citing the doctrine doc\",\"New CI gate scripts/ci/test-substrate-layer-discipline.sh: scans for new modules/wrappers/helpers added under src/commands/ + scripts/coord/lib/ + crates/ that lack a corresponding deprecation-timer allowlist entry and a runtime trap; exit 1 on any missing companion\",\"Audit pass: catalog all existing substrate layers (INFRA-1081 cache-first, INFRA-2399 author-time helpers, INFRA-2406 cross-PR contract, INFRA-2407 bypass-trailer, INFRA-2417 daemon-exit-loop, INFRA-2429 no-new-bypass lint) and file follow-up gaps for any that DO NOT have all 3 companions; this gap stays open until all existing layers are retrofitted\",\"Specific application to INFRA-1081 (the trigger): scripts/ci/raw-gh-allowlist.txt entries gain Expires: 2026-07-01 fields; CI gate fails on past-expiration entries; scripts/coord/lib/github_cache.sh wrapper emits kind=raw_gh_directive_violated when raw gh is invoked from a script not in the unexpired allowlist\",\"Quartermaster role (existing) gets a new tick: weekly migration-leaderboard digest emitted as kind=substrate_layer_migration_status with {layer, old_callers_count, new_callers_count, week_over_week_delta, flatlined_count}; flatlined >= 14d auto-files P1 cleanup gap\"]"
+  outcome_id: MISSION-010
+

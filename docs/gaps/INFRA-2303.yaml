@@ -1,0 +1,47 @@
+- id: INFRA-2303
+  domain: INFRA
+  title: "RESILIENT: sccache + cargo incremental reaper — Mozilla.sccache (20G) + target/debug/incremental (14G) untouched by existing reapers"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    During the 2026-05-30 disk_critical investigation (two ALERTs at 16:45:47Z and
+    16:50:18Z, disk at 95-98%), top consumers were:
+    
+      1. /Users/jeffadkins/Projects/Chump/target = 44G  (active build, correctly protected)
+         - debug/deps         = 21G  (don't touch — destroys 30+ min compile state)
+         - debug/incremental  = 14G  (SAFE to delete; cargo regenerates lazily)
+         - release            = 7.0G (rebuilds on next --release)
+      2. ~/Library/Caches/Mozilla.sccache    = 20G  (NO reaper covers this)
+      3. /Users/jeffadkins/Projects/Chump/.claude/worktrees = 8.3G  (6 entries)
+      4. /private/tmp/chump-meta-181 = 3.1G  (active lease, correctly protected)
+    
+    Existing reapers (disk-pressure-reaper.sh tier 1-4, cargo-target-reaper.sh,
+    target-dir-reaper.sh, stale-worktree-reaper.sh) DO NOT touch:
+      - Mozilla.sccache (any tier)
+      - target/debug/incremental as a separable subset (only reaps full target/)
+    
+    SCCACHE_CACHE_SIZE env var is unset; no ~/.config/sccache/config exists.
+    sccache default is 10GB cap but local dir is 20G — cap unenforced or stale.
+    
+    META-128 covers PRE-action disk planning (chump-disk-inventory-daemon, plan/budget
+    subcommands). INFRA-2188 covers chump-runner/cargo-target growth. Neither covers
+    Mozilla.sccache LRU or incremental-only subset reap. This gap fills the missing
+    POST-action retroactive cleanup for these two specific caches.
+    
+    Why this matters: combined 34G recoverable without touching active build state.
+    At tier 3 (5-10GB free), the current reaper freed only 6.6GB by reaping target/
+    dirs in tmp worktrees — but sccache+incremental would free 5x that.
+  acceptance_criteria:
+    - "New scripts/coord/sccache-reaper.sh: checks ~/Library/Caches/Mozilla.sccache size; if >SCCACHE_CACHE_CAP_GB (default 10), runs `sccache --stop-server` then prunes oldest files by mtime until under cap; emits kind=sccache_reaped to ambient.jsonl with bytes_freed"
+    - "disk-pressure-reaper.sh tier 2 (10-20GB free) gains a step: invoke sccache-reaper.sh if sccache dir >5GB"
+    - "disk-pressure-reaper.sh tier 3 (5-10GB free) gains a step: prune target/debug/incremental for all worktrees idle >2h (separate from full target/ reap which respects 6h idle)"
+    - Set SCCACHE_CACHE_SIZE=10G in ~/.config/sccache/config so sccache self-prunes; emit warning to ambient.jsonl if env-var present and differs
+    - Launchd plist dev.chump.sccache-reaper.plist runs every 6h independent of disk pressure (preventive)
+    - "Unit test scripts/ci/test-sccache-reaper.sh: synthetic sccache dir at 15GB; assert reaper brings it to <10GB without touching active mtime files"
+    - "git worktree prune runs in pre-flight: 20 of 44 registered worktrees marked 'prunable' but git worktree prune has not been called recently — add to disk-pressure-reaper tier 1"
+  notes: |
+    [2026-06-04T00:16:23Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2874
+  outcome_id: MISSION-010
+

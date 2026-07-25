@@ -1,0 +1,11 @@
+- id: META-271
+  domain: META
+  title: fleet inventory + tech-debt audit DB — index every PR/artifact, track activation+wiring+agent-awareness, auto-detect dead code
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "schema: pr_index, artifact_index, tech_debt_findings (with tier+operator_classification+operator_reviewed_at cols), finding_class_tiers tables via migrations/inventory_v1.sql; 9 detectors emit kind=tech_debt_finding to ambient.jsonl AND INSERT into tech_debt_findings at tier=0 only — NEVER file gaps in this PR (auto_fix_filed_gap_id NULL on all rows); chump inventory CLI: rebuild, show, debt-report, dead-code, orphans, review, review-queue, class-stats, promote, demote — all support --json on read subcommands; promote rejects when <10 reviewed OR <70% real_positive ratio with calibration shortfall message; integration test verifies tier=0 default no gap filed, review --classify updates row, promote rejects below threshold and succeeds at threshold updating finding_class_tiers, no gap filed even after promote (tier-2 machinery deferred to INFRA-2374); docs/process/INVENTORY_REVIEW_PROTOCOL.md doctrine doc; smoke: chump inventory rebuild populates DB, chump inventory debt-report --json returns valid JSON array"
+  closed_date: '2026-06-01'
+  outcome_id: MISSION-010
+

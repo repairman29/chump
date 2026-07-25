@@ -1,0 +1,10 @@
+- id: INFRA-2689
+  domain: INFRA
+  title: "RESILIENT P2: chump claim auto-runs gap import which blocks on title-similarity (INFRA-1434) — blocks bot-merge.sh ship"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"chump claim during bot-merge.sh preflight ran gap import which hit 2 title-similarity blocks, exited 1 even though the gap-id being shipped IS already in state.db\", \"Make import-on-claim opt-in or skip-if-gap-exists\"]"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-1690
+  domain: INFRA
+  title: "EFFECTIVE: Content Bots Suite — manifests + system prompts (PMM/DocuBot/Evangelist/CopyBot) defaulting off; foundation for META content-bots productization"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Foundation PR for META-066 Content Bots Suite. Ships the 4 system-prompt manifests as canonical text + bots.yaml schema + README — all default-disabled so no behavior change. Subsequent gaps add the dispatcher, pipeline, fleet routing, and PWA UI. Atomic: this PR is pure docs/yaml/test, no Rust, no dispatcher, no fleet wiring.
+  acceptance_criteria:
+    - 4 bot prompt manifests created at docs/agents/content-bots/pmm.md, docubot.md, evangelist.md, copybot.md — each contains the canonical system prompt from operator + persona / inputs / tasks / voice-guardrails sections
+    - docs/agents/content-bots/bots.yaml manifest defining bot_id, prompt_path, model_tier (haiku/sonnet/opus), default_enabled=false, pipeline_predecessors[] for all 4 bots
+    - docs/agents/content-bots/README.md explains the suite, the pipeline (Code → PMM → DocuBot/Evangelist → CopyBot), and the toggle pattern — references META-066 for the productization umbrella
+    - smoke test scripts/ci/test-content-bots-manifests.sh asserts (a) all 4 prompt files exist + non-empty, (b) bots.yaml validates against expected schema, (c) all default_enabled=false, (d) README references all 4 bot files
+    - "out of scope for this gap: dispatcher script, fleet integration, pipeline orchestration, PWA UI — those land in follow-up gaps from META-066 decomposition"
+  closed_date: '2026-05-22'
+  closed_pr: 2339
+  outcome_id: MISSION-010
+

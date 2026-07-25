@@ -1,0 +1,14 @@
+- id: EFFECTIVE-310
+  domain: EFFECTIVE
+  title: "EFFECTIVE: failure-to-decompose reflex — 2 strikes on chump-local triggers frontier decompose"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Failure-to-decompose reflex: when a gap fails whole on the chump-local (open-model) backend twice, stop retrying whole — have the frontier model decompose it into xs/s sub-gaps. Frontier plans, open models execute. Strike store in chump-gap-store (gap_strikes table), CLI arm 'chump gap strike' (exit 10 at threshold), worker.sh reflex on both rc=124 and hard-failure paths, INFRA-267 gated so we don't double-spend claude on a just-sliced gap.
+  acceptance_criteria:
+    - "The change described by \"failure-to-decompose reflex — 2 strikes on chump-local triggers frontier decompose\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3231
+

@@ -1,0 +1,14 @@
+- id: INFRA-3341
+  domain: INFRA
+  title: "MISSION-CREDIBLE: pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-19"
+  status: superseded
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Closed 2026-07-19: false alarm — detector read a worktree-local/empty state.db (CREDIBLE-154 cross-db class) and filed '0 pickable' while canonical showed ~500 EFFECTIVE / ~175 CREDIBLE pickable (roadmap-drift header same hour). Root cause fixed in #3206; detector db-pinning is part of MISSION-051 socket-API design.
+

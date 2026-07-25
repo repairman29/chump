@@ -1,0 +1,13 @@
+- id: META-255
+  domain: META
+  title: "META: Run final smoke tests and append doctrine update note to PR_RESCUE_PROCEDURE.md (META-247 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Execute `bash scripts/ci/test-pr-rescue-procedure-doc.sh` and verify it passes.
+    - Execute `bash scripts/dev/pr-rescue-leaderboard.sh` and verify it passes (with expected output for current data).
+    - "Append a TL;DR note to `PR_RESCUE_PROCEDURE.md` stating: 'measurement + adherence + integration shipped via META-247'."
+  depends_on: [META-249, META-253, META-254]
+  outcome_id: MISSION-010
+

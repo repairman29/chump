@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-009
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: gitignore .chump/github_cache.db (tracked cache DB permanently dirties main worktree, poisons interactive git)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - git rm --cached .chump/github_cache.db then add .chump/github_cache.db to .gitignore
+    - webhook receiver still writes the cache (now untracked) — no functional change to cache-first reads
+    - git status in main worktree no longer shows github_cache.db as modified
+    - removes the dominant source of the 60x ship_autofetch_blocked_dirty + the staged-everything failure when branching from the main worktree (root of 2026-06-05 doctrine-ship friction)
+  closed_date: '2026-07-21'
+  closed_pr: 3214
+  outcome_id: ZERO-WASTE-000
+

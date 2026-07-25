@@ -1,0 +1,16 @@
+- id: INFRA-1085
+  domain: INFRA
+  title: "PR #1766 stuck [ORPHAN] — auto-merge disarmed, no live owner"
+  status: closed
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-06-05T22:09:15Z] auto-closed by stuck-pr-filer: PR #1766 resolved (MERGED)
+  closed_pr: 1766
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-2287
+  domain: INFRA
+  title: "EFFECTIVE P1: wrap per-PR CI jobs in chump-rust-builder container — Lever 1 last mile (today's mold+cranelift was Lever 1 inner)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator question 2026-05-30T08:50Z: 'we did so much to use Docker and Cloudflare R2 — why aren't we?' Diagnosis: grep -l 'container:' .github/workflows/*.yml returns only release.yml. Every other workflow (ci.yml, ci-advisory.yml, ci-nightly.yml, audit-weekly.yml, ...) uses runs-on: ubuntu-latest directly with no container. The docker/Dockerfile + docker/docker-compose.yml are for the evaluator-demo path (Ollama+chump web sidecar — 'one command for outside reviewers'). That's a real product surface but it does NOT speed up per-PR CI. CI_REVIEW_2026-05-29.md named 'Containerize CI on Linux' as Lever 1 — biggest leverage item — and today's INFRA-2117/2242 (mold linker + cranelift backend) shipped only the INNER speed knobs. The actual 'wrap each per-PR CI job in our chump-rust-builder container' step is still open. Goal: a chump-rust-builder image with Rust 1.82 + sccache + mold + cranelift + cargo plugins pre-installed; CI jobs use container: ghcr.io/repairman29/chump-rust-builder:latest; cold start drops from ~5min toolchain setup to <30s.
+  acceptance_criteria:
+    - Dockerfile at docker/Dockerfile.ci-builder (or similar) produces a chump-rust-builder image with Rust 1.82 + sccache + mold + cranelift + cargo-nextest + jq + gh + python3 — everything needed by per-PR CI
+    - "Image published to ghcr.io/repairman29/chump-rust-builder:latest via a CI workflow (release-on-tag OR daily rebuild)"
+    - "ci.yml fast-checks, clippy, cargo-test jobs add 'container: ghcr.io/repairman29/chump-rust-builder:latest' under runs-on: ubuntu-latest"
+    - Per-job toolchain-setup time drops from ~5min to <30s (measurable via job timing in GH Actions UI)
+    - "Existing self-hosted-runner override paths preserved: the container is added only when runs-on is ubuntu-latest, not the self-hosted variant"
+    - "Smoke test scripts/ci/test-rust-builder-image.sh: pulls the image, runs cargo fmt + cargo clippy --workspace -- -D warnings + cargo test --bin chump --quiet, asserts exit 0"
+    - Cross-reference Lever 1 in docs/strategy/CI_REVIEW_2026-05-29.md
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

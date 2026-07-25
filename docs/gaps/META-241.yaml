@@ -1,0 +1,12 @@
+- id: META-241
+  domain: META
+  title: "META: Configure SLO monitoring for admin-merge daemon (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Monitoring is configured to track the percentage of policy-eligible PRs that are admin-merged by the daemon within 5 minutes of becoming eligible.
+    - A dashboard or alert is set up to report on this SLO, aiming for > 80%.
+  depends_on: [META-237]
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-2426
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete Bot-Merge-Bypass trailer class — fix bot-merge.sh hang+exit-144 root causes (INFRA-1399 didn't hold)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Root-cause bot-merge.sh exit-144-silent (INFRA-1399 supposedly fixed in PR #2169 but 139 trailers in 30d prove the fix did not hold); today INFRA-2418 hit it at 14min"
+    - "Three suspected disease sites: (a) gtimeout wrapper around poll loops SIGTERM at 15-min, (b) pre-push test-gate cargo test creating stray commits triggering prepush_head_drift, (c) flake-rerun wrapper exit-144 on broken pipe"
+    - "Add regression test scripts/ci/test-bot-merge-no-exit-144.sh: spawn bot-merge against synthetic stuck PR; assert exit != 144"
+    - Fix the root cause; remove Bot-Merge-Bypass trailer class from accepted-bypass set in INFRA-2407 schema once 14d pass with zero new trailers
+    - Smoke test verifies the exact failure mode INFRA-2418 hit
+    - Closure verified by 7d zero new Bot-Merge-Bypass trailers
+  notes: |
+    [2026-06-04T00:06:16Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2953
+  outcome_id: MISSION-010
+

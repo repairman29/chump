@@ -1,0 +1,21 @@
+- id: INFRA-2280
+  domain: INFRA
+  title: "EFFECTIVE: launchd plists for novel-wedge-classifier.sh + cascade-unblock-detector.sh + wizard-daemon Step 7 — activates META-118 chain to actually RUN periodically (15-min classifier tick, post-merge cascade hook)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New scripts/setup/install-meta-118-daemons.sh — registers 2 launchd plists for the META-118 daemon scheduling: (a) com.chump.novel-wedge-classifier (15-min interval, runs scripts/coord/novel-wedge-classifier.sh), (b) com.chump.cascade-unblock-detector (5-min interval OR post-merge webhook trigger, runs scripts/coord/cascade-unblock-detector.sh)"
+    - Plists install to ~/Library/LaunchAgents/ on macOS; idempotent (re-running unloads + reloads); log to ~/Library/Logs/chump/
+    - Add to scripts/setup/chump-fleet-bootstrap.sh --check so 'bootstrap doctor' validates the plists are loaded; missing plist → non-zero exit + actionable message
+    - When INFRA-2068 (wizard-daemon Step 7) ships its consumer code, ensure wizard-daemon plist (existing) includes Step 7 in its run cycle — coordinate with INFRA-2068's PR if both land same cycle
+    - Emit kind=meta_118_daemon_started + kind=meta_118_daemon_tick on each run (counted in fleet doctor + INFRA-2278 SessionStart hook surface)
+    - "Smoke test scripts/ci/test-meta-118-daemon-install.sh: dry-run install, assert plists generated with correct interval + executable paths; --execute mode tested separately by operator on host"
+    - "Document in docs/process/META-118-OPERATIONS.md (or similar): runbook for stopping/starting/inspecting the daemons"
+  notes: |
+    [2026-05-30T07:58:54Z] Filed 2026-05-30 — META-118 chain is plumbed (INFRA-2067 + 2069 + 2070 + 2071 all shipped; INFRA-2068 in flight) but has no scheduling layer. Without periodic execution, the chain runs zero times. This gap is the scheduling activation. Tier 1 #2 of operator's Integration Tier plan.
+    [2026-05-30T16:21:00Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2850 auto-closed) respawn-handled:2850
+    [2026-06-04T00:16:21Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2850
+  outcome_id: MISSION-010
+

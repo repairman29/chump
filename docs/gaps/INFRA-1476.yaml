@@ -1,0 +1,17 @@
+- id: INFRA-1476
+  domain: INFRA
+  title: "EFFECTIVE: chump nudge mid-run intervene + course-correct primitive"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Audit miss from 2026-05-15. Persona-1 dashboard description named a mid-run primitive distinct from inspect/resume/scrap: 'It flags the exact test failure, pauses its specific worktree state, and waits for me to click [Intervene] to give it a one-sentence course correction — or it just self-destructs if the path is a dead end.' Current inspect/resume (INFRA-1456) is post-wedge debug. This is mid-run operator nudging: the agent is still running, hit a soft stop, and accepts a one-sentence operator hint to continue down a different branch without full scrap+restart.
+  acceptance_criteria:
+    - Agent emits a soft-pause event (kind=agent_pause_for_nudge) to ambient.jsonl when it hits a decision point it can't resolve (e.g. flaky test, ambiguous AC, two viable strategies)
+    - chump nudge <gap-id> 'your one-sentence hint' resumes the agent with the operator's correction injected as a system message at its next LLM call
+    - Soft-pause has a TTL (default 1hr); if no nudge arrives, agent self-scraps with reason=nudge_timeout
+    - Operator can also chump nudge --abort <gap-id> to scrap without correction
+    - Cockpit (chump --web) shows soft-paused agents with a one-line input field for the nudge
+    - "CI test: agent intentionally enters soft-pause; chump nudge with a correction resumes execution with the hint applied; verify hint appears in the agent's LLM call history"
+  outcome_id: MISSION-010
+

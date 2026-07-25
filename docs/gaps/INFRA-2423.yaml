@@ -1,0 +1,17 @@
+- id: INFRA-2423
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete CHUMP_BYPASS_PROOF_OF_MERGE — chump gap ship auto-fetches origin/main"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump gap ship auto-runs git fetch origin main BEFORE the proof-of-merge check
+    - If local main is N commits behind origin/main, auto-pull when clean OR warn loudly when dirty; never operate on stale state silently
+    - Remove CHUMP_BYPASS_PROOF_OF_MERGE env var from src/ — no agent-side override
+    - Remove from scripts/ci/env-vars-internal.txt
+    - "Smoke test: simulate stale local main (commit on origin not present locally); chump gap ship auto-fetches and proceeds"
+  notes: |
+    [2026-06-04T00:06:17Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2960
+  outcome_id: MISSION-010
+

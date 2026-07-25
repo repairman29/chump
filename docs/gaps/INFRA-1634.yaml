@@ -1,0 +1,32 @@
+- id: INFRA-1634
+  domain: INFRA
+  title: "PR #2283 stuck [REBASE] — DIRTY for 19h"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2283
+    
+    Detected by stuck-pr-filer (2026-05-18T23:30:07Z).
+    
+    Trigger: DIRTY for 19h
+    Branch needs rebase. mergeStateStatus=DIRTY for 19h (threshold 4h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2283 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1412
+    Branch: chump/infra-1412-claim
+    Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-22'
+  closed_pr: 2283
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

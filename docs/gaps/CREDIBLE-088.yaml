@@ -1,0 +1,18 @@
+- id: CREDIBLE-088
+  domain: CREDIBLE
+  title: "CREDIBLE: M2 gate verifier — scripts/ci/test-m2-gate-end-to-end.sh asserts red trunk auto-recovers without --admin (master plan §M2)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Per master plan §M2: a red trunk auto-recovers via supervision/self-rescue WITHOUT a human --admin"
+    - "Phase 0: assert L6 keystones present (RESILIENT-058 supervisors + RESILIENT-059 DurableExecutor + RESILIENT-060 guardrail). Bail if any missing — guidance to merge prerequisite PRs"
+    - "Phase 1: gap-supervisor escalates after 3 restarts/5min on synthetic gap (asserts kind=gap_supervisor_escalated)"
+    - "Phase 2: fleet-supervisor creates .fleet-pickup-paused sentinel after 2 escalations/10min"
+    - "Phase 3: agent-dispatch-guardrail blocks out-of-scope write pre-dispatch + allows in-scope"
+    - "Phase 4: M2 gate — assert NO operator_recall events emitted during end-to-end simulation"
+  notes: |
+    [2026-06-03T23:58:30Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 3021
+  outcome_id: CREDIBLE-000
+

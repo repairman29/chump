@@ -1,0 +1,17 @@
+- id: INFRA-2672
+  domain: INFRA
+  title: "RESILIENT P1: pin rustfmt version for preflight↔CI parity — drift caused #3003 fast-checks fail today"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Today 2026-06-03 PR #3003 RESILIENT-059 passed local cargo fmt --check rc=0 against rustc 1.96.0 stable-aarch64-apple-darwin (rustup toolchain), but CI cargo fmt --check failed with 3-line diff (the .prepare( wrapping in src/commands/durable_execution_journal.rs)."
+    - "Root: no pinned rustfmt version means local vs CI can drift on minor rustfmt patches. Each drift = one CI iteration burn."
+    - "Fix: add rust-toolchain.toml at repo root pinning a specific stable channel (e.g. 1.96.0). preflight reads rust-toolchain.toml or uses the same channel via rustup show. Audit.yml + ci.yml read the same."
+    - "Verify: scripts/ci/test-rustfmt-parity.sh asserts (a) rust-toolchain.toml exists, (b) preflight reads the pinned channel, (c) a sample cargo fmt run locally matches the toolchain selection workflows would use."
+    - "Operator escape hatch: rustup override allows manual toolchain choice for diagnosis, but is not the default."
+  notes: |
+    [2026-06-03T23:58:32Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 3012
+  outcome_id: MISSION-010
+

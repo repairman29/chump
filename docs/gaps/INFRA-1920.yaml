@@ -1,0 +1,17 @@
+- id: INFRA-1920
+  domain: INFRA
+  title: "ZERO-WASTE: promote /tmp/take-both-resolve.py to scripts/dev/take-both-resolve.py with smoke test — recurring rescue tool used 2x today to mass-rescue 13 PRs; currently dies with shell"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Background — wizard built a 30-line python conflict resolver in /tmp on 2026-05-24 14:25Z; used it twice in <60min to mass-rescue 13 PRs (5 first wave + 7 second wave + 1 keystone). Tool strips git conflict markers (<<<<<<<, =======, >>>>>>>) while keeping BOTH sides' content — safe for additive merges (each side adds new lines). Recurring need: every time a cluster of N PRs touches the same additive text file (event-registry-reserved.txt, env-vars-internal.txt, similar allowlists), main moving triggers N conflicts of identical shape. Per-PR manual Edit resolution is ~3min; this tool resolves in ~10s"
+    - "Promote to scripts/dev/take-both-resolve.py with proper shebang (#!/usr/bin/env python3), docstring describing usage + safety contract (additive-only; will silently destroy semantic conflicts where sides disagree), MIT-style header"
+    - Tool semantics — accepts N file paths as args; for each file, reads content, drops any line starting with <<<<<<< / ======= / >>>>>>> (regex-free, prefix-based for speed), writes back. Idempotent (running on a clean file is a no-op). Exit 0 on success, 1 if no files specified
+    - "Smoke test scripts/ci/test-take-both-resolver.sh — creates 2 test files: (a) a Rust source with additive conflict (both sides add new fn at end) → assert markers gone + both fns present; (b) a yaml gap file with conflict in acceptance_criteria list → assert markers gone + both items present. Run resolver. Diff against expected. Fail loud if any conflict marker remains"
+    - "Mention in scripts/dev/README.md (or scripts/README.md) under Mass-rescue helpers section: 'Use when N PRs all conflict on the same additive text file (event registries, allowlists). NOT for semantic conflicts'"
+    - Done definition — tool checked in + smoke test exit 0 + at least one CLAUDE.md or OPERATOR_PLAYBOOK.md reference points to it as the canonical mass-rescue helper for additive conflicts
+  closed_date: '2026-05-29'
+  closed_pr: 2500
+  outcome_id: MISSION-010
+

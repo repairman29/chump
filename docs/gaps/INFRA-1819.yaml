@@ -1,0 +1,17 @@
+- id: INFRA-1819
+  domain: INFRA
+  title: "EFFECTIVE: chump ast-shape <repo> CLI — operator-facing wrapper around crawl-cli for ad-hoc repo introspection (Opus #1 finding 2026-05-23 from echeo Phase-2 work)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "src/main.rs gains a new subcommand `chump ast-shape <repo-path>` that invokes chump_ast_crawler::crawl_repo and prints a per-language symbol+file rollup"
+    - Default output is a table (language, files, symbols, top-3 symbol kinds); `--json` flag emits the full crawl_repo JSON for piping
+    - Default scope skips target/ node_modules/ .git/ — same allowlist crawl-cli uses; `--include-vendor` flag disables the filter
+    - Exit codes — 0 success, 2 path missing, 3 crawl failure with stderr message
+    - Smoke test scripts/ci/test-chump-ast-shape.sh — runs `chump ast-shape .` against a fixture repo, asserts table contains `rust` and `bash` rows + symbol counts > 0
+    - Subcommand registered in --help (regression-protected by INFRA-1789 once that lands)
+    - "Use case — operator picks a Column-A candidate repo and runs `chump ast-shape ~/code/somerepo` to confirm shape before claiming; replaces the current `crawl-cli` dance Opus #1 did manually for echeo"
+    - "Pattern reference — Opus #1 echeo Phase-2 work (PR #2412), where crawl-cli vs tokei delta surfaced as ad-hoc CLI need"
+  outcome_id: MISSION-010
+

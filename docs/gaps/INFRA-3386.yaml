@@ -1,0 +1,18 @@
+- id: INFRA-3386
+  domain: INFRA
+  title: "META-070: preflight-mirror observability/reaper/fleet-daemon gates (23 scripts, audit-job decomposition cluster 3/5)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-070/META-086 follow-up sub-gap. Rough shape: (a) add src/preflight.rs mirror gates for the 23 observability/reaper/fleet-daemon scripts.
+    list: test-ambient-schema.sh, test-auto-arm-sweeper.sh, test-autoscale-decisions.sh, test-cargo-target-reaper.sh, test-claude-reaper.sh, test-deliberator-tick-emits.sh, test-fleet-brief.sh, test-fleet-fanout.sh, test-fleet-kill-switch.sh, test-fleet-spec.sh, test-fleet-starve-auto-action.sh, test-infra-258-reaper-partial-delivery.sh, test-mcp-coord-smoke.sh, test-migration-pipeline-gates.sh, test-model-registry.sh, test-obs-coverage-guard.sh, test-observability-coverage.sh, test-orchestrate-session-summary.sh, test-run-fleet-cross-repo.sh, test-stale-process-watchdog.sh, test-subagent-budget-kill.sh, test-supervision-trees.sh, test-worktree-reaper-safety.sh.
+    (b) follow the existing preflight.rs pattern used for test-farmer.sh / test-fleet-pause-autolift.sh (already-mirrored siblings).
+    (c) update docs/process/AUDIT_JOB_DECOMPOSITION.md marking these mirrored=yes.
+    Key constraint: several spawn background daemons/processes in their test bodies — verify preflight timeout budget still holds once wired.
+  acceptance_criteria:
+    - All 23 scripts in this cluster (see description) are invoked from chump preflight (src/preflight.rs), matching the same pass/fail semantics as the CI fast-checks job
+    - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 23 rows flip from mirrored=no to mirrored=yes"
+    - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
+    - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+

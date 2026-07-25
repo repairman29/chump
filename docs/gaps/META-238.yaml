@@ -1,0 +1,12 @@
+- id: META-238
+  domain: META
+  title: "META: Integrate auto-admin-merge-daemon into PR-shepherd's action dispatcher (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The PR-shepherd daemon (from META-180) is modified to include the auto-admin-merge capability.
+    - When the PR-shepherd identifies a MERGEABLE PR with consensus quorum, its action dispatcher triggers or hands off the PR to the auto-admin-merge-daemon for policy evaluation and potential merge.
+  depends_on: [META-235]
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: INFRA-1373
+  domain: INFRA
+  title: "ZERO-WASTE: release-staleness CI gate — fail when latest GitHub release > 14d behind main HEAD"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/check-release-staleness.sh: compares date of latest tag on origin/main against latest GitHub release; exits 1 if gap > 14 days\n2. Gate wired into CI (e.g. ci.yml) so PRs that land while release is stale get a visible warning (non-blocking P2, blocking P1 after 30d)\n3. CHUMP_RELEASE_STALENESS_DAYS tunable env var (default 14)"
+  closed_date: '2026-05-16'
+  closed_pr: 2126
+  outcome_id: MISSION-010
+

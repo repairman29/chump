@@ -1,0 +1,17 @@
+- id: DOC-058
+  domain: DOC
+  title: "EFFECTIVE: docs/process/SCHEDULING_LAYERS.md — document the session-bound (Claude Code Cron/Monitor) vs fleet-durable (launchd/systemd via chump cron) distinction; rule for when to use which; cross-link from CLAUDE.md and AGENTS.md"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "New file docs/process/SCHEDULING_LAYERS.md with at minimum the following sections: (1) The two scheduling layers (session-bound vs fleet-durable), (2) The decision rule (when to use which), (3) Session-bound layer reference (Claude Code CronCreate / ScheduleWakeup / Monitor — note: harness-specific, dies with session), (4) Fleet-durable layer reference (chump cron install/list/health — INFRA-2057/INFRA-2046), (5) Migration guide (how to convert a CronCreate to chump cron install), (6) Anti-patterns (what NOT to schedule with which layer)"
+    - "Decision rule documented as a table with at least 6 rows: shepherd /loop while operator window open (session-bound OK), gap-gardener daily sweep (fleet-durable required), pr-rescue-daemon (fleet-durable required), operator-driven /schedule cron (session-bound OK — it is operator-scoped by design), wedge-state-machine reaper (fleet-durable required), monitor armed in /loop watching ambient (session-bound OK while shepherd present)"
+    - "Anti-patterns subsection lists the failure modes: (a) using CronCreate for fleet-durable work then losing the cron when session ends (today operator-surfaced complaint), (b) using launchd for an operator-driven /loop that should die with the session, (c) plist installed without StartInterval (INFRA-1929 class) — solved by chump cron install validation, (d) launchd plist whose backing script depends on a specific agent session being alive — failure pattern documented with example"
+    - "Cross-links added: CLAUDE.md gets a Scheduling discipline section in the Mission Driver area linking to SCHEDULING_LAYERS.md; AGENTS.md gets a sibling reference under the harness-contract section; docs/process/CLAUDE_GOTCHAS.md adds an entry that CROSS-LINKS TO SCHEDULING_LAYERS.md (it does NOT contain the doc body — per wizard 2026-05-27 13:27Z, SCHEDULING_LAYERS.md stays STANDALONE; gotchas merely points at it for the session-bound-vs-durable mistake class)"
+    - "Example walkthrough: take an existing operator gripe (today: Claude Code scheduled-task error noise) and walk through both how to diagnose it (which layer was misused) and how to fix it (move to chump cron or accept the session-bound semantics)"
+    - "Verification: chump preflight markdown-intra-doc-links gate passes (no broken refs); rendered version readable in PWA docs viewer"
+    - "Length target: 200-400 lines markdown. Operator-readable not architect-only; concrete examples over abstract framing"
+  closed_date: '2026-05-30'
+  closed_pr: 2778
+

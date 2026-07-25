@@ -1,0 +1,13 @@
+- id: CREDIBLE-073
+  domain: CREDIBLE
+  title: "CREDIBLE: merge queue health stream to ambient.jsonl (re-do of CREDIBLE-068)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,16 @@
+- id: META-254
+  domain: META
+  title: "META: Implement `pr-rescue-leaderboard.sh` CLI for recurring fingerprints (META-247 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Create `scripts/dev/pr-rescue-leaderboard.sh` with executable permissions.
+    - Script correctly parses `ambient.jsonl` for `pr_action_taken` events.
+    - Script extracts `sha256` fingerprint and event timestamp from each relevant event.
+    - Script groups events by `sha256` fingerprint and day.
+    - Script prints the top-5 most recurring fingerprints.
+    - Script exits non-zero if any single fingerprint appears 3 or more times within a 24-hour period.
+    - Test the script with sample `ambient.jsonl` data to verify correct grouping, top-5 output, and non-zero exit condition.
+  outcome_id: MISSION-010
+

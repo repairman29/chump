@@ -1,0 +1,19 @@
+- id: INFRA-1435
+  domain: INFRA
+  title: "ZERO-WASTE: chump gap consolidate --apply mode — auto-close higher-ID dup, re-point depends_on references, emit kind=gap_dup_archived"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump gap consolidate today is read-only (advisory). Add --apply mode that mechanically resolves clear-cut dups so the operator doesn't manually 'chump gap set X --status done' for each one (tax I paid today on INFRA-1268).
+    - "Apply policy: keep the LOWER gap ID, archive the higher. Rationale: lower ID is older, has more depends_on backlinks, more likely to be cited externally."
+    - "For each pair above --threshold (default 90 in --apply mode, stricter than the 80 advisory default): (1) close the higher ID with status=done, notes='duplicate of <lower-id>; auto-archived by chump gap consolidate --apply' and CHUMP_BYPASS_CLOSED_PR_GUARD=1; (2) rewrite any depends_on entries pointing at the higher ID across all open gaps to point at the lower ID; (3) emit ambient kind=gap_dup_archived {kept_id, archived_id, similarity_score}."
+    - "--apply requires --reason '<text>' and writes an audit row to gap_dup_archive_audit (kept_id, archived_id, score, reason, operator, ts). Defensive: refuses to act if any active lease exists on either gap."
+    - "--dry-run shows what --apply would do without mutation (default in non-CI; --apply implies --no-dry-run)."
+    - "JSON output mode: emits {pairs:[{kept,archived,score,depends_on_rewrites:[]}]} for downstream automation."
+    - "CI test scripts/ci/test-consolidate-apply.sh: seed 2 dup pairs in state.db; run --apply --reason 'test'; assert higher IDs status=done, depends_on rewritten, audit rows present, ambient events emitted."
+    - "Daily cron via existing scheduled-tasks infra: chump gap consolidate --apply --reason 'daily-auto-sweep' at 03:00 local with threshold 95 (only act on near-identical pairs)."
+  closed_date: '2026-05-16'
+  closed_pr: 2199
+  outcome_id: MISSION-010
+

@@ -1,0 +1,33 @@
+- id: INFRA-1642
+  domain: INFRA
+  title: "PR #2276 stuck [CI-RED] — CI red for 139m"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2276
+    
+    Detected by stuck-pr-filer (2026-05-19T14:51:32Z).
+    
+    Trigger: CI red for 139m
+    At least one required check has been failing for 139m (threshold 20m). Failing check: ACP protocol smoke test (Zed / JetBrains compatible).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2276 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1598
+    Branch: chump/infra-1598-claim
+    Failing check: ACP protocol smoke test (Zed / JetBrains compatible)
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-22'
+  closed_pr: 2276
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

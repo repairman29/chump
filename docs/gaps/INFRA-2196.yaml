@@ -1,0 +1,15 @@
+- id: INFRA-2196
+  domain: INFRA
+  title: "EFFECTIVE P1: META-128/C5 chump disk plan + status + budget CLI subcommands — operator + chump-subprocess surface"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- New CLI subcommands on the chump main binary: chump disk plan, chump disk status, chump disk budget. All read from ~/.chump/disk-inventory.json (written by chump-disk-inventory-daemon INFRA-2193).\n- chump disk status — human-readable: total/free/used/headroom + top 5 consumers. JSON output via --json.\n- chump disk plan <action-class> [--count N] — reads DISK_COST_MODEL.yaml (INFRA-2195), computes projection {free_now_gb, cost_gb, free_after_gb, threshold_gb}, returns OK "
+    - " WAIT "
+    - " REFUSE. Exit codes: 0=OK, 1=REFUSE (free_after < threshold), 2=WAIT (free_after < threshold * 2).\n- chump disk budget [--for action-class] — shows max-safe-N for an action class given current headroom.\n- Honors CHUMP_DISK_FLOOR_GB env (default 5).\n- 6+ unit tests using fixtures for disk-inventory.json + DISK_COST_MODEL.yaml.\n- cargo fmt + clippy + check GREEN.\n- Cross-references META-128 (umbrella), INFRA-2193 (the daemon writes the inventory this consumes), INFRA-2195 (the cost model)."
+  notes: |
+    [2026-06-04T00:26:17Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2768
+  outcome_id: MISSION-010
+

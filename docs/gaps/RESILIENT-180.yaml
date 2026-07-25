@@ -1,0 +1,14 @@
+- id: RESILIENT-180
+  domain: RESILIENT
+  title: "RESILIENT: worker.sh PY778 heredoc-in-command-substitution is a runtime syntax error on Linux bash 5.2 — kills worker post-cycle"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    chumpd-eu (Ubuntu, bash 5.2.21) workers crash-loop with 'command substitution: line 1906: syntax error near unexpected token ||' whenever the INFRA-771 review-handoff path reaches the INFRA-778 branch-diverged guard. The construct VAR="$(... <<'PY778' 2>/dev/null || echo 100 ... PY778 )" || true parses statically (bash -n OK) but fails at runtime expansion under bash 5.2's command-substitution reparser; macOS bash tolerates it. Each crash = worker exit 1 → chumpd respawn → storm budget (6/hr) → both slots parked (observed 2026-07-22 04:12Z). Fix: write the Python to a mktemp file outside the substitution, then VAR="$(printf ... | python3 $tmpfile args 2>/dev/null || echo 100)".
+  acceptance_criteria:
+    - "The change described by \"worker.sh PY778 heredoc-in-command-substitution is a runtime syntax error on Linux bash 5.2 — kills worker post-cycle\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3232
+

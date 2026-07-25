@@ -1,0 +1,19 @@
+- id: INFRA-1348
+  domain: INFRA
+  title: "RESILIENT: audit non-required CI jobs for rollup-FAILURE trap (INFRA-1342 audit follow-up — 22 candidate jobs in ci.yml)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Background: INFRA-1342 (shipped 2026-05-15) fixed the rollup-FAILURE trap for tauri-cowork-e2e specifically. The same trap can fire for ANY of the 22 other non-required CI jobs in .github/workflows/ci.yml whenever they flake. This gap is the case-by-case audit."
+    - "Process: for each non-required job (anything NOT in branch-protection required_status_checks list — currently `test`, `audit`, `ACP protocol smoke test (Zed / JetBrains compatible)`), classify into one of:"
+    - (a) Real correctness gate — MUST fail loud; no change (clippy, cargo-test, fast-checks-required, audit-required, etc.)
+    - "(b) Flaky/environment-sensitive — apply `continue-on-error: true` (tauri-cowork-e2e is the precedent)"
+    - (c) Long-running / cron-only — drop the PR trigger entirely, schedule via `workflow_dispatch` + cron (e2e-battle-sim, e2e-pwa, e2e-golden-path are candidates)
+    - For each job that gets either (b) or (c), emit a single commit with the change + a comment referencing INFRA-1348 and the classification reasoning.
+    - "CI smoke test scripts/ci/test-rollup-not-blocked-by-flaky-job.sh: parse ci.yml job names, cross-reference with branch protection required_status_checks list, assert every non-required job is EITHER `continue-on-error: true` OR has a PR-trigger exclusion (no `pull_request` event in `on:` list). Anything else is flagged."
+    - "Doc update: CLAUDE_GOTCHAS.md \"Auto-merge rollup-FAILURE trap\" section (added in INFRA-1342) gets a sentence pointing at this audit gap and the smoke test for ongoing enforcement."
+    - "Out of scope: required-checks list editing (a separate ops decision); third-party CI (codecov, etc.) — only owned workflows."
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

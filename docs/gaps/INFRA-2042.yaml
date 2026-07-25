@@ -1,0 +1,16 @@
+- id: INFRA-2042
+  domain: INFRA
+  title: "RESILIENT P1: wizard-daemon Phase 1 mergeStateStatus parse broken — all 36 open PRs classified as 'DIRTY merge_state=empty' in dry-run 2026-05-27T13:04Z; Step 2 (recovery trigger) never fires because no PR is identified as stale-base/cascading; need to fix gh pr view --json mergeStateStatus parse + verify against real BLOCKED/CLEAN PRs"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    wizard-daemon dry-run on 2026-05-27T13:04Z classified ALL 36 open PRs as 'DIRTY merge_state=empty'. Step 2 (recovery-queue trigger for stale-base/cascading) never fires because no PR is identified as needing recovery. Root cause: gh pr view --json mergeStateStatus returns 'UNKNOWN' for PRs where GitHub hasn't computed mergeability yet (typically: checks haven't started, or just-pushed). The daemon's parser treats UNKNOWN as DIRTY rather than skipping the PR. Fix: treat UNKNOWN as 'defer this iteration' — emit kind=wizard_classify_deferred ambient event, don't fail-closed to DIRTY. Run dry-run again and verify at least one PR classifies as BLOCKED or CLEAN.
+  acceptance_criteria:
+    - wizard-daemon Step 1 treats mergeStateStatus=UNKNOWN as 'defer' not 'DIRTY'
+    - Emits kind=wizard_classify_deferred ambient event with pr number when UNKNOWN encountered
+    - Dry-run on live PR set classifies at least N PRs as BLOCKED or CLEAN (where N = count of PRs not in CHECKS_PENDING state)
+    - Smoke test scripts/ci/test-wizard-daemon-merge-state-parse.sh covers UNKNOWN/BLOCKED/CLEAN/DIRTY cases
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

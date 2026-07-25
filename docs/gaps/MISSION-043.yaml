@@ -1,0 +1,15 @@
+- id: MISSION-043
+  domain: MISSION
+  title: "MISSION P1: retry MISSION-039 pillar-outcomes bootstrap + heuristic — first attempt #3081 closed (broke version::tests::pr_1444_replay)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Follow-up: MISSION-039 first attempt was PR #3081 (Sonnet dispatch). Audit-shard (4) failed on version::tests::pr_1444_replay_refuses_without_override — the unit test asserting stale-binary detection. Sonnet's changes to src/main.rs (added outcome bootstrap pillar outcomes + heuristic 7 in backfill) shouldn't conceptually affect version detection, but something broke. Branch chump/mission-039-claim is retained. RETRY BRIEF: same MISSION-039 scope (pillar bootstrap + heuristic 7+8), but add to pre-push checklist: cargo test --bin chump version::tests::pr_1444_replay_refuses_without_override + version::tests::override_event_emitted_to_ambient_jsonl + version::tests::override_env_recognized — all THREE must pass before push. If Sonnet finds they fail on the branch but pass on main, the change must be diff-minimized until they pass.
+  acceptance_criteria:
+    - All MISSION-039 AC met (pillar outcomes seeded + heuristic 7+8 + >50% coverage)
+    - "cargo test --bin chump version::tests passes locally before push"
+    - audit-shard (4) green on the new PR
+  closed_date: '2026-06-05'
+  outcome_id: MISSION-010
+

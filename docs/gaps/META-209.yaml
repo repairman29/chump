@@ -1,0 +1,32 @@
+- id: META-209
+  domain: META
+  title: AI-agent admin-merge protocol — dedicated bot identity + auto-trigger gate (N≥3 consensus votes + content-class allowlist + no T1-T4 escalation) + META-180 daemon integration; codifies the rule that just-ran in this session as durable infrastructure
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    OPERATOR QUESTION 2026-05-30T18:00Z (verbatim): 'WHY have we not given admin-merge access to an AI agent that has protocols'
+    
+    In this session, the orchestrator (Claude Opus) admin-merged 7 PRs in 6 minutes (18:09-18:15) under operator's ad-hoc authorization, using the operator's gh CLI auth. This worked but is NOT the durable answer — it depends on a human session being active and authorizing.
+    
+    The durable answer: a dedicated bot identity + auto-trigger gate + policy-allowlist for admin-merge, all gated by consensus. Substrate is mostly in place:
+      - META-207 (just merged): T1/T2/T3/T4 escalation doctrine
+      - INFRA-2274 (PR #2841, still queued): ConsensusCoordinator pre-merge gate
+      - META-180 / META-181 (just merged): PR-shepherd daemon umbrella + skeleton
+      - Broadcast/vote/deliberator: live
+      - chump consensus-tally: spec'd
+    
+    What's missing (this gap closes):
+      1. Dedicated bot identity ('chump-fleet-bot' GitHub account with constrained admin) so admin-merge doesn't depend on operator's PAT
+      2. Auto-trigger daemon: scripts/coord/auto-admin-merge-daemon.sh that walks open PRs, checks fix-class allowlist + consensus quorum + no T1-T4 trigger, then issues 'gh pr merge --admin --squash' as the bot
+      3. Policy file: docs/process/AUTO_ADMIN_MERGE_POLICY.md defining the IF conditions
+      4. Integration with META-180 PR-shepherd daemon (admin-merge becomes an action the shepherd can take)
+      5. Audit: each agent admin-merge emits kind=agent_admin_merge with role, pr_number, fix_class, consensus_corr_id, trigger_check_results
+  acceptance_criteria:
+    - "1. docs/process/AUTO_ADMIN_MERGE_POLICY.md defines the policy: agent may admin-merge IF (consensus_resolved with quorum>=3) AND (fix_class in allowlist) AND (no DIRTY conflict) AND (no T1-T4 trigger fired in last 30m) AND (no operator HOLD label on the PR)\n2. Bot identity provisioned: chump-fleet-bot GitHub account with PAT scoped to admin:repo for repairman29/chump (operator-action: create account, set up PAT, store in chump-fleet-bot-pat secret)\n3. scripts/coord/auto-admin-merge-daemon.sh implemented: walks open PRs every CHUMP_AUTO_ADMIN_INTERVAL_S (default 60s); for each, classifies fix-class via title prefix + diff scope; checks consensus tally via chump consensus-tally; checks 30m ambient for T1-T4 trigger events; issues admin-merge via chump-fleet-bot's PAT\n4. META-180 integration: PR-shepherd daemon's action dispatcher hands off to auto-admin-merge-daemon for MERGEABLE PRs with consensus quorum\n5. kind=agent_admin_merge ambient event registered with fields role, pr_number, fix_class, consensus_corr_id, trigger_check_results\n6. Smoke test: scripts/ci/test-auto-admin-merge-policy.sh with synthetic 5-PR fixture (one passing policy, four failing one criterion each — quorum, fix-class, conflict, T-trigger)\n7. SLO: > 80% of policy-eligible PRs admin-merged by daemon within 5 min of becoming eligible\n8. Operator audit: scripts/dev/agent-admin-merge-leaderboard.sh shows per-day count + reason breakdown"
+  notes: |
+    Decomposed into 15 slices: META-227, META-228, META-229, META-230, META-231, META-232, META-233, META-234, META-235, META-236, META-237, META-238, META-239, META-240, META-241
+  closed_date: '2026-07-21'
+  closed_pr: 3113
+  outcome_id: MISSION-010
+

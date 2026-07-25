@@ -1,0 +1,19 @@
+- id: INFRA-2277
+  domain: INFRA
+  title: "EFFECTIVE: chump onboard --schedule observability + per-repo state + smoke test (INFRA-2268 sub-slice 3/3)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-2268 sub-slice 3/3 — observability + per-repo state + integration smoke. Sister: INFRA-2275, INFRA-2276. Depends on INFRA-2276 (worker loop must emit iter events for observability to test against).
+  acceptance_criteria:
+    - "Per-iter emits kind=external_repo_loop_iter (fields: repo_path, picked_gap_id, ship_outcome, duration_ms); new kind registered in EVENT_REGISTRY.yaml with effect_metric set"
+    - "Per-repo state in ~/.chump/external-repos/<sanitized-path>/loop-state.json: last_iter_ts, consecutive_failures, iter_count_total, ship_count_total — JSON-schema-validated at read/write"
+    - "End-to-end integration smoke scripts/ci/test-external-repo-scheduler-e2e.sh: <120s, runs full lifecycle (schedule → iter fires → ships fixture PR → unschedule); asserts state.json updates + ambient events + plist cleanup"
+    - chump preflight runs e2e smoke when any sub-slice touched
+    - "README + CLAUDE.md updated with 3-line example: chump onboard /repo → chump onboard --schedule /repo → ambient.jsonl shows iter events overnight"
+  depends_on: [INFRA-2276]
+  closed_date: '2026-07-21'
+  closed_pr: 3047
+  outcome_id: MISSION-010
+

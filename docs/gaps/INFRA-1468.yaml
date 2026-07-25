@@ -1,0 +1,17 @@
+- id: INFRA-1468
+  domain: INFRA
+  title: "RESILIENT: ambient.jsonl rotation lagging — 27.8 MB / 162k lines on main repo, expensive reads cascading into hangs"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real bug 2026-05-16: .chump-locks/ambient.jsonl is 27.8 MB / 162391 lines on the main repo. INFRA-122 was supposed to rotate at 5MB to .1 archive. Either the rotation isn't firing or the threshold needs tightening. Any endpoint that reads the full ambient (handle_ambient_recent with no limit, etc.) pays a 27MB read tax. Possible contributor to other endpoint hangs (see INFRA-1464, INFRA-1465).
+  acceptance_criteria:
+    - Identify why ambient.jsonl rotation isn't firing — check INFRA-122 cron/hook
+    - Rotate aggressively on next boot or via scripts/ops/ambient-rotate-now.sh
+    - Add a watchdog that alerts kind=ambient_rotation_lagging when file >10MB
+    - Smoke test scripts/ci/test-ambient-rotation.sh seeds 10MB jsonl, asserts rotation kicks in
+  closed_date: '2026-05-16'
+  closed_pr: 2215
+  outcome_id: MISSION-010
+

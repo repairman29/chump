@@ -1,0 +1,20 @@
+- id: INFRA-1491
+  domain: INFRA
+  title: "EFFECTIVE: smart reviewer routing + notification for fleet PRs"
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Audit miss from 2026-05-15 second pass. Persona-1 (Marcus) Q2 pipeline-tax detail: 'I had to re-run the pipeline, wait another 22 minutes, confirm it passed, and then manually ping two separate reviewers in Slack because the GitHub notification got lost in their noise.' Fleet PRs are even more vulnerable to this — 20 PRs sitting in queue, no operator-attached human routing means PRs stall mid-fleet. Smart routing isn't AI-assignment, it's deterministic: based on file paths touched + git blame + recent activity, suggest the right reviewer.
+  acceptance_criteria:
+    - "When a fleet PR opens, chump computes a suggested reviewer set: union of (most-recent committers to touched files) + (configured CODEOWNERS) + (operator override list)"
+    - Suggested reviewers automatically requested as GitHub PR reviewers via gh API
+    - Optional Slack/Discord webhook integration for direct ping outside GitHub's notification surface
+    - "Per-repo config: .chump/reviewers.toml lists Slack handle ↔ GitHub login mappings"
+    - "Operator can override per-fleet: chump fleet review --route <gap-id> <slack-handle>"
+    - Reviewer-routing decisions logged to ambient.jsonl for audit
+    - "CI test: synthetic repo with N committers, open a fleet PR touching files X,Y,Z, verify the top 3 most-recent committers to X+Y+Z get auto-requested as reviewers"
+  closed_date: '2026-05-29'
+  closed_pr: 2717
+  outcome_id: MISSION-010
+

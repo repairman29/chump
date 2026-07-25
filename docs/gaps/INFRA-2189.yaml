@@ -1,0 +1,23 @@
+- id: INFRA-2189
+  domain: INFRA
+  title: "EFFECTIVE: chump-fleet-server mount /scrubber static-file route (INFRA-2164 wiring)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Wiring follow-up flagged by the INFRA-2176 scrubber Sonnet: chump-fleet-server (INFRA-2175) does not mount the scrubber SPA as a static-file route, so opening the scrubber from a different origin hits CORS, and the chump fleet view command's URL http://localhost:7070/scrubber 404s. Add a ServeDir tower-http mount at /scrubber/* that serves the repo's web/fleet-scrubber/ directory. Resolves the path via git rev-parse --show-toplevel so it works regardless of CWD.
+  acceptance_criteria:
+    - crates/chump-fleet-server adds tower-http with the fs feature to Cargo.toml
+    - main.rs (or wherever the router is built) mounts a static-file route at /scrubber/* serving from <repo-root>/web/fleet-scrubber/
+    - repo root is resolved via git rev-parse --show-toplevel, or overridden via CHUMP_FLEET_SCRUBBER_DIR env var if set
+    - "GET http://localhost:7070/scrubber/ returns the scrubber index.html (200, content-type text/html)"
+    - "GET http://localhost:7070/scrubber/fixtures/segments.json returns the fixture JSON (200, content-type application/json)"
+    - chump fleet view still resolves the same URL; no script change needed
+    - Smoke test scripts/ci/test-fleet-server.sh extends with an assertion that /scrubber/ serves index.html
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
+  depends_on: [INFRA-2175, INFRA-2176]
+  notes: |
+    [2026-06-04T00:26:18Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2742
+  outcome_id: MISSION-010
+

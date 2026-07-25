@@ -1,0 +1,10 @@
+- id: INFRA-2512
+  domain: INFRA
+  title: "RESILIENT P0: audit.yml cancel-in-progress=true to prevent zombie pileup (recurrence of audit-queue-wedge-20260603)"
+  status: closed
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"audit.yml currently sets cancel-in-progress: false at the workflow concurrency level — when a PR receives multiple pushes, all old audit runs stay running and pile up against the 4 self-hosted runner pool\", \"Today 12 audit runs hit IN_PROGRESS 20+ minutes wedging all PR audits fleet-wide; required operator intervention to cancel\", \"Fix: .github/workflows/audit.yml concurrency.cancel-in-progress: true so newer pushes cancel older runs on the same PR/branch\", \"Verify the gate is deterministic — newer commit running same audit checks gives same answer, so cancelling old runs loses no signal\", \"Regression test scripts/ci/test-audit-cancel-in-progress.sh: assert workflow yaml has concurrency.cancel-in-progress: true; check INFRA-2452 commit (which added cancel-in-progress:false) is intentionally inverted with rationale\"]"
+  outcome_id: MISSION-010
+

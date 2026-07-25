@@ -1,0 +1,11 @@
+- id: INFRA-1467
+  domain: INFRA
+  title: "EFFECTIVE: chump-commit.sh auto-injects trailers when CHUMP_*_BYPASS env vars set (no manual amend needed)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: every CHUMP_BYPASS_BOT_MERGE=1 push now requires Bot-Merge-Bypass: trailer (INFRA-1441). Workflow: commit normally, hit gate, run git commit --amend --trailer ..., retry push. Two extra steps per ship.\",\"scripts/coord/chump-commit.sh: just BEFORE invoking git commit, inspect env vars: CHUMP_BYPASS_BOT_MERGE=1 → auto-append Bot-Merge-Bypass: <default reason>; CHUMP_TEST_GATE=0 → Test-Gate-Bypass: <reason>; CHUMP_OBS_BUDGET_BYPASS=1 → Obs-Bypass-Reason: <reason>; CHUMP_RUST_FIRST_CHECK=0 → Rust-First-Bypass: <reason>; CHUMP_HARDCODED_DATE_CHECK=0 → Hardcoded-Date-Bypass: <reason>.\",\"Default reason: \\\"$ENV_VAR=1 set in commit env\\\" (operator override via CHUMP_BYPASS_REASON=\\\"<text>\\\")\",\"Trailer is only injected when NOT already present in the message (idempotent)\",\"Smoke test scripts/ci/test-chump-commit-auto-trailers.sh: invoke chump-commit.sh with each env var set; assert resulting commit message has the corresponding trailer + the bypass reason captured from CHUMP_BYPASS_REASON\",\"Out of scope: GUI prompt for the reason (CLI usage is the contract)\"]"
+  closed_pr: 2192
+  outcome_id: MISSION-010
+

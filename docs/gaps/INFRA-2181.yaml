@@ -1,0 +1,13 @@
+- id: INFRA-2181
+  domain: INFRA
+  title: "RESILIENT P1: switch cargo-target-reaper from hourly StartInterval to post-ship trigger (ambient kind=integration_cycle_shipped) — burst capacity for Wave 1 parallel-Sonnet dispatch (currently can't handle 6-12 GB burst in 30 min)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Modify scripts/ops/cargo-target-reaper.sh + ~/Library/LaunchAgents/dev.chump.cargo-target-reaper.plist: instead of StartInterval=3600 (hourly), trigger on ambient kind=integration_cycle_shipped event (via inotify-equivalent OR ambient.jsonl tail-poll with 30s cadence). Keep hourly as fallback if integration daemon not yet installed (Phase 1 dry-run). Verify: ship a Wave 1 child PR, observe reap fires within 60s of merge ambient event. Cross-references INFRA-2125 (current reaper), META-124 C10 INFRA-2138 (post-integration-prune sibling)."
+  notes: |
+    [2026-06-04T00:26:27Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2731
+  outcome_id: MISSION-010
+

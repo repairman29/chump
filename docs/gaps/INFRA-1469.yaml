@@ -1,0 +1,16 @@
+- id: INFRA-1469
+  domain: INFRA
+  title: "ZERO-WASTE: recurring disk_critical at 97% — root-cause audit (where is 412GB going?)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Real bug 2026-05-16: macOS / disk hit 97% (412GB used of 460GB) twice today even after PR #2083 (INFRA-1349 target reaper) merged + installed via launchd. Target dirs only account for ~50GB across 232 worktrees. The remaining ~350GB is unaccounted for. Need a disk-audit script that reports top-N consumers in 30 seconds without a full filesystem scan. INFRA-1349 reaper is in place but only handles target/; recurring 97% suggests other accumulation paths.
+  acceptance_criteria:
+    - scripts/coord/disk-audit.sh enumerates top 20 consumers across /private/tmp, ~/Library, /var, ~/.cargo/registry, ~/Library/Caches in <30s
+    - Emits kind=disk_audit_report {top_paths, free_gb} to ambient
+    - "Pairs with INFRA-1349 reaper: discovers what reaper doesn't currently sweep"
+    - Smoke test scripts/ci/test-disk-audit.sh seeds known dirs + asserts report shape
+  closed_pr: 2290
+  outcome_id: MISSION-010
+

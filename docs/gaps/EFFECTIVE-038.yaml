@@ -1,0 +1,17 @@
+- id: EFFECTIVE-038
+  domain: EFFECTIVE
+  title: "EFFECTIVE: A2A L2 — task state machine with input_required + auth_required (suspended, not failed)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Tier-1 L2 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (Google A2A 8-state task machine). The two missing states: input_required (agent is 70% done, needs an operator decision, then RESUMES) and auth_required (a credential is missing) — auth_required is EXACTLY the failure mode that silently killed the fleet for 46h (see RESILIENT-054). Today a gap is either running or failed.
+  acceptance_criteria:
+    - gap gains status=waiting_operator carrying a structured question payload (not a free-text follow-up gap)
+    - chump gap respond <ID> --answer JSON RESUMES the suspended gap from where it paused
+    - an agent that hits a missing credential enters auth_required and suspends (does not silently die) — ties RESILIENT-054
+    - an ambiguous-decision case suspends to waiting_operator instead of guessing-wrong or filing a follow-up gap
+  notes: |
+    [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): input_required/auth_required EXACTLY match Google A2A v1.0 task lifecycle — validated. BUT A2A proves they're SIGNALING not ENFORCEMENT: task hangs FOREVER if no agent responds (A2A has no timeout). ADD: SLA on input_required — max_wait_seconds; on elapse auto-transition failed + emit task_stalled (no silent hang). Wire: task→input_required emits a P0 inbox msg to the responder, whose CREDIBLE-114 hook drains it first. Refs: a2a-protocol.org spec, arXiv 2604.02369.
+  outcome_id: EFFECTIVE-000
+

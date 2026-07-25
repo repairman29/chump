@@ -1,0 +1,23 @@
+- id: INFRA-1418
+  domain: INFRA
+  title: "MISSION: chump gap reserve --offline-check linter — fail-fast on anti-offline framing at file-time, kills the rescope tax"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Today's tax (Chief of Product, 2026-05-16): three gaps in one session needed manual rescope because the filer framed them around GitHub primitives (webhook-only, gh-pr-merge-only) when an offline equivalent exists. INFRA-1392, INFRA-1405, INFRA-1318 all hit this. The fix is to catch the framing at file-time, not after I read each one."
+    - "chump gap reserve --offline-check (default ON unless CHUMP_DISABLE_OFFLINE_CHECK=1): scans the proposed title + description + AC for forbidden-without-fallback patterns. Emits warnings + asks for confirmation before writing the gap."
+    - "Forbidden patterns (each with inline fix suggestion): 'gh pr (merge"
+    - create
+    - view) ... ONLY' → suggest 'gh pr X OR local-merge-queue.sh'; 'webhook ... ONLY' → suggest 'webhook OR local equivalent (post-receive hook, NATS subject)'; 'GitHub Actions ... required' → suggest 'GitHub Actions in connected mode, scripts/ci/run-local-ci.sh in offline mode'; 'gh api ... blocking' → suggest 'cache-first read, gh api fallback'; '--auto-merge' (literal flag) → suggest pairing with local-merge alternative.
+    - "For each match: print 'OFFLINE_CHECK FAIL: <line>' + 'suggested rewrite: <text>' + 'docs: see docs/design/OFFLINE_FIRST.md §<section>'. Block the reserve unless --force-anti-offline is passed (writes audit row)."
+    - "Add an offline_class field to gap YAML/state.db: required (works in offline mode), optional (online-only optimization, doesn't break offline), breaks_offline (regression risk if landed; needs operator sign-off via --force-anti-offline). Default = required. The linter sets this automatically based on detected patterns."
+    - "Audit: chump gap audit --offline-class generates a snapshot of all open gaps by class; flags any with breaks_offline that lack the audit-row sign-off; flags any with required AC that mention ONLY-GitHub language as inconsistent."
+    - "CI test scripts/ci/test-offline-check-linter.sh: feed 5 synthetic gap titles (3 anti-offline, 2 clean); assert linter blocks the 3, passes the 2, suggested rewrites match expected templates."
+    - "Documentation: docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md (new) defines the 3 offline_class values, the forbidden patterns list (linkable from the linter output), and the CoP playbook for handling a --force-anti-offline request."
+    - "Measure: count of gaps that need manual rescope post-file (today: 3) drops to ~0 within 2 weeks of landing."
+    - Pairs with INFRA-1373 (release-staleness gate) — both are pre-emptive guards that catch class-of-bug at the right layer instead of after the fact.
+  closed_date: '2026-05-16'
+  closed_pr: 2216
+  outcome_id: MISSION-010
+

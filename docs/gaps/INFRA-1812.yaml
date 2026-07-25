@@ -1,0 +1,15 @@
+- id: INFRA-1812
+  domain: INFRA
+  title: "EFFECTIVE: investigate possible DRY violation — INFRA-1719 tree-sitter crawler vs echeo/src/shredder.rs prior art"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read INFRA-1719 implementation files (find via grep -rln 'tree.sitter' src/) and document tree-sitter call sites + language coverage (TS/Rust/Python/Go/?) + extraction shape (functions/classes/?)
+    - Read echeo/src/shredder.rs and document its tree-sitter capabilities + language list + Capability struct shape (includes authorship metadata from git blame)
+    - "Side-by-side overlap matrix in docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md: languages, extraction kinds, authorship, embedding hooks, persistence"
+    - "Verdict declared in the brief: (a) harvest-without-lineage → add Vendored-from header to Chump file with echeo commit SHA, (b) reinvention → file consolidation gap to merge implementations, (c) genuinely different → close as no-action with rationale"
+    - Update docs/arsenal/HARVEST_ROADMAP.md DRY-catch section with the final verdict
+    - "If verdict is (b) reinvention: file follow-up INFRA-NEW-CONSOLIDATE-TREESITTER and link from this gap's notes"
+  outcome_id: MISSION-010
+

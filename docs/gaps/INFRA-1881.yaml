@@ -1,0 +1,14 @@
+- id: INFRA-1881
+  domain: INFRA
+  title: "PRODUCT-BOOTSTRAP: chump bootstrap <path> ships an empty repo to working hello-world Rust crate in one command (2026 demo #1: net-new)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - 1. New `chump bootstrap <path> [--template rust
+    - python
+    - "node]` CLI subcommand under crates/chump-cli/src/cmd/bootstrap.rs\n2. Default template = rust: writes Cargo.toml (one of {package:{name:basename}}), src/main.rs (prints \"Hello, Chump!\"), README.md (1 paragraph + run command), .gitignore (target/)\n3. Initializes git repo if not already (git init --quiet), stages all, makes initial commit \"chump bootstrap: rust template\"\n4. Verifies the crate builds: cargo check in the bootstrapped dir succeeds, returns rc=0\n5. Emits ambient kind=chump_bootstrap_complete {path, template, build_ok}\n6. Smoke test scripts/ci/test-chump-bootstrap-rust.sh: invokes against a fresh /tmp dir, asserts file shape + build success\n7. Operator-facing: this is the 2026 outcome demo #1 (net-new bootstrap). Lands on the README as a 3-line example."
+  closed_date: '2026-07-20'
+  closed_pr: 3049
+  outcome_id: MISSION-010
+

@@ -1,0 +1,15 @@
+- id: MISSION-022
+  domain: MISSION
+  title: "MISSION: Verify fleet can push new branch to repairman29/BEAST-MODE via configured auth (MISSION-015 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The fleet is configured with appropriate GitHub credentials (e.g., a PAT) with write access to `repairman29/BEAST-MODE`.
+    - The fleet successfully pushes its new branch (containing the changes for the picked gap) to `github.com/repairman29/BEAST-MODE`.
+    - The new branch is visible on GitHub in the `repairman29/BEAST-MODE` repository.
+    - Fleet logs confirm successful push.
+  depends_on: [MISSION-021]
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

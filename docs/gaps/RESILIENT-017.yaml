@@ -1,0 +1,16 @@
+- id: RESILIENT-017
+  domain: RESILIENT
+  title: Move slow e2e checks to nightly, unblock merge queue
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - At least 2 slow e2e checks (currently blocking the merge queue) are moved from ci.yml required checks to a nightly workflow (nightly.yml or equivalent)
+    - "Moved checks: tauri-cowork-e2e and e2e-battle-sim (candidates; verify against current ci.yml blocking check list before moving)"
+    - "Nightly workflow: .github/workflows/nightly.yml runs on schedule: cron and notifies operator (via ambient event or Discord webhook) if the nightly e2e fails"
+    - "PR merge queue unblocked: the moved checks are replaced by advisory indicators (non-blocking) or removed entirely from the required list"
+    - "Before/after PR-time-to-merge measurement: median time for a code-only PR drops by at least 10 min after this ships (verified by comparing last 10 PRs before vs first 10 PRs after)"
+    - "Smoke test: push a test PR that triggers all checks; assert tauri-cowork-e2e and e2e-battle-sim are NOT in the blocking check list (they may still run as advisory)"
+    - "Cross-link: INFRA-1385/1386/1387 (disposition decision) should complete before this gap to avoid moving a check that was going to be promoted anyway"
+  outcome_id: RESILIENT-000
+

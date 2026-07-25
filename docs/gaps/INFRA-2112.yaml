@@ -1,0 +1,21 @@
+- id: INFRA-2112
+  domain: INFRA
+  title: "EFFECTIVE P1: chump gap decompose --external-repo flag (META-123 C4)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C4: Add --external-repo <owner/repo-or-local-path> flag to chump gap decompose so the same decomposition pipeline can slice an external repo's discovered work item (from Scout) into typed sub-gaps. When --external-repo is set, the decomposer uses ExternalRepoContract (INFRA-2111) instead of the internal DecomposeContract; the AST map is built from the external repo's clone path rather than the Chump tree. Result: a slice list tagged with external_repo: <owner/repo> for picker filtering (INFRA-2113).
+  acceptance_criteria:
+    - "Extend chump gap decompose CLI handler in src/main.rs (search for 'fn cmd_gap_decompose' or grep around line 2323) to accept --external-repo <value> flag. Value form: 'owner/repo' (looked up under ~/.chump/external/<owner>/<repo>/) OR absolute path to a clone. Update --help text to document the flag."
+    - "When --external-repo is set, the decompose path: (a) resolves clone path; (b) builds AST map from the external repo's tree (reuse the INFRA-1719 crawler if present, else fall back to a shallow file-list scan); (c) injects external_repo + clone_path into the LLM prompt context so proposed sub-gaps reference external files, not Chump internal ones; (d) tags each filed sub-gap (when --apply) with skills_required containing 'external_repo:<owner/repo>' so target picker filter can match."
+    - When --external-repo is NOT set, behavior is unchanged from today — backwards compatible. Add a unit/integration test confirming the no-flag path produces identical output to before the change (regression guard).
+    - "New unit test in src/main.rs (or wherever cmd_gap_decompose lives) confirming: (a) flag parses correctly, (b) clone-path resolution honors both 'owner/repo' and absolute path forms, (c) tag injection lands on each filed sub-gap when --apply."
+    - Update --dry-run output to show the resolved clone path + the external-mode prompt header. Operator should be able to inspect what the LLM will see before committing.
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN. Local CI via chump preflight before push. Voice-lint clean.
+    - PR via scripts/coord/bot-merge.sh --auto-merge (or manual fallback with Bot-Merge-Bypass trailer if INFRA-1939 wedge is in place).
+  depends_on: [META-123]
+  closed_date: '2026-05-29'
+  closed_pr: 2704
+  outcome_id: MISSION-010
+

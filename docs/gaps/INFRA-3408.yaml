@@ -1,0 +1,14 @@
+- id: INFRA-3408
+  domain: INFRA
+  title: "INFRA: ChumpBar shows the EU fleet — cached ssh status merge, ghost-row suppression, whole-fleet icon"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Post-migration, ChumpBar only watched laptop heartbeats — it showed 0 workers while Helsinki ground autonomously. New scripts/ops/chump-eu-status.sh emits one-line JSON on the host (chumpd slots, per-agent current gap + title from the HOST registry, last-10 cycle tally); laptop chumpbar-status.sh refreshes it over ssh in the background on a 120s TTL (menu never blocks on network), merges EU worker rows (🇫🇮-prefixed) + fleet summary line, counts EU workers in the icon logic, shows mode as local:X eu:Y, and suppresses dead-fleet-dir ghost rows. No Swift changes needed.
+  acceptance_criteria:
+    - "The change described by \"ChumpBar shows the EU fleet — cached ssh status merge, ghost-row suppression, whole-fleet icon\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3246
+

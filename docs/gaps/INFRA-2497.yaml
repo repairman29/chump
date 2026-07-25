@@ -1,0 +1,10 @@
+- id: INFRA-2497
+  domain: INFRA
+  title: "EFFECTIVE: orchestrator-opus session-bootstrap helper — set session_id, read inbox, emit heartbeat before any work"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"New script scripts/coord/orchestrator-bootstrap.sh that idempotently: (a) exports CHUMP_SESSION_ID=orchestrator-opus-resume-{ts}, (b) runs chump-inbox.sh read --no-advance and surfaces pending broadcasts, (c) emits kind=orchestrator_resumed with reason, (d) confirms NATS reachability via chump-coord ping\", \"Documented in CLAUDE.md MANDATORY pre-flight as the first step for any session inheriting orchestrator-opus role\", \"Regression test scripts/ci/test-orchestrator-bootstrap.sh: run it in a clean env, assert session_id is set + ambient has one orchestrator_resumed event\"]"
+  outcome_id: MISSION-010
+

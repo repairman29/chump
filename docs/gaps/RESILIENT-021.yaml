@@ -1,0 +1,11 @@
+- id: RESILIENT-021
+  domain: RESILIENT
+  title: "META-090 followup: fix autopilot daemon label registry (4 mismatches; curator multi-plist; verify load post-install)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"AUTOPILOT_LAYERS in scripts/coord/fleet-autopilot.sh updated with correct labels: dev.chump.pr-auto-rebase + dev.chump.auto-arm-sweeper + (com.chump.opus-curator AND com.chump.emergency-fast-path for the curator entry) + rest unchanged\",\"After fleet-autopilot start, all 9 (or 10 with curator-2-plists) labels show plist=yes loaded=yes via launchctl list\",\"scripts/ci/test-fleet-autopilot.sh updated assertions for new labels\",\"Local autopilot start exercise: 100% load rate (no degraded mode)\"]"
+  closed_date: '2026-05-25'
+  outcome_id: RESILIENT-000
+

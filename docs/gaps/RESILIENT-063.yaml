@@ -1,0 +1,16 @@
+- id: RESILIENT-063
+  domain: RESILIENT
+  title: "RESILIENT P0: audit job cold-builds every run — per-run CARGO_TARGET_DIR + PR-scoped prefix defeat rust-cache → 15min timeout (the trunk SPOF)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    VERIFIED 2026-06-03 (operator: FIX IT). The required 'audit' job in .github/workflows/ci.yml (~line 1500) is the trunk SPOF — it times out at timeout-minutes:15, wedging the merge queue. ROOT CAUSE: the audit job has NO effective compile cache, so it cold-builds 'chump' on every run. Three independent defeaters: (1) env CARGO_TARGET_DIR=/tmp/cargo-target-<run_id> (line ~1529) redirects build output to a per-run /tmp path, but Swatinem/rust-cache@v2 (line ~1551) caches ./target with no cache-directories override telling it about /tmp -> restores an empty dir -> cold build; (2) rust-cache prefix-key is PR-scoped 'v1-pr-<number>' (line ~1556) -> zero cross-PR cache sharing -> every PR's first audit is cold; (3) RUSTC_WRAPPER/sccache is NOT set for audit (only cargo-test wires it), so the R2 sccache that INFRA-2504/#2984 provisioned never reaches audit. NET: audit cold-builds chump several times per run -> >15min -> timeout. This is why #2984's sccache restore did not fix the timeout (it never reached the audit job). NOT fixed by INFRA-2516 (concurrency, a band-aid that reintroduces INFRA-1852) nor by redoing INFRA-2504. The fix makes the EXISTING rust-cache effective + shared. Bootstrapping note: the fix PR's own first audit run is cold; a small timeout headroom bump lets it land, then warm runs are fast.
+  acceptance_criteria:
+    - "audit job's rust-cache actually caches the dir cargo builds into: either drop the per-run CARGO_TARGET_DIR override (build to ./target which rust-cache caches) OR add cache-directories so rust-cache caches the /tmp target"
+    - audit rust-cache prefix-key is stable/shared across PRs (not PR-scoped) so a warm cache is reused -> first-run-per-PR is no longer guaranteed-cold
+    - after merge, a representative audit run completes in well under timeout-minutes (target <8min warm) — capture the before/after wall-clock in the PR
+    - change is scoped to the audit job's env + cache step (+ optional modest timeout headroom to let the cold fix-PR run land); does not weaken what audit actually checks (no bypass, still required)
+    - "scripts that read CARGO_TARGET_DIR still resolve (they use ${CARGO_TARGET_DIR:-$(pwd)/target} fallback)"
+  outcome_id: RESILIENT-000
+

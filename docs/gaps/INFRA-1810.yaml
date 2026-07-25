@@ -1,0 +1,22 @@
+- id: INFRA-1810
+  domain: INFRA
+  title: "RESILIENT: CI gate audits scripts/setup/install-*.sh ↔ REQUIRED_DAEMONS shape — every installer must be REQUIRED, OPTIONAL allowlist, or DEPRECATED (closes the shipped-but-never-installed pattern at the source)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-1808 fixes the auto-install side of the code-shipped-install-never-ran pattern. This gap closes the OTHER side: when a new install-foo.sh ships in scripts/setup/, CI should enforce that it is wired into either REQUIRED_DAEMONS (chump-fleet-bootstrap.sh), an OPTIONAL allowlist (for installers that are situational like Discord/Telegram bots), or marked DEPRECATED (about to be removed). Without this gate, a new daemon ships to repo, installer exists, but no operator workflow ever invokes it — the pattern that produced INFRA-1662 reaper, INFRA-1777 pr-auto-rebase, INFRA-1779 plist installer all sitting unrun on host for 24h+. Rough shape: (a) scripts/ci/test-install-script-manifest.sh enumerates scripts/setup/install-*.sh, intersects with REQUIRED_DAEMONS + new OPTIONAL_DAEMONS allowlist + new DEPRECATED_INSTALLERS allowlist; (b) any installer in neither set fails CI; (c) PR fix path documented in failure message.
+  acceptance_criteria:
+    - "scripts/ci/test-install-script-manifest.sh new file: enumerates every scripts/setup/install-*.sh, asserts each is referenced by either REQUIRED_DAEMONS in chump-fleet-bootstrap.sh OR appears in a new scripts/setup/optional-installers-allowlist.txt OR scripts/setup/deprecated-installers-allowlist.txt"
+    - chump-fleet-bootstrap.sh extended with OPTIONAL_DAEMONS section (parallel structure to REQUIRED_DAEMONS) — daemons operator may want but not required; chump-fleet-bootstrap.sh --install-optional installs them
+    - "scripts/setup/optional-installers-allowlist.txt seed: list current installers that ship without being required (Discord/Telegram/specific dev convenience installs) — operator can audit later"
+    - scripts/setup/deprecated-installers-allowlist.txt for installers about to be removed; CI passes them but emits a warning
+    - Failure message names the specific unmapped installer + gives a 3-option remediation (add to REQUIRED, add to OPTIONAL, add to DEPRECATED) with example diff for each
+    - test-install-script-manifest.sh wired into ci.yml fast-checks (runs <1s for the audit)
+    - README.md scripts/setup/README.md updated documenting the three-bucket discipline
+  notes: |
+    Pillar: RESILIENT. Sibling to INFRA-1808 (auto-install side). This is the SHAPE gate. Together they close the shipped-but-never-installed pattern: 1808 makes sure REQUIRED_DAEMONS get installed; this makes sure new installers GET INTO the REQUIRED_DAEMONS or OPTIONAL allowlist on the PR that adds them. Effort=xs because the audit is a 30-line bash script; the wiring + seed allowlist is the work.
+  closed_date: '2026-05-25'
+  closed_pr: 2567
+  outcome_id: MISSION-010
+

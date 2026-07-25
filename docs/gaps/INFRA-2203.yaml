@@ -1,0 +1,18 @@
+- id: INFRA-2203
+  domain: INFRA
+  title: "RESILIENT: chump-fleet-recorder writes NULL gap_id/session_id/subject violating its own NOT NULL DEFAULT '' schema"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    chump-fleet-recorder inserts events with NULL gap_id/session_id/subject even though the schema declares all three as TEXT NOT NULL DEFAULT ''. Currently 14000+ rows in .chump/fleet_events.db are NULL. The server's row_to_event was patched in INFRA-2189 to tolerate this via Option-aware reads, but the contract is still broken: the segmenter's SQL also has to special-case, and any downstream consumer hits the same hazard. Fix at the source: recorder INSERT path coerces None to '' before binding. Backfill the existing rows in a one-shot migration.
+  acceptance_criteria:
+    - crates/chump-fleet-recorder INSERT path coerces None or empty Option<String> to '' for gap_id, session_id, subject before binding to rusqlite
+    - "Reverse the INFRA-2189 Option-aware-read workaround in crates/chump-fleet-server/src/db.rs row_to_event: switch back to r.get(N)? after the recorder is fixed and migration runs"
+    - "One-shot migration at recorder startup: UPDATE events SET gap_id='' WHERE gap_id IS NULL; same for session_id and subject; idempotent (CHECK that the column has any NULLs first to avoid UNIQUE collisions per ts_ms,session_id,event_kind,gap_id)"
+    - "Smoke test extends scripts/ci/test-fleet-recorder.sh: emit a chump-coord event with no gap_id, assert the resulting row has gap_id='' not NULL"
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
+  depends_on: [INFRA-2164, INFRA-2174]
+  closed_date: '2026-05-30'
+  outcome_id: MISSION-010
+

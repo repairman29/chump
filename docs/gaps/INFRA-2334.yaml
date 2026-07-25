@@ -1,0 +1,15 @@
+- id: INFRA-2334
+  domain: INFRA
+  title: skill-flag-test-2
+  status: closed
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    test of --skills-required flag — confirmed silently dropped by chump gap reserve
+  outcome_id: MISSION-010
+

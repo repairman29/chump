@@ -1,0 +1,14 @@
+- id: RESILIENT-128
+  domain: RESILIENT
+  title: "RESILIENT: git-worktree-list marks 3+ worktrees as 'prunable' but worktree-reaper doesn't prune them — accumulating /tmp clutter"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: git worktree list shows entries marked '(prunable)' — e.g. /private/tmp/audit-2961, /private/tmp/chump-credible-102, /private/tmp/chump-effective-215. These accumulate over time without being reaped"
+    - "Identify which reaper(s) own /tmp/chump-* lifecycle (candidates: stale-worktree-reaper-tmp.sh, worktree-reaper-safety, INFRA-2020 family). Verify that 'prunable' status from git worktree list is checked in the reap predicate"
+    - "Fix: reaper must call git worktree list --porcelain, parse for 'prunable' flag, and git worktree remove --force the prunable entries. Today's reaper checks mtime or active-lock, not git's own prunable signal"
+    - "Test scripts/ci/test-worktree-reaper-prunable.sh: create a worktree, mark it prunable (e.g. git worktree remove + leave the dir), run the reaper, verify the dir is cleaned and the registration removed"
+    - Emit ambient kind=worktree_reaped_prunable on each successful prune with path + prior_branch + age — operator audit trail
+  outcome_id: RESILIENT-000
+

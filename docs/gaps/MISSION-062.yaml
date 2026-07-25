@@ -1,0 +1,9 @@
+- id: MISSION-062
+  domain: MISSION
+  title: "provisioner: default mission-improve interval 30min -> 10min"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "scripts/setup/provision-chumpd-host.sh sets CHUMP_MISSION_IMPROVE_INTERVAL_MIN default to 10 (was 30) so new fleet nodes inherit the faster mission cadence; update docs/process/ADD_A_FLEET_NODE.md 'every ~30 min' references to 10. Rationale: operator decision 2026-07-23 — 30min between converging mission cycles leaks throughput. Live closetjunky already dropped to 10min this session; this makes it the productized default. Land AFTER MISSION-058 #3293 merges (the block lives in that branch). Verify: fresh provision yields a 10min OnUnitActiveSec timer."
+

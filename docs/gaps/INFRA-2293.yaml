@@ -1,0 +1,26 @@
+- id: INFRA-2293
+  domain: INFRA
+  title: fix or delete rotate-sccache-r2-token.sh — CF API endpoint /r2/api_tokens doesn't exist (returns 404)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    scripts/ops/rotate-sccache-r2-token.sh (INFRA-2237) calls GET/POST/DELETE on /accounts/{account_id}/r2/api_tokens. This endpoint does NOT exist in the Cloudflare public API (returns 404 'No route matches this url' even with a properly-scoped token).
+    
+    Discovered 2026-05-30 during a trunk-RED sccache cred rotation attempt. Operator was advised to use the INFRA-2240 GH-only path (manual UI regen + scripted GH secret write) instead.
+    
+    Cloudflare R2 API token management is currently dashboard-UI-only (CF has internal wrangler endpoints but no public REST). The INFRA-2237 script was apparently written from assumption and never end-to-end tested.
+    
+    Options:
+    (a) DELETE the script entirely; document INFRA-2240 (rotate-sccache-r2-gh-only.sh) as canonical.
+    (b) Rewrite to use wrangler CLI if rotating tokens is automatable that way.
+    (c) Wait for CF to publish an R2 token API; track via CF API changelog.
+    
+    Lesson: docstring claimed 'automated rotation'; was untested. Add CI smoke that calls --help on every ops/ script + verifies any --execute-claimed path has at least a dry-run smoke test.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

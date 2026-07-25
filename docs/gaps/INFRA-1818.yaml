@@ -1,0 +1,17 @@
+- id: INFRA-1818
+  domain: INFRA
+  title: "ZERO-WASTE: prepare archive-script for confirmed-dead repairman29 repos (echeo-* x6, 2029-* x3, project_forge x2)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Confirm dormancy for each candidate: gh api repos/repairman29/X shows no commits in last 90 days, zero open issues, not already archived"
+    - "Candidate list (13 confirmed by Wave 3 deep-scan 2026-05-23): 2029, 2029-versioned, repairman29-website, beast-mode-website, echeo-archived, echeo-dev, echeo_old, echeodev, project_forge, okr, slides, services-dashboard, service-frontends — documented in docs/arsenal/ARCHIVE_BATCH_2026-05.md with operator opt-in checkmarks per row"
+    - Operator opt-in is mandatory per-repo (no fleet-autonomous archiving) — the script reads ARCHIVE_BATCH_2026-05.md and only acts on opted-in entries
+    - Produce scripts/arsenal/archive_batch_2026-05.sh — shell script with gh repo archive commands one per line, rationale comments, interactive read -p between each
+    - Operator runs the script (destructive action gated to human); script logs each completion to docs/arsenal/ARCHIVE_LOG.md
+    - "After archive: re-run python3 scripts/arsenal/build.py and confirm GLOBAL_ARSENAL.json shows isArchived true for each archived repo"
+    - Update docs/arsenal/HARVEST_ROADMAP.md skip-list and Wave 3 addendum to point at the archive log after execution
+    - Coordinate with duplication-finder in scripts/arsenal/build.py — archived repos still appear in duplication groups but flagged resolved
+  outcome_id: MISSION-010
+

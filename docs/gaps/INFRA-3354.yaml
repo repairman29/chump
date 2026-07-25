@@ -1,0 +1,11 @@
+- id: INFRA-3354
+  domain: INFRA
+  title: "META-070: mirror gap-state-consistency audit-job gates into chump preflight (cluster A)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster A from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the gap-CLI-subcommand consistency test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs so they run locally via 'chump preflight', not just in CI. 19 scripts: test-gap-ac-requirement.sh, test-gap-add-note.sh, test-gap-audit-ac-open.sh, test-gap-closure-consistency-fixture.sh, test-gap-consolidate.sh, test-gap-impact-rating.sh, test-gap-lifecycle-manager.sh, test-gap-list-domain-summary.sh, test-gap-list-done-format.sh, test-gap-list-since-json-schema.sh, test-gap-list-since.sh, test-gap-profiling.sh, test-gap-quality-gate.sh, test-gap-rebalance.sh, test-gap-run-now.sh, test-gap-show-ac-render.sh, test-gap-templates.sh, test-gap-workflow-status.sh, test-release-lease-flag.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml — see survey doc revision.)
+  acceptance_criteria:
+    - 1. All 19 cluster-A scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster (no unmirrored-gate drift). 3. chump preflight run locally exercises all 19 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster A shipped. Splitting into 2 PRs is acceptable if each is intent-atomic.
+

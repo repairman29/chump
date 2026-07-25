@@ -1,0 +1,18 @@
+- id: INFRA-2311
+  domain: INFRA
+  title: "RESILIENT P0: disk_critical reactor — cargo target sweep when free < 20Gi (33Gi target dir on 96% volume blocking compiles)"
+  status: superseded
+  priority: P0
+  effort: xs
+  description: |
+    META-225 cascade is actively compiling chump-fleet-server while disk is at 96% capacity (18Gi free of 460Gi). Root cause: target/ dir = 33GB Rust artifacts. Need an auto-reactor that runs when ambient kind=disk_critical fires.
+  acceptance_criteria:
+    - scripts/coord/disk-critical-reactor.sh — subscribes to kind=disk_critical events (read .chump-locks/ambient.jsonl tail), debounce 30min
+    - "On fire: cargo cache cleanup — find target -name '*.rlib' -mtime +3 -delete + find target -name '*.o' -mtime +1 -delete"
+    - "If still under threshold: extends to /private/tmp/chump-* worktree log cleanup (NOT the worktree dirs themselves — those have git refs)"
+    - Emits kind=disk_critical_reacted with bytes_freed + cleanup_path before/after
+    - "Self-throttle: max 1 fire per 30min via .chump/disk-critical-last.json"
+  notes: |
+    Duplicate of INFRA-2304 (filed earlier, PR #2873 BLOCKED-armed in queue). Closed by shepherd 2026-05-30 ~18:55Z to avoid double-work. INFRA-2304 covers identical surface (reactive escalation on disk_critical fire).
+  outcome_id: MISSION-010
+

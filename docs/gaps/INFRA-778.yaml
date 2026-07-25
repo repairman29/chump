@@ -1,0 +1,9 @@
+- id: INFRA-778
+  domain: INFRA
+  title: "EFFECTIVE: fleet CI-fix pickup — agents must fix their own red PRs before picking new gaps"
+  status: done
+  priority: P1
+  effort: m
+  closed_pr: 1526
+  outcome_id: MISSION-010
+

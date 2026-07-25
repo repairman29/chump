@@ -1,0 +1,27 @@
+- id: RESILIENT-049
+  domain: RESILIENT
+  title: "audit + ban Stdio::null() on git/external commands — silent failures hide test regressions"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    tokio::process::Command::....stderr(Stdio::null())....status() silently swallows command failures. This blocks the surrounding code from learning about (or asserting on) git/external-binary errors.
+    
+    Discovered 2026-05-30 during PR #2866 trunk-RED diagnosis: chump-integrator's test helper init_repo_with_commits() called git init then git checkout main, both with .stderr(Stdio::null()). On CI runners with init.defaultBranch=master, git init created a 'master' branch; the subsequent 'git checkout main' silently failed; branch B was then created off branch A instead of off main; the test's expected conflict didn't happen; test failed in a way that took human debugging to root-cause (4+ months later, when it finally surfaced).
+    
+    Anti-pattern: Stdio::null() should never be used for STDERR of error-checked commands. If we want to suppress noise, use a buffered Stdio::piped() and only print on failure.
+    
+    PROPOSAL:
+    1. Scan crates/**/*.rs for .stderr(Stdio::null()) preceded by a Command. Audit each: is the exit code checked? Is failure-mode reachable?
+    2. For each unchecked-stderr-and-status case: refactor to capture stderr to a buffer; on non-zero exit, propagate it.
+    3. Add clippy lint or custom check (regex over .rs files in CI) that flags this combination.
+    4. Document the rule in docs/process/CODE_REVIEW.md or similar.
+    
+    This is the 'silent agent' class — fail without surfacing what failed. Already known via other paths (silent_agent ambient event) but this is the source-code instance.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: RESILIENT-000
+

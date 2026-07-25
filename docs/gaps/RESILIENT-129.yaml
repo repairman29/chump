@@ -1,0 +1,16 @@
+- id: RESILIENT-129
+  domain: RESILIENT
+  title: "RESILIENT: test-credible-061-gap-list-json-schema.sh expects ≥5 fixture gaps but seed produces 3 — wedges every PR's audit-shard (1) gate"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: PR #3095 (and presumably every other PR right now) fails audit-shard (1) at scripts/ci/test-credible-061-gap-list-json-schema.sh with 'FAIL: expected ≥5 fixture gaps; got 3'"
+    - "Root cause: the seed fixture (or whatever produces the initial gap set in the audit runner env) emits 3 gaps (INFRA-001, EFFECTIVE-001, ZERO-WASTE-001) but the test threshold expects ≥5"
+    - "Fix option A: lower the test threshold to ≥3 to match the current minimal seed"
+    - "Fix option B: extend the seed fixture to ≥5 gaps (preferred — exercises the schema across more domains)"
+    - Add scripts/ci/test-credible-061-seed-consistency.sh that runs the seed and asserts the gap count matches the threshold, so a future drift fails the seed test directly rather than the schema test downstream
+    - "Validation: re-run audit-shard (1) on PR #3095 — passes. Re-run on a fresh PR — passes. Failing pattern in audit logs disappears"
+    - "Doctrine cross-ref: CREDIBLE-105 — a test that fails for environmental reasons (seed drift) rather than the code under test wedges every PR. Same family as the wedged-on-cargo-test-OOM pattern from RESILIENT-110 attempts"
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,12 @@
+- id: INFRA-1973
+  domain: INFRA
+  title: "HIGH: ambient.jsonl unindexed append-only — every consumer greps linearly at fleet scale (critique H4)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Failure: .chump-locks/ambient.jsonl is append-only JSONL with no index. Multiple emitters (src/adversary.rs:emit_ambient_alert + dozens of `>> ambient.jsonl` shell appends). Consumers tail or grep linearly."
+  closed_date: '2026-07-20'
+  closed_pr: 3065
+  outcome_id: MISSION-010
+

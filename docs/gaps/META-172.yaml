@@ -1,0 +1,21 @@
+- id: META-172
+  domain: META
+  title: "RESILIENT: chump playbook freshness contract — CI gate + section ownership + weekly drift check (load-bearing reference doc must not silently rot)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Filed 2026-05-30 after operator directive: "we need a way to keep this fresh. This document MUST be updated very frequently." docs/process/CHUMP_PLAYBOOK.md is the integrative how-Chump-should-work reference doc — load-bearing onboarding artifact. A "how it works" doc that silently drifts becomes worse than no doc: actively misleads new operators + sub-agents who read it for ground truth. Need: (a) CI gate that catches structural drift on every push, (b) weekly remote-agent drift-detector that compares prose claims against current reality, (c) section ownership so each section has a clear curator-lane owner accountable for accuracy. Treat this doc like state.db — canonical, with a freshness contract.
+  acceptance_criteria:
+    - "New CI gate scripts/ci/test-chump-playbook-freshness.sh that runs on every push. Asserts: (1) curator role count in §2 matches `ls .claude/agents/*.md | wc -l`; (2) every plist named in the daemon table exists in launchd/ OR ~/Library/LaunchAgents/; (3) every event kind named in §5 reporting matrix is registered in docs/observability/EVENT_REGISTRY.yaml; (4) every script path cited (grep -oE \"scripts/[a-z/]+\\\\.sh\" CHUMP_PLAYBOOK.md) exists on disk; (5) every gap ID cited (grep -oE \"[A-Z]+-[0-9]+\" CHUMP_PLAYBOOK.md) exists in state.db. Each assertion failure prints the specific divergence + line number. Target <30s runtime."
+    - CI gate added to .github/workflows/ci.yml AND src/preflight.rs (preflight-vs-CI parity per INFRA-1867); runs on every PR touching docs/process/CHUMP_PLAYBOOK.md OR any of the source files it cites
+    - "Section-ownership table added to CHUMP_PLAYBOOK.md (or sibling SECTION_OWNERS.md) mapping each numbered section to a curator-lane owner: §1+§2 → orchestrator, §3+§4 → handoff, §5 → observability, §6 → external-collab, §7 → infra-watcher + shepherd, §8 → all (cross-cutting). When CI gate fails, the owning curator is responsible for the fix."
+    - "Weekly remote-agent drift check scheduled via claude.ai routine. Cron: Wednesday 9am MT (15:00 UTC Wed = 0 15 * * 3, different day than BEAST-MODE check Mon). Reads CHUMP_PLAYBOOK.md from git, runs CI-gate assertions PLUS deeper LLM-driven prose-vs-reality compare (does the gap lifecycle sequence diagram still match bot-merge.sh + worker.sh?). Files follow-up gap per divergence found."
+    - New ambient event kind kind=playbook_drift_detected registered in EVENT_REGISTRY.yaml. Fired by CI gate failure OR weekly drift-check finding. Surfaces in chump fleet brief alerts panel.
+    - "CHUMP_PLAYBOOK.md gains a \"Last-verified-against-code\" timestamp field at the top (HEADER:LAST_VERIFIED: ISO8601-date). Updated by anyone who validates a section (including CI gate green = full validation, weekly check = full validation, manual section edit = section-level revalidation). Stale-warning threshold: 14 days without revalidation → kind=playbook_stale_warning emitted."
+    - Doc-freshness automaton (tech-writer agent per docs/agents/tech-writer.md) extended to scan CHUMP_PLAYBOOK.md during its hourly run; auto-files drift gaps using the same pattern it uses for other stale-reference detection (per project_doc_infrastructure memory note)
+    - "Smoke test scripts/ci/test-chump-playbook-freshness-smoke.sh: <60s, creates a synthetic divergence (rename a referenced script), runs the freshness gate, asserts non-zero exit + correct error message + correct kind=playbook_drift_detected event emitted"
+    - "Pillar tag: RESILIENT (reduces operator-overhead by catching doc rot before it misleads readers); META-domain because it is fleet-discipline doctrine, not feature work"
+  source_doc: docs/process/CHUMP_PLAYBOOK.md
+  outcome_id: MISSION-010
+

@@ -1,0 +1,20 @@
+- id: INFRA-1571
+  domain: INFRA
+  title: "EFFECTIVE: Tauri desktop native integration — system tray, native notifications, file dialogs; today the app is a WebView wrapper functionally identical to the PWA (16 commands, only OOTB wizard is desktop-specific)"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Verified: desktop/src-tauri/src/lib.rs lines 454-471 expose only 16 Tauri commands — most are OOTB wizard sidecar spawns, HTTP proxies to the web backend, and single-instance/title management. The OOTB wizard (ootb_detect_ollama, ootb_pull_model, ootb_reveal_user_data_folder) is the only desktop-only file-system access. No system-tray, native notifications, file picker, or window-management commands exist. Result: desktop app provides no tangible advantage over the PWA. Operator UX win available: native tray badge for unread inbox count, native notifications for PR-stuck alerts, native file picker for uploads/log exports. Priority P3 because this is polish, not on the current 4-week roadmap thrust — but a logical Phase 4 (May 29 → June 6) demo-polish play.
+  acceptance_criteria:
+    - "New Tauri commands in desktop/src-tauri/src/lib.rs: show_notification(title, body, urgency), show_tray_menu(items), pick_file(filters), save_file(default_name, filters), with idiomatic Tauri plugin imports"
+    - System tray badge in desktop app shows unread inbox count, refreshed every 30s from /api/inbox/{session}/unread-count (wire-up depends on INFRA-1569 inbox cluster verdict)
+    - Critical ambient.jsonl ALERTs (pr_stuck, fleet_wedge, silent_agent) surface as native notifications via the show_notification command
+    - Web/v2 components feature-detect Tauri host (existing isTauriHost helper) and call native commands; falls back to web pattern in PWA mode
+    - Smoke test scripts/ci/test-tauri-native-commands.sh asserts each new command returns expected shape under a mock Tauri context
+    - docs/operations/DESKTOP_APP.md documents the native-feature surface for operators
+  notes: |
+    wave: 4 (Tauri native features — Marcus-arc polish; defer until Wave 3 stable)
+  skills_required: pwa,frontend
+  outcome_id: MISSION-010
+

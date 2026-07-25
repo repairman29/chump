@@ -1,0 +1,15 @@
+- id: EFFECTIVE-086
+  domain: EFFECTIVE
+  title: "EFFECTIVE P1: autonomy dial — graduated levels 0-5 (STOP/OBSERVE/ASSIST/SUPERVISED/AUTONOMOUS/UNLEASHED) on the AUTONOMY_LEVEL flag"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Extends the kill-switch flag into a graduated dial the operator turns up/back with one knob. Levels: 0 STOP (nothing); 1 OBSERVE (propose only, zero writes); 2 ASSIST (build but auto-merge OFF, every PR waits for human); 3 SUPERVISED (auto-merge safe-mode gaps only, risky->human); 4 AUTONOMOUS (decide+route+merge within policy, human watches); 5 UNLEASHED (max concurrency/scope/cadence). Reuse existing primitives: chump-policy IS levels 2-3 (auto-merge gate + trust ladder); the fleet scaling gate IS levels 4-5 (concurrency). chump fleet level <n> sets it; every agent/daemon reads it and self-limits to the level's allowed actions.
+  acceptance_criteria:
+    - chump fleet level <0-5> sets the dial; each level's allowed actions are enforced (e.g. level 2 = no auto-merge; level 4 = auto-merge within chump-policy)
+    - auto-merge behavior is bound to the level via the existing chump-policy chain (no parallel mechanism)
+    - worker concurrency is bound to the level via the existing fleet scaling gate
+    - a test exercises each level and asserts the allowed/forbidden action set
+  outcome_id: EFFECTIVE-000
+

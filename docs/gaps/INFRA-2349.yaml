@@ -1,0 +1,13 @@
+- id: INFRA-2349
+  domain: INFRA
+  title: "auto-processor policy fix: trunk-red gate too defensive — 17 PRs sat for 24h while gate held"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

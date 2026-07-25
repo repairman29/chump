@@ -1,0 +1,19 @@
+- id: INFRA-1692
+  domain: INFRA
+  title: "EFFECTIVE: chump claim pre-flight auto-search of team nuggets — INFRA-1473 follow-up"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Follow-up to INFRA-1473 #2337. The Marcus quote — next guy on my team running a fleet retrieves the nugget BEFORE starting — needs chump claim GAP-ID to auto-search team nuggets and surface top-K matches before spinning up the worktree.
+  acceptance_criteria:
+    - "src/atomic_claim.rs adds a pre-flight step that calls chump_team::ChumpTeam::search_nuggets with the gap's title+description as query_text"
+    - Top-K results (default 3) printed before worktree creation; format like a brief table (kind / similarity / title / first 80 chars of body)
+    - "Each printed nugget triggers log_nugget_read so the audit-trail captures pre-claim reads (AC #6 of INFRA-1473)"
+    - "Bypass: CHUMP_CLAIM_SKIP_NUGGET_SEARCH=1 (e.g. for offline mode)"
+    - "Graceful degrade: if CHUMP_TEAM_URL unset or unreachable, skip silently — claim still proceeds"
+    - "CI test scripts/ci/test-claim-nugget-prefetch.sh: stub chump-team and verify search is called + results displayed"
+  notes: Pairs with INFRA-1691 (CLI), INFRA-1693 (privacy doc), INFRA-1694 (live test).
+  closed_date: '2026-05-23'
+  outcome_id: MISSION-010
+

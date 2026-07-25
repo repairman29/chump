@@ -1,0 +1,15 @@
+- id: INFRA-2153
+  domain: INFRA
+  title: test reserve to see error
+  status: closed
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Test reserve to diagnose CHUMP_IGNORE_WASTE_PAUSE behavior. Not a META-125 child; closed.
+  outcome_id: MISSION-010
+

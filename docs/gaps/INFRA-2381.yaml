@@ -1,0 +1,15 @@
+- id: INFRA-2381
+  domain: INFRA
+  title: inventory pr backfill — 1000-PR cap missing oldest ~1935 PRs (repo has 2935, indexed only newest 1000)
+  status: closed
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Resolved by INFRA-2368 (PR #2935, merged 2026-06-01T13:04). REST path paginates correctly — production rebuild against fresh binary indexed all 2934 PRs. The 1000-cap I observed was the OLD gh-CLI path in the pre-2368 debug binary.
+  outcome_id: MISSION-010
+

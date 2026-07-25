@@ -1,0 +1,14 @@
+- id: CREDIBLE-089
+  domain: CREDIBLE
+  title: M2 gate verifier — set CHUMP_GAP_SUPERVISOR_STATE + CHUMP_FLEET_PICKUP_SENTINEL for state isolation
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    M2 gate verifier (scripts/ci/test-m2-gate-end-to-end.sh) shipped under #3021 fails Phase 1+2 because it only exports CHUMP_LOCK_DIR. But gap-supervisor.sh reads CHUMP_GAP_SUPERVISOR_STATE (falling back to $REPO_ROOT/.chump-locks which doesn't exist in a tmp checkout — silent state drop). fleet-supervisor.sh reads CHUMP_FLEET_PICKUP_SENTINEL (same issue). With proper env-var isolation manually applied, M2 substantively PASSES all 4 phases including L6a escalation + L6a sentinel + L6c block/allow + zero operator_recall.
+  acceptance_criteria:
+    - "- export CHUMP_GAP_SUPERVISOR_STATE=\"$CHUMP_LOCK_DIR/gap-supervisor-state.jsonl\" in the verifier\n- export CHUMP_FLEET_PICKUP_SENTINEL=\"$CHUMP_LOCK_DIR/.fleet-pickup-paused\" in the verifier\n- mkdir -p the dir before tests\n- verifier exits 0 on a clean checkout of origin/main (manually demonstrated 2026-06-03T22:30Z)\n- add test-m2-gate-end-to-end.sh to scripts/preflight.rs preflight tier\n- emit kind=m2_gate_verified on PASS"
+  closed_date: '2026-06-05'
+  closed_pr: 3035
+  outcome_id: CREDIBLE-000
+

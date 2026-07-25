@@ -1,0 +1,21 @@
+- id: CREDIBLE-099
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet workers REGISTER a claim but not THEMSELVES — register_worker RPC is a stub, heartbeat files absent, kpi --agents empty → the fleet is unattributable/unverifiable from any vantage (the 'opus in trench coats' root cause)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    2026-06-05, operator-prompted ('when a fleet worker does work we need to register them - how does that work?'). Ground truth: ephemeral per-gap workers claim+implement+ship+EXIT (claim PIDs 77665/36800 DEAD; MISSION-013/018/028 PRs #3060-3062 merged; MISSION-036 claimed minutes ago). What registers: the NATS-KV atomic CLAIM only (chump-coord status: gap_id->session_id->ts). What does NOT register (the worker itself): (a) register_worker_rpc_handlers in crates/chump-coord/src/rpc.rs (~L563) is an explicit STUB — handlers return 'not implemented' (ask-eta->null etc.); (b) worker.sh FLEET-042 heartbeat (/tmp/chump-fleet-worker-<id>.heartbeat) — ZERO files present; (c) kpi --agents = 'No throughput data found'; (d) chump-coord has claim/release/status/worker(subscriber) but no 'workers'/roster verb. NET: you can see WHAT is claimed, never WHO/WHAT does it (backend, machine, skills, alive?, since-when, what-shipped all unknowable). This is the root cause of 'looks like opus in trench coats' — an in-system Opus session (this one) misread a real busy fleet as opencode, then as dead, BECAUSE the work-doers register no identity. Dispatch side works (chump-coord assign --poll-secs 30 + chump fleet daemon running); the worker-presence/attribution half is the gap.
+  acceptance_criteria:
+    - on claim, a worker registers a PRESENCE record {worker_id, backend (claude
+    - local-llm
+    - opencode
+    - ...), machine, skills, harness, started_at, current_gap} to a NATS-KV bucket (chump.workers.*) + refreshes a heartbeat; on ship/exit it deregisters or marks terminal
+    - the register_worker_rpc_handlers stubs (rpc.rs) are implemented OR replaced by the KV-presence model so peers/operator query LIVE workers instead of getting 'not implemented'
+    - "a harness-neutral verb lists registered workers + live state: chump fleet workers (or chump-coord workers) [--json] -> worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today"
+    - kpi --agents reads REAL per-worker throughput (ships/fails/P50) from the registry — no longer 'No throughput data found'
+    - "ACID test: from a DIFFERENT harness (a Claude Code session) one command shows the live workers + what they shipped — closing the cross-harness blindness that made this session misdiagnose the fleet TWICE"
+  notes: |
+    MISSION-010 Gate0.5 (operator cockpit / observability — its AC 'coordination acts by agent vs operator is reported' depends on this). Sibling of EFFECTIVE-178 (chump daemons --status = daemon analogue; chump fleet workers = worker analogue) and RESILIENT-104 (daemons crash-loop invisibly). The claim registry (NATS-KV) is the model to extend to a worker-presence registry. Evidence: chump-coord status shows live claims but 0 heartbeat files + stub register_worker + empty kpi --agents + dead claim PIDs.
+  outcome_id: CREDIBLE-000
+

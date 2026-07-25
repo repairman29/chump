@@ -1,0 +1,23 @@
+- id: INFRA-2278
+  domain: INFRA
+  title: "EFFECTIVE: SessionStart hook surfaces SHIP_ASSIST_PLAYBOOK top-3 wedge classes + VOA filing prompt — activates the discovery layer for INFRA-2256 + INFRA-2258 + VOICE_OF_AGENT.md"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Extend scripts/coord/ambient-context-inject.sh: add a new block at the BOTTOM of the SessionStart output (after existing FLEET-019 ambient digest + INFRA-1150 a2a-inbox + INFRA-1797 opus-inbox blocks) titled '═══ Ship-assist context (from docs/process/SHIP_ASSIST_PLAYBOOK.md) ═══'"
+    - "Top-3 wedge classes computed from last-7d VOA filings: scan docs/voice/VOA-*.yaml + docs/gaps/VOA-*.yaml; aggregate by wedge_class field; show top-3 by (count × minutes_lost). If <3 VOAs exist (early days), show 'No real VOAs yet — 7 seed classes from VOA-001 (today's dogfood session):' + the 7 classes from VOA-001 as a starter taxonomy."
+    - "Include a filing prompt with literal command template: 'chump voice --wedge-class <id> --minutes-lost <N> --workaround \"<text>\" --fix-shape <tooling|doc|gate>'"
+    - "Include a one-line pointer: 'Full taxonomy + tooling inventory + decision flow: docs/process/SHIP_ASSIST_PLAYBOOK.md'"
+    - "Bypass: CHUMP_SHIP_ASSIST_HOOK=0 env disables this block (for operator-quiet sessions); document in the hook script + bypass-discipline doc if appropriate"
+    - "Emit kind=ship_assist_context_surfaced on render (anonymized: just top_class_count + voa_count_last_7d, no per-VOA identifiers); register the kind in EVENT_REGISTRY.yaml + event-registry-reserved.txt (if those files have lease conflicts, use scanner-anchor pattern + file follow-up gap)"
+    - "Smoke test scripts/ci/test-ship-assist-context-hook.sh: synth 3 fixture VOAs under a tempdir with distinct wedge_class + minutes_lost; invoke the hook; assert top-3 block appears + correct ranking + kind=ship_assist_context_surfaced emitted. Also test empty-VOA fallback (7 seed classes shown). Also test CHUMP_SHIP_ASSIST_HOOK=0 bypass."
+    - Existing blocks (FLEET-019 + INFRA-1150 + INFRA-1797) must continue working unchanged. The new block is purely additive at the bottom.
+    - No new dependencies. Pure bash + python3 (already available). Read VOA YAML via python3 yaml module (already used elsewhere in the script).
+  notes: |
+    [2026-05-30T07:47:54Z] Filed by curator-opus-shepherd-2026-05-30 after operator observed: 'we keep shipping product without training the team or providing the tools they need to exploit them.' The fix is wiring the high-traffic surface (SessionStart hook) so every future session, every curator, every Sonnet sub-agent sees the wedge taxonomy + VOA filing prompt at the top of their context. Single highest-leverage wiring of today's ships — compounds across all future sessions.
+    [2026-05-30T16:21:02Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2844 auto-closed) respawn-handled:2844
+    [2026-06-04T00:16:20Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2844
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-2920
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-18"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Events on success/failure/timeout: every invocation emits kind=pr_stuck_cluster_detector_run (outcome, stuck_pr_count, duration_ms, gap_reserve_calls, failure_class); cluster filings also emit kind=pr_stuck_cluster. Documented in scripts/coord/pr-stuck-cluster-detector.sh header (Observability contract).\n2. Cost tracked via gap_reserve_calls field on the run event (1:1 with paid `chump gap reserve` calls); rolled up for the operator by `chump waste-tally` (listed as a consumer in EVENT_REGISTRY.yaml).\n3. Failure-class taxonomy: none (no_op/dry_run/cluster_filed/help), transient (gap_id_extract_failed/error), permanent (gap_reserve_failed/bad_args) — see _pscd_failure_class().\n4. Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh (asserts run-event fields across no_op/dry_run/bad_args paths)."
+  notes: |
+    Already satisfied by INFRA-2754 (#3221), INFRA-2906 (#3223), INFRA-2913 (#3224) which shipped run-level pr_stuck_cluster_detector_run events with outcome/stuck_pr_count/duration_ms/gap_reserve_calls/failure_class, EVENT_REGISTRY.yaml consumer docs, and the smoke test scripts/ci/test-pr-stuck-cluster-observability.sh. Verified: smoke test passes (3/3), all 4 AC confirmed present in current main. Closing as duplicate/no-op — no code change needed.
+  closed_pr: 3224
+  outcome_id: MISSION-010
+

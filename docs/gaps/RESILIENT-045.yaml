@@ -1,0 +1,21 @@
+- id: RESILIENT-045
+  domain: RESILIENT
+  title: "RESILIENT P0: ci-health-gate trunk-RED pattern detector — auto-fire operator_recall when same CI failure cluster appears on 3+ PRs in 30min"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Filed 2026-05-30T10:00Z post-RESILIENT-041 resolution. The 2026-05-30 trunk-RED ran for 10 HOURS undetected — same sccache InvalidArgument error on every PR, but ci-health-gate (com.chump.ci-health-gate) did not classify it as halt-class. Operator manually noticed. ci-health-gate should auto-detect repeat-failure-cluster patterns and fire operator_recall WITHOUT operator manual intervention. This is the chump-teaches-itself lesson from RESILIENT-041.
+  acceptance_criteria:
+    - "ci-health-gate (scripts/coord/ci-health-gate.sh OR Rust equivalent) groups recent PR check failures by error-signature (failure cluster matching: same job name + same error message stem normalized)"
+    - "When N (default 3, env-configurable via CHUMP_CI_CLUSTER_THRESHOLD) PRs hit the same failure cluster within W (default 30min, CHUMP_CI_CLUSTER_WINDOW_MIN) → emit kind=trunk_red_detected (fields: failure_signature, affected_prs[], first_seen_ts, cluster_size)"
+    - "On trunk_red_detected: fire scripts/dispatch/operator-recall.sh with condition=trunk_red + reason=<failure_signature> + affected_pr_count"
+    - "Auto-file P0 RESILIENT gap with: cluster signature, affected PRs sample, AC sketch (debug + fix the failure_signature)"
+    - Hourly cron via launchd (com.chump.ci-health-gate already exists; extend its loop to include cluster-detection)
+    - "Smoke test: scripts/ci/test-ci-health-cluster-detector.sh creates 4 synthetic check_run failures with same signature in last 30min → asserts kind=trunk_red_detected emitted + auto-filed gap"
+    - Without this, the SAME class of bug (rotated secret breaks every PR silently) can re-occur and chum will again wait for operator-noticing
+  notes: |
+    [2026-05-30T10:10:30Z] [2026-05-30T10:13Z] Demoted P0→P1 after honest review: this gap is still valid (ci-health cluster detection IS a real missing capability), but P0 promotion was based on emotional reaction to having JUST missed a 10h trunk-RED. The actual incident's failure mode was 'r2detect accepts garbage input' which is being fixed in PR #2858 — orthogonal to the cluster-detector this gap proposes. Filing this at P1 is enough; it doesn't compete with the existing 5 P0s for picker attention.
+    [2026-05-30T10:11:08Z] [2026-05-30T10:15Z] SUPERSEDED. Discovered post-filing that META-179 (trunk-red-detector daemon, 5-min poll WARN broadcast, META-177 Lane C sub-gap) + INFRA-2066 (pr_stuck_cluster auto-mitigation, today's top waste class) + INFRA-2288 (sccache CI health probe with no-cache fallback) + INFRA-2012 (cluster-v2 detection, already v2) collectively cover this gap's scope. Filing this was the EXACT FAFO failure pattern that RESILIENT-048 is designed to prevent. Demoting to P3; operator/curator can close as superseded or fold any unique-aspect AC into META-179.
+  outcome_id: RESILIENT-000
+

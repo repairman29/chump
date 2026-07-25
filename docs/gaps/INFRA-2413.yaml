@@ -1,0 +1,12 @@
+- id: INFRA-2413
+  domain: INFRA
+  title: "RESILIENT P1: Layer-6 peer-vouch FEEDBACK kind=bypass_vouched + CI gate (require live vouch on T2+ bypasses)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  notes: |
+    SUPERSEDED by zero-bypass thesis 2026-06-02 (operator decision). Original premise was bypass-MANAGEMENT (counters, SLAs, peer-vouch, auto-rollback). New premise: DELETE bypass paths entirely + fix the underlying gate. Keep this filed at P3 for historical reference; do not implement unless thesis flips back. See docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md §updates 2026-06-02.
+  outcome_id: MISSION-010
+

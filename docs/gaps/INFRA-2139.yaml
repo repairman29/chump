@@ -1,0 +1,12 @@
+- id: INFRA-2139
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C11 Phase 2 sampling — CHUMP_INTEGRATOR_SAMPLING_PCT knob + cycle_sampling_decision event"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Add CHUMP_INTEGRATOR_SAMPLING_PCT env knob to chump-integrator-daemon (INFRA-2130) — integer 0-100, default 100 (when Phase 3 fully active). Phase 2 sets to 10.\n- Logic at cycle-trigger time (after CLAIM, before SELECT):\n    1. roll = rand(1..100)\n    2. if roll <= CHUMP_INTEGRATOR_SAMPLING_PCT: cycle goes LIVE (full lifecycle including SHIP)\n    3. else: cycle stays DRY-RUN (stops at PREFLIGHT, logs WOULD HAVE shipped)\n    4. Emit ambient kind=cycle_sampling_decision with {cycle_id, roll, threshold, decision: live"
+    - "dry_run}\n- Register cycle_sampling_decision in EVENT_REGISTRY.yaml as the 9th new event kind (Phase 2 marker).\n- Sampling decision is deterministic per cycle_id (re-runs of same cycle don't flip) — use hash(cycle_id) % 100 + 1, not pure rand.\n- CLI surface: chump-integrator-daemon --sampling-pct N override (env wins over CLI).\n- Operator dashboard: chump kpi report --integration shows last-7d sampling-decision breakdown.\n- 4+ unit tests: deterministic same-cycle-same-decision, 100% = always-live, 0% = always-dry-run, 10% = ~10% live across 1000-cycle Monte Carlo.\n- Cross-references INFRA-2130 (the daemon), INFRA-2132 (event registry), INFRA-2143 (kpi report dashboard)."
+  closed_date: '2026-05-30'
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-1938
+  domain: INFRA
+  title: "ZERO-WASTE P2: take-both-resolve.py edge case — when BASE file sort order differs from one branch's (e.g. event-registry-reserved.txt was alpha-sorted by some upstream tool), resolver produces garbage. Need either pre-sort detection + bail, or section-aware merge mode"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

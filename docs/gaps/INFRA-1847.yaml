@@ -1,0 +1,19 @@
+- id: INFRA-1847
+  domain: INFRA
+  title: "EFFECTIVE: harvest auth-platform-service production SSO+MFA+DDoS stack for Chump SaaS tier (post-Marcus productization)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Read repairman29/auth-platform-service via gh api; document enterpriseSSOService.js (SSO provider abstraction), mfaService.js (JWT-based MFA), oauthService.js, userAccounts.js in docs/arsenal/cross-pollination/CP-015-auth-platform.md
+    - "Document the security middleware stack: Helmet.js, rate limiting, Redis-backed throttling, Joi validation, audit logging"
+    - "Decide harvest route: Microservice (run auth-platform-service alongside Chump for SaaS users) vs Dependency (extract as auth-only npm/crate). For Chump v1 prefer Microservice since auth-platform is JS and Chump is Rust — IPC boundary is cleaner than cross-language vendoring"
+    - "Map onto Chump SaaS tier scope: customer registration, SSO via Google/GitHub, MFA enrollment, per-customer rate limits, audit trail of admin actions"
+    - Wire chump-auth-proxy crate that adapts auth-platform-service responses into Chump's session model — operator wraps Chump CLI with chump-auth-proxy at the SaaS edge
+    - "Smoke test scripts/ci/test-auth-proxy.sh: synthetic OAuth flow, MFA challenge, audit log entry — verify end-to-end without exposing real provider creds"
+    - Coordinate with INFRA-1813 BEAST-MODE HITL (the approval flow runs INSIDE the auth-gated session) and INFRA-622 Chump auth modes (auth-platform handles customer-facing SSO; Chump auth modes handle agent-to-Anthropic)
+    - "Vendoring lineage comment: 'Microservice integration with repairman29/auth-platform-service at commit SHA (CP-015)'"
+    - Cross-pollination brief CP-015-auth-platform.md
+    - Defer implementation until INFRA-1486 Marcus trust gate ships — SaaS productization is the wave after Marcus
+  outcome_id: MISSION-010
+

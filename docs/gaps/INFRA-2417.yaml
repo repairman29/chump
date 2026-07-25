@@ -1,0 +1,19 @@
+- id: INFRA-2417
+  domain: INFRA
+  title: "RESILIENT P0: daemon-exit-loop watcher — surface launchd daemons with consecutive non-zero exits"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - New script scripts/coord/daemon-exit-loop-watcher-daemon.sh — runs every 15min via launchd, walks all REQUIRED_DAEMONS + scripts/setup/optional-installers-allowlist.txt, queries `launchctl print gui/$UID/<label>` for each, extracts {state, runs, last_exit_code}
+    - "On consecutive non-zero exits (>= CHUMP_DAEMON_EXIT_LOOP_THRESHOLD, default 3): emit kind=daemon_exit_loop_detected with {label, runs, last_exit_code, fingerprint(label)}; file P0 INFRA-NEW-DAEMON-DEAD-<label> gap if not already open with same fingerprint"
+    - "On recovery: emit kind=daemon_exit_loop_recovered, close auto-filed gaps"
+    - State file .chump/daemon-exit-loop-state.json tracks fingerprints + filed gaps (mirrors main-preflight-watchdog pattern)
+    - "Bypass: CHUMP_DAEMON_EXIT_LOOP_DISABLED=1"
+    - "Cite the trigger: 2026-06-02 integrator-daemon crash-looped 145 times over 37+ hours with zero alert because no such watcher existed"
+    - "Smoke test scripts/ci/test-daemon-exit-loop-watcher.sh with mock launchctl output: stub a daemon at last_exit_code=1 runs=5; assert kind=daemon_exit_loop_detected emitted; mock recovery; assert recovered + close"
+  notes: |
+    [2026-06-04T00:06:18Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2950
+  outcome_id: MISSION-010
+

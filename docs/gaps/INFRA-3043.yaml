@@ -1,0 +1,10 @@
+- id: INFRA-3043
+  domain: INFRA
+  title: "RESILIENT: under-a"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - verify it works
+  outcome_id: MISSION-010
+

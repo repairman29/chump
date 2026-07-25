@@ -1,0 +1,18 @@
+- id: INFRA-2121
+  domain: INFRA
+  title: "EFFECTIVE P0 (CI-REVIEW Lever 5): post-merge GH Action runs 'chump gap ship <ID> --closed-pr <#>' matching gap-ID from PR title — eliminates 35+ silent-shipped registry drift"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "1. New .github/workflows/auto-flip-on-merge.yml — fires on `pull_request.closed` + `merged==true`; extracts gap-ID from PR title via regex `^(?:[a-z]+\\()?(INFRA"
+    - EFFECTIVE
+    - RESILIENT
+    - DOC
+    - META
+    - MISSION
+    - "CREDIBLE)-\\d+`; runs `chump gap ship <ID> --closed-pr <PR#>`\n2. Idempotent — re-running on an already-done gap is no-op (per existing chump gap ship CLI)\n3. Initial backfill: one-time script `scripts/ops/backfill-shipped-gaps.sh` walks last 60 days of merged PRs, extracts gap-IDs, runs chump gap ship for any gap still status:open. Catches the 35+ silent-shipped backlog.\n4. After fix, `gap_drift_orphan` event count drops from 31/14d to <5/14d; `untraced_p0` digest count drops to 0\n5. Source: docs/strategy/CI_REVIEW_2026-05-29.md Lever 5"
+  closed_date: '2026-05-29'
+  closed_pr: 2710
+  outcome_id: MISSION-010
+

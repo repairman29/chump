@@ -1,0 +1,16 @@
+- id: META-262
+  domain: META
+  title: "META: Build CI Docker image with Rust toolchain, sccache, chump-core deps; migrate cargo-test, clippy, audit jobs to use it (META-258 slice)"
+  status: in-progress
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new CI Docker image is successfully built and pushed to the container registry, containing the Rust toolchain, `sccache`, and `chump-core` dependencies.
+    - The `cargo-test` job in `ci.yml` is modified to use the new Docker image.
+    - The `clippy` job in `ci.yml` is modified to use the new Docker image.
+    - The `audit` job in `ci.yml` is modified to use the new Docker image.
+    - The `cargo-test` cold time is measured and confirmed to be ≤4 minutes (from a baseline of ~15 minutes).
+    - The `clippy` and `audit` jobs run successfully using the new Docker image.
+    - The process followed for building and integrating the Docker image aligns with `docs/process/CI_DOCKER_IMAGE.md`.
+  outcome_id: MISSION-010
+

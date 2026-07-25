@@ -1,0 +1,22 @@
+- id: INFRA-1878
+  domain: INFRA
+  title: "CREDIBLE: chump gap list ⚠ detector false-positive — flags AC text MENTIONING 'TODO' (e.g. INFRA-1599 'no TODO in AC') instead of detecting AC entries that ARE TODO stubs (INFRA-1382 sub-fix)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Discovered 2026-05-23 by curator-opus-shepherd during INFRA-1382 batch backfill. chump gap list marks gaps with ⚠ when their AC text contains the literal substring TODO — but this misfires on meta-AC like INFRA-1599 whose AC says no TODO text in any acceptance_criteria field. Audit-priorities --json (the canonical check) correctly reports vague_pickable=0, but chump gap list still shows ⚠ on 8 gaps because of this naive substring match. Fix: detect when a full AC ENTRY is a TODO stub, not when TODO appears anywhere in the AC string.
+  acceptance_criteria:
+    - "chump gap list ⚠ logic updated: only flag a gap when at least one acceptance_criteria entry starts with TODO or TBD or <fill in> (the actual stub patterns from chump gap reserve boilerplate)"
+    - MUST NOT flag when AC content contains TODO as part of meaningful text (e.g. INFRA-1599 mentions TODO as the thing it eliminates)
+    - chump gap list --status open with INFRA-1599 in scope shows NO ⚠ on it after the fix
+    - "Add scripts/ci/test-gap-list-warning-detector.sh: fixture gap with stub AC asserts ⚠ shown; fixture gap with meta-AC (mentions TODO but is not stub) asserts ⚠ NOT shown"
+    - Aligns chump gap list warning behavior with chump gap audit-priorities vague_pickable detection (currently diverge — audit-priorities=0, gap-list=8 on the same gap set)
+    - "Unblocks INFRA-1382 ship: once fixed, the ⚠ count drops to the true vague-AC count which audit-priorities already reports as 0"
+    - cargo fmt/clippy/shellcheck clean per CLAUDE.md
+  notes: |
+    Pillar: CREDIBLE. INFRA-1382 sub-fix discovered during batch backfill. Root cause: 8 gaps still flagged with ⚠ after backfilling 6 + closing 4 from initial 16. Investigation showed INFRA-1599 false-positive (real AC, but text mentions TODO meta-textually) → realized the ⚠ heuristic is too broad. Once this lands, INFRA-1382 self-closes.
+  closed_date: '2026-05-29'
+  closed_pr: 2499
+  outcome_id: MISSION-010
+

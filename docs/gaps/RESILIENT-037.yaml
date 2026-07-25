@@ -1,0 +1,14 @@
+- id: RESILIENT-037
+  domain: RESILIENT
+  title: "RESILIENT P2: no-idle anti-cargo-cult — vague-AC detector + tick-outcome clarification"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Risk 6+7 of 10. no-idle policy (INFRA-2208 on main) creates pressure to ship something every tick. Cargo-cult side effect: file vague gap to satisfy 'shipped change'; dispatch half-baked Sonnet. AGENTS.md no-idle section needs a clarification.
+  acceptance_criteria:
+    - "AGENTS.md no-idle section gets a NOT-list explicit subsection: 'filing a vague gap (AC contains TODO/TBD or description <200 chars) is NOT a valid tick outcome'; 'dispatching a Sonnet without a concrete AC the operator could verify is NOT valid'; 'writing meta-synthesis when fleet has 0 urgent items IS valid; writing it when there are P0 unclaimed is NOT'"
+    - "Pre-commit gap-quality hook scripts/git-hooks/pre-commit-gap-quality.sh: rejects yaml files in docs/gaps/ with AC containing TODO/TBD or description shorter than 200 chars; bypass via Vague-AC-Bypass: <reason> trailer"
+    - chump preflight green
+  outcome_id: RESILIENT-000
+

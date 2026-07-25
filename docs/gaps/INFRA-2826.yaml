@@ -1,0 +1,15 @@
+- id: INFRA-2826
+  domain: INFRA
+  title: audit-shard (3) required check failing across open PRs — merge pipeline jammed, multiple PRs BLOCKED on audit/audit-required
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Verified 2026-06-08 ~19:30Z: 4 open auto-merge-armed PRs (#3113 META-211, #3110 META-188, #3115 META-226, #3109 RESILIENT-135) are all mergeStateStatus=BLOCKED on the SAME required checks: 'audit' / 'audit-shard (3)' / 'audit-required'. Same check across 4 UNRELATED gaps = systemic (registry/infra-level), not per-PR content. Result: merge pipeline jammed — 0 merges in 40+ min while workers stay busy (META-211 thrashing: 2 claude -p + 2 bot-merge procs at 40m/24m, 3 prior worktrees). audit runs in its own sharded workflow (.github/workflows/audit.yml: audit-shard matrix -> audit aggregate -> audit-required); shard 3 is the failing shard. NOTE: 'chump gap audit-priorities' also exits 1 locally but on a CHRONIC condition ('996 done gaps with closed_pr set — review closure consistency') that predates the 40-min stall — likely SEPARATE, not the shard-3 trigger. Root cause needs the audit-shard (3) check-run log.
+  acceptance_criteria:
+    - "1. Identify the exact failing assertion in audit-shard (3) via the check-run log of a BLOCKED PR (e.g. #3113). 2. Fix the failing audit (or quarantine shard 3 if infra/flake) so required 'audit' goes green and auto-merge can fire. 3. Confirm a previously-BLOCKED PR reaches CLEAN + merges. 4. If audit.yml failures are invisible to trunk-sentinel (separate workflow from ci.yml), file a follow-up so trunk-red detection covers audit.yml."
+  notes: |
+    Resolved by INFRA-2827/#3118 (audit-shard unjam fleet-wide). Ground truth: #3134 merged 2026-06-21 with all audit shards (incl shard 3) green; merge pipeline no longer jammed. Stale-open P0 de-inflation.
+  closed_pr: 3118
+  outcome_id: MISSION-010
+

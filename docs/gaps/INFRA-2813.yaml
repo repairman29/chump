@@ -1,0 +1,16 @@
+- id: INFRA-2813
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-08"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. kind=pr_stuck_cluster_detector_run emitted on every invocation (success/no_op/dry_run/error) with outcome field.\n2. gap_reserve_calls field on the run event tracks mutation cost; reported to operator via waste-tally/watchdog.\n3. failure_class field (transient"
+    - permanent
+    - none
+    - "unknown) added to run event: gap_id_extract_failed/gap_reserve_failed=transient, bad_args=permanent, no_op/dry_run/cluster_filed/help=none.\n4. Smoke test: bash scripts/ci/test-pr-stuck-cluster-observability.sh (3 tests incl. new failure_class taxonomy test)."
+  notes: |
+    All 4 ACs already satisfied by prior PRs #3223 (INFRA-2906 failure_class taxonomy) and #3225 (INFRA-2925 preflight wiring) before this gap was claimed. Verified: pr-stuck-cluster-detector.sh emits kind=pr_stuck_cluster_detector_run with outcome/gap_reserve_calls/failure_class on every path; scripts/ci/test-pr-stuck-cluster-observability.sh (3 tests) passes; wired into src/preflight.rs:627. No code diff needed — closing as duplicate/already-shipped.
+  closed_pr: 3225
+  outcome_id: MISSION-010
+

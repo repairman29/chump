@@ -1,0 +1,12 @@
+- id: EFFECTIVE-060
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire audit-gate-baseline.txt into role curator-opus-target"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. Edit the role-doc for curator-opus-target to reference audit-gate-baseline.txt (shipped in INFRA-2565) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'audit-gate-baseline.txt' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  closed_date: '2026-07-20'
+  closed_pr: 3103
+  outcome_id: EFFECTIVE-000
+

@@ -1,0 +1,16 @@
+- id: INFRA-2218
+  domain: INFRA
+  title: "RESILIENT: backfill-shipped-gaps.sh not in raw-gh allowlist — wedges audit queue-wide (INFRA-2121 follow-up gap missing)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Add scripts/ops/backfill-shipped-gaps.sh to scripts/ci/raw-gh-allowlist.txt with INFRA-2218 migration ref
+    - bash scripts/ci/test-no-raw-gh-in-hot-paths.sh exits 0 locally after the add
+    - Ship as single small PR; arm auto-merge
+    - "After merge: audit job stops failing on the raw-gh gate for all open PRs (will unblock #2774 + #2769 + others currently FAIL on audit)"
+  notes: |
+    [2026-06-04T00:26:23Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2784
+  outcome_id: MISSION-010
+

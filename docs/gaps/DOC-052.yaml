@@ -1,0 +1,14 @@
+- id: DOC-052
+  domain: DOC
+  title: "MISSION: synthesize 2026-05-23 9-hour autonomy cascade into customer-facing writeup — concrete evidence for /bin/zsh-to-first-customer pitch (META-067 demo Track 3)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-23'
+  outcome_id: META-067
+

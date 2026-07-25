@@ -1,0 +1,11 @@
+- id: DOC-056
+  domain: DOC
+  title: canary PR — validate re-armed test required check post-CREDIBLE-076 trilogy
+  status: done
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "[\"Add a one-line note to docs/process/CI_REQUIRED_CHECKS_DESIGN.md confirming the 2026-05-25 re-arm of test required check after CREDIBLE-076/077/078 trilogy + INFRA-1959 sqlite-lock fix shipped.\",\"Verify PR auto-merges through re-armed required_status_checks (test + audit + ACP smoke) within 15 minutes per CREDIBLE-076 § Re-arming closed-by-when.\",\"Closes the canary loop opened by CREDIBLE-076.\"]"
+  closed_date: '2026-05-25'
+  closed_pr: 2564
+

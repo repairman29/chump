@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-010
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: chump improve dedup gate false-positives — it greps the clone for the picked work's top-3 TITLE keywords and skips if all present, but common words (roadmap/tasks/migrate) appear in any repo with a roadmap → it wrongly skipped 'migrate roadmap to bd' as already-done on the first live BEAST-MODE run (work is NOT done: ROADMAP.md still markdown). Fix: check a real already-done signal (git log --grep / gh pr list / the specific outcome) not file-keyword presence"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - dedup no longer skips work merely because the picked title keywords appear in repo files — file keyword-presence is not a sufficient already-done signal
+    - "dedup skips ONLY on a real already-done signal: a git commit (git log --grep) or an open/merged PR matching the work"
+    - "unit test covers both: keywords-in-files-but-work-not-done → PROCEED; genuinely-done (matching commit/PR) → SKIP"
+    - "verified live: chump improve repairman29/BEAST-MODE no longer false-skips the roadmap-migration pick (proceeds to implement)"
+  closed_pr: 3069
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

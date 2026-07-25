@@ -1,0 +1,18 @@
+- id: INFRA-2094
+  domain: INFRA
+  title: "cargo-nextest drop-in swap: replace cargo test with cargo nextest run in CI workflows (60% faster parallel test runs, better failure reporting)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Replace 'cargo test' with 'cargo nextest run' in CI workflows. cargo-nextest is a drop-in faster test runner that parallelizes across crates (cargo test serializes per crate). 60% faster on typical Rust workspace + better failure reporting (per-test JSON output, retry support). Already widely adopted in Rust ecosystem.
+  acceptance_criteria:
+    - cargo-nextest binary installed in CI workflow (via 'cargo install cargo-nextest --locked' OR pre-built via taiki-e/install-action@v2 step)
+    - .github/workflows/ci.yml 'cargo-test' job uses 'cargo nextest run --workspace' instead of 'cargo test --workspace'
+    - All existing tests still pass under nextest (run cargo nextest run --workspace locally on this Mac to verify before push)
+    - "Document the change in docs/process/CI_TEST_RUNNER.md: rationale (60% faster), gotchas (slightly different test discovery, no --test-threads flag), fallback (CARGO_NEXTEST_DISABLE=1 reverts to cargo test)"
+    - "Measurement: compare wall-clock of cargo test --workspace before + after. Document in commit body"
+  closed_date: '2026-05-29'
+  closed_pr: 2686
+  outcome_id: MISSION-010
+

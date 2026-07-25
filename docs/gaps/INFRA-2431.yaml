@@ -1,0 +1,10 @@
+- id: INFRA-2431
+  domain: INFRA
+  title: "RESILIENT: pre-push head-drift guard (line 893) false-positives when cargo test runs under hook — skip check when no test touches git ops"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "[\"Investigate root cause: does cargo test alter HEAD or just trigger a race in the guards before/after snapshot?\",\"Auto-skip the head-drift check when the diff contains no files matching git-touching test patterns (no env-var bypass — per INFRA-2429 zero-bypass thesis)\",\"Update pre-push hook to be more precise: compare HEAD SHA before test vs after, but only abort if the commit count on the branch actually changed (not if mtime/index changed). This is likely the real fix that makes the false-positive disappear without any skip path.\",\"CI test: scripts/ci/test-pre-push-head-drift.sh verifies aligned fixture does not false-positive (today INFRA-2418 hit this — cargo test stage tripped the guard with no actual HEAD change)\",\"NO new CHUMP_*_SKIP env var (zero-bypass thesis): fix the gate, do not add an escape hatch\"]"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: EFFECTIVE-316
+  domain: EFFECTIVE
+  title: "EFFECTIVE: free-tier dispatch fails fast on AC-less gaps instead of burning a full cycle"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Follow-up to RESILIENT-187 (PR #3265). On Helsinki, ~30% of free-tier cycles (17/57 recent logs) fail because the model picked a gap with NO acceptance criteria: preflight PASSES it ('OK <id> — open and unclaimed') but the ship step's 'chump claim' REJECTS it ('Gap <id> has no concrete acceptance criteria — add AC before claiming'), so a full ~5-min model dispatch is burned before the guaranteed rejection. Fix: in src/execute_gap.rs execute_gap(), after is_free_tier_model() detection (~line 588) and BEFORE build_free_tier_prompt/dispatch, read the gap's acceptance_criteria (same GapRow lookup build_free_tier_prompt uses) and if empty, return early with a distinct skip error so the worker cools+moves on without spending the dispatch. MUST land AFTER PR #3265 merges — same function/file, would conflict otherwise. Note: this is fail-FAST (saves cycles), not make-shippable; AC-less gaps still need AC added (registry-health, see MISSION-PM audit-priorities 'vague pickable').
+  acceptance_criteria:
+    - "AC1: a free-tier execute_gap on a gap with empty acceptance_criteria returns before dispatching the model (no model call, no bot-merge). AC2: the early-return message is distinct (e.g. 'skipping AC-less gap') so worker.sh can cool it. AC3: capable (non-free-tier) path unchanged. AC4: rebased on post-#3265 execute_gap.rs (write_file branch present)."
+  depends_on: [RESILIENT-187]
+

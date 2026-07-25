@@ -1,0 +1,16 @@
+- id: META-105
+  domain: META
+  title: "ZERO-WASTE: docs/process/COLLISION_RCA_2026-05-24.md — RCA of today's 3 curator-claim collisions (INFRA-1950 dup PRs, INFRA-1923 cross-shell, INFRA-1927 path-overlap clean handle) + 2 protocol changes operator wants every curator reading on next session start"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "1. New docs/process/COLLISION_RCA_2026-05-24.md — operator-directed via opus-curator-overnight 18:59Z"
+    - "2. Sections: (a) Timeline (UTC), (b) 3 collisions identified with how each was/wasn't resolved, (c) Underlying mechanism gap analysis, (d) 2 concrete protocol changes for the playbook, (e) Read-on-next-session-start directive"
+    - "3. Collisions covered: INFRA-1950 dup (#2539 + #2540 both armed; opus-shepherd-generalist sub-agent + curator-opus-shepherd Sonnet both picked up the TRUNK_RED ALERT without claim-of-record handshake); INFRA-1923 cross-shell (opus-autopilot green-lit overnight at 18:17Z, opus-shepherd-generalist claimed at 18:33Z — same shell, no green-light walkback); INFRA-1927 vs INFRA-1950 (CLEAN example — overnight's 18:27Z COLLISION HEADS-UP prevented dup, this is the model)"
+    - "4. Protocol changes: (i) ASSIGNMENT-ASK alerts must use claimer-of-record handshake — claiming session broadcasts CLAIMING <gap> + 60s objection window before any chump claim, (ii) shepherd-style Sonnet-dispatch must preflight check open-PRs by gap-id (not just lease state) since the lease-CAS only catches concurrent claims, not sequential-claim-after-PR-already-opened"
+    - 5. Document referenced from OPUS_SHEPHERD_PLAYBOOK.md (META-094) MANDATORY-pre-flight section so every curator session lands on the RCA + protocol changes on next session start
+  closed_date: '2026-05-25'
+  closed_pr: 2550
+  outcome_id: MISSION-010
+

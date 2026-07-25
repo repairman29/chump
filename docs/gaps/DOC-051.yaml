@@ -1,0 +1,21 @@
+- id: DOC-051
+  domain: DOC
+  title: "CREDIBLE: bulk-sanitize 35 remaining RESEARCH_INTEGRITY violations + wire DOC-050 gate as advisory in pr-hygiene"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Follow-up to DOC-050 (PR #2325) which closed CHUMP_TO_CHAMP.md specifically and added the privacy gate script. Filing-time scan caught 195 violations across 36 files; only CHUMP_TO_CHAMP.md was sanitized in DOC-050 per the original RED_LETTER#12 scope. This gap covers the rest. Pattern is well-established (DOC-050 demonstrates it). Could be split across multiple worker claims per-file to parallelize.
+  acceptance_criteria:
+    - "scripts/ci/test-public-doc-privacy.sh wired into pr-hygiene job (.github/workflows/ci.yml) as advisory (with "
+    - ""
+    - " true)"
+    - "bulk-sanitize the 35 files flagged by the gate at DOC-050 close (top offenders: docs/strategy/EVAL_AWARE_SANDBAGGING.md, docs/strategy/PRODUCT_REALITY_CHECK.md, docs/strategy/CONSCIOUSNESS_AB_RESULTS.md per gate output) — apply RESEARCH_INTEGRITY.md:28-29 pattern: qualitative shape only, specifics live in chump-proprietary"
+    - "files that legitimately need to retain specifics (e.g. internal-archived audit notes) get '<!-- research-privacy-exempt: <one-line reason> -->' marker"
+    - after sanitize, scripts/ci/test-public-doc-privacy.sh exits 0 across all of docs/strategy/ and docs/product/
+    - flip the CI step from advisory (
+    - ""
+    - " true) to blocking once the gate has run clean on 5 consecutive PRs"
+  closed_date: '2026-05-22'
+  closed_pr: 2329
+

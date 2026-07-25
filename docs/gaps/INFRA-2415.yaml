@@ -1,0 +1,10 @@
+- id: INFRA-2415
+  domain: INFRA
+  title: "ZERO-WASTE P2: migrate 139 existing Bot-Merge-Bypass trailers to new Bypass-Tier/Class schema"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - AC TBD when claimed — see docs/strategy/AGENT_GATE_LOCKDOWN_2026-06-02.md for layer details and dependencies
+  outcome_id: MISSION-010
+

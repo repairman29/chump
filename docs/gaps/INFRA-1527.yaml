@@ -1,0 +1,16 @@
+- id: INFRA-1527
+  domain: INFRA
+  title: "RESILIENT: INFRA-1002 shard classifier misreports workflow-supersedure cancels as real_failure"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Observed on PR #2221 (INFRA-1462a) 2026-05-15. The INFRA-1002 test-aggregator rule 'result == cancelled AND no peer == failure ⟹ real_failure (unexpected cancel — surface to operator)' has a blind spot: when a NEW workflow run starts on the same SHA (e.g. via re-trigger after auto-merge arm, or via base-branch update), the IN-FLIGHT older run's shards get cancelled by GH Actions. The classifier sees all 4 shards as cancelled with no peer-failure, classifies as real_failure, and fails the test aggregator. This false-failure check-run is then surfaced to the operator (and blocks required-check merging) until the LATER run's test aggregator completes and supersedes it. Concrete repro: PR #2221 has check-run id=76333937544 from CI run 25967552993 (16:51Z) showing test=failure with all shards cancelled, while CI runs 25967673175 (16:57Z) and 25968408270 (17:31Z) are queued/pending and will produce the real outcome.
+  acceptance_criteria:
+    - "INFRA-1002 aggregator detects workflow-supersedure: if the cancellation cause is a newer run on the same SHA (queryable via the GitHub workflow_run API), classify as benign-cascade rather than real_failure"
+    - "Implementation hint: cancellation reason is in github.event.workflow_run.conclusion or can be inferred by checking whether a newer workflow_run exists for the same head_sha + workflow_name"
+    - When the supersedure case is detected, the aggregator should still surface a warning (not error) and emit ambient kind=ci_supersedure_cancel for observability
+    - "CI test fixture: simulate a supersedure event in a test repo, verify aggregator classifies correctly and exits 0"
+    - Document the rule in .github/workflows/ci.yml inline comment so the next maintainer doesn't reintroduce the regression
+  outcome_id: MISSION-010
+

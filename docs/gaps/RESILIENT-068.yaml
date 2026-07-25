@@ -1,0 +1,16 @@
+- id: RESILIENT-068
+  domain: RESILIENT
+  title: "RESILIENT P0: farmer.sh — un-killable control-plane tender (KeepAlive plist, bash-only, no shared failure mode)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Per docs/design/FARMER_2026-06-03.md. New dev.chump.farmer daemon at scripts/coord/farmer.sh: pure /bin/bash+coreutils (never cargo-installed, so it cannot exit-127 when a binary moves), plist KeepAlive=true + StartInterval=60, ZERO dependence on any chump op / GitHub cache / NATS / GraphQL the pause can block. Monitors launchd exit codes + the .chump/fleet-paused sentinel + oauth freshness + silent-agent heartbeat; auto-recovers the 6 modes (pause-deadlock / crash-no-restart / auth-death / silent-worker / stale-sentinel / dead-supervisor). Reads the sentinel as data to act on, never a gate to obey. Today scripts/dev/farmer-brown.sh tends only the SERVING stack and its plist has NO KeepAlive — this closes that gap for the control plane.
+  acceptance_criteria:
+    - dev.chump.farmer runs bash-only with KeepAlive=true and recovers all 6 failure modes using zero pause-blockable chump ops
+    - its recovery path has no GitHub-cache/NATS/GraphQL/chump-gap dependency (verified) so it cannot die in the cascade it heals
+  notes: |
+    [2026-06-03T23:58:31Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 3005
+  outcome_id: RESILIENT-000
+

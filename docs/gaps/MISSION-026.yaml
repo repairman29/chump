@@ -1,0 +1,18 @@
+- id: MISSION-026
+  domain: MISSION
+  title: "MISSION P0: the fleet ignores P0 mission gaps in practice — BEAST-execution slices sit unclaimed despite P0+mission-linked while the fleet ships self-maintenance; the proof is blocked here"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-05 03:50 (conductor). The BEAST runway is fully built — scout works (EFFECTIVE-133/147), deploy works (MISSION-012 ✅ auto-deploy), MISSION-015 sliced into MISSION-016→023 (the path to a zero-touch BEAST PR). BUT THE FLEET WON'T RUN IT: MISSION-016 (parse scan) + MISSION-018 (enable flag) are P0 + mission-linked + preflight-OK + UNCLAIMED for 30+ min; the fleet shipped at 03:45 but mission-ship-ratio is 6/30 (~80% self-maintenance). Bumping them to P0 (the DRIFTING-mix playbook) did NOT make the fleet pick them — so the mission-directed picker (MISSION-011) is NOT effective in the fleet's RUNTIME. The fleet ships reliably (30/24h); the problem is WHAT it picks. CANDIDATE ROOTS (investigate): (a) the running checkout /Users/jeffadkins/Projects/Chump is STALE (3 behind origin/main, confirmed missing merged files like the scoreboard) — workers may run a stale picker; MISSION-012's binary-auto-deploy does NOT sync the CHECKOUT, only the binary; (b) worker capability filters (WORKER_SKILLS) excluding MISSION-domain gaps; (c) the picker's mission-rank not actually out-ranking P0 self-maintenance in runtime. CONSEQUENCE: the entire BEAST-execution chain is dead-on-arrival; THE PROOF (zero-touch BEAST PR) cannot happen until the fleet works the mission queue. Conductor must NOT hand-dispatch all 8 slices (that's the trench-coat anti-pattern the operator forbade) — the FLEET must work them.
+  acceptance_criteria:
+    - the running checkout is synced to origin/main on a cadence (the missing half of MISSION-012)
+    - the fleet demonstrably claims a P0 mission gap over self-maintenance within N cycles of filing (verified in runtime)
+    - MISSION-016/018 (BEAST starters) are picked + worked by the FLEET (not hand-dispatched)
+    - mission-ship-ratio rises toward >=2/3
+  closed_date: '2026-07-21'
+  closed_pr: 3142
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-012
+

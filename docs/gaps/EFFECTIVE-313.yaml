@@ -1,0 +1,14 @@
+- id: EFFECTIVE-313
+  domain: EFFECTIVE
+  title: "EFFECTIVE: free-tier dispatch has no grep/search tool — models burn iterations on blind list_dir+read_file exploration"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Observed on chumpd-eu 2026-07-22, post tier-e (INFRA-3409) + tool-root (INFRA-3406) deploy: 6+ consecutive M3 cycles across DIFFERENT gaps (EFFECTIVE-318, MISSION-053, RESILIENT-205, INFRA-1795) called only list_dir/read_file (0 patch_file calls) before ending. For gaps with terse/empty descriptions (e.g. RESILIENT-205: title + 3-line AC, no description body, no file pointer), the model must locate the relevant code via blind exploration — but DISPATCH_FREE_TOOL_KEYS (src/tool_inventory.rs) deliberately excludes run_cli (cold-worktree cargo-build cost), so the model has NO grep/ripgrep/code-search capability at all. It's burning its iteration budget on list_dir+read_file guessing instead of a single targeted search. Fix: add a narrow grep_repo tool (git grep -n -F/-e over the worktree, output capped like read_file's line-numbered snippet, NOT a general run_cli escape hatch) to the free-tier tool set. Separate from EFFECTIVE-005's write_file caution — a read-only search tool carries none of that risk.
+  acceptance_criteria:
+    - "The change described by \"free-tier dispatch has no grep/search tool — models burn iterations on blind list_dir+read_file exploration\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3250
+

@@ -1,0 +1,15 @@
+- id: RESILIENT-173
+  domain: RESILIENT
+  title: "CREDIBLE: fleet launcher passes provider API keys via process argv/env-in-command-line — visible to any local process via ps; move to env files or launchd env"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Observed 2026-07-19 during fleet restart: run-fleet.sh spawns workers via 'zsh -c KEY=value ... worker.sh' so TOGETHER_API_KEY, GROQ_API_KEY, and the oauth token file path appear in the process command line — readable by ANY local process via ps/pgrep (no root needed). Keys should be passed via exported env from a non-argv source (env file sourced inside the child, or launchd setenv), never inline in the command string.
+  acceptance_criteria:
+    - run-fleet.sh (and any launcher building a command string with secrets) passes credentials via a sourced env file or pre-exported environment, not argv
+    - ps -ef output for a running worker contains no credential values (CI-checkable with a fixture launcher run)
+    - existing TOGETHER/GROQ keys rotated after the fix lands (operator TODO note)
+  closed_date: '2026-07-21'
+  closed_pr: 3212
+

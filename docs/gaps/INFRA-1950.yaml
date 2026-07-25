@@ -1,0 +1,12 @@
+- id: INFRA-1950
+  domain: INFRA
+  title: "RESILIENT: pre-push Guard 3 test fails on Actions self-hosted runner (passes locally on same hw) — blocks trunk + every PR"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "Identify the env-leak source — when scripts/git-hooks/pre-push runs under Actions runner-listener, Guard 3 (force-with-lease race detection, INFRA-345) silently passes when it should block; same script + hook PASSES when invoked directly from CLI on the same M4 macOS hardware (verified by curator-opus-overnight 17:30Z). Suspect env vars set by Actions: GITHUB_WORKSPACE, GIT_DIR, GIT_WORK_TREE, RUNNER_*. The hook's git merge-base + git ls-remote commands may pick up the wrong repo context."
+  closed_date: '2026-05-24'
+  closed_pr: 2539
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: INFRA-1514
+  domain: INFRA
+  title: "ZERO-WASTE: chump claim leaves stray origin placeholder remote in worktree (push fails for newcomers)"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Surfaced during INFRA-1462 wrap-up on 2026-05-15. The worktree at /private/tmp/chump-infra-1462 had an 'origin' remote pointing to 'git@github.com:myorg/myrepo' (a clearly stale placeholder) and the real remote was named 'chump'. Default `git push -u origin <branch>` failed with 'Permission denied (publickey)' because of the placeholder. Recovery requires the operator to discover the real remote name via `git remote -v` — adds 5-10 min friction to the first push of every claimed worktree.
+  acceptance_criteria:
+    - chump claim --paths verifies the worktree's remotes match the parent repo's remotes (or removes stray placeholders)
+    - If the parent has a remote named 'chump' (or whatever the operator's primary remote is), the worktree should inherit that, not a 'myorg/myrepo' placeholder
+    - chump fleet doctor reports any worktree with a mismatched/stale remote
+    - "Smoke test: claim a gap, cd into worktree, run `git push -u origin <branch>` — should succeed without operator having to discover the real remote name"
+    - If the stray placeholder is intentional (e.g. for some upstream-isolation reason), document why; otherwise remove the placeholder-set step from worktree creation
+  outcome_id: MISSION-010
+

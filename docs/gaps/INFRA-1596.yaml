@@ -1,0 +1,34 @@
+- id: INFRA-1596
+  domain: INFRA
+  title: "PR #2255 stuck [BEHIND] — 39 commits behind main"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2255
+    
+    Detected by stuck-pr-filer (2026-05-17T01:55:47Z).
+    
+    Trigger: 39 commits behind main
+    Branch is 39 commits behind main (threshold 20). The CLAUDE.md hard rule says rebase at 15.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2255 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1589
+    Branch: claude/laughing-cerf-26f7f1
+    Stuck class: BEHIND — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  acceptance_criteria:
+    - "PR #2255 is either (a) rebased onto current main and merged, (b) closed with explanation if the work is superseded or no longer needed, or (c) escalated to operator with a specific blocker reason if rebase is non-trivial"
+    - "If rebased: git rebase succeeded without conflicts (or conflicts resolved), CI passes, PR merges via bot-merge.sh --auto-merge"
+    - "If closed: gh pr close 2255 --comment explaining why (e.g., changes already in main, scope changed, superseded by #NNNN)"
+    - "If escalated: a kind=pr_stuck_escalated event is emitted to ambient.jsonl with fields pr_number=2255, reason, operator_action_required=true"
+    - "Done = PR #2255 no longer shows as open and BEHIND in gh pr list output; INFRA-1596 ships when the PR is resolved"
+    - "Root cause noted: PR #2255 drifted 39 commits behind main — if the drift was due to a specific fleet pattern (e.g., operator branch not rebased after hot-fix), note it in the ambient event for retrospective"
+  closed_date: '2026-05-22'
+  closed_pr: 2255
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

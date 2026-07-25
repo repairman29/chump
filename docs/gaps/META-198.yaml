@@ -1,0 +1,10 @@
+- id: META-198
+  domain: META
+  title: "META-131 sub: migrate from bot-merge.sh per-PR to GitHub native merge_group (merge queue)"
+  status: open
+  priority: P1
+  effort: xl
+  acceptance_criteria:
+    - "Design doc at docs/design/NATIVE_MERGE_QUEUE_MIGRATION.md covers current state, target state, 4-phase migration sequence, script disposition table, required-check rewire spec, risk/rollback plan, cost-benefit, operator approval gates, and references. Script disposition table covers: bot-merge.sh, queue-driver.sh, stale-pr-reaper.sh, stale-pr-rebase-bot.sh, cascade-rebase-detector.sh, auto-merge-armer.sh, INFRA-2274 consensus gate, chump-integrator daemon. Required-checks rewire section confirms merge_group coverage for clippy-required, cargo-test-required, fast-checks-required, audit-required. Risk/rollback section covers open PRs at cut-over, bot-merge.sh wedges, required-check naming continuity, revert procedure. Operator approval gates explicit per phase."
+  outcome_id: MISSION-010
+

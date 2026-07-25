@@ -1,0 +1,25 @@
+- id: INFRA-1756
+  domain: INFRA
+  title: "RESILIENT: stale claude.app subagent reaper — periodic launchd sweep of zombie claude --resume processes older than threshold (sibling to INFRA-1516 for non-worktree-tied procs)"
+  status: closed
+  priority: P1
+  effort: s
+  description: |
+    Direct observation 2026-05-22: 186 of 282 claude.app subagent processes were >4h old zombies, wasting ~95% of 1 CPU core and consuming 8GB of compressor memory. The compounding cause is the spawn pattern in Claude Code: when an interactive session ends OR a parent claude process dies, child subagent processes ("claude --resume ... --allow-dangerously-skip-permissions ... --plugin-dir ...") survive as orphans because they are waiting on stdin that will never come (matches CLAUDE.md warning about haiku in dangerously-skip-permissions mode burning slots). INFRA-1516 covers worktree-tied processes (heartbeat-watcher.sh, chump --acp) killed at worktree-prune time. This gap is its sibling: claude.app subagent processes that are NOT tied to a worktree and require age-based periodic sweep instead. Rough shape: (a) scripts/ops/reap-stale-claude-subagents.sh sweeper; (b) launchd plist com.chump.claude-subagent-reaper.plist runs every 30 min; (c) configurable age threshold (default 4h); (d) excludes current operator session via pid-file check; (e) emits ambient event per kill; (f) kill log at .chump/claude-subagent-reaper.log; (g) chump fleet doctor reports stale subagent count.
+  acceptance_criteria:
+    - "scripts/ops/reap-stale-claude-subagents.sh: ps-greps for claude.app/Contents/MacOS/claude processes, filters by etime >= CHUMP_CLAUDE_REAPER_THRESHOLD_S (default 14400 = 4h), excludes pids listed in .chump-locks/operator-session-pids (current interactive session protection), sends SIGTERM then SIGKILL after 5s grace"
+    - launchd plist ~/Library/LaunchAgents/com.chump.claude-subagent-reaper.plist runs the script every 1800s (30 min); plist installed by chump-fleet-bootstrap.sh on --check pass when CHUMP_REAPER_REQUIRED=1
+    - Per kill emits kind=claude_subagent_reaped to ambient.jsonl with fields pid, etime_s, cmdline_hash, signal (TERM or KILL), reason (always age_threshold for now)
+    - "Append-only kill log at .chump/claude-subagent-reaper.log: ISO timestamp, pid, etime_s, signal, cmdline_first_60_chars per row — operator can audit what got killed and when"
+    - "Operator opt-out: env CHUMP_CLAUDE_REAPER_DISABLE=1 (fleet-wide, loud warning) — useful when intentionally running long-lived dev session"
+    - "Operator-session protection: any interactive Claude Code session can write its own PID to .chump-locks/operator-session-pids on startup; reaper reads this allowlist and skips matching pids"
+    - chump fleet doctor reports current stale subagent count (claude.app procs older than threshold) — non-zero count is yellow warning, not red error
+    - chump-fleet-bootstrap.sh --check exits non-zero when CHUMP_REAPER_REQUIRED=1 and launchd job is not loaded
+    - "Safe-by-default: refuses to kill if it would reduce live claude process count below CHUMP_CLAUDE_REAPER_MIN_KEEP (default 5) — prevents thrash if a sudden burst of new sessions all hit the threshold simultaneously"
+    - "Smoke test scripts/ci/test-claude-subagent-reaper.sh: spawn a sleep-loop fixture process renamed as claude, set fake etime via touch -t (or use python -c that backdates child clock), assert reaper SIGTERMs it and emits ambient event"
+    - README.md and docs/process/CLAUDE_GOTCHAS.md updated to document this reaper and the manual one-liner fallback
+    - cargo fmt/clippy/shellcheck clean per CLAUDE.md local-CI discipline
+  notes: |
+    Closed 2026-05-23 as duplicate of INFRA-1662 (closed PR #2323, 2026-05-22). My filing missed INFRA-1662's existence — META-063 redundancy. INFRA-1662 has scripts/ops/reap-orphan-claude-procs.sh + scripts/setup/install-claude-reaper.sh with ppid-chain detection (more sophisticated than my allowlist approach). Follow-up: INFRA-1662's fg_pid detection is broken on macOS (pgrep fails, falls through to reap-everything mode) — separate gap filed. My stopgap (~/.local/bin/reap-stale-claude-subagents.sh installed as com.chump.claude-subagent-reaper) keeps running until the follow-up lands.
+  outcome_id: MISSION-010
+

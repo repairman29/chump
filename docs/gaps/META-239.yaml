@@ -1,0 +1,14 @@
+- id: META-239
+  domain: META
+  title: "META: Create test-auto-admin-merge-policy.sh smoke test (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-auto-admin-merge-policy.sh is created.
+    - "The script sets up a synthetic fixture of 5 PRs: one passing all policy criteria, and four failing one criterion each (e.g., quorum, fix-class, conflict, T-trigger)."
+    - The script runs the auto-admin-merge-daemon against this fixture.
+    - Assertions verify that the passing PR is admin-merged and the failing PRs are not merged, with correct reasons logged/emitted.
+  depends_on: [META-235, META-237]
+  outcome_id: MISSION-010
+

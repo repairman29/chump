@@ -1,0 +1,14 @@
+- id: MISSION-019
+  domain: MISSION
+  title: "MISSION: Verify fleet can pick a repairman29/BEAST-MODE external-repo gap (MISSION-015 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "After enabling `CHUMP_EXTERNAL_REPO_PICK_OK`, the fleet successfully picks one of the `external_repo:repairman29/BEAST-MODE` gaps (e.g., 'port-docs')."
+    - Fleet logs show the gap being picked and the associated `external_repo` metadata.
+    - The picked gap's status is updated in the system (e.g., 'In Progress').
+  depends_on: [MISSION-017, MISSION-018]
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

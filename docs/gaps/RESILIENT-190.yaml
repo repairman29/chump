@@ -1,0 +1,12 @@
+- id: RESILIENT-190
+  domain: RESILIENT
+  title: "MISSION: wire NATS-KV atomic claim into chump claim (cross-machine collision guard)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire NATS-KV atomic claim into chump claim (cross-machine collision guard)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3264
+

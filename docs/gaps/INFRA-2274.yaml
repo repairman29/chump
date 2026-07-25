@@ -1,0 +1,14 @@
+- id: INFRA-2274
+  domain: INFRA
+  title: "RESILIENT P0: wire consensus chain into merge gate — fix chump vote/consensus-tally LLM config (Function calling config bug), scaffold curator-opus-deliberator role .claude/agents/, wire ConsensusCoordinator into bot-merge.sh as pre-merge gate; replaces operator admin-merge bypass with multi-agent vote (today: ~105 PRs landed without consensus verification)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "**Context: today ~105 PRs admin-merged via operator drop-required-checks bypass. Per fleet-doctor + operator audit: this was unverified throughput. Consensus chain (META-159 vote CLI + INFRA-2209 enforce + META-162 deliberator) shipped Rust types but isn't wired into the actual merge gate.**\n\n**Sub-tracks:**\n\n(a) **Fix chump vote / chump consensus-tally CLI** — both return 'Function calling config is set without function_declarations' (Gemini LLM config bug). Either: (i) make CLI deterministic without LLM call (read votes from ambient stream, tally locally), OR (ii) properly wire LLM config so call succeeds. Prefer (i) — deterministic + no API key dependency.\n\n(b) **Scaffold curator-opus-deliberator role file** — .claude/agents/deliberator.md following the curator-opus-* template (description, lane, capabilities, dispatch contract). META-162 PR merged today but the agent file doesn't exist at expected path.\n\n(c) **Wire ConsensusCoordinator into bot-merge.sh as pre-merge gate** — before any 'gh pr merge --auto' or admin-merge call, check if PR has a fresh consensus record; if not, request votes from N curators (via broadcast.sh + Agent tool dispatch), wait for tally, only proceed if ConsensusDecision::Approved.\n\n(d) **Operator-bypass discipline** — admin-merge stays as emergency escape hatch but emits kind=consensus_bypass_used {pr, reason, operator} to ambient; daily report flags bypass ratio.\n\n(e) **Test scripts/ci/test-consensus-merge-gate.sh** — fixture PR with mock vote-stream; assert bot-merge waits for consensus + proceeds when approved + skips when denied.\n\n(f) **Migration**: shadow mode first (consensus runs but doesn't gate), then flip to enforced after 1 week observation.\n\n**Operator value:** today's '105 admin-merged' becomes 'N consensus-approved + M operator-bypass-with-reason'. Every bypass is observable + auditable. Marcus + future customers can trust the verification chain.\n\n**Target measurement:** admin-merge ratio drops to <10% within 1 week of (c) shipping (currently 100% in today's bulk waves)."
+  notes: |
+    [2026-05-30T16:21:02Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2841 auto-closed) respawn-handled:2841
+  closed_date: '2026-05-30'
+  closed_pr: 2841
+  outcome_id: MISSION-010
+

@@ -1,0 +1,21 @@
+- id: INFRA-1813
+  domain: INFRA
+  title: "EFFECTIVE: vendor BEAST-MODE HITL approval flow into Chump preflight + bot-merge — substrate for Marcus trust gate (INFRA-1486)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read BEAST-MODE/website/app/api/tasks/[id]/approve/route.ts and reject/route.ts; document the request/response contract verbatim in docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+    - Read BEAST-MODE/website/lib/coordination/types.ts; document the Task type fields used by the approval flow (requiresHumanApproval bool, executionMode enum with values DRAFT and SOVEREIGN, assigneeType enum with values HUMAN and BOT)
+    - "Map BEAST-MODE Task contract onto Chump's gap state: identify which gap fields play the roles of requiresHumanApproval, executionMode, assigneeType; propose schema additions if needed"
+    - "Wire approve and reject endpoints into Chump PWA at /api/gap/[id]/approve and /api/gap/[id]/reject; approval flips gap to claimable-by-fleet, rejection marks status:closed with rejection_reason in notes"
+    - Approval and rejection events emit ambient kind=gap_approval_decision with gap_id, decision, decided_by, decided_at, execution_mode, reason fields to .chump-locks/ambient.jsonl
+    - Event kind=gap_approval_decision registered in docs/observability/EVENT_REGISTRY.yaml
+    - "Smoke test scripts/ci/test-gap-hitl.sh: gap with requires_human_approval=true is invisible to chump gap preflight and chump claim until approve endpoint is called"
+    - "Vendoring lineage comment in every ported file: 'Vendored from repairman29/BEAST-MODE at commit SHA, original path X (CP-003)'"
+    - "Coordinate with INFRA-1486 (Marcus trust gate): confirm the per-gap-budget mechanism reads the approval state rather than independent gating"
+  notes: |
+    [2026-06-04T00:26:08Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2755
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: CREDIBLE-091
+  domain: CREDIBLE
+  title: "CREDIBLE: auth::tests false-RED on local cargo test — cleared-env tests read real ~/.chump/config.toml instead of a temp sandbox"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Root cause (confirmed 2026-06-04 while shipping INFRA-2741): src/auth.rs resolve_creds() step 3 reads chump_config_path(), which falls back to $HOME/.chump/config.toml when CHUMP_HOME is unset (auth.rs:509-514). Three auth::tests — api_key_only_resolves_api_key_mode (714), neither_present_resolves_none (804), fleet_doctor_warns_when_no_creds (933) — CLEAR CHUMP_HOME/CHUMP_OAUTH_TOKEN_FILE via with_env() instead of pointing them at a temp sandbox, so they read the operator's REAL ~/.chump/config.toml + ~/.chump/oauth-token.json and see credentials they never set. Result: plain 'cargo test --workspace' is false-RED for any dev with real creds on disk. CI stays green because it uses nextest (process isolation) AND the runner has no ~/.chump/. The correct pattern already exists in this file (the test near auth.rs:1047 sets CHUMP_HOME to a TempDir).
+  acceptance_criteria:
+    - "The 3 failing auth::tests sandbox the environment: set CHUMP_HOME to a fresh TempDir (not clear it) and set CHUMP_OAUTH_TOKEN_FILE to a nonexistent temp path, following the existing TempDir pattern at ~auth.rs:1047"
+    - "plain `cargo test --workspace -- --test-threads=1` passes on a machine that HAS a real ~/.chump/config.toml and ~/.chump/oauth-token.json present (reproduce: the bug requires real creds on disk)"
+    - No behavior change to resolve_creds()/detect_and_resolve() production code — this is a test-isolation fix only
+  closed_date: '2026-07-20'
+  closed_pr: 3033
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,11 @@
+- id: INFRA-1374
+  domain: INFRA
+  title: "RESILIENT: cargo build cross-worktree index mutex contention stalls fleet agents at 3+ parallelism"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15 during 4-way parallel fleet ship: 1 of 4 agents stalled silently waiting on a `Blocking waiting for file lock on artifact directory` (cargo target lock); another agent committed but pre-commit clippy held the mutex 6 min. Net: 25% silent failure rate\",\"Root cause: scripts/setup/install-sccache.sh sets cargo target-dir=/Users/jeffadkins/Projects/Chump/target globally (INFRA-481, shared cache for sccache hits). Every worktree compiles into the SAME target/ → cargo file lock serializes builds across worktrees\",\"Per-worktree CARGO_TARGET_DIR override (INFRA-1138) only applies to the pre-push test gate, NOT to mid-session `cargo build -p chump` or `cargo clippy -p chump --bin chump`\",\"Acceptance: chump-commit.sh + scripts/coord/bot-merge.sh + scripts/git-hooks/pre-commit set CARGO_TARGET_DIR=$REPO_ROOT_T/.cargo-build-target for the duration of their cargo invocations\",\"scripts/ci/test-cargo-mutex-isolation.sh: spawn 3 parallel cargo build -p chump invocations in 3 fake worktrees; assert all 3 complete in < 2x sequential time (no mutex serialization)\",\"Out of scope: removing the shared sccache config entirely (still wanted for cold-cache savings)\"]"
+  closed_date: '2026-05-16'
+  outcome_id: MISSION-010
+

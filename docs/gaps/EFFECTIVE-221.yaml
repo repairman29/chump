@@ -1,0 +1,15 @@
+- id: EFFECTIVE-221
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump-commit auto-inject Net-new-docs trailer + surface commit-msg-hook rejections"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Adding a new docs/*.md file requires a 'Net-new-docs: +N' commit trailer (CHUMP_DOCS_DELTA_CHECK), enforced at the commit-msg stage. chump-commit.sh PRINTS the requirement during pre-commit but does NOT auto-inject the trailer, so the commit-msg hook rejects the commit — and when chump-commit output is piped (e.g. '| tail'), the pipe's exit code masks the rejection (cost 2 failed commit attempts on CREDIBLE-105 before manual git-log verification caught it). chump-commit already computes the docs delta (it prints 'net +1'), so it can either auto-append the trailer or fail loudly.
+  acceptance_criteria:
+    - "chump-commit.sh auto-injects the correct 'Net-new-docs: +N' trailer when the staged set adds N net-new docs/*.md files (matching the commit-msg gate), OR"
+    - "if not auto-injecting, chump-commit.sh exits NON-ZERO and prints a clear 'COMMIT REJECTED — add Net-new-docs: +N trailer' as its LAST output line (survives a '"
+    - " tail' pipe)"
+    - "regression test: committing a new docs/foo.md via chump-commit.sh either succeeds without the caller manually adding the trailer, or fails non-zero with the clear message"
+  outcome_id: EFFECTIVE-000
+

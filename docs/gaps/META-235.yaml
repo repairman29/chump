@@ -1,0 +1,13 @@
+- id: META-235
+  domain: META
+  title: "META: Implement conditional admin-merge using bot identity (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - auto-admin-merge-daemon.sh loads the 'chump-fleet-bot-pat' secret for authentication.
+    - The daemon executes 'gh pr merge --admin --squash <PR_NUMBER>' using the bot's PAT ONLY if all policy conditions (consensus, fix-class, no conflict, no T-trigger, no HOLD label) are met for a PR.
+    - Logging confirms each merge attempt (success or failure) and the reason for policy failure if not merged.
+  depends_on: [META-228, META-229, META-231, META-232, META-233, META-234]
+  outcome_id: MISSION-010
+

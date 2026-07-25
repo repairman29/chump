@@ -1,0 +1,19 @@
+- id: CREDIBLE-124
+  domain: CREDIBLE
+  title: "CREDIBLE: autonomy_level file mutations are SILENT — no audit event, no reason, no actor — operator (or sibling) flipped to 0 at 15:32Z with no paper trail (8.5h of fleet-off without diagnosis surface)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: ~/.chump/autonomy_level was mutated from prior value to '0' on Jun 7 15:32:11. grep autonomy .chump-locks/ambient.jsonl returns 0 events. git log shows nothing in the 14:00–16:00 window. The operator (or a daemon) made an irreversible-ish operator decision with zero audit trail"
+    - "Doctrine cross-ref: CREDIBLE-105 meta-clause — every state change that affects fleet behavior must emit an audit event (kind=autonomy_set with reason + actor + prior_level + new_level + ts). A silent flip is the same lie family as fleet-brief saying healthy while ✗ broken"
+    - "Fix: wrap autonomy_level mutations in a single chump fleet level <N> --reason <text> command. The command MUST emit kind=autonomy_set to ambient + refuse without --reason flag (operator can pass --reason 'silent' if they want, but the explicit-empty IS the audit signal)"
+    - "Fix: scripts/dispatch/fleet-brief.sh integrates the autonomy state — if autonomy_level == 0, banner reads '⚠ FLEET STOPPED (autonomy=0 set <duration> ago, reason=<from-last-audit-event>)' NOT '✓ healthy'. Same fix shape as CREDIBLE-120 (brief↔slo)"
+    - "Test scripts/ci/test-autonomy-audit.sh: flip autonomy via the wrapper, assert ambient gets kind=autonomy_set within 1s; flip directly via echo, assert pre-commit / file-watcher catches and emits kind=autonomy_silent_mutation (the safety-net for backwards-compat writes)"
+    - "Add a backfill: on every chump invocation that READS autonomy_level, if there's been no audit event for the current value, emit kind=autonomy_unaudited as a one-time signal so the operator sees the silent-state-of-record in their next session-start brief"
+  notes: |
+    [2026-06-08T00:57:45Z] AC EXTENSION 2026-06-08: original AC covered the AUDIT GATE (kind=autonomy_set on flips). Add the AUTOPILOT HALF per operator framing 2026-06-08 ('this system should be self-healing and self-improving'): (7) A launchd daemon dev.chump.autonomy-autoheal watches AUTONOMY_LEVEL + ambient for kind=autonomy_set. On flip to 0 WITHOUT a recent legitimate audit event, auto-re-enables to last-known-good level, emits kind=autonomy_autohealed with the diagnosis. (8) On 3+ silent-flip recurrences within 24h, auto-files a follow-up gap (kind=autonomy_silent_flipper_unknown) so the writer gets found by the next picker, not the operator. (9) Escalates to operator ONLY when: auto-heal failed N=3 times OR the writer process can't be identified after N attempts. Default = fleet figures it out. Cross-ref: this is the autopilot pattern for the page-budget-class (see new META gap on operator-notification budget — humans paged only on novel/irreversible/authority decisions).
+  closed_date: '2026-07-20'
+  closed_pr: 3214
+  outcome_id: CREDIBLE-000
+

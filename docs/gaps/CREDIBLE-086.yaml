@@ -1,0 +1,18 @@
+- id: CREDIBLE-086
+  domain: CREDIBLE
+  title: "CREDIBLE: reconcile merge-queue gap cluster — a 'done' gap certifies a capability that doesn't exist (GitHub native queue returns 422 on a personal account); dedup + fix contradictory doctrine + decide strict flag"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Finding (2026-06-02 Kaizen audit, lane L3): GitHub native merge queue does NOT exist on this repo — gh api graphql mergeQueue(branch:main) returns null; the feature is org/Enterprise-only and returns 422 on a personal account (per CLAUDE_GOTCHAS.md:205). Yet INFRA-2095 ('GitHub native merge queue') is status=done (closed_pr 2687) with ACs demanding 'Require merge queue enabled' + auto-bisect — a done gap certifies a capability that was never met. Four more gaps chase the same unavailable feature: INFRA-2298, META-196, META-198 (META-196 and META-198 are VERBATIM DUPLICATES of each other), and INFRA-1377. Two doctrine docs contradict: AGENT_COORDINATION.md:327 ('merge queue is enabled on main') vs CLAUDE_GOTCHAS.md:205 ('no real queue, 422'). Branch protection is currently strict:true, contradicting a doctrine claim that INFRA-201 disabled it. Reconcile: (1) reopen or wontfix INFRA-2095 with an honest status (native queue unavailable on this account); (2) close META-196 OR META-198 as a duplicate; (3) decide the batching path — accept bot-merge.sh per-PR, OR scope a LOCAL serializer (NOTE: no local-merge-queue.sh exists today; that would be net-new, not a redirect); (4) fix the two contradictory doctrine statements; (5) decide the branch-protection strict flag deliberately and document it. Priority left P2 pending fleet consensus.
+  acceptance_criteria:
+    - INFRA-2095 status corrected to reflect that GitHub native merge queue is unavailable on this account (not silently 'done')
+    - the META-196 / META-198 duplicate is resolved (one closed as dup)
+    - AGENT_COORDINATION.md and CLAUDE_GOTCHAS.md no longer contradict each other on merge-queue availability
+    - the branch-protection strict-flag decision is documented
+    - a single surviving gap (or a wontfix rationale) represents the merge-batching path going forward
+  closed_date: '2026-07-20'
+  closed_pr: 3100
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,18 @@
+- id: INFRA-3387
+  domain: INFRA
+  title: "META-070: preflight-mirror doc/content/security guard gates (30 scripts, audit-job decomposition cluster 4/5)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-070/META-086 follow-up sub-gap. Rough shape: (a) add src/preflight.rs mirror gates for the 30 doc/content/security guard scripts.
+    list: test-attribution-portable.sh, test-book-sync-guard.sh, test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh, test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-infra-124-docs-delta-trailer.sh, test-infra-250-v1-retirement.sh, test-infra-254-pwa-root-redirect.sh, test-infra-257-doc-only-guards.sh, test-infra-109-worktree-boundary.sh, test-keystone-cascade.sh, test-md-links-loop.sh, test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-meta-011-git-stomp.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh, test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-research-026-preflight.sh, test-rollup-semantic.sh, test-subagent-epilogue-ref.sh, test-submodule-guard.sh.
+    (b) follow the existing preflight.rs pattern used for test-markdown-intra-doc-links.sh (already-mirrored sibling).
+    (c) update docs/process/AUDIT_JOB_DECOMPOSITION.md marking these mirrored=yes.
+    Key constraint: this is the largest cluster (30 scripts) — consider splitting further at claim time via chump gap decompose if effort proves too large for one PR.
+  acceptance_criteria:
+    - All 30 scripts in this cluster (see description) are invoked from chump preflight (src/preflight.rs), matching the same pass/fail semantics as the CI fast-checks job
+    - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 30 rows flip from mirrored=no to mirrored=yes"
+    - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
+    - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+

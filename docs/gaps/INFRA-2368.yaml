@@ -1,0 +1,12 @@
+- id: INFRA-2368
+  domain: INFRA
+  title: "META-271 follow-up: backfill pr_index and artifact_index from full git log"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Walk full git log (default: HEAD~5000..HEAD) and populate pr_index for closed/merged PRs not in gh pr list output (gh caps at 1000); also walk artifact history for renames/moves not visible in current HEAD; idempotent re-run; --since <date> flag; --dry-run shows counts without writing"
+  closed_date: '2026-06-01'
+  closed_pr: 2935
+  outcome_id: MISSION-010
+

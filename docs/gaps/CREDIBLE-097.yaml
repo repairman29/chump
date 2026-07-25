@@ -1,0 +1,13 @@
+- id: CREDIBLE-097
+  domain: CREDIBLE
+  title: "CREDIBLE: compose pr_ac_coverage (INFRA-1541) as the 4th gate of the external verify-merge bar (#3058) — the bar proves 'a test passes' but not 'the PR addresses ALL the gap's AC bullets'; call AcCoverageResult so the merge requires full AC coverage, not just one passing test. Wire during cycle integration"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: CREDIBLE-000
+

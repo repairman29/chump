@@ -1,0 +1,10 @@
+- id: INFRA-2688
+  domain: INFRA
+  title: "RESILIENT P1: bot-merge.sh exits 144 silently after ~16min without diagnostic output — diagnose the 144 source + add progress markers"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"2026-06-03 19:14-19:30Z: orchestrator-opus invoked bot-merge.sh --gap INFRA-2674 from main checkout, process ran 16min producing 0 bytes after the initial test+commit output, then died with exit 144 (per task notification).\",\n\"144 is non-standard — bot-merge.sh has no `exit 144` literal (only `exit 4` for the wedge guard per INFRA-2426). The 144 must come from a child process kill signal (likely SIGURG = 128+16).\",\n\"Find the source of the 144 exit. Likely candidates: a launchd watchdog, a cargo timeout, or signal propagation from a stalled subprocess.\",\n\"Pair with INFRA-2673 progress-file work (filed today, queued local): once that lands, the 144-cause is observable via tail -f.\"\n]"
+  outcome_id: MISSION-010
+

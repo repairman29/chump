@@ -1,0 +1,11 @@
+- id: INFRA-1440
+  domain: INFRA
+  title: "RESILIENT: disk_critical alert auto-triggers target-reaper in critical mode (currently alert+wait, no auto-action)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16T02:16: disk_critical alert fired but only emitted ALERT — no auto-action. Disk stayed at 96% until I manually ran target-reaper + rm -rf target/incremental.\",\"Wire scripts/ops/disk-health-monitor.sh (the kind=disk_critical emitter): when emitting disk_critical, ALSO invoke `scripts/coord/target-dir-reaper.sh --execute --critical` as a follow-up step. Use timeout 60s so it never hangs the monitor.\",\"Depends on INFRA-1431 landing first (critical-mode flag for target-reaper).\",\"Emit kind=disk_critical_auto_remediated with bytes_freed once reaper completes\",\"Smoke test scripts/ci/test-disk-critical-auto-action.sh: stub df to <5GB free, invoke disk-health-monitor.sh, assert target-reaper invocation happens + auto_remediated event emitted\",\"Register kind=disk_critical_auto_remediated in EVENT_REGISTRY.yaml\",\"Out of scope: cargo clean (destructive, separate gap if needed)\"]"
+  closed_pr: 2193
+  outcome_id: MISSION-010
+

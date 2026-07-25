@@ -1,0 +1,24 @@
+- id: SYSTEM-CURATOR-ROUTINE
+  title: Opus Curator — fleet health audit + decisions
+  status: perpetual
+  priority: P0
+  effort: m
+  description: |
+    Proactive fleet health audit + curator decision-making (INFRA-789).
+    
+    Audit phase:
+    1. chump health --slo-check (SLO breach detection)
+    2. chump waste-tally --window 2h (cost + efficiency)
+    3. chump gap audit-priorities --json (P0 inflation, vague gaps)
+    4. Scan open PRs (detect stalls > 2h, failing checks)
+    5. Validate pillar balance (each pillar has 2+ pickable xs|s|m gaps)
+    
+    Decision phase:
+    1. If P0 > 5: demote 1-2 to P1 (inflation control)
+    2. If vague pickable gaps exist: add concrete AC immediately
+    3. If any pillar < 2 pickable: file gaps from ROADMAP.md
+    4. If pr_stuck cluster (3+ in 2h): flag for unsticking + rebase
+    5. If waste > 20%: file INFRA gap for root cause
+    
+    Output: all decisions + metrics logged to ambient.jsonl.
+

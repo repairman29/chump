@@ -1,0 +1,13 @@
+- id: META-251
+  domain: META
+  title: "META: Synthesize FAILURE_MODES.yaml rules into PR_RESCUE_PROCEDURE.md §5 (META-247 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Update `PR_RESCUE_PROCEDURE.md` §5 to include synthesized content from `FAILURE_MODES.yaml`.
+    - The synthesized content summarizes key failure-mode rules concisely and actionably.
+    - The updated §5 integrates smoothly with existing and newly added content (from slice 2).
+  depends_on: [META-250]
+  outcome_id: MISSION-010
+

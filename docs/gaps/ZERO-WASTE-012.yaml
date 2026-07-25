@@ -1,0 +1,19 @@
+- id: ZERO-WASTE-012
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: cargo-target-reaper's blanket guards (cargo-active abort + min-free abort) STARVE it in disk-critical + building-fleet → never reaps → recurring disk_critical (the INFRA-2188 aggressive mode runs AFTER the guards, so never engages)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Verified 2026-06-05 (live, while disk sat at ~3% free and wedged a 16-min ship). scripts/ops/cargo-target-reaper.sh has TWO safety guards that fire precisely when the reaper is most needed: (1) line 147 blanket-aborts (exit 1) if ANY 'cargo'/'rustc' process exists — but the fleet builds continuously, so it ALWAYS aborts and NEVER reaps; the per-target cargo-lock skip (line ~316) already protects individual active targets, making the blanket guard redundant + harmful. (2) line 152 aborts if free < MIN_FREE_GB — i.e. refuses to reap WHEN DISK IS LOW, which is backwards for a disk reaper. The INFRA-2188 disk-critical 'aggressive mode' (line 164: lower FINGERPRINT_AGE_D/FLEET_AGE_D) runs AFTER both guards, so it never engages. Net: cargo-target-reaper daemon shows exit=1, the shared target grows unbounded (23G deps + 5.6G incremental + ...), disk_critical re-fires, the disk-critical-reactor can't reclaim, ships ENOSPC-wedge.
+  acceptance_criteria:
+    - the AGGRESSIVE_MODE (disk-critical) computation moves BEFORE the safety guards
+    - in disk-critical aggressive mode the blanket cargo/rustc abort is SKIPPED (rely on the existing per-target cargo-lock check + age-based reaping which only touches stale artifacts an active build does not reference)
+    - in disk-critical aggressive mode the min-free abort is SKIPPED (reaping is exactly what is needed when disk is low)
+    - normal (non-critical) mode keeps both conservative guards unchanged
+    - "a regression test: with a fake disk-critical condition + a simulated active build, the reaper PROCEEDS (does not abort); with healthy disk + active build it still aborts"
+  notes: |
+    Distinct from INFRA-2188 (done — runner-path coverage). The 23G shared target/debug/deps is a separate harder problem (cargo does not GC old deps); this fix lets the reaper reclaim WORKTREE targets + the runner path on a building fleet, which is what it is supposed to do. Pairs with RESILIENT-104 (cargo-target-reaper is one of the exit=1 crash-loopers). Disk-aware-fleet umbrella: META-128.
+  closed_pr: 3077
+  outcome_id: ZERO-WASTE-000
+

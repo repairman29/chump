@@ -1,0 +1,21 @@
+- id: META-085
+  domain: META
+  title: "MISSION: shepherd-loop efficiency triad — hotspot-file serializer + auto-allowlist daemon + chump gap ship-orphan (3 fixes from 23-cycle self-assessment)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Three high-leverage efficiency fixes for the shepherd PR-rescue loop, from a 23-cycle self-assessment 2026-05-23. Each cost real time tonight and is structurally fixable. Combined estimate: 50% reduction in shepherd time on the dominant cluster-rescue pattern.
+  acceptance_criteria:
+    - FIX 1 hotspot-file serializer — scripts/coord/shepherd-rescue.sh wrapper that flocks on the target hot-file before commit so N parallel shepherd rescues serialize instead of self-collide; canonical example scripts/ci/event-registry-reserved.txt; others added to a config list over time
+    - FIX 2 auto-allowlist daemon — scripts/coord/auto-allowlist-shepherd.sh launchd job fires every 2 min scans open PRs for audit-step-110 failures parses PR diff for new kind literals across 3 syntax variants shell-printf Rust-EmitArgs struct EVENT_REGISTRY.yaml block and if the kinds are not already allowlisted AND the diff is non-substantive auto-pushes the allowlist commit with AUTO-ALLOWLIST-BOT signature
+    - FIX 3 chump gap ship-orphan subcommand — new subcommand for gaps merged on remote but failing local PROOF-OF-MERGE; sets status closed plus closed_pr without requiring stacked env bypasses; explicit recovery mode
+    - Each FIX independently shippable as a sub-gap on this gap implementation PR
+    - Smoke tests scripts/ci/test-shepherd-rescue-flock.sh + scripts/ci/test-auto-allowlist-shepherd.sh + scripts/ci/test-chump-gap-ship-orphan.sh
+    - Documents the shepherd-loop pattern at docs/process/SHEPHERD_LOOP_PLAYBOOK.md so future operators inherit the optimizations
+  notes: |
+    Pillar: META. Filed from curator-opus-shepherd-2026-05-23 23-cycle self-assessment. 5 smaller paper-cuts NOT in this gap: chump binary staleness interrupts trivial commands, 2-min cron vs reactive cadence, stale lease info in hook digest, sequential audit log fetch, no shared diff-to-emitted-kinds helper across 3 syntax variants — those are individual smaller follow-ups if anyone wants to file.
+  closed_date: '2026-05-24'
+  closed_pr: 2452
+  outcome_id: MISSION-010
+

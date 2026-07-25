@@ -1,0 +1,11 @@
+- id: RESILIENT-023
+  domain: RESILIENT
+  title: "W-013: test-bounced-pr-detector assertion inverted — claims event missing when event IS emitted (audit gate fails on every PR)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Audit gate test-bounced-pr-detector fails with: FAIL: expected pr_bounced_unfinished for PR 9999 (out=[bounced-pr] {ts...event:ALERT,kind:pr_bounced_unfinished,source:bounced-pr-detector,pr:9999,...}). The event IS in the output but the assertion claims it is missing — test logic inverted.\",\"Identify the broken assertion in scripts/ci/test-bounced-pr-detector.sh — likely a grep -v vs grep typo or missing-vs-present check flipped\",\"Fix the assertion logic; verify locally it PASSES on a real synthetic bounced-PR fixture\",\"Document as W-013 (audit-gate-test-assertion-drift) in docs/process/WEDGE_CLASS_CATALOG.md\",\"After fix lands: next PR with no test changes should pass audit gate organically (currently every PR fails audit on this)\",\"Pairs with MISSION-006 wedge catalog + MISSION-007 (which had to admin-bypass this gate)\"]"
+  closed_date: '2026-05-25'
+  outcome_id: RESILIENT-000
+

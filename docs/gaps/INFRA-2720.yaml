@@ -1,0 +1,18 @@
+- id: INFRA-2720
+  domain: INFRA
+  title: preflight cargo-test gate invocation missing -- cargo test args
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    src/preflight.rs line 872 (HEAD c7679ff6e) invokes cargo-test-with-rerun.sh with just ["bash", "scripts/ci/cargo-test-with-rerun.sh"] — no `--` separator + cargo test args. The wrapper prints usage `scripts/ci/cargo-test-with-rerun.sh -- <cmd> [args...]` and exits non-zero. EVERY preflight invocation fails this gate locally, blocks every push. INFRA-2422 main-red auto-skip doesn't trigger because the test runs immediately, not via main-CI-status check. Reproduced: `chump preflight` in any worktree → `cargo-test ... ✗ (70ms)` → `[flake-autorerun] usage: scripts/ci/cargo-test-with-rerun.sh -- <cmd> [args...]`
+  acceptance_criteria:
+    - src/preflight.rs line 872 cargo-test step has all 6 args (--, cargo, test, --bin, chump, --tests)
+    - "run_step() function checks bash script existence before invoking — emits Status::Skipped with audit message if missing"
+    - missing scripts gracefully skip instead of hard-failing the gate
+    - chump preflight passes on a fresh worktree of origin/main after the fix lands
+    - combines INFRA-2720 + INFRA-2721 + INFRA-2722 into one substrate-fix PR
+  closed_date: '2026-06-05'
+  closed_pr: 3023
+  outcome_id: MISSION-010
+

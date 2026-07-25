@@ -1,0 +1,12 @@
+- id: INFRA-2105
+  domain: INFRA
+  title: "EFFECTIVE: Docker cross-build wrapper for Linux — one command builds chump-coord without sccache env gymnastics"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "- Add scripts/dev/cross-build-linux.sh: one command builds any workspace package for Linux in Docker. Wraps `docker run rust:1.95-slim` with: bind-mount repo ro, isolated CARGO_TARGET_DIR (default /tmp/chump-cross-build-linux/), CARGO_BUILD_RUSTC_WRAPPER='' to override the Mac sccache wrapper, apt-get install of pkg-config/libssl-dev/cmake. Defaults to building -p chump-coord (all 3 bins).\n- Usage: `bash scripts/dev/cross-build-linux.sh` (default: build chump-coord). `bash scripts/dev/cross-build-linux.sh -p some-package` (override package). Prints binary paths on success.\n- Update scripts/setup/install-sccache.sh: add a comment block in the generated .cargo/config.toml explaining that cross-builds need CARGO_BUILD_RUSTC_WRAPPER='' override and pointing to cross-build-linux.sh. Use dynamic sccache path detection (`command -v sccache`) instead of hardcoded /opt/homebrew/bin/sccache.\n- Verify: from a fresh /tmp/chump-cross-build-fresh target dir, the script builds chump-coord (73 MB), chump-fleet (7.6 MB), chump-worker (23 MB) in ~2 minutes. End-to-end test passes.\n- Cross-reference: INFRA-2104 (the phantom worker-not-public bug that traced back to this root cause) + NATS_A2A_DEMO_2026-05-28.md appendix (where the cross-build was first done manually)."
+  closed_date: '2026-05-29'
+  closed_pr: 2697
+  outcome_id: MISSION-010
+

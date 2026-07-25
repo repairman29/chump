@@ -1,0 +1,19 @@
+- id: INFRA-1509
+  domain: INFRA
+  title: "RESILIENT: pre-push lint — fail on new env var or ambient kind without companion registration (env-vars-internal.txt OR EVENT_REGISTRY.yaml)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Pattern observed today (2026-05-16 CoP arc): PR #2173 (INFRA-1434) and PR #2199 (INFRA-1435) both hit the same CI fail-and-roundtrip because the implementing commit added a new env var (CHUMP_GAP_IMPORT_*) or new ambient kind (gap_dup_archived) without the companion registration in scripts/ci/env-vars-internal.txt or docs/observability/EVENT_REGISTRY.yaml. INFRA-1418 was pre-registered to avoid the snag. Class-of-bug worth a guard."
+    - "Pre-push hook (scripts/git-hooks/pre-push or a new dedicated check called from it) scans the staged commit range for: (a) new std::env::var(\"CHUMP_*\") call with a literal name AND that name absent from .env.example AND scripts/ci/env-vars-internal.txt; (b) new ambient.jsonl write where kind=\"<literal>\" is present AND that literal absent from docs/observability/EVENT_REGISTRY.yaml AND scripts/ci/event-registry-reserved.txt."
+    - "Hit prints: 'PRE_PUSH FAIL: new env var CHUMP_FOO_BAR introduced in src/main.rs but not registered. Add to .env.example (operator-tunable) OR scripts/ci/env-vars-internal.txt (debug/internal).' Same shape for ambient kinds."
+    - "Bypass: CHUMP_DISABLE_REGISTRATION_LINT=1 (CI only). Operator override: --no-verify (already documented escape hatch)."
+    - Reuses the regex / grep logic already in the existing audit CI tests (scripts/ci/test-env-vars-required.sh and scripts/ci/event-registry-audit.sh) — call those scripts in stamp mode from the hook. No new logic, just earlier execution.
+    - "CI test scripts/ci/test-pre-push-registration-lint.sh: stage a commit that adds env::var(\"CHUMP_NEW_X\") without registration; assert pre-push exits non-zero. Then stage the registration; assert exit 0."
+    - "Measure: count of fix-up commits with title 'fix(INFRA-XXXX): register ...' drops to ~0 within 2 weeks of landing."
+    - Pairs with INFRA-1418 (offline-check linter) — same family of pre-push guards that catch class-of-bug at the cheapest layer.
+  closed_date: '2026-07-20'
+  closed_pr: 3173
+  outcome_id: MISSION-010
+

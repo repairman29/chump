@@ -1,0 +1,14 @@
+- id: CREDIBLE-087
+  domain: CREDIBLE
+  title: "CREDIBLE: A2A L4 — ontology / schema-version tags on every coordination event (no silent semantic drift)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Tier-1 L4 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (FIPA-ACL ontology field; A2A own analysis flags this as its unsolved gap — it routes tasks but cannot ensure agents agree what approved-PR / pickable-gap mean). Pin vocabulary across concurrent chump-coord versions.
+  acceptance_criteria:
+    - every ambient/mesh event carries a schema_version tag (e.g. chump-v1)
+    - a receiver on a mismatched or unknown schema_version emits kind=schema_mismatch instead of silently misinterpreting the event
+    - a test sends an event with an unknown schema_version and asserts schema_mismatch is emitted, not a wrong action
+  outcome_id: CREDIBLE-000
+

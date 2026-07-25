@@ -1,0 +1,10 @@
+- id: INFRA-2369
+  domain: INFRA
+  title: "META-271 follow-up: tier-2 auto-file machinery — gated on operator-promote per finding_class"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Tier-2 auto-file machinery — only activates for finding_class with current_tier=2 in finding_class_tiers; when a new finding is inserted in such a class, file a gap via chump gap reserve with title prefix derived from finding_class; write the new gap_id into tech_debt_findings.auto_fix_filed_gap_id; rate-limit: max 5 auto-files per finding_class per day; bypass: CHUMP_INVENTORY_AUTO_FILE=0; integration test verifies auto-file happens for tier=2 class and is skipped for tier=0 class"
+  outcome_id: MISSION-010
+

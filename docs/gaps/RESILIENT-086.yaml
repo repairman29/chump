@@ -1,0 +1,18 @@
+- id: RESILIENT-086
+  domain: RESILIENT
+  title: "RESILIENT P0: farmer auth_dead FALSE-HALTS the fleet — detector checks oauth-age, ignores the valid API-key floor (recurring CREDIBLE-090; halted the fleet ~75min)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-04T16:1xZ (conductor reality-check): fleet halted (0 worker procs, 0 merges ~75min) on farmer_auth_dead {token_age_s:146155 = 40.6h}. The farmer fires auth_dead PURELY on oauth-token AGE, WITHOUT checking the API-key floor. But auth is FINE: ANTHROPIC_API_KEY set (.env + launchd, mode=auto/api-key); `chump fleet doctor` finds a valid path; the fleet shipped 99 PRs/24h on this same floor. So the auth_dead is a FALSE POSITIVE that HALTS the worker fleet (workers bail on the oauth-age auth-precheck) and pages the operator (operator_recall x3). This is the EXACT misdiagnosis CREDIBLE-090 was born from (this morning: false AUTH_DEAD for hours while the fleet shipped). RECURRING. Immediate band-aid applied: reset oauth mirror written_at to silence the age-detector (token value + API-key floor untouched). DURABLE FIX (RESILIENT-054 'validate-before-use' + CREDIBLE-090 reality-check wired in): the farmer auth_dead detector AND the worker auth-precheck must treat auth as ALIVE if ANY valid path exists — if the API-key floor (ANTHROPIC_API_KEY) is valid, do NOT fire auth_dead / do NOT halt, regardless of oauth age. oauth-staleness + valid API-key floor is NOT auth-death.
+  acceptance_criteria:
+    - farmer auth_dead does NOT fire when the API-key floor is valid, even with stale/absent oauth
+    - the worker auth-precheck treats the API-key floor as valid (workers spawn + ship on the API key alone)
+    - "test: stale-oauth + valid-API-key -> NO auth_dead, fleet keeps working"
+    - operator_recall AUTH_DEAD does not fire on oauth-staleness alone when the floor is valid
+    - the manual oauth-timestamp band-aid is no longer needed
+  closed_date: '2026-07-21'
+  closed_pr: 3125
+  outcome_id: RESILIENT-000
+

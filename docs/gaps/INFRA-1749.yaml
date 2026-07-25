@@ -1,0 +1,11 @@
+- id: INFRA-1749
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-05-23"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md documents the event lifecycle (pr_stuck -> pr_stuck_cluster -> pr_stuck_announced -> rescue/resolve/exempt) with emitter script per stage\n2. Doc documents cost tracking via chump waste-tally (default_tokens_per_kind) and fleet-brief/watchdog consumers\n3. Doc documents transient-vs-permanent failure-class taxonomy (CI flake/rate-limit/rebase-storm = transient, human-forget = permanent) with recovery action per class\n4. Doc gives the smoke test command (scripts/ci/test-pr-stuck-cluster-detection.sh) and manual dry-run/--apply invocation\n5. docs/observability/EVENT_REGISTRY.yaml pr_stuck_cluster entry links to the new doc"
+  closed_pr: 3269
+  outcome_id: MISSION-010
+

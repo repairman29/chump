@@ -1,0 +1,15 @@
+- id: CREDIBLE-090
+  domain: CREDIBLE
+  title: "CREDIBLE: reality-check gate — bots must verify the OUTCOME (not just the SIGNAL) before acting on alarm-class beliefs; fresh-eyes for halt-class; prevents false-belief cascades (2026-06-04 auth-dead misdiagnosis)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/dev/reality-check.sh '<belief>' [--detector <kind>] [--halt-class] runs the 5-step gate: (1) echo belief+signal; (2) the predicted OUTCOME; (3) GROUND-TRUTH check — recent merges/ships (is the fleet actually working?) + trunk status; (4) detector reliability — grep state.db for an OPEN gap mentioning the detector kind + 'false-positive'; (5) verdict. Exit: 1=REFUTED (ground truth contradicts), 0=CONFIRMED (proceed), 2=UNVERIFIED."
+    - .claude/skills/reality-check/SKILL.md — thin wrapper exposing /reality-check (per .claude/README.md capability-in-script pattern).
+    - "docs/process/REALITY_CHECK.md — the procedure + the SIGNAL-is-not-OUTCOME principle + halt-class beliefs (outage/stop-fleet/page-operator) require a fresh-eyes (or peer) confirm before acting. Case study: 2026-06-04 auth-dead misdiagnosis (acted on AUTH_DEAD false-positives for hours while the fleet shipped 99 PRs)."
+    - "CLAUDE.md hard-rule bullet: reality-check before alarm-class action; never act on a SIGNAL as if it were an OUTCOME; halt-class needs fresh-eyes confirm."
+    - "scripts/ci/test-reality-check.sh: asserts reality-check.sh REFUTES 'auth dead' when ground-truth shows recent ships, and flags AUTH_DEAD as a known-false-positive (INFRA-2031). Proves the gate would have caught the 2026-06-04 cascade."
+  closed_pr: 3028
+  outcome_id: CREDIBLE-000
+

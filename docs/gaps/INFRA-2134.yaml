@@ -1,0 +1,13 @@
+- id: INFRA-2134
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C6 chump gap show — shipped_in resolution (integration_id, PR, commit, merge SHA)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Extend chump gap show CLI output to surface integration shipped_in fields when gap status == shipped AND the gap has shipped_in metadata.\n- Schema (added to state.db gap row or stored as JSON in notes):\n    shipped_in:\n      integration_id: \"integration-YYYY-MM-DD-HHMM\"\n      integration_pr: \"https://github.com/repairman29/chump/pull/NNNN\"\n      child_commit: \"<sha>\"\n      merge_sha: \"<sha>\"\n      shipped_at: \"<iso8601>\"\n- Output format (text mode):\n    - id: INFRA-2108\n      status: shipped\n      shipped_in:\n        integration: integration-2026-05-29-1430\n        pr: https://github.com/repairman29/chump/pull/2789\n        commit: abc1234\n        merge_sha: f8e9d2a\n- Output format (--json): include the nested shipped_in object directly.\n- Backwards compat: gaps shipped via per-PR path (existing) show shipped_in: { pr_url, merge_sha } only — no integration_id.\n- Schema migration in chump-gap-store: add shipped_in JSON column (nullable) to gap_state.\n- 4+ unit tests covering: integration-shipped gap, per-PR-shipped gap, open gap (no shipped_in), --json output shape.\n- Cross-references INFRA-2130 (integrator writes shipped_in), INFRA-2137 (bisect_quarantined status separate from shipped)."
+  notes: |
+    [2026-06-04T00:26:19Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2767
+  outcome_id: MISSION-010
+

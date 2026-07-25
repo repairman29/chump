@@ -1,0 +1,18 @@
+- id: EFFECTIVE-229
+  domain: EFFECTIVE
+  title: "EFFECTIVE: A2A response-required + SLA escalation — close the 'message read but silently ignored' gap (response_required field + deadline + coordination_stalled)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Research 2026-06 highest-leverage gap #3: every current framework (A2A, LangGraph, AutoGen, OpenAI SDK) leaves open the failure where an agent CONSUMES a message but produces no response — silent protocol violation, undetectable. CREDIBLE-114 forces READING the inbox; this forces RESPONDING to messages that demand it. Closes the 'read but ignored' gap that made our 57 proposals die even when surfaced.
+  acceptance_criteria:
+    - "Every A2A message (broadcast.sh / FEEDBACK proposal) carries response_required: bool and a response deadline (response_deadline_ms or ISO)."
+    - The harness/loop tracks, per response_required=true message, whether a matching response event (vote/ack/reply keyed by corr_id) was emitted by the recipient before its cycle completes.
+    - If response_required=true AND the deadline elapsed with NO matching response → emit kind=coordination_stalled (corr_id + responder) AND replay the message into the recipient next inbox snapshot.
+    - After N replays without a response → escalate (raise to P0 / broaden recipients / operator-recall). Configurable N.
+    - "OUTCOME verification: a response_required proposal with a live responder yields a response (vote) within SLA; a non-responding responder yields a coordination_stalled event — i.e. silent drop becomes a detectable signal, asserted by a scripts/ci/test-*.sh driving the real path."
+  closed_date: '2026-07-20'
+  closed_pr: 3103
+  outcome_id: EFFECTIVE-000
+

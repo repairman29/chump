@@ -1,0 +1,10 @@
+- id: INFRA-2494
+  domain: INFRA
+  title: "CREDIBLE: broadcast.sh ignores $CHUMP_SESSION_ID export — mistags every broadcast with calling-shim's session"
+  status: closed
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"scripts/coord/broadcast.sh MUST read CHUMP_SESSION_ID from the calling environment FIRST, only falling back to the chump-session-id-shim if unset\", \"Regression test scripts/ci/test-broadcast-honors-session-id.sh: export CHUMP_SESSION_ID=test-foo; broadcast.sh INTENT msg; assert emitted event has session==test-foo\", \"All 7 broadcast.sh callsites in scripts/coord/ verified to inherit operator-set session_id correctly\"]"
+  outcome_id: MISSION-010
+

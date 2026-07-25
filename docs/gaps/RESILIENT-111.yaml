@@ -1,0 +1,18 @@
+- id: RESILIENT-111
+  domain: RESILIENT
+  title: "RESILIENT: durable gap-noise-reaper daemon — drain auto-filer-noise gaps on launchd (no Claude session)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - new scripts/ops/gap-noise-reaper.sh closes auto-filer-noise gaps via 'chump gap edit --status superseded' (NOT chump gap ship — INFRA-1392 proof-of-merge blocks no-PR gaps)
+    - "targets: title LIKE 'PR #%failing%' where PR is MERGED/CLOSED (cache-first verify), 'EFFECTIVE: Wire%' already-wired, '%worktree cleanup%' transient"
+    - bounded <=50/run, each close logged + reversible, SKIP if PR still OPEN
+    - "installed as launchd plist dev.chump.gap-noise-reaper on an interval — runs durably with no Claude session (SCHEDULING_LAYERS.md: durable=launchd not CronCreate)"
+    - regression test scripts/ci/test-gap-noise-reaper.sh
+    - "context: ~400 dead gaps closeable (238 PR-failing + 154 wire-X + 11 worktree); validated path = edit --status superseded"
+  depends_on: [RESILIENT-119]
+  notes: |
+    [2026-06-05T23:17:42Z] CORRECT PATTERN (exemplar ~/.chump/beast-0to1-loop.sh, found via a2a 2026-06-05): launchd plist + shell script calling the chump binary; NO Opus in the loop; flock single-instance; state in jsonl; self-stop at target; install via scripts/setup/install-*-launchd.sh. MUST use 'chump gap close --reason' (RESILIENT-119), NOT the reset-hard/edit-status band-aid. This is the durable replacement for the session-only CronCreate /loop, which dies on restart (CREDIBLE-105 band-aid class).
+  outcome_id: RESILIENT-000
+

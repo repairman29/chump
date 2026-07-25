@@ -1,0 +1,11 @@
+- id: CREDIBLE-077
+  domain: CREDIBLE
+  title: "follow-up to CREDIBLE-076: broaden self-audit pattern + add capability guards to 13 truly-missing tests"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Audit pattern in scripts/ci/test-required-checks-self-audit.sh broadens to recognize existing skip-logic forms (e.g. SKIP: chump binary not found, SKIP: not on PATH). Reduces false-positive flag rate from 12/25 to 0/25 on already-protected tests.\", \"Add explicit capability-guard pattern to 13 truly-missing tests: test-auto-widen.sh test-bot-merge-auto-close.sh test-chump-fleet-daemon.sh test-chump-gen-smoke.sh test-chump-init-clean-machine.sh test-chump-skill-cli.sh test-chump-upgrade-detection.sh test-claim-hot-file-overlap.sh test-claim-open-pr-abort.sh test-content-bots-toggle.sh test-decompose-uses-ast.sh test-fleet-brief.sh test-fresh-clone-gap-list.sh\", \"Each migrated test must SKIP cleanly when the chump binary does not have the subcommand it greps for (cache lag). PASS counter must increment so the aggregate result is not skewed.\", \"After migration, audit --strict mode passes on the full scripts/ci/test-*.sh set (0 flagged).\", \"After both this gap + 24h soak, operator re-adds test to required_status_checks per CREDIBLE-076 § Re-arming.\"]"
+  closed_date: '2026-05-25'
+  outcome_id: CREDIBLE-000
+

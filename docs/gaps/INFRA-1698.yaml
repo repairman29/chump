@@ -1,0 +1,18 @@
+- id: INFRA-1698
+  domain: INFRA
+  title: "EFFECTIVE: Content Bots pipeline orchestrator — PMM → DocuBot || Evangelist → CopyBot async via ambient events (META-066 phase 5)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "scripts/content-bots/orchestrate-pipeline.sh implements the PMM → (DocuBot "
+    - ""
+    - " Evangelist) → CopyBot DAG: invokes PMM, on success forks DocuBot + Evangelist in parallel, waits on both, then invokes CopyBot with all three outputs"
+    - pipeline state tracked in .chump-locks/content-bots-pipeline-<run_id>.json with per-stage status
+    - "partial-failure handling: if any bot fails, downstream bots that depend on it are skipped with structured event content_bot_pipeline_aborted"
+    - "smoke test scripts/ci/test-content-bots-orchestrate.sh: stub all 4 bots with deterministic outputs, invoke orchestrate, assert (a) DAG order correct, (b) parallel branches actually parallel, (c) CopyBot sees all 3 upstream outputs"
+    - "operator can resume from a failed stage: scripts/content-bots/orchestrate-pipeline.sh --resume <run_id>"
+  closed_date: '2026-05-22'
+  closed_pr: 2348
+  outcome_id: MISSION-010
+

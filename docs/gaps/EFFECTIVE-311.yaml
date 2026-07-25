@@ -1,0 +1,12 @@
+- id: EFFECTIVE-311
+  domain: EFFECTIVE
+  title: "EFFECTIVE: free-tier prompt reads retired YAML mirrors — open models get '(gap YAML not found)' as their entire task spec"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"free-tier prompt reads retired YAML mirrors — open models get '(gap YAML not found)' as their entire task spec\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3239
+

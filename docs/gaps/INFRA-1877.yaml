@@ -1,0 +1,17 @@
+- id: INFRA-1877
+  domain: INFRA
+  title: "GitHub Liaison Phase 2 slice ε: scripts/ci/test-liaison-webhook-cache.sh integration test (INFRA-1318 sub-gap 5/5)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/ci/test-liaison-webhook-cache.sh end-to-end smoke: spin up github-webhook-receiver.py on ephemeral port + start github-liaison.sh --once; POST synthetic pull_request + check_run webhook payloads with valid signature; assert kind=webhook_cache_write in ambient + cache.db pr_state/check_runs rows present"
+    - "Cover slice α: assert webhook_cache_write event emitted per upsert (from INFRA-1873)"
+    - "Cover slice β: artificially age a cache row past CHUMP_LIAISON_CACHE_STALE_S=2s, call cache_lookup_pr, assert kind=liaison_cache_stale emitted (from INFRA-1874)"
+    - "Cover slice γ: with receiver health endpoint down, assert kind=liaison_polling_fallback_active emitted after CHUMP_LIAISON_WEBHOOK_HEALTH_MAX_FAILS (from INFRA-1875)"
+    - "Cover slice δ: with CHUMP_GITHUB_MODE=offline, assert daemon refuses + cache_lookup_pr emits liaison_cache_offline_read (from INFRA-1876)"
+    - Smoke runs in <15s total; all 5 slice signals present in ambient.jsonl; add to fast-checks job in ci.yml as new step 'INFRA-1318 Phase 2 end-to-end smoke'
+  closed_date: '2026-05-24'
+  closed_pr: 2487
+  outcome_id: MISSION-010
+

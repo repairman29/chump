@@ -1,0 +1,14 @@
+- id: CREDIBLE-121
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet-brief Alerts(30m) counter does not match ambient.jsonl events in 30m window — counts events not in the stream"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: session-start brief reports e.g. 'Alerts(30m): 8' while grep on .chump-locks/ambient.jsonl for the kinds it claims to count returns 0 events in the 30-minute window"
+    - Document which 'kinds' the brief actually counts (or reads from where) — the discrepancy may be because the brief reads from a stale alerts file, OR counts a wider window than 30m, OR counts kinds the grep didn't match
+    - "Fix: brief's Alerts(30m) counter is derived from a documented source (the alerts file OR the live ambient stream); if it's from a file, the file must be re-derived from ambient on each brief invocation (or the brief must say e.g. 'Alerts(file-last-rotated 4h ago): 8')"
+    - "Test scripts/ci/test-fleet-brief-alerts-window-honesty.sh: synthesize 3 fake alert events in last 30m, ensure brief reports >= 3; clear ambient of 30m alerts, ensure brief reports 0"
+    - "Doctrine cross-ref: a self-reported counter that diverges from ground truth is meta-clause violation ('do not report a mechanism as active until you have verified it is active' — counts are 'active mechanism' too)"
+  outcome_id: CREDIBLE-000
+

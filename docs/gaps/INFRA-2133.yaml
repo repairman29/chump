@@ -1,0 +1,13 @@
+- id: INFRA-2133
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C5 bot-merge.sh routing changes — recognize REVIEW: prefix + hot-fix + default-to-batched"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- Modify scripts/coord/bot-merge.sh to add Mode A/B/C routing at the entry point (after gap-id parsing, before existing flow).\n- Mode B opt-in detection (any of):\n    1. Gap title starts with \"REVIEW:\" (case-insensitive, leading whitespace allowed)\n    2. Gap has skills_required containing \"external-collab\" OR domain == EXTERNAL\n    3. Operator flag --review on bot-merge.sh invocation\n    4. Env CHUMP_FORCE_REVIEW=1\n- Mode C (hot-fix) detection:\n    1. Gap priority == P0 AND title contains \"TRUNK-RED\" or \"HOTFIX\" or \"SECURITY\"\n    2. Operator flag --hot-fix on bot-merge.sh invocation\n- Mode A (DEFAULT — batched routing): not Mode B/C → instead of `gh pr create`, do:\n    - chump gap set <ID> --status ready_to_ship\n    - chump gap set <ID> --notes-append \"Mode: batched (chump-integrator-daemon will pick up)\"\n    - chump-coord work-board post <gap-id> ship-ready \"Mode A: ready for integration\" (NATS)\n    - Emit ambient kind=gap_routed_to_batched\n    - Exit 0 cleanly with message \"Gap INFRA-NNNN routed to batched integration queue. Integrator daemon will ship in next cycle.\"\n- Mode B/C: run existing flow unchanged (gh pr create + auto-merge).\n- Fallback when integrator daemon unavailable (no NATS, daemon not running): treat all gaps as Mode B (existing flow).\n- New scripts/ci/test-bot-merge-mode-routing.sh with 8+ cases:\n    1. REVIEW: title → Mode B\n    2. external-collab domain → Mode B\n    3. --review flag → Mode B\n    4. --hot-fix flag → Mode C\n    5. P0 TRUNK-RED title → Mode C\n    6. Normal gap → Mode A (routes to batched)\n    7. NATS down → falls back to Mode B\n    8. Mode A correctly marks gap status=ready_to_ship\n- Backwards compat: --legacy flag forces old behavior unconditionally (Mode B for all).\n- Cross-references INFRA-2130 (the daemon that consumes ready_to_ship), INFRA-2137 (quarantine status flows back through here)."
+  notes: |
+    [2026-06-04T00:26:16Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2751
+  outcome_id: MISSION-010
+

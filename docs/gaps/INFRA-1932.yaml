@@ -1,0 +1,17 @@
+- id: INFRA-1932
+  domain: INFRA
+  title: "EFFECTIVE: A2A-first communication discipline — default to peer broadcast, GH comment as fallback (presence ledger + auto-mirror + passive a2a on claim/ship)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Loop-prompt edit: /loop work-your-lane prompt template + docs/process/SHEPHERD_LOOP_PLAYBOOK.md make a2a Pattern 0 (broadcast to lane owner BEFORE GitHub comment; GH comment is fallback if no reply within 1 cycle); update all 7 curator playbooks (OPUS_SHEPHERD, TARGET, CI_AUDIT, DECOMPOSE, HANDOFF, MD_LINKS, ORCHESTRATOR) to match"
+    - New chump curators online subcommand surfaces who is actively in a loop (last heartbeat <10min via ambient kind=shepherd_heartbeat) with addressable session ID + role + inbox path; reads .chump-locks/inbox/*.cursor mtime as fallback; exits 0 with table on stdout, JSON via --json flag
+    - "Auto-ack contract: scripts/coord/broadcast.sh receiver-side emits ambient kind=a2a_ack with from + to + corr_id within 30s of inbox-read for any non-broadcast message; builds sender-side trust the channel works"
+    - "Auto-mirror-PR flag: scripts/coord/broadcast.sh --auto-mirror-pr NUM posts a one-line GH comment summarizing the a2a content and linking to a2a transcript; dual-channel without manual mirroring"
+    - "Passive a2a on actions: chump claim emits broadcast kind=claimed to peers in same domain; chump gap ship emits broadcast kind=shipped; both opt-out via CHUMP_A2A_PASSIVE_DISABLE=1"
+    - Smoke test scripts/ci/test-a2a-discipline.sh asserts curators online subcommand + auto-ack emit + auto-mirror flag + passive emit on claim and ship
+    - "Roll-out doc: docs/process/A2A_DISCIPLINE.md captures the pattern; CLAUDE.md adds Communication discipline section linking to it"
+  closed_date: '2026-05-24'
+  outcome_id: MISSION-010
+

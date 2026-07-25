@@ -1,0 +1,10 @@
+- id: META-121
+  domain: META
+  title: "[UMBRELLA] Bet 5 — Local-LLM mission close + Multi-machine routing; integrates INFRA-1118/1119/1120/1267/1323/1964 + chump-coord crate (4368 LOC pre-built); blocks on operator hardware decision"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "INTEGRATING UMBRELLA for Bet 5 per MARKET_POSITIONING_2026-05-27.md + MARKET_POSITIONING_BOUNCEOFF_2026-05-28.md. Goal: close the C1 mission-reality gap (no MLX wired in production today) + stand up a two-node multi-machine NATS mesh with capability-aware routing."
+  outcome_id: MISSION-010
+

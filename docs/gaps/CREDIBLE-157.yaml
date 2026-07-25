@@ -1,0 +1,19 @@
+- id: CREDIBLE-157
+  domain: CREDIBLE
+  title: "CREDIBLE: verify batch 2 — port pipefail-race, path-filter-allowlist, install-manifest, event-registry rules"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Continuation batch of CREDIBLE-155 (engine + docs-delta/test-lag/no-new-bypass-env-vars shipped in PR #3214). Port 4 more gates into src/verify/ as parsed-semantics rules: (a) pipefail-race sweep (INFRA-1658, scripts/ci/test-pipefail-race-sweep.sh) — printf|grep -q in hot-path dirs; (b) path-filter allowlist structural coverage (INFRA-682, scripts/ci/check-path-filter-coverage.sh) — new top-level dirs must appear in ci.yml code: allowlist; (c) install-manifest mapping (INFRA-1810, scripts/ci/test-install-script-manifest.sh) — new scripts/setup/install-*.sh mapped in REQUIRED_DAEMONS/optional/deprecated; (d) event-registry pairing (INFRA-754/INFRA-1237/INFRA-1287) — new kind literals in the diff registered, new registry entries paired with an emit or reserved entry. Legacy shell gates stay in place (parallel-run) — repo-wide invariants remain CI-enforced; the rules add diff-scoped local enforcement at commit-msg.
+  acceptance_criteria:
+    - 4 new rules registered in src/verify/rules/mod.rs registry() with incident receipts + machine-readable remediation
+    - Rust unit tests with fixture DiffFiles per rule; scripts/ci/test-credible-155.sh extended with e2e fixture-repo cases for the new rules
+    - Verify-Bypass trailer honored + kind=verify_bypassed ambient emit for all 4 (engine-level, verified by existing case 3 e2e)
+    - "VERIFY_MIGRATION.md table rows updated: 4 rules marked ported (parallel-run) with scope notes"
+  notes: |
+    [2026-07-22T01:47:32Z] PR #3229 open, auto-merge armed (manual fallback per CREDIBLE-154 notes; Bot-Merge-Bypass trailer). All 4 rules ported parallel-run: legacy CI sweeps stay as tree-state invariants. Self-check caught a real bug pre-commit: ci.yml code: block parser choked on inline comments — fixed + regression-tested. NOTE: rules stay inert locally until /opt/homebrew/bin/chump is rebuilt from main post-merge (RESILIENT-172 class).
+  closed_date: '2026-07-22'
+  closed_pr: 3092
+  outcome_id: CREDIBLE-000
+

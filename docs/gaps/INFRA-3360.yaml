@@ -1,0 +1,9 @@
+- id: INFRA-3360
+  domain: INFRA
+  title: "META-070 Tier-C: mirror C2 gap-state/claim-consistency audit-job guards into chump preflight"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. src/preflight.rs audit-gate discovery list extended with the 12 unmirrored C2 gap-state/claim-consistency scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C2 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_GAPSTATE env var\n3. scripts/ci/test-preflight-audit-c2-gapstate.sh smoke test asserts default-run + env-var skip\n4. chump preflight wall-clock stays under target"
+

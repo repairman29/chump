@@ -1,0 +1,14 @@
+- id: META-072
+  domain: META
+  title: "MISSION: lock in demo target #3 (autonomous-throughput) — operationalize today's evidence into a repeatable demo loop (META-067 outcomes framework)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-23'
+  outcome_id: META-067
+

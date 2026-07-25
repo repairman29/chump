@@ -1,0 +1,14 @@
+- id: META-192
+  domain: META
+  title: "META: Implement launchd installer for pr-shepherd-daemon (META-180 slice)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/setup/install-pr-shepherd-daemon.sh` script is implemented."
+    - The script installs a `launchd` plist for `pr-shepherd-daemon.sh` with `StartInterval=60`.
+    - The daemon runs at user-launch session-level scope.
+  closed_date: '2026-05-31'
+  closed_pr: 2894
+  outcome_id: MISSION-010
+

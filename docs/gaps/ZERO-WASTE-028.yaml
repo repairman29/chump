@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-028
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: cargo target dirs leak disk — 56G main target + per-worktree targets + reactive-only reaper"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Local Mac disk repeatedly hits 100% (blocks fleet worktree creation + cargo builds + even Claude tool I/O). Breakdown 2026-07-23: main /Users/jeffadkins/Projects/Chump/target = 56G (40G debug + 12G release); per-worktree target dirs (each fleet worktree builds its own — no shared CARGO_TARGET_DIR: wt-natsclaim 4.6G, wt-3313 2.8G active; wt-mission059 7.4G + wt-mission056 2.3G were leaked-orphans until reaped at critical); ~/.ollama 12G (local LLM, needed); ~/Library/Application Support/Claude 8G; ~/.chump 1.8G. Root cause of the RECURRING fill: (a) worktree target dirs accumulate faster than disk-pressure-reaper frees them, and the reaper only fires at disk-critical (reactive) → oscillates 100%->recover->100%; (b) orphaned worktrees (dir on disk but removed from git worktree list) leak until critical; (c) 56G main target is a permanent baseline leaving no headroom. Rough shape: (a) shared CARGO_TARGET_DIR across LOCAL worktrees to collapse N targets into 1 (weigh vs DOC-063 cross-target poisoning — may need per-worktree still, then favor proactive reaping); (b) make disk-pressure-reaper/infra-watcher proactively reap RELEASED + orphaned worktree target dirs on a schedule + enforce a size cap, not only at critical; (c) periodic target/debug cap on the main checkout.
+  acceptance_criteria:
+    - "AC1: orphaned worktrees (on disk, absent from git worktree list) are reaped on a schedule, not only at disk-critical (verify: reaper logs reaping an orphan while disk >20% free). AC2: either local fleet worktrees share a CARGO_TARGET_DIR, OR the reaper caps total worktree-target disk below a configurable ceiling. AC3: a documented one-shot reclaim path (e.g. chump disk reclaim) that removes main target/debug + orphaned worktree targets, reporting GB freed. AC4: disk stays >10% free across a 24h fleet run (no 100% events in ambient)."
+  closed_date: '2026-07-25'
+  closed_pr: 3297
+
