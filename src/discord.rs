@@ -1336,4 +1336,14 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn credible004_chunk_for_discord_splits_long_text() {
+        let long_text = "a\n".repeat(3000);
+        let chunks = chunk_for_discord(&long_text);
+        assert!(chunks.len() >= 2);
+        for c in chunks {
+            assert!(c.len() <= 2000);
+        }
+    }
 }
