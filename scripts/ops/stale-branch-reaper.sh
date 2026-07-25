@@ -53,6 +53,12 @@ BRANCH_PATTERNS="${BRANCH_PATTERNS:-claude/* worktree-*}"
 # INFRA-697: age threshold for merged/closed PR branches (days since close).
 CHUMP_BRANCH_REAPER_AGE_DAYS="${CHUMP_BRANCH_REAPER_AGE_DAYS:-7}"
 
+# INFRA-1081: source github cache lib
+# shellcheck source=scripts/coord/lib/github_cache.sh
+if [[ -f "$(dirname "$0")/../coord/lib/github_cache.sh" ]]; then
+    source "$(dirname "$0")/../coord/lib/github_cache.sh"
+fi
+
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 info()  { printf '  %s\n' "$*"; }
@@ -66,17 +72,31 @@ git fetch "$REMOTE" --prune --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE — aborting."; exit 1
 }
 
-# Branches with an open PR are safe regardless of age.
-OPEN_PR_BRANCHES=$(gh pr list --state open --json headRefName \
-    --jq '.[].headRefName' 2>/dev/null | sort -u || true)
+# Branches with an open PR are safe regardless of age (INFRA-1081: cache-first).
+OPEN_PR_BRANCHES=""
+if command -v cache_query_open_prs >/dev/null 2>&1; then
+    OPEN_PR_BRANCHES=$(cache_query_open_prs | awk -F$'\t' '{print $3}' | sort -u || true)
+fi
+if [[ -z "$OPEN_PR_BRANCHES" ]]; then
+    OPEN_PR_BRANCHES=$(gh pr list --state open --json headRefName \
+        --jq '.[].headRefName' 2>/dev/null | sort -u || true)
+fi
 
 # INFRA-697: Fetch closed (merged + closed-without-merge) PRs with their
 # close/merge timestamp. Format per line: "branch|ISO8601timestamp"
 # We fetch up to 500 so we cover the typical claude/* branch history.
-CLOSED_PR_LIST=$(gh pr list --state closed --limit 500 \
-    --json headRefName,mergedAt,closedAt \
-    --jq '.[] | .headRefName + "|" + (if .mergedAt != null and .mergedAt != "" then .mergedAt else .closedAt end)' \
-    2>/dev/null || true)
+CLOSED_PR_LIST=""
+if command -v cache_query_closed_prs >/dev/null 2>&1; then
+    # cache_query_closed_prs returns number\ttitle\thead_ref\tclosed_at
+    CLOSED_PR_LIST=$(cache_query_closed_prs | awk -F$'\t' '{print $3 "|" $4}' || true)
+fi
+
+if [[ -z "$CLOSED_PR_LIST" ]]; then
+    CLOSED_PR_LIST=$(gh pr list --state closed --limit 500 \
+        --json headRefName,mergedAt,closedAt \
+        --jq '.[] | .headRefName + "|" + (if .mergedAt != null and .mergedAt != "" then .mergedAt else .closedAt end)' \
+        2>/dev/null || true)
+fi
 
 NOW_EPOCH=$(date +%s)
 THRESHOLD_SECS=$(( STALE_DAYS_THRESHOLD * 86400 ))

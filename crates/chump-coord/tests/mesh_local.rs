@@ -5,8 +5,8 @@
 // delivery on a named channel, and `await_ack` timing out cleanly when
 // no ack is ever recorded.
 
-use chump_coord::mesh::{channels, AckMessage, Channel, LocalProcessTransport, Message, MeshError};
 use chump_coord::mesh::MeshTransport;
+use chump_coord::mesh::{channels, AckMessage, Channel, LocalProcessTransport, MeshError, Message};
 
 fn sample_message(id: &str, channel: &str) -> Message {
     Message {
@@ -24,7 +24,10 @@ async fn publish_then_subscriber_receives() {
     let transport = LocalProcessTransport::default();
     let ch = channels::gap_claimed("INFRA-2248");
 
-    let mut rx = transport.subscribe(&ch).await.expect("subscribe should succeed");
+    let mut rx = transport
+        .subscribe(&ch)
+        .await
+        .expect("subscribe should succeed");
 
     let msg = sample_message("msg-1", &ch.name);
     transport
@@ -59,7 +62,10 @@ async fn await_ack_times_out_cleanly_when_no_ack_expected() {
     let result = transport.await_ack("never-acked", 25).await;
 
     match result {
-        Err(MeshError::AckTimeout { message_id, timeout_ms }) => {
+        Err(MeshError::AckTimeout {
+            message_id,
+            timeout_ms,
+        }) => {
             assert_eq!(message_id, "never-acked");
             assert_eq!(timeout_ms, 25);
         }
