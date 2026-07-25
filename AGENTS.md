@@ -51,6 +51,14 @@ cargo build --bin chump           # CLI binary only (fastest iteration)
 cargo check --bin chump --tests   # type-check without codegen (use this in tight loops)
 ```
 
+### Linux-first setup (INFRA-3342)
+
+If you are on Linux, standard installation via `brew` might be unavailable or incomplete. Follow the **Linux substrate** path for the most reliable experience:
+
+1. **System dependencies:** Run `bash scripts/setup/provision-chumpd-host.sh --install-deps` to install required GTK/Webkit libs, Rust, and `gh`.
+2. **Supervisor daemon:** Run `bash scripts/setup/install-chumpd.sh` to build and register the `chumpd` supervisor with `systemd --user`.
+3. **Verify:** `systemctl --user status chumpd` should show "active (running)".
+
 `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) — the
 META-072 Track-3 autonomous-throughput demo loop (crates/chump-demo), wired
 as a real subcommand instead of an undiscoverable standalone binary. It execs
