@@ -1,0 +1,13 @@
+- id: RESILIENT-095
+  domain: RESILIENT
+  title: "RESILIENT: fleet-status render_recent_merges (EFFECTIVE-087) aborts under set-e+pipefail when origin/main absent → drops rate-limit line → fleet-wide audit-shard-2 red (EFFECTIVE-025 test)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: RESILIENT-000
+

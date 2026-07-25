@@ -1,0 +1,33 @@
+- id: INFRA-2164
+  domain: INFRA
+  title: "EFFECTIVE: chump-fleet-recorder + gantt scrubber — record-then-render fleet event visualization"
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Goal: give the operator (and outside reviewers like Marcus) a real way to see the fleet's traffic — not just chump-coord watch's scrolling log, but a recorded, replayable, scrubbable view of who did what, when, and why.
+    
+    Driver: operator asked "I want to be able to visualize the agents traffic now that we have NATS — can we do something cool? We'll need to be able to record and play it back. Think about how humans would want to visualize this data — what are we trying to show them?"
+    
+    Answer: record-then-render. Live-only views lose the interesting moments (wedge, collision, ship-cluster) before a human can read them. The load-bearing piece is the capture layer; the visualization is the second half. Three audiences this serves: (1) operator mid-flight — "is the fleet healthy right now?", (2) operator post-mortem — "why did things wedge at 14:32?", (3) outside eyes (Marcus, Anthropic) — "look how this works".
+    
+    Substrate already in place: NATS subjects chump.events.> (structured events) and chump.work.> (work envelopes routed to workers). See crates/chump-coord/src/lib.rs:91 (EVENTS_SUBJECT) and crates/chump-coord/src/assign.rs:36 (WORK_SUBJECT_PREFIX). Also .chump-locks/ambient.jsonl — source of truth for events from harnesses that bypass NATS (offline fallback path); tail this too. chump-coord watch already subscribes to chump.events.> — model the recorder's subscription path after crates/chump-coord/src/main.rs:322.
+    
+    Rough shape (decompose at claim time via chump gap decompose INFRA-2164): (a) Capture layer — crates/chump-fleet-recorder/ daemon. Connect to NATS, subscribe to chump.events.> + chump.work.>, tail .chump-locks/ambient.jsonl. Dedupe via (ts, session, kind, gap) natural key. Write to .chump/fleet_events.db (sqlite). Add launchd plist scaffold matching the github-webhook-receiver pattern. ~600 LOC Rust + tests. (b) Query API — crates/chump-fleet-server/ axum binary. Endpoints: GET /api/segments, GET /api/events, GET /api/sessions/active, GET /api/trace/pr/:n, WS /api/live. Background pass every 10s recomputes derived agent_segments table from raw events. ~400 LOC Rust + tests. (c) Scrubber frontend — web/fleet-scrubber/index.html static page. Vanilla JS + D3. Timeline scrub bar at bottom, per-session lanes above, color-coded activity segments (claim=orange, edit=blue, push=green, merge=purple, blocked=red, idle=gray). Hover tooltip, click side panel, LIVE toggle, REPLAY button at N× speed. ~600 LOC web.
+    
+    Key constraints: Storage budget ~1M events/week × ~500B = ~500MB; add 7-day TTL pruner. Recorder must survive NATS reconnect — store last-seen sequence per subject, JetStream durable consumer is appropriate. Per AGENTS.md + CLAUDE.md Rust-first (META-064): recorder and server must be Rust (mutates canonical state, long-lived daemon, > 200 LOC, will outlive 3 months). Frontend is web (legitimate frontend, not shell glue). Per ambient event registry: do NOT invent new event kinds without scanner-anchor comments or event-registry-reserved.txt entries (META-103 / handoff curator lane). Per SUBAGENT_DISPATCH.md and "Opus PM" pattern: this is L-class work — Opus PMs, dispatches one Sonnet per sub-slice in parallel via Agent tool, babysits each PR.
+  acceptance_criteria:
+    - "crates/chump-fleet-recorder/ ships: daemon subscribes to NATS chump.events.> + chump.work.>, tails .chump-locks/ambient.jsonl, writes deduped events to .chump/fleet_events.db (sqlite) with indexes on (ts_ms), (session_id, ts_ms), (gap_id, ts_ms), (event_kind, ts_ms)"
+    - "Recorder survives NATS reconnect: stores last-seen sequence per subject, resumes from there on restart; smoke test asserts kill -TERM + restart cycle loses zero events"
+    - Launchd plist at scripts/setup/launchd/com.chump.fleet-recorder.plist installed by chump-fleet-bootstrap.sh; bootstrap --check exits 0 with recorder running
+    - "crates/chump-fleet-server/ ships: axum binary exposing GET /api/segments?from=&to=, GET /api/events?from=&to=, GET /api/sessions/active, GET /api/trace/pr/:n, WS /api/live; background pass every 10s recomputes agent_segments table"
+    - "web/fleet-scrubber/index.html ships: timeline scrub bar (pannable, zoomable to 1-second resolution), per-session lanes with color-coded activity segments (claim/edit/push/merge/blocked/idle), hover tooltip, click event-panel, LIVE toggle, REPLAY button at 1x/10x/60x speeds"
+    - "Smoke test scripts/ci/test-fleet-recorder.sh: spins up recorder against ephemeral NATS, emits a known event via chump-coord emit, asserts event present in sqlite within 2s and visible at GET /api/events"
+    - "Storage hygiene: 7-day TTL pruner runs hourly via launchd, asserts events table stays under 1GB; CREDIBLE: chump health --slo-check extended with L4-SLO-2 fleet-recorder-fresh (heartbeat < 60s gap)"
+    - "Operator-facing: chump fleet view opens http://localhost:7070/scrubber in default browser; README at crates/chump-fleet-recorder/README.md documents end-to-end usage with screenshots"
+  notes: |
+    Two-phase decomposition: do NOT pre-file sub-gaps. At claim time, run chump gap decompose INFRA-2164 to slice (a)/(b)/(c) into three concrete sub-gaps against the then-current codebase. Sub-slice (a) is the load-bearing one — (b) and (c) cannot be tested without it. Dispatch pattern (META-069 PM + Sonnet workers): Opus claims, decomposes, dispatches three Sonnets in parallel via Agent tool with SUBAGENT_DISPATCH.md epilogue baked in, babysits each PR through bot-merge.sh --auto-merge, runs chump gap rate INFRA-2164 <1-5> on ship.
+  closed_date: '2026-06-05'
+  closed_pr: 2724
+  outcome_id: MISSION-010
+

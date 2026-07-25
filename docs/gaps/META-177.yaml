@@ -1,0 +1,30 @@
+- id: META-177
+  domain: META
+  title: "trunk-RED prevention bug-bash: 5-lane sweep of latent fails masked by fail-fast"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Trunk-RED on 2026-05-30 surfaced multiple latent bug classes that local preflight didn't catch (cranelift component install fail, shipped_in field init miss, 6 clippy-1.96 lints, pipefail-sweep). Each was hidden behind earlier fail-fast (sccache cred → cranelift → clippy → ...). Bug-bash with 5 parallel lanes to flush all latent classes BEFORE next trunk-RED.
+    
+    Lane A: cargo check --workspace --all-targets --all-features on origin/main + every open PR head — find every other 'added field, missed initializer' / E0063 / dead-code class.
+    
+    Lane B: ci.yml lies — grep for 'rustup component add', 'cargo install', 'apt-get install', 'sccache --version' and dry-run each against the actual stable toolchain. Find every gate that depends on something that doesn't exist or doesn't work as-claimed.
+    
+    Lane C: trunk-RED detection latency. Trunk was RED for ~3h+ before we noticed. File trunk_red_detector daemon emits WARN on every red main run, bake into freshness-preamble + SessionStart hook.
+    
+    Lane D: preflight scope gaps. INFRA-2134 added a field to a shared struct but preflight scoped cargo check by diff (only same-crate) → missed. Fix: ANY Rust diff triggers cargo check --workspace, not just same-crate.
+    
+    Lane E: audit the 18+ wedged PRs once trunk green. Some may have latent issues hidden by cranelift fail-fast; demote ones that don't actually pass on their own merits.
+    
+    Dispatch pattern: 3 parallel Sonnets on A+B+D (independent); C blocks on D output; E blocks on trunk-green confirmation.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Superseded by INFRA-2324 trunk-sentinel-daemon (PR #2916, merged 2026-05-31). Original PR #2863 closed as duplicate.
+  closed_pr: 2916
+  outcome_id: MISSION-010
+

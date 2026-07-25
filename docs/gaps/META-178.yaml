@@ -1,0 +1,27 @@
+- id: META-178
+  domain: META
+  title: "ZERO-WASTE: preflight cargo check scope fix — workspace-wide for any Rust diff (META-177 lane D)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Lane D of META-177. INFRA-2134 added `shipped_in: Option<String>` to
+    GapRow but preflight's cargo check scoped to same-crate diff only, missing
+    the chump-coord initializers. Fix: any .rs or Cargo.toml change in the
+    staged diff must trigger `cargo check --workspace --all-targets` (not a
+    narrower per-crate check). The root cause is that `cargo check --workspace`
+    without `--all-targets` skips test code, benches, and integration-test
+    targets — exactly where struct initializers in #[cfg(test)] blocks live.
+  acceptance_criteria:
+    - "src/preflight.rs: the cargo check step uses --workspace --all-targets (not --workspace alone)"
+    - "New scripts/ci/test-preflight-rust-scope.sh passes: 3 tests covering .rs diff, Cargo.toml diff, and docs-only diff behavior"
+    - cargo fmt --all -- --check passes on the modified src/preflight.rs
+    - cargo clippy --workspace --all-targets -- -D warnings passes
+    - PR merged to main with title containing META-177 and META-178
+  depends_on: [META-177]
+  notes: |
+    [2026-05-30T16:20:57Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2865 auto-closed) respawn-handled:2865
+    [2026-06-04T00:16:20Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2865
+  outcome_id: MISSION-010
+

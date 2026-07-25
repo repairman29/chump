@@ -1,0 +1,14 @@
+- id: INFRA-3380
+  domain: INFRA
+  title: preflight-mirror worker/PR-lifecycle + merge-safety gates (~23 scripts, META-086 cluster 2/5)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Mirror the ~23 unmirrored scripts/ci/test-*.sh gates covering worker/PR-lifecycle and merge safety (bot-merge auto-close/conflict-wiring, pr-auto-rebase, pr-watch/shepherd, pre-push force-lease/rebase-allow/test-gate/preflight-hook, rebase-coordination, speculative-on-speculative-guard, status-flip-proof-of-merge, gate-promotion-no-regression, open-pr-dup-detection, external-verify-merge) into src/preflight.rs. Full inventory: docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'pr-lifecycle'.
+  acceptance_criteria:
+    - Every script listed under the pr-lifecycle cluster in docs/process/AUDIT_JOB_DECOMPOSITION.md is invoked from src/preflight.rs (same pattern as existing mirrored scripts)
+    - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
+    - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
+    - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+

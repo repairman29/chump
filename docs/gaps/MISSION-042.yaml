@@ -1,0 +1,11 @@
+- id: MISSION-042
+  domain: MISSION
+  title: test external-repo reserve AC3
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - AC3 test
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-1943
+  domain: INFRA
+  title: "RESILIENT P1: orchestrator.md needs 'ask current-work-state before redirecting alive curator' discipline rule — INFRA-1940 #2533 ships roll-call-for-aliveness but missing the second-order rule operator caught at 17:23Z: don't command alive curator to drop in-flight work without first asking what they're on"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

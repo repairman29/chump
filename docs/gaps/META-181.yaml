@@ -1,0 +1,14 @@
+- id: META-181
+  domain: META
+  title: "META: Implement pr-shepherd-daemon.sh skeleton and tick event (META-180 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/coord/pr-shepherd-daemon.sh exists and is executable.
+    - The script runs a basic loop.
+    - The script emits `pr_shepherd_tick` event on each loop iteration.
+  closed_date: '2026-05-30'
+  closed_pr: 2870
+  outcome_id: MISSION-010
+

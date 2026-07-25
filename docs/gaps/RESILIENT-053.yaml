@@ -1,0 +1,17 @@
+- id: RESILIENT-053
+  domain: RESILIENT
+  title: "RESILIENT: opus-curator balance_restock errors 'reserve failed' on ~83% of cycles — daemon env can't reach canonical mutation path; failure hidden as heartbeat-shaped curator_decision"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Live finding (2026-06-02 Kaizen audit, lane L5): the opus-curator daemon logged action_taken='error: chump gap reserve failed' on 254 of 305 curator_decision events (~83%), still firing as of 15:20Z. Its primary action (balance_restock pillar refill) is broken in the daemon's environment — PATH/cwd/CHUMP_REPO in the launchd context cannot reach the canonical chump gap reserve path — and the failure is INVISIBLE because it is recorded as a heartbeat-shaped 'curator_decision' event rather than a failure signal. Separately the p0_demotion arm demotes one P0 per cycle while inflow outpaces it (logged count climbed 17->48->74). Fix scope (narrow): (1) repair the daemon env so balance_restock's chump gap reserve succeeds in the real launchd environment; (2) emit a distinct failure signal (e.g. kind=curator_action_failed) when an action errors, so a supervisor can act on it. The supervisor/auditor itself is INFRA-2239 (open P0 — 'auto-files + dispatches when curators silently fail'); the all-error->demote logic belongs there, not here. Related: INFRA-2239 (supervisor), INFRA-2238 (sibling open P0: curator-loop wrappers call wrong subcommand, silent no-op), META-132 (mirror/fresh-eyes curator), INFRA-963 + INFRA-1667 (prior opus-curator silent-death fixes). Priority left P2 pending fleet consensus, but flagged LIVE-FAILING in the ranking proposal.
+  acceptance_criteria:
+    - root cause of 'chump gap reserve failed' in the opus-curator daemon environment is identified and fixed (balance_restock succeeds in the real launchd env)
+    - a failed curator action emits a distinct failure event kind, not a success-shaped curator_decision
+    - a regression check asserts balance_restock can reserve in the daemon environment
+    - the finding is cross-linked to the INFRA-2239 supervisor gap
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

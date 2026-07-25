@@ -1,12 +1,13 @@
 - id: ZERO-WASTE-023
   domain: ZERO-WASTE
-  title: "ZERO-WASTE: bot-merge line-1479 EXIT trap overwrites _bm_cleanup — every exit orphans heartbeat subshells (30+ ghosts observed)"
-  status: open
+  title: 'ZERO-WASTE: bot-merge line-1479 EXIT trap overwrites _bm_cleanup — every exit orphans heartbeat subshells (30+ ghosts
+    observed)'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_pr: 3236

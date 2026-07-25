@@ -1,0 +1,35 @@
+- id: INFRA-1851
+  domain: INFRA
+  title: "RESILIENT: claude-reaper PTY-pressure urgent mode — lower REAP_AGE when ttys allocation > 80% of kern.tty.ptmx_max (prevents 527/511 lockouts)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    The existing claude-reaper (INFRA-1662 #2323) runs every 5 min and kills
+    orphan `claude` subprocesses whose etime exceeds REAP_AGE (default 3600s).
+    That's fine for steady-state hygiene but too slow when a leak pushes the
+    machine to the kern.tty.ptmx_max limit (observed 527/511 on this dev box
+    earlier today — over the kernel limit, new shells/tmux panes/SSH sessions
+    start refusing).
+    
+    This gap adds a pressure-aware urgent mode: at the top of each reaper
+    sweep, check ls /dev/ttys??? against sysctl -n kern.tty.ptmx_max. If
+    allocation reaches 80% (default; tunable), lower REAP_AGE to 600s for
+    that sweep so a fresh leak drains in 10 min instead of the 60-min
+    default. No new daemon, no new file watched — single inline block in
+    the existing reap-orphan-claude-procs.sh.
+  notes: |
+    Pillar RESILIENT. Triggered by 2026-05-23 observation that PTY allocation
+    hit 527/511 (over kernel limit) before this session caught it manually.
+    The existing INFRA-1662 reaper would have eventually drained the leak
+    via its 1h age threshold, but with up to 65 min latency between
+    leak-start and first reap. Pressure-aware urgent mode shrinks that to
+    10 min when the machine is near the cap.
+    
+    Single-file change to one inline block in scripts/ops/reap-orphan-claude-procs.sh
+    plus one new CI test plus one event-registry entry. No new daemon.
+    
+    Pairs with INFRA-1662 (the reaper itself).
+  closed_date: '2026-05-23'
+  outcome_id: MISSION-010
+

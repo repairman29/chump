@@ -1,0 +1,14 @@
+- id: INFRA-2674
+  domain: INFRA
+  title: "RESILIENT P0: _chump_gh_maybe_emit_exhausted empty-string→0 coercion — INFRA-2484 missed this, cascade still firing 31 false alarms / 30 min"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"Today 2026-06-03 16-18Z: live GraphQL is 4266/5000 healthy, but ambient still emits 31 graphql_exhausted events / 30 min. Each event has threshold_seen:0 resets_at:unknown source:gh. Each event causes bot-merge.sh to exit 144 (wedge guard) — blocked my DOC-065 ship + 2 others.\",\n\"Root cause: scripts/coord/lib/github.sh:124 local gql_rem=${1:-0} — when _chump_gh_rate_remaining returns a malformed/empty string, the read in chump_gh_record leaves gql_rem as empty string. Calling _chump_gh_maybe_emit_exhausted with empty $1 coerces to 0 via the default. Then 0 =~ ^[0-9]+$ matches, 0 -le 100 fires.\",\n\"INFRA-2484 added the -ge 0 check thinking it would catch negatives but missed that empty-string default → 0 → fires.\",\n\"Fix: replace local gql_rem=${1:-0} with [[ -n ${1:-} && ${1} =~ ^[0-9]+$ ]] "
+    - ""
+    - " return 0; local gql_rem=$1; — reject empty AND require explicit digits BEFORE allowing any threshold comparison.\",\n\"Also: _chump_gh_rate_remaining should validate output shape — if it does not match INT INT INT, return the sentinel -1 -1 0. Today it accepts gh api rate_limit failure output verbatim (e.g. { from a JSON error message) leading to the malformed downstream parse.\",\n\"Regression test scripts/ci/test-graphql-exhausted-empty-coercion-guard.sh: call _chump_gh_maybe_emit_exhausted with empty $1, assert no graphql_exhausted line written to test ambient file.\"\n]"
+  closed_date: '2026-07-21'
+  closed_pr: 3013
+  outcome_id: MISSION-010
+

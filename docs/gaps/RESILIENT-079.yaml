@@ -1,0 +1,15 @@
+- id: RESILIENT-079
+  domain: RESILIENT
+  title: "RESILIENT P1: enable GitHub merge queue — batch + test-together, kill the quadratic per-PR CI reset"
+  status: open
+  priority: P3
+  effort: l
+  description: |
+    [NOT-VIABLE 2026-06-03, conductor] GitHub native merge queue is IMPOSSIBLE here: owner type=User (personal account), required_merge_queue absent, POST returns 422 (merge queue is org/enterprise-only). The GOAL (kill the quadratic per-PR CI reset) is ALREADY ACHIEVED: RESILIENT-082 path-filtering (#3020 merged) + ruleset strict_required_status_checks_policy=false (the real reset driver) + rebaser daemon/workflow kill. DO NOT pick for GitHub-native merge queue. For a LOCAL serialized merge queue see INFRA-1323. Demoted P3. || VERIFIED 2026-06-03 (root cause of throughput collapse): strict=true (now reconciled to false) forced every in-flight PR to re-sync (merge-main) + re-run the FULL pipeline (audit + test shards + e2e + fast-checks) on every main advance -> ~quadratic CI reset on a 4-runner self-hosted pool (each cockpit PR ran CI 3-4x; #3005/3006/3007 each carry 3 merge-main commits). strict=false buys speed by dropping the up-to-date guarantee. The DURABLE fix is GitHub's merge queue: PRs batch, test TOGETHER once, merge in order — one merge never resets another AND the up-to-date guarantee is preserved. Enable it: branch-protection/ruleset merge_queue config + ci.yml merge_group event support (required checks must produce on the queue's synthetic commits) + CHUMP_MERGE_QUEUE_ENABLED=1; runbook at docs/process/MERGE_QUEUE.md.
+  acceptance_criteria:
+    - GitHub merge queue enabled on main and ci.yml runs on merge_group events (required checks produce on the queue's synthetic merge commit)
+    - PRs merge via the queue (batched); a PR no longer accumulates merge-main commits / full-CI re-runs when another PR merges (the reset signature is gone)
+    - the up-to-date guarantee is preserved by the queue testing the combined state, so the per-PR strict can stay false without semantic-conflict risk
+    - CHUMP_MERGE_QUEUE_ENABLED=1 + MERGE_QUEUE.md reflect live state; the farmer (RESILIENT-076) reconciles the merge-queue config to baseline
+  outcome_id: RESILIENT-000
+

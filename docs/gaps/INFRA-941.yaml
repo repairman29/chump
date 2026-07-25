@@ -1,0 +1,8 @@
+- id: INFRA-941
+  domain: INFRA
+  title: "ZERO-WASTE: ambient.jsonl auto-rotate at 50MB — unbounded growth wastes disk I/O on every append for long-running fleets"
+  status: closed
+  priority: P1
+  effort: xs
+  outcome_id: MISSION-010
+

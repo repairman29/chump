@@ -1,0 +1,16 @@
+- id: MISSION-020
+  domain: MISSION
+  title: "MISSION: Verify fleet can clone repairman29/BEAST-MODE and prepare for work (MISSION-015 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The fleet successfully clones `https://github.com/repairman29/BEAST-MODE.git` into its working directory."
+    - The fleet's working directory for the picked gap contains the cloned `BEAST-MODE` repository.
+    - Fleet logs confirm successful cloning and initial setup (e.g., dependency installation if needed for 'port-docs').
+  depends_on: [MISSION-019]
+  closed_date: '2026-07-21'
+  closed_pr: 3205
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

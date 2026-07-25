@@ -1,0 +1,19 @@
+- id: INFRA-2407
+  domain: INFRA
+  title: "RESILIENT P0: Bypass-Tier/Class/Reason/Followup trailer schema + commit-msg validator hook"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Document the 4 trailers in docs/process/BYPASS_TRAILER_SCHEMA.md: Bypass-Tier (T0-T4 enum), Bypass-Class (string, free-form initially), Bypass-Reason (≥10 words string), Bypass-Followup (gap_id INFRA-NNNN)"
+    - "Define the T0-T4 taxonomy: T0=always-OK (operator-broadcast preceded), T1=audit-OK (stale state), T2=suspect (pre-existing trunk-red), T3=bad (tooling bug), T4=banned (admin-merge / no-verify)"
+    - "Commit-msg validator hook scripts/git-hooks/commit-msg-bypass-trailers.sh: any commit body containing a *Bypass* or *Bypass-* token MUST have all 4 trailers; reject otherwise"
+    - Validator hook also runs against scripts/ci/legacy-bypass-trailer-allowlist.txt (one-time grandfather for the 139 existing Bot-Merge-Bypass commits — INFRA-2415 migrates them)
+    - "Smoke test scripts/ci/test-bypass-trailer-validator.sh: missing trailer → exit 1; full trailer set → exit 0; legacy allowlist entry → exit 0"
+    - Pre-commit hook wiring via scripts/setup/install-hooks.sh
+    - Pre-push hook companion that rejects PR bodies referencing Bypass-* in commit body without same trailers
+  notes: |
+    [2026-06-04T00:06:18Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2949
+  outcome_id: MISSION-010
+

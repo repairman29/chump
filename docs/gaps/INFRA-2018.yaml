@@ -1,0 +1,17 @@
+- id: INFRA-2018
+  domain: INFRA
+  title: "ZERO-WASTE: chump ack-rca subcommand + SessionStart nag — track which curators have read mandatory session-start docs"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New chump CLI subcommand chump ack-rca DATE-STAMP [--note STR] — writes ack marker to .chump-locks/acks/SESSION_ID_DATE.json with ts + session_id + role-aliases + optional note.
+    - "SessionStart hook checks .chump-locks/acks/ for ack matching this session_id against each entry in MANDATORY_ACK_DOCS (currently: 2026-05-24 = docs/process/COLLISION_RCA_2026-05-24.md). If not acked, prepends a one-line nag to the digest pointing at chump ack-rca DATE."
+    - Nag stops appearing for that session_id once ack is recorded.
+    - New script scripts/dev/rca-ack-status.sh — operator surface that lists who has acked vs not. Sourced from .chump-locks/acks/ + role-card aliases when available (defaults to session_id list otherwise — not blocked by role-card gap).
+    - docs/process/COLLISION_RCA_2026-05-24.md gets a Read-on-next-session-start trailer added pointing at the new subcommand (one-line follow-up PR).
+    - Smoke test scripts/ci/test-rca-ack.sh — fresh session opens; assert nag appears in digest; run chump ack-rca 2026-05-24; open new turn; assert nag absent.
+    - Pairs with — COLLISION_RCA_2026-05-24.md (inaugural use-case), INFRA-1940 orchestrator productization (done), the role-card schema gap (independent; uses session_id as fallback identity if role-card not yet shipped).
+    - Done definition — chump ack-rca subcommand ships + SessionStart hook reads ack state + smoke test green.
+  outcome_id: MISSION-010
+

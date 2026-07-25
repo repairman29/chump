@@ -1,0 +1,23 @@
+- id: INFRA-1545
+  domain: INFRA
+  title: "EFFECTIVE: wire latent statistical-routing layer — call build_reasoning_params, feed counterfactual lessons as cascade-arm priors, ship bandit-replay regret reporter"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    STRUCTURAL FINDING (Phase A read, 2026-05-16): the Provider trait is NOT defined in this workspace — it lives at axonerai::provider::Provider in the external 'axonerai = 0.1' crate from crates.io (Cargo.toml:108). Chump consumes Provider; doesn't define it. Its signature is fn complete(&self, messages, tools, max_tokens, system_prompt) -> Result<CompletionResponse> — no extra_params slot. Therefore 'extend the Provider trait' is upstream work (fork or contribute), not in-workspace. Realistic local options: (a) introduce a Chump-local ChumpProvider: Provider supertrait with complete_with_params method, used by Chump-internal callers while preserving compatibility with axonerai Provider impls; (b) per-slot HTTP-layer injection inside slot Provider impls (e.g. local_openai::LocalOpenAIProvider — workspace-local) that read context/env for reasoning params and merge into requests; (c) a thin ReasoningParamsProvider wrapper Provider impl that injects params via context (matches existing BattleInstrumentedProvider/SemaphoreProvider/ArcProvider layering pattern). Similarly bandit priors: src/provider_bandit.rs::BanditRouter is workspace-local — adding set_priors() is straightforward. ProviderCascade uses the bandit via bandit_first_available at provider_cascade.rs:1011 — slot vocabulary is the existing ProviderSlot::name field.
+  acceptance_criteria:
+    - "Decision recorded in docs/design/ADAPTIVE_ROUTING.md: chosen path is one of (a) Chump-local ChumpProvider supertrait, (b) per-slot HTTP-layer injection inside src/local_openai.rs and the OpenAI provider wrappers, or (c) ReasoningParamsProvider wrapper Provider impl that captures params at construction and merges before delegating to inner Provider — rationale documented with crates.io upstream-contribution cost vs in-workspace agility"
+    - "src/reasoning_mode.rs::build_reasoning_params() output reaches outgoing API requests for reasoning-capable models via the chosen path, gated by CHUMP_REASONING_MODE env (off"
+    - auto
+    - always) with default off
+    - "src/provider_bandit.rs::BanditRouter gains set_priors(HashMap<arm_name, (alpha_prior, beta_prior)>) method that biases the Beta sampler in select_from_internal by adding priors to (successes, failures) before sampling — arm names match ProviderSlot::name vocabulary"
+    - "New bridge module (e.g. src/cascade_priors.rs) translates src/counterfactual.rs::lesson_from_graph_paths output into per-slot (alpha, beta) tuples and calls BanditRouter::set_priors on the global cascade — counterfactual-to-slot mapping documented"
+    - Unit test in src/provider_bandit.rs asserts non-zero influence on arm selection given a synthetic high-confidence lesson prior on one slot
+    - New 'chump cascade replay --window 24h' subcommand reads kind=cascade_decision events from .chump-locks/ambient.jsonl, runs Thompson + UCB1 replay using src/bin/bandit-replay.rs logic, emits kind=cascade_regret_report to ambient.jsonl with cumulative_regret and arm_distribution
+    - tests/ integration test exercises end-to-end wire-up with synthetic ambient fixture asserting regret_report event emission
+    - docs/design/ADAPTIVE_ROUTING.md describes how reasoning_mode + counterfactual + bandit-replay compose into live dispatch including the chosen trait-extension approach
+  notes: |
+    wave: 4+ (routing brain wire-up; agent quality, post Wave 0-3 plumbing)
+  outcome_id: MISSION-010
+

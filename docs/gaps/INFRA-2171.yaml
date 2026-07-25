@@ -1,0 +1,11 @@
+- id: INFRA-2171
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C2a cycle::select module — candidate selection from work-board"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New module crates/chump-integrator/src/cycle/select.rs (or similar — split out of C2 INFRA-2130 per decompose curator review 2026-05-29).\n- Exports fn select_candidates(workboard: &WorkBoard, max_batch: usize, loc_budget: usize) -> Vec<GapCandidate>.\n- Reads NATS work-board for gaps with status=ready_to_ship AND mode=batched.\n- Sorts: priority (P0 first), then queue_time (oldest first).\n- Caps: max_batch (default 10), loc_budget (default 1500).\n- Returns the selected candidates as a manifest with cycle metadata (priority, queue_age_s, estimated_loc).\n- Skips gaps tagged external_repo: (Mode D handled separately per target curator review).\n- 6+ unit tests: P0-first sort, queue_time tiebreak, max_batch cap, loc_budget cap, external_repo skip, empty queue.\n- cargo fmt + clippy + check GREEN. No new dependencies beyond chump-coord + chump-gap-store.\n- Cross-references META-124, INFRA-2130 (parent C2 that retains the lifecycle skeleton), INFRA-2113 (the picker filter that strips external_repo: tag)."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

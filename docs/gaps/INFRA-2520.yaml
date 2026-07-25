@@ -1,0 +1,13 @@
+- id: INFRA-2520
+  domain: INFRA
+  title: "RESILIENT P1: re-enable main-preflight-watchdog after #2981/INFRA-2458 parser fix lands — disabled 2026-06-03 to fail-open the false-RED fleet-halt"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "once #2981 (INFRA-2458 parser fix) is on main, re-enable the daemon: launchctl load -w ~/Library/LaunchAgents/com.chump.main-preflight-watchdog.plist"
+    - verify it ticks GREEN on a healthy main (parses real gate names, not the em-dash) and does NOT re-emit a false-RED
+    - "context: watchdog was unloaded 2026-06-03 because its parser produced failing_gates=['—'] every 10min, halting all fleet claims; GH CI remained the real trunk gate while it was off"
+  closed_pr: 2981
+  outcome_id: MISSION-010
+

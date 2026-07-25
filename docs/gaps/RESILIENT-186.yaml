@@ -1,0 +1,12 @@
+- id: RESILIENT-186
+  domain: RESILIENT
+  title: "provisioner: add libssl-dev to apt deps (openssl-sys build fail on fresh host)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"add libssl-dev to apt deps (openssl-sys build fail on fresh host)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3260
+

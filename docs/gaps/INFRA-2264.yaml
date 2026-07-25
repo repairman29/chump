@@ -1,0 +1,14 @@
+- id: INFRA-2264
+  domain: INFRA
+  title: "EFFECTIVE: INFRA-1815-sideA — create crates/coord-mesh in internal sibling repo and activate mesh-bridge git dep"
+  status: open
+  priority: P2
+  effort: s
+  notes: |
+    Depends on: INFRA-1815 (Side B scaffold — already shipped, PR in flight).
+    The internal sibling repo work (step 1) does not touch the public Chump git tree.
+    Consumption mechanism decision is already recorded in CP-008: git dep with SHA pin.
+    Internal sibling repo path: /Users/jeffadkins/Projects/chump-proprietary (local clone exists).
+    Do NOT push internal repo changes to public Chump remote.
+  outcome_id: MISSION-010
+

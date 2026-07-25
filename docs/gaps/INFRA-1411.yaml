@@ -1,0 +1,14 @@
+- id: INFRA-1411
+  domain: INFRA
+  title: "RESILIENT: chump gap show prefers YAML when state.db acceptance_criteria contains TODO/WARN placeholders"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When state.db acceptance_criteria contains WARN/TODO/TBD placeholders but docs/gaps/<id>.yaml has concrete AC, chump gap show returns the YAML AC and emits a stale-db warning
+    - "src/gap_store.rs show-path: fallback to YAML when AC is vague; emit kind=gap_show_stale_db_repaired"
+    - "Smoke test scripts/ci/test-gap-show-prefers-yaml.sh: synthetic state.db row with placeholder AC + clean YAML; chump gap show returns YAML AC"
+  closed_date: '2026-05-16'
+  closed_pr: 2218
+  outcome_id: MISSION-010
+

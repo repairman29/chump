@@ -1,0 +1,33 @@
+- id: INFRA-1960
+  domain: INFRA
+  title: "PR #2530 stuck [CI-RED] — CI red for 47m"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2530
+    
+    Detected by stuck-pr-filer (2026-05-25T02:04:10Z).
+    
+    Trigger: CI red for 47m
+    At least one required check has been failing for 47m (threshold 20m). Failing check: System integration test (INFRA-849).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2530 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-1555
+    Branch: chump/infra-1555-claim
+    Failing check: System integration test (INFRA-849)
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-25'
+  closed_pr: 2530
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

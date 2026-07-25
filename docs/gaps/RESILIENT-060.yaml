@@ -1,0 +1,19 @@
+- id: RESILIENT-060
+  domain: RESILIENT
+  title: "RESILIENT: A2A L6c — guardrail pre-commit agent (validate scope/paths/gap-id BEFORE the agent writes)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Tier-1 L6 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (OpenAI Agents-SDK guardrail pattern). Today off-rails is caught only at the git pre-commit hook (post-hoc). Move it earlier: a lightweight gate agent runs BEFORE the main agent edits/commits.
+  acceptance_criteria:
+    - "a guardrail gate runs before the main agent writes any file, validating: edit is within claim.paths, gap-id matches the branch, diff passes cargo fmt --check"
+    - a violation BLOCKS the main agent up front (not detected after the commit by the hook)
+    - the guardrail is a separate pre-condition step, not logic embedded in the main agent prompt
+    - a test asserts an out-of-scope edit is blocked pre-write
+  notes: |
+    [2026-06-03T23:58:31Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+    [2026-06-08T02:15:16Z] FACADE FLAG (verified 2026-06-08): marked done but NOT load-bearing — 0 gap_supervisor_escalated events ever, no durable journal store/tables in state.db, none referenced in worker.sh/run-fleet.sh, and the failures they claim to handle still occur (CREDIBLE-107 stuck in_progress not blocked → 058 never fired; RESILIENT-100 died+reverted+leaked → 059 never fired). 'Done' is premature. Real fix + outcome verification tracked in RESILIENT-131.
+  closed_pr: 3017
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,27 @@
+- id: INFRA-2017
+  domain: INFRA
+  title: 'EFFECTIVE: role-card schema published to ambient on session-start (kind=role_card, session_id+aliases+lane) — RCA
+    Change 2 follow-up'
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+  - 'Emit new ambient event kind=role_card from each curator alias on first turn of a session (and on role-switch within a
+    shell). Required fields: session_id (Claude Code session UUID, not alias-name); aliases (list of role-names this session
+    inhabits); primary_lane (one of EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE/MISSION); active_claim (gap-id or null); wake_mode
+    (cron/event-driven/manual).'
+  - Register kind=role_card in docs/observability/EVENT_REGISTRY.yaml with the field schema.
+  - .claude/agents/orchestrator.md plus each productized curator agent body adds a session-start step that emits role_card
+    via scripts/coord/role-card-emit.sh (matches INBOX_WATCHER_PATTERN.md arming cadence).
+  - New scripts/coord/role-card-emit.sh wrapper takes role-name + lane + active_claim and writes a JSON line to .chump-locks/ambient.jsonl.
+  - New scripts/dev/role-card-query.sh reads ambient.jsonl tail, dedupes by session_id (NOT alias), returns latest role-card
+    per physical session — used by peers for dispatch dedup.
+  - Smoke test scripts/ci/test-role-card-emit-and-query.sh — emit 3 role_cards from one session_id with 3 different aliases
+    over 60 seconds; assert query returns 1 entry with aliases=3-tuple.
+  - Pairs with — MISSION-003 (pillar-assignment matrix, static), INFRA-1940 (orchestrator productization, done), COLLISION_RCA_2026-05-24.md
+    Change 2.
+  - Done definition — role_card event kind registered + emit/query scripts present + smoke test green + at least 2 productized
+    agent bodies updated.
+  outcome_id: MISSION-010
+  closed_date: '2026-07-25'
+  closed_pr: 3289

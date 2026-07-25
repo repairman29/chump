@@ -1,0 +1,11 @@
+- id: RESILIENT-016
+  domain: RESILIENT
+  title: "RESILIENT: Disable non-critical CI jobs in ci.yml (move e2e/golden-path to nightly)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\n    \"In .github/workflows/ci.yml, change e2e-battle-sim, tauri-cowork-e2e, e2e-golden-path jobs: set if: false to disable them on PR runs\",\n    \"Create .github/workflows/ci-nightly.yml: scheduled job (cron: \\\"0 2 * * *\\\") that runs full e2e suite; same test matrix but only on schedule, not on every PR\",\n    \"Verify: fast-checks (format, clippy, cargo test) still run on every PR and gate merges\",\n    \"Impact: 40% reduction in CI time per PR (5min → 3min avg), unblocks 29 queued PRs waiting on pending checks\",\n    \"Test: manual trigger on a non-main branch confirms fast-checks run, e2e jobs skipped\"\n  ]"
+  closed_pr: 2282
+  outcome_id: RESILIENT-000
+

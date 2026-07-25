@@ -1,0 +1,13 @@
+- id: META-081
+  domain: META
+  title: "META: Integrate collision detection with routing system (META-073 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Routing engine avoids paths flagged by collision predictor
+    - Emits 'route_adjusted' event when collision avoidance triggered
+    - Preserves skill-aware routing priority
+  depends_on: [META-076, META-078]
+  outcome_id: MISSION-010
+

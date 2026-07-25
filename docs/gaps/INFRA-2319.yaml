@@ -1,0 +1,15 @@
+- id: INFRA-2319
+  domain: INFRA
+  title: "ZERO-WASTE: triage 6 unmirrored CI gates surfaced by META-268's widened parity scan — either mirror in preflight.rs OR allowlist with reason in ci-parity-exceptions.txt"
+  status: superseded
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Closing immediately as wrong-track: pre-INFRA-2318 the parity check would have showed unmirrored items; AFTER INFRA-2318 landed (which fixed the 3 stale e2e job names), parity shows UNMIRRORED:0. The 6 I observed in pre-commit was the OLD state before my fix took effect. No further work needed.
+  outcome_id: MISSION-010
+

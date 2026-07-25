@@ -1,0 +1,16 @@
+- id: INFRA-1470
+  domain: INFRA
+  title: "RESILIENT: /api/decisions returns 404 but app.js calls it (PWA console errors)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Real bug 2026-05-16: GET /api/decisions returns 404 but app.js fetches it. Surfaces as silent console errors in every PWA load. Either: (a) implement the endpoint and surface a decisions feed, OR (b) remove the orphan caller in app.js, OR (c) point app.js at the existing endpoint that does what it expected. Audit also of the other 6 phantom routes app.js (and others) might call: cost-watch, judgment, mission-grade, waste-tally, operator-attention, notifications, version, autopilot/recent_events.
+  acceptance_criteria:
+    - "Decide for each phantom route: implement / remove caller / redirect"
+    - Update web/v2/*.js callers to consistent state
+    - "Add scripts/ci/test-no-404-callers-pwa.sh: for each fetch('/api/...') in web/v2/, assert the endpoint exists in src/web_server.rs's route table"
+    - Run on every web/v2/ + src/web_server.rs commit
+  skills_required: pwa,ci
+  outcome_id: MISSION-010
+

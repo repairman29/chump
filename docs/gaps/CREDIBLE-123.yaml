@@ -1,0 +1,18 @@
+- id: CREDIBLE-123
+  domain: CREDIBLE
+  title: "CREDIBLE: chump roadmap-status hallucinates starved outcomes — reports Week 1 as 0-shipped-6-open when ROADMAP.md says ✅ shipped with PR numbers (#1204 #1216 #1385 #1384 #1355 #1373 #1276)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproducer: chump roadmap-status reports Week 1 outcome as '0 shipped, 0 in-flight, 6 open, 0 not-filed' listing INFRA-593/591/610/743/733/594 as ⬜ open"
+    - "Ground truth: docs/ROADMAP.md marks all 6 as ✅ shipped with PR numbers (#1204 #1216 #1385 #1384 #1355 #1373 #1276); git log 'Week 1 complete' commit 63829f916 confirms; sqlite3 state.db returns 0 rows for those IDs (they were closed and either purged or never imported under those IDs)"
+    - "Downstream impact: session-start hook prints starved_outcomes=1,4 driving curator/orchestrator behavior toward 'rescue starved Week 1' — but Week 1 is DONE. False starvation steers fleet effort away from real starved outcomes"
+    - "Diagnose: is roadmap-status reading docs/ROADMAP.md text and missing the ✅ markers? Reading a stale snapshot? Reading state.db with a different ID schema (UUID legacy vs INFRA-NNN)? Identify the source-of-truth mismatch"
+    - "Fix: roadmap-status MUST cross-check each listed gap_id against (a) state.db status (b) ROADMAP.md ✅/PR-number markers (c) git log for matching shipped commit. A gap is 'open' only when state.db says status='open' AND it's not marked ✅ in ROADMAP.md AND no merged PR claims to close it"
+    - "Test scripts/ci/test-roadmap-status-truth.sh: fixture state.db + ROADMAP.md where all listed gaps are shipped; assert roadmap-status reports 'starved_outcomes=' (empty) not phantom starvation"
+    - "Doctrine cross-ref: CREDIBLE-105 case study — a tool that LOOKS like it's working (reports plausible drift numbers) while reading the wrong source-of-truth is the canonical band-aid in the analytics layer. Same family as fleet-brief banner ignoring slo-check (CREDIBLE-120) and Alerts(30m) drift (CREDIBLE-121)"
+  closed_date: '2026-07-20'
+  closed_pr: 3103
+  outcome_id: CREDIBLE-000
+

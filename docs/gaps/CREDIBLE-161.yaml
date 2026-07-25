@@ -1,0 +1,13 @@
+- id: CREDIBLE-161
+  domain: CREDIBLE
+  title: "CREDIBLE: claim fuzzy-match guard false-positives on migrated hosts — refused every fleet claim against 22 expired leases"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    chumpd-eu 2026-07-22: every fleet bot-merge claim exited 1 with 'claim refused — fuzzy-match against open PRs / active leases'. The lease table held 22 EXPIRED laptop-era rows (all past expires_at, never vacuumed) and the open-PR set included stale laptop PRs — the fuzzy matcher counts both as duplicates, so a migrated host refuses all work. Bridges applied on host: purge expired leases + CHUMP_CLAIM_NO_FUZZY=1 in fleet env. Durable fixes needed: (a) fuzzy matcher must ignore leases past expires_at; (b) claim (or a reaper) vacuums expired lease rows; (c) the refusal must be loud in cycle logs (it hid inside swallowed _claim_out for hours until CREDIBLE-160's re-emit).
+  acceptance_criteria:
+    - "The change described by \"claim fuzzy-match guard false-positives on migrated hosts — refused every fleet claim against 22 expired leases\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

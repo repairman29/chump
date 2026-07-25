@@ -1,0 +1,14 @@
+- id: INFRA-1385
+  domain: INFRA
+  title: "ZERO-WASTE: tauri-cowork-e2e disposition — PROMOTE to required or KEEP-ADVISORY (nightly-only)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Decision made and documented: tauri-cowork-e2e is either PROMOTED to required (added to ci.yml required checks without advisory gate) OR KEPT-ADVISORY (retained as nightly-only with documented reason for not promoting)"
+    - "If PROMOTE: ci.yml is updated to include tauri-cowork-e2e in the required check list; advisory comment removed; docs/process/CI_GATES.md updated"
+    - "If KEEP-ADVISORY: docs/process/CI_GATES.md has a row for tauri-cowork-e2e with rationale (e.g., flake rate too high for required, environment setup too fragile, low value signal) and a review-by date"
+    - "Flake rate data: scripts/ci/check-gate-fire-rate.sh --gate tauri-cowork-e2e --window 30d run and result cited in decision rationale"
+    - Done = disposition decision in docs/process/CI_GATES.md; no code changes if KEEP-ADVISORY
+  outcome_id: MISSION-010
+

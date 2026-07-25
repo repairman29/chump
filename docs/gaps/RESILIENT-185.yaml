@@ -1,0 +1,13 @@
+- id: RESILIENT-185
+  domain: RESILIENT
+  title: "RESILIENT: provision-chumpd-host.sh is prep-only — doesn't install Linux deps, GTK libs, swap, or build chumpd; can't provision a fresh Ubuntu box"
+  status: in_review
+  priority: P1
+  effort: s
+  description: |
+    provision-chumpd-host.sh (RESILIENT-176) was written prep-only before chumpd merged: it CHECKS for git/gh/cargo but never INSTALLS them, so on a fresh Ubuntu box it fails the dependency inventory and stops. It also never installed the GTK/webkit dev libs (RESILIENT-183), never added swap for low-RAM boxes (8GB OOMs on release builds), never built the chumpd binary the service runs, and never enabled linger (so a --user service dies on SSH logout). Added: --install-deps mode that apt-installs build-essential/pkg-config/git/curl/wget/python3/sqlite3 + the 3 GTK libs, installs gh from its official repo, installs rustup if cargo missing, and adds an 8GB swapfile when RAM<12GB; low-RAM build path (LTO off, 16 codegen units, 3 jobs); builds both chump AND chumpd; writes a chumpd.env template (keys only, no secret values, RESILIENT-173); enable-linger; a fresh-Ubuntu quickstart in the header. Validated on the Helsinki Ubuntu 24.04 box: all 10 apt package names resolve, dry-run plan + swap/dep-detection logic correct, empty+populated build-env array expansion works on bash 3.2 (macOS) and 5.2 (Linux).
+  acceptance_criteria:
+    - "The change described by \"provision-chumpd-host.sh is prep-only — doesn't install Linux deps, GTK libs, swap, or build chumpd; can't provision a fresh Ubuntu box\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

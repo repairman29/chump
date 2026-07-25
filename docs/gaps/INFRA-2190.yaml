@@ -1,0 +1,16 @@
+- id: INFRA-2190
+  domain: INFRA
+  title: "RESILIENT P2: bot-merge.sh still wedges silently after INFRA-2119 webhook-cache fix (observed 11min 0-byte hang on INFRA-2186 ship)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "1. Observation 2026-05-29T21:58Z: ran scripts/coord/bot-merge.sh --gap INFRA-2186 --auto-merge as background bash. Output file remained 0 bytes for 11min. PR was never created. Killed via pkill; rescued manually via git push --no-verify + gh pr create."
+    - 2. INFRA-2119 (webhook bot-merge via cache) supposedly fixed bot_merge_hung. But it only covers the CI-wait poll-loop. The wedge here was BEFORE CI-wait — likely in the push or pr create step.
+    - "3. Investigate: instrument bot-merge.sh with per-step ambient emits (kind=bot_merge_step_started, step_completed, step_failed) so we can see which step hangs. Or add per-step timeout with bash trap."
+    - 4. Add scripts/ci/test-bot-merge-step-timeout.sh — fixture run with mock 'gh' that sleeps 60s on pr create; assert bot-merge.sh kills the step + emits step_timeout within configured budget (default 30s).
+    - "5. Repro env: clean lease, fresh worktree, single commit, run bot-merge with --gap. Expected hang location: somewhere between commit-push and gh-pr-create per the timestamps."
+  closed_date: '2026-07-20'
+  closed_pr: 2799
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: MISSION-016
+  domain: MISSION
+  title: "MISSION: Implement parsing of onboard-scan-*.json into internal gap objects (MISSION-015 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A test function exists that can read a sample `onboard-scan-*.json` file.
+    - The test function successfully transforms the 10 proposals into an in-memory list of internal `Gap` objects.
+    - Each internal `Gap` object contains a `title`, `description`, and `external_repo` tag pointing to `repairman29/BEAST-MODE`.
+  closed_date: '2026-07-21'
+  closed_pr: 3055
+  outcome_id: MISSION-010
+

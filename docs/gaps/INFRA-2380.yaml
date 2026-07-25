@@ -1,0 +1,15 @@
+- id: INFRA-2380
+  domain: INFRA
+  title: "inventory rebuild: fix gh auth gap so doc-only-feature / long-undormant-substrate / unreferenced-gap detectors populate (0 findings — auth missing)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Superseded by INFRA-2368 (PR #2935 merged 2026-06-01) which shipped the GH_TOKEN > GITHUB_TOKEN > gh CLI > skip-with-warning auth chain; 3 PR-dependent detectors (doc-only-feature, long-undormant-substrate, unreferenced-gap) are now wired and disable cleanly when auth absent"
+    - Verified via scripts/ci/test-inventory-pr-backfill.sh (5/5 steps pass)
+  notes: |
+    Re-opened 2026-06-01T19:20Z: PR #2938 (inventory v2) was reverted via #2939 due to regressions (provenance backfill broken, activation→100% unknown, detectors→0 findings). Gap re-queued for careful re-implementation.
+  closed_date: '2026-06-01'
+  closed_pr: 2935
+  outcome_id: MISSION-010
+

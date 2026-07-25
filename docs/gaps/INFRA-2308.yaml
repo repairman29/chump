@@ -1,0 +1,14 @@
+- id: INFRA-2308
+  domain: INFRA
+  title: trunk-red rescue — add install-integrator-daemon.sh + install-stale-pr-rebase-bot.sh to optional-installers-allowlist.txt (yesterday's merges left both unmapped; pr-hygiene fails queue-wide)
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/setup/optional-installers-allowlist.txt gains 2 entries (alphabetical): install-integrator-daemon.sh and install-stale-pr-rebase-bot.sh\n2. bash scripts/ci/test-install-script-manifest.sh exits 0 (was failing with 2 unmapped)\n3. PR ships within 5 min via bot-merge auto-merge"
+  notes: |
+    Trunk-red rescue. #2869 (INFRA-2302) + #2871 (INFRA-2295) merged installers without manifest update; pr-hygiene gate fails on every subsequent PR until fixed. P0/xs.
+  closed_date: '2026-05-30'
+  closed_pr: 2884
+  outcome_id: MISSION-010
+

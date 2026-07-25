@@ -1,0 +1,17 @@
+- id: INFRA-1452
+  domain: INFRA
+  title: "EFFECTIVE: chump orchestrate auto-fallback to LLM when stub returns intent_parse_unknown"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Real-binary smoke 2026-05-15: prompt 'ship the offline quickstart by EOD' returns 'intent_parse_unknown' — the stub doesn't recognize freeform demo prompts. Currently the operator has to manually invoke the LLM path. Per June-6 demo criterion #4 ('operator types natural language, fleet responds'), the orchestrator should AUTO-FALLBACK to LLM-driven parsing when stub returns unknown AND ANTHROPIC_API_KEY (or other LLM provider) is configured. Surface the fallback explicitly in output so operator knows which path served them.
+  acceptance_criteria:
+    - When stub returns intent_parse_unknown AND a configured LLM provider exists, automatically retry via LLM-driven parser
+    - Output line includes kind=intent_parse_llm with the resolved command + provider used
+    - If no LLM provider is configured, current intent_parse_unknown behavior unchanged with hint message 'set ANTHROPIC_API_KEY to enable freeform intents'
+    - "Cost-meter: each LLM-fallback charges to a configurable budget envelope (default /bin/zsh.01 per intent, refuses past /day unless --confirm-budget)"
+    - "Smoke test scripts/ci/test-orchestrate-llm-fallback.sh: stub-unknown → asserts LLM path takes over and emits intent_parse_llm"
+  closed_date: '2026-05-17'
+  outcome_id: MISSION-010
+

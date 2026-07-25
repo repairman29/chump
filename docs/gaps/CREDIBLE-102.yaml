@@ -1,0 +1,14 @@
+- id: CREDIBLE-102
+  domain: CREDIBLE
+  title: "CREDIBLE: verify-merge bar must WAIT for CI to reach a terminal state before judging (pending is not failure) + advisory-check allowlist — fixes universal false-HELD(ci) on still-running checks, proven by BEAST-MODE PR #3"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Gate 1 polls check-runs every CHUMP_VERIFY_CI_POLL_SECS (default 30) until all non-advisory checks reach a terminal conclusion (SUCCESS/FAILURE/CANCELLED/TIMED_OUT/SKIPPED/NEUTRAL/ACTION_REQUIRED/STALE) or CHUMP_VERIFY_CI_WAIT_SECS (default 1200) elapses — pending checks no longer cause immediate HELD
+    - "Verdict logic: all non-advisory terminal checks are SUCCESS/SKIPPED/NEUTRAL → PASS; any non-advisory FAILURE/CANCELLED/TIMED_OUT/ACTION_REQUIRED → HELD(ci) with check names; timeout with still-pending non-advisory checks → HELD(ci_pending) with check names"
+    - CHUMP_VERIFY_CI_ADVISORY_CHECKS (comma-separated substrings, case-insensitive) marks matching checks as non-gating — their pending/failure state never causes a HELD, only a log message
+    - "Four new Rust unit tests pass: (a) pending→pending→SUCCESS=PASS, (b) pending→FAILURE=HELD(ci), (c) timeout with pending=HELD(ci_pending), (d) advisory check pending with required checks SUCCESS=PASS; all existing verify-merge CI tests remain green"
+  closed_pr: 3086
+  outcome_id: MISSION-010
+

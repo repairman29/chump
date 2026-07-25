@@ -1,0 +1,14 @@
+- id: RESILIENT-138
+  domain: RESILIENT
+  title: "RESILIENT (Cut-Friction): chump claim must sync the gap YAML into the worktree — every fresh-gap ship hits bot-merge not-found until copied in"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Part of MISSION-044. A freshly reserved+claimed gap is NOT present in the worktree (docs/gaps/<ID>.yaml + state.db entry live only in the main checkout), so bot-merge preflight reports "not found in state.db" and wedges until the operator/agent manually copies the YAML + runs chump gap import. Hit on CREDIBLE-128, RESILIENT-133, and META-287 this session.
+  acceptance_criteria:
+    - after chump claim, docs/gaps/<ID>.yaml + the state.db entry exist in the worktree with no manual copy
+    - OR bot-merge auto-imports the gap from the canonical store on not-found
+    - a freshly reserved+claimed gap ships via bot-merge with no manual gap-def step
+  outcome_id: RESILIENT-000
+

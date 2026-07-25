@@ -1,0 +1,18 @@
+- id: INFRA-1844
+  domain: INFRA
+  title: "EFFECTIVE: vendor ai-gm-service multi-model ensemble (Together.ai then Qwen then Mistral fallback) for Chump LLM abstraction layer"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read repairman29/ai-gm-service/aiGMMultiModelEnsembleService.js and togetherAIService.js via gh api; document the fallback chain construction (Together.ai ChatKimi K2 then Qwen 72B then Mistral) plus the quality-vs-cost heuristics in docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+    - Document the rate-limit and error-class handling — which errors trigger immediate fallback vs which trigger retry on same provider
+    - Port the ensemble pattern into src/inference_provider.rs as a Rust-native struct ProviderChain with retry+fallback+metrics — do not import JS, rebuild in our stack
+    - Plug into the bicameral-mind router (CP-011) as the Neocortex-tier implementation — chain order configurable via env CHUMP_PROVIDER_CHAIN=anthropic,openai,together,ollama
+    - Smoke test scripts/ci/test-provider-chain.sh against mock-services (CP-009) — simulate provider failure, verify fallback chain advances, verify metrics emitted
+    - Ambient event kind=provider_fallback registered in EVENT_REGISTRY.yaml with from_provider, to_provider, reason fields
+    - "Vendoring lineage comment in src/inference_provider.rs: 'Vendored from repairman29/ai-gm-service at commit SHA, original aiGMMultiModelEnsembleService.js (CP-012)'"
+    - Cross-pollination brief CP-012-ai-gm-ensemble.md
+    - Coordinate with INFRA-622 Auth modes (provider chain extends auth-fallback pattern) and CP-001 neural-farm (neural-farm becomes a provider option in the chain)
+  outcome_id: MISSION-010
+

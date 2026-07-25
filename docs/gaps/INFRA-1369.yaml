@@ -1,0 +1,18 @@
+- id: INFRA-1369
+  domain: INFRA
+  title: "EFFECTIVE: cut chump v0.1.2 release — brew tap pins 2026-04-30 v0.1.1 binary that predates --version handler (INFRA-148, merged 2026-05-02), causing every FTUE CI run to fail because v0.1.1 falls through to Ollama agent loop on `chump --version`"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Root cause: brew tap repairman29/homebrew-chump pins prebuilt v0.1.1 (released 2026-04-30). The --version handler in src/main.rs:666-674 was added 2026-05-02 in PR #767 (INFRA-148, commit d5242719). The released binary lacks it, so 'chump --version' falls through to the LLM agent loop and tries Ollama at OPENAI_API_BASE=http://127.0.0.1:11434/v1, exit 1. Verified via gh run view 25943055744."
+    - Cut release v0.1.2 from current main HEAD via the canonical release workflow; confirm the four target-triple binaries (aarch64-apple-darwin, x86_64-apple-darwin, aarch64-unknown-linux-gnu, x86_64-unknown-linux-gnu) publish as chump-<triple>.tar.xz with sha256 sums.
+    - "Update repairman29/homebrew-chump tap formula to v0.1.2 with new sha256 sums. Note: the Formula/chump.rb in THIS repo is dead/stale (points at main.tar.gz, not what brew tap installs). Verify on a clean macos-15 runner that 'brew install chump && chump --version' exits 0."
+    - ftue-clean-machine-2026.yml passes end-to-end on a PR that touches scripts/dispatch/** (currently fails on every such PR since 2026-05-02).
+    - This repo's stale Formula/chump.rb either deleted OR replaced with a clear comment that the canonical formula lives at github.com/repairman29/homebrew-chump (today's investigation lost 30 minutes to this misleading file).
+    - File follow-up gap for a release-staleness gate that fails CI when the latest GitHub release is > 14 days behind main HEAD, so this drift is caught structurally.
+    - "Test: re-run 'gh workflow run ftue-clean-machine-2026.yml --ref <pr-branch>' on an open PR; assert the chump --version step prints a version and exits 0."
+  closed_date: '2026-05-15'
+  closed_pr: 2114
+  outcome_id: MISSION-010
+

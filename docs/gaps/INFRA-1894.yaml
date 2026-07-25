@@ -1,0 +1,12 @@
+- id: INFRA-1894
+  domain: INFRA
+  title: "DEMO-DASHBOARD-TUI: scripts/dev/chump-dashboard-tui.sh one-shot terminal dashboard (ships + lightning + leases + inbox) for live operator pitch (META-067 Track 3)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. New scripts/dev/chump-dashboard-tui.sh: one-shot terminal render (no curses, no polling) — sections: (a) today's ship count + median ship time (from lightning-demo-timeline.sh --json), (b) active leases table (chump --leases), (c) inbox unread count (chump-inbox.sh count), (d) pillar pickable breakdown (chump gap audit-priorities --json), (e) last 5 ambient ALERT/WARN/STUCK events\n2. Each section is < 10 lines so the whole dashboard fits in a single 80x40 terminal — screenshot-ready\n3. --json mode emits the same data as a single JSON envelope for dashboard consumers (INFRA-1883 will eat this)\n4. --watch mode runs the render in a tight loop (default 5s interval); plain mode is one-shot\n5. Smoke test scripts/ci/test-chump-dashboard-tui.sh: stub gh + chump + create synthetic ambient, run, assert all 5 sections present in output\n6. Operator-facing: this IS the live dashboard the DEMO_5MIN.md pitches as 'screenshot #1'; pairs with lightning-demo-timeline.sh (the historical view) to give present + retrospective views in two commands"
+  closed_date: '2026-05-24'
+  closed_pr: 2481
+  outcome_id: META-067
+

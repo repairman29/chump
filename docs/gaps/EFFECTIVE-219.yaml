@@ -1,0 +1,15 @@
+- id: EFFECTIVE-219
+  domain: EFFECTIVE
+  title: "EFFECTIVE: background daemon deletes docs/gaps/<ID>.yaml between chump gap reserve and chump claim — state.db row remains"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproducer: chump gap reserve --domain X --title 'foo' → docs/gaps/X-NNN.yaml written → within minutes, file is gone from disk while state.db row remains open"
+    - "Identify the deleting daemon — survey candidates: scripts/ops/gap-doctor-safe-sweep.sh, scripts/ops/orphan-yaml-prune.sh, scripts/ops/registry-orphan-reaper.sh, gap-lifecycle-manager (INFRA-NNN). Confirm via fsevents/dtruss OR by inspecting each daemon's deletion logic."
+    - "Fix: any daemon deleting docs/gaps/<ID>.yaml MUST first verify the state.db row is ABSENT (NOT just status:done/status:closed). YAML+state.db divergence means STATE WINS — daemon emits an audit event and rewrites the YAML from state.db rather than deleting it."
+    - "Add audit emit: kind=yaml_orphan_pruned with gap_id, file_path, reason, daemon_name (so the source-of-deletion is identifiable next time)"
+    - "Test scripts/ci/test-yaml-orphan-prune-state-aware.sh: state.db row X-NNN exists, X-NNN.yaml exists → daemon does NOT delete. state.db row absent, YAML present → daemon deletes WITH the audit emit."
+    - "Doctrine cross-ref: CASE STUDY referenced in docs/process/DURABLE_FIX_DOCTRINE.md (CREDIBLE-105) — the 2026-06-05 RESILIENT-110 ship attempt was forced into a YAML-rewrite cycle by this bug"
+  outcome_id: EFFECTIVE-000
+

@@ -1,0 +1,16 @@
+- id: EFFECTIVE-027
+  domain: EFFECTIVE
+  title: wedge-watch live tail panel in PWA cockpit (W-001..W-012 signature surface)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New /api/wedge/status endpoint shells out to scripts/coord/wedge-watch.sh --json
+    - New <chump-wedge-watch-panel> web component renders in operator-attention zone
+    - Shows active wedge classes (W-001..W-012) with detection signature + 1-click Recovery button
+    - Recovery POSTs to /api/wedge/recover (shells scripts/coord/wedge-recover.sh --step <N>); shows progress
+    - If wedge-class catalog (docs/process/WEDGE_CLASS_CATALOG.md) lists hardening shipped hide that class as auto-healed
+    - Pairs with MISSION-006 (catalog + watch + recover scripts landed)
+  closed_pr: 3051
+  outcome_id: EFFECTIVE-000
+

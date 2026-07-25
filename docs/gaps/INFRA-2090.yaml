@@ -1,0 +1,10 @@
+- id: INFRA-2090
+  domain: INFRA
+  title: "RESILIENT P1: subagent token + dollar budget enforcement — extend INFRA-1972 parent-kill from wall-clock-only to CHUMP_SUBAGENT_TOKEN_BUDGET + CHUMP_SUBAGENT_DOLLAR_BUDGET (Bet 2, extends Marcus M-A)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Extend src/dispatch.rs wait_with_hang_detection (shipped INFRA-1972) to enforce two NEW budgets alongside the existing CHUMP_SUBAGENT_BUDGET_S wall-clock kill: (a) CHUMP_SUBAGENT_TOKEN_BUDGET — kill on streaming-token-counter exceed; (b) CHUMP_SUBAGENT_DOLLAR_BUDGET — kill on per-model-rate-card cost exceed."
+  outcome_id: MISSION-010
+

@@ -1,0 +1,9 @@
+- id: EFFECTIVE-003
+  domain: EFFECTIVE
+  title: "EFFECTIVE: text-to-tool-call adapter for models that emit XML tool tags instead of native tool_calls"
+  status: done
+  priority: P2
+  effort: m
+  closed_pr: 2038
+  outcome_id: EFFECTIVE-000
+

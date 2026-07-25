@@ -1,0 +1,10 @@
+- id: INFRA-777
+  domain: INFRA
+  title: "RESILIENT: chump --version must not require Ollama — blocks FTUE CI"
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-06-08'
+  closed_pr: 1426
+  outcome_id: MISSION-010
+

@@ -1,0 +1,10 @@
+- id: INFRA-2144
+  domain: INFRA
+  title: "RESILIENT P3: broadcast.sh --help — print usage instead of erroring"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Add --help / -h to broadcast.sh; print usage with valid event types (INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK) + FEEDBACK kinds (defect/proposal/preference/retro) + flag options (--to, --reply-to once INFRA-2148 lands, etc). Test: bash scripts/coord/broadcast.sh --help exits 0 with usage printed. Currently exits 1 with 'Unknown event type: --help'."
+  outcome_id: MISSION-010
+

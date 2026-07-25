@@ -1,0 +1,14 @@
+- id: INFRA-3406
+  domain: INFRA
+  title: "INFRA: free-tier file tools wrote to CHUMP_REPO main checkout — model patches stranded outside dispatch worktree"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    Free-tier file tools (read_file/patch_file/git_commit) resolve paths via CHUMP_REPO, inherited as the MAIN checkout — every model patch and commit landed in /root/Chump instead of the dispatch worktree. 15 EU cycles reported 'zero-commit branch' while real model work (cockpit.js for INFRA-1592, chump-commit.sh for INFRA-3389) sat stranded in the main tree. Fix: execute_gap pins CHUMP_REPO to the worktree cwd for the agent run; free_tier_ship restores main_checkout_root() so bot-merge claim/registry paths stay canonical.
+  acceptance_criteria:
+    - "The change described by \"free-tier file tools wrote to CHUMP_REPO main checkout — model patches stranded outside dispatch worktree\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3256
+

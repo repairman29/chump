@@ -1,0 +1,18 @@
+- id: CREDIBLE-154
+  domain: CREDIBLE
+  title: "CREDIBLE: worker cycle_end kind=shipped without a PR — backgrounded bot-merge dies with the cycle; verify PR-exists before claiming shipped"
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Observed 2026-07-19 15:04-15:40 (first hour of fleet restart): W1 INFRA-1730 and W2 INFRA-1732 cycles logged cycle_end rc=0 kind=shipped, but NO PR was ever created for either (verified: gh pr list + gaps still open, no closed_pr). Cycle transcript shows the agent launched bot-merge.sh via run_in_background and ended its turn 'waiting for the notification' — worker.sh counted rc=0 as shipped while the backgrounded bot-merge died with the cycle process. Both gaps were then re-picked, redoing work from scratch (waste + false throughput metrics: 2 of the 3 'ships' in the first hour were phantom). Same class as VOA seed bot-merge-silent-wedge + the CREDIBLE-105 ban on reporting a mechanism active before verifying it.
+  acceptance_criteria:
+    - worker.sh cycle_end classifies kind=shipped ONLY if a PR number exists for the gap branch (gh/cache lookup or bot-merge exit report), else kind=unverified_ship with the branch name preserved
+    - "dispatch prompt epilogue forbids backgrounding bot-merge.sh: the subagent must wait synchronously per SUBAGENT_DISPATCH.md budget and report the PR number or the failure"
+    - re-pick of a gap with an existing unmerged branch reuses/rescues the branch instead of starting from scratch (or emits wip_rescue event)
+    - "regression test: fixture cycle with fake backgrounded bot-merge must NOT count as shipped"
+  notes: |
+    Week-2 registry-truth lane; found during first-hour restart observation 2026-07-19.
+  closed_date: '2026-07-19'
+  closed_pr: 3206
+

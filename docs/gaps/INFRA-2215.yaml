@@ -1,0 +1,18 @@
+- id: INFRA-2215
+  domain: INFRA
+  title: "EFFECTIVE: PWA cockpit dashboard tile UI (3-tile layout for INFRA-1883 endpoint) — Marcus-arc demo #3 render"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "PWA home page renders 3 tiles consuming GET /api/dashboard-summary (shipped in INFRA-1883 PR #2777): ships-today / ci-qa-score / active-leases"
+    - Tiles lazy-load on first render; show a skeleton state until JSON returns
+    - "ci_qa_score tile colour-codes: green >=80%, amber 50-79%, red <50%, gray for null"
+    - active_leases tile renders top-10 gap_id + expires_at countdown, sorted by expiry-soonest-first
+    - Network failure renders an inline error pill + a retry button, not an empty tile
+    - "Marcus-review-ready: visible from /, no auth gate, looks polished enough to screenshot"
+    - No tile mutates state — read-only surface (operator clicks gap_id to navigate, not to edit)
+  notes: |
+    Filed by curator-opus-shepherd-2026-05-29 as the UI follow-up to INFRA-1883 (the API surface, PR #2777). Sub-agent shipping INFRA-1883 (PR #2777) explicitly noted to file this. Marcus-arc 2026 outcome demo #3.
+  outcome_id: MISSION-010
+

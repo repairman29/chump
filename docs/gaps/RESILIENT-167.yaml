@@ -1,0 +1,14 @@
+- id: RESILIENT-167
+  domain: RESILIENT
+  title: "RESILIENT: fleet-keeper reports 'autopilot NOT loaded — keeper will not run' even when fleet-autopilot is running → dead pool not auto-revived"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. fleet-keeper-ctl.sh's 'autopilot loaded' check recognizes a running com.chump.fleet-autopilot (launchctl shows a live pid) — it currently reports 'NOT loaded' even when the daemon runs (observed pid 43428). 2. With autopilot running, the keeper executes its relaunch logic and re-spawns the worker pool when workers exit. 3. Regression: simulate worker-pool death (0 claude -p, hollow panes) and assert the keeper revives it within one interval."
+  closed_date: '2026-07-21'
+  closed_pr: 3200
+  outcome_id: RESILIENT-000
+  evidence: |
+    2026-06-23: worker pool died (workers exited; 0 claude -p; hollow tmux panes counted as live) and NEITHER keeper nor autopilot revived it for hours; keeper-ctl persistently said 'autopilot NOT loaded — keeper will not run' even after kickstarting fleet-autopilot to a running pid. Pool only revived via manual run-fleet.sh. Durable fleet-pool supervision gap (META-066 sibling).
+

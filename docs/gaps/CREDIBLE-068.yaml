@@ -1,0 +1,11 @@
+- id: CREDIBLE-068
+  domain: CREDIBLE
+  title: "CREDIBLE: Merge Queue Health Stream — real-time queue depth to ambient.jsonl"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\n    \"Implement scripts/coord/monitor-merge-queue.sh (continuous daemon): every 10s, polls gh run list --status queued + gh pr list --state open --search \\\"autoMergeRequest:true\\\". Outputs JSON to stdout: {queued_workflows: N, auto_merge_prs: M, queue_depth_pct: (N/MAX)*100, ts: ISO8601}.\",\n    \"Route output to ambient.jsonl: each 10s tick emits kind=merge_queue_health with fields queued_workflows, auto_merge_prs, queue_saturation_pct, backpressure_recommended (true if saturation > 70%).\",\n    \"Register event in EVENT_REGISTRY.yaml with consumers=[fleet_health, agent_backpressure]. Add thresholds: queue_alert at 50 jobs, queue_critical at 100 jobs.\",\n    \"Dashboard integration: /api/fleet-status includes merge_queue_health JSON, shows real-time queue depth and saturation pct. Operator can see if merge path is healthy before spawning work.\",\n    \"Fallback: if gh api calls timeout, emit queue_health_check_failed event (not a hard error, just advisory). Fleet assumes queue is healthy and continues.\",\n    \"Test: scripts/ci/test-merge-queue-monitor.sh mocks gh output with synthetic queue states (empty, 50%, 100% saturated) and validates event emissions and thresholds.\"\n  ]"
+  closed_date: '2026-05-23'
+  outcome_id: CREDIBLE-000
+

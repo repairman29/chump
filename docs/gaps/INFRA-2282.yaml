@@ -1,0 +1,23 @@
+- id: INFRA-2282
+  domain: INFRA
+  title: "EFFECTIVE P1: chump-pe-suite-demo.sh breaks on macOS bash 3.2 (default) — Beat 4 declare -A unbound variable; refactor to indexed arrays"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    INFRA-2234 / PR #2790 shipped the 5-min P&E suite demo runbook + scripts/demo/chump-pe-suite-demo.sh as a 'pitch surface for evaluators.' Cold-walkthrough on 2026-05-30T08:06Z found it breaks at Beat 4 with 'line 184: ci: unbound variable' on stock macOS bash 3.2.57 (the default). Two of five beats (4 'curators reply' + 5 'resolve + roadmap pivot') never run. Root cause: 6 'declare -A' associative-array usages in beats 4-5; assoc arrays require bash 4+. macOS doesn't ship bash 4+. The 'set -euo pipefail' at top of the script catches the parser falling back to arithmetic-index mode (where 'ci-audit' becomes 'ci minus audit' and 'ci' is unbound). Result: the demo only works on machines where homebrew bash is in PATH — i.e. NOT on a fresh evaluator setup. Filing as P1 because this is the Marcus-arc external-facing pitch surface — broken pitch surface = no Marcus demo.
+  acceptance_criteria:
+    - Refactor scripts/demo/chump-pe-suite-demo.sh beats 4 and 5 to use parallel indexed arrays (or a function-call-per-role pattern) instead of declare -A; works on bash 3.2
+    - Add a top-of-script bash version note in the comment header documenting bash 3.2+ compatibility
+    - "Demo runs end-to-end on stock macOS bash 3.2.57 with no errors: bash scripts/demo/chump-pe-suite-demo.sh --fast exits 0 and prints all 5 beats + 'Demo complete' line"
+    - All 5 'curator reply' bodies are preserved verbatim (no content loss in the refactor)
+    - Beat 5 'resolve + roadmap pivot' produces the same consensus-decision + roadmap-keeper output as the assoc-array version
+    - "Smoke test scripts/ci/test-chump-pe-suite-demo.sh: runs all 5 beats under explicit /bin/bash, asserts exit 0 + asserts each beat's header appears in output"
+    - chump preflight green before push
+  depends_on: [INFRA-2234]
+  notes: |
+    [2026-05-30T16:21:01Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2847 auto-closed) respawn-handled:2847
+    [2026-06-04T00:16:24Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2847
+  outcome_id: MISSION-010
+

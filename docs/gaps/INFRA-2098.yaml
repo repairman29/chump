@@ -1,0 +1,12 @@
+- id: INFRA-2098
+  domain: INFRA
+  title: "RESILIENT P1: chump_cargo_build (cargo-helpers.sh, INFRA-2086) also hardcodes $ROOT/target — same path bug as INFRA-2096; honor CARGO_TARGET_DIR via cargo metadata"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/coord/lib/cargo-helpers.sh chump_cargo_build() resolves binary path via `cargo metadata --no-deps --format-version 1 .target_directory` (with $CARGO_TARGET_DIR fallback, then $ROOT/target) instead of hardcoding $_repo_root/target/$_profile/$_bin\n2. scripts/ci/test-chump-cargo-build-wrapper.sh updated to validate the path-resolution logic (T1 case: when CARGO_TARGET_DIR set, wrapper checks the env-pointed dir, not $ROOT/target)\n3. Migrated scripts (currently test-mcp-coord-smoke.sh adopted in INFRA-2096 with same fix) still pass under the wrapper\n4. Local validation: with CARGO_TARGET_DIR=/some/where set, running chump_cargo_build --package chump-mcp-coord --binary chump-mcp-coord succeeds (returns 0) when /some/where/debug/chump-mcp-coord exists; returns SILENT FAILURE only when binary missing across ALL candidate paths"
+  closed_date: '2026-05-29'
+  closed_pr: 2693
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: ZERO-WASTE-025
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: chump release binary is 906MB but 59MB stripped — 94% is debug symbols shipped on release"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Measured on chumpd-eu 2026-07-23: /root/.cargo/bin/chump is 906MB; 'strip' takes it to 59MB — so 847MB (94%) is debug symbols. Root cause: the [profile.release] in Cargo.toml builds with debuginfo=2 (the bot-merge clippy/build command shows '-C debuginfo=2'). Every fleet host ships a ~1GB binary that's 94% symbol tables. Impact: disk (16GB target/ + the binary itself), slower cp/scp on deploys (the 'Text file busy' + minutes-long binary copies observed all night), slower cold builds. Fix options, in order of preference: (a) [profile.release] strip = "debuginfo" (keeps the binary small, drops debug tables — panics still give symbol names); (b) strip = true (fully stripped, smallest); (c) split-debuginfo = "packed" (keep a separate .dwp for crash analysis). Recommend (a) — 94% size cut, retains enough for backtraces. Verify: release build produces a <100MB binary; a deliberate panic still shows function names in the backtrace.
+  acceptance_criteria:
+    - "The change described by \"chump release binary is 906MB but 59MB stripped — 94% is debug symbols shipped on release\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3257
+

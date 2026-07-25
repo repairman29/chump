@@ -1,0 +1,16 @@
+- id: RESILIENT-115
+  domain: RESILIENT
+  title: "RESILIENT P0: oauth-token-refresh.sh default service name is wrong — 'Claude Code-credentials' should be 'Claude Safe Storage' (operator AUTH_DEAD spam for 17h+)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    VERIFIED EMPIRICALLY 2026-06-05 22:52Z. scripts/coord/oauth-token-refresh.sh:37 defaults KEYCHAIN_SERVICE='Claude Code-credentials' but the actual macOS Keychain entry for Claude Code is svce='Claude Safe Storage' acct='Claude Key' (verified via 'security dump-keychain login.keychain-db | grep -i claude' on operator's machine). Result: every 5 min for 17h+ today the refresh daemon emits oauth_token_refresh_failed reason=keychain_miss, the oauth-token.json mtime grows, farmer.sh check_auth() crosses OAUTH_MAX_AGE_S threshold, operator-recall AUTH_DEAD fires (~1.1 events/min, 274+ in last 4h). Operator's AUTH IS fine (fleet shipping, ANTHROPIC_API_KEY in .env works), refresh just keeps misfiring. FIX: change KEYCHAIN_SERVICE default to 'Claude Safe Storage' OR add fallback chain ('Claude Safe Storage' → 'Claude Code-credentials'). Also update the script's comment header (line 5) + help text (line 137) to match. 3-line patch. Pairs with RESILIENT-113 (farmer.sh fallback) and RESILIENT-114 (fleet doctor auth check) for full coverage but RESILIENT-115 is the acute hot-fix that stops the noise tonight.
+  acceptance_criteria:
+    - scripts/coord/oauth-token-refresh.sh default KEYCHAIN_SERVICE is 'Claude Safe Storage' (or a fallback chain that finds it)
+    - "After ship + daemon reload: oauth-token.json mtime updates within 5 min"
+    - operator_recall AUTH_DEAD events stop firing on operator's box
+  closed_date: '2026-07-21'
+  closed_pr: 2655
+  outcome_id: RESILIENT-000
+

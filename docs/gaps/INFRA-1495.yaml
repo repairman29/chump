@@ -1,0 +1,18 @@
+- id: INFRA-1495
+  domain: INFRA
+  title: "CREDIBLE: state.db<->docs/gaps YAML sweep emits per-orphan ambient + auto-writes missing YAML mirrors (alert today: 70 OPEN gaps in state.db with no YAML — silent drift accumulates)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Audit on 2026-05-16 16:06Z: ambient alert 'gap_drift_orphan: 70 OPEN gap(s) in state.db with no YAML mirror'. YAML is optional post-INFRA-760 but state.db→YAML drift accumulates silently because no daemon backfills missing mirrors. Per CREDIBLE-012 the sweep must skip done/superseded gaps and only restore YAML for open gaps. Pairs with the existing chump gap show --yaml capability (just needs to be invoked systematically).
+  acceptance_criteria:
+    - New scripts/coord/state-db-yaml-sync.sh — for each open gap in state.db, check docs/gaps/<ID>.yaml exists; if not, run `chump gap show <ID> --yaml` and write to docs/gaps/<ID>.yaml
+    - "--dry-run reports the orphan count without writing"
+    - "--apply writes the missing YAMLs and commits via scripts/coord/chump-commit.sh with message \"chore(state-db-yaml-sync): backfill N YAML mirrors per CREDIBLE-012\""
+    - Emit kind=state_db_yaml_orphan per missing YAML at sweep time (lets fleet brief surface the trend)
+    - Hourly launchd entry runs in --dry-run mode by default; bump to --apply once stable
+    - CI test scripts/ci/test-state-db-yaml-sync.sh seeds state.db with N gaps, removes M YAML files, asserts sweep finds exactly M orphans and applies them
+    - "Hygiene rule: never write YAML for done/superseded gaps (per CREDIBLE-012); only OPEN status"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,21 @@
+- id: CREDIBLE-114
+  domain: CREDIBLE
+  title: "A2A ENFORCEMENT: PreToolUse hook asserts inbox-drained (or refuses tool call) — A2A becomes 'oxygen', impossible to ignore (operator framing 2026-06-05T23:30Z)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Add scripts/coord/inbox-assert-drained.sh that exits 0 if recipient queue empty for THIS session (own id + all-opus + role aliases), exits 1 with the unread count + first 3 subject lines if anything pending.
+    - "Add a PreToolUse hook (in .claude/settings.json + opt-in via CHUMP_A2A_ENFORCE=1) that runs inbox-assert-drained.sh and refuses the tool call when non-empty, telling the agent the exact command to run: `scripts/coord/chump-inbox.sh read`. Hook is opt-in initially to avoid breaking existing sessions; promote to default after 7 days of fleet usage."
+    - "After 7d soak: flip default to CHUMP_A2A_ENFORCE=1 in .claude/settings.json — opt-OUT via CHUMP_A2A_ENFORCE=0 instead."
+    - "Smoke test: with one unread message in queue + CHUMP_A2A_ENFORCE=1, any Bash/Edit/Write call from Claude Code is BLOCKED with the prescribed read command. After running chump-inbox.sh read, the next tool call succeeds."
+    - "Honest-report carve-out: the read command itself must not be gated (otherwise circular block)."
+  depends_on: [EFFECTIVE-222]
+  notes: |
+    Operator framing 2026-06-05T23:30Z: 'beat them over the head with this and make them use A2A like it's oxygen for them'. Today's failure mode: agents file gaps, broadcasts, FEEDBACK — and other agents systemically don't see them because (a) the queue is push-only (EFFECTIVE-222), (b) checking inbox is advisory not enforced. This gap is the enforcement half of (a)+(b). DEPENDS-ON: EFFECTIVE-222 (persistent queue must land before the assert can read from it). CITES: A2A_MASTER_PLAN_2026-06-03.md §0 ('Nobody turned it on. The fix is fast: flip the switches').
+    Sibling: CREDIBLE-105 (durable-fix doctrine) cites same broadcast — 'do not report a mechanism as active until you have verified it is active'. This gap operationalizes that meta-clause.
+    [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): hook must DRAIN-THEN-PROCEED — snapshot current inbox, process those msgs, then unblock — NOT block-until-empty (livelocks when A's inbox holds B's msg and B's holds A's reply). Distinguish draining-received from blocking-on-sent-replies (never block sends). Priority tiers (drain P0/P1, let P2 accumulate); inbox TTL auto-archives stale. Implement at HARNESS level (transparent middleware), not a prompt convention (every framework that tried prompt-convention drain collapsed under load). Novel pattern (no direct A2A/LangGraph/AutoGen prior art; closest = LangGraph interrupt() + Erlang selective-receive). Add sender read_at receipt. Refs: arXiv 2605.07935, dzone actor-model-for-LLMs.
+  closed_date: '2026-07-20'
+  closed_pr: 3089
+  outcome_id: MISSION-010
+

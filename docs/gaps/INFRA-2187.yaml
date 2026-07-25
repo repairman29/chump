@@ -1,0 +1,20 @@
+- id: INFRA-2187
+  domain: INFRA
+  title: "EFFECTIVE: replace web/fleet-scrubber/screenshots placeholder with real headless-Chrome PNG (INFRA-2164 polish)"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Polish on INFRA-2164/2176. The scrubber Sonnet shipped a text-art placeholder at web/fleet-scrubber/screenshots/scrubber-fixtures.png because browser capture wasn't available in the subagent environment. Replace with a real headless-Chrome PNG of the scrubber rendered in fixtures mode.
+  acceptance_criteria:
+    - web/fleet-scrubber/screenshots/scrubber-fixtures.png is a valid PNG (file output reports PNG image, not ASCII)
+    - Screenshot captures the scrubber in fixtures mode (?fixtures=1) at a viewport >= 1400x900, showing the header bar, lanes area, timeline scrub bar, and color legend
+    - Captured via headless Google Chrome (/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless --screenshot)
+    - README at web/fleet-scrubber/README.md updated if it referenced the placeholder
+    - Smoke test scripts/ci/test-fleet-scrubber.sh (if it touches the screenshot file) still passes
+  depends_on: [INFRA-2176]
+  notes: |
+    [2026-06-04T00:26:16Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2743
+  outcome_id: MISSION-010
+

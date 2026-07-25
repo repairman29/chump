@@ -1,0 +1,14 @@
+- id: RESILIENT-117
+  domain: RESILIENT
+  title: "RESILIENT: chump-commit index mutex (FD 200 flock) held by sibling-worktree rustc — cross-worktree mutex leak"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Reproducer documented: with 2+ active chump claims (sibling worktrees with concurrent cargo builds), lsof on /Users/.../Chump/.git/worktrees/X/.chump-index-mutex shows FD 200 held by processes whose --out-dir is /tmp/chump-Y/target (X != Y)"
+    - "Root cause identified — one of: (a) inode reuse (mutex file deleted+recreated keeps prior fd valid for siblings), (b) /tmp -> /private/tmp symlink path confusion (INFRA-779 family), (c) sccache process inherits the flock fd across worktrees, (d) chump-commit's mutex path resolution incorrect"
+    - "Fix: chump-commit's flock target uses repo-absolute git-dir path resolved via git rev-parse --git-dir without /tmp symlink interference; OR moves the mutex to a repo-rooted .chump-locks/index-mutex-<worktree>.lock"
+    - "Validation test scripts/ci/test-chump-commit-cross-worktree-mutex.sh: 3 concurrent claims each running cargo build do NOT contend on each other's mutex (parallel commits succeed within 30s)"
+    - CHUMP_INDEX_LOCK=0 escape hatch documented in CLAUDE.md as expressly conditional on this gap being open (advisory only, NOT a permanent license)
+  outcome_id: RESILIENT-000
+

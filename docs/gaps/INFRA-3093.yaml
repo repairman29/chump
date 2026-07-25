@@ -1,0 +1,15 @@
+- id: INFRA-3093
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 12 PRs blocked >2h as of 2026-06-25"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Run event kind=pr_stuck_cluster_detector_run emitted on every exit path (success/no_op/dry_run/error) via trap EXIT handler (INFRA-2754)
+    - Cost tracked via gap_reserve_calls field on the run event, visible to operator without grepping logs (INFRA-2754)
+    - failure_class taxonomy (none vs transient vs permanent) present on the run event, mapped in _pscd_failure_class() (INFRA-2906)
+    - Smoke test scripts/ci/test-pr-stuck-cluster-observability.sh covers no_op/dry_run/bad_args paths and is wired into chump preflight --with-tests (INFRA-2925)
+  notes: |
+    All 4 AC already shipped via INFRA-2754 (run event trap EXIT + gap_reserve_calls), INFRA-2906 (failure_class taxonomy), INFRA-2925 (smoke test wired into chump preflight --with-tests). Verified: scripts/coord/pr-stuck-cluster-detector.sh has trap EXIT emitting kind=pr_stuck_cluster_detector_run with outcome/stuck_pr_count/duration_ms/gap_reserve_calls/failure_class; scripts/ci/test-pr-stuck-cluster-observability.sh passes all 3 tests; src/preflight.rs:627 wires it in. No code change needed — stale gap, closing without a PR.
+  outcome_id: MISSION-010
+

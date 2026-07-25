@@ -1,0 +1,28 @@
+- id: INFRA-1360
+  domain: INFRA
+  title: "ZERO-WASTE: chump-gh-app crate — JWT installation-token generation for INFRA-1076 lane isolation"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "New Rust crate at `crates/chump-gh-app/` with Cargo.toml + src/lib.rs. Dependencies: jsonwebtoken = \"9\", reqwest = { version = \"0.12\", features = [\"json\", \"rustls-tls\"] }, serde = { features = [\"derive\"] }, serde_json, chrono, anyhow."
+    - "Public API:"
+    - "  pub struct AppCredentials { app_id: u64, private_key_pem: String, installation_id: u64 }"
+    - "  pub struct InstallationToken { token: String, expires_at: chrono::DateTime<Utc> }"
+    - "  pub async fn generate_jwt(app_id: u64, private_key_pem: &str) -> Result<String> — RS256-signed JWT with iss=app_id, exp=now+10min (max GitHub allows is 10min)."
+    - "  pub async fn fetch_installation_token(creds: &AppCredentials) -> Result<InstallationToken> — POST /app/installations/{id}/access_tokens with the JWT as Bearer; parses response { token, expires_at }."
+    - "  pub fn load_apps_config(path: &Path) -> Result<HashMap<Lane, AppCredentials>> — reads ~/.chump/github_apps.toml: keys = `critical`, `background`; each entry has `app_id`, `private_key_path`, `installation_id`. Returns a map; missing lanes are simply absent (no error)."
+    - "Token-file output format (the bash side reads this):"
+    - "  ~/.chump/oauth-token-<lane>.json with {\"token\": \"ghs_...\", \"written_at\": \"...\", \"expires_at\": \"...\"} — matches the existing oauth-token.json shape from src/auth.rs."
+    - "Unit tests (≥5) in tests/ or src/lib.rs:"
+    - "  - generate_jwt produces a 3-part JWT with iss=app_id (decode without verify, check the claim)"
+    - "  - load_apps_config with both lanes present returns 2-entry map"
+    - "  - load_apps_config with only critical lane returns 1-entry map (background lane silently absent)"
+    - "  - load_apps_config with malformed TOML returns Err with clear message"
+    - "  - InstallationToken.expires_at parses RFC3339 correctly"
+    - No live GitHub calls in unit tests (the JWT generation + TOML parsing + struct construction are all pure-function or local-file).
+    - "Integration test (gated on env CHUMP_GH_APP_INTEGRATION=1): if real App credentials are configured, exercises the full fetch_installation_token round-trip against api.github.com. Default skip preserves CI signal without coupling to real Apps."
+    - "Out of scope: bash-side token consumption (already shipped in INFRA-1076 PR #2095), rotator cron (INFRA-1361), runbook (INFRA-1362)."
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

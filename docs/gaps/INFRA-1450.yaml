@@ -1,0 +1,21 @@
+- id: INFRA-1450
+  domain: INFRA
+  title: "ZERO-WASTE: orphan-branch sweeper — periodic delete of remote branches with no open PR + no commits in 14d (today 172 branches on origin; delete_branch_on_merge only covers merged PRs, not closed-without-merge or pre-setting branches)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Audit 2026-05-15: gh api repos/repairman29/chump shows delete_branch_on_merge=true is ALREADY enabled, but origin has 172 branches. The setting only deletes branches whose PRs were *merged* — closed-without-merge branches and pre-setting branches persist indefinitely. Without sweeper, the branch list bloats forever, slowing gh-list operations and obscuring active work. Supersedes INFRA-1413 (which assumed the setting wasn't on).
+  acceptance_criteria:
+    - "scripts/coord/orphan-branch-sweeper.sh (new) — gh api repos/X/branches --paginate; for each branch != main/master: skip if any open PR has it as head_ref; skip if last commit < 14d (CHUMP_ORPHAN_BRANCH_AGE_DAYS, configurable)"
+    - "For surviving candidates: dry-run by default; --apply deletes via gh api repos/X/git/refs/heads/<branch> -X DELETE"
+    - Emit kind=orphan_branch_deleted to ambient.jsonl with {ts, kind, branch, last_commit_age_days, sweep_run_id}
+    - Hourly launchd job runs in --apply mode
+    - CI test scripts/ci/test-orphan-branch-sweeper.sh stubs branches at varying ages + asserts only stale ones are flagged
+    - "Operator escape: branch-protection patterns for refs/heads/release-* etc are excluded; CHUMP_ORPHAN_BRANCH_PROTECT_REGEX env var for custom patterns"
+    - "Measure: count of refs on origin drops from current 172 to <30 within 7 days of first --apply run"
+  closed_date: '2026-05-16'
+  closed_pr: 2210
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: INFRA-3407
+  domain: INFRA
+  title: "INFRA: patch_file apply tolerance for open models — M3 retries 4x with old-text mismatches, zero land rate"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    With the full EU pipeline fixed (12 root causes, PRs #3230-#3244), the remaining ship-blocker is model-side: MiniMax M3 executes the correct workflow (read → patch_file xN → git_commit) but its patch payloads fail to apply — 4 attempts/0 landed in cycle 16, plus one malformed-JSON tool call in cycle 12 (string truncated at ~3271 chars). Levers: (a) fuzzy/normalized old-text matching in patch_file (whitespace-insensitive, anchor-based); (b) clear apply-error feedback in the tool result so the model can re-read and retry with fresh context; (c) tool-result echo of the nearest-miss region; (d) cap patch payload size to dodge JSON truncation. Scorecard now measures land-rate per model (zero_commit_branch_blocked events + patch counts in cycle logs).
+  acceptance_criteria:
+    - "The change described by \"patch_file apply tolerance for open models — M3 retries 4x with old-text mismatches, zero land rate\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3247
+

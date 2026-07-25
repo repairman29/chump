@@ -1,0 +1,13 @@
+- id: INFRA-2169
+  domain: INFRA
+  title: "EFFECTIVE P1: Mode D external-ship audit receipt — chump-main commit per external PR merge"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "- New ambient event kind external_repo_ship emitted by shepherd (scripts/coord/pr-rescue.sh fork-aware path, INFRA-2114) at the moment a cross-repository PR merges. Payload: {ts, gap_id, external_repo (owner/repo), pr_url, head_sha, files_touched_count, shipper_session}.\n- Modify pr-rescue.sh fork-aware merge step: after successful gh pr merge on a cross-repo PR, call broadcast.sh DONE <gap-id> <head-sha> AND emit the kind=external_repo_ship event with full payload.\n- Register external_repo_ship in EVENT_REGISTRY.yaml + scripts/ci/event-registry-reserved.txt per INFRA-754 discipline.\n- New scripts/ci/test-external-repo-ship-emit.sh: fixture cross-repo PR merge, verify event lands in ambient.jsonl with all required fields.\n- chump kpi report --external integration: read this event count from ambient last 7d; report PR-shipped-per-customer-repo metric.\n- Cross-references META-123 (external-repo first-touch flow this completes the audit trail for), META-124 Mode D (this is the substrate visibility Mode D needs), INFRA-2114 (the fork-aware shepherd that emits)."
+  notes: |
+    [2026-06-04T00:26:17Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2771
+  outcome_id: MISSION-010
+

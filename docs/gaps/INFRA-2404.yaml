@@ -1,0 +1,17 @@
+- id: INFRA-2404
+  domain: INFRA
+  title: "RESILIENT P0 HOTFIX: main-health-gate silently inert — watchdog/claim JSON keys mismatch + watchdog runs preflight on wrong worktree"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "BUG 1: scripts/coord/main-preflight-watchdog-daemon.sh writes state JSON with keys {state, updated_at, last_tick_id} but src/atomic_claim.rs parse_main_health_state reads {last_status, last_tick_at, failing_gates}. Fix by adding the reader-expected keys to the writers _save_state payload — last_status (lowercase mirror of state), last_tick_at (unix-secs alongside updated_at ISO), failing_gates (array currently only in the ambient event, also write to state)"
+    - "BUG 2: watchdog daemon creates fresh /tmp/chump-main-preflight-<ts> worktree but invokes `chump preflight` from REPO_ROOT (the parent repo, possibly on a feature branch with dirty files) rather than cd-ing into the worktree. Fix: invoke `(cd $wt_path && REPO_ROOT=$wt_path chump preflight)` so the audit actually runs against the fresh origin/main checkout"
+    - "Smoke test scripts/ci/test-main-preflight-watchdog.sh extended to ROUND-TRIP: writer writes a mock RED state, then read via parse_main_health_state assertion that last_status==red + last_tick_at>0 + failing_gates non-empty. Currently the smoke test doesnt exercise the reader-writer contract"
+    - "Smoke test for BUG 2: with CHUMP_MAIN_PREFLIGHT_MOCK_FAIL set, verify the preflight invocation cd-ed into the worktree (assert via grepping log for the worktree path)"
+    - Cite fresh-eyes review finding in commit body — credit external Sonnet reviewer that surfaced this
+  notes: |
+    [2026-06-04T00:06:18Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2946
+  outcome_id: MISSION-010
+

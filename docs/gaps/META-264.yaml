@@ -1,0 +1,14 @@
+- id: META-264
+  domain: META
+  title: "META: Verify preflight-vs-CI parity and update ci-parity-exceptions.txt (META-258 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The `preflight-vs-CI` parity check is executed and passes.
+    - If any new exceptions are identified due to the CI changes, `ci-parity-exceptions.txt` is updated accordingly with clear justifications.
+    - No regressions in parity are introduced by the CI optimizations.
+  depends_on: [META-259, META-260, META-261, META-262]
+  closed_date: '2026-05-31'
+  outcome_id: MISSION-010
+

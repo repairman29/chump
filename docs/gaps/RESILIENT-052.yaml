@@ -1,0 +1,8 @@
+- id: RESILIENT-052
+  domain: RESILIENT
+  title: "bot-merge exit-144-silent recurs post-#2169 — root-cause + loud-fail + regression test"
+  status: open
+  priority: P1
+  effort: m
+  outcome_id: RESILIENT-000
+

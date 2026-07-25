@@ -1,0 +1,19 @@
+- id: INFRA-1462
+  domain: INFRA
+  title: "EFFECTIVE: chump init stack auto-detect + 180s sandbox verification"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Commercial-launch precondition surfaced by Persona-5 skeptic closing remarks (see docs/strategy/commercial/COMMERCIAL_PIVOT_SPARRING.md Round 6). Even if INFRA-1454/1455/1456 ship perfectly, the trial-conversion gate is the Onboarding Tax: a Staff Engineer on a Tuesday morning has zero patience for 45 minutes of chump.toml configuration. If chump init does not produce a green sandbox-verification check in under 180 seconds from brew install, the trial dies before the first fleet run. This is the 'Tuesday momentum' gate, separate from the 'I'd buy it' gate.
+  acceptance_criteria:
+    - "chump init scans the active repo and auto-detects: primary language(s), test runner (jest/pytest/cargo test/go test/etc), dependency manager (npm/pnpm/cargo/poetry/etc), presence of docker-compose, presence of .env or .envrc, package.json scripts"
+    - "Stack-class detection: known classes (Node+TS+Jest, Rust+cargo, Python+pytest, Go+go test) get pre-configured sandbox manifests automatically with zero operator input"
+    - "chump check runs a single end-to-end sandbox verification: spin up sandbox, mount worktree, execute one canonical test command, report green/red with diagnostic on red"
+    - Total wallclock from brew install chump to chump check green ≤ 180s on a happy-path stack (measured in CI on a reference repo)
+    - Esoteric stacks (multi-language monorepos, custom runners, exotic build tooling) fall through to a guided manual config — never to a silent failure
+    - "Onboarding doc: the 3-minute promise is on the README front page; instructions to debug a failing chump check are one click away"
+    - "CI test: clone reference repo, run brew install + chump init + chump check unattended in <180s, verify green"
+  closed_pr: 2221
+  outcome_id: MISSION-010
+

@@ -1,0 +1,15 @@
+- id: RESILIENT-116
+  domain: RESILIENT
+  title: "RESILIENT: target-dir reaper races freshly-provisioned worktree cargo build (.chump-no-reap escape hatch leaks)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Identify which reaper(s) race a fresh worktree cargo build — candidates: scripts/ops/cargo-target-reaper.sh, scripts/ops/stale-worktree-reaper-tmp.sh (INFRA-2020), worktree-reaper-safety (INFRA-1074)"
+    - Reaper script(s) check for active cargo invocation (lsof on target/ OR fresh mtime within last N min) OR active .chump-no-reap marker BEFORE removing target/
+    - "Test fixture in scripts/ci/test-target-reaper-cold-build-safety.sh: simulates concurrent cargo + reaper; reaper exits 0 without deleting active target/"
+    - Reaper emits kind=target_reap_skipped to ambient with reason field (active_build|no_reap_marker) when bypassing
+    - .chump-no-reap marker is documented in docs/process/CLAUDE_GOTCHAS.md as the standard escape hatch with the audit emit invariant
+    - RESILIENT-107 commit is referenced as precedent (refresh-runner-binary worktree fix introduced the marker)
+  outcome_id: RESILIENT-000
+

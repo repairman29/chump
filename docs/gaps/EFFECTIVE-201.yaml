@@ -1,0 +1,14 @@
+- id: EFFECTIVE-201
+  domain: EFFECTIVE
+  title: "EFFECTIVE: 0->1 audit — onboard emits doctrine-tagged 3-layer mission portfolio (L1 standard-mission injection + L2 claim-gaps + L3 realization theses); improve picks L1->L2->L3 doctrine order"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - ProposedGap schema gains layer and doctrine_justification optional fields; existing scan JSON round-trips without breakage
+    - Standard-mission injection emits L1 gap for each unmet foundation mission; met missions are skipped
+    - Scout prompt extended so agent returns layer-tagged L2 and L3 proposals with doctrine_justification
+    - Doctrine-order picking selects L1 before L2 before L3; within a layer by confidence; test portfolio mix returns L1 first
+  closed_pr: 3080
+  outcome_id: EFFECTIVE-000
+

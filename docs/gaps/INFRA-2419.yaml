@@ -1,0 +1,17 @@
+- id: INFRA-2419
+  domain: INFRA
+  title: "RESILIENT P0: plist-path-stability — installers must not bake install-time temp paths"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Audit scripts/setup/install-*-launchd.sh for any that bake $PWD or /tmp/* paths into the generated plist ProgramArguments; flag each as a follow-up
+    - "New CI gate scripts/ci/test-plist-no-tmp-paths.sh: lint scripts/launchd/*.plist (templates) + all install-*.sh-generated plist examples (run installer in --print-plist mode if supported) for /tmp/ /private/tmp/ /var/folders/ patterns; exit 1 on match"
+    - Generated plists must use HOME-relative or symlink-resolved repo paths (e.g. /Users/<USER>/Projects/Chump or `$(which chump-integrator)`)
+    - "Cite trigger: 2026-06-02 com.chump.integrator-daemon plist had `cd /private/tmp/chump-install` (install-time temp dir) baked in; vanished after first cleanup; daemon crash-looped 37h silently"
+    - "Smoke test: synthetic plist with /tmp/install path → exit 1; HOME-relative path → exit 0"
+  notes: |
+    [2026-06-04T00:06:17Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2954
+  outcome_id: MISSION-010
+

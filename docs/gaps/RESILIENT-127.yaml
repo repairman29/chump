@@ -1,0 +1,17 @@
+- id: RESILIENT-127
+  domain: RESILIENT
+  title: "RESILIENT: ambient.jsonl carries 4% malformed JSON lines — breaks every JSON parser downstream (fresh-eyes, observability, blame_bot, etc.)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: tail -100 .chump-locks/ambient.jsonl | python3 -c 'import sys,json; [json.loads(l) for l in sys.stdin if l.strip()]' raises JSONDecodeError on ~4% of lines"
+    - "Identify the malformed emitters: scan ambient.jsonl for the broken lines, identify which kind/source produces them (likely a script using printf with un-escaped quotes in a field value, OR an emit pipe that's getting partially-written under concurrent writes)"
+    - "Fix root cause: every ambient emitter must use a JSON-safe encoder (jq -c, python -c 'json.dumps()') NOT bare printf. Audit scripts/coord/broadcast.sh, scripts/coord/ambient_emit.sh, src/ambient_emit.rs, and any one-off printf '{\"ts\":...}' patterns for shell-quoting bugs"
+    - "Add scripts/ci/test-ambient-jsonl-integrity.sh: scan last N lines of ambient.jsonl, fail if ANY line is not valid JSON. Run in CI on every push"
+    - Add reaper that quarantines malformed lines to .chump-locks/ambient.malformed.jsonl with the source line + suspected emitter inferred from prior known-good line, so downstream parsers never see them
+    - "Doctrine cross-ref: CREDIBLE-105 case study — every reader (fresh-eyes, observability, blame_bot) silently fails or partially-fails on malformed lines, producing wrong intel that LOOKS like the right answer. Same family as CREDIBLE-120 / 121 / 123"
+  closed_date: '2026-07-21'
+  closed_pr: 3203
+  outcome_id: RESILIENT-000
+

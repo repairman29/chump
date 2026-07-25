@@ -1,0 +1,14 @@
+- id: INFRA-1461
+  domain: INFRA
+  title: "ZERO-WASTE: worktree path standardization — chump claim always writes /private/tmp/chump-<gap-id-lowercase>; remove --force-prune helper to clear orphaned worktrees from prior schemes (/tmp/, mixed case, suffix variants)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "scripts/coord/chump-worktree.sh helper: chump-worktree create <gap-id> → always /private/tmp/chump-<gap-id-lowercase>; chump-worktree prune --orphaned removes worktrees with no matching branch ref OR with branch >24h-no-activity AND no uncommitted changes"
+    - chump claim invokes chump-worktree create under the hood; existing /tmp/chump-* mixed-case worktrees from prior schemes auto-migrated on next claim
+    - Smoke test scripts/ci/test-worktree-path-standard.sh asserts naming is canonical and prune --orphaned correctly removes stale ones without losing uncommitted work
+    - "Today's friction: multiple times had to git worktree remove --force collisions between INFRA-1336/infra-1336/chump-infra-1336/chump-INFRA-1336 etc."
+    - "Bonus: prune emits kind=worktree_orphan_reaped {path, size_mb} so target-dir-reaper (INFRA-1349) and disk-health-monitor (INFRA-1437) see compatible signals"
+  outcome_id: MISSION-010
+

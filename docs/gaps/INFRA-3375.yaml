@@ -1,0 +1,9 @@
+- id: INFRA-3375
+  domain: INFRA
+  title: "META-070: mirror pr-lifecycle-bot-merge fast-checks scripts (26) into chump preflight"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. For each of the 26 pr-lifecycle-bot-merge scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#pr-lifecycle-bot-merge-infra-3375, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-pr-lifecycle-mirrors.sh asserts all 26 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+

@@ -1,0 +1,18 @@
+- id: INFRA-1868
+  domain: INFRA
+  title: "CI/QA: audit-allowlist auto-pruner — daily cron WARNs on stale reserved.txt + env-vars-internal.txt entries (INFRA-1861 slice c)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "New scripts/ops/audit-allowlist-staleness.sh: walks scripts/ci/event-registry-reserved.txt + scripts/ci/env-vars-internal.txt; for each entry, grep code+scripts for the kind/env_name"
+    - Track per-entry last-seen-in-code timestamp in .chump-locks/allowlist-staleness.json
+    - "Entries with no code reference for 30+ days: emit ambient kind=allowlist_stale_entry {entry, file, days_since_seen}"
+    - Daily cron via launchd; broadcast WARN to operator-* with aggregated stale list if count > 0
+    - CI smoke test asserts the auditor catches a synthetic stale entry
+    - allowlist allowlist_stale_entry kind in event-registry-reserved.txt
+    - "Parent: INFRA-1861 slice (c)"
+  closed_date: '2026-05-23'
+  closed_pr: 2472
+  outcome_id: MISSION-010
+

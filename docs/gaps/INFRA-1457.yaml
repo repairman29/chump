@@ -1,0 +1,20 @@
+- id: INFRA-1457
+  domain: INFRA
+  title: "RESILIENT: transitive-import lease auto-expansion at claim time"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Architectural gap surfaced by Persona-5 critique of Q1 (state sync) in commercial validation interview. Today chump claim --paths is operator-supplied: agent A claims utility.rs, agent B claims consumer.rs which transitively imports utility.rs but didn't declare it. B's working AST goes stale the moment A commits. We detect this REACTIVELY via hot_file_collision in ambient.jsonl. We should detect it PREVENTIVELY at claim time via static import-graph expansion. Without this, the 'voluntary cooperation' framing is true and is a real liability under fan-out load.
+  acceptance_criteria:
+    - chump claim <gap-id> --paths X,Y auto-expands lease to include transitive consumers of X,Y
+    - Static import-graph computed per-language (Rust crate deps from cargo metadata, JS/TS imports from AST, Python imports from AST) for the active repo
+    - Two agents cannot both claim if expanded path sets overlap — atomic CAS at state.db rejects the second claim
+    - Operator override --no-transitive-paths supported (logged + warning emitted)
+    - hot_file_collision event remains as backstop for genuinely-missed transitive deps (dynamic imports, reflection, etc.)
+    - "Test fixture: agent A claims src/utility.rs, agent B attempts to claim src/consumer.rs which imports utility.rs, second claim fails atomically with clear error"
+    - "Performance: import-graph cached, expansion adds < 200ms to chump claim latency on a 100kLOC repo"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

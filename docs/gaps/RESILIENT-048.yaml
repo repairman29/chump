@@ -1,0 +1,21 @@
+- id: RESILIENT-048
+  domain: RESILIENT
+  title: "RESILIENT P0: chump gap reserve / claim auto-FAFO-check — surface prior closed gaps + merged PRs + abandoned branches matching new gap scope BEFORE filer commits to it"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Filed 2026-05-30T10:13Z after curator-opus repeatedly proposed work that was ALREADY SHIPPED — most recently claiming INFRA-2237 (rotate-sccache-r2-token script) was 'unbuilt' when PR #2793 merged it 2026-05-30T03:48Z (~6h before the trunk-RED that supposedly needed it). The substrate has no automatic check for 'have we tried this already?' at gap-file or gap-claim time. Every curator who lacks operator's memory will re-file shipped work, propose redundant ACs, and waste fleet cycles. Operator's framing: 'What are we doing to validate that we've already FAFO on stuff?' This gap codifies the answer.
+  acceptance_criteria:
+    - "chump gap reserve --domain X --title 'T' performs an auto-FAFO check BEFORE writing the gap: (a) similarity-search closed gaps in state.db by title/AC overlap (Jaccard >=0.5); (b) git log --all --oneline -i --grep='<title-keywords>'; (c) gh pr list --state all --search '<key terms>'; (d) ambient.jsonl grep for related kinds. Surfaces top 5 matches with status (done/in-flight/abandoned) before final commit."
+    - "If any closed gap matches with similarity >=0.85: BLOCK reserve unless --force-fafo-bypass with a reason, log kind=fafo_bypass_used to ambient (audit trail)"
+    - "chump claim <GAP-ID>: ALSO runs FAFO check + surfaces matches before the worktree is created — even a 5-second pause to read 'this looks like INFRA-2237 which shipped 6h ago in PR #2793' would have caught today's curator-opus error"
+    - "New chump verb: chump gap fafo-check <title-or-id> — standalone command for pre-file investigation. Returns JSON: { similar_closed_gaps: [], related_prs: [], git_commits: [], ambient_signals: [] }"
+    - "Pre-commit hook for docs/gaps/*.yaml: any new yaml file triggers FAFO check before commit succeeds (blocks if high-similarity prior gap exists without bypass trailer)"
+    - "Smoke test scripts/ci/test-fafo-check.sh: <30s, creates synthetic prior-gap fixtures, asserts new-gap-reserve with similar title surfaces them AND blocks at 0.85 threshold without --force"
+    - "Cross-references: INFRA-2237 (the cycle 7 incident where this would have caught my error), CHUMP_PLAYBOOK §0.7 TRIAGE FIRST (the broader discipline this implements at gap-file layer)"
+    - "This gap is META — implementing it teaches the substrate to teach itself. Per operator framing 2026-05-30T10:08Z: 'we've tried this already and it doesnt f'n work... cant you see this in the ambient stream or logs?'"
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

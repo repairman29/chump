@@ -1,0 +1,20 @@
+- id: INFRA-1898
+  domain: INFRA
+  title: "EFFECTIVE P1: pr-pulse alert consumer daemon — tails ambient.jsonl for pr_oversight_snapshot verdict=WEDGED/SATURATED; auto-pages curators OR triggers operator-recall (INFRA-1897 sibling consumer)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Background — INFRA-1897 just shipped pr-pulse which emits kind=pr_oversight_snapshot every 5min via cron. But nothing consumes the emit. When verdict=WEDGED or SATURATED, the queue needs intervention but no daemon fires
+    - New scripts/coord/pr-pulse-consumer.sh tails ambient.jsonl for pr_oversight_snapshot lines; on verdict in WEDGED or SATURATED, takes action
+    - "Actions ladder — WEDGED: page each curator whose PR is in the worst state via broadcast.sh WARN with their PR + rebase suggestion. SATURATED: page operator via operator-recall.sh (existing INFRA-626) so human knows queue is over capacity. HEALTHY: no-op"
+    - Throttle — same verdict won't re-fire within 30 min (debounce in .chump-locks/pr-pulse-consumer-state.jsonl) to prevent spam
+    - Bypass — CHUMP_PULSE_CONSUMER_DISABLED=1 short-circuits the consumer
+    - Install — scripts/setup/install-pr-pulse-consumer-launchd.sh; plist runs the tail-follow process, restart on exit
+    - Smoke test scripts/ci/test-pr-pulse-consumer.sh — synth ambient entry with verdict=WEDGED, assert consumer emits broadcast WARN; verdict=HEALTHY gives no-op; debounce works (second WEDGED within 30min gives no re-page)
+    - Pattern reference — pr-stuck-filer (INFRA-1410) is the closest template (periodic-cluster-detector consuming ambient signals); INFRA-1115 broadcast.sh is the action channel
+    - "Done definition — when queue saturates (12+ open / 5+ DIRTY) consumer auto-pages curators within 5 min without operator. Verifiable: kill operator session and watch queue self-rescue"
+  closed_date: '2026-05-29'
+  closed_pr: 2497
+  outcome_id: MISSION-010
+

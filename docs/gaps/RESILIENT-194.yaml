@@ -1,0 +1,13 @@
+- id: RESILIENT-194
+  domain: RESILIENT
+  title: state.sql auto-reconcile timer on each node (git-backed backlog backstop)
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+  - The change described by "state.sql auto-reconcile timer on each node (git-backed backlog backstop)" is implemented in
+    the relevant RESILIENT code path(s).
+  - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+  - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-25'
+  closed_pr: 3286

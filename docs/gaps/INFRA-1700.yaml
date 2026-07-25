@@ -1,0 +1,19 @@
+- id: INFRA-1700
+  domain: INFRA
+  title: "EFFECTIVE: Content Bots toggle resolver — fn content_bots::enabled_set() reads .chump-config.toml + CHUMP_CONTENT_BOTS env (INFRA-1696 narrow phase 3a)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "new src/content_bots.rs module with pub fn enabled_set(repo_root: &Path) -> BTreeSet<String> that returns the set of enabled bot_ids"
+    - "resolution order: CHUMP_CONTENT_BOTS env (csv, highest precedence) > .chump-config.toml [content_bots].enabled list > empty set (default-off-on-missing)"
+    - tolerates missing .chump-config.toml, missing [content_bots] section, malformed toml — returns empty set with debug-level warning rather than panicking
+    - "unit tests in src/content_bots.rs: env-set, toml-only, env-overrides-toml, missing-both, malformed-toml"
+    - no new CLI subcommand in this gap — the resolver is library-only; subcommand wiring is INFRA-1696 follow-up
+    - cargo test passes; cargo clippy --workspace --all-targets clean
+  notes: |
+    INFRA-1700's resolver shipped via PR #2345 (cherry-picked into INFRA-1696's CLI subcommand PR). Original PR #2341 is now a follow-up env-var doc fix only.
+  closed_date: '2026-05-22'
+  closed_pr: 2341
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: INFRA-1419
+  domain: INFRA
+  title: "RESILIENT: auto-resolve doc conflicts — merge=union for CLAUDE_GOTCHAS.md, EVENT_REGISTRY.yaml, event-registry-reserved.txt"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "Add .gitattributes entries: docs/process/CLAUDE_GOTCHAS.md merge=union; docs/observability/EVENT_REGISTRY.yaml merge=union; scripts/ci/event-registry-reserved.txt merge=union; docs/process/KNOWN_FLAKES.yaml merge=union"
+    - scripts/setup/install-merge-drivers.sh registers the union driver in user's local git config (called from chump-fleet-bootstrap.sh)
+    - Smoke test scripts/ci/test-merge-union-drivers.sh creates two divergent branches both appending to CLAUDE_GOTCHAS.md and asserts the merge concatenates both sides without conflict markers
+    - Documented in docs/process/MERGE_DRIVERS.md; cross-linked from CLAUDE.md operational docs section
+    - Re-run on existing DIRTY PRs after install proves they auto-resolve
+  notes: |
+    [2026-05-16T02:39:41Z] 2026-05-16T02:39:41Z: SUPERSEDED BY INFRA-1389 (broader scope). Demoted P0->P3; close when 1389 lands.
+  outcome_id: MISSION-010
+

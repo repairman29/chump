@@ -1,0 +1,20 @@
+- id: INFRA-1455
+  domain: INFRA
+  title: "EFFECTIVE: chump rollup --semantic for fan-out PR consolidation"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Commercial-launch precondition surfaced by Persona-5 skeptic validation interview (see docs/strategy/commercial/COMMERCIAL_PIVOT_SPARRING.md). The $49/operator/month Team tier sells on symmetric fan-out (one architectural intent → N services). Today when N agents finish, the operator sees N PRs — a firehose that clogs CI allocation and forces micro-review. Skeptic verdict: 'If my reward is a 40-PR firehose I will uninstall within 72 hours.' This is the actual commercial premise. Without it, Chump is a script that opens N terminal tabs, not an orchestrator.
+  acceptance_criteria:
+    - New chump rollup <epic-id> [--semantic] command groups PRs from sub-gaps under one parent epic
+    - Clusters patches by file-touched + AC-satisfied + structural diff similarity into named 'strategy classes'
+    - "Output: 'N PRs converged on Strategy A (file list, diff signature), M on Strategy B (diff), K blocked (reason)'"
+    - Cockpit (chump --web) renders the rollup as a reviewable surface with side-by-side strategy diffs
+    - chump rollup accept-strategy <name> merges all PRs in that strategy class as one operator decision
+    - "Symmetric fan-out test fixture: spawn N agents against N test microservices doing the same dep upgrade, verify rollup converges to expected strategy classes"
+    - "Asymmetric fallback: when no clustering signal exists (e.g. unrelated backlog), rollup degrades to flat PR list with no false-strategy claims"
+  closed_date: '2026-05-22'
+  closed_pr: 2352
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: META-224
+  domain: META
+  title: "META: Implement `agent-admin-merge-leaderboard.sh` for operator audit (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - File `scripts/dev/agent-admin-merge-leaderboard.sh` is created and is executable.
+    - The script queries ambient events (specifically `kind=agent_admin_merge`) to display per-day counts of agent admin-merges.
+    - The script provides a breakdown of admin-merges by relevant fields (e.g., `fix_class`, `consensus_corr_id`, `trigger_check_results`) to show reasons for merges.
+  depends_on: [META-219]
+  outcome_id: MISSION-010
+

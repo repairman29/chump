@@ -1,0 +1,20 @@
+- id: INFRA-1361
+  domain: INFRA
+  title: "ZERO-WASTE: chump gh-token rotate cron — refresh per-lane installation tokens every 50min (INFRA-1076 follow-up)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Add `chump gh-token rotate` subcommand to src/main.rs (or src/gh_token.rs as new module). Reads ~/.chump/github_apps.toml via chump_gh_app::load_apps_config (INFRA-1360). For each configured lane, calls chump_gh_app::fetch_installation_token, writes the result to ~/.chump/oauth-token-<lane>.json with chmod 600."
+    - "Behaviour:"
+    - "  - When ~/.chump/github_apps.toml is absent → exit 0 silently (operator hasnt set up Apps yet). Emits kind=gh_token_rotate_noop with reason=apps_config_missing once per invocation."
+    - "  - When TOML is malformed → exit 2 with stderr message pointing at the path + parse error."
+    - "  - When a specific lane fetch fails (network, JWT rejection, etc.) → log to stderr, continue to next lane, exit 1 at end if any lane failed. The other lanes still get fresh tokens."
+    - "  - On success per lane: emit kind=gh_token_rotated with {ts, lane, expires_at}."
+    - launchd plist at scripts/setup/launchd/com.chump.gh-token-rotate.plist for macOS install — runs `chump gh-token rotate` every 50 min (10-min slack on the 60-min token expiry). scripts/setup/install-gh-token-rotate-launchd.sh installs the plist into ~/Library/LaunchAgents. Linux operators use cron with the same cadence (documented in INFRA-1362 runbook).
+    - "CI test scripts/ci/test-gh-token-rotate-noop.sh: runs `chump gh-token rotate` in a HOME with no github_apps.toml, asserts exit 0 + gh_token_rotate_noop emit. No live GitHub calls."
+    - "Documentation: docs/observability/EVENT_REGISTRY.yaml gets two new kinds (gh_token_rotate_noop, gh_token_rotated) per INFRA-754."
+    - "Out of scope: actual GitHub Apps creation (operator action — INFRA-1362 runbook), the chump-gh-app crate itself (INFRA-1360)."
+  closed_pr: 2123
+  outcome_id: MISSION-010
+

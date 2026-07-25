@@ -1,0 +1,14 @@
+- id: RESILIENT-034
+  domain: RESILIENT
+  title: "refactor pre-commit hook: extract RESILIENT-025+026 sections to scripts/git-hooks/lib/off-rails-guard.sh (hook is 2123 lines, audit budget 2050)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-27'
+  outcome_id: RESILIENT-000
+

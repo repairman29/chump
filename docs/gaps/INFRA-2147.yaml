@@ -1,0 +1,10 @@
+- id: INFRA-2147
+  domain: INFRA
+  title: "RESILIENT P2: broadcast.sh --to glob — expand against known inboxes not just active leases"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "broadcast.sh --to glob expansion currently only matches active .chump-locks/*.json leases (INFRA-1115 design). Extend to also expand against .chump-locks/inbox/*.jsonl (known canonical inboxes) so dormant curators can be addressed via --to curator-opus-* glob. Test: bash scripts/coord/broadcast.sh --to 'curator-opus-*' WARN 'test' delivers to >= 9 known curator inboxes even when no curators have active leases."
+  outcome_id: MISSION-010
+

@@ -1,0 +1,15 @@
+- id: ZERO-001
+  domain: ZERO
+  title: "ZERO-WASTE: A2A L3b — budget conservation law for delegated work (sum of child budgets <= parent)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Tier-1 L3 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (Agent Contracts formal framework; 90% token reduction, zero violations across 50 trials). Today an orchestrator can spawn N subagents each at full budget = N times the intended burn (this session dispatched ~10 Sonnets). Enforce budget-neutral decomposition by construction.
+  acceptance_criteria:
+    - at chump gap decompose, child sub-gap budgets (tokens, CI-minutes, disk) sum to <= the parent gap budget for each resource
+    - a decomposition that would exceed the parent budget is BLOCKED at decompose time (not detected post-hoc)
+    - unused child budget returns to a shared pool so efficient children subsidize slower ones
+    - a test asserts an over-budget decomposition is rejected and an in-budget one passes
+  outcome_id: ZERO-WASTE-000
+

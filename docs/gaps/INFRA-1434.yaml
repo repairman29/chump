@@ -1,0 +1,18 @@
+- id: INFRA-1434
+  domain: INFRA
+  title: "RESILIENT: extend INFRA-1149 title-similarity check to chump gap import — closes the YAML-import bypass that let INFRA-1267/1268 land as 100% duplicates"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Today's tax (Chief of Product, 2026-05-16): chump gap consolidate --threshold 75 found INFRA-1267 and INFRA-1268 as 100% identical-title duplicates (both 'FLEET-034 AC#8: cross-machine integration test for NATS push routing', both open). Reserve-time block (INFRA-1149) didn't fire because they were created via 'chump gap import' from YAML, not via 'chump gap reserve'. Close the bypass."
+    - "chump gap import: before writing each row, run the same Jaccard title-similarity check against open + recently-closed gaps. Same thresholds as INFRA-1149 (warn 0.65, block 0.85, configurable via env)."
+    - "Block behavior on import: skip the offending rows (do not insert), print SIMILARITY_BLOCK with the matched ID + score + suggested action ('cite or close existing'), continue importing the rest. Import returns non-zero overall if any row was blocked."
+    - "--force-duplicate flag at import time bypasses per-row, same as reserve. CHUMP_GAP_IMPORT_NO_SIMILARITY=1 disables the check entirely (CI use)."
+    - "Apply to chump gap dump round-trip: when reading YAML files written by 'chump gap dump --per-file' back via 'chump gap import', skip the check for IDs already in state.db (these are updates, not net-new). Only fire on previously-unseen IDs."
+    - "CI test scripts/ci/test-import-similarity-block.sh: feed two YAML files with near-dup titles; assert second is blocked, first lands; assert ambient kind=gap_import_similarity_block emitted."
+    - "Backfill: run 'chump gap consolidate --threshold 85' as a one-shot after this lands; report any leftover dups beyond INFRA-1267/1268 already archived."
+  closed_date: '2026-05-17'
+  closed_pr: 2173
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: CREDIBLE-158
+  domain: CREDIBLE
+  title: "CREDIBLE: integrator guesses branch from title slug and dies on first fetch failure — Mode A queue dead-letters every real branch"
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Mode A (batched integration queue) is structurally unable to ship: (1) StateDbWorkBoard::from_gap_rows derives the candidate branch as chump/<id>-<first-30-chars-of-title-slug> — a guess that matches almost no real branch; (2) build_integration_branch bail!s on the first fetch failure, so one bad candidate dead-letters the whole queue (observed: meta-094 then resilient-180 killed every cycle on 2026-07-22); (3) bot-merge Mode A enqueue never records the actual branch. Fix all three: enqueue appends branch:<name> to notes, from_gap_rows prefers the branch: token (slug guess as fallback), fetch failure records a skip + continues like conflicts do.
+  acceptance_criteria:
+    - "The change described by \"integrator guesses branch from title slug and dies on first fetch failure — Mode A queue dead-letters every real branch\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3230
+

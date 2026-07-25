@@ -1,0 +1,12 @@
+- id: META-214
+  domain: META
+  title: "META: Implement T1-T4 trigger event check in daemon (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The `auto-admin-merge-daemon.sh` script includes logic to query ambient events for T1-T4 triggers.
+    - The script can determine if any T1-T4 trigger events have fired in the last 30 minutes relevant to the current PR or system-wide.
+  depends_on: [META-212]
+  outcome_id: MISSION-010
+

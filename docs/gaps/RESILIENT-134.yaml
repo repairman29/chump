@@ -1,0 +1,15 @@
+- id: RESILIENT-134
+  domain: RESILIENT
+  title: "RESILIENT: run-fleet+test-fleet-auth-check auth probe uses removed 'claude --once' flag — false-fails, blocks all fleet relaunch"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    run-fleet.sh line 448 and scripts/ci/test-fleet-auth-check.sh line 69 probe auth by running: claude --once ok. The --once flag was removed from the Claude CLI (now returns error: unknown option --once), so the probe ALWAYS exits non-zero and run-fleet aborts with auth-probe-failed regardless of valid credentials. This silently blocked ALL fleet relaunch for ~13h while auth was actually fine (claude -p works). Fix: replace claude --once with claude -p (verified working) in both files. Already applied locally to run-fleet.sh so the fleet is running now; needs committing to main plus the test file fixed.
+  acceptance_criteria:
+    - run-fleet.sh auth probe uses claude -p not --once
+    - test-fleet-auth-check.sh uses claude -p not --once
+    - a clean run-fleet launch with valid auth reaches auth-probe-succeeded and spawns workers
+    - "regression: grep claude --once in scripts returns nothing"
+  outcome_id: RESILIENT-000
+

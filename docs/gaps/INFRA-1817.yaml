@@ -1,0 +1,19 @@
+- id: INFRA-1817
+  domain: INFRA
+  title: "RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache + memory-tool) into Chump memory_db (INFRA-1765 substrate)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Read Maclawd/src/memory/memory-schema.ts and src/plugin-sdk/memory-lancedb.ts and document chunk schema, FTS virtual table layout, embeddings cache strategy
+    - Read Maclawd/src/agents/tools/memory-tool.ts and document the tool surface (search, store, recall) and how it integrates with the agent tool registry
+    - Map openclaw memory model onto Chump's existing memory state (.chump/notes/, .chump-locks/ambient.jsonl, per-gap briefings via chump --briefing) — identify the capability gap
+    - Identify what Chump's memory layer is missing vs openclaw (FTS search, embeddings-based semantic recall, citation plus line-reference output, time-decay scoring)
+    - Port the missing primitives into src/memory_db.rs with a Rust-native shape — rebuild the schema in our stack, do not import TS
+    - Add a memory-search subcommand to Chump CLI returning top-5 chunks with citations
+    - "Smoke test scripts/ci/test-memory-search.sh: synthetic notes corpus and query produces deterministic ranked results"
+    - Vendoring lineage comment in src/memory_db.rs cites repairman29/openclaw at commit SHA original src/memory/memory-schema.ts (CP-006)
+    - Cross-pollination brief CP-006-openclaw-memory-pattern.md
+    - Coordinate with INFRA-1765 (cross-agent lesson propagation) — lesson_db reads from the new memory layer rather than rolling its own
+  outcome_id: MISSION-010
+

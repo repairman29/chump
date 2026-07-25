@@ -1,0 +1,19 @@
+- id: INFRA-1485
+  domain: INFRA
+  title: "RESILIENT: synchronous Command::output() in axum handlers starves tokio runtime — single hang kills ALL endpoints"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Real bug 2026-05-16: chump --web process alive (PID 15924, state SN) but ALL endpoints time out after probes hit /api/fleet-status (INFRA-1464) and /api/health/pillars (INFRA-1466). Root cause: those handlers use std::process::Command::output() which BLOCKS the tokio worker thread. Default tokio runtime has limited workers; a few blocked workers can wedge the whole server. Even /api/health stops responding after 2-3 minutes of probes. This is a SEVERITY MULTIPLIER on every other Command::output() call in src/web_server.rs.
+  acceptance_criteria:
+    - "Audit src/web_server.rs for every std::process::Command::output() call"
+    - "Replace with tokio::process::Command + .output().await (non-blocking)"
+    - "OR wrap in tokio::task::spawn_blocking to move off worker pool"
+    - "Bonus: bound tokio worker count via Builder + add explicit timeout layer in axum router"
+    - "Smoke test scripts/ci/test-server-survives-slow-endpoint.sh: hit /api/fleet-status with 100ms timeout, immediately hit /api/health, assert /api/health returns <500ms"
+    - "Repro: with 25 leases, hit /api/fleet-status 3× concurrently, observe /api/health degrades to >5s"
+  closed_date: '2026-05-16'
+  closed_pr: 2211
+  outcome_id: MISSION-010
+

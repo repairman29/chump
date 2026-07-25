@@ -1,0 +1,11 @@
+- id: MISSION-007
+  domain: MISSION
+  title: "MISSION P0: bridge or merge Rust autopilot + bash autopilot — one unified operator-control UX"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "[\"Two parallel autopilots exist today: (a) Rust autopilot::start_autopilot() manages worker ship-loop process and PWA toggle controls it. (b) Bash scripts/coord/fleet-autopilot.sh manages 10 launchd daemons CLI-only. Operator does not know which one to use.\",\"Decide bridge-vs-merge: option A merge bash into Rust (Rust calls bash internally; one toggle controls both). Option B bridge (PWA toggle + separate daemon-set toggle with clear labeling). Recommend A.\",\"Implementation: when handle_autopilot_start() runs ALSO invoke scripts/coord/fleet-autopilot.sh start; same for stop. Status returns combined state.\",\"Docs: docs/process/AUTOPILOT_MODEL.md explains the two layers and how they compose\",\"CI test scripts/ci/test-autopilot-unified.sh asserts PWA start fires both layers and status reports unified health\",\"Operator outcome: ONE toggle ONE status. Walk-away test (META-090) becomes truly walk-away.\",\"Pairs with META-090 (#2569) RESILIENT-021 (#2570) and PRODUCT-115\"]"
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

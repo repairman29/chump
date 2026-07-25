@@ -1,0 +1,10 @@
+- id: INFRA-2395
+  domain: INFRA
+  title: "ZERO-WASTE: ~36 ghost gap_ids in PR titles — COG-*/EVAL-* prefixes never had YAML in docs/gaps/"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "[\"Run inventory `unreferenced-gap` finding class → produce the list of ~36 COG-* + EVAL-* + INFRA-NNN gap_ids in PR titles that have no docs/gaps/<id>.yaml AND no state.db row\",\"For each: classify as (a) historical experiment finished long ago — close with closed_pr backfill, (b) typo in PR title (e.g. INFRA-087 vs INFRA-87) — note in audit report, (c) intentional rebranding (e.g. EVAL-* prefix retired) — note\",\"Emit kind=ghost_gap_audit_finding to ambient.jsonl per ghost gap with fields {gap_id, pr_numbers_referencing, classification}\",\"Decision matrix doc at docs/audit/GHOST-GAP-AUDIT-2026-06-01.md\",\"Not destructive — no PR retitling, no DB mutations beyond status updates; operator reviews report\"]"
+  outcome_id: MISSION-010
+

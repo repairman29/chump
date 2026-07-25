@@ -1,0 +1,12 @@
+- id: INFRA-2273
+  domain: INFRA
+  title: "RESILIENT: register bot_merge_step_stalled in EVENT_REGISTRY.yaml + event-registry-reserved.txt (INFRA-2272 follow-up)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    INFRA-2272 (PR #2836) added kind=bot_merge_step_stalled to bot-merge.sh using a scanner-anchor comment to avoid touching EVENT_REGISTRY.yaml (held by INFRA-2067) and event-registry-reserved.txt (held by INFRA-2271). Now that those siblings have cleared, register the event kind properly. depends_on: INFRA-2272.
+  acceptance_criteria:
+    - "1. Add kind=bot_merge_step_stalled to docs/observability/EVENT_REGISTRY.yaml (scanner-anchor placeholder is in scripts/coord/bot-merge.sh from PR #2836). 2. Add bot_merge_step_stalled to scripts/ci/event-registry-reserved.txt. 3. Run scripts/ci/test-event-registry.sh and test-event-registry-reserved.sh — both pass."
+  outcome_id: MISSION-010
+

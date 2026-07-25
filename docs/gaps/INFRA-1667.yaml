@@ -1,0 +1,17 @@
+- id: INFRA-1667
+  domain: INFRA
+  title: "RESILIENT: opus-curator daemon real-run exit_code 5 every 10min — dry-run exits 0, post-decision phase fails under set -euo pipefail"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Symptom: every 10min, daemon_tick for task=opus-curator shows exit_code=5 (5+ consecutive failures observed 2026-05-22 17:08-17:48Z). Dry-run mode (manual invoke) exits 0 cleanly with 'Decision X: already filed today, skipping' for all four pillars. Script has 'set -euo pipefail' so a single unset var / non-zero subshell after the decision-print phase will exit with that command's code. The real-run code path beyond dry-run guards must contain the failing call — most likely a chump gap mutation (gap reserve / gap set / decompose) or a fleet-state.json batch write that returns 5. Mitigates noise in daemon_tick stream AND restores curator's ability to file balance-restock gaps when a pillar is genuinely starved (currently INFRA-1382 reports zero-pickable for all pillars but curator can't act). Fix: add 'or echo + curator_error event + true' around the suspect call in scripts/coord/opus-curator.sh; or unwrap set -e for the mutation block.
+  acceptance_criteria:
+    - root-cause identified for non-dry-run failure post 'CURATOR DECISIONS' phase (likely a chump gap mutation or fleet-state write call failing under set -euo pipefail)
+    - opus-curator.sh either tolerates the failure with explicit handling OR emits structured curator_error event AND fails-soft to exit 0 so the daemon_tick stream stops showing exit_code=5 noise
+    - after fix, 5 consecutive daemon_tick events for opus-curator show exit_code=0 (verified via tail .chump-locks/ambient.jsonl)
+    - smoke test scripts/ci/test-opus-curator-real-run.sh that runs the script without CHUMP_CURATOR_DRY_RUN=1 against a fresh fixture state.db and asserts exit 0
+  closed_date: '2026-05-22'
+  closed_pr: 2312
+  outcome_id: MISSION-010
+

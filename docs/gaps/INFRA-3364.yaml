@@ -1,0 +1,9 @@
+- id: INFRA-3364
+  domain: INFRA
+  title: "preflight mirror: audit-shard-2 event-registry/observability/webhook-cache gates (27 scripts, META-086 cluster 2/5)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"event-registry-observability (shard 2)\" for the current unmirrored-script list (27 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry that mirrors its .github/workflows/audit.yml invocation exactly (env vars like CHUMP_REGISTRY_GATE_MODE=strict, BASE_REF=origin/main, etc).\n3. Group event-registry-coverage-family scripts under one preflight scope tag so `chump preflight --scope registry` can run just this cluster.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+

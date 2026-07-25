@@ -1,0 +1,12 @@
+- id: INFRA-1490
+  domain: INFRA
+  title: "RESILIENT: ci.yml row-add merge-driver fails on adjacent inserts — every fleet PR conflicts when 2+ PRs add audit-job rows near each other"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16T04:30 during a 12-PR batch rebase: 10 of 12 of my own DIRTY PRs hit unresolvable conflicts on .github/workflows/ci.yml at the audit-job test-row insertion site. Pattern: I added test row N; sibling added test row N+1 in same range; merge-driver scripts/git/merge-driver-ci-yml-add-row.sh treats them as conflicting because both diffs touch the same line.\",\"Root cause investigation: merge-driver-ci-yml-add-row.sh likely uses line-based diff. Two adjacent additions LOOK like a 3-way conflict to git unless the driver explicitly handles append-only semantics with both branches independently inserting at different anchor points.\",\"Fix in scripts/git/merge-driver-ci-yml-add-row.sh:  (a) parse the ci.yml YAML and walk to the audit job steps list,  (b) compute LCS-by-step-name across base/ours/theirs,  (c) preserve all unique steps from both sides ordered by name+id, drop duplicates by gap-id tag in the step name.\",\"Smoke test scripts/ci/test-ci-yml-add-row-adjacent.sh: synthesize base ci.yml with audit job + 2 test rows; add row A in ours; add row B (different gap) adjacent to A in theirs; run driver; assert merged file has BOTH rows + no markers.\",\"Emit kind=ci_yml_row_add_merged with {ours_row, theirs_row, position} per resolution\",\"Out of scope: redesigning ci.yml structure to avoid the bottleneck (separate gap, harder)\"]"
+  closed_date: '2026-05-16'
+  closed_pr: 2206
+  outcome_id: MISSION-010
+

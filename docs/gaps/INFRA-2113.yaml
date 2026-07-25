@@ -1,0 +1,20 @@
+- id: INFRA-2113
+  domain: INFRA
+  title: "EFFECTIVE P1: curator-opus-target picker external_repo tag filter (META-123 C5)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-123 C5: curator-opus-target picker recognizes external_repo: tag and filters/scopes gap selection accordingly. When a gap has skills_required containing 'external_repo:<owner/repo>', the target picker treats it as external-repo work and routes it through Handoff (using ExternalRepoContract from INFRA-2111) instead of the standard internal Chump worker path. Depends on INFRA-2116 (schema) to confirm the exact tag format.
+  acceptance_criteria:
+    - "Update curator-opus-target picker (search src/ for the picker logic — likely in src/picker.rs or src/gap_pick.rs or in agent_loop/ subdirectory; grep for 'pick_next' / 'select_gap' / 'target picker') to recognize gaps tagged with skills_required containing 'external_repo:<owner/repo>'."
+    - "Picker behavior: external-repo gaps are ONLY picked when the running session has authorization to ship to external repos (env CHUMP_EXTERNAL_REPO_PICK_OK=1 OR session role is curator-opus-target with explicit external-mode marker). Default = skip external-repo gaps in standard fleet picks, surface them only to the target curator."
+    - When picked, dispatch path routes through the handoff layer with ExternalRepoContract (INFRA-2111) instead of the internal CodeFixContract or worker.sh path.
+    - Update .claude/agents/target.md Lane scope section to add 'External-repo demo work (when CHUMP_EXTERNAL_REPO_PICK_OK=1)' as a 4th umbrella, with concrete example invocation. Document the env var in CLAUDE.md or scripts/ci/env-vars-internal.txt per the META-069 pre-push checklist.
+    - "Unit test: gap with skills_required containing 'external_repo:ehippy/derelict' is correctly identified by picker; picked only when CHUMP_EXTERNAL_REPO_PICK_OK=1 is set."
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN. Local CI via chump preflight before push. Voice-lint clean.
+    - PR via scripts/coord/bot-merge.sh --auto-merge (or manual fallback with Bot-Merge-Bypass trailer if INFRA-1939 wedge is in place).
+  depends_on: [META-123, INFRA-2116]
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

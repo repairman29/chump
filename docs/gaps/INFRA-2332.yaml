@@ -1,0 +1,13 @@
+- id: INFRA-2332
+  domain: INFRA
+  title: "fix-trunk: trunk-sentinel uses sha256sum (Linux) — needs shasum -a 256 for macOS"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "1. sed-replace 'sha256sum' with 'shasum -a 256' in scripts/coord/trunk-sentinel-daemon.sh (1 occurrence on line 122)\n2. bash -n syntax check passes\n3. Commit + push + admin-merge (META-207 T4 — autonomous-loop is broken at first hop)\n4. Restart daemon: launchctl kickstart -k gui/UID/com.chump.trunk-sentinel\n5. Verify fp= is non-empty in next 'TRUNK_RED for Nm' log line within 2 ticks"
+  notes: |
+    [2026-06-04T00:16:29Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2917
+  outcome_id: MISSION-010
+

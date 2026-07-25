@@ -1,0 +1,12 @@
+- id: INFRA-1566
+  domain: INFRA
+  title: "RESILIENT: move self-hosted runners off operator daily-driver — 4 runners + cargo workspace saturates MacBook Air, hurts operator interactive work"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16: 4 macOS-ARM64 actions-runner instances are co-located with operator daily-driver (jeffs-macbook-air). When CI is hot (4 parallel cargo build --workspace, 156MB debug binary each), all 10 performance cores saturate and operator interactive work degrades. Path to 50 PRs/hr requires more runners, which is impossible without leaving the laptop.\",\"Option A (preferred if hardware available): migrate the 4 actions-runner instances to a dedicated host (M1+ Mac mini, retired MacBook, or M-series desktop). Single-afternoon migration script: detach runners from current host via gh api repos/.../actions/runners/{id}, re-register on new host with same labels, preserve cache mount.\",\"Option B: rack first Raspberry Pi for linux-arm64 lane (INFRA-1543) — does NOT replace macOS runners but adds capacity in different lane.\",\"Option C: cloud runner (Lambda Labs / Hetzner ARM / GitHub larger tier) — recurring cost, compromises infra"
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

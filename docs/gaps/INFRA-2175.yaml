@@ -1,0 +1,24 @@
+- id: INFRA-2175
+  domain: INFRA
+  title: "EFFECTIVE: chump-fleet-server — query API + WS live-tail (INFRA-2164 sub-slice b)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Sub-slice (b) of umbrella INFRA-2164. Query API for fleet event visualization. New Rust crate crates/chump-fleet-server/ exposes a localhost-only axum binary that reads from .chump/fleet_events.db (the sqlite written by chump-fleet-recorder from sub-slice a). REST endpoints for time-windowed queries + a WebSocket for live tail. Background pass every 10s recomputes a derived agent_segments table from raw events for fast gantt rendering. Per Rust-first (META-064): must be Rust (long-lived daemon, > 200 LOC, will outlive 3 months).
+  acceptance_criteria:
+    - "crates/chump-fleet-server/ created with axum binary chump-fleet-server listening on 127.0.0.1:7070 (configurable via CHUMP_FLEET_SERVER_PORT)"
+    - "GET /api/events?from=&to= returns JSON array of events in window (defaults: last 1h, max 10000 rows, paginated via ?offset=)"
+    - GET /api/segments?from=&to= returns JSON array of derived agent_segments (precomputed activity intervals)
+    - GET /api/sessions/active returns list of session_ids with events in last 5min
+    - "GET /api/trace/pr/:n returns the causal chain of events for a given PR number (resolved via gap_id + bash_call greps for 'gh pr ...')"
+    - WS /api/live streams new events as they land in sqlite (client subscribes, server polls every 1s and pushes deltas)
+    - Background pass every 10s in a tokio task recomputes agent_segments table from raw events; segment activity classifier maps event_kind to activity (claim, edit, push, merge, blocked, idle)
+    - launchd plist at scripts/setup/launchd/com.chump.fleet-server.plist installed by chump-fleet-bootstrap.sh
+    - "Smoke test scripts/ci/test-fleet-server.sh: seeds sqlite with known events, hits each endpoint, asserts correct response shapes"
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
+  depends_on: [INFRA-2174]
+  closed_date: '2026-05-29'
+  closed_pr: 2725
+  outcome_id: MISSION-010
+

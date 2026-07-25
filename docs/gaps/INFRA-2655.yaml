@@ -1,0 +1,16 @@
+- id: INFRA-2655
+  domain: INFRA
+  title: "RESILIENT P0: audit.yml audit-required missing if:always() — INFRA-2565 matrix-shard refactor regression caught by INFRA-2191 ruleset guard"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "INFRA-2452 (PR #2973) moved audit and audit-required from ci.yml to audit.yml. INFRA-2191 test scripts/ci/test-ruleset-doc-only-pr.sh still points CI_YML at .github/workflows/ci.yml — so the if: always() assertion fails because audit-required is no longer in ci.yml."
+    - "Caught when #2998 (INFRA-2629) PR triggered the test inside the audit-required job context — testing itself by looking in the wrong place."
+    - "Fix: scripts/ci/test-ruleset-doc-only-pr.sh should look in audit.yml (audit-required is now there). Either change CI_YML to audit.yml, OR scan both files and use whichever contains the audit-required job."
+    - "Verify: scripts/ci/test-ruleset-doc-only-pr.sh exits 0 (post-fix) on a checkout of main."
+  notes: |
+    [2026-06-03T23:58:33Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 3001
+  outcome_id: MISSION-010
+

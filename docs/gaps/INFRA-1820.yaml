@@ -1,0 +1,17 @@
+- id: INFRA-1820
+  domain: INFRA
+  title: "EFFECTIVE: migrate chump gap decompose from SliceSuggestion to DecomposeContract (INFRA-1720 README adoption) — requires design choice on effort/priority field mapping (Opus #2 sized 2026-05-23)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "src/main.rs decompose handler (around line 8010) replaces the local SliceSuggestion struct (line 8238) with chump_handoff::DecomposeContract::SubGap from INFRA-1720"
+    - "Field-map decision documented in PR body — SliceSuggestion currently has (title, description, dependency_hint); DecomposeContract::SubGap adds priority + effort. Either default new fields to the parent gap's values OR have the LLM emit them; pick one and justify"
+    - LLM JSON-schema prompt at line 8096 area updates to match SubGap shape; --dry-run output unchanged in spirit but reflects new fields
+    - Backwards compat — if the LLM returns the old SliceSuggestion shape, fall back gracefully with a one-line deprecation warning; do NOT crash
+    - Smoke test scripts/ci/test-chump-gap-decompose-contract.sh — synthetic gap with mocked LLM response in DecomposeContract shape, assert sub-gaps are created with correct priority+effort
+    - "Lease note — src/main.rs:8010 is the decompose handler; coordinate with active INFRA-1799 (parser fix) lease and any future src/main.rs editors via .chump-locks"
+    - Pattern reference — INFRA-1720 (HandoffContract README) shipped DecomposeContract; this gap is the first consumer migration
+    - "Scope note from Opus #2 — bigger than 'mechanical swap' because SubGap design choice is real architectural work; not safe to delegate to a Sonnet without operator sign-off on the field-map decision"
+  outcome_id: MISSION-010
+

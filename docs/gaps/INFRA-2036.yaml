@@ -1,0 +1,13 @@
+- id: INFRA-2036
+  domain: INFRA
+  title: "RESILIENT P1: toolchain-ratchet wedge class — main goes clean at merge but blocks subsequent PRs after rust 1.95.0 / strict-fmt / strict-clippy refresh (same class as THE FLOOR strict-mode flip)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

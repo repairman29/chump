@@ -1,0 +1,15 @@
+- id: CREDIBLE-125
+  domain: CREDIBLE
+  title: "CREDIBLE: verify-merge Gate-1 CI-delta — judge a PR on its CI delta (pre-existing red is advisory, NEW red blocks) so the autonomous loop can fix broken-CI repos as product work instead of deadlocking on their pre-existing red"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Gate 1 in src/external_verify_merge.rs fetches terminal check-runs for BOTH base SHA and head SHA; FAILURE present on head but SUCCESS-or-absent on base → HELD(ci_regression) naming the check; FAILURE on both → logged as pre-existing-red (non-blocking); SUCCESS on head → pass.
+    - Gate 1 PASSES when there are zero newly-introduced failures; it does NOT pass when checks that were green on base are now red on head (regression still blocks).
+    - "A new helper fetch_check_runs_for_sha(repo, sha, gh_bin) reuses the existing gh/cache mechanism; it accepts an arbitrary SHA (not just the PR HEAD) and returns Vec<serde_json::Value>."
+    - "Four new serial_test::serial tests cover: (a) head greens one check while others are red on BOTH base+head → PASS; (b) check SUCCESS on base but FAILURE on head → HELD(ci_regression); (c) all-green base+head → PASS unchanged; (d) all-head-checks-red but all also red on base → PASS (pre-existing). All existing verify_merge and improve tests remain green."
+  closed_date: '2026-07-20'
+  closed_pr: 3166
+  outcome_id: CREDIBLE-000
+

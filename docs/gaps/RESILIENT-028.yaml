@@ -1,0 +1,18 @@
+- id: RESILIENT-028
+  domain: RESILIENT
+  title: "auto-finisher dispatch: wizard-daemon reacts to orphan_worktree_detected by dispatching 'pick up and complete' Sonnet finisher (today operator manually picked up INFRA-2043 + a44 worktrees — should be automatic)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Completes the abandonment recovery loop: when wizard-daemon observes orphan_worktree_detected (RESILIENT-027) or heartbeat-stale (INFRA-2056), it auto-dispatches a 'finisher' Sonnet sub-agent with a self-contained prompt: 'Pick up the in-progress work in /tmp/chump-<gap>. Review committed + uncommitted changes. Determine: (a) is it close to ship? Then complete + commit + push + PR. (b) is it broken/wrong-direction? Then git reset + reclaim or abandon with explicit gap note.' Today I manually finished INFRA-2043 (agent crashed mid-write); the finisher dispatch should do that automatically. Rate-limit: max 1 finisher per orphan per hour to prevent thrash if the underlying gap is genuinely broken.
+  acceptance_criteria:
+    - wizard-daemon (or sibling daemon) consumes orphan_worktree_detected events and dispatches a Sonnet finisher via chump --execute-gap-resume or similar new subcommand
+    - Finisher prompt template lives at docs/process/FINISHER_PROMPT.md and is self-contained (assumes no operator context)
+    - "Per-orphan rate limit: max 1 finisher per worktree per 1h window (configurable via CHUMP_FINISHER_RATE_LIMIT_S env)"
+    - "If finisher itself becomes orphaned (recursion guard), abandon with kind=orphan_recursion_giveup ambient event + chump gap set --add-note wizard_skip:true"
+    - "Smoke test scripts/ci/test-auto-finisher-dispatch.sh: synth orphan_worktree_detected event, assert finisher Sonnet spawned with correct prompt arguments"
+  closed_date: '2026-07-21'
+  closed_pr: 3127
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,18 @@
+- id: INFRA-1669
+  domain: INFRA
+  title: "EFFECTIVE: Repository Custodian Blueprint — reusable 4-phase framework with Chump as worked example for future repo audits"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Ship the Phase 4 deliverable from the 2026-05-22 custodian-prompt session. The blueprint extracts the reusable framework using Chump as worked example: each phase has an artifact checklist, an enforcement test, and a worked example pointing at real Chump files. Anti-patterns section documents Chump's own operational failure modes (similarity dedup missing INFRA-1664/1666, opus-curator silent failure, stale-checkout phantom-leases) as the load-bearing lesson — enforcement is harder than framework. This doc is ready to apply to future repos and to audit Chump itself on a quarterly cadence.
+  acceptance_criteria:
+    - docs/process/CUSTODIAN_BLUEPRINT.md exists on main with the 4-phase framework + anti-patterns section + 'how to apply to a new repo' workflow
+    - "frontmatter follows the canonical doc_tag pattern (doc_tag: canonical, last_audited: 2026-05-22)"
+    - cross-references to AGENTS.md, CLAUDE.md, FLEET_SLOS.md, CLAUDE_GOTCHAS.md, ONBOARDING.md, EVENT_REGISTRY.yaml resolve
+    - blueprint uses Chump as worked example for each phase rather than abstract description
+    - anti-patterns section captures concrete failure modes observed during the 2026-05-22 custodian session (duplicate filings, stale checkout, silent daemon failures, doc-volume-without-indexing)
+  closed_date: '2026-05-22'
+  closed_pr: 2310
+  outcome_id: MISSION-010
+

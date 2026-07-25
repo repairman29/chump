@@ -1,0 +1,22 @@
+- id: INFRA-2324
+  domain: INFRA
+  title: trunk-health-sentinel daemon — autonomously triage main-CI failures
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/coord/trunk-sentinel-daemon.sh exists, executable, --help works
+    - Detects main ci.yml conclusion=failure within 1 tick (60s)
+    - Emits trunk_state_change on GREEN to RED transition
+    - Files fix-trunk gap (idempotent via sha256 fingerprint) at 5min RED
+    - Dispatches Sonnet sub-agent (CodeFixContract pattern) at 15min RED
+    - Calls operator-recall.sh at 60min RED (T4 doctrine)
+    - Emits trunk_recovered + closes filed gaps when trunk goes GREEN
+    - "Smoke test passes: bash scripts/ci/test-trunk-sentinel.sh"
+    - Ambient kinds registered in docs/observability/EVENT_REGISTRY.yaml
+    - launchd plist parses (plutil -lint) and bootstrap manifest references it
+  notes: |
+    [2026-06-04T00:16:29Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2916
+  outcome_id: MISSION-010
+

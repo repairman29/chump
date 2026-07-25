@@ -1,0 +1,20 @@
+- id: INFRA-2339
+  domain: INFRA
+  title: autonomous worktree-reaper — nuke /tmp/chump-* for shipped gaps + age-out >12h
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 1. scripts/ops/stale-worktree-reaper.sh extends WORKTREE_SCAN_PATHS to scan ANY git-registered worktree whose path begins with /tmp/ (regardless of name pattern), in addition to current .claude/worktrees + /tmp/chump-* defaults
+    - 2. Standalone (non-git-registered) /tmp/ dirs older than 12h that match common rescue patterns (infra-NNNN-*, ship-NNN, fix-*, *-rescue, *-fix) also flagged
+    - 3. Reaper logs SKIP/REAPED reason inline so operator can audit what it would/did do
+    - "4. Smoke test scripts/ci/test-stale-worktree-reaper-broad-scan.sh creates fixture /tmp/{chump-NN, infra-NNN-fix, ship-NNN, ad-hoc-name} worktrees, asserts reaper correctly classifies each (chump-NN: scanned, infra-NNN-fix: scanned via /tmp+age, ad-hoc-name: still scanned via git-list, dirs not in git AND not matching rescue pattern: skipped)"
+    - "5. Emits kind=stale_worktree_reaped (existing) per reap with new field: scan_source (git-list"
+    - tmp-glob
+    - rescue-pattern
+    - tmp-age)
+    - 6. Reaper installed via existing scripts/setup/install-stale-worktree-reaper-launchd.sh; verify next tick reaps the test fixtures within <60s of being eligible
+  closed_date: '2026-06-05'
+  closed_pr: 3043
+  outcome_id: MISSION-010
+

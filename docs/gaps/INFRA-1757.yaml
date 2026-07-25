@@ -1,0 +1,14 @@
+- id: INFRA-1757
+  domain: INFRA
+  title: "RESILIENT P0: chump-first smoke test broken on all PRs by INFRA-1392 PROOF-OF-MERGE guard — add CHUMP_BYPASS_PROOF_OF_MERGE=1 to test-no-anthropic-smoke.sh"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-23'
+  outcome_id: MISSION-010
+

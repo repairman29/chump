@@ -1,0 +1,20 @@
+- id: META-103
+  domain: META
+  title: "MISSION P0: productize curator-opus-observability role — owns ambient event-registry hygiene (60+ kinds, many silent or noisy), reaper cadence coordination (claude-reaper 300s vs subagent-reaper 1800s vs prune-worktrees 3am — incoherent), api-cost-leaderboard tracking, halt-class detector tuning"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 1. Create .claude/agents/observability.md following .claude/README.md discipline. Mirror existing productized curator templates
+    - "2. Create .claude/skills/observability/SKILL.md (~50-80 lines). Triggers: 'audit event registry', 'tune reapers', 'cost leaderboard', 'why is X firing so much'"
+    - "3. Create scripts/coord/observability-loop.sh. Subcommands: tick (one cycle), audit-event-registry (find kinds with zero emits in 7d → propose removal), reaper-cadence-audit (check coordination between claude-reaper / subagent-reaper / prune-worktrees / branch-reaper schedules), cost-leaderboard-rollup (gh api consumption per script over 24h), detector-noise-rank (which detectors fire >100x/24h)"
+    - 4. Emits kind=observability_finding
+    - "5. Smoke test scripts/ci/test-observability-loop.sh: synthetic ambient.jsonl with high-noise + zero-emit kinds; assert detection"
+    - 6. Register observability_finding in event-registry-reserved.txt
+    - "7. Baseline 2026-05-24: would have caught (a) reaper_pty_pressure 95x/24h (reactive vs proactive), (b) graphql_exhausted firing despite bucket healthy (misfire), (c) 60+ event kinds in registry, many unused, (d) audit-required check red on every PR for ~6 PRs"
+    - "8. Lane discipline: NOT competing with infra-watcher (substrate) or opus-shepherd-generalist (cross-cutting); focus is MEASUREMENT/TUNING of fleet-internal telemetry"
+    - 9. Pairs with INFRA-1927 (preflight↔CI agreement metric) and the api-cost-leaderboard.sh script
+  closed_date: '2026-05-25'
+  closed_pr: 2544
+  outcome_id: MISSION-010
+

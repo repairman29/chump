@@ -1,0 +1,14 @@
+- id: INFRA-2317
+  domain: INFRA
+  title: "fix(INFRA-021/301): path-filter test-gap-reserve-concurrency.sh to only run on PRs touching gap-reserve code — unjams 26 PRs queue-wide without hiding the real race"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. .github/workflows/ci.yml: test-gap-reserve-concurrency.sh step gains an if: that conditions on the diff touching scripts/coord/gap-reserve.sh OR crates/chump-gap-store/** (use the existing 'changes' job pattern). On PRs that don't touch those paths, step is skipped (not failed).\n2. PRs that DO touch those paths still run the test (catches new regressions)\n3. INFRA-021 and INFRA-301 (the real race tracking gaps) remain open and cross-referenced\n4. After this lands, run rerun-failed wave on the 26 BLOCKED PRs — they should pass fast-checks"
+  notes: |
+    Operator-found 2026-05-31T17:25Z: test consistently fails 3/3 locally on operator machine. Not a flake — real concurrency bug in gap-reserve. Quarantining via KNOWN_FLAKES would hide it. Path-filter preserves test on relevant PRs while unjamming the queue. The real fix is INFRA-021/INFRA-301. This is a CI-coverage scoping decision, not a bug hide.
+  closed_date: '2026-05-31'
+  closed_pr: 2899
+  outcome_id: MISSION-010
+

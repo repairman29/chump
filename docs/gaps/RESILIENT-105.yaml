@@ -1,0 +1,15 @@
+- id: RESILIENT-105
+  domain: RESILIENT
+  title: "RESILIENT: chump-gap-store test_reserve_concurrent panics in CI — gap reserve's open-PR scan calls live 'gh repo view' without GH_TOKEN → panic at crates/chump-gap-store/src/lib.rs:4934:62 (intermittently blocks PR CI; hit EFFECTIVE-177 #3066). Fix: mock gh in the test (CHUMP_GH_BIN) OR make the open-PR scan non-fatal on gh failure (it WARNs but then panics downstream). Flake-autorerun couldn't parse it ('not a flake shape')"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3089
+  outcome_id: RESILIENT-000
+

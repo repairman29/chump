@@ -1,0 +1,17 @@
+- id: INFRA-2049
+  domain: INFRA
+  title: wizard-daemon Step 4 writes to dispatch-state.json during CHUMP_WIZARD_DAEMON_DRY_RUN=1 (should be no-op)
+  status: closed
+  priority: P2
+  effort: m
+  description: |
+    wizard-daemon Phase 2 Step 4 (pickable-gap dispatch) writes to .chump-locks/wizard-daemon-dispatch-state.json EVEN when CHUMP_WIZARD_DAEMON_DRY_RUN=1 is set. Confirmed 2026-05-27T14:26Z: dry-run tick wrote 4 entries (CREDIBLE-069/070/071/072) to dispatch state with PIDs that never spawned. On next non-dry-run tick, the state was treated as 'active dispatches' (with dead PIDs), rate-limiting subsequent legitimate dispatches. Manual cleanup required (echo '{"dispatches":[]}' > state file). Dry-run should be read-only across ALL state files: ambient.jsonl, dispatch-state.json, recovery-queue-state.json.
+  acceptance_criteria:
+    - CHUMP_WIZARD_DAEMON_DRY_RUN=1 causes Step 4 to LOG 'would dispatch' but NOT write to dispatch-state.json
+    - Step 4's dispatch state pruner removes dead PIDs every tick (defense-in-depth)
+    - All other write-paths in wizard-daemon.sh are audited for dry-run respect (chump --execute-gap fork, ambient emit_action, operator_recovery_requested emit)
+    - "Smoke test in scripts/ci/test-wizard-daemon-dry-run-readonly.sh: assert no .chump-locks/* files modified after a dry-run tick"
+  notes: |
+    Superseded by INFRA-2048 fix in PR #2636. Both gaps batched into one PR (single file: scripts/coord/wizard-daemon.sh). All AC met: dry-run guard wraps all state writes + spawn, dead-PID pruning added every tick, test-wizard-daemon-dry-run-readonly.sh ships with 6/6 checks.
+  outcome_id: MISSION-010
+

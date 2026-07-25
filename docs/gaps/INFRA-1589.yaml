@@ -1,0 +1,21 @@
+- id: INFRA-1589
+  domain: INFRA
+  title: "EFFECTIVE: adopt existing AST tools (ast-grep + universal-ctags + rust-analyzer CLI + gh search code) as interim discipline while INFRA-1583 chump-mcp-code is built — runtime-verification before missing-claim, today"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    INFRA-1583 (chump-mcp-code MCP server) is 2-3 weeks of work and lives in Phase 5+ of the roadmap. The misdiagnosis pattern (INFRA-1575: A2A claimed missing when shipped) is biting NOW. The 5 tools mentioned in INFRA-1583 design exist as off-the-shelf CLIs today and can be adopted without writing any new code: (1) ast-grep — tree-sitter-based AST-aware structural search, brew-installable, drop-in superior to regex grep for symbol queries; (2) universal-ctags — 5-min setup, produces tags file for O(1) symbol lookup vs O(file-size) grep; (3) rust-analyzer — already in IDE installs, has CLI mode for type/trait queries beyond what tree-sitter can resolve; (4) gh search code <ID> — would have caught the A2A misdiagnosis in ONE CALL (gh search code INFRA-1296 --repo X returns the shipping commit immediately); (5) tree-sitter-cli — zero-deps JSON AST output if scripted access needed. Interim discipline: add allowlist entries + AGENTS.md rule that says "before claiming feature X is missing, run gh search code <X> and ast-grep --pattern \"...\" before filing". The rule is the load-bearing part; the tools make it cheap to follow. Pairs with the prompt-rule integration in INFRA-1583 AC; this gap ships the rule + tool adoption today, INFRA-1583 replaces the CLI invocations with structured MCP calls later.
+  acceptance_criteria:
+    - scripts/setup/bootstrap-manifest.yaml gains entries for ast-grep + universal-ctags as developer tools (install via brew on macOS, apt/cargo elsewhere); chump-fleet-bootstrap.sh --check warns when missing
+    - .claude/settings.local.json or repo-level permissions gain allowlist entries for ast-grep, ctags, gh search code, rust-analyzer invocations so the fleet can use them without approval prompts
+    - "AGENTS.md Filing meta-patterns section gains a Runtime verification before missing-claim subsection with the four-check rule: (a) gh search code <ID> for gap/PR history, (b) ast-grep --pattern for symbol existence, (c) test -f / ls for file paths in AC, (d) chump gap list --status done --json for closed-gap lookup; cross-references INFRA-238 and INFRA-1575 as cautionary precedents"
+    - docs/process/CLAUDE_GOTCHAS.md gains a Code-intelligence shortcuts subsection listing the canonical command for each of the five common queries (symbol exists, callers, route handler, event emitter, gap history) with copy-paste examples
+    - "scripts/dev/verify-existence.sh helper wraps the four-check rule into a single invocation: verify-existence.sh INFRA-1296 runs all four checks and reports a tri-state {confirmed_shipped, confirmed_absent, ambiguous} — agents call this before filing missing-claim gaps"
+    - scripts/ci/test-misdiagnosis-prevention-interim.sh replays the A2A scenario using these CLI tools (no MCP server required) and asserts the verify-existence.sh helper returns confirmed_shipped for INFRA-1296
+    - When INFRA-1583 chump-mcp-code Phase 1 ships, the verify-existence.sh helper is rewritten to delegate to code.gap_history MCP call; AGENTS.md rule updated to reference MCP tools as primary with CLI as fallback
+  notes: |
+    wave: 0 (interim runtime-verification discipline — should land alongside Wave 0 truth gates)
+  closed_pr: 2255
+  outcome_id: MISSION-010
+

@@ -1,0 +1,20 @@
+- id: RESILIENT-100
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge silent-wedge (hot-file-lock self-deadlock) when the PR modifies scripts/coord/bot-merge.sh — heartbeat keeps emitting while real progress halts before push"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    2026-06-05: shipping INFRA-2744 (which edits scripts/coord/bot-merge.sh) via bot-merge.sh, the run hung ~7min after 'Skipping tests (--skip-tests)' and before 'git push', emitting only the INFRA-119 '⏳ alive — step=cargo fmt' heartbeat every 30s (stale step label; real progress halted). The branch never reached origin. bot-merge acquired a hot-file-lock on /tmp/<wt>/.chump-locks/hot-file-scripts_coord_bot-merge.sh.lock (it detected its OWN file in the diff as a hot file), then appears to self-deadlock re-acquiring the same lock for a later step (auto-commit/push). flock is non-reentrant. The INFRA-119 budget watchdog (900s) would eventually SIGTERM, but 15min of dead wedge per such PR is the cost. Manual kill + manual-fallback push recovered.
+  acceptance_criteria:
+    - a PR diff that includes scripts/coord/bot-merge.sh does NOT cause bot-merge to deadlock on its own hot-file-lock (re-entrant-safe, or skip self-locking bot-merge.sh, or single-acquire-for-run)
+    - when real progress stalls, the heartbeat reflects the ACTUAL current step (not a stale 'cargo fmt' label) so the wedge is diagnosable
+    - a watchdog shorter than 900s detects 'no step transition for N minutes' and aborts to fail-open (manual or retry) rather than waiting the full budget
+    - "regression test or smoke: shipping a 1-line edit to bot-merge.sh does not wedge"
+  notes: |
+    Maps to VOA seed class 'bot-merge-silent-wedge'. Generalizes: any self-referential hot-file (a script that ships an edit to itself) risks the self-deadlock. Detector idea: emit kind=bot_merge_step_stalled (INFRA-2272 exists) sooner + on missing step-transition, not just per-step gtimeout.
+    MISSION-010 Gate0 cluster — co-prioritized 2026-06-05; mission-linked for the MISSION-011 picker boost (mission_rank=0 → sorts ahead of non-mission gaps within its priority band).
+  closed_date: '2026-07-20'
+  closed_pr: 3222
+  outcome_id: RESILIENT-000
+

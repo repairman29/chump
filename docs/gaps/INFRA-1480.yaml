@@ -1,0 +1,22 @@
+- id: INFRA-1480
+  domain: INFRA
+  title: "CREDIBLE: SAST + dependency-vulnerability scan in agent sandbox before PR opens"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Audit miss from 2026-05-15. Persona-1 SecOps-sign-off section: 'The orchestrator passes all generated code through our local Static Application Security Testing (SAST) tools and dependency vulnerability scanners inside the sandbox before a human ever sees the diff.' Growth-tier ($149) trust commitment — agents catching their own security issues before opening PRs. CREDIBLE pillar because the value is auditor/SecOps confidence in the agent output, not raw feature delivery.
+  acceptance_criteria:
+    - Agent sandbox includes hooks to run configured SAST tools (semgrep, bandit, gosec, etc — language-detected) on the diff before commit/push
+    - Hooks include dependency-vulnerability scan (npm audit, cargo audit, pip-audit, etc) on any deps the agent added or bumped
+    - "Findings: hard-fail the worktree (no PR opens) on HIGH/CRITICAL, log + report on MEDIUM/LOW"
+    - Operator can configure SAST tool set and severity thresholds per repo (.chump/sast.toml)
+    - "Findings reported to ambient.jsonl with kind=agent_sast_finding + severity + tool + file:line"
+    - Documented integration with common operator SAST stacks (CodeQL, Snyk, Semgrep Cloud — at least references; deep integration is downstream)
+    - "CI test: agent generates code with a known-vulnerable dep; verify SAST hook fails the worktree before PR opens; finding logged"
+    - "Hallucinated-dependency detection: when agent adds a new dep, verify (a) package exists in canonical registry, (b) registered for ≥30 days, (c) download count above operator-configured minimum (default 1000)"
+    - Hard-fail worktree on any hallucinated-dep check failure; emit ambient event kind=agent_hallucinated_dep with package name + which check failed
+    - "Mitigates the AI Hallucination Poisoning attack vector (Marcus's SecOps concern): agent invents nonexistent package, attacker pre-registers it as malicious"
+    - "CI test: agent introduces a dep named e.g. lodash-helper-2025 (nonexistent); verify check fires, worktree fails, ambient event emitted with correct payload"
+  outcome_id: MISSION-010
+

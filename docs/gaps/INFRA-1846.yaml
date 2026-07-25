@@ -1,0 +1,18 @@
+- id: INFRA-1846
+  domain: INFRA
+  title: "CREDIBLE: harvest analytics-platform-service aiInsightsEngine ML retention model into Chump fleet telemetry layer"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Read repairman29/analytics-platform-service/aiInsightsEngine.js via gh api; document the weighted retention model (session frequency 0.25, progression 0.15, purchases 0.15, social 0.10), conversion thresholds, baseline retention 0.65 in docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+    - "Map game-domain weights onto Chump worker/operator domain: worker session frequency, gap ship rate, P0 attention frequency, ambient signal volume — propose Chump-specific weights"
+    - Port the weighted-model primitive into src/fleet_health_model.rs as a configurable ChurnRiskScorer struct that consumes ambient.jsonl + state.db metrics
+    - Add chump fleet health --model retention subcommand that outputs per-worker churn risk score with reasons
+    - "Smoke test scripts/ci/test-fleet-health-model.sh: synthetic worker-activity timeline produces deterministic churn risk score"
+    - Ambient event kind=fleet_churn_risk emitted when a worker crosses threshold
+    - Coordinate with INFRA-721 fleet-brief.sh — extends the 24h brief with predictive churn signal
+    - "Vendoring lineage comment in src/fleet_health_model.rs: 'Vendored from repairman29/analytics-platform-service at commit SHA, original aiInsightsEngine.js (CP-014)'"
+    - Cross-pollination brief CP-014-analytics-retention.md
+  outcome_id: MISSION-010
+

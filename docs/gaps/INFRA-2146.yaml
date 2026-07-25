@@ -1,0 +1,10 @@
+- id: INFRA-2146
+  domain: INFRA
+  title: "RESILIENT P2: broadcast.sh — zsh 569Xlexpansion mangles dollar amounts in messages"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "broadcast.sh accepts arbitrary user content as positional args; zsh interprets $0.32 as parameter expansion = '/bin/zsh.32'. Fix: wrap shell-out invocations in single quotes; OR detect unquoted-shell-special-chars in input and warn-with-suggestion. Test: bash scripts/coord/broadcast.sh FEEDBACK proposal 'cost: $0.32 vs $2.20' produces a logged message with intact dollar amounts."
+  outcome_id: MISSION-010
+

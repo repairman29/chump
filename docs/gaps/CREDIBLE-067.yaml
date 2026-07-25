@@ -1,0 +1,12 @@
+- id: CREDIBLE-067
+  domain: CREDIBLE
+  title: "CREDIBLE: chump metrics reporter — standardize perf/SLO counters in one place"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\n    \"Implement src/metrics.rs module exporting typed Counter<T> traits for: gap_claim_latency_ms, gap_ship_latency_ms, pr_merge_latency_ms, fleet_worker_utilization_pct, test_suite_pass_rate_pct\",\n    \"Register metrics in src/main.rs and wire to /api/metrics JSON endpoint (similar to /api/health shape)\",\n    \"Integrate with ambient_emit.rs: emit kind=metric_snapshot{metric_name, value, unit} every 5 min to .chump-locks/ambient.jsonl\",\n    \"Update EVENT_REGISTRY.yaml with new metric_snapshot kind; consumers: [operator_dashboard, fleet_planner]\",\n    \"CI test scripts/ci/test-metrics-endpoint.sh: verify /api/metrics returns valid JSON with all 5 counters, latencies in realistic ranges\",\n    \"Docs: docs/observability/METRICS.md with counter catalog, unit definitions, per-counter SLO targets\"\n  ]"
+  closed_date: '2026-05-16'
+  closed_pr: 2230
+  outcome_id: CREDIBLE-000
+

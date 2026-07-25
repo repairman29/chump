@@ -1,0 +1,16 @@
+- id: INFRA-2186
+  domain: INFRA
+  title: "ZERO-WASTE P2: queue-driver.sh BEHIND/DIRTY scans use gh pr list (GraphQL) — migrate to webhook cache (~48 GraphQL calls/hr → 0)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "1. scripts/coord/lib/github_cache.sh gets two new helpers: cache_query_behind_armed_prs (returns one PR number per line where merge_state_status='BEHIND' AND auto_merge_enabled=1 AND draft=0) and cache_query_dirty_armed_prs (same but DIRTY). Both fall back to direct gh pr list on cache miss (cache <60s warmth check)."
+    - 2. scripts/coord/queue-driver.sh line 134 + lines 349-359 migrated to call the new helpers instead of chump_gh pr list with --json mergeStateStatus,autoMergeRequest,isDraft.
+    - 3. scripts/ci/test-queue-driver-cache-migration.sh — fixture cache.db with 3 PRs (BEHIND-armed, DIRTY-armed, CLEAN); assert helpers return the expected number(s) without calling gh.
+    - "4. After ship, monitor api-cost-leaderboard.sh --window 1h: queue-driver.sh should drop from ~48 pr-list calls/hr to ~0 (only refilling cache on miss)."
+    - 5. graphql_exhausted events from queue-driver session drop to <2/hour (currently ~8-10/hr per ambient stream).
+  closed_date: '2026-05-29'
+  closed_pr: 2732
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: INFRA-2227
+  domain: INFRA
+  title: "RESILIENT P2: AC-revert linter pattern — INFRA-2170 (and possibly others) keep getting their concrete AC reverted to 'TODO: what events emitted...' boilerplate by an automation; identify + disable the offending linter/daemon"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

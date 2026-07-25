@@ -1,0 +1,12 @@
+- id: META-191
+  domain: META
+  title: "META: Implement admin-merge bypass for BLOCKED+green PRs (META-180 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - PRs classified as `BLOCKED + all checks green` trigger an `admin-merge bypass` via `CHUMP_OPERATOR_CONSENSUS_BYPASS`.
+    - An audit trail is emitted for this action.
+    - "`pr_action_taken` event is emitted."
+  outcome_id: MISSION-010
+

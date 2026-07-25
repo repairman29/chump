@@ -1,0 +1,17 @@
+- id: INFRA-1829
+  domain: INFRA
+  title: "EFFECTIVE: picker (_pick_and_claim_gap.py) reads CapabilityManifest for skill-aware routing — bias to sessions whose manifest skills match gap.skills_required"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Extend scripts/dispatch/_pick_and_claim_gap.py to consult CapabilityManifest before claiming a gap with non-empty skills_required
+    - Read .chump-locks/capabilities/*.jsonl (the v0 file-backed store, INFRA-1825)
+    - "For each open gap with skills_required: prefer assigning to a session whose CapabilityManifest.skills is a superset; fall back to current round-robin if no match"
+    - "If multiple sessions match: pick the one with most-recent heartbeat (freshness ties win)"
+    - "If no session matches: emit kind=skill_routing_no_match {gap_id, skills_required} to ambient + fall back"
+    - "Bypass: CHUMP_SKILL_ROUTING=0 reverts to old round-robin"
+    - "Smoke test scripts/ci/test-picker-skill-routing.sh: synthesize 2 manifests (one with rust, one with shell), 1 gap with skills_required=[rust], assert rust-session wins"
+    - Depends on INFRA-1825 (manifest publish loop)
+  outcome_id: MISSION-010
+

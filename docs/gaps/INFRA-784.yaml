@@ -1,0 +1,9 @@
+- id: INFRA-784
+  domain: INFRA
+  title: "RESILIENT: free-tier agent loop inter-request delay — prevent RPM exhaustion on Cerebras/Groq"
+  status: done
+  priority: P1
+  effort: xs
+  closed_pr: 1447
+  outcome_id: MISSION-010
+

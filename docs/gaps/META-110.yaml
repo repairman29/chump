@@ -1,0 +1,16 @@
+- id: META-110
+  domain: META
+  title: "EFFECTIVE: Chump-native fleet scheduling primitives — replace Claude Code session-bound scheduling (CronCreate / ScheduleWakeup / Monitor) for fleet-durable work; surface chump cron CLI + visibility + health gates so daemons live in launchd/systemd not in agent sessions"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Umbrella for the chump-native scheduling cluster. Tracks INFRA-2057 (chump cron CLI declarative install/uninstall), INFRA-2046 (chump cron list + chump cron health visibility + audit), DOC-058 (docs/process/SCHEDULING_LAYERS.md rule + reference).
+    - "Discovery context: operator surfaced 2026-05-27 that Claude-Code-harness scheduled-task errors are noise from session-bound scheduling being used for work that should be fleet-durable. Chump already has the durable layer (scripts/launchd/com.chump.*.plist) but it has discovery gaps (INFRA-1929 prune-worktrees plist missing StartInterval went undetected until 321 orphan worktrees accumulated)."
+    - "Rule the umbrella enforces: any task whose correctness DEPENDS on running across agent-session restarts MUST live in chump cron (launchd or systemd backed). Tasks that legitimately die with the agent session (operator opens a /loop window for an hour) MAY use Claude Code Cron / Monitor. This rule is documented in DOC-058 + cross-linked from CLAUDE.md and AGENTS.md."
+    - "Acceptance for umbrella close: (a) chump cron install / uninstall / list / health subcommands functional + tested; (b) EXACTLY these 5 existing launchd plists migrated to chump-cron-managed installation (per wizard 2026-05-27 13:27Z, tightened from 'at least 5'): recovery-queue-service + inbox-injector + stale-worktree-reaper + ghost-gap-reaper + chump-cache-receiver. Each former install-NAME-launchd.sh becomes a chump cron install invocation; original installers may remain as thin shims OR be retired in same PR (architect's call per-daemon); (c) docs/process/SCHEDULING_LAYERS.md exists + referenced from CLAUDE.md Mission Driver; (d) all 4 sub-gaps closed; (e) ambient emit kind=chump_cron_managed appears for every plist under chump cron management."
+    - "Non-goals for umbrella: full migration of all 20+ existing plists to chump-cron management (Phase 1 ships the surface + a representative 5); session-scoped Claude Code Cron/Monitor are NOT replaced (they remain the right tool for session-bounded work like operator-driven /loop windows)."
+    - "Pillar mapping: EFFECTIVE (operator no longer sees Claude Code scheduling errors for fleet-durable work; clear surface for what runs and when) + RESILIENT (INFRA-1929-class plist-bugs detected systemically via chump cron health) + ZERO-WASTE (eliminates the bespoke install-*-launchd.sh script class entirely)."
+  depends_on: [INFRA-2057, INFRA-2046]
+  outcome_id: MISSION-010
+

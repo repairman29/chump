@@ -1,0 +1,18 @@
+- id: INFRA-1837
+  domain: INFRA
+  title: "RESILIENT: bypass-frequency auditor — daily broadcast to operator of top --no-verify users + reasons (shame loop, calibrates rule strictness)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "New scripts/ops/audit-bypass-frequency.sh: daily cron (via launchd, install-audit-bypass-launchd.sh) reads .chump-locks/ambient.jsonl + .chump-locks/no-verify-audit.jsonl for last 24h"
+    - "Aggregates by session_id: count of bypasses, top 3 reasons (regex-extracted from reason field), and most-recent bypass timestamp"
+    - Broadcasts via scripts/coord/broadcast.sh --to operator-* WARN with the top-3 offenders + counts (shame loop)
+    - "Includes a 7-day moving average comparison: 'session X used --no-verify 8× today, 7d avg = 2×' (signal: outlier)"
+    - If any session exceeds CHUMP_BYPASS_DAILY_THRESHOLD (default 5), emit kind=bypass_threshold_breach to ambient
+    - "Smoke test scripts/ci/test-bypass-frequency-audit.sh: synthesize 6 audit_no_verify events for one session, run audit, assert threshold-breach event emitted + broadcast sent"
+    - This closes the discipline loop without removing the bypass (operators sometimes legitimately need it); calibration data lets us tighten or relax rules empirically
+  closed_date: '2026-05-29'
+  closed_pr: 2438
+  outcome_id: MISSION-010
+

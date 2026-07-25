@@ -1,0 +1,17 @@
+- id: META-291
+  domain: META
+  title: umbrella-progress audit + decompose-cascade daemon — for every open effort=l umbrella, track days-since-last-PR-touching-its-files; >7d idle auto-files xs/s decomposition sub-gap; weekly structural-PR-rate digest emits kind=structural_work_digest; <25% structural-rate over 14d triggers operator-recall
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/coord/umbrella-progress-audit.sh runs every 6h (launchd plist dev.chump.umbrella-progress-audit). For each open gap matching effort=l AND (title contains UMBRELLA OR META OR IGNITION OR SUBSTRATE OR notes contains depends_on with effort=l gaps): grep AC for file paths/crate names; query git log to find last commit touching any matched path; record days-since-last-touch as kind=umbrella_progress_audit ambient event."
+    - "When days-since-last-touch > 7 AND no sub-gaps filed (no other gap has this gap in depends_on): emit kind=umbrella_decompose_needed AND invoke chump gap decompose <ID> --dry-run, write the proposed decomposition to ~/.chump/proposed-decompositions/<ID>-<ts>.json. Operator reviews; non-operator agents can take from there."
+    - "New CLI: chump health --structural-pr-rate [--window 14d] — computes % of last-N shipped PRs (where N defaults to last 14d) that closed gaps matching the plumbing pattern. Exits 1 if <25%. Used by META-290 plumbing-bias trigger."
+    - "Weekly digest event: kind=structural_work_digest emitted Mondays 09:00 local, contains {open_umbrellas_count, avg_days_idle, structural_pr_rate_4w, oldest_untouched_umbrella_id, decompose_cascades_filed_last_week}."
+    - "Operator-recall trigger: if structural_pr_rate_4w < 25% for 14 consecutive days, scripts/dispatch/operator-recall.sh fires with class=STRUCTURAL_STARVE."
+    - "Test fixture: scripts/ci/test-umbrella-progress-audit.sh seeds 3 fake umbrella gaps with synthetic git history (one fresh, one 5d idle, one 30d idle); asserts only the 30d one triggers kind=umbrella_decompose_needed."
+  notes: |
+    Pairs with META-290 (umbrella). Without this audit, "we never get to this work" recurs every cycle. The decompose-cascade is the unblock — turns L into xs/s slices the picker actually pulls.
+  outcome_id: MISSION-010
+

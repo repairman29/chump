@@ -1,0 +1,15 @@
+- id: CREDIBLE-107
+  domain: CREDIBLE
+  title: "CREDIBLE P1 (CREDIBLE-106 sub-gap): Gate 1 — chump gap reserve --evidence flag + audit-priorities check (Rust, ~80 LOC)"
+  status: in_progress
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - chump gap reserve --domain RESILIENT --priority P0 --title 'test' fails with clear message when --evidence is absent
+    - "chump gap reserve --domain RESILIENT --priority P1 --title 'test' --evidence 'COMMAND: foo\\nOUTPUT: bar\\nTHEORY: baz\\nALT: qux' succeeds and stores evidence"
+    - chump gap reserve --domain RESILIENT --priority P2 --title 'test' succeeds without --evidence (gate only applies P0/P1)
+    - chump gap reserve --domain INFRA --priority P0 --title 'test' succeeds without --evidence (gate only applies RESILIENT/MISSION/CREDIBLE)
+    - CHUMP_GAP_RESERVE_NO_EVIDENCE=1 chump gap reserve --domain RESILIENT --priority P0 --title 'test' succeeds and emits gap_reserved_no_evidence event
+    - chump gap audit-priorities --flag-empty-evidence lists P0/P1 RESILIENT/MISSION/CREDIBLE gaps with null evidence column
+  outcome_id: CREDIBLE-000
+

@@ -1,0 +1,22 @@
+- id: INFRA-1665
+  domain: INFRA
+  title: "EFFECTIVE: Marcus M-D Phase 0 — chump-team Supabase substrate (foundation for INFRA-1473 + INFRA-1475)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Marcus M-D Phase 0 foundation. Both INFRA-1473 (shared team vector-space) and INFRA-1475 (cross-operator fleet queue) need the same substrate: team-scoped Postgres with RLS-enforced isolation. Operator has an existing Supabase account, which collapses the foundation from a custom Rust server (~3 weeks) to migrations + a thin client crate (~1 week). Same code path supports operator-BYO Supabase project, future Chump-hosted, and self-hosted (Supabase is open-source).
+  acceptance_criteria:
+    - "supabase/migrations/0001_team_foundation.sql: teams + team_members + team_api_keys tables with RLS policies enforcing team-scoped visibility"
+    - "supabase/migrations/0002_shared_gaps.sql: shared_gaps + shared_claims + worker_capabilities + operator_quotas tables (foundation for INFRA-1475)"
+    - "supabase/migrations/0003_nuggets.sql: nuggets + nugget_reads tables with pgvector embedding column + HNSW index (foundation for INFRA-1473)"
+    - "crates/chump-team/Cargo.toml + src/lib.rs: thin Rust client wrapping postgrest crate; modules for auth/gaps/claims/nuggets/capabilities/quotas"
+    - "chump CLI subcommands: 'chump team init <project-url>' 'chump team auth' 'chump team status' 'chump team migrate'"
+    - "docs/design/TEAM_SERVER.md: architecture explainer, deployment models, schema reference, security model"
+    - "CI test: integration test against a docker-spawned supabase local stack; verify migrations apply cleanly and a sample team can be created with one member and one API key"
+    - "Documentation: docs/process/CLAUDE_GOTCHAS.md adds 'chump team' section linking the design doc"
+  notes: |
+    MARCUS M-D Phase 0. Operator picks deployment model: (3) hybrid — default self-hosted/BYO-Supabase, optional Chump-hosted as paid escape hatch. Supabase chosen as substrate: gets pgvector + RLS + auth + REST API for free, punts SOC2 question (customer's Supabase project = customer's compliance posture). Pairs with INFRA-1473 + INFRA-1475 (both become m-effort once this lands).
+  closed_pr: 2309
+  outcome_id: MISSION-010
+

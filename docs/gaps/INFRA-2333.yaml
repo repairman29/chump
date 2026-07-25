@@ -1,0 +1,13 @@
+- id: INFRA-2333
+  domain: INFRA
+  title: "RESILIENT: trunk red — main ci.yml failing on [audit,audit-required,fast-checks,fast-checks-required,pr-hygiene,test] (fp=84b8b4b8c435)"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Diagnose failing main jobs: audit, audit-required, fast-checks, fast-checks-required, pr-hygiene, test\n2. Apply minimum fix to each (file:line + diff)\n3. Verify locally if possible\n4. Admin-merge as trunk-red rescue (META-207 T4)\n5. Watch sentinel transition TRUNK_RED → TRUNK_GREEN"
+  notes: |
+    [2026-06-05T05:30:31Z] Stale trunk-red zombie: trunk recovered hours/days ago. Caused by RESILIENT-097 (sentinel _recover_close_gaps only fires on direct RED→GREEN, skips RED→AMBER→GREEN). Closed in sweep 2026-06-05T05:30Z by orchestrator-opus.
+  skills_required: fix_trunk,ci_repair
+  outcome_id: MISSION-010
+

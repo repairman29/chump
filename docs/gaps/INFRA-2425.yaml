@@ -1,0 +1,17 @@
+- id: INFRA-2425
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete CHUMP_OBS_BUDGET_BYPASS — make obs-budget warn-only OR exempt one-shot CLI tools"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - obs-budget pre-commit hook becomes warn-only by default (prints suggestion but does not block)
+    - Strict mode (block) only when CHUMP_OBS_BUDGET_STRICT=1 explicitly set — operator turns it ON, not bypasses turn it off
+    - Remove CHUMP_OBS_BUDGET_BYPASS from scripts/git-hooks/pre-commit
+    - Exempt one-shot CLI tools, allowlists, doc-only commits from warning (read commit subject prefix)
+    - "Smoke test: feature commit with no ambient hook → warn only, exit 0; with CHUMP_OBS_BUDGET_STRICT=1 → exit 1"
+  notes: |
+    [2026-06-04T00:06:15Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2961
+  outcome_id: MISSION-010
+

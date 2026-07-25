@@ -1,0 +1,14 @@
+- id: RESILIENT-033
+  domain: RESILIENT
+  title: "register 5 orphan event kinds blocking PR audit gate: admin_merge_cycle_restore_failed, md_links_heartbeat, md_links_lane_override, md_links_scan_done, worktree_reaped"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-27'
+  outcome_id: RESILIENT-000
+

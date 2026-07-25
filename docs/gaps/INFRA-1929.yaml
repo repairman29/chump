@@ -1,0 +1,14 @@
+- id: INFRA-1929
+  domain: INFRA
+  title: "RESILIENT P0: com.chump.prune-worktrees launchd plist missing StartInterval — daemon loads but never fires; 321 orphan worktree dirs accumulated in /private/tmp/chump-* by 2026-05-24, /private/tmp at 87% disk usage"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-24'
+  outcome_id: MISSION-010
+

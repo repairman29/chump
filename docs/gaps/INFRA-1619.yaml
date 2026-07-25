@@ -1,0 +1,14 @@
+- id: INFRA-1619
+  domain: INFRA
+  title: "RESILIENT: create missing scripts/ci/lib/ensure-cargo-on-path.sh + discover-chump-bin.sh — fleet-wide ACP CI blocker (INFRA-1600 follow-up)"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - 1. scripts/ci/lib/ensure-cargo-on-path.sh exists and adds HOME/.cargo/bin to PATH if absent 2. scripts/ci/lib/discover-chump-bin.sh exists and exports CHUMP_BIN honoring CARGO_TARGET_DIR 3. ACP CI check passes on PR branches
+  notes: |
+    Bookkeeping correction 2026-05-22 20:27Z: closed_pr was set to 2293 but that PR was CLOSED without merge. Scripts (scripts/ci/lib/ensure-cargo-on-path.sh + discover-chump-bin.sh) actually landed via commit 8322c1958 in PR #2266 (fix(ci): CI test scripts honor CARGO_TARGET_DIR shared cache, 13 scripts). Files exist + executable; ACP CI lane has been passing since. Closing with corrected closed_pr.
+  closed_date: '2026-05-19'
+  closed_pr: 2266
+  outcome_id: MISSION-010
+

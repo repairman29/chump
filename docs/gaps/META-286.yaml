@@ -1,0 +1,13 @@
+- id: META-286
+  domain: META
+  title: "META: AGENT_START_HERE north-star + session-start injection + fleet-brief merge-age honesty (cut confused-agent re-folding)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

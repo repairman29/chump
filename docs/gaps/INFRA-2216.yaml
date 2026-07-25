@@ -1,0 +1,18 @@
+- id: INFRA-2216
+  domain: INFRA
+  title: "RESILIENT: cargo fmt --all sweep — fmt drift on main wedges fast-checks queue-wide (4 files in chump-policy + chump-reviewer-routing)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Run cargo fmt --all on main; 4 files updated under crates/chump-policy/ + crates/chump-reviewer-routing/
+    - cargo fmt --all -- --check exits 0 after the sweep
+    - cargo clippy --workspace --all-targets -- -D warnings still passes (no new warnings introduced)
+    - No content/logic edits — pure mechanical fmt apply
+    - Ship as a single small PR; bot-merge arms auto-merge
+    - After merge, the next round of fast-checks jobs on open PRs pass instead of failing on fmt drift
+  notes: |
+    [2026-06-04T00:26:22Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2782
+  outcome_id: MISSION-010
+

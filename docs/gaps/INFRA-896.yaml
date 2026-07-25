@@ -1,0 +1,9 @@
+- id: INFRA-896
+  domain: INFRA
+  title: "INFRA: Incident classification + severity"
+  status: done
+  priority: P1
+  effort: xs
+  closed_pr: 1592
+  outcome_id: MISSION-010
+

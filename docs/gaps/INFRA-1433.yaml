@@ -1,0 +1,17 @@
+- id: INFRA-1433
+  domain: INFRA
+  title: "RESILIENT: tauri-cowork-e2e Selenium timeout on chump-chat selector — 60s wait, element never appears; either dead test or broken app init in CI"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Investigate why css selector 'chump-chat' never appears: dead selector (renamed to chat-room?) OR app fails to mount in CI's xvfb headless env OR D-Bus / X11 missing dependency"
+    - "If selector is stale: update e2e-tauri test file to current selector + add regression check that selector matches a defined Web Component in web/v2/"
+    - "If app-init fails in CI: add explicit wait-for-ready in test setup or move tauri-cowork-e2e to nightly only"
+    - Smoke test scripts/ci/test-chump-chat-selector.sh greps web/v2/ for the custom element and asserts the e2e test's selector points at an existing element
+    - "Eliminates the 60-second Selenium timeout that wastes 4+ min per failed run + every PR's CI bucket; root cause behind 8+ PR-blocking failures observed today (#2138, #2127, #2120, #2119, #2069 etc.)"
+  depends_on: [INFRA-1425]
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,14 @@
+- id: INFRA-3404
+  domain: INFRA
+  title: "INFRA: execute-gap ID validator splits on first hyphen — rejects all double-hyphen domains (ZERO-WASTE-015 'suffix must be digits')"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    src/execute_gap.rs validate uses split_once('-'): ZERO-WASTE-015 → prefix ZERO, suffix WASTE-015 → 'gap id suffix must be digits'. Every double-hyphen domain (ZERO-WASTE) is unexecutable on chump-local; observed failing EU cycles 2026-07-22. Fix: rsplit_once('-') + allow '-' in prefix charset.
+  acceptance_criteria:
+    - "The change described by \"execute-gap ID validator splits on first hyphen — rejects all double-hyphen domains (ZERO-WASTE-015 'suffix must be digits')\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3233
+

@@ -1,0 +1,21 @@
+- id: RESILIENT-103
+  domain: RESILIENT
+  title: "RESILIENT: a lease has THREE sources of truth (state.db leases + NATS-KV atomic claim + git claim-branch) with no reconciler — claim/release/reclaim/reaper-recovery must agree across all three"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Surfaced recovering from the INFRA-2744 ship (2026-06-05). A single interactive claim writes the lease to THREE independent stores: (1) the .chump/state.db 'leases' table, (2) the NATS-KV atomic claim (FLEET-034, chump-coord), (3) the git branch chump/<gap>-claim. They do NOT reconcile, and no tool clears all three. When the stale-worktree-reaper ate my worktree (RESILIENT-099), recovering the claim required THREE manual commands in sequence: 'sqlite3 .chump/state.db DELETE FROM leases WHERE gap_id=X' (state.db row persisted), 'git branch -D chump/X-claim' (branch lingered, blocking re-claim), and 'chump-coord release X' (NATS-KV claim blocked re-claim with 'NATS KV conflict'). 'chump --release --session <S> --force' did NOT clear any of them — it released a DIFFERENT (current-shell) session. INFRA-2744 fixed only the bot-merge-READS-state.db leg; this is the broader WRITE/RELEASE/RECONCILE unification across all three stores.
+  acceptance_criteria:
+    - "one lease abstraction (extend scripts/lib/lease.sh + the Rust atomic_claim) is the single API: claim writes state.db + NATS-KV + branch atomically; release clears all three; reclaim reads one canonical source"
+    - "chump --release [--session S "
+    - " --gap G] clears BOTH the state.db leases row AND the NATS-KV atomic claim (today it reliably clears neither; --session targets the wrong session)"
+    - recovering an abandoned/reaped claim is ONE documented command, not the three-command manual sequence above
+    - "regression test: claim a gap, release it, assert ZERO residue in all three stores (state.db leases row gone, NATS-KV key gone, no orphan branch blocking re-claim)"
+  notes: |
+    Sibling of INFRA-2744 (bot-merge read-leg, done) and RESILIENT-099 (reaper recovery surfaced this). The git-branch leg lingering after worktree reap is what forced 'git branch -D' before re-claim. Evidence in this session's transcript / ambient 2026-06-05T13:3x. The triple-store split is the root tax behind the whole 'interactive-claim-then-ship is painful' class (project_interactive_ship_friction memory).
+    MISSION-010 Gate0 cluster — co-prioritized 2026-06-05; mission-linked for the MISSION-011 picker boost (mission_rank=0 → sorts ahead of non-mission gaps within its priority band).
+  closed_date: '2026-07-21'
+  closed_pr: 3093
+  outcome_id: RESILIENT-000
+

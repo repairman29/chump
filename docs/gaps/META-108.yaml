@@ -1,0 +1,13 @@
+- id: META-108
+  domain: META
+  title: "RESILIENT P1: fleet-pause-on-waste-SLO-breach blocks chump gap reserve even for corrective-action gaps — self-defeating discipline observed 2026-05-25 (had to bypass via CHUMP_IGNORE_WASTE_PAUSE=1 to file the gaps whose purpose is reducing waste); needs corrective-keyword exception or operator-override-by-default"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

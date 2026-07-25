@@ -1,0 +1,14 @@
+- id: CREDIBLE-160
+  domain: CREDIBLE
+  title: "CREDIBLE: bot-merge claim handler blind to own-session lease conflict, exits silently"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    bot-merge's claim-failure handler (META-156 AC#2) only greps for 'worktree already exists' messages. When chump claim fails with the INFRA-1970 'gap X is already claimed by session S' lease conflict — which is the NORMAL case for chumpd workers, whose pick already claimed the gap under the same CHUMP_SESSION_ID that bot-merge inherits — the handler falls through to a silent exit 1 (claim_failed), swallowing _claim_out. This blocked every EU ship even after the .env/repo-root, busy-timeout, doctor, and bash-5.2 fixes. Fix: (a) match the already-claimed-by-session pattern, extract the session, and treat session==CHUMP_SESSION_ID as the INFRA-2744 no-op (reuse worktree+branch); (b) always echo _claim_out on the generic failure path so claim failures are never silent again.
+  acceptance_criteria:
+    - "The change described by \"bot-merge claim handler blind to own-session lease conflict, exits silently\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3238
+

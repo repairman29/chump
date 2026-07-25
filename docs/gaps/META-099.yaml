@@ -1,0 +1,22 @@
+- id: META-099
+  domain: META
+  title: "ZERO-WASTE P0: opus-shepherd loop must default to event-driven Monitor+ScheduleWakeup-fallback, NOT cron-poll — productize fleet-wide; cron pattern spawns 96 claude procs/day per session × N sessions = the 154-proc steady state and load-avg-36 incidents; event-driven cuts to ~6 wakes/day per session (16x reduction)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Update docs/process/OPUS_SHEPHERD_PLAYBOOK.md (META-094, shipping in #2503) 'Cadence calibration' section: deprecate the 15m cron default, REQUIRE event-driven primary + long-fallback heartbeat for any new opus-shepherd session"
+    - "2. Document the Monitor command shape every opus-shepherd should use: tail -F .chump-locks/ambient.jsonl "
+    - " grep --line-buffered -E '<MY-INBOX-FILTER>"
+    - <HALT-CLASS-KINDS>'
+    - "3. Document the ScheduleWakeup fallback: delaySeconds=1200-1800 (cache-aware breakpoint per the tool's own guidance); the prompt re-arms ScheduleWakeup at the end of each wake"
+    - "4. Migration path for existing cron-based shepherds: scripts/coord/opus-shepherd-migrate-to-event-driven.sh — detects current cron, CronDelete it, arms the Monitor, ScheduleWakeup with same tick prompt"
+    - "5. Smoke test scripts/ci/test-opus-event-driven.sh: stub a synthetic ambient.jsonl line matching the filter, assert the Monitor would emit it; assert the prompt is self-contained (re-arms ScheduleWakeup); assert the fallback delaySeconds is in [1200,1800]"
+    - "6. Bypass: CHUMP_OPUS_LOOP_MODE=cron forces legacy 15m cron (for sessions that genuinely need deterministic heartbeat)"
+    - "7. Baseline 2026-05-24: load-avg 36 incident with 154 claude procs from 5+ concurrent cron-15m sessions each spawning a tick subprocess every 15min"
+    - 8. The event-driven pattern is already supported by /loop skill (dynamic mode) — this gap codifies it as the SHEPHERD default rather than the EXCEPTION
+    - 9. After this gap ships and OPUS_SHEPHERD_PLAYBOOK.md is updated, any NEW opus-shepherd session lands on event-driven; existing cron-based siblings inherit the new default on their next restart
+  closed_date: '2026-05-29'
+  closed_pr: 2523
+  outcome_id: MISSION-010
+

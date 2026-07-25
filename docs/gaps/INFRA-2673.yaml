@@ -1,0 +1,10 @@
+- id: INFRA-2673
+  domain: INFRA
+  title: "EFFECTIVE P1: bot-merge.sh --progress-file flag — stream phase markers so background callers can tail"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\n\"Today 2026-06-03 orchestrator-opus invoked bot-merge.sh in background (run_in_background=true), output stayed at 0 bytes for 11+ min while internal cargo build + gh polling proceeded silently. Operator could not tell whether the script was hung or just slow.\",\n\"Fix: add --progress-file PATH option to scripts/coord/bot-merge.sh. When set, each phase boundary (init, fetch, push, gh-merge-arm, wait, post-merge) writes a single timestamped line to the file. Caller can tail -f the file to see incremental progress.\",\n\"Phases to mark: phase=init, phase=fetch_main, phase=preflight, phase=push, phase=arm_auto_merge, phase=wait_for_ci, phase=post_merge_clean, phase=done, phase=aborted_*.\",\n\"Verify: scripts/ci/test-bot-merge-progress-file.sh — invoke bot-merge.sh --dry-run --progress-file /tmp/test.log, assert lines appear in order with monotonic timestamps and the expected phase= prefix.\",\n\"Backwards-compat: when --progress-file is absent, behavior unchanged (no file writes).\"\n]"
+  outcome_id: MISSION-010
+

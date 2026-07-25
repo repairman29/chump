@@ -1,0 +1,19 @@
+- id: INFRA-2286
+  domain: INFRA
+  title: "EFFECTIVE P1: add R2 secrets to GH (R2_ACCOUNT_ID + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY) — activate sccache cache sharing (INFRA-2093 last-mile)"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    Operator question 2026-05-30T08:50Z: 'we did so much to use Docker and Cloudflare R2 — why aren't we?' Diagnosis: R2 wiring in .github/workflows/ci.yml is correctly conditional on secrets.R2_ACCOUNT_ID, but the 3 required secrets (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) were never added to the repo. gh secret list confirms NO R2 secrets exist. Without them, SCCACHE_ENDPOINT defaults to empty string → sccache writes only to local disk per runner → zero cache sharing. Local sccache stats confirm: 15% Rust cache hit rate. With R2 active, multiple runners share hits → 50%+ expected. INFRA-2093 made the wiring; nobody made the secrets. This is the last-mile activation. Operator action: cloudflare dashboard → copy 3 credentials → paste into repo Secrets UI. See docs/process/SCCACHE_R2_CACHE.md (already exists) for the step-by-step.
+  acceptance_criteria:
+    - Operator adds R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY to repo Secrets (Settings → Secrets and variables → Actions)
+    - gh secret list shows the 3 new secrets
+    - First post-credentialed CI run on a self-hosted runner sccache-shows-stats reports a non-zero entry under 'Cloudflare R2' or shows --cache-size growing past local disk
+    - sccache hit rate on per-PR cargo-test runs climbs from 15% to >40% within 7 days of credentialing (measurable via api-cost-leaderboard.sh or sccache stats artifact upload)
+    - "If sccache-stats artifact upload isn't wired yet: add a CI step that runs 'sccache --show-stats' at end of cargo-test job and uploads as a build artifact for visibility"
+    - Cross-reference INFRA-2093 (original wiring) + docs/process/SCCACHE_R2_CACHE.md
+  notes: |
+    CLOSED-MISDIAGNOSIS 2026-05-30T08:55Z: secrets ARE configured (gh secret list --repo repairman29/chump shows all 3 R2_*). My initial check used gh secret list without --repo flag and hit wrong scope. The 15% sccache hit rate I cited was local laptop sccache, not CI runners. Real CI cache rate from R2 is unknown without GH Actions log inspection. Demoting to P3, will reopen if CI logs show R2 not actually being hit.
+  outcome_id: MISSION-010
+

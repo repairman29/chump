@@ -1,0 +1,12 @@
+- id: CREDIBLE-162
+  domain: CREDIBLE
+  title: "CREDIBLE: bot-merge dies silently on zero-commit branches — unguarded grep -c under set -e"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"bot-merge dies silently on zero-commit branches — unguarded grep -c under set -e\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3240
+

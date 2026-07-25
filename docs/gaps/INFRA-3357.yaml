@@ -1,0 +1,11 @@
+- id: INFRA-3357
+  domain: INFRA
+  title: "META-070: mirror worker-substrate/worktree/PWA audit-job gates into chump preflight (cluster D)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster D from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the worker-substrate, git-worktree-safety, precommit/prepush, and PWA e2e/security test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 35 scripts, see cluster D list in the survey doc (worktree contamination/prune/gitdir-repair, precommit/prepush guards, pwa-security/e2e/version-compat, cli-output-format/version-debug, cargo-mutex-isolation). (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml; cluster scope replaced accordingly.)
+  acceptance_criteria:
+    - 1. All 35 cluster-D scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 35 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster D shipped, and META-086 self-closes on this being the last sub-gap shipped. Given the size (35 scripts), splitting into 2 intent-atomic PRs (worktree/git-plumbing vs PWA/CLI) is acceptable.
+

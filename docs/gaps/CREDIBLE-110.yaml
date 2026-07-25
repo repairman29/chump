@@ -1,0 +1,13 @@
+- id: CREDIBLE-110
+  domain: CREDIBLE
+  title: "CREDIBLE: chump CLI hallucinates on unknown subcommand instead of erroring (farmer status / cron list returned LLM prose)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "chump <unknown-subcommand> exits non-zero with usage error, NOT a hallucinated LLM answer (observed: 'chump farmer status' -> 'a farmer is an individual who works in agriculture')"
+    - hallucinated CLI output is a CREDIBLE-105 credibility failure — makes a non-existent command look real
+    - audit which subcommands fall through to the LLM brain + gate behind an explicit flag
+    - "regression test: unknown subcommand -> nonzero, no prose"
+  outcome_id: CREDIBLE-000
+

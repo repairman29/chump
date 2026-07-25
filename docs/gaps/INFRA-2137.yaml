@@ -1,0 +1,14 @@
+- id: INFRA-2137
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C9 quarantine queue + bisect_quarantined gap status + work-board re-enqueue"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- New gap status: bisect_quarantined in state.db schema (chump-gap-store crate).\n- Migration: add allowed-value to status CHECK constraint; backfill empty (no historical gaps in this state).\n- Integrator daemon (INFRA-2130) on bisect identification:\n    1. chump gap set <offending_gap_id> --status bisect_quarantined\n    2. chump gap set <offending_gap_id> --notes-append \"Quarantined from integration-{cycle_id}: <failure_signature>\"\n    3. chump-coord work-board post <offending_gap_id> bisect-review \"Manual review needed: failed integration {cycle_id}\"\n    4. Emit ambient kind=bisect_quarantine\n    5. Remove offending merge from integration branch via git reset + re-merge remaining\n    6. Re-run preflight; if green, SHIP rest; if red, quarantine again (max 3 quarantine cycles, then abort entire integration)\n- New CLI: chump gap requeue <ID> — moves status from bisect_quarantined back to ready_to_ship after operator review.\n- chump session-summary surfaces bisect_quarantined gaps in \"Needs operator review\" section.\n- chump health --slo-check: counts bisect_quarantined gaps; reports if > 5 (saturation indicator).\n- 6+ unit tests: status transition, notes append, work-board re-enqueue, requeue CLI, session-summary surfacing, SLO threshold.\n- Cross-references INFRA-2130 (the quarantine emitter), INFRA-2136 (provides offending_gap_id), INFRA-2142 (SLO-6 reads this rate)."
+  notes: |
+    [2026-05-30T01:02:41Z] Implementation commit dad32eee5 on branch chump/infra-2137-claim — pushing PR
+    [2026-06-04T00:26:18Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2779
+  outcome_id: MISSION-010
+

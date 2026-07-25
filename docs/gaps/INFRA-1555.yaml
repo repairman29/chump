@@ -1,0 +1,21 @@
+- id: INFRA-1555
+  domain: INFRA
+  title: "EFFECTIVE: complete FLEET-048 — create gap_ratings table, persist 'chump gap rate' command output, feed ratings into routing/picker decisions"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    REALITY CHECK (Phase A read, 2026-05-16): FLEET-048 is ~80% shipped. The 'chump gap rate' command is fully wired at src/main.rs:8671 — parses GAP-ID + 1-5 rating + --comment + --pr, emits kind=gap_impact_rated to .chump-locks/ambient.jsonl. A consumer exists: 'chump kpi report --impact' reads the events back via src/kpi_report.rs:1079-1170. CI test scripts/ci/test-gap-impact-rating.sh validates the loop. What's actually missing: (1) Zero ratings have ever been emitted (grep -c gap_impact_rated ambient.jsonl = 0) — pure operator-discoverability problem, not code; (2) The picker (src/atomic_claim.rs::run_claim at line 177) does NOT consume rating signal for arm-bias. No materialized SQL table needed for write/read; only needed if picker hot-path can't afford ambient scan. Simpler scope than my original filing.
+  acceptance_criteria:
+    - "Picker integration: src/atomic_claim.rs::run_claim (or a helper it calls) consults aggregate gap_impact_rated events from ambient.jsonl grouped by gap domain+pillar class, applies a documented weight — mean rating <2.5 demotes the class by one priority tier in tie-breaks. Implementation choice between (a) live ambient scan with N-day window, or (b) materialized view in .chump/state.db populated by a launchd-scheduled reconciler, documented in the PR with rationale"
+    - "If (b) is chosen: schema delta added to schema_migration.sql + regenerated .chump/state.sql for a gap_ratings_view table populated from ambient.jsonl, with a reconciler script in scripts/ops/ run hourly via launchd plist + bootstrap-manifest entry"
+    - chump kpi report --impact output gains a new section showing rating-mean-per-class (domain+pillar group) so the operator can see which classes are being demoted by the picker
+    - scripts/ci/test-gap-impact-rating.sh extended (or new test-rating-picker-integration.sh) asserts picker selection differs given a synthetic ambient with 5 low-rated gaps in one class
+    - "CLAUDE.md operator workflow snippet added under Mission Driver: 'After ship, rate surprising outcomes with chump gap rate <ID> <1-5> — the picker uses class-aggregate ratings to bias future selection. Zero ratings exist today; this is the simplest way to teach the fleet about your judgment.'"
+    - "EVENT_REGISTRY.yaml entry for gap_impact_rated updated if it lacks status: active and emitter_paths"
+  notes: |
+    wave: 4 (FLEET-048 ratings picker integration; serves Mission Yield chip-tagging UX downstream)
+  closed_date: '2026-05-25'
+  closed_pr: 2530
+  outcome_id: MISSION-010
+

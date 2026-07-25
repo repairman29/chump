@@ -1,0 +1,17 @@
+- id: INFRA-1570
+  domain: INFRA
+  title: "EFFECTIVE: /api/settings/repo backend missing — web/v2/welcome.js calls it, no handler registered (sibling to INFRA-1563 /api/decisions)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Verified by exact-match grep (2026-05-16): web/v2/welcome.js calls /api/settings/repo but src/web_server.rs has no handler registered for that path. Pattern is sibling to INFRA-1563 (/api/decisions same shape). Welcome screen likely cannot complete its repo-context flow without this endpoint.
+  acceptance_criteria:
+    - New GET and PUT /api/settings/repo handlers in src/web_server.rs return per-repo settings JSON (e.g., {repo_path, watched_branches, default_priority_filter, default_effort_filter}) sourced from .chump/state.db or a chump-config TOML key
+    - web/v2/welcome.js fetch succeeds end-to-end and the repo-context UI renders the configured values rather than erroring
+    - scripts/ci/test-settings-repo-roundtrip.sh writes settings via PUT and reads them back via GET, asserting roundtrip equality
+    - Operator can override the settings via chump init or a future chump config repo subcommand (follow-up gap if relevant)
+  notes: |
+    wave: 4 (/api/settings/repo backend — Marcus-shaped PWA welcome flow)
+  outcome_id: MISSION-010
+

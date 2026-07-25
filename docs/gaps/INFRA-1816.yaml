@@ -1,0 +1,18 @@
+- id: INFRA-1816
+  domain: INFRA
+  title: "EFFECTIVE: vendor echeo Ship Velocity Score as Chump gap-value scorer (substrate for INFRA-1764 skill-aware routing)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Read echeo/src/matchmaker.rs calculate_ship_velocity_score and document the formula (cosine similarity plus language boost 0.1 plus type boost 0.05 capped at 1.0)
+    - Read echeo/src/matchmaker.rs Match struct and document score, reasons, capability, need fields
+    - Decide vendor vs lightweight-crate dependency — favor vendoring for v0 (single Rust file in src/gap_scoring.rs), revisit for v1 if algorithm stabilizes
+    - Implement src/gap_scoring.rs calculate_gap_value_score taking gap and routing_outcomes and returning a 0.0 to 1.0 value
+    - Boost factors mirror echeo pattern (language match, domain match, recency on similar task class)
+    - "Smoke test scripts/ci/test-gap-scoring.sh: synthetic gap and routing_outcomes table produce deterministic 0.0 to 1.0 score"
+    - Vendoring lineage comment in src/gap_scoring.rs cites repairman29/echeo at commit SHA original src/matchmaker.rs calculate_ship_velocity_score (CP-005)
+    - Cross-pollination brief CP-005-echeo-ship-velocity-score.md documents harvest and gap-vs-need mapping
+    - Coordinate with INFRA-1764 — routing layer reads this score, does not compute its own competing one
+  outcome_id: MISSION-010
+

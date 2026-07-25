@@ -1,0 +1,20 @@
+- id: INFRA-1953
+  domain: INFRA
+  title: "RESILIENT: SUBAGENT_DISPATCH.md ship-or-die gate — sonnet dispatch MUST verify PR exists before return; current epilogue allows 'idle-waiting' as completion (observed 2026-05-24 in INFRA-1893 + INFRA-1935)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "docs/process/SUBAGENT_DISPATCH.md shipping epilogue updated: add a 'PRE-EXIT VERIFICATION' block after the manual-recovery path that says 'BEFORE you return your final report, run: gh pr list --head <your-branch> --state open --json number "
+    - " jq length; if result is 0 your work has not shipped — execute the manual-recovery push+create+arm path NOW, do NOT return with status=completed'"
+    - Pre-exit verification is the LAST executable instruction in the epilogue (after shipping epilogue, after manual recovery, before final report format)
+    - New scripts/dispatch/subagent-pre-exit-check.sh helper that takes a branch name + asserts (a) branch exists on origin, (b) PR exists for branch, (c) PR has auto-merge armed; exits 0 on all-pass, non-zero with diagnostic otherwise
+    - Update existing dispatcher prompt templates (target-loop.sh when shipped, plus any manual dispatch scripts) to pass --verify-ship to the subagent's epilogue
+    - "Smoke test scripts/ci/test-subagent-pre-exit-check.sh: synthetic 'subagent' shell that commits + pushes + returns without creating PR; assert the check script catches it (exits 1 with 'no PR for branch')"
+    - Add ambient kind=subagent_idle_without_pr emit when the check detects the pattern; debounced per session-id so we can track adoption + remaining instances
+  notes: |
+    Filed by curator-opus-target-2026-05-23 after observing 2 of last 3 Sonnet dispatches today (INFRA-1893 #2489 + INFRA-1935 #2536) committed + pushed but didn't create PR; manual recovery took ~30s each time. The SUBAGENT_DISPATCH.md epilogue HAS the manual recovery path but subagents are reading 'report PR number OR BLOCKED' and treating 'I'm waiting for monitor' as a valid completion. Pre-exit verification is the gate that catches this class of half-ship. Pairs with INFRA-1941 (SessionStart nag) + INFRA-1942 (Monitor restart) — all three are ops-glue gaps that the 2026-05-24 day exposed.
+  closed_date: '2026-05-25'
+  closed_pr: 2551
+  outcome_id: MISSION-010
+

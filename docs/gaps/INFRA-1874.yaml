@@ -1,0 +1,15 @@
+- id: INFRA-1874
+  domain: INFRA
+  title: "GitHub Liaison Phase 2 slice β: cache freshness header — cached_at column + liaison_cache_stale event when age>600s (INFRA-1318 sub-gap 2/5)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-23'
+  closed_pr: 2437
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: INFRA-1928
+  domain: INFRA
+  title: "RESILIENT: fix audit-required pillar-health regression from PR #2469 (INFRA-1586 PWA header dedup) — chump-pillar-health element removed from web/v2/index.html without footer-fallback, scripts/ci/test-pillar-dashboard.sh fails on every PR since; non-blocking but turns the audit channel from signal into noise"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. Reproduce: gh pr view <recent-pr> --json statusCheckRollup shows audit-required FAILURE with detail 'chump-pillar-health missing from web/v2/index.html' — has been firing on every PR since #2469 (INFRA-1586) merged on 2026-05-24"
+    - "2. Root cause: PR #2469's sub-agent removed <chump-pillar-health> from #app-header per INFRA-1586 AC but did NOT verify the footer (chump-status-footer) actually renders the pillar slot — AC #3 explicitly said 'if a slot is missing functionality, file a follow-up rather than blocking — the footer is the right home regardless' but no follow-up was filed and the element is now absent from the page entirely"
+    - "3. Fix options (operator picks one): (a) re-add <chump-pillar-health> element to chump-status-footer body in web/v2/index.html, OR (b) loosen scripts/ci/test-pillar-dashboard.sh AC #4 to accept presence in chump-status-footer rendered output (requires Playwright check, not regex grep), OR (c) replace AC #4 with a content-level check that PRODUCT-090 pillar data shows on the rendered page somewhere"
+    - 4. Smoke test scripts/ci/test-pillar-dashboard.sh — passes after fix
+    - "5. Baseline 2026-05-24: audit-required has been FAILURE on ~6 consecutive recent PRs but fleet ships through (non-required); this gap restores the signal so a real audit failure can be distinguished from the known-bad background"
+    - 6. Pairs with INFRA-1927 (CI agreement metric) — INFRA-1928 is the canonical example of a CI gate the metric should flag as 'systematically broken, not catching anything new'
+    - "7. Smallest fix path is option (a): one HTML element added back to web/v2/index.html in the footer block; ~5min change"
+  closed_date: '2026-05-24'
+  closed_pr: 2495
+  outcome_id: MISSION-010
+

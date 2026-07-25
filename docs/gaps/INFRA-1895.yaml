@@ -1,0 +1,12 @@
+- id: INFRA-1895
+  domain: INFRA
+  title: "DEMO-PITCH-WRAPPER: scripts/dev/chump-pitch.sh one-command operator pitch — runs dashboard + timeline + cats DEMO_5MIN.md (ties META-067 Track 3 trio into one CLI surface)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. New scripts/dev/chump-pitch.sh: one-command operator pitch wrapper. Runs in order — (a) cat docs/DEMO_5MIN.md sections 1-3 (elevator + loop pattern + lightning intro), (b) invoke scripts/dev/lightning-demo-timeline.sh --limit 10 (last-10 PR table), (c) invoke scripts/dev/chump-dashboard-tui.sh (live snapshot), (d) cat docs/DEMO_5MIN.md sections 4-7 (screenshots + pillar + takeaway + CTA)\n2. --paginate flag pipes output through less so a presenter can step through; default mode prints all-at-once for piping/screenshot\n3. --limit N overrides the lightning table size (default 10)\n4. Smoke test scripts/ci/test-chump-pitch.sh: stub the 3 child scripts, assert wrapper invokes all 3 + emits expected section headers\n5. Total runtime <5s on a warm fleet; <15s cold (dominated by gh pr list inside lightning-timeline)\n6. Operator-facing: one command pitches Chump in 5 minutes; closes the META-067 Track 3 demo polish initiative"
+  closed_date: '2026-05-24'
+  closed_pr: 2483
+  outcome_id: META-067
+

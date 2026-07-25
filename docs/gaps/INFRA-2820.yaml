@@ -1,0 +1,14 @@
+- id: INFRA-2820
+  domain: INFRA
+  title: Prevent gap claim races during concurrent session shipping
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-06-08'
+  outcome_id: MISSION-010
+

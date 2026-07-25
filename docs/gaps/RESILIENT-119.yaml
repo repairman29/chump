@@ -1,0 +1,17 @@
+- id: RESILIENT-119
+  domain: RESILIENT
+  title: "RESILIENT: first-class triage-close (chump gap close --reason) — kill the reset-hard/proof-of-merge band-aid for non-PR gaps"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump gap close <ID> --reason <superseded
+    - wontfix
+    - obsolete
+    - duplicate> flips status WITHOUT requiring clean/current worktree (INFRA-2423) or a merge commit naming the gap (INFRA-1392) — those guards are for PR-ships, not triage-closes
+    - replaces the 2026-06-05 band-aid (git reset --hard origin/main + CHUMP_BINARY_STALENESS_CHECK=0 chump gap edit --status superseded)
+    - emits kind=gap_triage_closed audit event with reason
+    - regression test
+    - "per CREDIBLE-105: fix the cause (no triage-close path), not the path around it"
+  outcome_id: RESILIENT-000
+

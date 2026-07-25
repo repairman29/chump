@@ -1,0 +1,11 @@
+- id: RESILIENT-192
+  domain: RESILIENT
+  title: fleet-join-nats.sh + fleet-tailscale-up.sh node helpers (RESILIENT-191 follow-up)
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fleet-join-nats.sh + fleet-tailscale-up.sh node helpers (RESILIENT-191 follow-up)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

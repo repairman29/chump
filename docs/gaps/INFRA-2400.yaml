@@ -1,0 +1,10 @@
+- id: INFRA-2400
+  domain: INFRA
+  title: "ZERO-WASTE: backfill 16 EVENT_REGISTRY emit-without-register entries (INFRA-2396 reserved cohort)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "[\"Audit each of the 16 INFRA-2396 reserved emit-without-register kinds against the source emit site\",\"For each: write proper EVENT_REGISTRY.yaml entry (with effect_metric, description, scanner-anchor) OR confirm dead-and-remove from emit site\",\"After backfill: remove the INFRA-2396 reservations from scripts/ci/event-registry-reserved.txt\",\"Smoke test the new EVENT_REGISTRY entries via existing scripts/ci/test-event-registry-coverage.sh\"]"
+  outcome_id: MISSION-010
+

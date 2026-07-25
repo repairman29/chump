@@ -1,0 +1,22 @@
+- id: EFFECTIVE-141
+  domain: EFFECTIVE
+  title: "EFFECTIVE: chump onboard provider cascade requests model 'gpt-5-mini' (404 on local API) — scout reaches provider but can't return proposals (BEAST-MODE 0->1)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    After EFFECTIVE-123 (clone-auth) + EFFECTIVE-133 (cascade runtime nesting)
+    landed, `chump onboard https://github.com/repairman29/BEAST-MODE` clones and
+    reaches the provider cascade with NO panic — but the cascade requests model
+    'gpt-5-mini', which the local API 404s ("model 'gpt-5-mini' not found"). So
+    the BEAST-MODE first-touch scout still can't return proposed gaps: the last
+    link in the onboard 0->1 chain. The model appears hardcoded/misconfigured in
+    crate::provider_cascade::build_provider (used by src/onboard.rs ~line 287).
+  acceptance_criteria:
+    - chump onboard's provider cascade requests a model the configured backend actually serves (no hardcoded 'gpt-5-mini' that 404s on the local API)
+    - the cascade model is resolved from provider/cascade config with a sensible default that exists; an unavailable model yields a clear actionable error, not a silent empty result
+    - "verified live: chump onboard https://github.com/repairman29/BEAST-MODE completes the full first-touch scan end-to-end and returns proposed gaps (the BEAST-MODE 0->1 scout acceptance case)"
+    - a test covers the model-resolution path (default + override) without a live LLM call
+  closed_pr: 3046
+  outcome_id: MISSION-010
+

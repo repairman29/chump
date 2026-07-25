@@ -1,0 +1,16 @@
+- id: CREDIBLE-152
+  domain: CREDIBLE
+  title: "CREDIBLE: reserve guard — CI fixture titles must never enter the canonical state.db (118 fixture gaps + hijacked INFRA-001/002 found in triage)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Registry triage 2026-07-19 found 118 open fixture gaps (titles: balanced-a/b, overweight-N, alert-test-fixture-*, fixture-p0-N, race-a/z, integration-test-pipeline-*, feat-a/b) leaked into the canonical .chump/state.db, plus gap-ID hijack attempts rewriting INFRA-001/INFRA-002 titles (caught by pre-commit gaps-lock 2026-07-18). Root cause: test scripts call '$BIN gap reserve' relying on CHUMP_REPO/CHUMP_HOME isolation; any script that forgets (or a code path that ignores it) writes production state. Band-aid was closing them; this is the durable fix per CREDIBLE-105.
+  acceptance_criteria:
+    - reserve hard-errors when target state.db is the canonical repo db AND title matches the known fixture-pattern list (balanced-/overweight-/fixture-/race-[a-z]$/integration-test-pipeline-/alert-test-fixture-/feat-[abc]$) unless CHUMP_ALLOW_FIXTURE_TITLES=1
+    - scripts/ci test proves a fixture title is rejected against canonical db and accepted against a tmp CHUMP_REPO db
+    - one-shot audit arm (chump gap audit-priorities) counts fixture-pattern titles as a reported metric so recurrence is visible
+  closed_date: '2026-07-20'
+  closed_pr: 3200
+  outcome_id: CREDIBLE-000
+

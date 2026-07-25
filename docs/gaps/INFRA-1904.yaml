@@ -1,0 +1,29 @@
+- id: INFRA-1904
+  domain: INFRA
+  title: "CI blocker: audit failing on 10+ open PRs"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Shared CI-blocker detected by stuck-pr-filer (2026-05-24T00:58:57Z).
+    
+    Failing CI step:  audit
+    Script path:      unknown
+    Affected PRs:     10 (#2482 #2466 #2464 #2460 #2455 #2449 #2448 #2438 #2436 #2428)
+    Oldest failure:   73h
+    
+    Recent changes to script on origin/main:
+    (script path not identified from check name: audit)
+    
+    Suggested action:
+      1. Check whether origin/main already fixed this test (git log above).
+      2. If yes: bulk-rebase affected PRs so they pick up the fix.
+      3. If no: fix the script and ship a patch PR first.
+      4. Once root cause resolved, re-arm affected PRs via bot-merge.sh.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

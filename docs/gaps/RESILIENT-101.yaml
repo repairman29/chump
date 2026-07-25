@@ -1,0 +1,15 @@
+- id: RESILIENT-101
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge fast-fail at step=init (kill 30-min ship-wall hangs)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - bot-merge.sh exits non-zero within 60s when no claimable lease exists at step=init (no 30-min hang)
+    - watchdog budget CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S is enforced — kills at budget, not 2x (observed 1830s vs 900s budget)
+    - emits kind=bot_merge_init_failfast to ambient.jsonl with reason
+    - regression test scripts/ci/test-bot-merge-failfast.sh
+  closed_date: '2026-07-21'
+  closed_pr: 3064
+  outcome_id: RESILIENT-000
+

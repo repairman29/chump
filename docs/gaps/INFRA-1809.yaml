@@ -1,0 +1,22 @@
+- id: INFRA-1809
+  domain: INFRA
+  title: "RESILIENT: chump CLI startup hangs indefinitely on trivial commands (chump --version, chump preflight --help) — observed twice in 24h, every shell-script invoking chump becomes a hang risk"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Observed 2026-05-22 23:xxZ and 2026-05-23 07:xxZ during PR shepherd work: chump --version hung for 9+ minutes, chump preflight --help hung for 8+ minutes — both should print and exit in <100ms. Killing with kill -9 was the only recovery. No state.db lock visible via lsof, no obvious deadlock target. Symptom recurs under load (high process count, high disk IO). Every shell script that invokes chump as a preflight check (pre-push hook, scripts/coord/*, scripts/setup/*) becomes a hang risk; this is the root cause of many "pre-push hook hung 16+ min" reports. Without this fix, INFRA-1808 (bootstrap auto-install) cannot be trusted because every bootstrap run could hang. Rough shape: (a) add a 5s startup wallclock budget enforced inside main.rs early in fn main(); (b) on timeout, dump backtrace + exit non-zero with diagnostic; (c) bisect what subsystem causes the hang (suspect: tokio runtime init waiting on a downed Anthropic endpoint, or memory_db connection pool; possibly mistralrs feature flag); (d) make chump --version and chump --help short-circuit BEFORE any subsystem init so they cannot hang regardless.
+  acceptance_criteria:
+    - "chump --version and chump --help return in <100ms even under load (synthetic test: spawn 200 concurrent chump --version invocations, all complete within 5s)"
+    - "Add startup wallclock budget at main.rs entry: env CHUMP_STARTUP_TIMEOUT_MS (default 5000); on timeout, dump tokio runtime status + memory_db connection state + active subsystems, exit code 4, with diagnostic to stderr"
+    - "chump --version and chump --help short-circuit BEFORE tokio runtime init, before memory_db connect, before any LLM-provider init — proves the hang class is \"subsystem init blocks\", not \"argparse blocks\""
+    - "Bisect: identify the subsystem responsible (likely tokio runtime + Anthropic SDK background init OR memory_db r2d2 pool when DB locked); document finding in commit body"
+    - "If root cause is memory_db lock contention, add lock-timeout + diagnostic via r2d2::Builder::connection_timeout; if root cause is Anthropic SDK init, lazy-init it past argparse"
+    - Emit kind=chump_startup_timeout to ambient.jsonl on every timeout (with cmd, args, elapsed_ms, suspected_subsystem)
+    - "CI test scripts/ci/test-chump-startup-fast.sh: assert chump --version completes <100ms warm-cache, <2000ms cold-cache; assert under simulated load (parallel invocations) p99 <5s"
+    - cargo fmt/clippy clean; no new runtime deps
+  notes: |
+    Pillar: RESILIENT. Discovered during PR shepherd work — chump CLI hangs were the root cause of cascade pre-push hook hangs (every hook invokes chump preflight or chump --version). Blocks INFRA-1808 trust (auto-install can not be reliable if installer scripts call chump and chump hangs). Pairs with INFRA-1597/1645 (paramedic daemon broken — likely related r2d2 lock issue). Effort=m because bisect + lazy-init refactor is non-trivial.
+    [2026-05-24T09:01:11Z] stuck cycle 1 → re-attempt 2026-05-24 (PR #2447 auto-closed) respawn-handled:2447
+  outcome_id: MISSION-010
+

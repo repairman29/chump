@@ -1,0 +1,18 @@
+- id: INFRA-1838
+  domain: INFRA
+  title: "RESILIENT P0: pr-auto-rebase daemon must update-branch BLOCKED+armed PRs with stale CI — not just BEHIND (today's cascade root cause)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/coord/pr-auto-rebase.sh extends to handle BLOCKED PRs with autoMergeRequest set where CI age exceeds main HEAD age
+    - Bypass via CHUMP_PR_AUTO_REBASE_SKIP_BLOCKED=1 env var
+    - Smoke test scripts/ci/test-pr-auto-rebase-blocked.sh mocks 1 BEHIND and 1 BLOCKED-armed PR, asserts both processed
+    - Telemetry emit kind=pr_auto_rebase_blocked_nudged on each nudge
+    - "Done definition: next cascade where main moves shows BLOCKED-armed PRs auto-rebased within 5 min not 30+ min of manual gh pr update-branch"
+  notes: |
+    Curator demote 2026-05-24T00:02Z (overnight tick #23): P0 budget breach (6 vs cap 5). INFRA-1838's PR #2424 already merged 2026-05-23T21:26Z so the urgent work is shipped; gap remains open only due to status-flip blocked by stale local main (same proof-of-merge issue as INFRA-1852). Demoting frees the P0 slot; the status-flip will happen when a curator with fresh local main runs chump gap ship --update-yaml.
+  closed_date: '2026-05-29'
+  closed_pr: 2424
+  outcome_id: MISSION-010
+

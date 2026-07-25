@@ -1,0 +1,17 @@
+- id: CREDIBLE-131
+  domain: CREDIBLE
+  title: "CREDIBLE: mass-deletion guard underscore/space token mismatch false-positives cold-water RED_LETTER PRs"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    check-mass-deletion.sh Rule B builds file token red_letter (underscore) from docs/audits/RED_LETTER.md, but in CI gh pr view returns empty on detached-HEAD checkout so it falls back to commit messages which say 'Red Letter' (space); grep -F red_letter cannot match -> false-positive blocks EVERY weekly cold-water RED_LETTER PR (live: #3103 net -867). Fix: normalize _ - . to space on both sides of the match in lines ~134-142. Distinct from META-272 (detached-HEAD push-path). Test sibling: scripts/ci/test-mass-deletion-guard.sh.
+  acceptance_criteria:
+    - Rule B in check-mass-deletion.sh normalizes separators (_ - . treated as equivalent to space) on both the file token and PR context before matching, so a >100-line net deletion from docs/audits/RED_LETTER.md is NOT flagged when PR title/commit says 'Red Letter'.
+    - "test-mass-deletion-guard.sh gains a regression case: >100-line net deletion from an underscore-named file whose PR context mentions it only with spaces -> guard exits 0."
+    - All pre-existing test-mass-deletion-guard.sh cases still pass.
+    - "No new false-negative: a genuine unrelated mass deletion from a file not mentioned in any separator-variant still fails the guard."
+  closed_date: '2026-07-20'
+  closed_pr: 3127
+  outcome_id: CREDIBLE-000
+

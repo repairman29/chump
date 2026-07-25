@@ -1,0 +1,10 @@
+- id: EFFECTIVE-244
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire INFRA-797.yaml into role curator-opus-target"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "1. Edit the role-doc for curator-opus-target to reference INFRA-797.yaml (shipped in INFRA-797) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-797.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
+  outcome_id: EFFECTIVE-000
+

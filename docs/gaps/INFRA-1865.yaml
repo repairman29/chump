@@ -1,0 +1,17 @@
+- id: INFRA-1865
+  domain: INFRA
+  title: "RESILIENT: build OAuth-token refresher (the 5-min refresh promise in CLAUDE.md is aspirational — ~/.chump/oauth-token.json went 16d stale, blocking fleet launch)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/launchd/com.chump.oauth-token-refresher.plist exists and runs every 5 minutes (StartInterval 300)
+    - scripts/ops/refresh-oauth-token.sh extracts the current Claude Code OAuth token from macOS keychain entry 'Claude Code-credentials/<user>' via security find-generic-password and writes it to ~/.chump/oauth-token.json with current timestamp + source=launchd-refresher
+    - "Token rotation safe: refresher computes hash of incoming token vs current file token; only rewrites + emits ambient event when different (kind=oauth_token_refreshed) to avoid log spam"
+    - "Token validation: refresher tests the freshly-extracted token against the Anthropic API endpoint before writing; on validation failure emits kind=oauth_token_invalid and leaves the old file (with a warning) so fallback paths still see something"
+    - "Cross-platform: shell script branches on macOS (keychain) vs Linux (??? — operator decision needed; Linux operators may need different keystore or env-based fallback) — for now macOS-only with clear error on Linux"
+    - Install via scripts/setup/install-oauth-refresher-launchd.sh (idempotent)
+    - "Smoke test scripts/ci/test-oauth-refresher.sh: synthetic stale token in test temp dir, run refresher, verify file timestamp updated and token blob changed"
+    - CLAUDE.md Auth modes section updated to reflect actual refresher reality (drop the aspirational 'every 5 min' claim if not shipping, or point at this gap as the substrate)
+  outcome_id: MISSION-010
+

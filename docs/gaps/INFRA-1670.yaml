@@ -1,0 +1,26 @@
+- id: INFRA-1670
+  domain: INFRA
+  title: "EFFECTIVE: chump preflight — single-command local CI mirror (cargo check/clippy/fmt + relevant test-*.sh)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Every 'push then wait 15 min for CI then fix' round-trip costs ~30 min wallclock and operator attention. Last 48h alone we hit cargo fmt drift, clippy dead_code, INFRA-682 path-filter, INFRA-1274 raw-gh allowlist, INFRA-1287 registry orphans, and INFRA-755 obs-budget — each a 1-line fix that would've taken <30s locally. A single 'chump preflight' command would have caught every one of them in <60s.
+  acceptance_criteria:
+    - New chump CLI subcommand 'chump preflight [--scope ALL
+    - rust
+    - scripts
+    - docs]' (default ALL)
+    - Runs cargo fmt --check, cargo clippy -- -D warnings, cargo check for every workspace crate
+    - Runs the relevant scripts/ci/test-*.sh files based on what's staged or what differs vs origin/main
+    - Exits 0 if all green; non-zero with a clear summary of what failed first
+    - "Wallclock target: <60s on a warm machine for a typical Rust+scripts PR; <120s cold"
+    - "Bypass: CHUMP_PREFLIGHT_SKIP=1 (audit-logged via ambient emit kind=preflight_bypass with reason)"
+    - "CI test: scripts/ci/test-preflight-mirror.sh — invokes preflight in a worktree with intentionally broken code (bad fmt + clippy fail + missing event-registry entry) and verifies preflight catches each"
+    - "Docs: docs/process/CLAUDE_GOTCHAS.md adds 'Use chump preflight' section with the failure-class table"
+  notes: |
+    P1 because every day without this costs ~30 min × ~5 push cycles = 2.5h wasted. m-effort but mostly orchestration; the underlying scripts already exist (cargo + scripts/ci/test-*.sh). Pairs with INFRA-1671 (hook), INFRA-1672 (scope smarts), INFRA-1673 (mandate docs).
+  closed_date: '2026-05-22'
+  closed_pr: 2313
+  outcome_id: MISSION-010
+

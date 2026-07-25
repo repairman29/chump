@@ -1,0 +1,20 @@
+- id: INFRA-2272
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh per-step progress ledger + gtimeout wrapping on all gh/git invocations (INFRA-1399 follow-up — covers stalls beyond git push phase)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/coord/bot-merge.sh extended: per-step progress ledger at .chump-locks/bot-merge-progress/<gap-id>.json — records timestamp + step-name on each phase boundary (push, gh pr create, gh pr merge --auto, lease release)"
+    - Wrap each gh/git invocation with gtimeout (coreutils — installed via brew on macOS); CHUMP_BOT_MERGE_STEP_TIMEOUT_S env (default 300s = 5 min)
+    - "On per-step timeout: emit kind=bot_merge_step_stalled with gap_id, step_name, elapsed_seconds, last_progress_ts; exit non-zero with operator message 'bot-merge stalled at step <X>; fall back to manual recovery'"
+    - Distinguish kill-on-timeout vs natural exit so legitimate slow steps (rare) don't false-flag
+    - Cross-reference SHIP_ASSIST_PLAYBOOK.md §1 Class 4 in script header
+    - "Smoke test scripts/ci/test-bot-merge-stall-monitor.sh: synth bot-merge invocation with sleep 600 in place of git push, assert exit non-zero within CHUMP_BOT_MERGE_STEP_TIMEOUT_S + kind=bot_merge_step_stalled emitted"
+    - "Register kind=bot_merge_step_stalled in EVENT_REGISTRY.yaml + event-registry-reserved.txt (distinct from existing kind=bot_merge_stall_detected which covers only git push phase per INFRA-1399 PR #2169)"
+  notes: |
+    [2026-05-30T07:07:59Z] Filed by curator-opus-shepherd-2026-05-30 after Sonnet preflight-discovered INFRA-1399 was already shipped (PR #2169) but covered only the git push phase. Today's 3 separate bot-merge.sh wedges (INFRA-2216 cycle 5, INFRA-2218 cycle 6, INFRA-2071 cycle 13) — all hit ~4+ min no output mid-flow but the git push hadn't started yet. INFRA-1399's coverage was insufficient. INFRA-2272 extends with per-step progress ledger so any phase can fail-fast.
+  closed_date: '2026-05-30'
+  closed_pr: 2836
+  outcome_id: MISSION-010
+

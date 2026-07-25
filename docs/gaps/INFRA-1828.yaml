@@ -1,0 +1,22 @@
+- id: INFRA-1828
+  domain: INFRA
+  title: "EFFECTIVE: 5 A2A RPC wrappers (ask-eta/overlap/handoff/progress/capability) as bash scripts over broadcast.sh+chump-inbox.sh — v0 transport for INFRA-1759 stubs"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - 5 bash CLI wrappers under scripts/coord/rpc/ — ask-eta.sh, ask-overlap.sh, ask-handoff.sh, ask-progress.sh, ask-capability.sh
+    - "Each wrapper: generates request_id (uuid or ts-based), constructs JSON payload, sends via broadcast.sh --to <target-session> WARN with payload in note field, then polls chump-inbox.sh for a reply with corr_id=<request_id>"
+    - Timeout 10s default (per INFRA-1759 DEFAULT_RPC_TIMEOUT_MS); emit a2a_rpc_timeout to ambient on miss
+    - Replies are sent via broadcast.sh --to <requester> WARN (same channel; corr_id correlates)
+    - "ask-eta(target, gap_id): target responds with json {eta_seconds_remaining}"
+    - "ask-overlap(target, paths_csv): target responds with json {held_paths: [...]}"
+    - "ask-handoff(target, gap_id): target responds with json {accepted: bool, reason: str}"
+    - "ask-progress(target, gap_id): target responds with json {pct_complete, last_commit_sha}"
+    - "ask-capability(target, capability): target responds with json {present: bool, skills: [...]}"
+    - "Smoke test scripts/ci/test-a2a-rpc-wrappers.sh: two-process fixture (one sends, one auto-responds via a stub handler) — round-trip + timeout case"
+    - v0 transport over INFRA-1115 broadcast.sh+chump-inbox.sh; INFRA-1119 slice 2/4 swaps to NATS subject routing preserving wrapper API
+  closed_date: '2026-05-29'
+  closed_pr: 2442
+  outcome_id: MISSION-010
+

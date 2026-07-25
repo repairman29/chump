@@ -1,0 +1,11 @@
+- id: EFFECTIVE-315
+  domain: EFFECTIVE
+  title: multi-host ChumpBar — show Helsinki + cabinet fleets in one menu bar
+  status: in_review
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"multi-host ChumpBar — show Helsinki + cabinet fleets in one menu bar\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

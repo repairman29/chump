@@ -1,0 +1,10 @@
+- id: META-227
+  domain: META
+  title: "META: Define auto-admin-merge policy document (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "docs/process/AUTO_ADMIN_MERGE_POLICY.md is created and defines the policy: agent may admin-merge IF (consensus_resolved with quorum>=3) AND (fix_class in allowlist) AND (no DIRTY conflict) AND (no T1-T4 trigger fired in last 30m) AND (no operator HOLD label on the PR)."
+  outcome_id: MISSION-010
+

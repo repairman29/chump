@@ -1,0 +1,22 @@
+- id: RESILIENT-041
+  domain: RESILIENT
+  title: "RESILIENT P0: sccache R2 credential broken fleet-wide on main — AWS_ACCESS_KEY_ID resolves to 1-char value, blocking all CI since 2026-05-29T23:09Z (10h+ trunk-RED)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Diagnosed 2026-05-30 ~09:00Z during triage of 30+ BLOCKED PRs. Every recent PR fails the same CI check cluster: test + fast-checks-required + audit-required. Root cause: sccache S3 cred validation throws `Credential access key has length 1, should be 32`. CORRECTION 2026-05-30 (per operator): the workflow at .github/workflows/ci.yml:75-76 aliases AWS_ACCESS_KEY_ID := ${{ secrets.R2_ACCESS_KEY_ID }} (and AWS_SECRET_ACCESS_KEY := ${{ secrets.R2_SECRET_ACCESS_KEY }}). There is no GitHub secret literally named AWS_ACCESS_KEY_ID; the substitution name is just an env-var convention sccache reads. Real secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID. Notable timing: both R2 secrets were last set at 2026-05-30T03:55:17Z — DURING the trunk-RED (which started 23:09Z May 29) — meaning an earlier rotation attempt produced bad values that did not fix the issue. Last successful main CI was commit 19b50090 at 2026-05-29T23:09Z. Hotfix PR #2845 (chump-hotfix-cranelift-trunk-red) addresses an orthogonal cranelift issue but is also blocked by the same sccache failure. OPERATOR-ACTION: rotate R2 token via Cloudflare API (parent CF API token + account ID saved at ~/.chump/r2-rotation.env per INFRA-2237 — but the rotation script that uses it does not exist yet) + update R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY GH secrets.
+  acceptance_criteria:
+    - Operator verifies AWS_ACCESS_KEY_ID GitHub Actions secret resolves to a valid 32-char R2 access key (or rotates to a new one and updates secret)
+    - OR operator temporarily disables sccache as RUSTC_WRAPPER in .github/workflows/ci.yml until cred is fixed (drop RUSTC_WRAPPER env, accept slower builds)
+    - "After fix: re-run CI on PR #2845; verify test + fast-checks-required + audit-required all pass"
+    - "After #2845 merges (with cranelift fix): re-trigger CI on at least 3 backlogged PRs (2856, 2854, 2841 as sample) and confirm green"
+    - "Post-mortem: when did AWS_ACCESS_KEY_ID break? Was it a secret rotation, a workflow refactor pointing at wrong name, or accidental secret-clear? File follow-up if root-cause merits guard (e.g., ci-health-gate could detect single-char-secret pattern and alert before queue jams)"
+    - Once green for ≥3 trunk merges, close this gap; emit kind=trunk_red_recovered to ambient
+  notes: |
+    [2026-05-30T16:20:58Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2858 auto-closed) respawn-handled:2858
+  source_doc: docs/process/CHUMP_PLAYBOOK.md
+  closed_date: '2026-05-30'
+  closed_pr: 2858
+  outcome_id: RESILIENT-000
+

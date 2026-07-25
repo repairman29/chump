@@ -1,0 +1,13 @@
+- id: CREDIBLE-111
+  domain: CREDIBLE
+  title: "CREDIBLE P2: add AUTH_DEAD-spam case study to DURABLE_FIX_DOCTRINE.md (third band-aid example — 3 wrong theories before durable fix RESILIENT-113)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Per DURABLE_FIX_DOCTRINE.md (CREDIBLE-105, sibling-shipping): the doc has the sccache case study but the AUTH_DEAD-spam sequence on 2026-06-05 is a sharper teaching example — agent shipped 3 wrong theories before getting to the cause. Add as a §case-studies addendum. Sequence (verbatim): Theory 1: 'farmer.sh shallow check + tell operator workaround' (filed as RESILIENT-113 from 4 lines of source). Theory 2: 'Keychain has no Claude entry' — refuted by running 'security dump-keychain | grep -i claude'. Theory 3: 'rename Keychain service Claude Code-credentials → Claude Safe Storage' — refuted by reading the 24-char base64 blob (it's Electron's safeStorage encryption key, not OAuth tokens). Theory 4 (the durable fix): 'farmer.sh check_auth doesn't know about api-key fallback' — empirically verified, fixed in RESILIENT-113 #3090. The lesson is the SAME as the sccache one: agents stop at first plausible theory and run with it. The DURABLE_FIX_DOCTRINE.md self-check would have caught it at theory 1 if I had actually run it.
+  acceptance_criteria:
+    - docs/process/DURABLE_FIX_DOCTRINE.md gains a §case-studies (or §examples) section with the AUTH_DEAD-spam sequence
+    - "Cross-ref to RESILIENT-113 #3090 (durable fix), RESILIENT-115 #3089 (band-aid, closed)"
+  outcome_id: CREDIBLE-000
+

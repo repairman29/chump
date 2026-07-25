@@ -1,0 +1,23 @@
+- id: INFRA-1355
+  domain: INFRA
+  title: "CREDIBLE: chump fleet brief reports Pillars=0/0/0/0 (of 0 pickable) when 17 INFRA gaps actually pickable — metric source misaligned"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Live evidence (2026-05-15 ~19:48 UTC SessionStart hook): \"Pillars: EFFECTIVE=0 CREDIBLE=0 RESILIENT=0 ZERO-WASTE=0  (of 0 pickable)\" while the local state.db reported 17 pickable INFRA P0/P1 xs"
+    - s
+    - "m no-deps gaps when queried via `chump gap list --status open --json "
+    - " <pillar count python>`. Ships: 0 (≈0.0/hr) also reported despite 17+ PRs having merged in the prior 24h."
+    - "Likely root cause (one of):"
+    - (a) brief reads ship + pillar counts from a STALE source (e.g. file-mtime cache, NATS-KV snapshot that hasn`t been refilled since restart, a `chump-coord watch` cache that lost connection)
+    - (b) the underlying `chump fleet brief` Rust subcommand (src/main.rs around line 2819) queries gaps via a path that requires CHUMP_REPO env, and the SessionStart hook does not export it — so the query runs against an empty default dir
+    - "(c) the pillar_counts HashMap is populated from SHIPPED PRs (last 24h) not OPEN pickable gaps — the \"of N pickable\" suffix may be summing the same 24h-window numbers instead of the open registry"
+    - "Investigate path: run `chump fleet brief --json 2>&1` directly with full env, compare to the same call sourced from the SessionStart hook context. The discrepancy points at which env var or working-dir context is missing."
+    - "Acceptance: SessionStart fleet brief, run from any worktree, reports pillar counts matching `chump gap list --status open --json "
+    - " python -c \"...\"` within 5% (small lag for inflight commits acceptable)."
+    - "CI test: scripts/ci/test-fleet-brief-pillar-table.sh (existing) gets a new assertion that when the registry has at least N pickable gaps, the brief reports total_pickable >= N. Today the test seems to skip this consistency check."
+    - "Out of scope: re-architecting the brief data flow (separate gap if the issue is structural, not a env/wiring bug)."
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

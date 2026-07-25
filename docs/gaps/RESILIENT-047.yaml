@@ -1,0 +1,21 @@
+- id: RESILIENT-047
+  domain: RESILIENT
+  title: "RESILIENT: chump auto-resumes dispatch after trunk-RED recovery — verify 3 consecutive green merges + lift dispatch-halt without operator manual permission"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Filed 2026-05-30T10:00Z. The §7 trunk-RED handler in CHUMP_PLAYBOOK.md says 'wait for 3 consecutive green main merges before re-opening dispatch firehose.' Currently this is operator-discretion (operator must notice the 3 greens + manually un-halt). Should be substrate-managed: chump detects 3 consecutive green merges post-trunk-red_recovered event → auto-lifts dispatch-halt → emits kind=dispatch_resumed. No operator hands needed.
+  acceptance_criteria:
+    - When kind=trunk_red_detected fires → ambient state HALTED set (file flag at .chump-locks/dispatch-halted.flag); fleet workers respect this flag (refuse to claim new gaps while halted)
+    - When kind=trunk_red_recovered fires (e.g., from hotfix-merged event OR ci-health-gate cluster cleared) → enter VERIFYING state; observe next-N main merges
+    - After 3 consecutive merges on main with all required gates green → clear HALTED flag, emit kind=dispatch_resumed, ambient log notes recovery duration
+    - If any of the 3 verification merges fails → re-enter HALTED state, do NOT silently resume
+    - "Workers reading the dispatch-halt flag: extend scripts/dispatch/worker.sh + chump-coord worker to check flag at top of claim loop; emit kind=worker_halted_skip if flag set"
+    - "Smoke test: scripts/ci/test-dispatch-halt-resume.sh — fires synthetic trunk_red_detected → checks halt; fires 3 synthetic gap_shipped → checks resume; injects 1 failure → asserts re-halt"
+  notes: |
+    [2026-05-30T10:11:54Z] [2026-05-30T10:17Z] SUPERSEDED by INFRA-2226 'ci-runner-saturation throttle' which already covers auto-resume-when-avg-merge-gap-recovers semantics. Demoting P1→P3; operator can close or fold any unique-aspect AC into INFRA-2226. Another FAFO instance — RESILIENT-048 (auto-FAFO-check at file time) is the META fix that prevents this.
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

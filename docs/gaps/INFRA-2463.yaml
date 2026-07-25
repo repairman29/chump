@@ -1,0 +1,10 @@
+- id: INFRA-2463
+  domain: INFRA
+  title: "RESILIENT P0: bot-merge wedge guard wedges on STALE graphql_exhausted events — must live-check rate_limit"
+  status: shipped
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "[\"Trigger: 2026-06-02 ~23:54Z; live GraphQL was 4234/5000 (healthy) but bot-merge.sh wedge-guard aborted shipping INFRA-2447 + INFRA-2434 because a graphql_exhausted event was emitted at 23:47:42Z within the 1800s lookback window\",\"scripts/coord/bot-merge.sh wedge-guard MUST do a live `gh api rate_limit --jq .resources.graphql.remaining` (cheap REST call) before aborting on stale ambient events\",\"Decision logic: if recent graphql_exhausted in ambient AND live rate_limit < threshold → wedge (real exhaustion); else proceed + emit kind=bot_merge_graphql_wedge_cleared (existing kind from INFRA-2426) with note=stale-event-cleared\",\"Smoke test scripts/ci/test-bot-merge-wedge-live-check.sh: mock recent graphql_exhausted ambient + mock rate_limit returning 4234/5000 → bot-merge proceeds\",\"Aligns with operator zero-bypass thesis: removes the need for CHUMP_BOT_MERGE_IGNORE_GRAPHQL_WEDGE=1 escape hatch by making the gate self-correct against live state\"]"
+  outcome_id: MISSION-010
+

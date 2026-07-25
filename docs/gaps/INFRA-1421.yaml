@@ -1,0 +1,16 @@
+- id: INFRA-1421
+  domain: INFRA
+  title: "CREDIBLE: CI-regression guard tests on shipped fixes — assert ci.yml tauri-filter etc. don't regress on main"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "When a fix-PR title matches 'fix(<gap>): ... CI-regression' OR has a 'CI-Regression-Guard: <test-script>' commit trailer, the implementer MUST add a corresponding regression test"
+    - "Pre-push hook check: scripts/git-hooks/pre-push-ci-regression-guard.sh verifies that fix-PRs touching .github/workflows/ have a paired test in scripts/ci/test-* asserting the inverse"
+    - "Concrete first regression test: scripts/ci/test-tauri-filter-no-ciyml.sh asserts .github/workflows/ci.yml is NOT in the 'tauri:' paths-filter (the bug #2065 fixed; main re-added it via merge from another PR within hours)"
+    - Documented in docs/process/CI_REGRESSION_GUARDS.md with template for adding new guards
+    - Audit job in ci.yml runs the regression-guard suite on every PR; non-zero exit fails the audit job
+  closed_date: '2026-05-16'
+  closed_pr: 2227
+  outcome_id: MISSION-010
+

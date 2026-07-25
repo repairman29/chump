@@ -1,0 +1,16 @@
+- id: EFFECTIVE-307
+  domain: EFFECTIVE
+  title: "EFFECTIVE: preferred_operator gap field — routing hint for one-Jeff-many-repos and many-Jeffs-one-repo"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Add a preferred_operator column/field to gaps (like preferred_machine) as a routing hint for one-operator-many-repos and many-operators-one-repo scenarios. No new infrastructure, just metadata plumbed through reserve/list/picker. Refiled 2026-07-19 from a corrupt registry row whose ID field contained leaked description text (deleted in triage).
+  acceptance_criteria:
+    - gaps table has preferred_operator TEXT column with migration
+    - chump gap reserve --preferred-operator <handle> sets it and chump gap show displays it
+    - picker/worker honors it as a soft routing hint (skip-not-block), test in scripts/ci/
+  closed_date: '2026-07-20'
+  closed_pr: 3200
+  outcome_id: EFFECTIVE-000
+

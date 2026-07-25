@@ -1,0 +1,19 @@
+- id: INFRA-1917
+  domain: INFRA
+  title: "EFFECTIVE: productize 7 curator roles as .claude/agents/ definitions + slash commands (mirror INFRA-1823 Harvester pattern, A2A-collected AC)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Each of 7 curator roles (shepherd, ci-audit, target, decompose, handoff, md-links, orchestrator) gets a .claude/agents/<role>.md definition that mirrors the .claude/README.md discipline (capability lives in a script under scripts/coord or scripts/dispatch; agent body delegates to it; no logic duplication)
+    - Each role's named-session pattern (curator-opus-<role>-YYYY-MM-DD) becomes a productized subagent dispatchable via Agent(subagent_type=<role>) — no more ad-hoc shell spawning
+    - Slash command per role at .claude/skills/<role>/SKILL.md for operator/user invocation (mirroring /harvester, /fleet-brief pattern)
+    - Underlying capability script per role at scripts/coord/<role>-loop.sh or scripts/dispatch/<role>-loop.sh — harness-neutral, callable from any harness via OPERATOR_PLAYBOOK Section 5 dispatch defaults
+    - "Each role's per-tick playbook documented inline in the .claude/agents/<role>.md frontmatter description; protocol details in docs/process/<role>_PLAYBOOK.md (some already exist: SHEPHERD_LOOP_PLAYBOOK, OPUS_SHEPHERD_PLAYBOOK)"
+    - Update docs/architecture/TEAM_OF_AGENTS.md 'shipped/filed/missing' table to reflect new agent productization status
+    - AC for each specific role is contributed via A2A inbox protocol — each curator session receives an inbox invitation kind=ac_contribution_request and replies with kind=ac_contribution containing role-specific AC items; opus-curator-overnight consolidates into this gap or splits into per-role sub-gaps
+    - "Smoke test scripts/ci/test-curator-agent-productization.sh: spawning Agent(subagent_type=<role>) returns role-appropriate response; /<role> slash command invokes underlying script and surfaces stdout to user"
+  notes: |
+    2026-05-24T15:30Z consolidation: operator called the 7-day silent-curator wait early. 3 of 6 curators delivered concrete AC (target, handoff, shepherd — each 5 items). target also self-shipped .claude/skills/target/SKILL.md at 09:18Z proving the contribution→self-implement loop works. Silent 3 (ci-audit, decompose, md-links) got INFERRED AC drafted by opus-curator-overnight from session-name semantics + observed behavior + playbook docs; clearly marked _INFERRED in the source doc. Orchestrator-opus retired per operator 2026-05-24 — out of scope. Full role-by-role AC at docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md. Implementation order recommendation in that doc: wave 1 (already done) = target; wave 2 = shepherd + handoff (curator-contributed AC); wave 3 = ci-audit + decompose + md-links (inferred AC, curator-confirm before implement). Each role ships as separate PR per CLAUDE.md one-gap-per-PR; can be stacked via bot-merge.sh --stack-on if deps emerge.
+  outcome_id: MISSION-010
+

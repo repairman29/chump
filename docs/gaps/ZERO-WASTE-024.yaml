@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-024
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: bot-merge --fast pre-flight compiles the ENTIRE workspace (90+ crates incl. Tauri desktop) for every single ship regardless of gap scope"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Observed on chumpd-eu 2026-07-22 after fixing RESILIENT-183 (missing GTK dev libs, which had been silently short-circuiting the build early): once chump-desktop (Tauri) and its GTK-webview dependency tree actually compile, a single --fast pre-flight ship went from ~150s to ~700s wall-clock. bot-merge's 'cargo clippy --workspace --fix' compiles all ~90 crates in the workspace on EVERY ship, even for a 1-file xs gap that touches a single crate. This directly caps fleet throughput (cycles/hour) independent of model quality. Candidate fix: scope clippy to only the crate(s) containing changed files (cargo clippy -p <crate> for each touched package, falling back to full workspace only when root-level files like Cargo.toml change).
+  acceptance_criteria:
+    - "The change described by \"bot-merge --fast pre-flight compiles the ENTIRE workspace (90+ crates incl. Tauri desktop) for every single ship regardless of gap scope\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

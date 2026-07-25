@@ -1,0 +1,18 @@
+- id: INFRA-2051
+  domain: INFRA
+  title: "wizard-daemon Step 4 has NO dispatch-outcome detection: re-picks the same gap forever if chump --execute-gap exits without shipping (wheel-spin)"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    wizard-daemon Phase 2 Step 4 (pickable-gap dispatch) is fire-and-forget: it spawns chump --execute-gap <ID> & via subshell, records PID in dispatch-state.json, and walks away. There is NO detection of whether the dispatched process actually shipped the gap. Confirmed 2026-05-27T14:32-14:36Z: wizard dispatched CREDIBLE-069 TWICE (PIDs 16739 + 54221). Both processes exited within minutes WITHOUT creating a worktree, opening a PR, or changing gap status. Wizard's next tick saw gap still status:open → re-picked it → infinite wheel-spin. Without this fix, the autonomous loop is theatre — wizard fires dispatches that go nowhere, consumes API budget, and never advances the queue. Phase B critical for any claim of 'running on auto'. The chump --execute-gap process itself works (it's a multi-tool-call mini-agent that needs ~5-15min to actually ship), but wizard's supervision of it is missing.\n\nROOT CAUSE: Step 4's dispatch state tracks PID only. PID-died != dispatch-shipped. Need outcome-tracking: did gap status flip to 'done'? Did a PR get opened with this gap ID in the title? Did the dispatch process exit non-zero?
+  acceptance_criteria:
+    - "wizard-daemon Step 4 tracks dispatch outcome: SHIPPED (gap status:done) | PR_OPENED (gh pr list found PR with gap ID) | FAILED (process exited, no PR, no status change after lookback window)"
+    - "Per-gap attempt counter persisted in dispatch-state.json — after CHUMP_WIZARD_MAX_DISPATCH_ATTEMPTS (default 3) failures, gap is marked wizard_skip:true automatically (with reason annotation in gap notes)"
+    - After N consecutive failed dispatches on the SAME gap, emit kind=wizard_dispatch_giveup ambient event so operator sees the pattern
+    - "Smoke test scripts/ci/test-wizard-daemon-dispatch-outcome.sh: 4 fixture scenarios — happy-path-ship, dispatch-exits-no-pr, dispatch-creates-pr-not-merged, dispatch-3-fails-mark-skip"
+    - "Wheel-spin protection: same gap cannot be dispatched twice within DISPATCH_GAP_COOLDOWN_S (default 1800 = 30min) regardless of attempt counter"
+    - "Update INFRA-2049's dead-PID pruner: prune NOT JUST dead PIDs but also entries where dispatch outcome was FAILED >cooldown ago"
+  closed_date: '2026-05-27'
+  outcome_id: MISSION-010
+

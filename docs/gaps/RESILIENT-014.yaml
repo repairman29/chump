@@ -1,0 +1,11 @@
+- id: RESILIENT-014
+  domain: RESILIENT
+  title: "RESILIENT: Agent Backpressure Gate — spawn rate respects merge queue health"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\n    \"Implement scripts/coord/check-backpressure.sh: reads latest merge_queue_health event from ambient.jsonl. Returns exit 0 if queue_saturation_pct < 70%; exit 1 if >= 70%; exit 2 if queue_critical (backpressure_recommended=true). Outputs wait_seconds (exponential backoff: 5s at 70%, 30s at 85%, 120s at 100%).\",\n    \"Integration into gap picking: scripts/dispatch/worker.sh calls check-backpressure before chump claim. If backpressure active: emit kind=agent_backpressure_wait, sleep N seconds, retry. Max 5 retries before worker exits gracefully.\",\n    \"Per-agent throttle: each spawned agent checks backpressure before picking its first gap. If queue_depth > threshold, agent sleeps rather than claiming. Prevents simultaneous multi-agent spawn storms.\",\n    \"Operator override: CHUMP_IGNORE_BACKPRESSURE=1 env var allows manual override for critical work (e.g., P0 production fixes). Documented in scripts/coord/README.md with warning.\",\n    \"Metrics: track backpressure_events (how often agents wait), backpressure_duration_total (total wait time), backpressure_max_queue_depth_seen (peak saturation). Emit to ambient.jsonl for trending.\",\n    \"Test: scripts/ci/test-backpressure-gate.sh simulates queue saturation states and validates: (a) agent waits when queue > 70%, (b) exponential backoff increases wait time, (c) override flag bypasses gate. Acceptance: zero merge stalls due to queue saturation in next 7 days of operation.\"\n  ]"
+  closed_pr: 1692
+  outcome_id: RESILIENT-000
+

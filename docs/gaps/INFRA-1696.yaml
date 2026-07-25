@@ -1,0 +1,16 @@
+- id: INFRA-1696
+  domain: INFRA
+  title: "EFFECTIVE: .chump-config.toml [content_bots] toggle parser — per-repo opt-in + CHUMP_CONTENT_BOTS env override (META-066 phase 3)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - src/main.rs (or new src/content_bots.rs) parses .chump-config.toml [content_bots] section reading enabled = [...] list
+    - CHUMP_CONTENT_BOTS env var (csv of bot_ids) overrides config file at invocation time
+    - chump content-bots list subcommand prints all bots in bots.yaml with their current enabled status (config + env merged)
+    - "smoke test scripts/ci/test-content-bots-toggle.sh: fixture .chump-config.toml + env, assert chump content-bots list shows correct enabled state per case"
+    - toggle parsing tolerates missing config (defaults to bots.yaml default_enabled values, all false in the foundation)
+  closed_date: '2026-05-22'
+  closed_pr: 2345
+  outcome_id: MISSION-010
+

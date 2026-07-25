@@ -1,0 +1,14 @@
+- id: ZERO-WASTE-003
+  domain: ZERO-WASTE
+  title: assign daemon re-publishes full open-gap backlog every 30s — publish deltas
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "assign_cycle publishes ONLY gaps whose open+unclaimed state is new or changed since the prior cycle; an unchanged backlog publishes ~0 envelopes (verified by coord-assign.err \"published N envelope(s)\" dropping to low digits in steady state)."
+    - first cycle after start (or missing/corrupt delta-state) republishes the full open set once, then resumes delta mode — fail-open, no wedge on missing state.
+    - "broker-down path unchanged: assign logs the condition and exits 0 (existing FLEET-034 fail-open preserved); a test asserts exit 0 against a dead CHUMP_NATS_URL."
+    - "unit test in assign.rs: fixed gap set across two cycles -> cycle 2 publishes 0; adding one open gap -> publishes exactly 1; claiming one -> publishes 0 (or 1 tombstone)."
+    - delta-publish semantics documented in scripts/coord/README.md or A2A_ROADMAP.md so future consumer authors know the bus is no longer a full-backlog firehose.
+  outcome_id: ZERO-WASTE-000
+

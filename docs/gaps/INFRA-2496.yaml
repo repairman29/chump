@@ -1,0 +1,12 @@
+- id: INFRA-2496
+  domain: INFRA
+  title: "CREDIBLE: event-registry-audit reports daemon_exit_loop_* as emit-without-register — but all 3 ARE registered in EVENT_REGISTRY.yaml"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"Investigate scripts/ci/check-event-registry.* — reproduce: registered=714 but audit STILL reports EMIT-NO-REG for daemon_exit_loop_detected / _disabled / _recovered which are all visible in EVENT_REGISTRY.yaml\", \"Likely cause: YAML parser strips comments OR registry walker stops at a structural anomaly; verify by grep + python yaml.safe_load(open(registry)).count\", \"Fix the audit so registered kinds are actually counted; main becomes GREEN once audit logic correct\", \"Regression test: register a new kind, emit it; audit must pass with zero EMIT-NO-REG entries\"]"
+  notes: |
+    Already fixed on main by commit 62c021f78 (fix(INFRA-2496): restore daemon_exit_loop_* registry entries dropped by merge-conflict clobber) and 0f7bd0838 (STITCHED, PR #2989), which also added scripts/ci/test-event-registry-audit-regression.sh as the regression guard. Verified: CHUMP_REGISTRY_GATE_MODE=strict bash scripts/ci/test-event-registry-coverage.sh -> registered=795 emitted=742 emit-without-register: 0, exit 0. No remaining work; closing as duplicate-of-shipped.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: RESILIENT-019
+  domain: RESILIENT
+  title: patch INFRA-1810 installer-manifest gate — add 5 unmapped installers to optional-installers-allowlist.txt (unblock canaries)
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Append 5 unmapped installer filenames to scripts/setup/optional-installers-allowlist.txt: install-daily-self-productize-launchd.sh, install-distill-pr-skills-launchd.sh, install-oracle-refresh-launchd.sh, install-pr-pulse-consumer-launchd.sh, install-refresh-runner-binary-launchd.sh\",\"scripts/ci/test-install-script-manifest.sh exits 0 locally with updated allowlist\",\"Unblocks canary PRs #2564 and #2565 currently failing pr-hygiene gate\",\"Adds W-011 (installer-manifest drift) to WEDGE_CLASS_CATALOG.md in follow-up commit\"]"
+  closed_date: '2026-05-25'
+  closed_pr: 2567
+  outcome_id: RESILIENT-000
+

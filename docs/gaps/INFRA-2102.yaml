@@ -1,0 +1,12 @@
+- id: INFRA-2102
+  domain: INFRA
+  title: "MISSION P1: NATS A2A substrate demo — single-machine wire-up (install nats-server + chump-coord ping/emit/watch + runbook) — proves Bet 5 substrate is live"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Install nats-server v2.14.1 via brew install nats-server. Verify which nats-server returns /opt/homebrew/bin/nats-server.
+  closed_date: '2026-05-29'
+  closed_pr: 2696
+  outcome_id: MISSION-010
+

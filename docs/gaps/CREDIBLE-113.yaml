@@ -1,0 +1,14 @@
+- id: CREDIBLE-113
+  domain: CREDIBLE
+  title: "CREDIBLE: bypass-trailer validator false-positives on commit prose mentioning bypass/--no-verify"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The commit-msg bypass-trailer validator (scripts/git-hooks, per BYPASS_TRAILER_SCHEMA.md) fires on commit messages that merely DESCRIBE bypass discipline in PROSE, demanding Bypass-Reason/Bypass-Followup trailers. Observed 2026-06-05: a docs(CREDIBLE-105) commit whose body mentioned '--no-verify rule', 'bypass-trailer schema', 'BYPASS_TRAILER_SCHEMA.md', 'bridge allowed IFF' was REJECTED; the identical commit with a minimal body (no bypass keywords in prose) passed clean. A commit that DOCUMENTS bypass policy is not USING a bypass. False-positive gate friction — cost 2 failed attempts shipping a doctrine doc that is literally about not band-aiding.
+  acceptance_criteria:
+    - the bypass-trailer validator fires ONLY when an actual bypass is used (a malformed Bypass-* trailer present, OR --no-verify / a CHUMP_*_SKIP env was actually set), NOT when bypass keywords appear in the commit body prose
+    - "regression test: a commit message containing 'bypass', '--no-verify', and 'BYPASS_TRAILER_SCHEMA.md' in PROSE (with no actual bypass) is NOT rejected"
+    - the validator still rejects a genuinely malformed Bypass-Reason/Bypass-Followup trailer (no regression in the real check)
+  outcome_id: CREDIBLE-000
+

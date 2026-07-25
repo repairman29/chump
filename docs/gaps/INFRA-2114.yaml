@@ -1,0 +1,20 @@
+- id: INFRA-2114
+  domain: INFRA
+  title: "EFFECTIVE P1: curator-opus-shepherd fork-aware PR rescue (META-123 C6)"
+  status: in_review
+  priority: P1
+  effort: s
+  description: |
+    META-123 C6: curator-opus-shepherd grows fork-aware PR rescue. When the rescue path encounters a PR opened from a fork (head_repo != base_repo, e.g. repairman29:derelict head pointing at ehippy:main base), the current rescue logic fails because it assumes same-repo branch operations. Add detection + correct git/gh invocations for cross-fork PR rescue. Depends on INFRA-2111 (ExternalRepoContract) for the typed shape of fork metadata.
+  acceptance_criteria:
+    - "Locate the shepherd rescue script: scripts/coord/pr-rescue.sh OR scripts/coord/shepherd-loop.sh OR the chump-shepherd bin (grep 'pr.*rescue' or 'shepherd' under scripts/coord/ and crates/). Identify the place where head_ref / base_ref are resolved + checkout is performed."
+    - "Add fork detection: query 'gh pr view <N> --json headRepositoryOwner,headRefName,baseRepositoryOwner,baseRefName,isCrossRepository'. If isCrossRepository=true, classify as fork-PR and follow the fork-aware path."
+    - "Fork-aware rescue path: (a) add the fork as a git remote ('git remote add <fork_owner> https://github.com/<fork_owner>/<repo>.git' — idempotent, skip if exists); (b) fetch fork branch ('git fetch <fork_owner> <head_ref>'); (c) checkout to a local tracking branch ('git checkout -b <fork_owner>-<head_ref> <fork_owner>/<head_ref>'); (d) perform the rescue operation (rebase / cherry-pick / fix-commit) on the local tracking branch; (e) push back to fork ('git push <fork_owner> <head_ref>')."
+    - "Backwards compatible: same-repo PRs continue through existing logic unchanged. Add a regression test confirming same-repo PR rescue path is untouched."
+    - "Add unit/integration test for fork detection: mock 'gh pr view' returning isCrossRepository=true and verify the fork-aware path is selected; mock isCrossRepository=false and verify standard path."
+    - Update .claude/agents/shepherd.md (if it exists; if not, add as a Don't note in scripts/coord/pr-rescue.sh comments) documenting the fork-aware rescue path.
+    - Bash script (or relevant Rust) lints clean. Local CI via chump preflight before push. Voice-lint clean. PR via scripts/coord/bot-merge.sh --auto-merge (or manual fallback with Bot-Merge-Bypass trailer if INFRA-1939 wedge is in place).
+  depends_on: [META-123, INFRA-2111]
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

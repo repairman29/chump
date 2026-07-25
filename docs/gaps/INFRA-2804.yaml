@@ -1,0 +1,13 @@
+- id: INFRA-2804
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-07"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - docs/observability/EVENT_REGISTRY.yaml documents every outcome value emitted by pr_stuck_cluster_detector_run (no_op, dry_run, cluster_filed, gap_reserve_failed, gap_id_extract_failed, help, bad_args, error) covering success/failure/timeout-absence paths
+    - docs/observability/EVENT_REGISTRY.yaml documents gap_reserve_calls as the cost-tracking field and how waste-tally/fleet-brief report it to the operator
+    - docs/observability/EVENT_REGISTRY.yaml classifies each failure outcome as transient (safe to retry, e.g. gap_id_extract_failed) or permanent (do not blindly retry, e.g. gap_reserve_failed)
+    - docs/observability/EVENT_REGISTRY.yaml points at scripts/ci/test-pr-stuck-cluster-observability.sh as the runnable smoke test command verifying this observability
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: INFRA-1699
+  domain: INFRA
+  title: "EFFECTIVE: PWA content-bots toggle UI — per-repo on/off switches + per-bot daily cost estimate (META-066 phase 6)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "PWA cockpit view at /v2/content-bots shows per-repo toggle UI: 4 bots listed with on/off switches that update .chump-config.toml + persist via /api/content-bots/toggle endpoint"
+    - each toggle shows per-bot daily cost estimate (last 7d ambient.jsonl content_bot_output events × token×price)
+    - operator can run the full pipeline on-demand from the UI ('Run all enabled' button → invokes orchestrate-pipeline.sh)
+    - backend /api/content-bots/status returns current enabled set + last-run timestamps + pipeline health
+    - "smoke test scripts/ci/test-pwa-content-bots-ui.sh: stub backend, render UI, assert toggle persistence + cost estimate displayed"
+  notes: |
+    Decomposed into 4 sub-gaps (INFRA-1709..1712) on 2026-05-23: backend status (1709) → backend toggle (1710) → frontend view (1711) → cost+pipeline-run (1712). Sub-gaps have depends_on chain for fleet-picker ordering.
+  outcome_id: MISSION-010
+

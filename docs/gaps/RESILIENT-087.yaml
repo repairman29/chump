@@ -1,0 +1,15 @@
+- id: RESILIENT-087
+  domain: RESILIENT
+  title: "RESILIENT P0: the fleet CANNOT self-restart headlessly — tmux worker-launch needs a TTY; any halt requires a human terminal (blocks unattended autonomy / empty-conductor-chair / BEAST)"
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    VERIFIED 2026-06-04 (conductor, fleet down ~99min): after clearing the auth/gh blockers, `chump fleet restart` fails at 'create window failed: fork failed: Device not configured' — run-fleet launches workers in tmux windows, and tmux cannot fork a window without a controlling TTY. The Claude-Code Bash-tool context (and any headless/launchd/daemon context) has NO tty; even `script` fails with 'openpty: Device not configured'. CONSEQUENCE: when the worker fleet halts (auth blip, crash, etc.), NOTHING can relaunch it without a human at a real terminal — not the autopilot daemon, not the conductor, not a launchd job. This is a FOUNDATIONAL autonomy blocker for MISSION-010 (self-coordinating fleet / empty conductor's chair): a fleet that needs a human terminal to restart cannot run unattended (let alone build BEAST overnight). FIX: make the worker launch TTY-independent — use `tmux new-session -d` (detached, daemonizes without a controlling tty) for a fresh worker session instead of `new-window` into an existing one; OR run workers as plain background processes / launchd jobs (no tmux); OR wrap the launch in a pty allocator that works headlessly. The fleet must be able to (re)start itself with zero human + zero terminal.
+  acceptance_criteria:
+    - "the worker fleet can be (re)started from a headless/no-tty context (verified: restart succeeds with no controlling terminal)"
+    - a halted worker fleet is auto-relaunched by the autopilot/a daemon without human intervention
+    - "`chump fleet up/restart` no longer requires a tty (no 'fork failed: Device not configured')"
+    - MISSION-010 unattended operation is possible (fleet survives + self-recovers a halt overnight, no human terminal)
+  outcome_id: MISSION-010
+

@@ -1,0 +1,25 @@
+- id: INFRA-2206
+  domain: INFRA
+  title: "EFFECTIVE: fleet-daemons view — status grid + sparkline + purpose catalog (INFRA-2164 sibling view)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Sibling view to the fleet-scrubber (INFRA-2176) — instead of the time-series gantt of agent work, this is a STATE-FIRST view of fleet daemons. Tells the operator (a) what daemons exist and what each does, (b) which are currently running vs failed vs restart-looping, (c) when each last fired and the cadence trend (last 1h sparkline), (d) last error if any. Same chump-fleet-server / same sqlite. New page at /daemons mounted alongside /scrubber, accessed via tabs at the top of the page. Catalog lives in a new TOML at crates/chump-fleet-server/daemons.toml (parsed at server startup) mapping launchd plist name to human one-line purpose, expected cadence, and the ambient kinds the daemon emits. Render is a status grid (one row per daemon) with status chip + per-row sparkline + last-error inline. Holds on this until INFRA-2203 (recorder NULL fix), INFRA-2204 (scrubber panel correctness), and META-129 (panel design collab) settle, so the second view sits on a stable base.
+  acceptance_criteria:
+    - crates/chump-fleet-server/daemons.toml created listing every fleet daemon under scripts/setup/launchd/com.chump.*.plist with fields {name, purpose (1-line), expected_cadence_secs (from StartInterval if set, else 'persistent'), emits_kinds (list of ambient kind names), log_path}
+    - crates/chump-fleet-server adds GET /api/daemons that returns the catalog joined with launchctl list (pid, last_exit_code), ps stats (cpu_pct, rss_mb) by PID, and last-fired event timestamp from the recorder sqlite per daemon (matched by emits_kinds)
+    - "GET /api/daemons/:name/sparkline?window=1h returns 60 buckets of event-count for that daemon's emits_kinds"
+    - "GET /api/daemons/:name/tail?lines=20 returns the last N lines of the daemon's log file (read-only; localhost-only same as the rest of the server)"
+    - "web/fleet-scrubber adds top-of-page tab strip: 'Sessions' (current scrubber, default) and 'Daemons' (new view); navigates between / (scrubber) and /daemons via the existing nest_service mount"
+    - "web/daemons/index.html ships: status grid with one row per daemon (sortable by name"
+    - status
+    - last-fired); status chip colored running=green / failed=red / restart-looping=orange / stopped=gray / unknown=hash-pattern; per-row sparkline (last 1h, 60 buckets); inline last-error tooltip when present
+    - "Smoke test scripts/ci/test-fleet-daemons.sh: seed sqlite with known fleet_recorder_ttl_pruned events, hit /api/daemons, assert fleet-recorder row has last_fired in the right window and a non-empty sparkline"
+    - cargo fmt + cargo clippy --workspace --all-targets -- -D warnings + cargo check --workspace GREEN; chump preflight before push
+    - README updated at web/fleet-scrubber/README.md documenting the /daemons view + a screenshot
+  depends_on: [INFRA-2164, INFRA-2203, INFRA-2204, META-129]
+  closed_date: '2026-06-05'
+  closed_pr: 2765
+  outcome_id: MISSION-010
+

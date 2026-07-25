@@ -1,0 +1,13 @@
+- id: META-203
+  domain: META
+  title: "META-131 sub: test-result cache layer — skip re-running tests when code unchanged"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-027
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: CI wall-clock ~15min — 3 redundant Rust compiles + 9min pwa-e2e on Rust-only PRs"
+  status: in_review
+  priority: P2
+  effort: m
+  description: |
+    ci.yml = 20 jobs; wall-clock ~10-20min (sampled: RESILIENT-187 run 15min, RESILIENT-190 20min). Per-job breakdown of a green run: fast-checks 10min, e2e-pwa(self-hosted macos) 9min, cargo-test 8min, clippy 4min, system-integration 4min; rest 0-2min (path-skipped). Three findings: (1) 'fast-checks' is the misnamed critical path — a job called 'fast' is the single longest at 10min; profile what it bundles. (2) Three separate Rust compile jobs (fast-checks, clippy, cargo-test) each pay a workspace compile. sccache+R2 (INFRA-2093) and Swatinem/rust-cache (3 jobs) exist but if hit-rate is low each recompiles cold — verify sccache R2 hit-rate (known sore spot: sccache-R2-pair-mismatch VOA class + 2026-06-05 split-brain incident). Consider consolidating the 3 into one compile+artifact-share. (3) e2e-pwa on self-hosted macOS = 9min; confirm it's path-gated to web/** so Rust-only PRs skip it (some e2e variants already show 0min = gated, so the mechanism works — just needs to cover pwa). Rough shape: (a) profile fast-checks, (b) sccache hit-rate audit, (c) path-gate pwa-e2e. Each is independently shippable.
+  acceptance_criteria:
+    - "PLAN A+B EXECUTED. (A) Disable CI sccache — SHIPPED PR #3302 (armed): 0.00% Rust hit rate, was pure overhead+noise; reversible via vars.CHUMP_CI_SCCACHE=true once stable paths land. (B) Warm cross-PR rust-cache — ALREADY DONE by the fleet: INFRA-3420 / PR #3299 changed prefix-key v1-pr-<n> → v1-trunk + save-if:main, so PRs restore main's warm cache (the ~58%-of-CI-machine-minutes cold-3x-per-PR compile) while save-if:main keeps INFRA-2118 isolation. The remaining --remap-path-prefix piece is moot while sccache is off (revisit only on re-enable). NET CI wins this session: #3270 desktop-exclude + #3302 sccache-off + INFRA-3420 warm-cache (fleet). Remaining ceiling (stable CARGO_TARGET_DIR for full cross-run dep-compile reuse) reopens INFRA-2118/DOC-063 target-corruption = operator decision, not a cowboy flip."
+

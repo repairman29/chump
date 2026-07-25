@@ -1,0 +1,22 @@
+- id: INFRA-1562
+  domain: INFRA
+  title: "CREDIBLE: 24 preregistered evals stalled + no execution-status mechanism — EVAL-102 locked-pending, 4 RESEARCH-* stubs, no CI gate enforces results before merge"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    docs/eval/preregistered/ has 24 locked preregistration files (EVAL-087, EVAL-090, EVAL-096, EVAL-098-101, EVAL-102, COG-032, RESEARCH-018 through 032, INFRA-1004). EVAL-102 is the canonical locked-but-pending case — preregistration locked 2026-05-11, needs ~$5 Anthropic API + Together AI free tier + 24h harness time. Per docs/ROADMAP.md Phase 2 status, EVAL-102 is the load-bearing citable Week 2 result. RESEARCH-020, 021, 023, 024 are 489B stubs (placeholder content only, never filled in). No mechanism marks evals executed vs pending — status is inferred from commit history and manual audits. Pairs with Phase 2 Credible-Evidence thrust on the roadmap.
+  acceptance_criteria:
+    - "New EVAL_STATUS.yaml at docs/eval/preregistered/ or .chump/eval-status.json tracks {eval_id, status: pending"
+    - running
+    - complete
+    - abandoned, last_run_ts, result_doc_path} for every file in docs/eval/preregistered/
+    - New chump eval list subcommand surfaces all 24 preregistered evals + their status, filterable by --status pending
+    - "EVAL-102 specifically: smoke step (python3.12 scripts/ab-harness/run-local-v2.py --gap EVAL-102 --n 2) verifies the harness runs before scheduling the full sweep"
+    - 4 stub RESEARCH-* files (020, 021, 023, 024) either get their preregistration content filled in or get reclassified as abandoned via status field
+    - New scripts/ci/test-preregistered-eval-status.sh asserts every docs/eval/preregistered/*.md has a matching status entry (catches drift going forward)
+    - docs/eval/preregistered/README.md updated to document the status mechanism and the abandoned-vs-pending distinction
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

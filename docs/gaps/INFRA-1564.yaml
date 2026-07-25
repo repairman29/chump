@@ -1,0 +1,19 @@
+- id: INFRA-1564
+  domain: INFRA
+  title: "CREDIBLE: launchd plists for 3 production-ready dev scripts — decomposition-hint-tracker, refresh-model-prices, fleet-version-skew-detect have install scripts/contracts but no manifest entries"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Three production-ready dev scripts have install contracts and clear automation intent but no bootstrap-manifest entries and are not loaded into launchctl: scripts/dev/decomposition-hint-tracker.sh (4 days old, idempotent analytics on PR decomposition hints, mentions install-decomposition-tracker-launchd.sh in comments), scripts/dev/refresh-model-prices.sh (5 days old, weekly model pricing drift detection, INFRA-739 notes automated fetch not yet wired), scripts/dev/fleet-version-skew-detect.sh (10 days old, version consistency checks across workers, 30+ LOC of business logic). Same code-on-disk-not-active pattern as the monitor plists in INFRA-1546.
+  acceptance_criteria:
+    - "Three new plists under launchd/: com.chump.decomposition-hint-tracker.plist (StartInterval=86400 daily), com.chump.refresh-model-prices.plist (StartInterval=604800 weekly), com.chump.fleet-version-skew-detect.plist (StartInterval=21600 every 6h)"
+    - "Three new entries appended to scripts/setup/bootstrap-manifest.yaml under installers: with id decomposition-hint-tracker-launchd / refresh-model-prices-launchd / fleet-version-skew-detect-launchd, priority P2, standard install (launchctl load) and check (launchctl list grep) commands"
+    - chump-fleet-bootstrap.sh --check exits non-zero on a fresh machine until all three are installed
+    - Each script gains its event-kind emission to .chump-locks/ambient.jsonl (kinds decomposition_hint_tracked / model_prices_refreshed / version_skew_detected) so operators see them firing
+    - EVENT_REGISTRY.yaml entries for the three event kinds with emitter_paths set
+    - scripts/dev/refresh-model-prices.sh INFRA-739 TODO marker is resolved (the automated fetch is wired) since the launchd schedule is now real
+  notes: |
+    wave: 0b (3 dev-script launchd plists — auto-recovery cadence)
+  outcome_id: MISSION-010
+

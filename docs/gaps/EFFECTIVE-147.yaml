@@ -1,0 +1,17 @@
+- id: EFFECTIVE-147
+  domain: EFFECTIVE
+  title: "EFFECTIVE P0: chump onboard provider-cascade gets a TRUNCATED LLM response (EOF mid-JSON) → parse fails; BEAST scout can't complete (next wall after EFFECTIVE-133 panic fix)"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    VERIFIED 2026-06-05 (conductor, live, post-EFFECTIVE-133 + binary rebuild). The onboard panic is GONE — `chump onboard https://github.com/repairman29/BEAST-MODE` now RUNS the provider cascade and the LLM produces REAL gap proposals (e.g. 'CREDIBLE: Migrate all PENDING roadmap tasks to bd', P0, citing AGENTS.md no-markdown-TODOs). BUT the scout aborts: 'failed to parse LLM response as JSON: EOF while parsing an object at line 55 column 5'. The JSON array of 10 gap objects (id/domain/title/priority/effort/confidence/source/ac_draft[]) is TRUNCATED mid-object -> serde parse fails -> zero gaps returned. Likely max_tokens too low for 10 full objects. FIX (any): (a) raise max_tokens for the onboard cascade; (b) request fewer gaps per call / paginate; (c) make the parser TOLERANT — salvage complete objects before the cut, drop the partial; (d) structured-output/streaming JSON. THIS is the wall blocking the BEAST scout from completing (onboard -> propose gaps -> fleet works them). MISSION-010.
+  acceptance_criteria:
+    - chump onboard <repo> completes the cascade + returns parsed gap proposals (no 'EOF while parsing')
+    - parser either gets a complete response (raised max_tokens/fewer gaps) OR salvages complete objects from a truncated one
+    - "verified live: chump onboard repairman29/BEAST-MODE prints N proposed gaps"
+    - regression test feeds a truncated LLM JSON response to the onboard parser and it salvages the valid objects
+  closed_date: '2026-06-05'
+  closed_pr: 3044
+  outcome_id: MISSION-010
+

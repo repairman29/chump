@@ -1,0 +1,11 @@
+- id: INFRA-2427
+  domain: INFRA
+  title: "ZERO-BYPASS P0: delete CHUMP_PREFLIGHT_SKIP_PIPEFAIL — pipefail-race gate is correct; no legitimate reason to skip"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Delete CHUMP_PREFLIGHT_SKIP_PIPEFAIL from scripts/ci/env-vars-internal.txt\",\"Remove its read site from src/preflight.rs\",\"The pipefail-race-sweep gate catches real silent-false-negative bugs; no legitimate reason to skip\",\"If a script genuinely needs printf"
+    - "grep -q (rare — doc examples), add line-level # pipefail-sweep-allowed marker, not a global bypass\",\"Smoke test: preflight runs pipefail-race-sweep unconditionally; only line-level marker exempts\"]"
+  outcome_id: MISSION-010
+

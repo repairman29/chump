@@ -1,0 +1,10 @@
+- id: INFRA-1791
+  domain: INFRA
+  title: "ZERO-WASTE: chump preflight runs gap-preflight-ac-gate locally — INFRA-1259 surfaces vague-AC gaps before claim (INFRA-1762 Tier C #5)"
+  status: done
+  priority: P2
+  effort: s
+  closed_date: '2026-05-23'
+  closed_pr: 2397
+  outcome_id: MISSION-010
+

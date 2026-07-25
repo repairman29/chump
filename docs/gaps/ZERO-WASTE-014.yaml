@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-014
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: convert noise auto-filers to ambient-only — kill the ~180/day make-work inflow at source"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "the 'PR #N failing on <check>' CI-failure filer + stuck-pr-filer + the shelfware 'Wire X into role Y' filer emit AMBIENT events (kind=ci_failure/stuck_pr/shelfware) instead of filing gaps"
+    - files_24h drops from ~180 toward <40 (measure created_at epoch on state.db, 24h post-merge)
+    - live signal preserved as ambient (shepherd/ci-audit still consume it) — only gap-accumulation stops
+    - "context: ~35% of the backlog is auto-filed make-work with no off-ramp = root of unbounded growth blocking drain-to-complete"
+  outcome_id: ZERO-WASTE-000
+

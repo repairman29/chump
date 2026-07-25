@@ -1,0 +1,18 @@
+- id: INFRA-3001
+  domain: INFRA
+  title: "CREDIBLE: test-model-class-routing picker fixtures red — AC-less gaps filtered by INFRA-1259, AC-list trips _pick_gap.py:509 strip"
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Split from INFRA-2999. scripts/ci/test-model-class-routing.sh has 4 picker assertions RED on origin/main (haiku/sonnet pick xs/s/m, mixed pool), independent of the RESILIENT-154 routing change. Root causes: (1) fixtures pass gaps with NO acceptance_criteria, skipped by the INFRA-1259 empty-AC filter -> empty pick -> assertion fails; (2) when a fixture carries acceptance_criteria as a JSON list, _pick_gap.py:509 does (g.get('acceptance_criteria') or '').strip() -> AttributeError on lists (production emits AC as a string, so test-shape mismatch not a live crash). Not CI-gated, so silently red. Low priority.
+  acceptance_criteria:
+    - picker fixtures carry non-empty acceptance_criteria so they survive the INFRA-1259 empty-AC filter
+    - "_pick_gap.py:509 handles acceptance_criteria as list OR string without AttributeError"
+    - the 4 picker assertions in test-model-class-routing.sh pass
+    - bash scripts/ci/test-model-class-routing.sh exits 0
+    - the test is added to a CI gate or preflight so it cannot silently rot again
+  closed_date: '2026-07-21'
+  closed_pr: 3149
+  outcome_id: MISSION-010
+

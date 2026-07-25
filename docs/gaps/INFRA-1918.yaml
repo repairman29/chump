@@ -1,0 +1,16 @@
+- id: INFRA-1918
+  domain: INFRA
+  title: "EFFECTIVE: productize curator-opus-target role — .claude/agents/target.md + .claude/skills/target/SKILL.md (INFRA-1917 sub-slice for the target role per its self-contributed ACs 2026-05-24)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - .claude/agents/target.md exists with frontmatter declaring role scope (Column-A demo target + INFRA-1318 Liaison Phase 2 + META-074 child A/B/C umbrella) and discipline (META-069 Opus-vs-Sonnet dispatch matrix + 12min iter cap + no-claim-outside-scope + no-push-leased-files + CHUMP_NO_VERIFY_REASON audit)
+    - .claude/skills/target/SKILL.md exists mirroring .claude/skills/harvester pattern — name=target description=triggers when the operator needs the curator-opus-target role (demo-target + Phase-2 + child-A umbrella stewardship + parallel sub-fleet dispatch + babysit/surgical-rescue protocol)
+    - .claude/agents/target.md body documents 5-step work-your-lane protocol (read inbox → advance active claim → claim next-best → dispatch Sonnet for Rust/tests/>150 LOC or self-implement for bash/markdown/yaml under 100 LOC → emit DONE on each ship)
+    - .claude/agents/target.md cross-references docs/architecture/TEAM_OF_AGENTS.md + docs/process/OPERATOR_PLAYBOOK.md so other curators can find this role in the team hierarchy
+    - "Updates docs/architecture/TEAM_OF_AGENTS.md target row to status=shipped + .claude/agents/target.md path; defers scripts/coord/target-loop.sh to follow-up PR per AC#4 of INFRA-1917 (bash loop wrapper is separate concern)"
+  closed_date: '2026-05-29'
+  closed_pr: 2498
+  outcome_id: MISSION-010
+

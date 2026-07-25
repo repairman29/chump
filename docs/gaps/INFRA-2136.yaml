@@ -1,0 +1,10 @@
+- id: INFRA-2136
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C8 integration-bisect-step.sh + bisect-on-red logic in integrator"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- New scripts/dev/integration-bisect-step.sh — single-step bisect oracle. Returns 0 if commit is \"good\" (preflight passes), 1 if \"bad\" (preflight fails), 125 if untestable.\n- Script body (~30 LOC):\n    1. cd to the integration worktree\n    2. Run chump preflight (INFRA-1670) — bash scripts/dev/cross-build-linux.sh + cargo fmt + clippy + relevant test-*.sh\n    3. Exit 0 / 1 / 125 per bisect protocol\n    4. Emits ambient kind=bisect_step_evaluated with {commit, outcome, duration_s}\n- Integrator daemon (INFRA-2130) extension: on preflight RED:\n    1. git bisect start\n    2. git bisect bad HEAD\n    3. git bisect good origin/main\n    4. git bisect run scripts/dev/integration-bisect-step.sh\n    5. Parse output for \"first bad commit is <sha>\"\n    6. Look up gap_id from \"Batched: <gap-id>\" in commit message\n    7. Emit ambient kind=ship_bisect_root_cause with {cycle_id, offending_gap_id, failure_signature: <last 5 preflight log lines>, bisect_steps_taken: <count>}\n    8. Hand off to INFRA-2137 quarantine flow\n- Test: scripts/ci/test-integration-bisect.sh — fixture: 5-commit integration branch with #3 deliberately bad; bisect-step.sh correctly identifies #3.\n- Cross-references INFRA-2130 (daemon wires bisect), INFRA-2137 (quarantine consumes offending_gap_id)."
+  outcome_id: MISSION-010
+

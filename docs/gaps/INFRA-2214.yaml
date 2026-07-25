@@ -1,0 +1,13 @@
+- id: INFRA-2214
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C2 standardize role-doc template — add Self-audit + Confidence-calibration sections to 9 curator-opus-* docs (per harvester audit 2026-05-29)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Per harvester audit 2026-05-29 (docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md): \"single PR adds two new template sections to all 9 docs\" — Self-audit checklist + Confidence calibration loop. 7 of 9 curators (including harvester self) lack the calibration-loop section that today's session proved was operationally important (handoff false-positive → calibration down to 0.75; target self-flag of own TODO ACs).\n- Add ## Self-audit checklist section to each .claude/agents/curator-opus-*.md (9 files). Template (~10 lines): \"Before broadcasting FEEDBACK or filing a sub-gap, verify: (1) my own filed gaps in this session have concrete AC (not TODOs); (2) my prior decisions in this thread haven't been superseded by sibling work; (3) I have a current view of main (git fetch origin main && check); (4) my confidence is calibrated against a recent verification, not a stale assumption.\"\n- Add ## Confidence calibration loop section to each (~10 lines): \"When I make a finding or recommendation, attach a confidence score (high/med/low). On any subsequent verification that proves me wrong (e.g. claim X was missing but X actually exists on main), drop confidence by one tier for the rest of the session AND emit ambient kind=curator_confidence_calibrated with {role, original_confidence, new_confidence, reason}.\"\n- Register kind=curator_confidence_calibrated in EVENT_REGISTRY.yaml + scripts/ci/event-registry-reserved.txt.\n- Voice-lint clean across all 9 docs (no banned words introduced).\n- Cross-reference docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md from the new sections.\n- Cross-references META-127 (umbrella), INFRA-2209 (consensus discipline that this complements)."
+  notes: |
+    [2026-06-04T00:16:21Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2776
+  outcome_id: MISSION-010
+

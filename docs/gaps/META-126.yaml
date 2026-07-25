@@ -1,0 +1,10 @@
+- id: META-126
+  domain: META
+  title: "[CHILD of META-125] event-sourcing for gap mutations — chump gap reserve/update publishes chump.gap.* event; single consumer materializes state.db + YAMLs (single-writer pattern, audit-grade ordering)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "CHILD OF META-125 — full event-sourcing pivot for gap mutations. Defer until META-124 + META-125 land (they share the NATS substrate; don't pivot 3 substrates at once).\n\nVision: chump gap reserve / update / ship / close publishes to chump.gap.* subjects. Single consumer (chump-gap-materializer-daemon) reads the stream and writes to state.db + individual docs/gaps/*.yaml. Eliminates concurrent-write races entirely (single-writer pattern). Becomes Kafka-style: ordered, replayable, audit-grade.\n\nChildren to file when picked:\n- C1 Subject taxonomy: chump.gap.reserved, chump.gap.updated, chump.gap.shipped, chump.gap.closed\n- C2 chump-gap-materializer-daemon (Rust, single consumer of chump.gap.>)\n- C3 chump gap reserve/update/ship/close switch from direct state.db write to NATS publish\n- C4 Replay-from-history mode: rebuild state.db from chump.gap.> jetstream replay\n- C5 Audit dashboard: kpi report --gap-mutations shows reserve/update/ship/close rate per day\n- C6 Migration plan: dry-run mode where both paths run side-by-side and reconcile\n\nSuccess criteria:\n- Zero concurrent-write corruptions (today's failure class becomes structurally impossible)\n- Replayable: chump gap restore --from-jetstream rebuilds state.db cleanly\n- Sub-100ms reserve latency under typical fleet load\n\nCross-references INFRA-2102 (substrate), META-125 (consensus pipeline — same NATS bus), META-124 (integration cycles — same substrate), INFRA-2177 (state.db simplification first), INFRA-2178 (KV counter is a partial-credit step toward this)."
+  outcome_id: MISSION-010
+

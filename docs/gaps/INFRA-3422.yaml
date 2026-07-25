@@ -1,0 +1,9 @@
+- id: INFRA-3422
+  domain: INFRA
+  title: "CI streamline: collapse 3 redundant Rust compiles into one build-once job"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "STRUCTURAL win (do after INFRA-3420/3421): the chump dep-graph compiles 3x/PR across clippy (x86), cargo-test (aarch64), fast-checks (x86) sharing nothing = ~10-15 machine-min/PR waste (58% of ~44 machine-min/PR total). Collapse the x86 compiles into ONE ubuntu job, one CARGO_TARGET_DIR: cargo clippy --workspace --all-targets (compiles everything incl test targets) -> cargo nextest run --workspace (reuses clippy's objects, only links+runs) -> bash guards reuse target/debug/chump. Keep e2e-pwa separate (macOS-only) and optionally a smaller aarch64 cargo-test leg for arch coverage. The clippy/cargo-test/fast-checks '-required' aggregator stubs (L1608-1668) already exist to keep required-check names green post-merge. Verify: workspace compiles ONCE/PR (warm), required checks still all present."
+

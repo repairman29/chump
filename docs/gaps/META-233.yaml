@@ -1,0 +1,13 @@
+- id: META-233
+  domain: META
+  title: "META: Implement T1-T4 trigger check (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A mechanism is implemented in auto-admin-merge-daemon.sh to check for T1-T4 trigger events.
+    - The daemon determines if any T1-T4 trigger events fired globally or for the specific PR within the last 30 minutes.
+    - Logging indicates the T1-T4 trigger status (active/inactive) for each PR.
+  depends_on: [META-229, META-230]
+  outcome_id: MISSION-010
+

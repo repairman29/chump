@@ -1,0 +1,14 @@
+- id: RESILIENT-013
+  domain: RESILIENT
+  title: "RESILIENT: Tiered CI Gates — fast (PR creation) vs slow (merge), skip irrelevant tests"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "[\n    \"Design phase: docs/process/TIERED_CI_GATES.md — map each GitHub Actions check to gate tier. Tier 1 (fast, <30s): fmt, clippy, fast-checks, changes. Tier 2 (slow, >1m): full cargo test, integration tests. Tier 3 (nightly): e2e-battle-sim, tauri-cowork-e2e, golden-path.\",\n    \"Implement change detection: scripts/coord/detect-changed-scope.sh analyzes git diff and outputs JSON {changed_types: [rust, yaml, docs], skip_tests: [cargo-test"
+    - e2e
+    - "...]}. Used by CI to decide what to run.\",\n    \"Refactor .github/workflows/ci.yml: split into two jobs. Job A (fast-checks): runs only if changed_types contains [rust"
+    - "yaml]. Job B (full-test): runs only if Job A passes AND (on main OR PR is marked merge-ready). Job C (nightly): scheduled, not in PR path.\",\n    \"Add fast-checks job guard: if only docs/ or .md files changed, skip all Rust tests; only run link-checker and schema validation.\",\n    \"PR creation gate (Tier 1): pr-hygiene, gap-status, changes must pass before PR creation. Move plan and chump-first"
+  closed_pr: 1690
+  outcome_id: RESILIENT-000
+

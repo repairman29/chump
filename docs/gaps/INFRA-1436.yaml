@@ -1,0 +1,20 @@
+- id: INFRA-1436
+  domain: INFRA
+  title: "CREDIBLE: semantic-similarity option for gap dedup — local embeddings over title+description+AC (offline-compliant per OFFLINE_COMPLIANCE_RUBRIC)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Today's class-of-bug (Chief of Product, 2026-05-16): three gaps got rescoped because they framed the same intent in different titles (INFRA-1392 'webhook only' vs the local-equivalent path; INFRA-1405 'pull_request.synchronize webhook' vs local-push-hook). Lexical Jaccard on titles missed all three. Add a semantic-similarity option that catches different-titled-same-intent gaps."
+    - "Embedding source: use the existing local embeddings module (src/lesson_embeddings.rs or src/memory_brain_tool depending on which is the canonical one). MUST work in CHUMP_LOCAL_ONLY=1 / CHUMP_GITHUB_MODE=offline (per OFFLINE_COMPLIANCE_RUBRIC.md §1 — this is a 'required' offline_class)."
+    - Embed (title + first 500 chars of description + first AC item) for every open + recently-closed gap; cache embeddings in state.db with content-hash invalidation. Re-embed only on AC/title/description change.
+    - chump gap reserve gains --semantic-check (default OFF in v1, evaluate before enabling by default). When enabled, computes cosine similarity of the proposed gap against the cached set; warn at 0.85, block at 0.95.
+    - chump gap consolidate gains --semantic flag that reports near-dup pairs by cosine, side-by-side with Jaccard. Output shows both scores so operator can judge whether semantic sim is firing on real dups vs same-domain-different-feature.
+    - "Performance budget: <500ms for the reserve-time check on a registry of 500 open gaps (M4 Mac with the local model). If exceeded, fall back to Jaccard with a warning event kind=semantic_check_too_slow."
+    - "Failure-class: TRANSIENT={local_model_loading} → fall back to Jaccard, emit kind=semantic_check_degraded; PERMANENT={no_local_model_available_and_no_anthropic_key} → fall back to Jaccard with one-time operator nudge; DEGRADED={embeddings_cache_stale} → re-embed in background, use Jaccard for this call."
+    - "CI test scripts/ci/test-gap-semantic-similarity.sh: seed 5 pairs (3 lexical-different-semantic-same, 2 lexical-similar-semantic-different); assert semantic catches the first 3, Jaccard catches the last 2; both methods run in <2s on the test fixture."
+    - "Pairs with INFRA-1418 (offline-check linter): both run at chump gap reserve. Order: offline-check first (cheap regex), semantic check second (slower embeddings). Both must pass for reserve to proceed."
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

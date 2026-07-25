@@ -1,0 +1,17 @@
+- id: RESILIENT-039
+  domain: RESILIENT
+  title: "RESILIENT P1: broadcast trust tier + 'review-needed' flag for high-impact claims until INFRA-1123 signed-provenance ships"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Risk 9 of 10. LLM hallucination in one curator's broadcast → 5 readers treat it as ground truth → cascading bad decisions. INFRA-1123 signed provenance is filed but not yet shipped (L-class). Need a stop-gap.
+  acceptance_criteria:
+    - "broadcast.sh gains --trust-tier flag {assertion, claim, verified}: assertion = unverified opinion (default for FEEDBACK / INTENT); claim = backed by output (default for DONE referencing a sha); verified = signed (placeholder for INFRA-1123)"
+    - "--tick-preamble digest labels each event with its trust_tier so the reader sees [ASSERTION] vs [CLAIM] vs [VERIFIED] inline"
+    - High-impact event kinds (curator_failure_paged, gap_ship, trunk_red) DEFAULT to claim and REJECT assertion-tier emission unless --trust-tier=assertion explicit
+    - "Smoke test: emit FEEDBACK without --trust-tier; assert tier=assertion in payload. Emit DONE without; assert tier=claim. Emit DONE with --trust-tier=assertion; assert rejected with non-zero exit"
+  closed_date: '2026-07-21'
+  closed_pr: 3085
+  outcome_id: RESILIENT-000
+

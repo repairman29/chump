@@ -1,0 +1,13 @@
+- id: CREDIBLE-117
+  domain: CREDIBLE
+  title: "CREDIBLE P2: subagent dispatch misdiagnosis case-study — Sonnet on CREDIBLE-107 #3095 band-aided sccache with RUSTC_WRAPPER='' on single transient error; sccache was healthy fleet-wide (verified)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Meta-case-study (2026-06-05 23:35Z): Sonnet, while shipping CREDIBLE-107 (Gate 1 of diagnose-before-file hardening), hit 'sccache: encountered fatal error' on local build and used RUSTC_WRAPPER='' to unblock — verbatim band-aid from DURABLE_FIX_DOCTRINE.md sccache case study. REALITY-CHECK by orchestrator-opus 23:35Z (REFUTED): 'sccache --show-stats' = 2242 hits / 4175 misses / 8122 requests over the session, ambient.jsonl shows 0 fleet-wide failure events in last 100 lines. sccache is HEALTHY. Sonnet jumped to band-aid on single transient error. Implication: Gate 1 (the gap-reserve --evidence flag) wouldn't have caught this because the band-aid was in a CI workaround, not a gap filing. The HARD-GATE coverage needs a Gate 2 (halt-class-emit wrapper, CREDIBLE-108) AND a Gate 4 (workaround-application-gate) to fully cover the band-aid surface. Add as case-study to DURABLE_FIX_DOCTRINE.md alongside CREDIBLE-111 (AUTH_DEAD case).
+  acceptance_criteria:
+    - Case added to DURABLE_FIX_DOCTRINE.md §case-studies (alongside CREDIBLE-111)
+    - Updates to CREDIBLE-106 umbrella note that Gate 4 'workaround-application audit' is missing from the original 3-gate proposal
+  outcome_id: CREDIBLE-000
+

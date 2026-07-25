@@ -1,0 +1,12 @@
+- id: INFRA-2122
+  domain: INFRA
+  title: "RESILIENT P0: oracle-refresh daemon silently fails to update THE_PATH.md (4d stale despite 4h cadence claim) — same class as INFRA-2101 binary-refresh silent staleness"
+  status: done
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "1. Diagnosis: scripts/coord/oracle-refresh.sh is loaded via launchd (com.chump.oracle-refresh.plist) and claims a 4h cadence per META-088 spec. THE_PATH.md last modified May 24 02:05Z (4+ days stale). Zero `oracle_refresh*` events in ambient.jsonl last 24h. JIT scheduler (INFRA-1892) reads THE_PATH.md to make dispatch decisions, so a stale Oracle means stale strategic priorities feeding every curator dispatch.\n2. Same failure class as INFRA-2101 (refresh-runner-binary silent staleness): daemon runs, exits 0, but doesn't actually update the target artifact. The \"alive but idle\" pattern dispatch-flatline-detector catches at the dispatch layer.\n3. Reproduce: `bash scripts/coord/oracle-refresh.sh --force` should re-contemplate THE_PATH.md against current state.db + last 24h ambient. Verify: THE_PATH.md mtime updates AND ambient.jsonl gets a new `kind=oracle_refresh_*` event. If neither, the daemon path is broken.\n4. Likely root cause classes (investigate in this order):\n   (a) the Opus burst the script spawns may exit silently when token budget exhausted before any write — add `runner_binary_advance`-equivalent guard\n   (b) the script's `before_hash vs after_hash` comparison may always match (the burst doesn't actually re-write, only re-reads)\n   (c) the spawn-Opus subprocess may fail (no API key / OAuth expired / network) and the script swallows the error\n5. Add emit at every decision boundary in oracle-refresh.sh: kind=oracle_refresh_started, oracle_refresh_burst_completed, oracle_refresh_doc_updated, oracle_refresh_no_change, oracle_refresh_failed. Currently the script is opaque to ambient — operator can't see what it's doing.\n6. After fix: THE_PATH.md mtime advances at least every 8h (4h cadence × 2× tolerance); ambient.jsonl shows at least 2 oracle_refresh_* events per 24h.\n7. Pairs with INFRA-2101 (binary refresh silent staleness), dispatch-flatline-detector (catches the symptom downstream), and DOC-063 CI review lever pattern."
+  closed_date: '2026-05-29'
+  closed_pr: 2711
+  outcome_id: MISSION-010
+

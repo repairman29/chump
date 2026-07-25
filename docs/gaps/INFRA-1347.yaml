@@ -1,0 +1,21 @@
+- id: INFRA-1347
+  domain: INFRA
+  title: "RESILIENT: worktree reaper must skip worktrees with uncommitted/unpushed work (INFRA-779/-1200 follow-up — destroys mid-session edits)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Today: scripts/coord/worktree-prune.sh (or whichever reaper currently runs) removes worktrees aggressively after some idle window. Two concrete losses in 2026-05-15 session: INFRA-1346 attempt #1 (~40 lines of bot-merge.sh edit + EVENT_REGISTRY entry) and INFRA-1346 attempt #2 (worktree + gitdir both gone) — work had to be re-derived from the design file. The reaper deleted worktrees that contained uncommitted edits AND an active git lease + branch."
+    - "Required pre-delete checks (each independently sufficient to SKIP delete):"
+    - (a) `git status --porcelain` returns non-empty (uncommitted changes — including untracked + staged)
+    - (b) HEAD differs from origin/<branch> (unpushed commits — `git rev-list --count origin/<branch>..HEAD > 0`)
+    - (c) lease file `.chump-locks/<session>.json` exists with `gap_id` matching the branch name AND lease.expires_at > now (lease still live per session TTL)
+    - (d) any file under the worktree was modified within the last 30 minutes (cheap mtime check)
+    - When any of the above is true, the reaper emits `kind=worktree_prune_skipped` to ambient with the specific reason and the path it spared.
+    - When all of the above are false AND the worktree is genuinely stale (last mtime > N hours, default 6), proceed with delete and emit `kind=worktree_orphan_pruned` (existing event kind, already registered).
+    - "CI test scripts/ci/test-worktree-prune-protects-live-edits.sh: create a temp worktree, write an uncommitted file in it, invoke the reaper, assert the worktree still exists and `worktree_prune_skipped` was emitted with reason=uncommitted_changes. Then commit the file but DO NOT push, re-invoke reaper, assert still spared with reason=unpushed_commits. Then push, mark the worktree old via touch -t, re-invoke reaper, assert it IS deleted."
+    - "Docs: update docs/process/CLAUDE_GOTCHAS.md under existing \"Linked worktree git path confusion (INFRA-779)\" section — add a sentence noting INFRA-1347 protects in-flight work, and warning operators not to disable the protection in production."
+    - "Out of scope: lease-TTL reconciliation (separate concern); reaper performance (one git status per worktree is cheap)"
+  closed_date: '2026-05-15'
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: META-075
+  domain: META
+  title: "META: Define predictive collision detection event schema (META-073 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Event schema for collision prediction includes timestamp, agent IDs, predicted time of collision, confidence score
+    - Schema is documented in shared domain registry
+  closed_date: '2026-05-29'
+  closed_pr: 2451
+  outcome_id: MISSION-010
+

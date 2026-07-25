@@ -1,0 +1,18 @@
+- id: RESILIENT-042
+  domain: RESILIENT
+  title: "RESILIENT: chump-integrator test_conflict_aborts_with_structured_error — fixture no longer triggers conflict under git ort strategy (cargo-test gate blocker, post-trunk-RED inherited)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Filed 2026-05-30T09:55Z after PR #2845 admin-merge unwedged trunk-RED. This test panics: 'first merge should have succeeded; left=2, right=1'. The fixture creates two branches that USED to conflict on merge, but git's ort strategy (default in recent git) now auto-resolves them. Test setup at crates/chump-integrator/src/cycle/merge_branch.rs around line 537 calls build_integration_branch with candidates A and B that no longer truly conflict. Required gate (cargo-test) blocked until fixed.
+  acceptance_criteria:
+    - The two test branches in test_conflict_aborts_with_structured_error fixture are modified to produce a TRUE conflict that git ort cannot auto-resolve (modify SAME line with incompatible content OR pass -X strategy=ours/theirs override OR explicitly insert conflict markers in the file the test creates)
+    - "Test passes locally: cargo test -p chump-integrator test_conflict_aborts_with_structured_error"
+    - "Test also covers the asymmetric-content case (deliberate: A renames file, B modifies it — also produces conflict via ort)"
+    - Other merge_branch tests (test_clean_merge_succeeds, test_co_authored_by_preserved, test_batched_under_trailer_present) still pass — no regression
+    - Required CI gate cargo-test passes on a fresh PR against main containing this fix
+  closed_date: '2026-07-21'
+  closed_pr: 3127
+  outcome_id: RESILIENT-000
+

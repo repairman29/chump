@@ -1,0 +1,16 @@
+- id: INFRA-2524
+  domain: INFRA
+  title: "RESILIENT P1: fail-OPEN every fleet-blocking daemon — watchdog/integrator/main-health must warn+degrade, never halt all claims (today they fail CLOSED, violating A2A_ROADMAP principle 7)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump claim main-health check fails OPEN: a stale/garbled/missing health signal degrades to a warning, never blocks claims fleet-wide (2026-06-03: one watchdog em-dash parse halted ALL claims 5h+)"
+    - the integrator daemon missing/dead does not silently swallow ship requests (INFRA-2459)
+    - each fleet-blocking daemon has a liveness+sanity self-check that disables itself (fail-open) rather than emitting fleet-halting false signals
+    - conforms to A2A_ROADMAP.md principle 7 fail-open-over-deadlock
+  notes: |
+    [2026-06-03T23:58:34Z] confirmed on origin/main (merged fix commit); mission-loop registry hygiene
+  closed_pr: 2987
+  outcome_id: MISSION-010
+

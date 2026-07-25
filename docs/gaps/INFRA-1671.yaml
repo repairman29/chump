@@ -1,0 +1,20 @@
+- id: INFRA-1671
+  domain: INFRA
+  title: "EFFECTIVE: pre-push hook invoking chump preflight (mandated local-CI discipline)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Once chump preflight (INFRA-1670) exists, install a pre-push git hook that runs it. Operators who push WITHOUT this discipline are paying the slow-CI tax. Hook is the enforcement layer.
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-push: invokes 'chump preflight' and blocks push if non-zero"
+    - chump-fleet-bootstrap.sh --check enforces the hook is installed (warns if missing)
+    - "Bypass: --no-verify still works (operator escape hatch); each bypass emits kind=preflight_bypassed_via_no_verify ambient event for audit"
+    - "Hook latency goal: starts within 1s of push command (no slow Python startup etc.)"
+    - "CI test: scripts/ci/test-pre-push-preflight-hook.sh — installs the hook in a temp repo, attempts a push of broken code, verifies it's blocked"
+  notes: |
+    Depends on INFRA-1670 (the preflight command itself). xs-effort once that lands — just a 20-line bash script + bootstrap-manifest entry.
+  closed_date: '2026-05-22'
+  closed_pr: 2316
+  outcome_id: MISSION-010
+

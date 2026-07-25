@@ -1,0 +1,13 @@
+- id: META-183
+  domain: META
+  title: "META: Implement PR classification for BEHIND, MERGEABLE, DIRTY, UNKNOWN states (META-180 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Daemon correctly classifies PRs into BEHIND, MERGEABLE, DIRTY, or UNKNOWN states based on branch sync and basic checks.
+    - "`pr_classified` event is emitted for each classified PR."
+  closed_date: '2026-05-30'
+  closed_pr: 2888
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1686
+  domain: INFRA
+  title: "CREDIBLE: docs/observability/EVENT_REGISTRY.yaml — register synthesis_gap_filed event kind for synthesis-pass.sh emissions (INFRA-1554 AC#4 narrow follow-up)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Atomic event-registry entry split from INFRA-1554 AC #4. The synthesis-pass.sh atomic-filing arm (INFRA-1554 AC #1) is the harder structural change; this gap just registers the event schema so the kind is documented before any emitter ships. Reserved for the day INFRA-1554 lands or a sibling implements the atomic filing.
+  acceptance_criteria:
+    - docs/observability/EVENT_REGISTRY.yaml gains a 'synthesis_gap_filed' event-kind entry with emitter_paths and field schema
+    - "fields documented: ts (ISO8601), synthesis_path (str), gap_id (str), title (str), source_note (str)"
+    - consumer_paths reference scripts/ci/test-synthesis-truth.sh (the validator from INFRA-1684) which is the downstream auditor
+    - registry-validation CI passes (test-ambient-schema-consistency.sh / test-event-registry-coverage.sh)
+  closed_date: '2026-05-22'
+  closed_pr: 2336
+  outcome_id: MISSION-010
+

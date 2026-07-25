@@ -1,0 +1,35 @@
+- id: INFRA-2291
+  domain: INFRA
+  title: trunk-red sweep — register 30+ EMIT-NO-REG event kinds in event-registry-reserved.txt (audit gate fail queue-wide)
+  status: superseded
+  priority: P0
+  effort: xs
+  description: |
+    TRUNK-RED ROOT CAUSE #3 — caught while shipping RESILIENT-041 (sccache cred guard + raw-gh allowlist).
+    
+    The event-registry coverage gate at scripts/ci/test-event-registry-coverage.sh has 32 EMIT-NO-REG violations queue-wide. Any PR that isn't docs-only triggers the real audit job and fails on these. The 9 PRs that landed in the last hour either took the audit-stub path (docs-only) or admin-merged through INFRA-1813 HITL.
+    
+    The 32 kinds are EITHER (a) real shipped events that nobody registered, OR (b) false-positives from substring matches against test fixtures (e.g. 'bad' matches 'bad_new_kind').
+    
+    The full sweep block — with reasons + scanner-anchors per entry, ready to paste at end of scripts/ci/event-registry-reserved.txt — was drafted while shipping RESILIENT-041 (rolled back after CREDIBLE-080 lease collision). Saved at /tmp/emit-no-reg-list.txt (operator machine, will need regen on remote claim).
+    
+    CATEGORIES (full block in claimer's worktree via running the test):
+    - sccache rotation events (6): sccache_r2_{token,gh}_{rotated,rotation_failed,rotation_partial} — INFRA-2237
+    - bot-merge resilience (2): bot_merge_{step_stalled,mode_fallback} — INFRA-2272
+    - curator supervisor (6): curator_supervisor_* — RESILIENT-035 / INFRA-2239 / RESILIENT-040
+    - cascade auto-resolution (2): cascade_{auto_resolved,resolve_skipped_semantic} — INFRA-2070
+    - consensus/deliberator (3): consensus_{resolved,result}, deliberator_heartbeat — META-157 / INFRA-2274
+    - FEEDBACK kinds (3): vote, preference, proposal — META-157
+    - feedback fanout (2): feedback_fanout_{delivered,skipped} — META-157
+    - queue routing (2): gap_{requeued,routed_to_batched} — INFRA-2271
+    - operator escalation (1): operator_escalation — META-095
+    - sibling status (1): sibling_status_polled — META-157
+    - test fixtures (4 false-positives): bad, good, skip, test_event
+    
+    The TRUE fix is a sweep into scripts/ci/event-registry-reserved.txt. CREDIBLE-080 currently holds the lease until ~13:17Z 2026-05-30.
+  acceptance_criteria:
+    - "1. Run \\`bash scripts/ci/test-event-registry-coverage.sh\\` from claim worktree and capture full EMIT-NO-REG list (32 entries as of 2026-05-30T09:30Z; may grow if more PRs land)\n2. Append all 32 entries to scripts/ci/event-registry-reserved.txt with one of three reason patterns:\n   - REAL EMIT: 'reason: <GAP-ID> emitted by <script-or-file>:<line>; carries <fields>; Scanner-anchor: <path>.'\n   - FALSE-POSITIVE: 'reason: false-positive — scanner matched <literal-fragment> in <test-fixture-file>:<line>; not a real emit.'\n   - DEPRECATED: 'reason: deprecated <GAP-ID>; emitter removed but stale string remains in <file>; safe to remove from <file> in follow-up.'\n3. Local verify: scripts/ci/test-event-registry-coverage.sh exits 0\n4. chump preflight green\n5. Push as P0 trunk-red rescue via bot-merge --auto-merge"
+  notes: |
+    [2026-05-30T18:30Z] Superseded by RESILIENT-041 (#2858 merged 18:12Z). The 32 EMIT-NO-REG sweep + 76 register-without-emit orphan sweep that this gap was created to perform were both folded into the RESILIENT-041 trunk-red rescue PR. No separate work needed.
+  outcome_id: MISSION-010
+

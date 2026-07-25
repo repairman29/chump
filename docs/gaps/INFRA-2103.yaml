@@ -1,0 +1,10 @@
+- id: INFRA-2103
+  domain: INFRA
+  title: "EFFECTIVE P2: productize shepherd and target curator loop scripts (shepherd-loop.sh + target-loop.sh) so autopilot stub loops can be replaced"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. `scripts/coord/shepherd-loop.sh tick` emits kind=opus_shepherd_triage and kind=shepherd_heartbeat; wraps existing `opus-shepherd-triage.sh` + adds heartbeat subcommand\n2. `scripts/coord/target-loop.sh tick` implements the 5-step work-your-lane protocol from `.claude/skills/target/SKILL.md`; adds heartbeat subcommand\n3. Both scripts match the CLI contract of existing loop scripts: subcommands tick/heartbeat/help, exit codes 0/1/2/3\n4. fleet-autopilot.sh CURATOR_ROLES updated to reference the new scripts (replacing empty loop_script entries)\n5. CI: `scripts/ci/test-fleet-autopilot.sh` updated to assert shepherd-loop.sh and target-loop.sh are referenced\n6. Both scripts have scanner-anchor comments for their ambient event kinds\n\n## Context\n\nFiled as a META-122 follow-up. META-122 (PR #2695) shipped `chump fleet autopilot start` auto-launching 6 curator tmux sessions. Four roles (handoff, ci-audit, decompose, md-links) have productized `scripts/coord/*-loop.sh tick` scripts. Two roles use a stub heartbeat-only loop:\n\n- **shepherd**: uses `scripts/coord/opus-shepherd-triage.sh` (not a full tick/heartbeat CLI)\n- **target**: has no loop script at all (per `.claude/skills/target/SKILL.md`, originally filed as INFRA-1917 follow-up; this gap is the productization closure)\n\nClosing this gap eliminates the autopilot stub-loop pattern entirely — all 6 curator sessions then run on real, role-specific loops."
+  outcome_id: MISSION-010
+

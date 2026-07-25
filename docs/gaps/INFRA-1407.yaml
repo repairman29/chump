@@ -1,0 +1,12 @@
+- id: INFRA-1407
+  domain: INFRA
+  title: "RESILIENT: gh run rerun replays OLD checkout — provide chump ci retrigger <pr> empty-commit shim for fresh-tree CI"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-15/16 across at least 3 PRs (#2097, #2080): when a CI run completes with failures, `gh run rerun --failed` re-runs against the SAME git-state snapshot that was originally checked out. New pushes since then are NOT picked up.\",\"Effect: my INFRA-1384 audit-portability fix landed on the branch but the rerun replayed the OLD audit code, kept failing, and I had to push an empty commit (cf6ace1f) to force a fresh CI cycle.\",\"scripts/coord/chump-ci-retrigger.sh <pr-number>: checks out the PR branch into a temp worktree, creates an empty commit with message ci:"
+  closed_date: '2026-05-16'
+  closed_pr: 2219
+  outcome_id: MISSION-010
+

@@ -1,0 +1,18 @@
+- id: MISSION-011
+  domain: MISSION
+  title: "MISSION P1: fleet picker isn't mission-directed — keystone gaps sit unpicked while the fleet ships substrate volume (BEAST EFFECTIVE-112 sat 15h / 99 ships)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    VERIFIED 2026-06-04 by an autonomy test: left unattended ~15h, the fleet shipped 99 gaps/24h but did NOT pick EFFECTIVE-112 — the single gap unblocking the entire BEAST-MODE 0->1 mission (chump onboard can't clone private repos). It sat unpicked the whole window; onboard.rs still has the bare-git-clone bug; no PR ever opened. ROOT CAUSE: the picker selects by priority + class-rating + effort + skills — it has NO mission-alignment signal. So mission-critical gaps don't bubble up against a 473-gap backlog dominated by RESILIENT substrate (134 pickable). The fleet is autonomous on THROUGHPUT, not MISSION — the conductor (human/opus) was the only thing wiring 'the mission' to 'what the fleet works,' which is exactly the dependency the 0->1 goal must remove. FIX: a mission-priority mechanism — gaps linked to the active mission outcome (via MISSION-008 Outcome FK / MISSION-010) get surfaced first; OR a 'mission lane' the worker drains before the general backlog; OR the picker weights outcome-linkage. Stopgap applied: EFFECTIVE-112 manually bumped to P0 — remove once the picker is mission-directed.
+  acceptance_criteria:
+    - the picker surfaces gaps linked to the active mission outcome ahead of equal-priority unlinked substrate gaps
+    - a mission-keystone gap filed at P1 gets picked within one fleet cycle WITHOUT a manual P0 bump
+    - "autonomy test repeats: a mission gap left in the backlog is worked unattended within N hours"
+    - the manual-P0-bump stopgap is no longer needed
+  closed_date: '2026-06-05'
+  closed_pr: 3029
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,15 @@
+- id: INFRA-2827
+  domain: INFRA
+  title: "audit-unjam: CHUMP_FORCE_STALE_BASE=1 in test-no-manual-ship-bypass run_hook (Guard 6a trips Test 5)"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    audit-shard (3) RED fleet-wide -> all merges BLOCKED. Root cause: INFRA-2005 added pre-push Guard 6a (stale-base); scripts/ci/test-no-manual-ship-bypass.sh isolates Guard 4 but never neutralized Guard 6a, so Test 5 (force-push to existing chump/<gap>-claim) fails 'expected exit 0, got 1'. 1-line env fix. RESILIENT-142/INFRA-2826 had this but are stuck on stale NATS-KV claims; this fresh gap is claimable.
+  acceptance_criteria:
+    - 1. In scripts/ci/test-no-manual-ship-bypass.sh run_hook() env block, add 'CHUMP_FORCE_STALE_BASE=1 \' alongside CHUMP_BYPASS_TRAILER_CHECK=0. 2. bash scripts/ci/test-no-manual-ship-bypass.sh -> 7 passed 0 failed. 3. PR audit-shard self-validates -> audit green -> unblocks pending PRs.
+  notes: |
+    Fixed by #3118 (7ccf0d49f — CHUMP_FORCE_STALE_BASE unjam audit-shard fleet-wide), merged to main. Stale-open P0 de-inflation.
+  closed_pr: 3118
+  outcome_id: MISSION-010
+

@@ -1,0 +1,13 @@
+- id: META-240
+  domain: META
+  title: "META: Implement agent-admin-merge-leaderboard.sh audit script (META-209 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/dev/agent-admin-merge-leaderboard.sh is created.
+    - The script queries 'kind=agent_admin_merge' events (or relevant logs) to generate a per-day count of successful admin-merges.
+    - The script provides a breakdown of reasons for PRs that were eligible but *not* merged (e.g., 'failed consensus', 'T-trigger active', 'fix-class not allowed').
+  depends_on: [META-237]
+  outcome_id: MISSION-010
+

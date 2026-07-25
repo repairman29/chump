@@ -1,0 +1,14 @@
+- id: INFRA-2336
+  domain: INFRA
+  title: "fix-trunk: dispatcher tail-window too short + trunk_state_change uses to-field not state-field"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 1. dispatcher pre-filters with grep before tail (or uses larger window like grep
+    - "tail -50)\n2. trunk_state_change check uses ev.get('to') not ev.get('state')\n3. Manual tick verifies pickup + fix_trunk_dispatched + Sonnet spawn\n4. Admin-merge as trunk-red rescue"
+  notes: |
+    [2026-06-04T00:16:28Z] confirmed merged on origin/main; registry hygiene
+  closed_pr: 2919
+  outcome_id: MISSION-010
+

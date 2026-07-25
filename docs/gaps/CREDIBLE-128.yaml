@@ -1,0 +1,18 @@
+- id: CREDIBLE-128
+  domain: CREDIBLE
+  title: "CREDIBLE: AGPLv3 relicense shipped (PR #3189) while INFRA-1506 status:open — AC3 (contributor notification gap), legal review gap, and crates.io republish untracked"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Filed by Red Letter #20 (2026-07-13). The AGPLv3/Apache-2.0 relicense shipped on 2026-07-12 (PR #3189) while INFRA-1506 remained open with three unmet ACs: contributor-notification follow-up (AC3), legal review before INFRA-1337 (AC4), and LICENSE_STRATEGY.md stale at DECISION PENDING / MIT (AC5). crates.io republish also untracked. NOTE: this DB row was double-booked against a local env-tests gap until 2026-07-18 — that work re-homed to CREDIBLE-150; see INFRA-3338.
+  acceptance_criteria:
+    - "INFRA-1506 is closed (status: shipped) with a commit that (a) updates LICENSE_STRATEGY.md to reflect the AGPLv3 decision, (b) cites the legal-review sign-off, (c) notes the contributor notification executed or waived with rationale"
+    - A gap is filed for crates.io republish with AC requiring all crates published at the new license
+    - A gap is filed for legal review of the AGPLv3+Apache-2.0 split before INFRA-1337 ships
+  notes: |
+    All ACs addressed in PR #3192: (1) INFRA-1506 closed, LICENSE_STRATEGY.md updated with sign-off + notification waiver; (2) INFRA-3336 filed for crates.io republish; (3) INFRA-3337 filed for legal review before INFRA-1337. Legal review is filed-not-executed; the falsifying condition (gaps exist tracking notification+legal+republish) is met. Title restored 2026-07-18 after dual-allocator collision (env-tests work re-homed to CREDIBLE-150, INFRA-3338).
+  closed_date: '2026-07-18'
+  closed_pr: 3192
+  outcome_id: CREDIBLE-000
+

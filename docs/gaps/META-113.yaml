@@ -1,0 +1,15 @@
+- id: META-113
+  domain: META
+  title: "verify-existence skill + AGENTS.md discipline: always check origin/main not local working-tree for 'file exists?' claims — long sessions drift 40+ commits behind, local 'ls' is unreliable"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Today's session repeatedly hit a discipline gap: the wizard (Opus) and shepherd both made 'file does/doesn't exist' claims based on local-working-tree 'ls' checks. Operator main checkouts drift 40+ commits behind origin/main in long sessions; local ls is unreliable. Today's incidents: (1) wizard claimed scripts/coord/recovery-queue-emit.sh doesn't exist (it does, on origin/main), filed INFRA-2047 wrongly; shepherd correctly verified via git ls-tree origin/main; (2) shepherd claimed scripts/coord/fleet-hold-check.sh doesn't exist earlier today (also stale-tree). Class is generalizable: ANY 'X missing/exists' claim must reference origin/main not local working-tree, since the working-tree can be on a feature branch arbitrarily far behind.\n\nThe verify-existence skill at scripts/dev/verify-existence.sh DOES check git ls-tree origin/main (per its docstring), but humans (and agents) don't always invoke it — preferring quick 'ls' which lies. Discipline change: add to CLAUDE.md + AGENTS.md a rule that 'file exists?' checks go through verify-existence skill, never bare ls. Sub-agent prompts (SUBAGENT_DISPATCH.md) should bake this in as a default check before filing 'missing primitive' gaps.
+  acceptance_criteria:
+    - "CLAUDE.md adds a 'Verify-existence discipline' subsection: 'before filing or asserting X is missing/present, check origin/main not local working-tree (use verify-existence skill or git ls-tree)'"
+    - AGENTS.md mirrors the same discipline section
+    - SUBAGENT_DISPATCH.md adds a 'before filing a missing-primitive gap, verify against origin/main' default step
+    - scripts/dev/verify-existence.sh --explicit-source-check option that errors if anything other than origin/main is the source (catches accidental local checks)
+  outcome_id: MISSION-010
+

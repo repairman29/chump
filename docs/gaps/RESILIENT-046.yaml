@@ -1,0 +1,21 @@
+- id: RESILIENT-046
+  domain: RESILIENT
+  title: "RESILIENT: claude.ai routine self-rearm — auto-recreate scheduled remote-agents on 401, instead of silent failure"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Filed 2026-05-30T10:00Z. During RESILIENT-041 triage, curator-opus attempted to schedule the META-172 weekly drift-check routine via claude.ai RemoteTrigger API and got HTTP 401 (auth failure). Routine was NOT scheduled; surfaced to operator as 'manual action required.' Per operator: chump should self-manage this — refresh OAuth + retry, NOT punt to operator. Companion to INFRA-622 auth-mode handling.
+  acceptance_criteria:
+    - "chump CLI verb: chump routine arm <name> <cron> <prompt> [--repo X] — wraps claude.ai RemoteTrigger create with auto-retry on 401"
+    - "On HTTP 401 from claude.ai API: refresh OAuth via existing ~/.chump/oauth-token.json refresh-loop (CLAUDE.md Auth modes section) + retry once; if still 401 after refresh → file a P1 RESILIENT gap + emit operator_recall (not silent fail)"
+    - chump routine list / show / cancel / arm / re-arm — full CRUD lifecycle without depending on operator's claude.ai web UI
+    - "Periodic self-audit: scripts/ops/routine-health-check.sh hourly — reconciles 'expected routines' (from a manifest at ~/.chump/routines.yaml) against actual claude.ai state; if any expected routine is missing, auto-rearm"
+    - Use this gap to retroactively arm the META-172 weekly drift-check routine that 401'd during RESILIENT-041 session — first ship of this gap should result in that routine being active without operator hands
+    - "Smoke test: scripts/ci/test-routine-self-rearm.sh — mocks claude.ai API with 401-then-success, asserts retry-after-OAuth-refresh path fires"
+  notes: |
+    [2026-05-30T10:11:54Z] [2026-05-30T10:17Z] DEPENDENCY NOTE: this gap depends on INFRA-1865 (RESILIENT: build OAuth-token refresher — the 5-min refresh promise in CLAUDE.md is aspirational; ~/.chump/oauth-token.json went 16d stale, blocking fleet launch). I assumed the refresher existed per CLAUDE.md; per INFRA-1865 it's still aspirational. RESILIENT-046 should ship AFTER INFRA-1865, or fold its auto-retry-on-401 logic into INFRA-1865's scope. Yet another FAFO miss — assumed-built infrastructure was actually filed-not-shipped.
+  closed_date: '2026-07-21'
+  closed_pr: 3165
+  outcome_id: RESILIENT-000
+

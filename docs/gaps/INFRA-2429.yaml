@@ -1,0 +1,18 @@
+- id: INFRA-2429
+  domain: INFRA
+  title: "ZERO-BYPASS P0: META — CI lint forbids new CHUMP_*_BYPASS / CHUMP_*_SKIP / CHUMP_IGNORE_* env vars"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New CI gate scripts/ci/test-no-new-bypass-env-vars.sh scans PR diff for added CHUMP_*_BYPASS, CHUMP_*_SKIP, CHUMP_IGNORE_* env var introductions (std::env::var or shell ${} of new names)"
+    - Exit 1 on any new bypass-class env var added by diff
+    - Allowlist scripts/ci/bypass-env-var-allowlist.txt with existing 25 vars grandfathered until each deleted via INFRA-2422-2428
+    - Wire into ci.yml fast-checks shard
+    - Bypass requires editing the allowlist file — source-controlled, reviewable
+    - "Smoke test: synthetic diff adding CHUMP_NEW_BYPASS=foo → exit 1; same diff with var in allowlist → exit 0"
+  notes: |
+    [2026-06-04T00:06:17Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2956
+  outcome_id: MISSION-010
+

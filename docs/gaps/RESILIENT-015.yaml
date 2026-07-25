@@ -1,0 +1,15 @@
+- id: RESILIENT-015
+  domain: RESILIENT
+  title: "RESILIENT: bot-merge.sh process lifecycle — prevent orphaned processes, track health"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    NOTE 2026-05-30: original description was accidentally overwritten by curator-opus during sccache-trunk-RED triage (variable resolution bug — meant to target RESILIENT-041, hit RESILIENT-015 instead). Title is preserved as the only original signal. Reconstructed scope from title: bot-merge.sh process lifecycle management — detect + prevent orphaned bot-merge child processes after parent exit; track health (PID alive, last heartbeat) so wedge-state-machine can act on stuck processes. If the operator has the original description from memory or YAML backup, restore it.
+  acceptance_criteria:
+    - TBD — original AC lost in overwrite. Operator to restore from memory OR mark this gap as superseded by a freshly-filed equivalent.
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  source_doc: docs/process/CHUMP_PLAYBOOK.md
+  outcome_id: RESILIENT-000
+

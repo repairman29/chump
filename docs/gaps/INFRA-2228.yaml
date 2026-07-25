@@ -1,0 +1,12 @@
+- id: INFRA-2228
+  domain: INFRA
+  title: "EFFECTIVE P1: META-127/C5 installable-suite design doc — package .claude/agents/ + canonical loop scripts + inbox setup as chump-pe-suite install one-command for any repo"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Per META-127 C5 (productization): package the chump curator suite as installable on any repo. v1 scope per harvester audit 2026-05-29 (Chump-specific install first; repo-agnostic generalization in v1.1).\n- New docs/strategy/INSTALLABLE_SUITE_2026-05-30.md (~1500 words). Sections:\n  1. Vision: chump-pe-suite install <repo> one-command bootstrap; clones .claude/agents/ + scripts/coord/*-loop.sh + inbox dir + canonical role docs + consensus discipline (per AGENTS.md INFRA-2209)\n  2. v1 scope: Chump-specific (curator-opus-* names hard-coded, NATS substrate assumed, state.db at .chump/state.db); 14 role docs (9 existing + 5 new per META-127 C3)\n  3. v1.1 scope (deferred per harvester audit): repo-agnostic — per-repo state, configurable substrate, generic role names\n  4. Substrate dependencies that must exist for v1: NATS (INFRA-2102), chump-coord (atomic CAS + work-board + events), chump-disk-inventory-daemon (INFRA-2193), chump preflight (INFRA-1670), bot-merge.sh, chump-fleet-bootstrap.sh\n  5. Installer flow: clone target repo → mkdir .claude/.chump/ → copy 14 role docs + 9 loop scripts + canonical CLAUDE.md/AGENTS.md fragments → install launchd daemons (or systemd on Linux) → bootstrap inbox + NATS subjects → emit kind=suite_installed\n  6. Operator surface: chump-pe-suite status → which curators are alive, last-tick timestamps, recent FEEDBACK\n  7. Success criteria: install on fresh repo in <5 min single command; 80%+ of P&E decisions through consensus; <5 min decision-to-resolution\n  8. Operator pending decisions: pricing/licensing for distribution, telemetry (opt-in?), homebrew formula vs cargo install vs curl-bash\n- Cross-link from CLAUDE.md §On-demand docs + docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md + META-127 yaml\n- Voice-lint clean"
+  closed_date: '2026-06-05'
+  closed_pr: 2788
+  outcome_id: MISSION-010
+

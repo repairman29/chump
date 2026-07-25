@@ -1,0 +1,22 @@
+- id: MISSION-008
+  domain: MISSION
+  title: "MISSION: first-class Outcome object — outcomes table + nullable gaps.outcome_id FK (advisory); P0 budget moves to outcomes; untraced regex becomes a JOIN"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Keystone of the 2026-06-02 Kaizen audit (lanes L1 work-unit + L4 roadmap-traceability converged independently; ship as ONE migration). The gaps table has no parent/outcome/mission column, so: (a) a META gap is a structural peer that never closes when its children do (META-055 open while INFRA-953/954/955/956 all done); (b) META-067 — the operator's own outcome framework — is a P2 gap with 0 dependents (the system cannot represent its own strategy); (c) untraced_p0 is a regex over hand-typed ROADMAP.md IDs rotted to 12/16 dead; (d) source_doc is empty on 778/783 open P0+P1.
+    
+    Rough shape (decompose at claim time per CLAUDE.md two-phase — do NOT pre-slice): (1) CREATE TABLE outcomes(id,title,priority,definition_of_done,status,created_at,closed_at) + ALTER TABLE gaps ADD COLUMN outcome_id TEXT DEFAULT '' (nullable, additive, non-destructive). (2) chump gap reserve/set gain --outcome <id>; add chump outcome new/list/status. (3) Backfill outcome_id from existing META->gap depends_on edges — briefing.rs build_umbrella_context (INFRA-2165, shipped) ALREADY reads that edge as a parent, so the read path exists; the migration is smaller than it looks. (4) Move the P0-budget check from gaps.priority to outcomes.priority. (5) Replace roadmap_status.rs untraced_p0 set-difference with a LEFT JOIN. (6) Render the ROADMAP.md gap LIST from the JOIN (leave the strategy NARRATIVE hand-authored).
+    
+    HARD CONSTRAINTS from the adversarial review (these keep it safe — do NOT violate): outcome_id stays NULLABLE (no NOT-NULL-at-reserve sync gate); gaps KEEP their own priority for permissionless picking; child-close is NEVER gated on parent definition-of-done (no sync block — there is no human reviewer); chump outcome status is ADVISORY/observable only; do NOT wire roadmap-status --exit-on-drift until AFTER the FK lands (today it is a 99.6%-false signal). Related (context, NOT depends_on so it stays pickable): META-067 (operationalizes), INFRA-2165 (umbrella read path to backfill from), INFRA-1551 (coordinate the dead-schema cull of routing_outcomes/intents). Serves the 0->1 mission: an Outcome with a definition-of-done + budget IS the mission object that chump gap decompose should hang from. Priority left P2 pending fleet consensus (anti-P0-inflation discipline).
+  acceptance_criteria:
+    - outcomes table + nullable gaps.outcome_id FK exist via an additive non-destructive migration
+    - chump gap reserve/set accept --outcome and chump outcome status <id> reports a child rollup that is advisory-only and never gates child close
+    - the P0-budget audit reads outcomes.priority, not gaps.priority
+    - roadmap_status untraced is computed via a LEFT JOIN, not a regex over ROADMAP.md
+    - outcome_id remains nullable and permissionless picking (status+lease only) is unchanged; no child-close definition-of-done gate is added
+    - META-067 is represented as a real outcome row
+  closed_pr: 3000
+  outcome_id: META-067
+

@@ -1,0 +1,33 @@
+- id: INFRA-2718
+  domain: INFRA
+  title: "PR #3007 stuck [CI-RED] — CI red for 45m"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/3007
+    
+    Detected by stuck-pr-filer (2026-06-03T23:00:56Z).
+    
+    Trigger: CI red for 45m
+    At least one required check has been failing for 45m (threshold 20m). Failing check: fast-checks.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 3007 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: RESILIENT-073
+    Branch: chump/resilient-073-claim
+    Failing check: fast-checks
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-06-05'
+  closed_pr: 3007
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

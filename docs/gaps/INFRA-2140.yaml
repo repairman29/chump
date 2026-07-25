@@ -1,0 +1,12 @@
+- id: INFRA-2140
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C12 Phase 3 default-on docs + flag flip — CLAUDE.md / AGENTS.md / OPERATOR_PLAYBOOK.md"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "- Update CLAUDE.md §Ship pipeline section:\n    BEFORE: \"Default: scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge\"\n    AFTER: describes Mode A (batched default), Mode B (REVIEW: prefix), Mode C (hot-fix); same bot-merge.sh entry point, smarter routing.\n- Update CLAUDE.md §Hard rules:\n    NEW RULE: \"Per-PR mode is opt-in via REVIEW: title prefix. Default is batched integration.\"\n    NEW RULE: \"Hot-fixes: title prefix HOTFIX: or P0 + TRUNK-RED. These skip the integration queue.\"\n- Update AGENTS.md §Naming conventions section: add §\"Operating modes (A/B/C/D)\" with one-paragraph each.\n- Update docs/process/OPERATOR_PLAYBOOK.md §4 Ship pipeline:\n    BEFORE: 6-step per-gap flow\n    AFTER: default 3-step flow (claim → work → push); explicit override path for Mode B; hot-fix command surface\n    Add §4a \"When to override (Mode B opt-in)\" with examples.\n- Flag flip: chump gap reserve recognizes REVIEW: title prefix and sets a metadata flag mode_b_required=true so bot-merge.sh routing later honors it.\n- chump gap reserve also recognizes HOTFIX: prefix for Mode C.\n- Backwards compat: existing gaps without prefix default to Mode A; chump gap migrate-mode <ID> --to A"
+    - B
+    - "C for retrofitting.\n- Test: scripts/ci/test-mode-prefix-recognition.sh — 4 cases (REVIEW:, HOTFIX:, no prefix, mixed-case).\n- Voice-lint clean across all updated docs (no banned words introduced).\n- Cross-references INFRA-2133 (the routing consumer), INFRA-2129 (strategy doc)."
+  outcome_id: MISSION-010
+

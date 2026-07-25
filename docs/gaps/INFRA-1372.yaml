@@ -1,0 +1,15 @@
+- id: INFRA-1372
+  domain: INFRA
+  title: "RESILIENT: pre-push test gate leaks empty 'init' commits via GIT_DIR-inheritance in Rust test"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Rust test worktree_root_cwd_wins_over_sibling_chump_repo adds env_remove for GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE on every Command::new(git) call"
+    - Pre-push hook unsets GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE before cargo test
+    - Pre-push hook records HEAD before cargo test and aborts push if HEAD moved during test run, emits prepush_head_drift to ambient.jsonl
+    - Regression test scripts/ci/test-pre-push-head-stability.sh asserts cargo child sees GIT_DIR unset and HEAD-drift blocks push
+    - Existing pre-push tests continue to pass
+  closed_date: '2026-05-16'
+  outcome_id: MISSION-010
+

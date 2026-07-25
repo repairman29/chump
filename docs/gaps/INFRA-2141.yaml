@@ -1,0 +1,12 @@
+- id: INFRA-2141
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C13 external-facing doc updates — PITCH.md / DEMO_5MIN.md / HIDDEN_GEMS.md / ROADMAP_MARCUS.md"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Update PITCH.md: add new paragraph (after the current \"atomic ship\" paragraph):\n    \"Chump ships INTEGRATION CYCLES — batched fleet output through a single CI pass — landing 5-10 changes per cycle instead of 1 per PR. This is how multi-agent factories scale: one verification, many improvements. The substrate underneath (NATS-backed atomic CAS, work-board, audit-grade event manifest) is what makes per-cycle shipping safe AND traceable.\"\n- Update DEMO_5MIN.md Minute 4 (currently \"show recent merges to main\"):\n    NEW: \"Here's last night's integration cycle: 7 gaps shipped through ONE CI pass + ONE auto-merge. Total CI cost: ~8 minutes wall, ~$0.32 in runner time. Equivalent per-PR cost: ~7 × 30 min = 3.5 hours wall, ~$2.20. (show the integration PR body with the manifest of child gap IDs).\"\n- Update HIDDEN_GEMS.md: add \"Integration cycles as audit grade\" — paragraph noting that traditional per-PR ships obscure the relationship between changes; integration cycles + Batched-Under: trailers make multi-gap relationships explicit + searchable.\n- Update ROADMAP_MARCUS.md: mark M-D step \"team-tier substrate\" as ENABLED-BY this work (the integration cycle IS the team-tier substrate that Marcus M-D wants).\n- Voice-lint clean across all (no banned words — verify against scripts/ci/test-voice-lint.sh).\n- All PITCH.md cross-references resolve (md-links curator lane).\n- Test: scripts/ci/test-marcus-pitch-freshness.sh passes (no doc claimed-fresh-but-stale).\n- Cross-references INFRA-2129 (strategy doc), META-068 (productization plan)."
+  closed_date: '2026-06-05'
+  closed_pr: 2753
+  outcome_id: MISSION-010
+

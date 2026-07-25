@@ -1,0 +1,15 @@
+- id: CREDIBLE-132
+  domain: CREDIBLE
+  title: "CREDIBLE: CI (Linux) false-greens macOS-incompatible Bash-4 constructs (declare -A/-n, mapfile) — no lint catches scripts that break on the Bash-3.2 fleet"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    CI runs on Linux (Bash 5) but the fleet runs on macOS (Bash 3.2 /bin/bash). Scripts using Bash-4-only constructs PASS CI yet FAIL on the fleet at runtime. Live example: scripts/ops/pillar-balance-check.sh (INFRA-902 / closed PR #3117) used 'declare -A' at line 38 → 'declare: -A: invalid option' on macOS → 'chump gap audit-priorities' (Command::new bash) would error on the target platform, but CI was green. No lint catches this class. Risk surface: any scripts/**/*.sh invoked by Rust (Command::new bash), worker.sh, bot-merge.sh, or a launchd plist.
+  acceptance_criteria:
+    - "Audit scripts/**/*.sh for Bash-4-only constructs (declare -A, declare -n, mapfile, readarray, parameter-case ${v^^}/${v,,}, assoc-array indexing) and enumerate current usages, flagging which run on a fleet hot-path (Rust Command::new bash / worker.sh / bot-merge.sh / launchd plist)."
+    - Add a CI lint + mirror it in 'chump preflight' (INFRA-1867 parity) that flags NEW Bash-4-only constructs in scripts/, with a documented bypass trailer for scripts that legitimately need Bash 4+ AND self-guard with a loud version check.
+    - "Hot-path scripts must be Bash-3.2 clean OR self-guard: e.g. 'if ((BASH_VERSINFO[0]<4)); then echo needs-bash4 >&2; exit 3; fi' so failure is loud not silent."
+    - "Smoke test: lint flags a known-bad fixture (script with 'declare -A') and passes a clean one."
+  outcome_id: CREDIBLE-000
+

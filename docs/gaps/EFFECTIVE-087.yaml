@@ -1,0 +1,16 @@
+- id: EFFECTIVE-087
+  domain: EFFECTIVE
+  title: "EFFECTIVE P1: chump fleet status — operator cockpit (level, per-agent activity, queue, last-hour merges, agent-vs-human coordination ratio)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    One screen the operator reads to hold the dial. Shows: current AUTONOMY_LEVEL; what each live agent/session is doing; what's queued; merges in the last hour; and THE metric — coordination acts performed by an agent vs by the operator (the empty-chair indicator). Read-only, fast, pause-immune (local state only).
+  acceptance_criteria:
+    - chump fleet status prints current level + per-agent activity + queue depth + last-hour merge count + the agent-vs-operator coordination ratio
+    - reads only local state, <500ms, works while the fleet is paused/deadlocked
+    - the agent-vs-operator coordination metric is computed from ambient/coord events, not hardcoded
+  depends_on: [EFFECTIVE-086]
+  closed_pr: 3048
+  outcome_id: EFFECTIVE-000
+

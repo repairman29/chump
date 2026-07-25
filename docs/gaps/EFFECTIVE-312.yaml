@@ -1,0 +1,14 @@
+- id: EFFECTIVE-312
+  domain: EFFECTIVE
+  title: "EFFECTIVE: sighted-cycle work must reach PR — post-rebase recheck trips own lease; model patch left uncommitted"
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    Two blockers between a sighted open-model patch and a PR, both proven on EU cycle 5 (M3 patched a file for the first time): (1) bot-merge's post-rebase 'Re-checking gaps' preflight fails on the run's OWN lease and mis-concludes 'completed on main' (exit 10); (2) M3 patched but skipped git_commit, so the work sat uncommitted (staging auto-commit would then be refused by INFRA-997). Fix: _BM_OWN_CLAIM flag set at all four claim-success paths gates the recheck; execute_gap free_tier_ship auto-commits dirty trees with an honest 'model skipped git_commit' message.
+  acceptance_criteria:
+    - "The change described by \"sighted-cycle work must reach PR — post-rebase recheck trips own lease; model patch left uncommitted\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3242
+

@@ -1,0 +1,17 @@
+- id: DOC-057
+  domain: DOC
+  title: "EFFECTIVE: refresh docs/ROADMAP.md to add META-107 as 5th today's-bet (Rust-first substrate, Wave-3) + re-sequence operator-action checkpoints — Day +14 META-090 unattended-24h slips to Day +21 in exchange for autopilot landing on env-immune substrate (INFRA-1950 class fix)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "docs/ROADMAP.md Today's bets table gets a 5th row: 'Rust-first orchestration substrate (META-107, Wave-3) - INFRA-1997 to INFRA-2002 cluster, prerequisite for META-090 autopilot landing on env-immune substrate; status open, INFRA-1997 P0 pickable now (smallest blast radius, kills INFRA-1950 env-leak class)'"
+    - "Operator action checkpoints re-sequenced: Day +1 (~2026-05-26) verify INFRA-1997 lands (kills TRUNK_RED class); Day +7 (~2026-06-01) INFRA-1998 + INFRA-1999 in parallel + 50/hr sustained 4h green; Day +14 (~2026-06-08) INFRA-2001 ships (fixes INFRA-1532 by construction) + META-090 composition begins on Rust substrate; Day +21 (~2026-06-15) META-090 autopilot 24h-unattended ON THE NEW SUBSTRATE; Day +28 (~2026-06-22) Marcus M-B demo with autopilot+substrate as the credibility story"
+    - "Add explicit framing under Today's bets: 'META-107 IS the substrate that META-090 composes; they are chained, not competing. Without META-107, autopilot inherits 16.8K LOC of bash spaghetti; with it, autopilot is composed from chump-ship + chump-messaging + chump-worker Rust traits.'"
+    - Cross-link to docs/strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md and to META-107
+    - Verify no broken intra-doc-links (markdown-intra-doc-links gate passes)
+    - Single-commit docs PR sibling pattern to DOC-055 (which refreshed the roadmap yesterday); intent-atomic; no code touched
+  depends_on: [META-107]
+  closed_date: '2026-05-25'
+  closed_pr: 2594
+

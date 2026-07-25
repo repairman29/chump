@@ -1,0 +1,14 @@
+- id: CREDIBLE-120
+  domain: CREDIBLE
+  title: "CREDIBLE: fleet-brief banner ignores chump health --slo-check exit code — reports 'healthy' while L2/L3 SLOs are actively breached"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Reproducer: when chump health --slo-check returns exit code != 0 (one or more SLOs breached), bash scripts/dispatch/fleet-brief.sh still prints '✓ No urgent actions — fleet looks healthy'"
+    - "Observed 2026-06-05 + 2026-06-07: brief said healthy while L2-SLO-2 (waste ~39%, target <5%) AND L3-SLO-1 (384 operator-recalls/7d, target <1) were both breached"
+    - "Fix: scripts/dispatch/fleet-brief.sh calls chump health --slo-check (or reads its cached state file) BEFORE deciding banner text. If exit != 0, banner reads '⚠ SLO BREACH: <N> breached — chump health --slo-check for detail' (red), not '✓ healthy' (green)"
+    - "Test scripts/ci/test-fleet-brief-slo-honesty.sh: synthesize a fake SLO breach (CHUMP_FAKE_SLO_BREACH=1 or write to a fixture state file), run fleet-brief, assert output contains 'SLO BREACH' not 'healthy'"
+    - "Doctrine cross-ref: this is a CREDIBLE-105 case study — the brief making something LOOK fixed when it isn't, fix-class meta-clause violation. Fresh-eyes (META-132) repeatedly surfaces this as rank-1 disagreement; root fix is integrating the surfaces"
+  outcome_id: CREDIBLE-000
+

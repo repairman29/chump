@@ -1,0 +1,13 @@
+- id: META-184
+  domain: META
+  title: "META: Implement auto-rebase action for BEHIND PRs (META-180 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - PRs classified as `BEHIND` are automatically rebased using the update-branch API.
+    - "`pr_action_taken` event is emitted when a rebase action is taken."
+  closed_date: '2026-05-30'
+  closed_pr: 2889
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1873
+  domain: INFRA
+  title: "GitHub Liaison Phase 2 slice α: webhook receiver writes to cache.db on PR/check_run events (INFRA-1318 sub-gap 1/5)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/ops/github-webhook-receiver.py emits kind=webhook_cache_write per cache upsert (once per _upsert_pr call + once per _upsert_check_runs call) so dashboards can distinguish webhook-driven cache freshness from REST-driven freshness
+    - webhook_cache_write event payload includes target=pr
+    - check_runs, number, head_sha (when applicable), runs_count (for check_runs), action (from webhook event)
+    - webhook_cache_write registered in scripts/ci/event-registry-reserved.txt with reason note
+    - "scripts/ci/test-webhook-cache-write.sh smoke: POST synthetic pull_request + check_run webhook payloads to receiver; assert (a) cache row written to pr_state / check_runs, (b) kind=webhook_cache_write event present in ambient.jsonl with expected payload shape, (c) duplicate-POST is idempotent (no double-emit)"
+    - Smoke runs in <5s; covers signature-validated path (X-Hub-Signature-256) + invalid-signature reject
+  closed_date: '2026-05-24'
+  closed_pr: 2486
+  outcome_id: MISSION-010
+

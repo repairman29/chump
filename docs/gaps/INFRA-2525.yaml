@@ -1,0 +1,17 @@
+- id: INFRA-2525
+  domain: INFRA
+  title: "ZERO-WASTE P1: cull bypass env vars — 113 distinct CHUMP_*_(BYPASS|SKIP|IGNORE) escape hatches down to <=3; rule: a gate that needs a routine bypass is fixed or deleted"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 131 distinct CHUMP_*_(BYPASS
+    - SKIP
+    - "IGNORE) vars enumerated 2026-06-03 (bigger than the 113 estimate). TRIAGE each into 4 buckets, then cull: GENUINE = real T1-T4 or canonical-path-broken (e.g. CHUMP_BYPASS_BOT_MERGE until INFRA-2523 lands) — keep, target <=3 survivors"
+    - CARGO-CULT = gate already fails-open so the bypass is never needed (e.g. CHUMP_OFF_RAILS_CHECK per INFRA-2533) — fix docs + delete the usage
+    - SOFTENED = gate is now warn-only (CHUMP_OBS_BUDGET_BYPASS/INFRA-2425, CHUMP_RUST_FIRST after INFRA-2522) — delete the now-inert bypass
+    - DEAD = referenced only at its def-site or for a removed gate — delete
+    - "RULE: never delete a bypass while its gate still hard-blocks (breaks legit work); soften/remove the gate first, confirm the var is unused via grep, then delete from code + bypass-env-var-allowlist.txt"
+    - this is a dedicated effort, NOT a marathon-tail rush — decompose per-bucket at claim time
+  outcome_id: MISSION-010
+

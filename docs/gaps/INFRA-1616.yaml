@@ -1,0 +1,22 @@
+- id: INFRA-1616
+  domain: INFRA
+  title: "CREDIBLE: cos digest Curriculum section — top-by-yield, moved, new, decaying, anomalies; operator weekly visibility into skill health movement"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    chump cos digest --week (per MISSION_YIELD.md + COS_OPERATING_MODEL.md) produces the operator Sunday digest with Mission Yield + delta. Without a Curriculum section, the brain learning loop is invisible to the operator — skills could be decaying, broken, or producing noise chips and nobody would notice for weeks. The curriculum section surfaces: top skills by yield-weight, skills that moved (Wilson shifted >0.15), new skills proposed (awaiting operator approve/reject), skills decaying (unused 14d), anomalies (high attempts low success — broken procedure).
+  acceptance_criteria:
+    - "chump cos digest --week renders a ## Curriculum section after the Mission Yield section"
+    - "Top-by-yield-weight table: skill name, n, reliability, marcus/fleet/dev/noise counts, yield_weight; sorted desc, top 5-8 rows"
+    - "Moved subsection: skills where Wilson CI shifted >0.15 this week (up or down) with direction arrow"
+    - "New subsection: agent-proposed skills awaiting operator approval (proposed via skill_manage create, not yet endorsed)"
+    - "Decaying subsection: skills with no outcomes in 14d; retirement candidates"
+    - "Anomalies subsection: skills with n>=10 and reliability<0.5 (procedure-broken candidates)"
+    - chump cos digest --json includes the same data under .curriculum object
+    - "scripts/ci/test-cos-digest-curriculum.sh: seed synthetic skill records, assert each section appears with correct shape"
+    - Operator can disable any subsection via env var (e.g., CHUMP_COS_HIDE_CURRICULUM_ANOMALIES=1)
+  notes: |
+    wave: 0b (operator weekly visibility into curriculum health; depends on INFRA-1614 correlation data); chip-prediction: fleet-quality
+  outcome_id: MISSION-010
+

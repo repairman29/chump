@@ -1,0 +1,19 @@
+- id: META-116
+  domain: META
+  title: "RESILIENT P2: Sonnet hang-detection — when dispatched Agent appears abandoned (lease released, no PR, worktree state-fresh) check ps aux for hung pre-commit hook children BEFORE taking over; killing the hook unblocks the Agent's own commit; today 2026-05-27 INFRA-2000 dispatch had pre-commit wedged 5+min from Sonnet 8:52AM + shepherd retry 8:55AM, both unblocked by killing the hook PIDs, Sonnet's commit then completed normally (no shepherd takeover needed)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Add new Pattern 13 to docs/process/SHEPHERD_LOOP_PLAYBOOK.md titled Sonnet hang-detection. Body: when an Agent dispatch appears abandoned (Agent task notification not received + lease released + no PR opened + worktree shows recent file-mtime changes), the FIRST diagnostic must be ps aux | grep pre-commit + ps aux | grep git.commit. Hung pre-commit hooks are the common cause; killing the hook PID unblocks the Agent's blocked commit + the Agent completes normally without operator takeover"
+    - "Add identical anti-pattern note to docs/process/SUBAGENT_DISPATCH.md: under a new Detecting Hung Subagents subsection, document the symptom (no Agent completion notification AFTER expected duration) -> diagnosis (ps aux for hung commit + pre-commit) -> remediation (kill hook PID + wait for Agent self-recovery)"
+    - "Heuristic for the per-session preamble (META-115 sibling): scripts/coord/freshness-preamble.sh OR a new scripts/coord/dispatch-health-check.sh greps ps aux for processes named pre-commit or git-commit running >120s; emits ambient kind=dispatch_hung_hook_detected with fields pid age_s subagent_id. Allows shepherd to spot the symptom without manual ps invocation"
+    - "Real-world case study baked into the doc updates: today 2026-05-27 14:14Z shepherd dispatched Sonnet on INFRA-2000; Sonnet completed work at ~14:30Z + attempted commit + commit-hung-on-pre-commit. Shepherd observed no Agent completion notification by 14:55Z + saw lease released + saw worktree state-fresh + ASSUMED ABANDONED + tried to take over with --no-verify + own commit ALSO HUNG ON THE SAME HOOK + killed both PIDs at 14:56Z + Sonnet's blocked commit then completed (commit SHA e7300f5af) + Sonnet's continued run pushed + opened PR #2637 + armed auto-merge. Shepherd takeover work was duplicate. Lesson: the killing-the-hook step IS the rescue; the takeover is the mistake"
+    - "Bypass discipline: when an Agent dispatch genuinely needs takeover (Agent task notification arrived with BLOCKED status, OR Agent crashed without sending notification AFTER N hours), shepherd-takeover is appropriate. The hang-detection patten distinguishes those cases from hung-hook-victim cases"
+    - "Smoke test scripts/ci/test-dispatch-hang-detection.sh: synth a sleep 600 process named pre-commit; invoke the dispatch-health-check; assert it surfaces the PID + age in stderr + emits the ambient kind=dispatch_hung_hook_detected with correct fields"
+    - Cross-link from META-114 freshness-discipline umbrella + META-115 per-session-preamble (this gap shares the discipline-doc territory). Could be absorbed into META-114 as a 6th sub-gap if wizard prefers consolidation
+    - "Documentation: SUBAGENT_DISPATCH.md gains the section + SHEPHERD_LOOP_PLAYBOOK.md gains Pattern 13; both cross-link to each other; existing docs/process/CLAUDE_GOTCHAS.md gains a brief entry for the hung-hook class"
+  closed_date: '2026-05-29'
+  closed_pr: 2658
+  outcome_id: MISSION-010
+

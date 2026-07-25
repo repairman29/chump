@@ -1,0 +1,16 @@
+- id: DOC-055
+  domain: DOC
+  title: "EFFECTIVE: refresh docs/ROADMAP.md TL;DR — all 4 today's-bets shipped (INFRA-1486/1540/1542/1483), name next 4 bets explicitly using current open P0/P1 + cite META-090 unblock + 4/5 wizard-retirement criteria"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "docs/ROADMAP.md TL;DR header table updated: replace 2026-05-16 reality with 2026-05-24, mark INFRA-1486/1540/1542/1483 as shipped (strike-through or checkmark)"
+    - "Today's bets table refreshed with 4 new bets for week-of-2026-05-24: (a) META-090 chump fleet autopilot P0/m (strategic productization), (b) Marcus M-B/M-C next milestone (post-demo), (c) 50-PRs-hr Phase 2 sustained-4h verification, (d) INFRA-1932 A2A-first communication discipline (just filed, partial-shipped via #2524)"
+    - "Operator action checkpoints refreshed: Day +1 is now ~2026-05-25, Day +14 is now ~2026-06-07; reset deadlines accordingly"
+    - "Wizard-retirement criteria block added: cite 4/5 daemons in flight (#2497 pulse-consumer #2510 oracle-refresh #2518 curator-launch + already-shipped INFRA-1892 JIT scheduler + INFRA-1899 transient-retrigger) as imminent capacity shift unlocking META-090 autopilot"
+    - Add a Mission-Yield reference + link to weekly cos digest if any new ones landed since 2026-05-17
+    - Verify no broken doc links (chump preflight markdown-intra-doc-links should pass)
+  closed_date: '2026-05-28'
+  closed_pr: 2526
+

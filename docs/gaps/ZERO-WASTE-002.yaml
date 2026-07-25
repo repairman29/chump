@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-002
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: sweep 7 stale 'open-with-closed_pr' gaps (CREDIBLE-075 + INFRA-1083..1090) — months-old orphans surfaced by fleet-doctor's gap-drift check; bulk-ship via 'chump gap ship --update-yaml --closed-pr <N>'"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3081
+  outcome_id: ZERO-WASTE-000
+

@@ -1,0 +1,13 @@
+- id: INFRA-2721
+  domain: INFRA
+  title: preflight references missing check-pr-hygiene.sh — gate never runs in CI but blocks every local push
+  status: blocked
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

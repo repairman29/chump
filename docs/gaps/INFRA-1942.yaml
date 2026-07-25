@@ -1,0 +1,16 @@
+- id: INFRA-1942
+  domain: INFRA
+  title: "RESILIENT: Monitor auto-restart on kill — curator inbox-watcher should re-arm itself when Claude Code Monitor is killed by timeout/harness-restart (INFRA-1936 follow-up)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "When the inbox-watcher Monitor terminates with a kill/timeout/harness-restart cause (any exit not initiated by TaskStop), Claude Code surfaces a system-reminder to the curator: 'Monitor <id> killed — re-arm per INBOX_WATCHER_PATTERN.md'"
+    - "Curator agent body in .claude/agents/<role>.md (target + harvester first) gains an instruction: 'On receiving a task-notification with status=killed for your inbox-watcher Monitor, immediately re-arm a fresh one before continuing other work.'"
+    - "Optional Claude Code harness feature (filed separately if not feasible at agent level): automatic re-arm of a 'recurring monitor' that respawns on kill — operator opt-in via Monitor(recurring=true) flag"
+    - "Smoke verification: kill Monitor bo2mnd8z0 manually, assert curator re-arms within 1 iteration via the agent-body instruction; failing that, the SessionStart nag (INFRA-1941) catches the gap on next session start"
+    - Cross-reference INFRA-1941 (the session-start sibling) — INFRA-1942 covers mid-session resilience; together they bracket the watcher lifecycle (start + middle)
+  notes: |
+    Filed by curator-opus-target-2026-05-23 after Monitor bo2mnd8z0 was killed across a session boundary today (2026-05-24). Without explicit re-arm discipline, the operator-as-messenger antipattern silently returns mid-session. Pairs with INFRA-1941 (start-time nag) and INFRA-1936 (the original pattern doc + agent-body instruction).
+  outcome_id: MISSION-010
+

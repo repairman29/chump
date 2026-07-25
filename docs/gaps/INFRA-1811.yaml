@@ -1,0 +1,22 @@
+- id: INFRA-1811
+  domain: INFRA
+  title: "RESILIENT: pr-auto-rebase falls back to local rebase + custom merge drivers BEFORE giving up — handles additive ci.yml conflicts the daemon currently fails (would have rescued tonight's 9 stale PRs)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Observed 2026-05-23: pr-auto-rebase daemon (INFRA-1777, just installed via INFRA-1808 path) ran on fleet startup and attempted to rebase 9 stale PRs (#2394 #2396 #2398 #2399 plus older). ALL 9 failed with "Cannot update PR branch due to conflicts" from gh pr update-branch. SAME pattern I manually rescued last night via local git rebase: the conflicts were on .github/workflows/ci.yml + one source file each, all ADDITIVE on both sides, and the repo has custom merge drivers (ci-yml-add-row, rust-main-append, etc per .gitattributes) that resolve them cleanly when git rebase runs. The daemon never tries local rebase — it goes straight to gh pr update-branch (which is GitHub server-side and does not use local merge drivers). Adding a local-rebase fallback would unstick 90%+ of these stale PRs without human intervention. Rough shape: (a) on gh pr update-branch failure, daemon checks out the PR branch into a throwaway worktree; (b) runs git rebase origin/main with the repo merge drivers active; (c) if rebase succeeds, push --force-with-lease; (d) if rebase has unresolved conflicts after merge-driver pass, give up gracefully (current behavior) AND emit a kind=pr_auto_rebase_unresolvable ambient event with conflict-file list so a human or smart-rescuer agent can pick it up.
+  acceptance_criteria:
+    - "crates/chump-pr-auto-rebase (or scripts/coord/pr-auto-rebase.sh — whichever owns INFRA-1777) extended with local-rebase fallback: on gh pr update-branch failure, checkout PR branch via git worktree add into /tmp/chump-rebase-<pr>/"
+    - "Run git rebase origin/main inside the throwaway worktree — repo .gitattributes merge drivers activate automatically (already configured: ci-yml-add-row, rust-main-append, cargo-toml-append, etc per INFRA-1389)"
+    - If rebase succeeds with 0 conflicts, push --force-with-lease + emit kind=pr_auto_rebase_recovered with PR number + driver names that resolved conflicts
+    - "If rebase has remaining conflicts post-merge-driver: clean abort (git rebase --abort), remove worktree, emit kind=pr_auto_rebase_unresolvable with conflict_files array — operator or future smart-rescuer (gap TBD) handles"
+    - "Cost guard: cap local-rebase attempts at CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S (default 120s) per PR; abort + log if exceeded"
+    - Skip if PR already has a pending GitHub-side rebase per webhook; do not double-rebase
+    - "CI test scripts/ci/test-pr-auto-rebase-local-fallback.sh: fixture PR with additive ci.yml conflict, assert daemon resolves it via local rebase + pushes, emits pr_auto_rebase_recovered event"
+    - "CI test variant: fixture PR with genuine semantic conflict (same line changed two ways), assert daemon aborts cleanly + emits pr_auto_rebase_unresolvable"
+    - cargo fmt/clippy/shellcheck clean per CLAUDE.md
+  notes: |
+    Pillar: RESILIENT. Direct observation: 9-of-9 stale PRs tonight failed the daemon, but the same conflicts I had to resolve manually last night via git rebase + merge drivers succeeded. Pairs with INFRA-1482 (merge-driver bugs — separate concern, lives in scripts/coord/.gitattributes). Pairs with INFRA-1648 (chump pr cascade-rebase command — same code path could power both). Without this fix, every cascade from a hotspot file (ci.yml is the canonical example) requires manual shepherd-level rescue. Effort=m because the worktree-add-then-rebase loop has edge cases (gitdir confusion per INFRA-779, lease collision, etc).
+  outcome_id: MISSION-010
+

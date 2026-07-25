@@ -1,0 +1,15 @@
+- id: INFRA-1474
+  domain: INFRA
+  title: "RESILIENT: docs-delta pre-commit gate reads wrong COMMIT_EDITMSG path in linked worktrees — Net-new-docs trailer never found"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit uses git rev-parse --git-dir instead of $REPO_ROOT/.git for MSG_FILE default
+    - A commit in a linked worktree adding docs/*.md with Net-new-docs trailer is accepted without bypass
+    - A commit in a linked worktree adding docs/*.md without the trailer is blocked as expected
+    - Main worktree behavior is unchanged
+    - scripts/ci/test-docs-delta-worktree.sh verifies the fix with a synthetic linked worktree
+  closed_pr: 2200
+  outcome_id: MISSION-010
+

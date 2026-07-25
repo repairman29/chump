@@ -1,0 +1,16 @@
+- id: MISSION-060
+  domain: MISSION
+  title: 'improve remediation: distinguish required vs optional/external red checks'
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+  - 'MISSION-059 remediate_held must not CLOSE a PR whose SUBSTANTIVE checks are green when only optional/external checks
+    (Vercel preview deploys, external status contexts) are red. Precedent: BEAST-MODE #16 — build/tests/quality/smoke all
+    SUCCESS, only ''Vercel – beast-mode'' + ''Vercel – beast-mode-website'' FAILURE (deploy-env noise, not a code defect);
+    pre-059 loop abandoned it and naive-059 would fetch an empty log -> AgentFix -> close a good PR. Fix: before remediating,
+    split statusCheckRollup into required (branch-protection required contexts) vs optional; if required all green and only
+    optional red, treat as VERIFIED-equivalent (or hold-for-human, configurable CHUMP_IMPROVE_OPTIONAL_CHECK_PREFIXES default
+    ''Vercel,netlify,deploy/''), never agent-fix or close. Verify: a PR green-except-Vercel is not closed.'
+  closed_date: '2026-07-25'
+  closed_pr: 3294

@@ -1,0 +1,12 @@
+- id: DOC-064
+  domain: DOC
+  title: "ZERO-WASTE: prune 15 phantom EVAL-NNN + 1 RESEARCH-002 references from docs/process/RESEARCH_INTEGRITY.md — gap audit-priorities flags them every run (low-noise but persistent)"
+  status: done
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "1. Audit docs/process/RESEARCH_INTEGRITY.md for 15 phantom EVAL-NNN refs (EVAL-010, 029, 030, 035, 041, 042, 043, 044, 073, 074, 076, 081, 093) + INFRA-079 + RESEARCH-002\n2. For each: either (a) file the referenced gap if work is real, (b) update the doc to remove the ref if work was abandoned, or (c) re-reference to the actually-existing replacement gap\n3. chump gap audit-priorities reports 0 phantom doc refs"
+  notes: Low-priority but persistent noise in gap-audit output.
+  closed_date: '2026-07-20'
+  closed_pr: 3212
+

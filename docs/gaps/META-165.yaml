@@ -1,0 +1,30 @@
+- id: META-165
+  domain: META
+  title: "META-163 follow-up: integrate curator-sentinel.sh into all 9 curator-loop scripts (ci-audit/handoff/decompose/shepherd/target/md-links/observability/infra-watcher/external-collab) + launchd reaper"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Follow-up to META-163 (curator-sentinel helper lib shipped via PR #2824). Integrates the helper into all 9 curator-loop scripts so .curator-opus-*.lock sentinels exist while curators are alive, closing the META-158 fan-out producer gap. Deferred from META-163 to avoid merge conflict with META-161 PR #2812 (still in CI queue at time of META-163 ship). Once #2812 lands, this slice can fan out cleanly.
+  acceptance_criteria:
+    - scripts/coord/ci-audit-loop.sh sources scripts/coord/lib/curator-sentinel.sh and calls _create_curator_sentinel ci-audit + _setup_sentinel_trap ci-audit at startup of main
+    - "scripts/coord/handoff-loop.sh: same pattern with role=handoff"
+    - "scripts/coord/decompose-loop.sh: same with role=decompose"
+    - "scripts/coord/shepherd-loop.sh (if exists; otherwise note absence): same with role=shepherd"
+    - "scripts/coord/target-loop.sh: same with role=target"
+    - "scripts/coord/md-links-loop.sh: same with role=md-links"
+    - "scripts/coord/observability-loop.sh: same with role=observability"
+    - "scripts/coord/infra-watcher-loop.sh: same with role=infra-watcher"
+    - "scripts/coord/external-collab-loop.sh: same with role=external-collab"
+    - "scripts/coord/deliberator-loop.sh: same with role=deliberator"
+    - .chump/launchd/com.chump.curator-sentinel-reaper.plist runs every 5 min, removes .curator-opus-*.lock files whose PID is dead (via _curator_sentinel_alive) OR mtime > 30 min
+    - scripts/setup/chump-fleet-bootstrap.sh registers the new reaper plist
+    - EVENT_REGISTRY.yaml gains curator_sentinel_created + curator_sentinel_removed entries
+    - "scripts/ci/test-curator-sentinel-integration.sh exercises one loop end-to-end: start ci-audit-loop tick in background, assert sentinel exists, kill loop, assert sentinel removed"
+    - "End-to-end recv-side v0 proof: start 3 curator loops via launchd; broadcast FEEDBACK kind=proposal; assert 3 inbox files updated AND kind=feedback_fanout_delivered fired with recipient_count=3"
+  notes: |
+    [2026-05-30T16:21:03Z] stuck cycle 1 → re-attempt 2026-05-30 (PR #2839 auto-closed) respawn-handled:2839
+  closed_date: '2026-05-30'
+  closed_pr: 2839
+  outcome_id: MISSION-010
+

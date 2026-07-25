@@ -1,0 +1,13 @@
+- id: INFRA-1949
+  domain: INFRA
+  title: "RESILIENT P1: document operator-side caffeinate / no-screensaver requirement for Opus curator sessions — when macOS sleeps display, Claude Code Opus windows pause + foreground curators die (operator's 18:10Z diagnosis); launchd daemons keep running but cron-driven curators lose continuity"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

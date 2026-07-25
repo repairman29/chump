@@ -1,0 +1,19 @@
+- id: INFRA-2019
+  domain: INFRA
+  title: "ZERO-WASTE: slo_breach detector burns 54k tokens per fire (60.7% of 24h waste) — switch to cheaper model or trim per-fire scope"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Failure observed: chump waste-tally --tokens on 2026-05-25 showed 1 x slo_breach event burning 54k tokens (60.7 percent of 24h fleet waste, $0.16). One event > all other waste classes combined. The detector that fires when an SLO breaches is itself the dominant waste class."
+    - "Root cause hypothesis: slo_breach detector currently invokes full LLM analysis on every fire (probably Opus or Sonnet). Detection is deterministic (compare metric to threshold) — only the diagnostic narrative needs an LLM, and that should be Haiku or sampled."
+    - Locate the detector implementation (grep scripts/ for slo_breach event emit; likely scripts/dev/ or scripts/coord/observability-loop.sh) and audit model choice.
+    - If LLM is used, switch to Haiku via FLEET_MODEL=haiku env override (cost ratio ~50x vs Opus). Document the choice in the script comment.
+    - "Add a token-budget guard: detector aborts (warn-only) if cumulative tokens-this-week for slo_breach > 100k. Emits kind=detector_budget_exceeded."
+    - Smoke test scripts/ci/test-slo-breach-detector-budget.sh — fire detector synthetically with stub LLM; assert tokens within budget; assert kind=slo_breach emitted.
+    - Pairs with — INFRA-1905 (pr-stuck-cluster, same class problem at smaller scale, 39.3 percent of 24h waste), curator-opus-observability lane (META-103).
+    - Done definition — single slo_breach event burns < 5k tokens; chump waste-tally --tokens shows slo_breach < 10 percent of 24h waste.
+  closed_date: '2026-07-20'
+  closed_pr: 3176
+  outcome_id: MISSION-010
+

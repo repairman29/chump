@@ -1,0 +1,14 @@
+- id: INFRA-2314
+  domain: INFRA
+  title: trunk-red rescue P0 — allowlist INFRA-2309's 2 new raw-gh callers (auto-merge-rearm-daemon.sh + chump-pr-ready-to-ship.sh need mergeStateStatus+autoMergeRequest fields cache wrapper doesn't expose)
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/raw-gh-allowlist.txt gains 2 entries (alphabetical): auto-merge-rearm-daemon.sh + chump-pr-ready-to-ship.sh\n2. bash scripts/ci/test-no-raw-gh-in-hot-paths.sh exits 0\n3. Ships within 5 min via admin-merge to unblock the 29 BLOCKED PRs"
+  notes: |
+    INFRA-2309 ships ironic rescue tools that wedge the queue. Both need mergeStateStatus + autoMergeRequest JSON fields which cache_query_open_prs doesn't expose; raw gh is the only path. Allowlist with INFRA-1249 migration ref.
+  closed_date: '2026-05-31'
+  closed_pr: 2892
+  outcome_id: MISSION-010
+

@@ -1,0 +1,9 @@
+- id: INFRA-3361
+  domain: INFRA
+  title: "META-070 Tier-C: mirror C3 PR/worker-lifecycle audit-job guards into chump preflight"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. src/preflight.rs audit-gate discovery list extended with the unmirrored C3 PR/worker-lifecycle scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C3 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_PRLIFECYCLE env var\n3. scripts/ci/test-preflight-audit-c3-prlifecycle.sh smoke test asserts default-run + env-var skip\n4. chump preflight wall-clock stays under target"
+

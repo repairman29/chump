@@ -1,0 +1,21 @@
+- id: META-129
+  domain: META
+  title: "META: fleet-scrubber segment-detail info architecture — collab gap for tokens/cost/trace/multi-machine (INFRA-2164 followup)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Collab gap to define the rich segment-detail panel of the fleet-scrubber (INFRA-2176, live at http://localhost:7070/scrubber/). Today the side panel shows only an events list + raw payload. To be Marcus-grade and operator-rich, we want token/cost overlay, subagent attribution fix, causal trace per PR, multi-machine consolidation, and a structured field list. This gap collects proposals from fleet curators via FEEDBACK broadcasts before AC are finalized.
+  acceptance_criteria:
+    - Collect at least 5 FEEDBACK responses from peer curators (or operator decisions) on the design proposals; record them in docs/design/SCRUBBER_PANEL_PROPOSALS.md
+    - "Decision section: which fields land in v1 vs deferred to v2"
+    - "Idle palette v1: segmenter promotes 'idle' from one state to five — scheduled-quiet (worker between iters, healthy), working-but-quiet (bash_call matches known-long cmds like cargo build / gh pr merge / sleep), stalled (heartbeat present but no event >5min, warning shade), dead (no heartbeat + no events >15min, dark shade), untracked (only a session_start emitted ever, hatched pattern). Each carries a confidence flag (solid when we have rich events, dashed when we are inferring from sparse signal)"
+    - "Idle palette signals: drive from stale_gap_lock_protected reason=heartbeat_fresh (alive), bash_call cmd patterns (long-op detection), lease expiry timestamp, gap between events vs window size — no new event kinds required"
+    - "Token/cost integration: recorder payload schema includes tokens_in tokens_out cost_usd model when source is anthropic-api; scrubber sums per segment and renders 'Cost' row in panel"
+    - "Subagent attribution: at Agent-tool dispatch time emit kind=subagent_spawned with sub_session_id + worktree_path; recorder maps subsequent ambient events to sub_session_id by worktree path; scrubber renders sub-lanes nested under parent"
+    - "Causal-trace mode: panel has 'Story of PR' tab querying /api/trace/pr/:n and renders timeline with cursor highlighting on the gantt"
+    - "Multi-machine consolidation decision: option A (per-machine sqlite + server joins) or B (single shared sqlite via NATS replication) — pick one with rationale"
+    - "UI correctness: segment duration computed from start_ts_ms/end_ts_ms (currently shows 0s after the INFRA-2189 normalization); panel surfaces last 3 events on either side of the segment window even when zero events fall inside (so it never says 'No events' for a real segment)"
+    - "Marcus review: external-collab curator loops Marcus on the proposal doc and captures his design feedback before ship"
+  outcome_id: MISSION-010
+

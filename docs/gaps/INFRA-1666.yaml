@@ -1,0 +1,17 @@
+- id: INFRA-1666
+  domain: INFRA
+  title: "RESILIENT: SessionStart hook misreports curator/state JSON in .chump-locks/ as leases — filter glob by session_id presence"
+  status: superseded
+  priority: P1
+  effort: xs
+  description: |
+    Bug: scripts/coord/ambient-context-inject.sh treats every .chump-locks/*.json file as a lease in the SessionStart digest. Reality (2026-05-22): the directory has 44 curator-filed-balance_restock_*.json audit files + 3 state JSON files (drift-alert-state, fleet-state, gap-priority) and 0 actual leases — the hook reports 47 phantom leases with session=? expires=? and a duplicated 'INFRA-1149' listing 41 times (the curator audit files carry gap_id=INFRA-1149 as their dedup match). Related: INFRA-1494 (zombie-lease reaper at fleet startup) addresses stale REAL leases; this gap addresses non-lease JSON files being misclassified. Fix shape: in scripts/coord/ambient-context-inject.sh Python digest (lines ~265-275), add 'if not data.get("session_id"): continue' before appending to leases list. Two-line change in Python plus one CI test fixture.
+  acceptance_criteria:
+    - ambient-context-inject.sh Python digest filters lock_dir.glob('*.json') to only files whose parsed JSON has a non-empty 'session_id' field; non-lease files (curator-filed-*, fleet-state.json, gap-priority.json, drift-alert-state.json) are excluded from 'active leases' count and 'Active sibling leases' render block
+    - "CI test scripts/ci/test-ambient-context-inject-non-lease-files.sh creates a fixture .chump-locks/ with one real lease + 3 curator-filed-style JSON + 2 state-style JSON and asserts the rendered context contains 'active leases: 1' (not 6)"
+    - "fresh SessionStart hook fire (after fix) shows correct count: 0 leases when none claimed, n leases when n live claims exist"
+    - no regression to existing tests scripts/ci/test-session-start-emit.sh + scripts/ci/test-ambient-glance.sh
+  notes: |
+    duplicate of INFRA-1664 (already fixed in PR #2307, merged 2026-05-22 09:53). Local main was 9 commits behind origin/main when I filed this; the stale SessionStart hook showed 47 phantom leases because the fix had not been pulled yet. Lesson: pre-flight fetch was incomplete during diagnosis; should have inspected origin/main before filing. Cross-ref: INFRA-1664 + INFRA-1661 (lessons doc PR #2306 already documented this).
+  outcome_id: MISSION-010
+

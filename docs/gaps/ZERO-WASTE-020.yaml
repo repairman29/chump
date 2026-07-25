@@ -1,0 +1,18 @@
+- id: ZERO-WASTE-020
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: retire YAML gap mirrors — SQLite canonical + versioned dump only (ground-up step 3)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Ground-up step 3: YAML mirrors are optional post-INFRA-760 and generate false hijacks (CREDIBLE-153), import wedges (duplicate evidence field), prereg-gate friction and pull-clobbers. Retire them: SQLite canonical, versioned dump for git history, delete docs/gaps/*.yaml + the sync/drift detectors that police them.
+  acceptance_criteria:
+    - docs/gaps/*.yaml removed from the repo with a tombstone README pointing at the dump
+    - gap_drift_orphan / gap_drift_yaml_only detectors + gaps-lock YAML guard retired or rewritten against the dump
+    - state dump regenerated on each gap mutation and committed by the ship pipeline (merge driver already exists)
+    - git history of a sample gap remains reconstructable (documented recipe)
+  notes: |
+    Outcome: ZERO-WASTE-000. Blocked-by: none (drift detectors are self-contained).
+  closed_date: '2026-07-21'
+  closed_pr: 3215
+

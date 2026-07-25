@@ -1,0 +1,11 @@
+- id: INFRA-1959
+  domain: INFRA
+  title: "RESILIENT P0: CI flakes on 'database is locked' when parallel self-hosted runs hit shared sqlite — fast-checks/test fail randomly, blocks every keystone landing"
+  status: done
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "[\"Root cause — multiple parallel self-hosted CI runs concurrently access the same sqlite file (likely .chump/state.db or test fixture state.db). r2d2 connection pool returns SQLITE_BUSY/database-is-locked. Confirmed on 2026-05-25 fleet wedge: 23 PRs ALL failing fast-checks with FAIL: AC#7: expected 3 repo(s) in plan; got: ERROR r2d2: database is locked. The keystone fix #2548 ITSELF fails for same reason — proving its logic is fine but test infra is broken under concurrent load\", \"Fix — three options ranked by leverage: (1) FAST: serialize fast-checks/test/audit jobs via concurrency: group at workflow-level so only one parallel run touches sqlite at a time, (2) STRUCTURAL: per-job temp DB via mktemp -d + CHUMP_STATE_DB env override; isolates state mutation entirely, (3) FLAKE-TOLERANT: r2d2 retry/backoff config with 30s timeout and 5 retries on SQLITE_BUSY\", \"Acceptance — run 8 parallel CI workflows simultaneously; fast-checks success rate goes from current ~10 percent to >=95 percent. AND keystone PRs with the actual fix can land\", \"Smoke test — scripts/ci/test-parallel-ci-sqlite-isolation.sh that spawns 4 concurrent test-fleet-spec invocations against same fixture and asserts all 4 succeed\", \"Pairs with — INFRA-1937 (route to self-hosted), INFRA-1958 (rebase fallback). This is the THIRD blocker after rebase-false-positive + capacity, that wedges the fleet to 0 ships/hour\"]"
+  closed_date: '2026-05-25'
+  outcome_id: MISSION-010
+

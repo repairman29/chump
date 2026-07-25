@@ -1,0 +1,12 @@
+- id: INFRA-2076
+  domain: INFRA
+  title: REPRO-TEST-INFRA-2022 chump gap set overwrites with TODO
+  status: superseded
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - FINAL test AC replacement
+  notes: |
+    [2026-05-27T21:12:59Z] [2026-05-27] superseded — created as INFRA-2022 repro test; bug not reproduced (likely fixed by intermediate ship)
+  outcome_id: MISSION-010
+

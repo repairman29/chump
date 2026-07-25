@@ -1,0 +1,13 @@
+- id: INFRA-2131
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C3 install-chump-integrator-launchd.sh + plist + REQUIRED_DAEMONS registration"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New scripts/setup/install-chump-integrator-launchd.sh following install-nats-server-launchd.sh pattern (the model from INFRA-2102).\n- Generates ~/Library/LaunchAgents/dev.chump.integrator.plist with: Label=dev.chump.integrator, ProgramArguments points at the installed chump-integrator binary (locate via command -v or fallback to ~/.local/bin/chump-integrator), RunAtLoad=true (per INFRA-2125 RCA lesson), KeepAlive=true, StandardOutPath + StandardErrorPath under ~/.chump/logs/integrator.{out,err}.\n- Installer flags: default install, --check (verifies daemon registered + running), --uninstall (launchctl unload + rm plist).\n- Adds com.chump.integrator to REQUIRED_DAEMONS in scripts/setup/chump-fleet-bootstrap.sh (pr-hygiene compliant; goes through the test-install-script-manifest.sh gate INFRA-2105 just landed).\n- Adds install-chump-integrator-launchd.sh to scripts/setup/optional-installers-allowlist.txt initially (Phase 1 dry-run; promote to REQUIRED_DAEMONS in C12 when Phase 3 default-on).\n- Verify: after `bash install-chump-integrator-launchd.sh` then `launchctl print gui/$UID/dev.chump.integrator "
+    - " grep \"state = active\"` returns hit.\n- Verify: ambient log at ~/.chump/logs/integrator.out shows daemon's first poll log line within 30s of install.\n- Cross-references INFRA-2125 (reaper plist fix lesson — RunAtLoad and StartInterval semantics), INFRA-2102 (the install-nats-server-launchd.sh model)."
+  closed_date: '2026-06-05'
+  closed_pr: 2746
+  outcome_id: MISSION-010
+

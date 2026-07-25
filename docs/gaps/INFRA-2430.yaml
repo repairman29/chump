@@ -1,0 +1,43 @@
+- id: INFRA-2430
+  domain: INFRA
+  title: "RESILIENT: trunk red — main ci.yml failing on [audit,audit-required] (fp=3fb93c628432)"
+  status: closed
+  priority: P1
+  effort: s
+  description: |
+    Trunk-sentinel detected main ci.yml has been RED for 5m.
+    
+      - Run ID: 26823251581
+      - Head SHA: 6b53ddec7a675c42747c95888778243fa655d8fd
+      - Failing jobs: audit,audit-required
+      - Fingerprint: 3fb93c628432
+    
+    This gap was auto-filed by scripts/coord/trunk-sentinel-daemon.sh. The
+    fingerprint above is sha256(sorted failing-job names) so a second tick with
+    the same failure set will NOT re-file. A different failure pattern (a new
+    failing job appears) WILL file a new gap.
+    
+    Recommended workflow:
+      1. Inspect the run: gh run view 26823251581
+      2. Identify the root commit (gh log origin/main --oneline -5).
+      3. Either revert the offending commit OR file a forward fix.
+      4. When main is green again the sentinel will emit trunk_recovered and
+         close this gap.
+    
+    This is a fleet-halt-class wedge: every other PR currently in flight will
+    land BEHIND a red trunk; bot-merge will refuse to arm new ones until green.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    duplicate of INFRA-2432 (same fingerprint 3fb93c628432); closed per INFRA-2432 fix in PR #2965
+    [2026-06-03T23:57:01Z] Shipped via #2965 (closed_pr was set, status stale-open). Closed by mission-loop registry hygiene.
+    [2026-06-04T00:00:06Z] CLARIFY: closed_pr 2965 was a mis-set reference (#2965 is INFRA-2432's PR, closed-unmerged). INFRA-2430 was a trunk-red incident (main ci.yml audit failing); trunk is GREEN now so the incident IS resolved — done is correct, the PR ref is just wrong. Lesson: verify merge before closing off a closed_pr field.
+    [2026-06-05T05:29:31Z] Stale auto-ship miss: closed_pr=2965 (merged). Same zombie class as INFRA-2759, fixed by RESILIENT-097.
+  closed_date: '2026-06-02'
+  closed_pr: 2965
+  skills_required: fix_trunk,ci_repair
+  outcome_id: MISSION-010
+

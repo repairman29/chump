@@ -1,0 +1,17 @@
+- id: MISSION-012
+  domain: MISSION
+  title: "MISSION P0: the fleet can't DEPLOY its own merged improvements — running checkout is on a stale feature branch (7 behind main, 527 uncommitted), no auto-deploy; merged fixes are inert"
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    VERIFIED 2026-06-04 (conductor): the fleet ships PRs to origin/main but its RUNNING self never deploys them. The coordination/dispatch daemons run from /Users/jeffadkins/Projects/Chump, which is on a STALE FEATURE BRANCH (chump/integration-2026-06-03-0811), 7 commits behind origin/main, with 527 uncommitted files (mostly gap-yaml + runtime state: 501 .yaml, state.db, github_cache.db; only 3 source). No auto-pull/deploy in worker.sh / run-fleet.sh. main-worktree-drift-detector is loaded but only DETECTS, doesn't remediate. CONSEQUENCE: every self-improvement the fleet merges is INERT — MISSION-011 (#3029, mission-directed picker) merged but the running _pick_gap.py is the OLD non-mission-directed version. The 'self-improving / self-coordinating fleet' literally cannot update its own running self. This is the foundational autonomy blocker beneath every other finding (throughput-not-mission, closed-loop substrate, etc.). FIX: (a) run coordination/dispatch from CLEAN CURRENT main (auto-pull origin/main on a cadence, or run dispatch from a fresh deploy worktree); (b) stop accumulating uncommitted churn (gitignore or auto-commit gap-yaml + runtime state); (c) rebuild the chump binary after Rust merges. CRITICAL CONSTRAINT: remediation touches the LIVE fleet's checkout + CANONICAL state (.chump/state.db, github_cache.db) — must preserve state.db (never clobber) and not disrupt daemons mid-write. Operator should weigh in on the remediation approach (reset-in-place vs dedicated deploy worktree) before surgery on the live checkout.
+  acceptance_criteria:
+    - a merged change to a coordination script (e.g. _pick_gap.py) takes effect in the running fleet within N minutes with NO manual intervention
+    - the running checkout stays clean (no accumulating uncommitted gap-yaml/state)
+    - the chump binary is rebuilt after Rust merges (no 'binary older than src')
+    - canonical state (.chump/state.db) is preserved across deploys
+    - MISSION-011's mission-directed picker is ACTIVE in the running fleet — a mission gap is provably boosted in a real pick
+  closed_pr: 3040
+  outcome_id: MISSION-012
+

@@ -1,0 +1,13 @@
+- id: INFRA-1840
+  domain: INFRA
+  title: "EFFECTIVE: failure-class classifier — when N>=3 open PRs share same CI failure log, surface as keystone-candidate alert with diff hint (today: yaml-integrity, events.rs Debug, fmt-drift, env-var-coverage all 3+ PRs each)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  outcome_id: MISSION-010
+

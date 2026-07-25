@@ -1,0 +1,37 @@
+- id: RESILIENT-090
+  domain: RESILIENT
+  title: "Root-cause: why preflight test commits in mktemp -d dir land in caller worktree HEAD"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Two RESILIENT-085 + RESILIENT-089 guards now PREVENT preflight test scripts from running on chump/*-claim branches, but they don't explain WHY the commits land in the operator's HEAD in the first place.
+    
+    Observed (incident 2026-06-03): test-system-integration.sh and test-gap-preflight-ac-gate.sh both do:
+      TMP=$(mktemp -d)   # returns /var/folders/.../tmp.XXXXXX on macOS
+      REPO=$TMP/repo
+      cd $REPO
+      git init -q
+      git commit -m 'init'
+    
+    The 'init' commit (and chore: initial commit, test commit, ship marker) end up on the caller's branch HEAD with the caller's commit as parent. That can only happen if git operations resolve to the caller's .git directory despite the cd to $REPO.
+    
+    Hypotheses to test:
+    1. $GIT_DIR or $GIT_WORK_TREE leaks from a parent invocation and overrides cd
+    2. mktemp -d returns a path that's somehow inside the operator's worktree on some macOS configs
+    3. git init -q fails silently when invoked inside a parent git directory (not the case here per testing)
+    4. chump-commit.sh's REPO_ROOT resolution in lib/repo-paths.sh has a fallback that returns the caller's worktree
+    
+    Reproduce: from /Users/jeffadkins/Projects/Chump, run `bash scripts/ci/test-system-integration.sh` with CHUMP_INTEGRATION_TEST_FORCE=1, then check `git log HEAD -5` — if 'init' commits land, the bug is reproducible.
+    
+    The two guards keep the queue safe; this gap is the underlying root-cause.
+  acceptance_criteria:
+    - 1. Identify exact mechanism by which mktemp -d test commits land in caller HEAD
+    - 2. Show reproducible test case
+    - 3. Fix the underlying leak so the RESILIENT-085/089 guards become belt-not-suspenders
+    - 4. Audit other test scripts that might leak the same way (test-bot-merge-gap-fatal, test-chump-upgrade-detection, test-inventory, test-agent-dispatch-guardrail, test-rust-first-worktree-bypass)
+    - 5. emit kind=preflight_test_leak_root_caused
+  closed_date: '2026-06-05'
+  closed_pr: 3032
+  outcome_id: RESILIENT-000
+

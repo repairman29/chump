@@ -1,0 +1,9 @@
+- id: RESILIENT-196
+  domain: RESILIENT
+  title: "fleet disk floor: reserve build headroom, hard-fail before ENOSPC deadlock"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "CORRECTION (profiled 2026-07-24): the dev-Mac disk filler is NOT the self-hosted CI runner (heavy CI already routes to GH-hosted Linux via CHUMP_SELF_HOSTED_* repo vars; only e2e-pwa runs on the Mac, debug-only). The 21G target is mostly LOCAL: target/release 12G (local chump installs/rebuilds) + target/debug 9.7G (local dev + some e2e-pwa). Root cause = local dev-build accretion with ZERO GC + the macOS self-hosted runner never cleans (all disk-reclaim steps are 'if runner.os == Linux'). Fix: (1) a target-GC reaper trimming target/ when >20G (prune target/release + target/debug/incremental, keep deps), (2) a macOS-gated cleanup step for the e2e-pwa job (counterpart to the Linux INFRA-CI-DISKSPACE strip), (3) a preflight disk-FLOOR guard that refuses to start a cargo build below CHUMP_DISK_FLOOR_GB (default 15) + emits kind=disk_floor_breach instead of ENOSPC-crashing (the 2026-07-24 deadlock where even the shell couldn't write). Verify: with free space below floor, a build refuses+emits instead of crashing; target/ auto-trims above 20G."
+

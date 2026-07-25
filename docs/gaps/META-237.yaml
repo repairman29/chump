@@ -1,0 +1,13 @@
+- id: META-237
+  domain: META
+  title: "META: Emit agent_admin_merge event on successful admin-merge (META-209 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After a successful admin-merge, auto-admin-merge-daemon.sh emits a 'kind=agent_admin_merge' event.
+    - All required fields ('role', 'pr_number', 'fix_class', 'consensus_corr_id', 'trigger_check_results') are populated correctly in the emitted event.
+    - Logging confirms the emission of the 'agent_admin_merge' event.
+  depends_on: [META-235, META-236]
+  outcome_id: MISSION-010
+

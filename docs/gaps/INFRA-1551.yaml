@@ -1,0 +1,20 @@
+- id: INFRA-1551
+  domain: INFRA
+  title: "ZERO-WASTE: cull dead schema — routing_outcomes/intents tables never written; gaps.skills_required/preferred_backend/preferred_machine/estimated_minutes all NULL across 636 rows but referenced by FLEET-034 push routing"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Three schema corpses in .chump/state.db: (1) routing_outcomes table — schema + indexes, zero INSERTs, chump dispatch scoreboard reads from it while real telemetry flows through ambient.jsonl; (2) intents table — schema'd, never written; src/atomic_claim.rs::read_live_intents reads intent_announced events from ambient instead; (3) gaps table columns skills_required, preferred_backend, preferred_machine, estimated_minutes — all NULL across 636 rows, but CLAUDE.md FLEET-034 push routing explicitly uses gap.skills_required to pick the NATS subject. Verified: schema in this repo lives in top-level schema_migration.sql and .chump/state.sql (canonical rebuild source per CLAUDE.md chump gap restore --from-sql). No migrations/ directory — schema changes are applied via direct SQL deltas in schema_migration.sql.
+  acceptance_criteria:
+    - "routing_outcomes: either (a) wire INSERT from the dispatch decision path in src/provider_cascade.rs or src/orchestrate.rs with one row per outcome capturing backend, model, est_input_tokens, success, or (b) drop the table via a delta in schema_migration.sql AND remove the read in the chump dispatch scoreboard handler"
+    - "intents: drop the table via schema_migration.sql delta since src/atomic_claim.rs::read_live_intents already reads ambient events; remove the table definition from .chump/state.sql"
+    - "gaps.skills_required: either populate via gap.title heuristic + LLM classifier in the chump gap reserve path (src/main.rs), or remove the column AND update CLAUDE.md FLEET-034 push-routing section to drop the skills-class component of the NATS subject"
+    - "gaps.preferred_backend / preferred_machine / estimated_minutes: same kill-or-fill decision per column documented in the PR body with rationale"
+    - Schema changes land via schema_migration.sql with an explicit reversal comment block; .chump/state.sql is regenerated to match
+    - CLAUDE.md and any docs referencing dropped columns updated in the same commit
+    - scripts/ci/test-schema-truth.sh asserts no production-read table has been INSERT-empty for >30 days, surfacing future corpses
+  notes: |
+    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+  outcome_id: MISSION-010
+

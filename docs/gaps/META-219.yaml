@@ -1,0 +1,12 @@
+- id: META-219
+  domain: META
+  title: "META: Register and emit `kind=agent_admin_merge` ambient event (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new ambient event `kind=agent_admin_merge` is registered in the system's event schema.
+    - "Upon a successful admin-merge, `auto-admin-merge-daemon.sh` emits an `agent_admin_merge` event with fields: `role`, `pr_number`, `fix_class`, `consensus_corr_id`, and `trigger_check_results`."
+  depends_on: [META-218]
+  outcome_id: MISSION-010
+

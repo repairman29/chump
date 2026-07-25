@@ -1,0 +1,16 @@
+- id: RESILIENT-126
+  domain: RESILIENT
+  title: "RESILIENT: fresh-eyes-loop.sh uses bash 4+ syntax ({txt,,}) — breaks on macOS bash 3.2 default"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/coord/fresh-eyes-loop.sh line 151 uses bash 4+ syntax ${txt,,} (parameter expansion lowercase) — fails on macOS default /bin/bash (3.2.57) with 'bad substitution'
+    - "Fix: replace ${txt,,} with portable POSIX: lower=$(echo \"$txt\" | tr '[:upper:]' '[:lower:]') OR add 'set -e; bash --version | grep -q 'version [4-9]' || { echo 'requires bash 4+'; exit 2; }' guard at top"
+    - Audit other *-loop.sh scripts for the same class of bashism (${var,,}, ${var^^}, mapfile, readarray, assoc arrays without check) and either port-down or shebang-pin
+    - Add scripts/ci/test-fresh-eyes-bash32.sh — runs fresh-eyes-loop.sh under /bin/bash explicitly, asserts no 'bad substitution' error
+    - "Doctrine cross-ref: this is a CREDIBLE-105 case study — fresh-eyes silently dark for an unknown window is the meta-clause violation (a mirror that doesn't run while we call it active)"
+  closed_date: '2026-07-21'
+  closed_pr: 3178
+  outcome_id: RESILIENT-000
+

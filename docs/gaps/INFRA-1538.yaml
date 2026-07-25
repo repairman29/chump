@@ -1,0 +1,16 @@
+- id: INFRA-1538
+  domain: INFRA
+  title: "RESILIENT: chump-runner-migration-pipeline gate query bug — checks workflow .name not job name; fast-checks job inside CI workflow never matches"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/coord/chump-runner-migration-pipeline.sh gate functions use 'gh run list --json name' which returns the WORKFLOW name (e.g. 'CI'), not the JOB name ('fast-checks')
+    - "Fix: query check-runs on recent commit shas instead: 'gh api /repos/.../commits/<sha>/check-runs' filtered by .name and .conclusion=='success'"
+    - "Smoke test scripts/ci/test-migration-pipeline-gates.sh: fixture a recent successful fast-checks check-run, assert gate_stage_0 returns 0 (advance)"
+    - "Workaround used: manually advanced state to stage_1 after canary success was visible-but-not-detected"
+  notes: |
+    Fixed inline in INFRA-1581 (gate-query bug). See PR for the _check_job_succeeded helper.
+  closed_pr: 2297
+  outcome_id: MISSION-010
+

@@ -1,0 +1,12 @@
+- id: INFRA-2120
+  domain: INFRA
+  title: "RESILIENT P0 (CI-REVIEW Lever 4): promote test-preflight-ci-parity.sh from advisory to required + fire pre-commit so allowlist drift catches locally — eliminates rank-2 CI-config drift class (~15% of CI rot)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. scripts/ci/test-preflight-ci-parity.sh promoted from advisory `continue-on-error: true` to required (`continue-on-error: false` or remove flag)\n2. scripts/git-hooks/pre-commit calls test-preflight-ci-parity.sh in fast mode (only checks changed ci.yml steps, not full sweep — <5s wall-clock)\n3. preflight-ci-parity-exceptions.txt entry-add discipline documented in CLAUDE.md so contributors don't get caught at PR-time\n4. After fix, count of \"Unmirrored gate in job=\" failures in ambient.jsonl drops to 0 (currently 4-5/week class)\n5. Source: docs/strategy/CI_REVIEW_2026-05-29.md Lever 4"
+  closed_date: '2026-05-29'
+  closed_pr: 2709
+  outcome_id: MISSION-010
+

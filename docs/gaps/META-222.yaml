@@ -1,0 +1,12 @@
+- id: META-222
+  domain: META
+  title: "META: Create `test-auto-admin-merge-policy.sh` skeleton and 5-PR fixture (META-209 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - File `scripts/ci/test-auto-admin-merge-policy.sh` is created and is executable.
+    - "A synthetic fixture of 5 GitHub PRs is created: one PR that passes all auto-admin-merge policy criteria, and four PRs each failing one distinct criterion (quorum, fix-class, conflict, T-trigger)."
+  depends_on: [META-218]
+  outcome_id: MISSION-010
+

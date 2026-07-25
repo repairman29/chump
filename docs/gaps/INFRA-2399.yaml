@@ -1,0 +1,18 @@
+- id: INFRA-2399
+  domain: INFRA
+  title: "RESILIENT: trunk-red-prevention procedures doc + 5 author-time helper commands"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - Author docs/process/PROCEDURES/trunk-red-prevention.md covering the 5+ trunk-red gate classes paid down in INFRA-2396 (install-manifest, pipefail-race, env-vars-internal, raw-gh-allowlist, path-filter, event-registry-emit, event-registry-register, preflight-ci-parity)
+    - "For each gate: trigger condition, author-time helper command, what to do if legitimately bypass-required"
+    - "Ship 5 author-time helper subcommands: chump add-env-var, chump emit-event, chump install-daemon, chump add-path-filter, chump add-raw-gh-allowlist — each auto-updates the matching registry/allowlist when an author adds a new feature"
+    - Each helper has bash + Rust implementations + 5 smoke tests (one per gate)
+    - Doc cross-references INFRA-2397 (watchdog) and INFRA-2398 (claim gate) as the enforcement layer
+    - "Pre-commit hook scripts/git-hooks/pre-commit-trunk-red.sh — runs the 5 author-time helpers in diff-mode and refuses commit on undocumented additions; bypass: Trunk-Red-Bypass: <reason> trailer"
+  notes: |
+    [2026-06-04T00:06:18Z] confirmed merged on origin/main (fix/feat commit); registry hygiene
+  closed_pr: 2948
+  outcome_id: MISSION-010
+

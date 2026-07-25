@@ -1,0 +1,16 @@
+- id: CREDIBLE-115
+  domain: CREDIBLE
+  title: "chump-reviewer-routing::compute_unions_codeowners_with_override — passes in isolation, FAILS in workspace cargo-test (test-ordering / shared-state flake)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Test passes in isolation: `cargo test -p chump-reviewer-routing --lib compute_unions_codeowners_with_override` returns ok."
+    - "Test FAILS in workspace context: `cargo test --workspace --no-fail-fast` reports `tests::compute_unions_codeowners_with_override ... FAILED` in some runs. Suspected: shared $HOME/$CARGO_HOME state across test bins, or filesystem-time dependency."
+    - "Root cause: identify why isolation matters (likely env var leak, tempfile collision, or order-dependent global state in compute_reviewer_set)."
+    - "Fix: make test self-contained (env::set_var with serial_test guard, or explicit working dir) so workspace order does not affect outcome."
+    - "Verify: 5 consecutive `cargo test --workspace --no-fail-fast` runs all green."
+  notes: |
+    First observed 2026-06-05T23:50Z during RESILIENT-118 preflight. crates/chump-reviewer-routing/src/lib.rs:601. Blocked RESILIENT-118 ship; bypassed via CHUMP_PREFLIGHT_SKIP=1 with trailer per CREDIBLE-105.
+  outcome_id: CREDIBLE-000
+

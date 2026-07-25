@@ -1,0 +1,12 @@
+- id: CREDIBLE-130
+  domain: CREDIBLE
+  title: run-fleet INFRA-621 probe mislabels 'credit balance too low' as 'ANTHROPIC_API_KEY authentication failed' — manufactures auth-dead false positives
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    2026-06-08: fleet down because the Anthropic API account hit 'Credit balance is too low' (key VALID, authenticates fine, len 108; CHUMP_AUTH_MODE=api-key forces the empty account). But run-fleet.sh INFRA-621 probe reports 'ERROR: auth probe failed / ANTHROPIC_API_KEY authentication failed' — a BILLING failure mislabeled as an AUTH failure. This is the #1 false-positive class (auth-dead, mis-called 4x): the mislabel sent diagnosis through auth/flag/lease theories before a direct probe revealed the real cause (credit). Fix: classify the failure.
+  acceptance_criteria:
+    - "1. INFRA-621 probe parses the error and reports the ACTUAL class (auth-invalid vs credit-exhausted vs rate-limit vs network), not a blanket 'authentication failed'. 2. On credit-exhaustion: actionable message (top up / switch CHUMP_AUTH_MODE=oauth). 3. Emits a distinct ambient kind (e.g. fleet_credit_exhausted) so operator-recall routes it correctly."
+  outcome_id: CREDIBLE-000
+

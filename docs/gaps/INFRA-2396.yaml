@@ -1,0 +1,11 @@
+- id: INFRA-2396
+  domain: INFRA
+  title: "RESILIENT P0: 3 unmapped installers wedge install-manifest-gate (trunk-red on all PRs)"
+  status: done
+  priority: P0
+  effort: xs
+  acceptance_criteria:
+    - "[\"Add install-auto-merge-arm-watcher.sh, install-disk-critical-reactor-launchd.sh, install-sccache-reaper-launchd.sh to scripts/setup/optional-installers-allowlist.txt with INFRA-2289/2304/2303 source-gap citations\",\"Verify scripts/ci/test-install-script-manifest.sh exits 0 locally\",\"Unblocks PR #2940 + every subsequent PR — currently all PRs trip pr-hygiene install-manifest gate\",\"No other allowlist or REQUIRED_DAEMONS changes — minimal scope\"]"
+  closed_date: '2026-06-02'
+  outcome_id: MISSION-010
+

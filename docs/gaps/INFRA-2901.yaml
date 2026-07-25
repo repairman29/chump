@@ -1,0 +1,16 @@
+- id: INFRA-2901
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-15"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Events emitted on success/failure/timeout: kind=pr_stuck_cluster_detector_run fires on every exit path (no_op/dry_run/cluster_filed/gap_reserve_failed/gap_id_extract_failed/bad_args/help) via EXIT trap"
+    - "Cost tracked: gap_reserve_calls + duration_ms fields on every event, visible in ambient.jsonl without grepping logs"
+    - "Failure-class taxonomy: gap_reserve_failed (permanent, mutation-side) distinguished from gap_id_extract_failed (transient, parse-side)"
+    - "Smoke test: scripts/ci/test-pr-stuck-cluster-observability.sh (2 tests, passing)"
+  notes: |
+    Duplicate of INFRA-2754 (PR #3221, commit c0aa28709), which shipped 2026-07-20 and already delivers all 4 ACs on scripts/coord/pr-stuck-cluster-detector.sh. Verified by running scripts/ci/test-pr-stuck-cluster-observability.sh — both tests pass. Closed with no code change.
+  closed_pr: 3221
+  outcome_id: MISSION-010
+

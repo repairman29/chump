@@ -1,0 +1,32 @@
+- id: INFRA-2537
+  domain: INFRA
+  title: "PR #2986 stuck [CI-RED] — CI red for 40m"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2986
+    
+    Detected by stuck-pr-filer (2026-06-03T08:33:33Z).
+    
+    Trigger: CI red for 40m
+    At least one required check has been failing for 40m (threshold 20m). Failing check: Voice ban-list lint.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2986 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-2521
+    Branch: chump/infra-2521-claim
+    Failing check: Voice ban-list lint
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-06-04'
+  closed_pr: 2986
+  outcome_id: MISSION-010
+

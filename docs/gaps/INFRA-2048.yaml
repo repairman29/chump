@@ -1,0 +1,17 @@
+- id: INFRA-2048
+  domain: INFRA
+  title: wizard-daemon Step 1 cache-path returns mergeStateStatus=null because REST cache doesn't store the GraphQL-only field — all PRs misclassified as DIRTY
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    wizard-daemon Step 1 (PR classification) uses cache_lookup_pr first, then REST fallback. The github_cache.db is populated by REST webhook receiver, which doesn't store mergeStateStatus (it's a GraphQL-only field). So cache_lookup_pr always returns mergeStateStatus=null, the Python parse extracts empty string, and ALL PRs fall through the elif ladder to the default 'auto_merge=0 → DIRTY' branch. Confirmed via dry-run 2026-05-27T14:26Z: all 12 open PRs classified as DIRTY merge_state= (empty), while gh pr view REST direct returns mss=BLOCKED for #2633, DIRTY for #2610. Impact: wizard-daemon Step 2 (recovery) and Step 3 (real-fails) misroute. Step 4 (dispatch) unaffected. Spurious URGENT-INBOX CRITs likely when enabled in production.
+  acceptance_criteria:
+    - wizard-daemon Step 1 fetches mergeStateStatus from REST direct, not cache_lookup_pr (or cache_lookup_pr is enhanced to GraphQL-fetch the missing field)
+    - Dry-run on the same 12-PR live set produces at least 2 non-DIRTY classifications (BLOCKED, CLEAN+armed, or CONFLICTING)
+    - Empty-string merge_state (in addition to literal 'UNKNOWN') triggers wizard_classify_deferred — defensive guard against future cache-shape drift
+    - "Test coverage in scripts/ci/test-wizard-daemon-merge-state-parse.sh: add cache-returns-null fixture case"
+  closed_date: '2026-05-29'
+  closed_pr: 2636
+  outcome_id: MISSION-010
+

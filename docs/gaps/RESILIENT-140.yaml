@@ -1,0 +1,12 @@
+- id: RESILIENT-140
+  domain: RESILIENT
+  title: bot-merge push/PR-create stage hangs + heartbeat mislabels it as prior stage (cargo fmt)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Diagnosed 2026-06-08 during META-287 manual ship (wedged 3x). In bot-merge.sh, AFTER rebase (31s with 1200s budget — validates RESILIENT-133: the 300s default was strangling rebase) + fmt (15s) + skip-tests/clippy (DOC_ONLY diff), the push / gh-pr-create stage HANGS >210s and NEVER creates a PR. During the hang the per-stage heartbeat still prints 'step=cargo fmt' (stale step label) — so it looks like fmt is hanging when the real stall is push/pr-create. Manual ships have no farmer-retry, so one hang = permanent wedge; the fleet survives only because the farmer re-runs the worker. Part of MISSION-044 (Cut the Friction). Two distinct bugs to fix.
+  acceptance_criteria:
+    - "1. bot-merge heartbeat prints the ACTUAL current stage (push / pr-create / merge), never a stale prior label like 'cargo fmt'. 2. The push/pr-create stall is root-caused (candidate: pre-push hook, gh pr create GraphQL, force-with-lease) and either fixed or fail-fast with a clear error + tight budget — no silent 210s+ hang. 3. A clean doc-only branch ships through to PR-create + auto-merge-arm within stage budget on the first attempt."
+  outcome_id: RESILIENT-000
+

@@ -1,0 +1,11 @@
+- id: INFRA-1431
+  domain: INFRA
+  title: "ZERO-WASTE: target-dir-reaper escalates threshold under critical disk pressure — current 6h idle window is too conservative when free<5GB"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Surfaced 2026-05-16T02:16: disk_critical alert fired with 21GB free (96%), target-dir-reaper INFRA-1349 ran with --execute but skipped 9 candidate worktrees because all had active edits within 6h. Net: 0GB freed despite known-large targets (chump-product-055 6.3G, chump-infra-1388 4.8G, chump-infra-1375 4.6G).\",\"Add a critical-pressure mode to scripts/coord/target-dir-reaper.sh: when free disk < CHUMP_REAPER_CRITICAL_GB (default 10GB), bypass the 6h idle threshold AND reap any target/ without an ACTIVE LEASE (heartbeat check only). Active leases still ALWAYS protected.\",\"Emit kind=target_artifact_critical_reap distinct from target_artifact_reaped so the audit trail surfaces escalation\",\"Operator override: CHUMP_REAPER_NEVER_ESCALATE=1 keeps old behavior\",\"Smoke test scripts/ci/test-target-reaper-critical-mode.sh: stub df returning <10GB free, assert reaper takes target with mtime=now but no active lease\",\"Out of scope: redesigning the lease check; this is a single conditional branch above the existing idle check\"]"
+  closed_pr: 2164
+  outcome_id: MISSION-010
+

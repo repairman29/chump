@@ -1,0 +1,11 @@
+- id: INFRA-3356
+  domain: INFRA
+  title: "META-070: mirror fleet-coordination/observability audit-job gates into chump preflight (cluster C)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Cluster C from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the fleet-coordination, curator, pillar-balance, and observability/cost/credential test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 41 scripts, see cluster C list in the survey doc (curators, pillar-balance/dashboard, fleet-metrics/bootstrap/state-mutex, gh-api-probe, graphql-debounce, cost-enforcement, credential-lifecycle, velocity-trending, waste-tally, known-flake gates). (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml; cluster scope widened accordingly.)
+  acceptance_criteria:
+    - 1. All 41 cluster-C scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 41 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster C shipped. Given the size (41 scripts), splitting into 2-3 intent-atomic PRs (e.g. curator gates / fleet-metrics gates / cost-credential gates) is acceptable.
+

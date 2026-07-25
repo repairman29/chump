@@ -1,0 +1,14 @@
+- id: META-258
+  domain: META
+  title: "[UMBRELLA P0] CI strip-back + optimize — execute CI_REVIEW_2026-05-29.md Levers 1+4 fully: containerize on Linux Docker image (toolchain+sccache pre-baked) + collapse stub/required pairs + move 5 workflows to nightly + path-filter 3 workflows; targets 37%→15% CI-rot share and ~50→~10 runner-claims per push"
+  status: done
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "1. Sub-slice (a) PATH-FILTER 3 workflows: pwa-visual-diff.yml (gate on web/v2/**), editor-integration.yml + acp-real-clients.yml (gate on changes.acp), voice-lint.yml (gate on changes.docs OR scripts/coord/broadcast)\n2. Sub-slice (b) NIGHTLY 5 workflows: move coverage job (in ci.yml) + ftue-clean-machine-2026.yml + repo-health.yml + no-anthropic-smoke.yml + branch-protection-drift.yml from on:push/pull_request to on:schedule (cron: 0 6 * * * UTC). Add to ci-nightly.yml if simpler.\n3. Sub-slice (c) COLLAPSE stub/required pairs in ci.yml: clippy-stub+clippy-required, cargo-test-stub+cargo-test-required, fast-checks-stub+fast-checks-required, audit-stub+audit-required → use native GitHub required: true on the parent job; delete the 8 wrapper jobs\n4. Sub-slice (d) DOCKER IMAGE Lever 1: build CI image with Rust toolchain + sccache + chump-core deps pre-baked; migrate cargo-test + clippy + audit jobs to use it; saves ~3 min per job. Reference docs/process/CI_DOCKER_IMAGE.md\n5. After all 4 slices land: count workflow runs per PR push should be ≤10 (was 19); ci.yml job count ≤16 (was 24); cargo-test cold time ≤4 min (was 15 min)\n6. Required-checks list updated in branch-protection ruleset if collapse changes context names\n7. preflight-vs-CI parity check still passes; ci-parity-exceptions.txt updated as needed\n8. All sub-slices ship via admin-merge (operator directive: ship it all P0)"
+  notes: |
+    Decomposed into 7 slices: META-259, META-260, META-261, META-262, META-263, META-264, META-265
+  closed_date: '2026-06-05'
+  closed_pr: 2905
+  outcome_id: MISSION-010
+

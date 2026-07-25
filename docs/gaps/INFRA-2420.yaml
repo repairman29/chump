@@ -1,0 +1,15 @@
+- id: INFRA-2420
+  domain: INFRA
+  title: "RESILIENT: chump-inbox.sh read crashes on unbound 'seen_file' (set -u) — blocks A2A addressed-delivery activation"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    CLOSED not-a-bug (INFRA-238 stale-checkout misdiagnosis class): seen_file:95 unbound crash was local-only — checkout was 3 commits behind. Verified on real main (FETCH_HEAD): 0 seen_file occurrences, runs clean. Already fixed upstream (post INFRA-2006 inbox work). No fix shipped. Caught by verify-existence before wasting a PR.
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: INFRA-1852
+  domain: INFRA
+  title: "RESILIENT: audit CI job repeatedly cancelled by GH Actions concurrency rule — empty-commit retrigger is workaround, not fix (observed 3x on 2026-05-23)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Read .github/workflows/audit*.yml and any other workflows with concurrency block — identify the cancel-in-progress: true setting that's causing 10+ empty-commit workarounds today"
+    - "Decide approach: (a) flip cancel-in-progress to false (simpler, may cost duplicate runs), OR (b) scope concurrency group per-SHA via group expression like 'audit-${{ github.sha }}' so different commits don't cancel each other (lets concurrent runs coexist)"
+    - Document the chosen tradeoff in the PR body — operator needs to understand why cancel-in-progress behavior changed
+    - "Smoke test (manual or via scripts/ci/test-): push a test commit, observe that a subsequent commit doesn't auto-cancel the prior audit run"
+    - Update docs/process/CLAUDE_GOTCHAS.md or similar with note about the workflow concurrency policy and why
+    - Ship via scripts/coord/bot-merge.sh --gap INFRA-1852 --auto-merge
+  closed_date: '2026-05-29'
+  closed_pr: 2446
+  outcome_id: MISSION-010
+

@@ -1,0 +1,45 @@
+- id: INFRA-1256
+  domain: INFRA
+  title: "ZERO-WASTE: 17 orphan CI test scripts reference deleted scripts/coord/gap-claim.sh + gap-preflight.sh (INFRA-987 cleanup tail)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    After INFRA-987 deleted scripts/coord/gap-claim.sh + scripts/coord/gap-preflight.sh and PR #1816 removed every reference TO those scripts from .github/workflows/ci.yml, 17 test scripts in scripts/ci/ still source / grep / call the deleted scripts. None are invoked from CI today (so they don't block #1816 from merging), but they're dead weight:
+    
+      scripts/ci/test-author-attribution.sh
+      scripts/ci/test-chump-claim-atomic.sh
+      scripts/ci/test-chump-commit-auto-lease.sh
+      scripts/ci/test-disk-pressure-gate.sh
+      scripts/ci/test-file-lease.sh
+      scripts/ci/test-fleet-032-dual-write.sh
+      scripts/ci/test-gap-claim-existing-branch.sh
+      scripts/ci/test-gap-preflight-lease-check.sh
+      scripts/ci/test-gap-preflight-self-lock.sh
+      scripts/ci/test-harness-attribution.sh
+      scripts/ci/test-hot-file-contention.sh
+      scripts/ci/test-infra-1059-auto-lease-regex.sh
+      scripts/ci/test-infra-168-sqlite-preflight.sh
+      scripts/ci/test-infra-344-filing-pr-preflight.sh
+      scripts/ci/test-multi-agent-stress.sh
+      scripts/ci/test-preflight-pr-check.sh
+      scripts/ci/test-speculative-execution.sh
+    
+    Each must either:
+      (a) port to chump gap preflight / chump claim Rust subcommands (preferred — preserves coverage)
+      (b) be deleted (if the regression coverage is no longer relevant)
+    
+    Decision rule per script: read its docstring + the gap ID it references. If the gap's Rust replacement covers the same behavior (e.g. atomic_claim::run_claim ports gap-claim.sh logic), the test ports too. If not, delete the test and file a Rust-side coverage gap.
+    
+    Acceptance:
+    1. For each of the 17 scripts, either port-to-Rust OR delete (decision documented in commit message per file).
+    2. After this gap ships, grep -rln 'scripts/coord/gap-(claim|preflight)\\.sh\\b' scripts/ci/ returns 0.
+    3. Net delta: roughly -2000-3000 LOC of obsolete shell test fixtures.
+    4. CI gate: scripts/ci/test-no-deleted-shell-refs.sh — fails if any scripts/ci/*.sh references known-deleted scripts (gap-claim.sh, gap-preflight.sh after they're gone).
+    
+    Source: PR #1816 INFRA-987 mid-cycle observation. Sibling to INFRA-1224 (lease-lib migration) and INFRA-1210 (bot-merge.sh + chump-commit.sh callers).
+  acceptance_criteria:
+    - "For each of the 17 listed CI scripts: either port to chump gap preflight / chump claim Rust subcommands (preferred) OR delete with commit-message rationale per file"
+  closed_pr: 2053
+  outcome_id: MISSION-010
+

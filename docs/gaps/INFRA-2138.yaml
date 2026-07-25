@@ -1,0 +1,13 @@
+- id: INFRA-2138
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C10 chump-post-integration-prune daemon — per-gap branch cleanup after 24h grace"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New scripts/ops/chump-post-integration-prune.sh — listens for integration_cycle_shipped ambient events; prunes per-gap branches on origin after a grace window (default 24h).\n- Behavior:\n    1. tail -F .chump-locks/ambient.jsonl "
+    - " grep -oP '\"kind\":\"integration_cycle_shipped\".*' (or read NATS stream chump.events.integration_cycle_shipped)\n    2. For each event, parse final_manifest list of gap_ids → branch names (chump/<gap-id-lowercase>-claim)\n    3. Schedule prune at +24h via at(1) or sleep-loop\n    4. At prune time: verify integration PR is still merged + not reverted; verify per-gap branch tip matches the integration commit for that gap\n    5. If safe: gh api -X DELETE /repos/<owner>/<repo>/git/refs/heads/<branch>\n    6. Emit ambient kind=per_gap_branch_pruned with {branch, gap_id, cycle_id}\n- Idempotent: same event handled twice = noop on second pass.\n- 24h grace window configurable via CHUMP_POST_INTEGRATION_PRUNE_GRACE_H=24.\n- Installer scripts/setup/install-post-integration-prune-launchd.sh follows INFRA-2125-fixed pattern (RunAtLoad=true, KeepAlive=true, no calendar interval).\n- Adds to optional-installers-allowlist.txt initially.\n- Test: scripts/ci/test-post-integration-prune.sh — fixture: 3-gap cycle, verify 3 branches pruned after grace.\n- Cross-references INFRA-2130 (emits the trigger event), INFRA-2125 (installer plist pattern)."
+  closed_date: '2026-06-05'
+  closed_pr: 2746
+  outcome_id: MISSION-010
+

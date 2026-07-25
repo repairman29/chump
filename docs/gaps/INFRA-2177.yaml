@@ -1,0 +1,13 @@
+- id: INFRA-2177
+  domain: INFRA
+  title: "EFFECTIVE P1: chump gap reserve — use state.db gap_counters only, drop docs/gaps.yaml rollup check (eliminates corruption failure class)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- Modify chump gap reserve in src/main.rs (or wherever the reserve handler lives) to read ID counter from state.db gap_counters table ONLY. Remove the docs/gaps.yaml read + line-by-line YAML parse that today crashes on any single malformed sibling-yaml.\n- Specifically: drop the 'parsing gap registry (per-file or monolithic)' code path that triggered today's INFRA-2170 corruption blocking ALL reserves fleet-wide for 30+ minutes.\n- Behavior: reserve queries SELECT MAX from state.db, increments, writes new YAML. Done.\n- Migration: gap_counters table already exists; if missing for a domain, run SELECT MAX from gaps WHERE id LIKE domain "
+    - ""
+    - " '-%' to backfill.\n- Add reserve --json output flag so operator scripts get back machine-readable {id, yaml_path} instead of stdout grep.\n- Test: scripts/ci/test-gap-reserve-resilience.sh — corrupt ONE docs/gaps/INFRA-NNNN.yaml on purpose, verify reserve still succeeds.\n- Cross-references INFRA-2170 (the corruption that surfaced this) and gap-curate.sh (INFRA-637, the nightly rebuild)."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

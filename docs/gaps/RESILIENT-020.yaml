@@ -1,0 +1,11 @@
+- id: RESILIENT-020
+  domain: RESILIENT
+  title: patch test-gap-preflight-ac-gate.sh — unset CHUMP_REPO + catalog W-011/W-012 (CREDIBLE-076 re-arm enabler)
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "[\"Add `unset CHUMP_REPO CHUMP_LOCK_DIR` after the TMP= setup in scripts/ci/test-gap-preflight-ac-gate.sh so the test uses its own $TMP/repo state.db instead of the workflow-injected CHUMP_REPO from INFRA-1959\",\"Same fix likely needed for any other test that creates its own $TMP/repo + invokes chump binary — audit + patch other affected tests in same PR\",\"Add W-011 (installer-manifest drift) and W-012 (env-overhead cascade) sections to docs/process/WEDGE_CLASS_CATALOG.md with detection signatures + recovery playbooks\",\"After ship, re-arm test + audit + ACP smoke as required_status_checks on both legacy branch protection AND ruleset 15133729 (per CREDIBLE-076 § Re-arming)\",\"Closed when next-after-rearm canary PR auto-merges through required gates without admin override\"]"
+  closed_date: '2026-05-25'
+  outcome_id: RESILIENT-000
+

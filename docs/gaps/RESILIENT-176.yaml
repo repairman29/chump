@@ -1,0 +1,19 @@
+- id: RESILIENT-176
+  domain: RESILIENT
+  title: "RESILIENT: substrate off-laptop — chumpd on the always-on runner host; MacBook becomes a client (ground-up step 5, extends INFRA-1543)"
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Ground-up step 5: run chumpd (MISSION-051) on the always-on self-hosted-runner host / Pi-mesh box (INFRA-1543 direction) so the MacBook becomes a client. Kills lid physics, disk treadmill, sleep outages (RESILIENT-169 becomes redundant insurance). Rough shape: (a) inventory the runner host's capacity, (b) chumpd + repo checkout + auth material provisioning there (GH_TOKEN + oauth strategy per INFRA-AGENT-CREDS), (c) laptop chump CLI talks to remote chumpd socket over tailscale/ssh, (d) cutover checklist + rollback. Depends on MISSION-051.
+  acceptance_criteria:
+    - chumpd + 2 workers run on the always-on host and ship a real gap end-to-end with the laptop lid closed
+    - laptop CLI/ChumpBar read fleet state from the remote daemon
+    - auth material provisioned per INFRA-AGENT-CREDS explicit mode, no keys in argv (RESILIENT-173)
+    - documented cutover + rollback runbook
+  depends_on: [MISSION-051]
+  notes: |
+    Outcome: MISSION-010. depends_on: MISSION-051.
+  closed_date: '2026-07-20'
+  closed_pr: 3212
+

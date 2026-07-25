@@ -1,0 +1,17 @@
+- id: ZERO-WASTE-015
+  domain: ZERO-WASTE
+  title: 'ZERO-WASTE: cargo-target-reaper misses main-checkout target variants (~67G) + global build-guard never fires'
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+  - 'cargo-target-reaper.sh also reaps the MAIN checkout variants ./target, ./.cargo-test-target, ./.cargo-build-target, ./target-android
+    (today scoped to ~/.cache/chump-runner/cargo-target; observed uncleaned: 44G+18G+3.6G+1.4G = ~67G)'
+  - replace the global active-cargo guard with a PER-DIR guard (reap stale ./target even while a different worktree builds)
+    — the global guard never fires because the fleet builds nonstop, the root cause of chronic 2-4pct free
+  - trigger on disk pressure (free < CHUMP_DISK_CRITICAL_GB), not only hourly
+  - never reap a dir an active build is writing to (lsof/mtime check)
+  - regression test extends scripts/ci/test-cargo-target-reaper-runner-scope.sh
+  outcome_id: ZERO-WASTE-000
+  closed_date: '2026-07-25'
+  closed_pr: 3233

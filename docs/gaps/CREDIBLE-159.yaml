@@ -1,0 +1,14 @@
+- id: CREDIBLE-159
+  domain: CREDIBLE
+  title: "CREDIBLE: gap set/update report 'not found' for existing gaps under worker load; --closed-pr flag breaks gap lookup"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Observed on chumpd-eu 2026-07-22 while syncing shipped statuses: (a) 'chump gap update <ID> --status done' found the gap and fired the INFRA-402 guard, but adding '--closed-pr N' (the guard's own suggested remedy) made the SAME gap report 'not found' — flag parsing corrupts the ID lookup; (b) with workers active, retries of the identical command flip between guard-fires (found) and 'not found' — a locked/busy db read is being reported as nonexistence instead of retrying or saying 'db busy'. Both are credibility failures: the CLI asserts a gap doesn't exist when it does. Also note 'chump gap set <ID>' reported not-found on laptop for ZERO-WASTE-023 while 'gap update' found it. Fix: closed-pr flag parsing + busy-vs-missing error distinction + set/update lookup parity. Operator fallback used: direct sqlite UPDATE + kind=gap_status_synced audit event (see host ambient.jsonl).
+  acceptance_criteria:
+    - "The change described by \"gap set/update report 'not found' for existing gaps under worker load; --closed-pr flag breaks gap lookup\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3237
+

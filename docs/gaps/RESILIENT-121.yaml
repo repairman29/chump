@@ -1,0 +1,15 @@
+- id: RESILIENT-121
+  domain: RESILIENT
+  title: "RESILIENT: git pre-commit/pre-push hooks block on stdin in headless/non-tty (stomp y/N prompt) → forces agents to --no-verify (the band-aid CREDIBLE-105 forbids); hooks must detect non-tty (! -t 0) + auto-proceed safe default + a regression test that a headless commit does not hang without CHUMP_STOMP_WARN=0"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-07-21'
+  closed_pr: 3022
+  outcome_id: RESILIENT-000
+

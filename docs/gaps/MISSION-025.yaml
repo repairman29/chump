@@ -1,0 +1,16 @@
+- id: MISSION-025
+  domain: MISSION
+  title: "MISSION: Verify zero-human-touch PR merge in BEAST and update scoreboard (MISSION-015 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A PR opened by the fleet against `repairman29/BEAST-MODE` merges without any manual intervention (e.g., no human comments, no human approval, automatic merge by CI/CD or bot).
+    - The internal 'scoreboard ①' metric (for zero-human-touch PR merge) flips to 'YES'.
+    - The overall MISSION-015 status is updated to 'Completed'.
+  depends_on: [MISSION-024]
+  closed_date: '2026-07-21'
+  closed_pr: 3062
+  skills_required: "external_repo:repairman29/BEAST-MODE"
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: EFFECTIVE-039
+  domain: EFFECTIVE
+  title: "EFFECTIVE: A2A L3a — Contract-Net gap assignment (CFP -> BID -> AWARD, fitness-scored)"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Tier-1 L3 per docs/design/A2A_MASTER_PLAN_2026-06-03.md (Contract Net Protocol). Replace first-available pull with a lightweight competitive bid so the fittest worker wins, not the fastest-polling one.
+  acceptance_criteria:
+    - coordinator announces a pickable gap (CFP with skills + size) on the mesh
+    - capable idle workers submit a bid within a 5s TTL; coordinator AWARDs to the highest score = w1*skill_match + w2*(1/load) + w3*class_success_rate
+    - on awarded-worker failure the gap is automatically re-announced with no human intervention
+    - first-available pull is replaced by the bid cycle for the P0/P1 lane; a test shows a higher-fitness worker winning over a faster one
+  notes: |
+    [2026-06-08T01:09:35Z] CUTTING-EDGE (research 2026-06): CNP validated (COALESCE arXiv 2506.01900: 20.3% cost cut). ADD: (1) epsilon-greedy exploration at announcer — else all work converges to one bidder (routing monoculture = single-agent fleet); (2) resource-budget contracts per task (max tokens/deadline/rollback — Agent Contracts arXiv 2601.08815, prevents recursive-$47k-bill); (3) no-bid dead-letter + escalation; (4) auction_log to bus for capability-concentration audit. Refs: arXiv 2506.01900, 2601.08815.
+  closed_date: '2026-07-20'
+  closed_pr: 3085
+  outcome_id: EFFECTIVE-000
+

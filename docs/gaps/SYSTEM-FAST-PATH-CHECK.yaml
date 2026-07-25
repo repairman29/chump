@@ -1,0 +1,19 @@
+- id: SYSTEM-FAST-PATH-CHECK
+  title: Emergency Fast-Path — fleet_wedge + silent_agent detection
+  status: perpetual
+  priority: P0
+  effort: s
+  description: |
+    High-confidence signal detection for fleet emergencies (INFRA-789).
+    
+    Checks:
+    1. fleet_wedge event → auto-scale fleet to 2 workers + invoke Opus for CI root-cause
+    2. silent_agent_cluster (2+ in 1h) → invoke Opus to diagnose picker/lease bug
+    
+    State tracking (fleet-state.json):
+    - Tracks wedged status, wedge_start, wedge_escalated
+    - Implements back-off rules per CLAUDE.md scaling gate
+    - Escalates after 30m of wedge persistence
+    
+    All other signals defer to curator (runs every 10m).
+

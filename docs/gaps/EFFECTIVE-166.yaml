@@ -1,0 +1,14 @@
+- id: EFFECTIVE-166
+  domain: EFFECTIVE
+  title: "EFFECTIVE: rebuild onboard scout from one-shot 7B provider.complete() into an AGENTIC capable-model explorer — spawn a capable agent (claude -p sonnet online / strong-local offline) that reads README+tests+recent-commits AND queries open issues + failing CI + documented bugs, returning DEEP repo-grounded proposals each citing a concrete signal (failing test, issue #, documented bug, stated TODO), not generic-ware. Same OnboardScan schema. Supersedes RESILIENT-094 online path (7B only for trivial classification, never repo reasoning)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_pr: 3059
+  outcome_id: EFFECTIVE-000
+

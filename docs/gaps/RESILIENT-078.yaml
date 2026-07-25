@@ -1,0 +1,15 @@
+- id: RESILIENT-078
+  domain: RESILIENT
+  title: "RESILIENT P1: farmer guards coordination substrate — NATS + smee/webhook/cache + deliberator liveness (playbook #6)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Farmer's Playbook precondition #6 (docs/process/FARMER_PLAYBOOK.md). The fleet flies blind or cannot decide when the coordination substrate dies: NATS down (the A2A bus), smee-client/github-webhook-receiver down (github_cache.db stops updating -> GraphQL exhaustion blinds every agent), or the deliberator down/heartbeat-only (consensus cannot emit verdicts -> the fleet can't decide -> a human must conduct). Make the farmer (RESILIENT-068) keep these alive each tick: (a) NATS server liveness; (b) smee-client + github-webhook-receiver liveness + github_cache.db freshness (last-update age); (c) deliberator daemon alive AND actually tallying (not heartbeat-only). Gate all on AUTONOMY_LEVEL>=1.
+  acceptance_criteria:
+    - farmer restarts NATS / smee-client / github-webhook-receiver within a tick if down, emitting the restart event
+    - farmer detects stale github_cache.db (no update in > N min while PRs are open) and restarts the webhook path
+    - farmer detects the deliberator down or stuck heartbeat-only (not emitting consensus_result) and restarts it so consensus can decide
+    - all checks are skipped when AUTONOMY_LEVEL=0
+  outcome_id: RESILIENT-000
+

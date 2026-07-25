@@ -1,0 +1,16 @@
+- id: INFRA-1515
+  domain: INFRA
+  title: "ZERO-WASTE: bot-merge.sh --help should print usage instead of exit 1 on unknown flag"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Surfaced during INFRA-1462 wrap-up on 2026-05-15. `scripts/coord/bot-merge.sh --help` outputs 'unknown flag: --help' and exits 1, instead of printing usage. Operator wastes 30s grepping the source for valid flags every time they hit an unknown-flag error (e.g. I tried --pr 2221 which doesn't exist; the real auto-detection from current-branch isn't documented in any --help output). Same pattern likely exists in other scripts/coord/*.sh entry points.
+  acceptance_criteria:
+    - scripts/coord/bot-merge.sh --help (and -h) prints usage including all valid flags (--gap, --auto-merge, --skip-tests, --fast, --dry-run, --speculative, --no-merge-driver, --branch-prefix, --pr-template, --required-checks, --allow-mass-delete, --force-duplicate)
+    - Usage notes auto-detection behaviors (PR number from current branch, gap-id can come from --gap or commit-trailer)
+    - Exit 0 on --help/-h (not error path)
+    - Audit pass over other scripts/coord/*.sh entry points for the same --help-exits-1 anti-pattern; file follow-up if widespread
+    - "CI test: scripts/ci/test-bot-merge-help.sh asserts --help exits 0 and prints --gap somewhere in output"
+  outcome_id: MISSION-010
+

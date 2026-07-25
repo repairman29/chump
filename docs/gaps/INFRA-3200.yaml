@@ -1,0 +1,16 @@
+- id: INFRA-3200
+  domain: INFRA
+  title: "RESILIENT: pr-stuck-cluster — 12 PRs blocked >2h as of 2026-06-29"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-07-22T00:35:06Z] Duplicate of INFRA-3117 (same detector re-firing 2026-06-29 vs 2026-06-27, identical TODO ACs). Answers already shipped in #3228 — docs/observability/EVENT_REGISTRY.yaml pr_stuck_cluster_detector_run entry now documents emit-on-every-exit-path, gap_reserve_calls cost field, failure_class taxonomy (none/transient/permanent), and the INFRA-2925 smoke test. Closing as duplicate, no new PR needed.
+  closed_pr: 3228
+  outcome_id: MISSION-010
+

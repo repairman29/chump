@@ -1,0 +1,18 @@
+- id: CREDIBLE-126
+  domain: CREDIBLE
+  title: "CREDIBLE: operator-notification budget — every detector/monitor that surfaces to a human MUST first try self-heal, recurrence-track, and gap-file; human pages reserved for novel/irreversible/authority-only"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Operating principle (operator framing 2026-06-08): 'this system should be self-healing and self-improving' — a human is paged ONLY when (a) novel class never seen, (b) irreversible decision exceeding operator authority, (c) auto-heal attempted N=3 times and failed. Everything else: fleet detects, diagnoses, heals, files-on-recurrence — without paging"
+    - "Audit the existing alert surfaces (operator_recall, slo_breach, fleet_paused_*, blame_bot, fresh_eyes_disagreement, every kind ending in _alert/_breach/_critical) and classify each as: (i) page-worthy per the above criteria, (ii) self-heal candidate (build the autopilot), (iii) self-improve candidate (file recurrence-gap automatically), (iv) noise (remove the emitter). The current 384 operator-recalls / 7d SLO breach proves the audit is overdue"
+    - "Add docs/process/OPERATOR_PAGE_BUDGET.md codifying: every new monitor/detector MUST include (a) a self-heal attempt OR a documented why-not, (b) a recurrence-track + auto-file path, (c) escalation criteria (when does this REALLY need the operator), (d) a budget — max N pages per kind per week"
+    - "Pre-commit gate: any new ambient emit of kind matching */alert|breach|critical/ MUST point at an OPERATOR_PAGE_BUDGET entry OR carry a Page-Budget-Bypass: <reason> trailer (audit signal mirrors INFRA-2429 no-new-bypass-env-vars pattern). Prevents the recall storm from re-accumulating"
+    - "Backfill: existing 384 operator-recall events in last 7d are sampled (random 20) and triaged into the 4 buckets above; results inform which auto-healers to build first. Highest-volume kind = first autopilot built"
+    - "Doctrine cross-ref: this is the alerting-class application of CREDIBLE-105 (durable-fix). A noisy detector that pages the operator instead of self-healing IS a band-aid in the observability layer — it 'looks fixed' (someone got notified) but the cause repeats and the operator burns attention. Sibling-class to CREDIBLE-106 (diagnose-before-file gates), CREDIBLE-114 (A2A enforcement / drain), and CREDIBLE-124 (autonomy_set audit + autopilot)"
+    - "Concrete first autopiloter to build (proof point): dev.chump.autonomy-autoheal per CREDIBLE-124 AC #7. Validates the pattern end-to-end before applying to the rest"
+  closed_date: '2026-07-20'
+  closed_pr: 3178
+  outcome_id: CREDIBLE-000
+

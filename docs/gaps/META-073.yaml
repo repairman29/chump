@@ -1,0 +1,15 @@
+- id: META-073
+  domain: META
+  title: "MISSION EPIC: META-068 Initiative #2 (forward-looking coordination) — predictive collision detection, skill-aware routing, cross-agent lesson propagation"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  notes: |
+    Decomposed into 10 slices: META-075, META-076, META-077, META-078, META-079, META-080, META-081, META-082, META-083, META-084
+  outcome_id: MISSION-010
+

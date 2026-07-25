@@ -1,0 +1,17 @@
+- id: INFRA-2046
+  domain: INFRA
+  title: "CREDIBLE P1: chump cron list + chump cron health — visibility into all Chump-owned schedulers (plists installed, last-fire ts, next-fire eta, drift detection); generalises INFRA-1929 prune-worktrees plist-missing-StartInterval audit to every Chump plist"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - chump cron list prints a table of all Chump-managed schedulers (Label prefix com.chump.*) with columns name, schedule, last-fire-ts, next-fire-eta, status (loaded/unloaded/missing), backend (launchd/systemd). Supports --json flag for machine-readable output
+    - "chump cron health is a non-zero-exit-on-breach audit. Checks: (a) every plist installed under com.chump.* is loaded (launchctl list shows it); (b) every plist has either StartCalendarInterval or StartInterval (generalises INFRA-1929 specific bug to every plist); (c) every plist has a Program or ProgramArguments key (not just Label); (d) every plist has a documented Description key with the gap-id or daemon-purpose; (e) last-fire-ts is fresh relative to schedule (e.g. an every-5min plist that hasn't fired in 30min is stale)"
+    - "Output of chump cron health on each failure includes: name, failure-class (not-loaded, missing-startinterval, missing-program, missing-description, stale), suggested-remediation (chump cron install ... or chump cron uninstall ...). Exit 1 if any failures; exit 0 if all pass"
+    - "Per-failure ambient emit kind=chump_cron_health_breach with fields name, failure_class, severity (critical for not-loaded, warn for stale-but-not-broken). PER WIZARD 2026-05-27 13:27Z: single-commit add to scripts/ci/event-registry-reserved.txt allowlist with reason 'INFRA-2046 chump cron health audit, emitted by crates/chump-cron health subcommand'; hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals the actual emit shape (mirrors INFRA-2057 event-kind treatment)"
+    - "Integration with chump fleet-bootstrap --check: bootstrap calls chump cron health as part of its preflight; bootstrap exits non-zero if cron health fails. This catches INFRA-1929-class bugs at session-start instead of waiting for the 321-orphan-worktree-pileup to surface them"
+    - "Smoke test scripts/ci/test-chump-cron-health.sh: synth a plist with missing StartInterval, assert health detects + names it; synth a plist with stale last-fire, assert health flags it; synth a healthy plist, assert exit 0"
+    - "Documentation: docs/process/SCHEDULING_LAYERS.md references chump cron list / health as the visibility surface; CLAUDE.md mandatory preflight section adds chump cron health to the check sequence"
+  depends_on: [INFRA-2057]
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-2202
+  domain: INFRA
+  title: "RESILIENT: AGENTS.md communication policy — NATS broadcast vs inbox DM channel boundaries"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Operator observation: agents have been reaching for the inbox file (.chump-locks/inbox/<session-id>.jsonl) when the right channel is NATS broadcast (chump.events.>) — e.g. design-feedback requests, status FYIs, fanout asks. The inbox is for ADDRESSED DMs that need acknowledgment; broadcasts are for now-ish fanout. Mixing them slows responses (inbox is per-recipient loop tick; NATS is PreToolUse digest minutes-ish) AND clutters inboxes peers actually need to scan. Codify the channel boundaries in AGENTS.md so every harness follows them. Add it between the GraphQL exhaustion section and the docs index.
+  acceptance_criteria:
+    - AGENTS.md gets a new section 'Communication channels — what goes where' between the GraphQL exhaustion section and 'Where to find docs'
+    - Section names the four channels (NATS broadcast / inbox DM / ambient.jsonl emit / heartbeat-lease) and the kind of message each carries
+    - "Section calls out the anti-patterns: using inbox for design fanout, polling ambient.jsonl in a busy loop, manufacturing liveness signals, addressing 5 curators individually when one broadcast would do"
+    - "Section provides a quick decision table: 'I want a design vote / FYI / proposal' to broadcast; 'I need specific session X to do Y' to inbox; 'I made an observable change' to ambient emit; 'Am I alive' to heartbeat"
+    - Cross-references OPUS_MESSAGE_PROTOCOL.md for inbox format and broadcast.sh for NATS format
+    - No code or daemon changes; doc-only
+  closed_date: '2026-05-30'
+  closed_pr: 2745
+  outcome_id: MISSION-010
+

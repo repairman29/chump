@@ -1,0 +1,18 @@
+- id: INFRA-3384
+  domain: INFRA
+  title: "META-070: preflight-mirror gap-state & claim/lease consistency gates (14 scripts, audit-job decomposition cluster 1/5)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-070/META-086 follow-up sub-gap. Rough shape: (a) add src/preflight.rs mirror gates for the 14 scripts.
+    list: test-claim-fuzzy-match.sh, test-gap-divergence-guard.sh, test-gap-doctor-safe-sweep.sh, test-gap-id-cross-session.sh, test-gap-id-lease-uniqueness.sh, test-gap-reserve-concurrency.sh, test-gap-reserve-padding.sh, test-gap-status-flip.sh, test-gate-promotion-no-regression.sh, test-infra-1025-atomic-claim.sh, test-infra-115-lease-ttl-file.sh, test-merge-driver-state-sql.sh, test-pick-and-claim-lockdir.sh, test-schema-version-assert.sh.
+    (b) follow the existing preflight.rs pattern used for test-gap-preflight-ac-gate.sh (already-mirrored sibling).
+    (c) update docs/process/AUDIT_JOB_DECOMPOSITION.md marking these mirrored=yes.
+    Key constraint: some of these scripts require CHUMP_BIN env or a synthetic state.db fixture — check each scripts header before wiring.
+  acceptance_criteria:
+    - All 14 scripts in this cluster (see description) are invoked from chump preflight (src/preflight.rs), matching the same pass/fail semantics as the CI fast-checks job
+    - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
+    - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
+    - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+

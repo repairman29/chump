@@ -1,0 +1,19 @@
+- id: INFRA-1573
+  domain: INFRA
+  title: "ZERO-WASTE: two Thompson-sampling implementations — chump-orchestrator/thompson.rs (315 LOC, Candidate vocab) and src/provider_bandit.rs (586 LOC, ProviderSlot vocab); extract shared bandit crate OR document rationale"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Verified by reading both: crates/chump-orchestrator/src/thompson.rs (315 LOC, COG-037) and src/provider_bandit.rs (586 LOC, BanditRouter) both implement Thompson sampling with Beta(alpha, beta) posteriors. Vocabularies differ: orchestrator routes Candidate{backend, model, provider_pfx} for cross-backend dispatch; provider_bandit routes ProviderSlot names for in-cascade slot selection. Both pull rand_distr Gamma to sample Beta. Both have UCB1 helpers. Algorithm-identical, vocabulary-disjoint. This is the META-063 redundancy pattern at the Rust level — two implementations of the same algorithm because each was written for its own scope. Either extract a shared crates/chump-bandit crate that exposes generic BanditRouter<Arm> (where Arm: Eq + Hash + Clone) and both consume it, OR document the design rationale for keeping two implementations in docs/design/ADAPTIVE_ROUTING.md (the doc INFRA-1545 will create anyway).
+  acceptance_criteria:
+    - "Decision in docs/design/ADAPTIVE_ROUTING.md: consolidate or keep separate with explicit rationale (e.g., release-cadence independence, blast-radius isolation)"
+    - "If consolidating: new crates/chump-bandit crate with generic BanditRouter<Arm: Eq + Hash + Clone + Display> + Thompson + UCB1, used by both chump-orchestrator/src/thompson.rs and src/provider_bandit.rs as thin adapters that fix the Arm type"
+    - "If keeping separate: cross-link comment at the top of each file pointing to the other and documenting why; AGENTS.md Redundancy prevention section gains an exception note for this pair"
+    - Behavior preservation verified by existing tests in both crates (no test regressions)
+    - Net LOC drops by >=200 if consolidating; rises by <20 if keeping separate (just comments)
+    - docs/design/ADAPTIVE_ROUTING.md (the INFRA-1545 doc) explains the bandit layering once the decision is made
+  notes: |
+    wave: noise (thompson dedup — noise tag; only act if INFRA-1583 forces the decision)
+  outcome_id: MISSION-010
+

@@ -1,0 +1,19 @@
+- id: INFRA-2305
+  domain: INFRA
+  title: "ZERO-WASTE: silence gap_drift_orphan alert by default (CHUMP_GAP_DRIFT_ORPHAN_THRESHOLD env; vestigial post-INFRA-760)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/coord/gap-doctor.py — replace the unconditional gap_drift_orphan emit (lines 532-543) with threshold-gated emit: read CHUMP_GAP_DRIFT_ORPHAN_THRESHOLD env (default 999999 = effectively silent); only emit when len(bucket3) >= threshold"
+    - "When below threshold: print to stdout 'gap_drift_orphan: {N} orphan gaps (below threshold {threshold}; informational only — state.db is canonical post-INFRA-760)' — no ambient.jsonl event"
+    - "Update 4 affected tests to set CHUMP_GAP_DRIFT_ORPHAN_THRESHOLD=1 in their test env so existing assertions still pass: test-gap-doctor-safe-sweep.sh, test-gap-drift-source-dedup.sh, test-operator-attention-dedup.sh, test-pwa-operator-attention.sh"
+    - "Verify smoke: with default env, run gap-doctor safe-sweep against a synthetic state.db with 5 orphan gaps → assert zero kind=gap_drift_orphan events emitted to ambient.jsonl. With CHUMP_GAP_DRIFT_ORPHAN_THRESHOLD=1, same fixture → assert 1 event emitted (preserves the old behavior on opt-in)."
+    - Do NOT touch gap_drift_yaml_only (bucket4) emit — YAML-without-DB-row still indicates real data outside the canonical store and is operationally meaningful
+    - Do NOT remove the kind from EVENT_REGISTRY.yaml or event-registry-reserved.txt — PWA operator-attention surface still tracks it for the opt-in case
+  notes: |
+    [2026-05-30T17:09:10Z] Filed by curator-opus-shepherd-2026-05-30 after operator observed: 'this happens all the damn time. Either this matters and we fix this or we stop worrying about it.' Honest diagnosis: post-INFRA-760, state.db is canonical and YAML mirror is optional — the alert's own note text says so. Detector fires whenever any orphan exists (no threshold) → 9 occurrences in current ambient.jsonl. Vestigial. References (CREDIBLE-012, INFRA-760) don't even exist as gaps anymore. Knob-to-flip-back preserves opt-in for ever wanting it again. Tests must be updated to set threshold=1 so they keep validating the emit-path.
+  closed_date: '2026-07-21'
+  closed_pr: 3201
+  outcome_id: MISSION-010
+

@@ -1,0 +1,16 @@
+- id: RESILIENT-177
+  domain: RESILIENT
+  title: "RESILIENT: wake-recovery restores the WORKER POOL after hibernate — farmer kick isn't enough when the tmux server died (battery-death test 2026-07-19)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    First real-world wake-recovery firing (2026-07-19 12:22 local, battery-death hibernate): the hook ran perfectly — cache busted, auth re-probed OK, farmer + merge-queue kicked — but the fleet stayed DOWN for 2h because hibernation killed the tmux server; the farmer revives dead panes in an EXISTING fleet session, it does not rebuild one from nothing. wake-recovery.sh must close the loop: after kicks, if ~/.chump/fleet-mode is grind|travel AND zero AGENT_ID worker processes exist, re-run the fleet launcher at the mode's size (respect CHUMP_MODE_GRIND_SIZE/TRAVEL_SIZE) and emit the restore in the wake_recovery event (restored_workers field).
+  acceptance_criteria:
+    - wake-recovery.sh detects mode!=off + workers==0 and relaunches the fleet at mode size
+    - wake_recovery ambient event gains restored_workers field (registry updated)
+    - "test-wake-recovery.sh gains a fixture case: mode=grind + 0 workers -> launcher invoked (mocked), mode=off -> not invoked"
+    - documented in SLEEP_WAKE_RECOVERY.md wake-test section
+  closed_date: '2026-07-20'
+  closed_pr: 3207
+

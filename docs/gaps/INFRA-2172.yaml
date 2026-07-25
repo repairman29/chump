@@ -1,0 +1,11 @@
+- id: INFRA-2172
+  domain: INFRA
+  title: "EFFECTIVE P1: META-124/C2b cycle::merge_branch module — git fetch + merge --no-ff + Batched-Under trailer"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "- New module crates/chump-integrator/src/cycle/merge_branch.rs (split out of C2 INFRA-2130 per decompose curator review 2026-05-29).\n- Exports async fn build_integration_branch(candidates: &[GapCandidate], branch_name: &str) -> Result<IntegrationBranchOutcome>.\n- For each candidate: tokio::process::Command git fetch origin chump/<gap-branch>, git merge --no-ff origin/chump/<gap-branch> -m \"Batched: <gap-id> — <gap-title>\" --no-edit.\n- After each merge, amend commit to add Batched-Under: <branch-name> trailer + Co-Authored-By: <original author> per INFRA-2135 spec.\n- Conflict handling: if merge conflict, ABORT the cycle (don't try to auto-resolve). Emit kind=integration_merge_conflict with {cycle_id, gap_id, conflicted_files}. Return Err.\n- Returns IntegrationBranchOutcome { merged_gaps: Vec<{gap_id, parent_sha, merge_sha}>, conflicts: Vec<{gap_id, files}> }.\n- 6+ unit tests using a tempdir + git init fixture: clean merge succeeds, conflict aborts with structured error, Batched-Under trailer present, Co-Authored-By preserves original author.\n- Cross-references INFRA-2130 (parent C2), INFRA-2135 (Batched-Under trailer + PR body template — shared trailer spec)."
+  closed_date: '2026-05-29'
+  outcome_id: MISSION-010
+

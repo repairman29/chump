@@ -1,0 +1,15 @@
+- id: INFRA-1422
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh circuit breaker — emit kind=botmerge_wedged + auto-trigger manual recovery after 15min"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/coord/bot-merge.sh tracks per-stage timestamps; if any stage exceeds CHUMP_BOT_MERGE_STAGE_BUDGET_S (default 300s = 5min) emit kind=botmerge_wedged with {gap, stage, elapsed_s} and bail with non-zero exit + actionable message
+    - Wedged-state callers see immediate failure instead of indefinite hang; subagent budget burn (15-min CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S) becomes redundant
+    - "Auto-trigger manual recovery: when bail fires from a subagent context, the next call to bot-merge --gap <ID> --auto-merge tries the fast-path push+gh pr create+gh pr merge --auto inline without retrying the stuck stage"
+    - Smoke test scripts/ci/test-botmerge-circuit.sh stubs a hanging gh call and asserts bail within 5min ± 10s and correct ambient emit
+    - Replaces the SUBAGENT_DISPATCH.md 15-min wall-clock budget pattern with a stage-level circuit breaker so the failure is visible in seconds at the source, not minutes downstream
+  closed_date: '2026-05-17'
+  outcome_id: MISSION-010
+
