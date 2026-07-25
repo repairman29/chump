@@ -87,9 +87,15 @@ events:
   # ── Fleet lifecycle ────────────────────────────────────────────────────────
   - kind: session_start
     effect_metric: self
-    emitter: scripts/dev/ambient-emit.sh + claude SessionStart hook
+    emitter: scripts/dev/ambient-emit.sh + claude SessionStart hook + rpc::register_worker_rpc_handlers
     trigger: any chump session begins (fleet worker, operator, reaper)
     consumers: [fleet-brief, ambient-context-inject]
+
+  - kind: heartbeat
+    effect_metric: self
+    emitter: crates/chump-coord/src/rpc.rs
+    trigger: periodic worker liveness signal
+    consumers: [fleet-brief, kpi-report]
 
   - kind: farmer_drain_guard
     effect_metric: self
