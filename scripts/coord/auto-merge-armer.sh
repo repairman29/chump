@@ -327,9 +327,9 @@ arm_with_retry() {
         # to the queue arm is redundant and may cause "already queued" errors on
         # some GitHub versions. Without merge queue: keep --squash for history.
         if [[ "${MERGE_QUEUE_ACTIVE}" == "true" ]]; then
-            gh pr merge "${pr_num}" --repo "${REPO}" --auto >"${tmpout}" 2>&1
+            CHUMP_GH_CALL_CRITICALITY=background chump_gh pr merge "${pr_num}" --repo "${REPO}" --auto >"${tmpout}" 2>&1
         else
-            gh pr merge "${pr_num}" --repo "${REPO}" --auto --squash >"${tmpout}" 2>&1
+            CHUMP_GH_CALL_CRITICALITY=background chump_gh pr merge "${pr_num}" --repo "${REPO}" --auto --squash >"${tmpout}" 2>&1
         fi
         rc=$?
         set -e
@@ -396,7 +396,7 @@ for PR_NUM in "${PR_NUMS[@]}"; do
     fi
 
     # Skip already-armed PRs — zero GraphQL cost.
-    _already="$(chump_gh api "repos/${REPO}/pulls/${PR_NUM}" \
+    _already="$(CHUMP_GH_CALL_CRITICALITY=background chump_gh api "repos/${REPO}/pulls/${PR_NUM}" \
         --jq '.auto_merge != null' 2>/dev/null || echo 'false')"
     if [[ "${_already}" == "true" ]]; then
         echo "[auto-merge-armer] PR #${PR_NUM}: already armed — skipping."
