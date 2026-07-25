@@ -72,6 +72,10 @@ if [[ "${CHUMP_GITHUB_CACHE_RUST:-0}" = "1" ]]; then
         # Phase 1 stub — Rust CLI prints `0` (nothing refilled).
         "$_CHUMP_GH_CACHE_CLI" refresh-open-prs
     }
+    cache_query_pr_queue() {
+        # Phase 1 stub: return open PRs in dashboard format
+        "$_CHUMP_GH_CACHE_CLI" query-open-prs
+    }
     cache_lookup_pr_files() {
         local number="${1:?cache_lookup_pr_files <number>}"
         # Phase 1 stub: schema doesn't store files; CLI returns empty.
@@ -132,7 +136,35 @@ cache_query_behind_prs() {
     fi
 }
 
-# cache_query_dirty_armed_prs (INFRA-2186)
+# cache_query_closed_prs (INFRA-1081 cleanup)
+#   stdout: tab-separated lines `<number>\t<title>\t<head_ref>\t<closed_at>` per closed/merged PR.
+cache_query_closed_prs() {
+    _emit_offline_read_event cache_query_closed_prs
+    local db; db="$(_cache_db_path)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_closed_prs","target":"closed_prs","reason":"db_not_found"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    # INFRA-697: Extract closed_at from raw_payload_json if merged_at is null
+    result="$(sqlite3 -separator $'\t' "$db" \
+        "SELECT number, COALESCE(title,''), COALESCE(head_ref,''), \
+                COALESCE(merged_at, json_extract(raw_payload_json, '$.closed_at')) \
+         FROM pr_state WHERE merged_at IS NOT NULL OR raw_payload_json LIKE '%\"state\":\"closed\"%' \
+         ORDER BY number DESC LIMIT 500" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_closed_prs","target":"closed_prs","reason":"no_rows"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_closed_prs","target":"closed_prs","age_s":0,"count":%s}\n' \
+            "$ts" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
+}
 #   - Returns one PR number per line where mergeable_state='DIRTY' AND
 #     auto_merge_enabled=1 AND merged_at IS NULL. Mirrors cache_query_behind_prs
 #     for the DIRTY axis. Used by queue-driver.sh DIRTY auto-resolve loop.
@@ -399,6 +431,36 @@ cache_query_open_prs() {
     else
         local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
         printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_open_prs","target":"open_prs","age_s":0,"count":%s}\n' \
+            "$ts" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
+}
+
+# cache_query_pr_queue
+#   stdout: tab-separated lines `<number>\t<title>\t<head_ref>\t<mergeable_state>\t<auto_merge>\t<draft>`
+#   Used by fleet-status.sh dashboard.
+cache_query_pr_queue() {
+    _emit_offline_read_event cache_query_pr_queue
+    local db; db="$(_cache_db_path)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_pr_queue","target":"open_prs","reason":"db_not_found"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    result="$(sqlite3 -separator $'\t' "$db" \
+        "SELECT number, COALESCE(title,''), COALESCE(head_ref,''), \
+                COALESCE(mergeable_state,'?'), auto_merge_enabled, draft \
+         FROM pr_state WHERE merged_at IS NULL \
+         ORDER BY number DESC" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_pr_queue","target":"open_prs","reason":"no_rows"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_pr_queue","target":"open_prs","age_s":0,"count":%s}\n' \
             "$ts" "$count" >> "$amb" 2>/dev/null || true
         printf '%s\n' "$result"
     fi
