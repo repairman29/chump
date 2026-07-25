@@ -76,14 +76,32 @@ if [[ "$alive" == "0" ]]; then ok "mode=off: children stopped"; else fail "mode=
 # 5. SIGTERM → graceful stop event
 echo grind > "$FIX/home/.chump/fleet-mode"
 sleep 20
+# 6. Socket API (MISSION-052)
+if [[ -S "$FIX/home/.chump/chumpd.sock" ]]; then
+    ok "Unix socket created at ~/.chump/chumpd.sock"
+    
+    # Ping
+    pong=$(python3 -c "import socket, json; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('$FIX/home/.chump/chumpd.sock'); s.sendall(b'{\"method\":\"ping\"}'); print(json.loads(s.recv(1024)).get('status', ''))")
+    if [[ "$pong" == "pong" ]]; then ok "socket: ping -> pong"; else fail "socket: ping failed ($pong)"; fi
+    
+    # db-path
+    db_path=$(python3 -c "import socket, json; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('$FIX/home/.chump/chumpd.sock'); s.sendall(b'{\"method\":\"db-path\"}'); print(json.loads(s.recv(1024)).get('db_path', ''))")
+    expected="$FIX/repo/.chump/state.db"
+    if [[ "$db_path" == "$expected" ]]; then ok "socket: db-path matches"; else fail "socket: db-path mismatch (got $db_path, expected $expected)"; fi
+else
+    fail "Unix socket NOT found"
+fi
+
 kill -TERM "$DPID" 2>/dev/null
-sleep 18
+sleep 20
+
 if grep -q '"kind":"chumpd_stopped"' "$FIX/repo/.chump-locks/ambient.jsonl"; then
     ok "SIGTERM: chumpd_stopped emitted"
 else
     fail "no chumpd_stopped on SIGTERM"
 fi
 sleep 2
+
 alive=$(pgrep -f "$FIX/repo/scripts/dispatch/worker.sh" | wc -l | tr -d ' ')
 if [[ "$alive" == "0" ]]; then ok "SIGTERM: children taken down"; else fail "children survived supervisor death ($alive)"; kill -9 $(pgrep -f "$FIX/repo/scripts/dispatch/worker.sh") 2>/dev/null; fi
 

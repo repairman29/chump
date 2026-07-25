@@ -1,8 +1,67 @@
 //! Resolve paths relative to CHUMP_REPO or CHUMP_HOME or cwd; validate no escape.
 //! When CHUMP_MULTI_REPO_ENABLED=1, set_working_repo() can override repo root for the session.
 
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
+
+static CHUMPD_DB_PATH_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+fn try_chumpd_db_path() -> Option<PathBuf> {
+    let home = std::env::var("CHUMP_HOME")
+        .or_else(|_| std::env::var("CHUMP_REPO"))
+        .ok()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            #[allow(deprecated)]
+            std::env::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
+        });
+    let socket_path = home.join(".chump/chumpd.sock");
+    if !socket_path.exists() {
+        return None;
+    }
+
+    let mut stream = UnixStream::connect(&socket_path).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .ok()?;
+    stream
+        .set_write_timeout(Some(Duration::from_millis(50)))
+        .ok()?;
+
+    let req = serde_json::json!({ "method": "db-path" });
+    let _ = stream.write_all(req.to_string().as_bytes());
+
+    let mut buf = [0u8; 1024];
+    let n = stream.read(&mut buf).ok()?;
+    if n == 0 {
+        return None;
+    }
+
+    let resp: serde_json::Value = serde_json::from_slice(&buf[..n]).ok()?;
+    let path_str = resp.get("db_path")?.as_str()?;
+    let pb = PathBuf::from(path_str);
+    if pb.exists() {
+        // We want the parent of .chump/state.db as the repo root.
+        pb.parent()?.parent().map(|p| p.to_path_buf())
+    } else {
+        None
+    }
+}
+
+pub fn chumpd_repo_root() -> Option<PathBuf> {
+    CHUMPD_DB_PATH_CACHE
+        .get_or_init(|| {
+            // INFRA-3341: CHUMP_REPO env still highest precedence.
+            if std::env::var("CHUMP_REPO").is_ok() || std::env::var("CHUMP_HOME").is_ok() {
+                return None;
+            }
+            try_chumpd_db_path()
+        })
+        .clone()
+}
 
 static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> =
     std::sync::OnceLock::new();
@@ -184,6 +243,12 @@ pub fn repo_root() -> PathBuf {
             }
         }
     }
+
+    // MISSION-052: Try chumpd socket first if no explicit env.
+    if let Some(root) = chumpd_repo_root() {
+        return root;
+    }
+
     std::env::var("CHUMP_REPO")
         .or_else(|_| std::env::var("CHUMP_HOME"))
         .ok()
