@@ -208,6 +208,15 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             let mut registry = ToolRegistry::new();
             tool_inventory::register_worker_tools(&mut registry);
 
+            // INFRA-1588: Register worker RPC handlers if NATS is available.
+            let session_id = format!("worker-{}", uuid);
+            if let Ok(nats_url) = std::env::var("NATS_URL") {
+                if let Ok(nats) = async_nats::connect(nats_url).await {
+                    let _ =
+                        chump_coord::rpc::register_worker_rpc_handlers(&nats, &session_id).await;
+                }
+            }
+
             let system_prompt = worker_system_prompt(&task);
             let session_dir = worktree_path.join(".chump_worker_session");
             let _ = std::fs::create_dir_all(&session_dir);
