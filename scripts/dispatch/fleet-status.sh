@@ -28,6 +28,15 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
+# INFRA-1081: source github cache + worktree libs
+# shellcheck source=../coord/lib/github_cache.sh
+if [[ -f "$REPO_ROOT/scripts/coord/lib/github_cache.sh" ]]; then
+  source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+fi
+# shellcheck source=../lib/worktree-iter.sh
+if [[ -f "$REPO_ROOT/scripts/lib/worktree-iter.sh" ]]; then
+  source "$REPO_ROOT/scripts/lib/worktree-iter.sh"
+fi
 # INFRA-1055: API rate-limit circuit breaker (non-fatal if missing).
 # shellcheck source=../coord/api-rate-limit-gate.sh
 _rl_gate_path="$REPO_ROOT/scripts/coord/api-rate-limit-gate.sh"
@@ -85,28 +94,53 @@ render_queue() {
   fi
 
   local open_count auto_count queued_count
-  open_count=$(gh pr list --state open --json number --jq 'length' 2>/dev/null || echo "?")
-  echo "open PRs: ${open_count}"
+  # INFRA-1081: cache-first lookups
+  local pr_data=""
+  if command -v cache_query_pr_queue >/dev/null 2>&1; then
+    pr_data=$(cache_query_pr_queue || echo "")
+  fi
 
-  # auto-merge armed
-  auto_count=$(gh pr list --state open --json number,autoMergeRequest \
-                 --jq '[.[] | select(.autoMergeRequest != null)] | length' 2>/dev/null || echo "?")
+  if [[ -n "$pr_data" ]]; then
+    open_count=$(printf '%s\n' "$pr_data" | wc -l | tr -d ' ')
+    auto_count=$(printf '%s\n' "$pr_data" | awk -F$'\t' '$5 == 1' | wc -l | tr -d ' ')
+  else
+    open_count=$(gh pr list --state open --json number --jq 'length' 2>/dev/null || echo "?")
+    auto_count=$(gh pr list --state open --json number,autoMergeRequest \
+                   --jq '[.[] | select(.autoMergeRequest != null)] | length' 2>/dev/null || echo "?")
+  fi
+
+  echo "open PRs: ${open_count}"
   echo "auto-merge armed: ${auto_count}"
 
   # github merge-queue (best-effort; the REST endpoint isn't part of the public
   # API on every plan, so swallow stderr+errors and report n/a instead).
-  queued_count=$(gh api "repos/{owner}/{repo}/queues/main/entries" --jq 'length' 2>/dev/null)
-  if [[ -z "$queued_count" || "$queued_count" == *"Not Found"* || "$queued_count" == *"message"* ]]; then
+  queued_count=$(gh api "repos/{owner}/{repo}/queues/main/entries" --jq 'length' 2>/dev/null || echo "")
+  if [[ -z "$queued_count" || "$queued_count" == *"Not Found"* || "$queued_count" == *"message"* || ! "$queued_count" =~ ^[0-9]+$ ]]; then
     queued_count="n/a"
   fi
   echo "merge-queue depth: ${queued_count}"
   echo "----"
 
   # Per-PR brief: number, mergeStateStatus, lifecycle
-  gh pr list --state open \
-    --json number,title,headRefName,mergeStateStatus,autoMergeRequest,isDraft \
-    --jq '.[] | "  #\(.number) [\(.mergeStateStatus // "?")\(if .autoMergeRequest then " auto" else "" end)\(if .isDraft then " draft" else "" end)] \(.headRefName) — \(.title)"' \
-    2>/dev/null | head -n 25 || echo "(failed to enumerate open PRs)"
+  if [[ -n "$pr_data" ]]; then
+    # format: <number>\t<title>\t<head_ref>\t<mergeable_state>\t<auto_merge>\t<draft>
+    # INFRA-1081: Use python for robust tab-parsing if awk fails or mangles.
+    printf '%s\n' "$pr_data" | head -n 25 | python3 -c "
+import sys
+for line in sys.stdin:
+    parts = line.strip('\n').split('\t')
+    if len(parts) < 6: continue
+    num, title, head, state, auto, draft = parts
+    auto_label = ' auto' if auto == '1' else ''
+    draft_label = ' draft' if draft == '1' else ''
+    print(f'  #{num} [{state}{auto_label}{draft_label}] {head} — {title}')
+"
+  else
+    gh pr list --state open \
+      --json number,title,headRefName,mergeStateStatus,autoMergeRequest,isDraft \
+      --jq '.[] | "  #\(.number) [\(.mergeStateStatus // "?")\(if .autoMergeRequest then " auto" else "" end)\(if .isDraft then " draft" else "" end)] \(.headRefName) — \(.title)"' \
+      2>/dev/null | head -n 25 || echo "(failed to enumerate open PRs)"
+  fi
 }
 
 render_agents() {
@@ -192,7 +226,20 @@ print("stale lease files: %d%s" % (
 
   echo "----"
   echo "linked worktrees:"
-  git worktree list 2>/dev/null | sed 's/^/  /' | head -n 20 || echo "  (git worktree list failed)"
+  # INFRA-1211: use shared scanner
+  if command -v scan_worktrees >/dev/null 2>&1; then
+    for wt in $(scan_worktrees --include-tmp --include-dot-claude); do
+      # Emulate the output of `git worktree list` for the dashboard
+      # git worktree list format: <path> <hash> [<branch>]
+      # scan_worktrees just gives paths. We can enrich it slightly.
+      if [[ -d "$wt" ]]; then
+        branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(no branch)")
+        printf "  %-60s [%s]\n" "$wt" "$branch"
+      fi
+    done | head -n 20
+  else
+    git worktree list 2>/dev/null | sed 's/^/  /' | head -n 20 || echo "  (git worktree list failed)"
+  fi
 }
 
 # EFFECTIVE-087: last-hour / last-24h PR merges + agent:human coordination ratio.

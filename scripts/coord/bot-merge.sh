@@ -1966,8 +1966,13 @@ if [[ "$_BM_MODE" == "A" ]]; then
         # failure, fail open to Mode B instead of silently pretending.
         _bm_a_enqueued=0
         if [[ -n "$_bm_route_gap" ]]; then
-            _bm_canon_repo="$(git worktree list --porcelain 2>/dev/null \
-                | awk '/^worktree /{print $2; exit}')"
+            # INFRA-451: resolve canonical repo root safely across worktrees.
+            if [[ -f "$(dirname "$0")/../lib/resolve-main-worktree.sh" ]]; then
+                source "$(dirname "$0")/../lib/resolve-main-worktree.sh"
+                _bm_canon_repo="$(resolve_main_worktree "$0")"
+            else
+                _bm_canon_repo="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+            fi
             [[ -n "$_bm_canon_repo" ]] || _bm_canon_repo="${REPO_ROOT:-$PWD}"
             if CHUMP_REPO="$_bm_canon_repo" chump gap set "$_bm_route_gap" \
                     --status ready_to_ship 2>/dev/null; then
