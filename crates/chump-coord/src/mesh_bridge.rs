@@ -47,8 +47,8 @@
 //   pub use coord_mesh::mesh::channels;
 pub use crate::mesh::channels;
 pub use crate::mesh::{
-    AckMessage, BandwidthBudget, Channel, LocalProcessTransport, MeshError, MeshTransport,
-    Message, MessageQueue, StubMesh,
+    AckMessage, BandwidthBudget, Channel, LocalProcessTransport, MeshError, MeshTransport, Message,
+    MessageQueue, StubMesh,
 };
 
 // ── Consensus substrate ───────────────────────────────────────────────────────

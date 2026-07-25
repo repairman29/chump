@@ -7063,6 +7063,20 @@ events:
     # payload: {session_id: string, schema_version: "chump-capability-v1",
     #           harness: string, model_tier: string, skills: [string],
     #           machine: string|null, ttl_seconds: int, heartbeat_at: RFC3339}
+  - kind: heartbeat
+    effect_metric: resilient
+    emitter: crates/chump-coord/src/rpc.rs (MISSION-052)
+    trigger: >
+      Emitted by a background heartbeat task within the worker RPC server
+      every HEARTBEAT_INTERVAL_SECS (30s). Confirms that a remote-dispatched
+      worker session is still alive and its RPC listener is responsive.
+      Missing heartbeats trigger remote-session-stale alerts.
+    consumers: [ops-audit, fleet-doctor, heartbeat-shepherd]
+    fields_required: [ts, kind, session]
+    expected_volume: "1 per worker per 30s"
+    status: stable
+    # payload: {ts: string, session: string, kind: "heartbeat"}
+
   - kind: capability_heartbeat
     effect_metric: effective
     emitter: crates/chump-coord/src/capability.rs (INFRA-1120) heartbeat_loop()

@@ -579,6 +579,7 @@ pub async fn register_worker_rpc_handlers(
         loop {
             interval.tick().await;
             let hb = format!(
+                // scanner-anchor: "kind":"heartbeat"
                 "{{\"ts\":\"{}\",\"session\":\"{}\",\"kind\":\"heartbeat\"}}",
                 chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
                 session_clone

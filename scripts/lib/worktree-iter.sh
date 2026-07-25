@@ -202,6 +202,31 @@ wt_is_dirty() {
     [[ -n "$out" ]]
 }
 
+# wt_dirty_reason <wt_path>
+#
+# Returns a granular reason for the dirty state:
+#   - "dirty_working_tree"  if tracked files are modified/staged
+#   - "untracked_unignored" if ONLY untracked files exist
+#   - "clean"               if no changes exist
+#   - "unknown"             if not a git repo or directory missing
+wt_dirty_reason() {
+    local wt_path="$1"
+    [[ -d "$wt_path" ]] || { echo "unknown"; return 1; }
+    # 1. Check for tracked modifications (staged or unstaged)
+    if [[ -n $(git -C "$wt_path" diff --name-only 2>/dev/null) || \
+          -n $(git -C "$wt_path" diff --cached --name-only 2>/dev/null) ]]; then
+        echo "dirty_working_tree"
+        return 0
+    fi
+    # 2. Check for untracked files
+    if [[ -n $(git -C "$wt_path" ls-files --others --exclude-standard 2>/dev/null) ]]; then
+        echo "untracked_unignored"
+        return 0
+    fi
+    echo "clean"
+    return 0
+}
+
 # ── Public: emit_reaper_event ─────────────────────────────────────────────────
 
 # emit_reaper_event <kind> <wt_path> <reason> [<extra_json_fields>]

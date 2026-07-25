@@ -37,7 +37,11 @@ pub fn chump_build_date() -> &'static str {
 /// staleness signal — the operator's binary may emit/read YAML differently
 /// from what origin/main expects, risking silent corruption like the
 /// pre-INFRA-147 meta:-preamble strip incident on 2026-04-27.
-const GAP_STORE_FILES: &[&str] = &["src/gap_store.rs", "src/main.rs"];
+const GAP_STORE_FILES: &[&str] = &[
+    "crates/chump-gap-store/src/lib.rs",
+    "src/gap_store.rs", // legacy fallback
+    "src/main.rs",
+];
 
 /// Outcome of [`check_gap_binary_staleness`].
 #[derive(Debug, PartialEq, Eq)]
@@ -51,8 +55,8 @@ pub enum StalenessCheck {
     /// blocking legitimate use cases (cargo-install builds, fresh clones,
     /// non-git deployments).
     Skip,
-    /// HEAD has at least one commit touching `src/gap_store.rs` or
-    /// `src/main.rs` after the binary's baked SHA. Carries the (count,
+    /// HEAD has at least one commit touching one of the `GAP_STORE_FILES`
+    /// after the binary's baked SHA. Carries the (count,
     /// first commit subject) so callers can produce a useful warning.
     Stale {
         commits_ahead: usize,

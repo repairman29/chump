@@ -17,6 +17,10 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# INFRA-1214: use source-grep.sh library instead of inline if/else
+source "$(dirname "$0")/lib/source-grep.sh"
+GAP_STORE_PATH=$(find_gap_store_path)
+
 if [[ -n "${CHUMP_BIN:-}" ]]; then
     CHUMP="$CHUMP_BIN"
 elif [[ -x "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/debug/chump" ]]; then
@@ -98,10 +102,10 @@ else
 fi
 
 # ── Test 6: INFRA-1149 markers in source ─────────────────────────────────────
-if grep -q "INFRA-1149" "$REPO_ROOT/src/gap_store.rs" 2>/dev/null; then
-    ok "INFRA-1149 marker in src/gap_store.rs"
+if grep -q "INFRA-1149" "$GAP_STORE_PATH" 2>/dev/null; then
+    ok "INFRA-1149 marker in $GAP_STORE_PATH"
 else
-    fail "INFRA-1149 marker missing from src/gap_store.rs"
+    fail "INFRA-1149 marker missing from $GAP_STORE_PATH"
 fi
 if grep -q "INFRA-1149" "$REPO_ROOT/src/main.rs" 2>/dev/null; then
     ok "INFRA-1149 marker in src/main.rs"
@@ -109,16 +113,16 @@ else
     fail "INFRA-1149 marker missing from src/main.rs"
 fi
 
-# ── Test 7: key functions exist in gap_store.rs ───────────────────────────────
-if grep -q "pub fn title_jaccard" "$REPO_ROOT/src/gap_store.rs" 2>/dev/null; then
-    ok "title_jaccard function present in gap_store.rs"
+# ── Test 7: key functions exist in source ───────────────────────────────
+if grep -q "pub fn title_jaccard" "$GAP_STORE_PATH" 2>/dev/null; then
+    ok "title_jaccard function present in $GAP_STORE_PATH"
 else
-    fail "title_jaccard function missing from gap_store.rs"
+    fail "title_jaccard function missing from $GAP_STORE_PATH"
 fi
-if grep -q "pub fn similarity_candidates" "$REPO_ROOT/src/gap_store.rs" 2>/dev/null; then
-    ok "similarity_candidates function present in gap_store.rs"
+if grep -q "pub fn similarity_candidates" "$GAP_STORE_PATH" 2>/dev/null; then
+    ok "similarity_candidates function present in $GAP_STORE_PATH"
 else
-    fail "similarity_candidates function missing from gap_store.rs"
+    fail "similarity_candidates function missing from $GAP_STORE_PATH"
 fi
 
 # ── Test 8: false-positive rate < 5% on known distinct gap title pairs ────────

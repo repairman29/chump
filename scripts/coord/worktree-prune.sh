@@ -189,7 +189,8 @@ if [[ ! -d "$WORKTREE_ROOT" ]]; then
     exit 0
 fi
 
-for wt_dir in "$WORKTREE_ROOT"/*/; do
+# INFRA-1211: use shared worktree-scanning primitives.
+for wt_dir in $(scan_worktrees --no-tmp); do
     [[ -d "$wt_dir" ]] || continue
     wt_name=$(basename "$wt_dir")
 
@@ -198,37 +199,44 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
     branch_short="${branch#refs/heads/}"
 
     # Check if there are uncommitted changes (tracked-file modifications)
-    has_changes=$(cd "$wt_dir" 2>/dev/null && \
-        { git status --porcelain 2>/dev/null | grep -v "^??" | head -1; } || echo "")
-    # Untracked files that aren't gitignored. INFRA-1347: previously
-    # captured-but-unused (`# reserved for future prune-on-untracked logic`).
-    # An agent that wrote a new test/doc/design file without `git add`'ing it
-    # had that file silently deleted on next reaper sweep. Now it KEEPs.
-    untracked_unignored=$(cd "$wt_dir" 2>/dev/null && \
-        { git status --porcelain --untracked-files=normal 2>/dev/null | grep "^??" | head -1; } || echo "")
-
-    if [[ -n "$has_changes" ]]; then
+    # INFRA-1211: Use shared wt_dirty_reason for granular skip events (INFRA-1347 regression fix).
+    dirty_reason=$(wt_dirty_reason "$wt_dir")
+    if [[ "$dirty_reason" != "clean" && "$dirty_reason" != "unknown" ]]; then
+        display_reason="KEEP — uncommitted changes or untracked files"
+        [[ "$dirty_reason" == "untracked_unignored" ]] && display_reason="KEEP — untracked files"
+        
         printf "  %-30s %-40s %-12s %s\n" \
-            "$wt_name" "$branch_short" "(dirty)" "KEEP — uncommitted changes"
+            "$wt_name" "$branch_short" "($dirty_reason)" "$display_reason"
         dirty_count=$((dirty_count + 1))
-        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "uncommitted_changes"
-        continue
-    fi
-    if [[ -n "$untracked_unignored" ]]; then
-        # INFRA-1347: protect untracked-non-gitignored work (e.g. unstaged
-        # new test scripts, design docs, fixture files).
-        printf "  %-30s %-40s %-12s %s\n" \
-            "$wt_name" "$branch_short" "(untracked)" "KEEP — untracked non-gitignored files"
-        dirty_count=$((dirty_count + 1))
-        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "untracked_unignored"
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "$dirty_reason"
         continue
     fi
 
-    # Find the PR for this branch
-    pr_state=$(gh pr list --state all --head "$branch_short" --json state \
-        -q '.[0].state // "(none)"' 2>/dev/null || echo "?")
-    pr_num=$(gh pr list --state all --head "$branch_short" --json number \
-        -q '.[0].number // ""' 2>/dev/null || echo "")
+    # Find the PR for this branch (INFRA-1081: cache-first)
+    _cache_json=""
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
+        # If github_cache.sh is sourced, _cache_db_path is available.
+        # But we need to make sure it's actually defined or use the fallback.
+        _db=""
+        if command -v _cache_db_path >/dev/null 2>&1; then
+            _db="$(_cache_db_path)"
+        else
+            _db="${MAIN_REPO}/.chump/github_cache.db"
+        fi
+        if [[ -f "$_db" ]]; then
+            _cache_json="$(sqlite3 "$_db" "SELECT raw_payload_json FROM pr_state WHERE head_ref = '$branch_short' ORDER BY updated_at_api DESC LIMIT 1")"
+        fi
+    fi
+
+    if [[ -n "${_cache_json:-}" ]]; then
+        pr_state=$(printf '%s' "$_cache_json" | python3 -c "import json, sys; print(json.load(sys.stdin).get('state', ''))" 2>/dev/null || echo "?")
+        pr_num=$(printf '%s' "$_cache_json" | python3 -c "import json, sys; print(json.load(sys.stdin).get('number', ''))" 2>/dev/null || echo "")
+    else
+        pr_state=$(gh pr list --state all --head "$branch_short" --json state \
+            -q '.[0].state // "(none)"' 2>/dev/null || echo "?")
+        pr_num=$(gh pr list --state all --head "$branch_short" --json number \
+            -q '.[0].number // ""' 2>/dev/null || echo "")
+    fi
 
     case "$pr_state" in
         MERGED)

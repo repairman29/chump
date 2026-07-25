@@ -364,7 +364,10 @@ impl LocalProcessTransport {
     /// would receive this over the wire; in-process callers invoke it
     /// directly to simulate a subscriber acking.
     pub fn record_ack(&self, ack: AckMessage) {
-        self.acks.lock().unwrap().insert(ack.message_id.clone(), ack);
+        self.acks
+            .lock()
+            .unwrap()
+            .insert(ack.message_id.clone(), ack);
     }
 }
 
@@ -391,7 +394,8 @@ impl MeshTransport for LocalProcessTransport {
     }
 
     async fn await_ack(&self, message_id: &str, timeout_ms: u32) -> Result<AckMessage, MeshError> {
-        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(u64::from(timeout_ms));
+        let deadline =
+            tokio::time::Instant::now() + tokio::time::Duration::from_millis(u64::from(timeout_ms));
         loop {
             if let Some(ack) = self.acks.lock().unwrap().remove(message_id) {
                 return Ok(ack);

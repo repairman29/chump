@@ -46,6 +46,12 @@ export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
 
 REPO_ROOT="${CHUMP_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
+# INFRA-1081: source github cache lib
+# shellcheck source=scripts/coord/lib/github_cache.sh
+if [[ -f "$REPO_ROOT/scripts/coord/lib/github_cache.sh" ]]; then
+    source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+fi
+
 _chump="${HOME}/.cargo/bin/chump"
 command -v "$_chump" >/dev/null 2>&1 || _chump="chump"
 
@@ -65,10 +71,15 @@ run_phase1() {
     local _lookback_days="${CHUMP_GHOST_REAPER_LOOKBACK_DAYS:-7}"
     local _repo="${GITHUB_REPOSITORY:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')}"
 
-    # ── Step 1: one REST call — recently-closed PRs ───────────────────────────
+    # ── Step 1: recently-closed PRs (cache-first via INFRA-1081) ──────
     local _closed_prs
-    _closed_prs=$(gh api "repos/$_repo/pulls?state=closed&per_page=100&sort=updated&direction=desc" \
-        2>/dev/null || echo "[]")
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$(_cache_db_path)" ]]; then
+        # Fetch from local cache — recently updated closed PRs
+        _closed_prs="$(sqlite3 "$(_cache_db_path)" "SELECT json_group_array(json(raw_payload_json)) FROM (SELECT raw_payload_json FROM pr_state WHERE merged_at IS NULL AND fetched_at_local > datetime('now', '-$_lookback_days days') ORDER BY updated_at_api DESC LIMIT 100)")"
+    else
+        _closed_prs=$(gh api "repos/$_repo/pulls?state=closed&per_page=100&sort=updated&direction=desc" \
+            2>/dev/null || echo "[]")
+    fi
 
     [[ -z "$_closed_prs" || "$_closed_prs" == "[]" ]] && return 0
 
@@ -203,7 +214,12 @@ for g in json.load(sys.stdin):
     while IFS= read -r _gid; do
         [[ -z "$_gid" ]] && continue
 
-        _pr_json=$(gh pr list --search "$_gid" --state merged --json number,mergedAt --limit 1 2>/dev/null || echo "[]")
+        # INFRA-1081: Cache-first lookup for merged PRs containing the gap_id
+        if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$(_cache_db_path)" ]]; then
+            _pr_json="$(sqlite3 "$(_cache_db_path)" "SELECT json_group_array(json(raw_payload_json)) FROM pr_state WHERE merged_at IS NOT NULL AND (title LIKE '%$_gid%' OR head_ref LIKE '%$_gid%') LIMIT 1")"
+        else
+            _pr_json=$(gh pr list --search "$_gid" --state merged --json number,mergedAt --limit 1 2>/dev/null || echo "[]")
+        fi
         [[ -z "$_pr_json" || "$_pr_json" == "[]" ]] && continue
 
         _pr_num=$(printf '%s' "$_pr_json" | python3 -c "
