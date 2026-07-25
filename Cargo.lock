@@ -1340,6 +1340,7 @@ dependencies = [
  "hex",
  "inventory",
  "jsonschema",
+ "libc",
  "mimalloc",
  "mime_guess",
  "mistralrs",
@@ -1855,7 +1856,9 @@ name = "chumpd"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

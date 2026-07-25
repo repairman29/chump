@@ -28,13 +28,25 @@ case "$REPO_ROOT" in
 esac
 
 LABEL="com.chump.chumpd"
-PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 BIN="$HOME/.cargo/bin/chumpd"
 UID_N="$(id -u)"
 
+# OS detection
+OS_KIND="macos"
+if [[ "$(uname -s)" == "Linux" ]]; then
+    OS_KIND="linux"
+fi
+
 if [[ "${1:-}" == "--uninstall" ]]; then
-    launchctl bootout "gui/${UID_N}/${LABEL}" 2>/dev/null || true
-    rm -f "$PLIST_PATH"
+    if [[ "$OS_KIND" == "macos" ]]; then
+        launchctl bootout "gui/${UID_N}/${LABEL}" 2>/dev/null || true
+        rm -f "$HOME/Library/LaunchAgents/${LABEL}.plist"
+    else
+        systemctl --user stop chumpd.service 2>/dev/null || true
+        systemctl --user disable chumpd.service 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/chumpd.service"
+        systemctl --user daemon-reload
+    fi
     echo "[install-chumpd] uninstalled (workers stopped with the supervisor)."
     exit 0
 fi
@@ -43,8 +55,10 @@ echo "[install-chumpd] building chumpd (release)..."
 (cd "$REPO_ROOT" && PATH="$HOME/.cargo/bin:$PATH" cargo build --release -p chumpd -q)
 cp "${CARGO_TARGET_DIR:-$REPO_ROOT/target}/release/chumpd" "$BIN"
 
-mkdir -p "$HOME/Library/LaunchAgents"
-cat > "$PLIST_PATH" <<PLIST
+if [[ "$OS_KIND" == "macos" ]]; then
+    PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
+    mkdir -p "$(dirname "$PLIST_PATH")"
+    cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -65,11 +79,43 @@ cat > "$PLIST_PATH" <<PLIST
 </plist>
 PLIST
 
-# RESILIENT-168 lessons: bootout stale copy, clear disabled-override, load.
-launchctl bootout "gui/${UID_N}/${LABEL}" 2>/dev/null || true
-launchctl enable "gui/${UID_N}/${LABEL}" 2>/dev/null || true
-launchctl bootstrap "gui/${UID_N}" "$PLIST_PATH"
+    # RESILIENT-168 lessons: bootout stale copy, clear disabled-override, load.
+    launchctl bootout "gui/${UID_N}/${LABEL}" 2>/dev/null || true
+    launchctl enable "gui/${UID_N}/${LABEL}" 2>/dev/null || true
+    launchctl bootstrap "gui/${UID_N}" "$PLIST_PATH"
+    echo "[install-chumpd] loaded (macOS launchd). Pool ownership transfers on first tick."
+else
+    UNIT_DIR="$HOME/.config/systemd/user"
+    mkdir -p "$UNIT_DIR"
+    UNIT_PATH="$UNIT_DIR/chumpd.service"
+    cat > "$UNIT_PATH" <<UNIT
+[Unit]
+Description=Chump Supervisor Daemon
+After=network.target
 
-echo "[install-chumpd] loaded (KeepAlive). Pool ownership transfers on first tick."
-echo "  verify: launchctl print gui/${UID_N}/${LABEL} | grep state"
+[Service]
+Type=simple
+ExecStart=${BIN}
+Environment=CHUMP_REPO=${REPO_ROOT}
+Environment=PATH=${HOME}/.local/bin:${HOME}/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=5
+StandardOutput=append:/tmp/chumpd.log
+StandardError=append:/tmp/chumpd.log
+
+[Install]
+WantedBy=default.target
+UNIT
+
+    systemctl --user daemon-reload
+    systemctl --user enable chumpd.service
+    systemctl --user restart chumpd.service
+    
+    # RESILIENT-185: enable linger so the user service survives logout.
+    loginctl enable-linger "$(id -un)" 2>/dev/null || true
+    
+    echo "[install-chumpd] loaded (Linux systemd). Pool ownership transfers on first tick."
+    echo "  verify: systemctl --user status chumpd"
+fi
+
 echo "  status: cat /tmp/chumpd-status.json"
