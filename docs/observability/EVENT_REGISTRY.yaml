@@ -1260,6 +1260,19 @@ events:
       pause_reason is the "reason" field from the fleet-paused JSON payload
       (e.g. pipeline_jam, slo_breach). Bypass: set CHUMP_IGNORE_WASTE_PAUSE=1.
 
+  - kind: gap_id_reused_from_git_history_avoided
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs — gap ID assignment (INFRA-1954)
+    trigger: chump gap reserve generated a candidate ID that already appears in
+      git history (a merged/abandoned branch used it); the counter is advanced
+      and the collision-prone ID is skipped before any state.db write
+    consumers: [audit-log]
+    fields_required: [ts, kind, domain, skipped_id]
+    docs: |
+      Prevents ID reuse when git history references a candidate ID the counter
+      would otherwise re-assign. skipped_id is the avoided candidate; the reserve
+      retries with the next number.
+
   - kind: gap_cooldown_cleared
     effect_metric: self
     emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)
