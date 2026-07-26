@@ -33,8 +33,36 @@
 # Only escalate to pr_auto_rebase_failed if local rebase ALSO fails.
 #
 # Bypass: CHUMP_PR_AUTO_REBASE_NO_FALLBACK=1 disables local-rebase fallback (trust gh API).
+#
+# INFRA-1811 (2026-07-26): the local-rebase fallback above was silent about
+# WHICH merge drivers actually resolved the conflict, had no time budget (a
+# hung rebase could wedge the daemon indefinitely), and didn't emit a
+# structured conflict-file list on genuine failure for a future
+# smart-rescuer agent to consume. This adds:
+#   kind=pr_auto_rebase_recovered    — local rebase succeeded; driver names that fired
+#   kind=pr_auto_rebase_unresolvable — local rebase still conflicted; conflict_files array
+#   CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S (default 120) — cap on the local rebase attempt
 
 set -uo pipefail
+
+LOCAL_REBASE_TIMEOUT_S="${CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S:-120}"
+
+# Given a whitespace-separated list of changed file paths, return the sorted,
+# deduped set of custom merge-driver names configured for those paths per
+# .gitattributes (INFRA-310 drivers). Empty output if none apply.
+resolve_merge_drivers() {
+    local repo_root="$1"; shift
+    local files=("$@")
+    [[ -f "$repo_root/.gitattributes" ]] || return 0
+    local f driver
+    for f in "${files[@]}"; do
+        [[ -z "$f" ]] && continue
+        driver="$(cd "$repo_root" && git check-attr merge -- "$f" 2>/dev/null | awk -F': ' '{print $3}')"
+        if [[ -n "$driver" && "$driver" != "unspecified" ]]; then
+            printf '%s\n' "$driver"
+        fi
+    done | sort -u | paste -sd, -
+}
 
 DRY_RUN=0
 MAX_PER_HOUR=4
@@ -222,7 +250,15 @@ while IFS=$'\t' read -r PR STATE; do
         git -C "$REPO_ROOT" fetch origin "$BRANCH" --quiet 2>/dev/null || true
         git -C "$REPO_ROOT" fetch origin main --quiet 2>/dev/null || true
         if git -C "$REPO_ROOT" worktree add "$WT" "origin/$BRANCH" >/dev/null 2>&1; then
-            if (cd "$WT" && git rebase origin/main >/dev/null 2>&1); then
+            # Changed-file list (pre-rebase) — used both for driver-name
+            # reporting on success and conflict-file reporting on failure.
+            CHANGED_FILES=()
+            while IFS= read -r _f; do
+                [[ -n "$_f" ]] && CHANGED_FILES+=("$_f")
+            done < <(cd "$WT" && git diff --name-only origin/main...HEAD 2>/dev/null)
+
+            REBASE_TIMED_OUT=0
+            if timeout "${LOCAL_REBASE_TIMEOUT_S}s" bash -c "cd '$WT' && git rebase origin/main" >/dev/null 2>&1; then
                 # INFRA-1526: post-rebase hunk-drop check in fallback worktree.
                 # Warn only (don't block push) — this is already a fallback recovery
                 # path; emitting the event surfaces the drop for ops-audit without
@@ -233,8 +269,10 @@ while IFS=$'\t' read -r PR STATE; do
                         echo "[pr-auto-rebase] WARN #$PR — post-rebase-verify found hunk drops (rebase_hunk_dropped emitted)"
                 fi
                 if (cd "$WT" && git push origin "HEAD:$BRANCH" --force-with-lease >/dev/null 2>&1); then
-                    echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive)"
+                    DRIVERS="$(resolve_merge_drivers "$REPO_ROOT" "${CHANGED_FILES[@]}")"
+                    echo "[pr-auto-rebase] OK #$PR — local-rebase fallback succeeded (gh API was false-positive; drivers=${DRIVERS:-none})"
                     emit pr_auto_rebase_fallback "$PR" "\"prior_state\":\"$STATE\",\"trigger\":\"chump-pr-auto-rebase\",\"reason\":\"gh_api_false_positive\""
+                    emit pr_auto_rebase_recovered "$PR" "\"prior_state\":\"$STATE\",\"drivers\":\"$DRIVERS\""
                     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
                     printf '{"ts":"%s","pr":%s,"state":"%s"}\n' "$ts" "$PR" "$STATE" >> "$COOLDOWN_FILE"
                     REBASED=$((REBASED+1))
@@ -244,10 +282,24 @@ while IFS=$'\t' read -r PR STATE; do
                     FAILED=$((FAILED+1))
                 fi
             else
+                REBASE_EXIT_STATUS=$?
+                if [[ "$REBASE_EXIT_STATUS" -eq 124 ]]; then
+                    REBASE_TIMED_OUT=1
+                fi
+                # Capture unresolved-conflict file list before aborting.
+                CONFLICT_FILES_JSON="$(cd "$WT" && git diff --name-only --diff-filter=U 2>/dev/null | \
+                    jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')"
                 # Abort any in-progress rebase before removing worktree
                 (cd "$WT" && git rebase --abort >/dev/null 2>&1) || true
-                echo "[pr-auto-rebase] FAIL #$PR — true conflict confirmed by local rebase (sibling rescue needed)"
-                emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"local_rebase_also_failed\""
+                if [[ "$REBASE_TIMED_OUT" -eq 1 ]]; then
+                    echo "[pr-auto-rebase] FAIL #$PR — local rebase exceeded ${LOCAL_REBASE_TIMEOUT_S}s timeout"
+                    emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"local_rebase_timeout\""
+                    emit pr_auto_rebase_unresolvable "$PR" "\"prior_state\":\"$STATE\",\"reason\":\"timeout\",\"conflict_files\":$CONFLICT_FILES_JSON"
+                else
+                    echo "[pr-auto-rebase] FAIL #$PR — true conflict confirmed by local rebase (sibling rescue needed)"
+                    emit pr_auto_rebase_failed "$PR" "\"prior_state\":\"$STATE\",\"fallback\":\"local_rebase_also_failed\""
+                    emit pr_auto_rebase_unresolvable "$PR" "\"prior_state\":\"$STATE\",\"reason\":\"conflict\",\"conflict_files\":$CONFLICT_FILES_JSON"
+                fi
                 FAILED=$((FAILED+1))
             fi
             git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
