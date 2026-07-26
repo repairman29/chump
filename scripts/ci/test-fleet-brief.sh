@@ -4,7 +4,7 @@
 #
 # Verifies `chump fleet brief` Rust subcommand:
 #   1. Outputs the header line
-#   2. Counts commit events as ships (not kind=commit)
+#   2. Counts real commits on origin/main as ships (CREDIBLE-168, not ambient events)
 #   3. Counts alert events by kind (pr_stuck, silent_agent)
 #   4. --json flag emits valid JSON with required fields
 #   5. Exits 0 and doesn't fall through to rest of main()
@@ -36,22 +36,35 @@ ALERT_RECENT_ISO="$(date -u -r "$((NOW_TS - 600))" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/
     || date -u -d "@$((NOW_TS - 600))" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
     || python3 -c "import datetime; print((datetime.datetime.utcnow() - datetime.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ'))")"
 
-# Write ambient.jsonl with:
-#   - 3 commit events in 24h window
-#   - 1 commit event older than 24h (should not be counted)
+# Write ambient.jsonl with alert events only — ships are now counted from git
+# (origin/main), seeded below, NOT from ambient "commit" events:
 #   - 2 pr_stuck alerts (recent)
 #   - 1 silent_agent alert (recent, within 30m)
 #   - 1 silent_agent alert (old, outside 30m but within 24h)
 cat >"$TMP/repo/.chump-locks/ambient.jsonl" <<EOF
-{"ts":"$RECENT_ISO","event":"commit","sha":"aaa00001","msg":"test ship 1","session":"s1","worktree":"wt1"}
-{"ts":"$RECENT_ISO","event":"commit","sha":"aaa00002","msg":"test ship 2","session":"s1","worktree":"wt1"}
-{"ts":"$RECENT_ISO","event":"commit","sha":"aaa00003","msg":"test ship 3","session":"s2","worktree":"wt2"}
-{"ts":"$OLD_ISO","event":"commit","sha":"aaa00099","msg":"old ship outside window","session":"s3","worktree":"wt3"}
 {"ts":"$RECENT_ISO","event":"alert","kind":"pr_stuck","pr":1001,"reason":"CI red","session":"s1"}
 {"ts":"$RECENT_ISO","event":"alert","kind":"pr_stuck","pr":1002,"reason":"DIRTY","session":"s2"}
 {"ts":"$ALERT_RECENT_ISO","event":"ALERT","kind":"silent_agent","note":"session=s3 gap=INFRA-X last_event_age=99m","session":"monitor"}
 {"ts":"$OLD_ISO","event":"ALERT","kind":"silent_agent","note":"old silent agent outside 30m","session":"monitor"}
 EOF
+
+# ── Seed origin/main with dated commits — the real "ships" (CREDIBLE-168) ─────
+# fleet-brief now counts commits on origin/main via `git log --since` (real
+# merges), NOT ambient "commit" events — every worker WIP/auto commit emitted a
+# "commit" event, over-counting ships ~55x. main_checkout_root() resolves to
+# CHUMP_REPO here, so seed 3 commits dated 1h ago (inside the 24h window) + 1
+# old commit (outside it), then point refs/remotes/origin/main at the tip; the
+# subcommand's `git log --since=<cutoff> origin/main` then sees exactly 3.
+git -C "$TMP/repo" init -q
+git -C "$TMP/repo" config user.email ci@chump.test
+git -C "$TMP/repo" config user.name CI
+GIT_AUTHOR_DATE="$OLD_ISO" GIT_COMMITTER_DATE="$OLD_ISO" \
+    git -C "$TMP/repo" -c commit.gpgsign=false commit -q --allow-empty -m "old ship (outside 24h window)"
+for _i in 1 2 3; do
+    GIT_AUTHOR_DATE="$RECENT_ISO" GIT_COMMITTER_DATE="$RECENT_ISO" \
+        git -C "$TMP/repo" -c commit.gpgsign=false commit -q --allow-empty -m "ship $_i (1h ago)"
+done
+git -C "$TMP/repo" update-ref refs/remotes/origin/main HEAD
 
 # ── Test 1: header line present ───────────────────────────────────────────────
 echo "Test 1: output contains fleet brief header"
@@ -64,8 +77,8 @@ else
     exit 1
 fi
 
-# ── Test 2: commits counted as ships ─────────────────────────────────────────
-echo "Test 2: commit events counted as ships (3, not 0 or 4)"
+# ── Test 2: real origin/main commits counted as ships ────────────────────────
+echo "Test 2: origin/main commits in 24h counted as ships (3, not 0 or 4)"
 if echo "$OUT" | grep -qE "^Ships: 3"; then
     echo "  PASS (Ships: 3)"
 else
