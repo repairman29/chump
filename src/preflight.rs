@@ -1251,6 +1251,86 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-worker-timeout-scale.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-3379 (META-086 cluster 1/5, gap/state-registry consistency):
+        // mirror 14 gap/state-registry gates that were previously only
+        // allowlisted in preflight-ci-parity-exceptions.txt. Each is pure
+        // shell/sqlite, no chump binary required, <5s — safe for the fast
+        // local loop. All always-on (no per-gate bypass env var) per the
+        // EFFECTIVE-094 bypass-var debt-ceiling: adding 14 new
+        // CHUMP_PREFLIGHT_SKIP_* vars would blow the ceiling, so these
+        // follow the plist-no-tmp-paths / no-new-bypass-env-vars precedent
+        // of shipping without one.
+        steps.push(step(
+            "docs-delta-trailer",
+            &["bash", "scripts/ci/test-infra-124-docs-delta-trailer.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-force-lease-guard",
+            &["bash", "scripts/ci/test-pre-push-force-lease-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "claim-fuzzy-match",
+            &["bash", "scripts/ci/test-claim-fuzzy-match.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "git-identity-guard",
+            &["bash", "scripts/ci/test-git-identity-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "hardcoded-date-guard",
+            &["bash", "scripts/ci/test-hardcoded-date-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "migration-pipeline-gates",
+            &["bash", "scripts/ci/test-migration-pipeline-gates.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "model-registry",
+            &["bash", "scripts/ci/test-model-registry.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "submodule-guard",
+            &["bash", "scripts/ci/test-submodule-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "credential-pattern-guard",
+            &["bash", "scripts/ci/test-credential-pattern-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "docs-delta-guard",
+            &["bash", "scripts/ci/test-docs-delta-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "raw-yaml-guard",
+            &["bash", "scripts/ci/test-raw-yaml-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "ambient-schema",
+            &["bash", "scripts/ci/test-ambient-schema.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "schema-version-assert",
+            &["bash", "scripts/ci/test-schema-version-assert.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "lease-ttl-file",
+            &["bash", "scripts/ci/test-infra-115-lease-ttl-file.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
