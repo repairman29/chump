@@ -31,6 +31,15 @@
       "args": [],
       "env": {},
       "enabled": true
+    },
+    "almanac": {
+      "command": "/Users/jeffadkins/Projects/almanac/target/release/almanac-mcp",
+      "args": [],
+      "env": {
+        "ALMANAC_DB": "/Users/jeffadkins/Projects/almanac/indexes/chump-src.db",
+        "ALMANAC_EMBED_URL": "http://100.101.188.30:11434"
+      },
+      "enabled": true
     }
   }
 }
