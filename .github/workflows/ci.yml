@@ -648,6 +648,11 @@ jobs:
       # DOC-063 showed .cargo-test-target / /tmp/chump-coord-linux-build* poisoning
       # was a top-3 CI failure class. Each run gets a fresh dir; cleaned up by
       # runner after the job.
+      # NOTE: fast-checks intentionally NOT converted to <workspace>/target caching
+      # (unlike clippy/cargo-test): the coord-surfaces-smoke guard (INFRA-032) keys
+      # its SKIP on $ROOT/target/debug/chump being absent, so ./target here un-skips
+      # a smoke test that has been silently skipping (and is latently broken). A
+      # follow-up gap fixes that guard, THEN enables ./target caching here too.
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
@@ -1182,9 +1187,10 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
-    # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
+    # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
+    # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
     env:
-      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -1262,8 +1268,9 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
-      # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
+      # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
+      CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
 
