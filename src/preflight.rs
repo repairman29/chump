@@ -642,6 +642,88 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         .collect()
 }
 
+// ── RESILIENT-196: disk-floor guard ────────────────────────────────────────
+//
+// A full workspace build writes several GB into target/. Starting one below
+// headroom ENOSPC-crashes mid-compile — on 2026-07-24 the data volume hit 100%
+// and deadlocked even the shell (couldn't write a command's output file). Refuse
+// to start the cargo gates below a floor, with a clear message + an audit event,
+// instead of crashing. Fail-open if df is unreadable (never block on unknown).
+
+const DEFAULT_PREFLIGHT_DISK_FLOOR_GB: f64 = 15.0;
+
+fn preflight_disk_floor_gb() -> f64 {
+    std::env::var("CHUMP_PREFLIGHT_DISK_FLOOR_GB")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(DEFAULT_PREFLIGHT_DISK_FLOOR_GB)
+}
+
+/// Pure floor comparison (extracted for testing). At-or-above the floor is OK.
+fn disk_floor_breached(free_gb: f64, floor_gb: f64) -> bool {
+    free_gb < floor_gb
+}
+
+/// Live free space (GiB) at `path` via `df -Pk`. `None` on any failure so the
+/// caller fails open rather than blocking on an unreadable df.
+fn free_disk_gb(path: &std::path::Path) -> Option<f64> {
+    let out = std::process::Command::new("df")
+        .args(["-Pk", &path.to_string_lossy()])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // POSIX `df -Pk`: header line, then one data line; column 4 = available 1K-blocks.
+    let avail_k: f64 = text
+        .lines()
+        .nth(1)?
+        .split_whitespace()
+        .nth(3)?
+        .parse()
+        .ok()?;
+    Some(avail_k / 1_048_576.0) // KiB → GiB
+}
+
+fn emit_disk_floor_breach(free_gb: f64, floor_gb: f64) {
+    // scanner-anchor: kind=disk_floor_breach (RESILIENT-196)
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "disk_floor_breach".to_string(),
+        source: Some("chump-preflight".to_string()),
+        fields: vec![
+            ("free_gb".to_string(), format!("{free_gb:.1}")),
+            ("floor_gb".to_string(), format!("{floor_gb:.1}")),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Refuse to start a cargo build below the disk floor. Returns Err(message) when
+/// breached; Ok otherwise (including fail-open on unreadable df or floor<=0).
+fn check_build_disk_floor(repo_root: &std::path::Path) -> Result<(), String> {
+    let floor = preflight_disk_floor_gb();
+    if floor <= 0.0 {
+        return Ok(()); // disabled via CHUMP_PREFLIGHT_DISK_FLOOR_GB=0
+    }
+    let Some(free) = free_disk_gb(repo_root) else {
+        return Ok(()); // fail-open: unknown free space never blocks
+    };
+    if disk_floor_breached(free, floor) {
+        emit_disk_floor_breach(free, floor);
+        return Err(format!(
+            "disk floor breached: {free:.1} GB free < {floor:.1} GB needed for a build.\n\
+             A full compile writes several GB to target/; starting one now risks an \
+             ENOSPC crash mid-build. Free space first, e.g.:\n  \
+             rm -rf target/debug/incremental   # regenerable\n  \
+             rm -rf /private/tmp/wt-*           # stale worktrees (branches pushed)\n  \
+             cargo clean                        # full, slow rebuild\n\
+             Or lower/disable the floor: CHUMP_PREFLIGHT_DISK_FLOOR_GB=<N> (0 disables)."
+        ));
+    }
+    Ok(())
+}
+
 /// Entry point called from main.rs subcommand dispatch.
 /// Returns the process exit code.
 pub fn run(argv: &[String]) -> i32 {
@@ -712,6 +794,15 @@ pub fn run(argv: &[String]) -> i32 {
         scope.label(),
         args.scope
     );
+    // RESILIENT-196: refuse to start the cargo gates below the disk floor rather
+    // than ENOSPC-crashing mid-compile (2026-07-24 deadlock). Only guards when a
+    // rust build will actually run; fails open on unreadable df.
+    if scope.rust {
+        if let Err(msg) = check_build_disk_floor(&repo_root) {
+            eprintln!("[preflight] {msg}");
+            return 2;
+        }
+    }
     // Print which heavy buckets are being skipped — useful operator signal.
     if !scope.rust {
         eprintln!("[preflight] skipping cargo gates (no rust files in scope)");
@@ -2011,6 +2102,28 @@ struct BaselineDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
+    #[test]
+    fn resilient196_disk_floor_comparison() {
+        assert!(
+            disk_floor_breached(9.0, 15.0),
+            "9 GB free < 15 GB floor → breach"
+        );
+        assert!(
+            disk_floor_breached(2.1, 15.0),
+            "the 2026-07-24 crash condition"
+        );
+        assert!(!disk_floor_breached(20.0, 15.0), "plenty of headroom → ok");
+        assert!(
+            !disk_floor_breached(15.0, 15.0),
+            "exactly at floor → ok (not <)"
+        );
+        assert_eq!(
+            DEFAULT_PREFLIGHT_DISK_FLOOR_GB, 15.0,
+            "raised from disk_cmd's 5 GB inventory floor"
+        );
+    }
 
     #[test]
     fn parse_args_defaults() {
