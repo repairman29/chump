@@ -1559,6 +1559,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
+          # cache-budget fix: restore-only trunk cache (see INFRA-3420). e2e wrote
+          # a per-PR cache per suite (~2.7 GB total) every PR, churning the shared
+          # 10 GB Actions budget and evicting the hot-path trunk caches.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # ── pwa-only: Ollama + Playwright ───────────────────────────────────────
       - name: Cache Ollama models
@@ -1749,6 +1754,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-integration-test
+          # cache-budget fix: restore-only trunk cache (see INFRA-3420) — stop the
+          # per-PR cache writes that starve the hot-path trunk caches.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build chump binary
         run: cargo build --bin chump --quiet 2>&1 | tail -3
