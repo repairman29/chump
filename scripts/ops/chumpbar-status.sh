@@ -187,6 +187,33 @@ while IFS= read -r _l; do
 done <<< "$recent_ships"
 _rs_json="[${_rs_json%,}]"
 
-printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s}\n' \
+# EFFECTIVE-309: per-node pause state (AUTONOMY_LEVEL) for the ChumpBar pause/
+# resume controls. `local` reads the file directly; remotes via a cached ssh
+# (short timeout + 60s cache so a down node degrades to "?" rather than stalling
+# the menu behind the 20s guard). Nodes: local + the ssh aliases we manage.
+_node_level() {
+    local n="$1"
+    if [[ "$n" == "local" ]]; then
+        cat "$HOME/.chump/AUTONOMY_LEVEL" 2>/dev/null | tr -d '[:space:]' || echo 0
+        return
+    fi
+    local cache="/tmp/chumpbar-autonomy-$n" now mtime
+    now=$(date +%s); mtime=$(stat -f %m "$cache" 2>/dev/null || echo 0)
+    if [[ -f "$cache" ]] && (( now - mtime < 60 )); then cat "$cache"; return; fi
+    local lvl
+    lvl=$(ssh -o BatchMode=yes -o ConnectTimeout="${CHUMPBAR_SSH_TIMEOUT:-6}" "$n" \
+              'cat ~/.chump/AUTONOMY_LEVEL 2>/dev/null | tr -d "[:space:]" || echo 0' 2>/dev/null)
+    [[ -z "$lvl" ]] && lvl="?"
+    printf '%s' "$lvl" | tee "$cache"
+}
+_nodes_json=""
+for _n in ${CHUMPBAR_NODES:-local helsinki closetjunky}; do
+    _lvl=$(_node_level "$_n")
+    _paused="true"; [[ "$_lvl" =~ ^[1-9] ]] && _paused="false"
+    _nodes_json+="{\"label\":\"$(_esc "$_n")\",\"level\":\"$(_esc "$_lvl")\",\"paused\":$_paused},"
+done
+_nodes_json="[${_nodes_json%,}]"
+
+printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s,"nodes":%s}\n' \
     "$icon" "$(_esc "local:$mode ${remote_modes:-}")" "${total_workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
-    "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json"
+    "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json" "$_nodes_json"
