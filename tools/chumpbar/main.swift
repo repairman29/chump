@@ -15,10 +15,13 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var timer: Timer?
+    // EFFECTIVE-309: per-node pause state from the status JSON (label/level/paused).
+    var nodes: [[String: Any]] = []
 
     let repo = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Projects/Chump").path
     var statusScript: String { repo + "/scripts/ops/chumpbar-status.sh" }
+    var pauseScript: String { repo + "/scripts/ops/chumpbar-pause.sh" }
     var chumpMode: String {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/bin/chump-mode").path
@@ -92,6 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     detail.append("─ recent ships ─")
                     detail.append(contentsOf: rs)
                 }
+                self.nodes = obj["nodes"] as? [[String: Any]] ?? []
+            } else {
+                self.nodes = []
             }
             DispatchQueue.main.async {
                 self.statusItem.button?.title = title
@@ -106,6 +112,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
             item.isEnabled = false
             menu.addItem(item)
+        }
+        // EFFECTIVE-309: per-node pause/resume. Each node shows its live pause
+        // state and a one-click toggle that flips its AUTONOMY_LEVEL kill switch
+        // (0=paused, 5=armed) via chumpbar-pause.sh — local direct, remotes ssh.
+        if !nodes.isEmpty {
+            menu.addItem(.separator())
+            let hdr = NSMenuItem(title: "─ nodes (pause / resume) ─", action: nil, keyEquivalent: "")
+            hdr.isEnabled = false
+            menu.addItem(hdr)
+            for node in nodes {
+                let label = node["label"] as? String ?? "?"
+                let paused = node["paused"] as? Bool ?? true
+                let level = "\(node["level"] ?? "?")"
+                let stateIcon = paused ? "⏸" : "🟢"
+                let stateText = paused ? "paused" : "running"
+                let status = NSMenuItem(
+                    title: "  \(stateIcon) \(label): \(stateText)  (lvl \(level))",
+                    action: nil, keyEquivalent: "")
+                status.isEnabled = false
+                menu.addItem(status)
+                let toggleTitle = paused ? "     ▶ Resume \(label)" : "     ⏸ Pause \(label)"
+                let toggleAction = paused ? "resume" : "pause"
+                let item = NSMenuItem(title: toggleTitle, action: #selector(toggleNode(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = ["label": label, "action": toggleAction]
+                menu.addItem(item)
+            }
         }
         menu.addItem(.separator())
         menu.addItem(makeItem("🏃 Grind (full fleet, stay awake)", #selector(modeGrind)))
@@ -127,6 +160,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             _ = self.run("/bin/bash", [self.chumpMode, mode])
+            self.refresh()
+        }
+    }
+
+    // EFFECTIVE-309: flip one node's pause state (AUTONOMY_LEVEL) via the helper.
+    @objc func toggleNode(_ sender: NSMenuItem) {
+        guard let info = sender.representedObject as? [String: String],
+              let label = info["label"], let action = info["action"] else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            _ = self.run("/bin/bash", [self.pauseScript, label, action])
             self.refresh()
         }
     }
