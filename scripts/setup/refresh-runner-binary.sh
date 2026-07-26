@@ -140,6 +140,17 @@ if ! cp -f "$BUILT_BIN" "$TARGET_BIN.new" 2>>"$LOG"; then
     exit 1
 fi
 chmod +x "$TARGET_BIN.new"
+# RESILIENT-198: ad-hoc code-sign on macOS BEFORE the atomic rename. A freshly
+# copied unsigned binary makes macOS syspolicyd re-scan it on EVERY exec, hanging
+# each `chump` invocation 90s+ — which wedges every git hook, launchd daemon, and
+# fleet script that shells out to chump. Ad-hoc signing (`--sign -`) drops that to
+# sub-second. Sign the tempfile so the live binary is only ever swapped to a
+# signed one. No-op on Linux (no codesign); warn but don't fail the deploy.
+if [[ "$(uname)" == "Darwin" ]] && command -v codesign >/dev/null 2>&1; then
+    if ! codesign --force --sign - "$TARGET_BIN.new" 2>>"$LOG"; then
+        log "WARN: codesign failed — installed binary may hang on first exec (syspolicyd)"
+    fi
+fi
 mv -f "$TARGET_BIN.new" "$TARGET_BIN"
 
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
