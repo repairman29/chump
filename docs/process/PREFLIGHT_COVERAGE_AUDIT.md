@@ -68,6 +68,51 @@ as INFRA-1731 #2377).
 | **INFRA-2350 path-filter-coverage (INFRA-682)** | **`path-filter-coverage` (Scripts scope) — NEW** |
 | **INFRA-2350 install-manifest (INFRA-1810)** | **`install-manifest` (Scripts scope) — NEW** |
 | INFRA-1788 docs-delta-trailer | `docs-delta-trailer` (--pre-commit only) |
+| pre-commit-ac-completeness.sh (META-070) | `ac-completeness` (--pre-commit only) |
+| pre-commit-css-token-discipline.sh (INFRA-1590, META-070) | `css-token-discipline` (--pre-commit only) |
+| pre-commit-default-flip.sh (INFRA-762, META-070) | `default-flip` (--pre-commit only) |
+| pre-commit-effect-metric.sh (META-070) | `effect-metric` (--pre-commit only) |
+| pre-commit-event-registry.sh (INFRA-754, META-070) | `event-registry-staged` (--pre-commit only) |
+| pre-commit-gap-divergence.sh (INFRA-783, META-070) | `gap-divergence` (--pre-commit only) |
+| pre-commit-git-identity.sh (INFRA-787, META-070) | `git-identity` (--pre-commit only) |
+| pre-commit-hardcoded-dates.sh (INFRA-971, META-070) | `hardcoded-dates` (--pre-commit only) |
+| pre-commit-main-worktree-config.sh (INFRA-1060, META-070) | `main-worktree-config` (--pre-commit only) |
+| pre-commit-obs-budget.sh (INFRA-755/INFRA-2425, META-070) | `obs-budget` (--pre-commit only) |
+| pre-commit-preflight-ci-parity.sh (INFRA-2120, META-070) | `preflight-ci-parity` (--pre-commit only) |
+| pre-commit-pwa-index-uniq.sh (META-070) | `pwa-index-uniq` (--pre-commit only) |
+| pre-commit-redundancy.sh (META-070) | `redundancy` (--pre-commit only) |
+| pre-commit-rust-first.sh (META-064, META-070) | `rust-first` (--pre-commit only) |
+
+## INFRA-3377 (META-070) added: commit-content-guards mirrors
+
+The AC for INFRA-3377 pointed at
+`docs/process/AUDIT_JOB_DECOMPOSITION.md#commit-content-guards-infra-3377`
+for the canonical list of 22 scripts to mirror. That doc does not exist on
+`origin/main` (verified via `git ls-tree origin/main` at implementation
+time) — it was never written before the gap was filed. Rather than block
+on a doc that doesn't exist, this slice scoped "commit-content-guards" to
+the concrete, currently-invoked inventory: every
+`scripts/git-hooks/pre-commit-*.sh` script, each of which greps
+`git diff --cached` directly (the literal definition of a commit-content
+guard). That inventory is 14 scripts, all now mirrored into
+`chump preflight --pre-commit` (see table above, all tagged META-070).
+
+Unlike the INFRA-2350 mirrors above, these do NOT get their own
+per-gate preflight-level opt-out toggle — each underlying script already
+owns a `CHUMP_<NAME>_CHECK=0` disable var, and
+`scripts/ci/test-no-new-bypass-env-vars.sh`'s EFFECTIVE-094 debt-ceiling
+means a second layer of skip vars would only grow the bypass-var count
+with no new capability. Disable at the source script instead.
+
+Verification: `bash scripts/ci/test-preflight-content-guard-mirrors.sh`
+asserts all 14 gates are reachable from `preflight.rs` AND that every
+`pre-commit-*.sh` script on disk is accounted for (catches a new hook
+script landing without a preflight mirror).
+
+If a future session decomposes AUDIT_JOB_DECOMPOSITION.md's original
+22-script list and it differs from this 14-script inventory, extend
+`CONTENT_GUARD_MIRRORS` in `src/preflight.rs` and the `EXPECTED_GATES`
+array in the test script above.
 
 ## Known coverage holes (filed as follow-ups)
 

@@ -60,6 +60,72 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
     }
 }
 
+/// INFRA-3377 (META-070): staged-diff commit-content-guards mirrored from
+/// `scripts/git-hooks/pre-commit-*.sh` into `chump preflight --pre-commit`.
+/// Each of these scripts inspects `git diff --cached` directly (same input
+/// the real pre-commit hook sees) and already owns its own
+/// `CHUMP_<NAME>_CHECK=0` disable var — those are scanned by
+/// `scripts/ci/test-no-new-bypass-env-vars.sh`'s EFFECTIVE-094 debt-ceiling,
+/// so preflight deliberately does NOT layer a second per-gate opt-out toggle
+/// on top of each one (that would just grow the bypass-var count with no
+/// new capability — disable at the source script instead).
+///
+/// `event-registry-staged` is a distinct gate from the existing
+/// `event-registry-audit` mirror above: that one runs
+/// `scripts/ci/test-event-registry-coverage.sh` (full-tree audit, any scope);
+/// this one runs `pre-commit-event-registry.sh` (staged-diff only, catches
+/// new unregistered ambient-event kind literals before they're even
+/// committed).
+const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
+    (
+        "ac-completeness",
+        "scripts/git-hooks/pre-commit-ac-completeness.sh",
+    ),
+    (
+        "css-token-discipline",
+        "scripts/git-hooks/pre-commit-css-token-discipline.sh",
+    ),
+    (
+        "default-flip",
+        "scripts/git-hooks/pre-commit-default-flip.sh",
+    ),
+    (
+        "effect-metric",
+        "scripts/git-hooks/pre-commit-effect-metric.sh",
+    ),
+    (
+        "event-registry-staged",
+        "scripts/git-hooks/pre-commit-event-registry.sh",
+    ),
+    (
+        "gap-divergence",
+        "scripts/git-hooks/pre-commit-gap-divergence.sh",
+    ),
+    (
+        "git-identity",
+        "scripts/git-hooks/pre-commit-git-identity.sh",
+    ),
+    (
+        "hardcoded-dates",
+        "scripts/git-hooks/pre-commit-hardcoded-dates.sh",
+    ),
+    (
+        "main-worktree-config",
+        "scripts/git-hooks/pre-commit-main-worktree-config.sh",
+    ),
+    ("obs-budget", "scripts/git-hooks/pre-commit-obs-budget.sh"),
+    (
+        "preflight-ci-parity",
+        "scripts/git-hooks/pre-commit-preflight-ci-parity.sh",
+    ),
+    (
+        "pwa-index-uniq",
+        "scripts/git-hooks/pre-commit-pwa-index-uniq.sh",
+    ),
+    ("redundancy", "scripts/git-hooks/pre-commit-redundancy.sh"),
+    ("rust-first", "scripts/git-hooks/pre-commit-rust-first.sh"),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Pass,
@@ -413,11 +479,14 @@ OPTIONS:
                     (slower; off by default to keep the fast path under 60s)
     --keep-going    Don't exit on the first failure; run all gates
     --json          Emit one JSON object per gate to stdout (machine-readable)
-    --pre-commit    Enable pre-commit-only gates (e.g. docs-delta-trailer audit
-                    against HEAD's COMMIT_EDITMSG, INFRA-1788). Mirrored from
-                    scripts/coord/chump-commit.sh on the path leading to a
-                    real commit; the bare 'chump preflight' silently skips
-                    these so it stays fast for ad-hoc validation runs.
+    --pre-commit    Enable pre-commit-only gates (docs-delta-trailer audit
+                    against HEAD's COMMIT_EDITMSG, INFRA-1788; plus 14
+                    staged-diff commit-content-guards mirrored from
+                    scripts/git-hooks/pre-commit-*.sh, INFRA-3377/META-070).
+                    Mirrored from scripts/coord/chump-commit.sh on the path
+                    leading to a real commit; the bare 'chump preflight'
+                    silently skips these so it stays fast for ad-hoc
+                    validation runs.
     --vs <REF>      META-153: diff-scoped failure attribution. REF is typically
                     'origin/main'. Runs preflight against both HEAD and REF,
                     separates failures into NEW (your diff broke this — blocks)
@@ -444,7 +513,8 @@ GATES (in order):
     4. cargo clippy -- -D warnings     (scope: rust)
     5. cargo check --all-targets        (scope: rust)
     6. docs-delta-trailer              (--pre-commit only, INFRA-1788)
-    7. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
+    7. 14 commit-content-guards        (--pre-commit only, INFRA-3377/META-070)
+    8. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
 
 EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
@@ -1251,6 +1321,18 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-worker-timeout-scale.sh"],
             GateKind::Scripts,
         ));
+    }
+
+    // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
+    // only, same rationale as docs-delta-trailer above — these gates read
+    // `git diff --cached`, so running them under a bare `chump preflight`
+    // (no real staged commit in flight) would just recheck an empty stage
+    // and pass trivially. Each fires in well under 1s (pure `git diff
+    // --cached` + grep/awk, no cargo, no network).
+    if args.pre_commit {
+        for (name, script) in CONTENT_GUARD_MIRRORS {
+            steps.push(step(name, &["bash", script], GateKind::Scripts));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
