@@ -201,10 +201,22 @@ for wt_dir in $(scan_worktrees --no-tmp); do
     # Check if there are uncommitted changes (tracked-file modifications)
     # INFRA-1211: Use shared wt_is_dirty logic if available.
     if wt_is_dirty "$wt_dir"; then
+        # INFRA-1347: emit a GRANULAR skip reason — untracked-unignored files vs
+        # dirty tracked files. INFRA-3431's wt_is_dirty consolidation collapsed
+        # both to dirty_working_tree, dropping the untracked_unignored signal the
+        # reaper-safety contract (and test-worktree-prune-protects-live-edits.sh)
+        # relies on. If every porcelain entry is untracked ('??'), it's untracked-
+        # unignored; otherwise a tracked modification is present.
+        _wt_porcelain="$(git -C "$wt_dir" status --porcelain 2>/dev/null)"
+        if [[ -z "$(grep -v '^??' <<<"$_wt_porcelain")" ]]; then
+            _wt_skip_reason="untracked_unignored"
+        else
+            _wt_skip_reason="dirty_working_tree"
+        fi
         printf "  %-30s %-40s %-12s %s\n" \
             "$wt_name" "$branch_short" "(dirty/untracked)" "KEEP — uncommitted changes or untracked files"
         dirty_count=$((dirty_count + 1))
-        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "dirty_working_tree"
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "$_wt_skip_reason"
         continue
     fi
 
