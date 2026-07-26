@@ -91,6 +91,13 @@ events:
     trigger: any chump session begins (fleet worker, operator, reaper)
     consumers: [fleet-brief, ambient-context-inject]
 
+  - kind: collision_prediction
+    effect_metric: self
+    emitter: src/collision_prediction.rs (META-076, first implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md)
+    trigger: mock agent trajectory (position/velocity) projection finds an overlap within the lookahead window at or above the configurable confidence_threshold
+    consumers: [dashboard (future, INFRA-1883)]
+    fields_required: [ts, kind, agent_a, agent_b, predicted_ts_offset_s, confidence]
+
   - kind: farmer_drain_guard
     effect_metric: self
     emitter: scripts/dev/farmer-drain-guard.sh (via farmer-brown tick, RESILIENT-076)
