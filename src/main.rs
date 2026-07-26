@@ -5415,25 +5415,6 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
-                // INFRA-2013: 1h window events for leading-indicator stall detection
-                let events_1h: Vec<&serde_json::Value> = events
-                    .iter()
-                    .filter(|e| {
-                        e.get("ts")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                            .map(|dt| dt.timestamp() >= cutoff_1h)
-                            .unwrap_or(false)
-                    })
-                    .collect();
-
-                // Count by "event" field (top-level event type)
-                let count_event = |ev: &str| -> usize {
-                    window_events
-                        .iter()
-                        .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some(ev))
-                        .count()
-                };
                 // Count by "kind" sub-field (used in alert-category events)
                 let count_kind = |kind: &str| -> usize {
                     window_events
@@ -5442,12 +5423,46 @@ async fn main() -> Result<()> {
                         .count()
                 };
 
-                let ships = count_event("commit");
+                // CREDIBLE-168: count ACTUAL merges to origin/main (like the shell
+                // fleet-brief.sh), NOT ambient "commit" events. Every worker WIP
+                // commit + auto-commit across every worktree/session emits a
+                // "commit" ambient event, so count_event("commit") over-counted
+                // ships ~55x (720 ambient commits vs 13 real merges in 24h),
+                // inflating the operator banner to a fictional ~30/hr when the
+                // real ship rate is ~0.5/hr — conditioning "healthy, autonomous"
+                // when the fleet ships little. git reads local origin/main (no
+                // fetch), matching the shell script's window semantics exactly.
+                let count_merges_since = |cutoff_ts: i64| -> usize {
+                    let cutoff_iso = chrono::DateTime::from_timestamp(cutoff_ts, 0)
+                        .map(|d| d.to_rfc3339())
+                        .unwrap_or_default();
+                    if cutoff_iso.is_empty() {
+                        return 0;
+                    }
+                    let main_root = repo_path::main_checkout_root();
+                    std::process::Command::new("git")
+                        .args([
+                            "-C",
+                            &main_root.to_string_lossy(),
+                            "log",
+                            "--format=%H",
+                            &format!("--since={cutoff_iso}"),
+                            "origin/main",
+                        ])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .lines()
+                                .filter(|l| !l.trim().is_empty())
+                                .count()
+                        })
+                        .unwrap_or(0)
+                };
+                let ships = count_merges_since(cutoff);
                 // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
-                let ships_1h: usize = events_1h
-                    .iter()
-                    .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some("commit"))
-                    .count();
+                let ships_1h = count_merges_since(cutoff_1h);
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
