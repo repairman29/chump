@@ -4188,6 +4188,16 @@ events:
       concurrently); emitted as ALERT; caller must retry with a new ID
     consumers: [fleet-brief, curator, operator-recall]
 
+  # ── META-076: predictive collision detection (mock inputs, META-073 slice) ──
+  - kind: collision_prediction
+    effect_metric: self
+    emitter: src/collision_prediction.rs (chump collision-predict — META-076)
+    trigger: two mock agents' projected trajectories (position + velocity) come
+      within the configured distance threshold AND clear the configurable
+      confidence threshold within the lookahead window
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, schema_version, agents, predicted_collision_s, min_distance, confidence]
+
   # ── INFRA-1020: opencode identity residue audit ───────────────────────────
   - kind: identity_residue_swept
     effect_metric: self

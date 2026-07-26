@@ -49,6 +49,7 @@ mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
+mod collision_prediction; // META-076: predictive collision detection (mock inputs, META-073 slice)
 mod config_validation;
 mod consciousness_traits;
 mod content_bots;
@@ -737,6 +738,7 @@ fn print_help() {
     println!("  health-digest      markdown digest with P0/P1 counts + warnings");
     println!("  fleet-status       per-worker throughput + lease state");
     println!("  fleet-velocity     PRs/day and ship-rate trend");
+    println!("  collision-predict  predictive collision detection over mock agent trajectories (META-076)");
     println!("  waste-tally        % of compute spent on closed-without-merge PRs");
     println!("  ship-quality       post-merge signal: pass rate, revert rate");
     println!("  roadmap-status     milestone completion %");
@@ -3472,6 +3474,76 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let snap = fleet_velocity::snapshot(&repo_root);
         print!("{}", snap.render_text());
+        return Ok(());
+    }
+
+    // `chump collision-predict` (META-076, META-073 slice) — projects mock
+    // agent position/velocity samples forward over a lookahead window and
+    // emits `kind=collision_prediction` for any pair whose trajectories come
+    // within a configurable distance/confidence threshold. First
+    // implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md.
+    if args.get(1).map(String::as_str) == Some("collision-predict") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump collision-predict [--confidence-threshold F] [--distance-threshold F] [--json]");
+            println!();
+            println!("Projects mock agent position/velocity trajectories forward and emits");
+            println!(
+                "kind=collision_prediction to ambient.jsonl for any pair predicted to overlap."
+            );
+            println!();
+            println!("Example:");
+            println!("  chump collision-predict --confidence-threshold 0.6");
+            return Ok(());
+        }
+        let mut config = collision_prediction::DetectorConfig::default();
+        if let Some(v) = args
+            .iter()
+            .position(|a| a == "--confidence-threshold")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<f64>().ok())
+        {
+            config.confidence_threshold = v;
+        }
+        if let Some(v) = args
+            .iter()
+            .position(|a| a == "--distance-threshold")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<f64>().ok())
+        {
+            config.distance_threshold = v;
+        }
+        let agents = collision_prediction::mock_agents();
+        let predictions = collision_prediction::detect_collisions(&agents, config);
+        collision_prediction::emit_predictions(&predictions);
+        if args.iter().any(|a| a == "--json") {
+            println!(
+                "{}",
+                serde_json::to_string(
+                    &predictions
+                        .iter()
+                        .map(|p| serde_json::json!({
+                            "agent_a": p.agent_a,
+                            "agent_b": p.agent_b,
+                            "predicted_collision_s": p.predicted_collision_s,
+                            "min_distance": p.min_distance,
+                            "confidence": p.confidence,
+                        }))
+                        .collect::<Vec<_>>()
+                )?
+            );
+        } else if predictions.is_empty() {
+            println!(
+                "No collisions predicted (confidence >= {:.2}).",
+                config.confidence_threshold
+            );
+        } else {
+            for p in &predictions {
+                println!(
+                    "collision_prediction: {} <-> {} in ~{:.1}s (min_distance={:.2}, confidence={:.2})",
+                    p.agent_a, p.agent_b, p.predicted_collision_s, p.min_distance, p.confidence
+                );
+            }
+        }
         return Ok(());
     }
 
