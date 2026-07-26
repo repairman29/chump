@@ -192,3 +192,10 @@ installers:
     check: launchctl list 2>/dev/null | grep -q com.chump.auto-deploy
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.auto-deploy.plist + 20-min auto-deploy cycle
+
+  - id: almanac-code-intel
+    why: "Almanac grounded code-intelligence — indexes this repo (+ fleet + public deps) and wires the almanac_* MCP tools (almanac_search / almanac_api / almanac_search_fleet / almanac_neighbors / almanac_status) so agents ground code questions on path:line receipts and exact API signatures instead of grepping/guessing. Keyword-ready in seconds; fusion embeds in the background; hourly refresh keeps it fresh. Non-blocking: the hook exits 0 if Almanac isn't built."
+    priority: P2
+    install: bash "$HOME/Projects/almanac/scripts/chump-ftue-hook.sh" "$PWD"
+    check: grep -q '"almanac"' chump-mcp.json 2>/dev/null
+    adds: almanac MCP server in chump-mcp.json + indexed working repo + hourly refresh cron

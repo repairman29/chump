@@ -175,6 +175,26 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "{}\n", line);
     }
 
+    // Almanac — grounded code intelligence (indexes this repo + the fleet + public
+    // deps). Make the agent reach for it by reflex instead of grepping/guessing.
+    // Static directive (no per-prompt call); the agent pulls via the almanac_* MCP
+    // tools. Disable with CHUMP_ALMANAC_ENABLED=0.
+    if std::env::var("CHUMP_ALMANAC_ENABLED")
+        .map(|v| v != "0")
+        .unwrap_or(true)
+    {
+        out.push_str(
+            "[Almanac — grounded code intelligence, via the almanac_* MCP tools]\n\
+             - For \"where/how does X work\" in this codebase: call almanac_search FIRST — it returns \
+             grounded path:line answers in one call, cheaper and more reliable than re-reading files.\n\
+             - Before writing code that calls a function or library: call almanac_api to get the EXACT \
+             signature + a real usage example. Copy the real API; do not invent it.\n\
+             - almanac_search_fleet finds which repo across the fleet does X; almanac_neighbors gives a \
+             file's imports/callers; almanac_status reports index freshness.\n\
+             Prefer Almanac; fall back to grep only when it returns nothing.\n\n",
+        );
+    }
+
     crate::precision_controller::init_energy_budget_from_env();
 
     // PRODUCT-003/004: user profile and FTUE
