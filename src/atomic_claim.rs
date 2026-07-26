@@ -120,6 +120,18 @@ impl ClaimArgs {
         if gap_id.starts_with("--") {
             bail!("missing GAP-ID (saw flag {gap_id})");
         }
+        // CREDIBLE-166: validate the GAP-ID format at parse time, BEFORE
+        // run_claim's autonomy gate (RESILIENT-073). A malformed ID is an arg
+        // error regardless of fleet state — otherwise `claim <bad-id>` returned
+        // "fleet stopped (AUTONOMY_LEVEL=0)" instead of a format error, masking
+        // the real problem (caught by test-cli-integration.sh). This is a pure,
+        // non-mutating string check, so it does not reintroduce the ordering bug
+        // the autonomy-first gate guards against (a failing chump-op/DB masking
+        // the kill switch). Reuses the canonical validator; the wrapper message
+        // carries "invalid"/"format" so the arg error is unambiguous.
+        if let Err(e) = crate::execute_gap::validate_gap_id(&gap_id) {
+            bail!("invalid GAP-ID format: {gap_id} ({e})");
+        }
         let mut paths: Option<String> = None;
         let mut session_id: Option<String> = None;
         let mut skip_doctor = false;
@@ -4978,6 +4990,34 @@ mod tests {
     fn from_argv_flag_in_gap_id_position() {
         let argv: Vec<String> = vec!["claim".into(), "--paths".into(), "x".into()];
         assert!(ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_err());
+    }
+
+    // CREDIBLE-166: malformed GAP-IDs are rejected at parse time with an
+    // "invalid GAP-ID format" error — BEFORE run_claim's autonomy gate — so
+    // `claim <bad-id>` no longer returns "fleet stopped" for a malformed arg.
+    #[test]
+    fn from_argv_rejects_malformed_gap_id_with_format_error() {
+        for bad in ["bad-format-id", "12345-not-valid", "lowercase-1", "NODASH"] {
+            let argv: Vec<String> = vec!["claim".into(), bad.into()];
+            let err = ClaimArgs::from_argv(&argv, PathBuf::from("."))
+                .expect_err(&format!("{bad} should be rejected"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("invalid GAP-ID format"),
+                "{bad}: message should carry 'invalid GAP-ID format', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_argv_accepts_canonical_gap_ids() {
+        for good in ["INFRA-1234", "ZERO-WASTE-015", "SMOKE-001", "CREDIBLE-166"] {
+            let argv: Vec<String> = vec!["claim".into(), good.into()];
+            assert!(
+                ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_ok(),
+                "{good} should parse"
+            );
+        }
     }
 
     // INFRA-779: verify_and_repair_gitdir repairs a clobbered gitdir file
