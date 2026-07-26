@@ -490,9 +490,41 @@ saw one ACP-on-M4 silent-stdout failure (INFRA-1561 in flight) force rolling
 back the master switch, forfeiting 75% of the migration value across the
 other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.
 
-## Current state — degraded ubuntu-only mode (2026-05-21, INFRA-1655)
+## Resolved (2026-07-26, INFRA-1655)
 
-**Repo variable state as of 2026-05-21T06:00Z:**
+The 2026-05-21 degraded ubuntu-only mode below is **no longer active**.
+Root-cause + recovery verified:
+
+**Repo variable state as of 2026-07-26:**
+
+| Variable | Value | Effect |
+|---|---|---|
+| `CHUMP_SELF_HOSTED_ENABLED` | `true` | Master switch on (set 2026-05-24T17:20:11Z) |
+| `RUNNER_AUDIT` / `RUNNER_COVERAGE` / `RUNNER_E2E_PWA` / `RUNNER_E2E_GOLDEN_PATH` / `RUNNER_TAURI_COWORK_E2E` | unset | per decision logic, unset lane-vars follow master → all self-hosted |
+
+**Runner fleet status** (`gh api repos/repairman29/chump/actions/runners`): all 5
+registered runners (`jeffs-macbook-air-10`, `-10-2`, `-10-3`, `-10-4`,
+`chumpd-eu-runner`) report `status: online`.
+
+**Root cause:** the flake was pinned to `actions/checkout@v6`. Every workflow
+in `.github/workflows/` has since been upgraded to `actions/checkout@v7`
+(zero `@v6` references remain repo-wide) — the v6→v7 bump is the fix; no
+separate M4-side disk/network/keychain issue reproduced once checkout moved
+off v6.
+
+**Verification:** scanned the last 40 `ci.yml` runs via `gh run list` — zero
+`actions/checkout` step failures and zero 0-step CANCELLED jobs. The handful
+of recent `ci.yml` failures are unrelated logic bugs (gap-reserve ID
+zero-padding, pre-push preflight guard) with named failing steps, not the
+blank 0-step checkout pattern this gap was filed against.
+
+Ambient `kind=runner_health_restored` emitted (see below). No further
+lane-by-lane restoration needed — restoration already happened organically
+between 2026-05-24 and now.
+
+## Historical incident — degraded ubuntu-only mode (2026-05-21, INFRA-1655, resolved)
+
+**Repo variable state as of 2026-05-21T06:00Z (no longer current — see Resolved section above):**
 
 | Variable | Value | Effect |
 |---|---|---|
