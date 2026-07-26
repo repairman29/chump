@@ -59,12 +59,22 @@ else
     fail "CARGO_TARGET_DIR env-prefix not correctly placed before cargo test"
 fi
 
-# ── Test 5: sccache rustc-wrapper not overridden ─────────────────────────────
-# The .cargo/config.toml still has rustc-wrapper=sccache; pre-push doesn't unset RUSTC_WRAPPER
-if ! grep -q "unset.*RUSTC_WRAPPER\|RUSTC_WRAPPER=\|--no-rustc-wrapper" "$PRE_PUSH"; then
-    ok "pre-push does not override/unset sccache rustc-wrapper"
+# ── Test 5: sccache rustc-wrapper not UNCONDITIONALLY disabled ───────────────
+# The .cargo/config.toml still has rustc-wrapper=sccache and the normal push
+# path keeps it. CREDIBLE-165: INFRA-2184 / EFFECTIVE-097 later added a *guarded*
+# self-heal that disables the wrapper ONLY when the sccache binary is missing or
+# unresponsive (the test gate still runs, just uncached — a TRUE signal, never a
+# false fail). That heal lives in a `_PREPUSH_WRAPPER_OVERRIDE=(env ... RUSTC_WRAPPER=)`
+# array and is correct behavior, so we must not flag it. We fail only on an
+# UNCONDITIONAL disable — an `unset RUSTC_WRAPPER` or bare `RUSTC_WRAPPER=` that
+# is NOT part of the guarded override array (and not the `${RUSTC_WRAPPER:-…}` probe).
+uncond_disable="$(grep -nE "unset.*RUSTC_WRAPPER|RUSTC_WRAPPER=|--no-rustc-wrapper" "$PRE_PUSH" \
+    | grep -v "_PREPUSH_WRAPPER_OVERRIDE" \
+    | grep -v "RUSTC_WRAPPER:-" || true)"
+if [ -z "$uncond_disable" ]; then
+    ok "pre-push does not unconditionally disable sccache rustc-wrapper (guarded EFFECTIVE-097 heal allowed)"
 else
-    fail "pre-push unexpectedly unsets sccache rustc-wrapper"
+    fail "pre-push unconditionally disables sccache rustc-wrapper: $uncond_disable"
 fi
 
 # ── Test 6: per-worktree path uses REPO_ROOT_T (worktree root, not shared) ───
