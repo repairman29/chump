@@ -51,14 +51,11 @@ test-ci-heavy-jobs-cross-platform.sh  # reason: audits CI cross-platform apt-get
 cargo-test-with-rerun.sh   # reason: `cargo test --workspace`; runtime > preflight 60s target; Tier-B (pre-push hook)
 
 # ── Advisory-only gates (|| true — not blocking; low mirror ROI) ─────────────
-test-no-claude-leak.sh     # reason: warn-only in CI (|| true not yet removed); gap: INFRA-1793
 test-pwa-parse-gate.sh     # reason: advisory (|| true); gate: INFRA-1621; promote once INFRA-1620 fixed
 test-public-doc-privacy.sh # reason: advisory (|| true); gap: DOC-050/DOC-051
-test-doc-freshness.sh      # reason: warn-only; DOC-041; no operator action until --strict mode ships
 no-inline-ambient-printf   # reason: lint-only; static analysis of CI config; low local value
 
 # ── Research / eval harness (requires eval infrastructure) ───────────────────
-test-research-026-preflight.sh  # reason: eval harness preflight; requires scripts/eval/ setup; Tier-D
 research-lane-a-smoke.sh        # reason: eval harness smoke; requires scripts/eval/ infra; Tier-D
 
 # ── PWA / web (requires running chump --web server) ─────────────────────────
@@ -70,7 +67,6 @@ test-pwa-workflow-observability.sh # reason: PWA workflow; requires running serv
 test-preflight-ci-parity.sh       # reason: this script itself; self-reference via the ci.yml step added in INFRA-1867
 test-observability-coverage.sh    # reason: diff-aware PR gate (BASE_REF=origin/main); Tier-D
 test-obs-coverage-guard.sh        # reason: CI meta — audits new src/ files for tracing hooks; CI-structural
-test-infra-257-doc-only-guards.sh # reason: CI meta — checks doc-only CI paths; CI-structural
 # INFRA-2350: check-path-filter-coverage.sh now mirrored as Scripts-scope
 # always-on gate ("path-filter-coverage" in preflight.rs). Removed from
 # allowlist; mirror exists.
@@ -94,11 +90,9 @@ coord-surfaces-smoke.sh
 precommit-strict-replay.sh
 test-agent-throughput.sh
 test-alert-classifier.sh
-test-attribution-portable.sh
 test-auto-arm-sweeper.sh
 test-autonomous-ship-rate.sh
 test-autoscale-decisions.sh
-test-book-sync-guard.sh
 test-bot-merge-conflict-wiring.sh
 test-bot-merge-exit-codes.sh
 test-bot-merge-exit-phases.sh
@@ -112,18 +106,14 @@ test-cargo-target-reaper.sh
 test-change-approval.sh
 test-ci-flake-rerun.sh
 test-claude-reaper.sh
-test-cli-version-debug.sh
 test-cockpit-wake-fleet.sh
 test-conflict-resolver.sh
 test-cost-enforcement.sh
 test-credential-lifecycle.sh
-test-cross-judge-guard.sh
 test-curator-auto-decompose.sh
 test-curator-decision-logging.sh
 test-curator-freshness.sh
 test-curator-p0-demotion.sh
-test-default-flip-guard.sh
-test-effective-010-completion.sh
 test-error-path-coverage.sh
 test-flake-autorerun.sh
 test-fleet-bootstrap.sh
@@ -152,31 +142,20 @@ test-gap-templates.sh
 test-gap-workflow-status.sh
 test-gh-api-probe.sh
 test-gh-shim-script-attribution.sh
-test-infra-1025-atomic-claim.sh
 test-infra-109-worktree-boundary.sh
 test-infra-119-bot-merge-hang.sh
-test-infra-250-v1-retirement.sh
-test-infra-254-pwa-root-redirect.sh
-test-infra-258-reaper-partial-delivery.sh
 test-inspect-resume-scrap.sh
-test-install-ambient-hooks.sh
 test-install-gh-shim-worktree-safe.sh
 test-install-pr-auto-rebase.sh
 test-keystone-cascade.sh
 test-known-flakes-gate.sh
 test-lint-handoff-comment.sh
 test-mcp-coord-smoke.sh
-test-merge-driver-ci-yml.sh
-test-merge-driver-pre-commit.sh
-test-merge-driver-state-sql.sh
 test-merge-group-coverage.sh  # reason: INFRA-2095 — merge-queue trigger coverage gate (advisory; gh-api driven, queries branch protection); not preflight-shaped because it requires GitHub repo context
-test-meta-011-git-stomp.sh
 test-no-manual-ship-bypass.sh
-test-no-verify-audit.sh
 test-orphan-pr-closer.sh
 test-orphan-worktree-prune.sh
 test-per-worktree-target-guard.sh
-test-pick-and-claim-lockdir.sh
 # INFRA-2741: test-mission-picker.sh now mirrored as Scripts-scope
 # always-on gate ("mission-picker" in preflight.rs). Pure-Python unit test
 # (MISSION-011), no network, <2s — belongs in the local fast loop.
@@ -200,12 +179,10 @@ test-pre-push-test-gate.sh
 test-precommit-guard-audit.sh
 test-precommit-strict-replay.sh
 test-prepush-worktree-cd.sh
-test-prereg-content-guard.sh
 test-required-model.sh
 test-review-handoff-reengage.sh
 test-rollback-gap.sh
 test-rollup-cascade-cancel.sh
-test-rollup-semantic.sh
 test-run-consolidation.sh
 test-run-fleet-cross-repo.sh
 test-sandbox-isolation.sh
@@ -215,7 +192,6 @@ test-stale-binary-ship-blocked.sh
 test-stale-branch-rebase.sh
 test-stale-process-watchdog.sh
 test-status-flip-proof-of-merge.sh
-test-subagent-epilogue-ref.sh
 test-tool-normalize.sh
 test-triage-test-failure.sh
 test-velocity-trending.sh
@@ -236,7 +212,6 @@ test-pr-scope-title-fallback.sh
 test-bot-merge-arm-ship-order.sh
 test-operator-recovery.sh
 test-pillar-dashboard.sh
-test-merge-driver-ci-yml-add-row.sh
 test-edit-replay.sh
 test-pwa-auth-toast-stream.sh
 test-pillar-balance-guard.sh
@@ -253,9 +228,7 @@ test-state-db-restore.sh
 test-pwa-e2e-gap-workflow.sh
 test-pwa-security.sh
 test-bot-merge-auto-close.sh
-test-cli-help.sh
 test-cli-fleet-coord.sh
-test-cli-integration.sh
 test-cli-output-format.sh
 test-orchestrate-session-summary.sh
 test-fleet-brief.sh
@@ -272,9 +245,7 @@ docs/gaps.yaml must not exist          # reason: inline shell check (no script p
 fleet brief subcommand                  # reason: needs cargo build + CHUMP_BIN; test-fleet-brief.sh allowlisted above
 orchestrate session-summary             # reason: needs cargo build + CHUMP_BIN; test-orchestrate-session-summary.sh above
 bot-merge auto-close handshake          # reason: needs CHUMP_BIN env var; test-bot-merge-auto-close.sh above
-CLI help system consistency             # reason: needs CHUMP_BIN env var; test-cli-help.sh above
 CLI fleet + health + coord              # reason: needs CHUMP_BIN env var; test-cli-fleet-coord.sh above
-CLI integration tests                   # reason: needs CHUMP_BIN env var; test-cli-integration.sh above
 chump gap list domain summary           # reason: needs cargo build + CHUMP_BIN; test-gap-list-domain-summary.sh above
 chump gap list done-format              # reason: needs cargo build + CHUMP_BIN; test-gap-list-done-format.sh above
 state.db corruption recovery            # reason: needs CHUMP_BIN env var; test-state-db-restore.sh above
@@ -303,10 +274,8 @@ INFRA-1318 Phase 2 end-to-end smoke      # reason: INFRA-1877 — spins up pytho
 # from allowlist; mirror exists. Runs in <1s, so the "long-running" concern
 # is moot when the gate is wired correctly.
 scripts/ci/test-pr-terminal-state.sh         # reason: INFRA-1981 helper needs gh API + PR context; not exposed to local preflight
-scripts/ci/test-subagent-budget-kill.sh      # reason: INFRA-1972 parent-enforced kill is a runtime supervisor test; spawns + kills child processes; not preflight-shaped
 scripts/ci/test-rebase-coordination.sh       # reason: INFRA-1974 per-branch lock test simulates concurrent rebase; needs git fixture + race window; CI-only
 scripts/ci/test-open-pr-dup-detection.sh     # reason: INFRA-1982 needs gh API + repo state; not preflight-shaped
-scripts/ci/test-md-links-loop.sh             # reason: INFRA-1925 md-links curator smoke; tests a curator loop, not a per-commit gate
 scripts/ci/test-graphql-debounce.sh          # reason: INFRA-1968 debounce when resets_at unknown; tests timer logic, not a per-commit gate
 scripts/ci/test-jit-binary-refresh.sh        # reason: INFRA-1977 H8 critique fix; tests JIT binary refresh during claim; needs full claim fixture
 scripts/ci/test-stale-worktree-reaper-tmp.sh # reason: INFRA-2020 reaper extension; tests /tmp/chump-* worktree cleanup; reaper is daemon-side, not preflight
@@ -380,9 +349,6 @@ test-inbox-lane-filter.sh     # reason: EFFECTIVE-029 lane-filter is SessionStar
 # preflight already runs `cargo test`.
 test-chump-improve.sh  # reason: Tier-C integration test; logic covered by cargo test (src/improve.rs); full shell integration test deferred mirror EFFECTIVE-177
 chump improve orchestrator  # reason: Tier-C integration test (test-chump-improve.sh); cargo test covers the logic in src/improve.rs; full shell mirror deferred (EFFECTIVE-177)
-test-review-handoff-smoke.sh       # reason: INFRA-774 end-to-end smoke (synthesize CI failure + simulate review --serve + telemetry assertions); needs the full CI fixture env, not a local preflight gate
 test-auth-status.sh       # reason: RESILIENT-086 auth validity probe; runs in audit shard with CI credential context (mirror in preflight is a follow-up)
-test-css-token-discipline.sh  # reason: INFRA-1590 CSS token-discipline smoke; runs linter against fixture files; Tier-C local test, deferred mirror in src/preflight.rs
-CSS token-discipline smoke (INFRA-1590)  # reason: test-css-token-discipline.sh alias; fixture-based, fully local
 curator pillar no-overlap — every agent declares unique primary_pillar (MISSION-003)       # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up
 inbox-watcher pattern — every checked-in agent arms event-driven wake (INFRA-1936 / MISSION-003)   # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up

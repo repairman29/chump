@@ -91,6 +91,14 @@ Documented for completeness; do **not** file follow-ups.
 | gap-ID lease uniqueness gate | INFRA-1970/INFRA-3379 — `test-gap-id-lease-uniqueness.sh` requires `CHUMP_BIN`; duplicate-PR race-window guard needs the compiled binary under concurrent invocation |
 | UUID gap-ID compatibility | INFRA-3379 — `test-uuid-gap-id-compat.sh` requires `CHUMP_BIN`; UUID gap-ID compatibility fixture drives the real CLI |
 | release --lease | INFRA-3379 — `test-release-lease-flag.sh` requires `CHUMP_BIN`; `--lease` release flag fixture drives the real CLI |
+| CLI help system consistency | INFRA-3383 — `test-cli-help.sh`; falls back to `cargo build --bin chump` when no binary is on `PATH`; too slow for the preflight fast loop (step name matched, not script path — the CI step wraps it in a multi-line `run: \|` with a `CHUMP_BIN=` prefix line) |
+| CLI integration tests | INFRA-3383 — `test-cli-integration.sh`; requires a compiled `chump` binary on `PATH` to exercise; not preflight-fast-loop shaped (step name matched — see note above) |
+| `test-infra-254-pwa-root-redirect.sh` | INFRA-3383 — runs `cargo build --bin chump` and spins up the PWA server on a port; too heavyweight for preflight |
+| `test-subagent-budget-kill.sh` | INFRA-3383 — INFRA-1972 parent-enforced kill is a runtime supervisor test that spawns + kills child processes; not preflight-shaped |
+| `test-md-links-loop.sh` | INFRA-3383 — INFRA-1925 md-links curator loop smoke; tests a curator daemon loop, not a per-commit gate |
+| `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
+| `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
+| `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
 
 ## Promotion criteria for Tier C → Tier A
 

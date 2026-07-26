@@ -1492,6 +1492,142 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-infra-115-lease-ttl-file.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-3383 (META-086 misc-hygiene cluster): mirror 25 docs/CLI/
+        // git-hooks hygiene gates that were previously only allowlisted in
+        // preflight-ci-parity-exceptions.txt. Each is a fixture-based or
+        // pure-shell check, no chump binary build required, <1s each —
+        // safe for the fast local loop. All always-on (no per-gate bypass
+        // env var) per the EFFECTIVE-094 bypass-var debt-ceiling, same
+        // precedent as the INFRA-3379/INFRA-3377 cluster mirrors above.
+        steps.push(step(
+            "book-sync-guard",
+            &["bash", "scripts/ci/test-book-sync-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "doc-freshness",
+            &["bash", "scripts/ci/test-doc-freshness.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "no-claude-leak",
+            &["bash", "scripts/ci/test-no-claude-leak.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "no-verify-audit",
+            &["bash", "scripts/ci/test-no-verify-audit.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "css-token-discipline-smoke",
+            &["bash", "scripts/ci/test-css-token-discipline.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "cross-judge-guard",
+            &["bash", "scripts/ci/test-cross-judge-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "prereg-content-guard",
+            &["bash", "scripts/ci/test-prereg-content-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "effective-010-completion",
+            &["bash", "scripts/ci/test-effective-010-completion.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "default-flip-guard",
+            &["bash", "scripts/ci/test-default-flip-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "install-ambient-hooks",
+            &["bash", "scripts/ci/test-install-ambient-hooks.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-ci-yml-add-row",
+            &["bash", "scripts/ci/test-merge-driver-ci-yml-add-row.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-ci-yml",
+            &["bash", "scripts/ci/test-merge-driver-ci-yml.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-coverage",
+            &["bash", "scripts/ci/test-merge-driver-coverage.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-gap-yaml",
+            &["bash", "scripts/ci/test-merge-driver-gap-yaml.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-pre-commit",
+            &["bash", "scripts/ci/test-merge-driver-pre-commit.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-state-sql",
+            &["bash", "scripts/ci/test-merge-driver-state-sql.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-1025-atomic-claim",
+            &["bash", "scripts/ci/test-infra-1025-atomic-claim.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-250-v1-retirement",
+            &["bash", "scripts/ci/test-infra-250-v1-retirement.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-257-doc-only-guards",
+            &["bash", "scripts/ci/test-infra-257-doc-only-guards.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-258-reaper-partial-delivery",
+            &[
+                "bash",
+                "scripts/ci/test-infra-258-reaper-partial-delivery.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "attribution-portable",
+            &["bash", "scripts/ci/test-attribution-portable.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "cli-version-debug",
+            &["bash", "scripts/ci/test-cli-version-debug.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "subagent-epilogue-ref",
+            &["bash", "scripts/ci/test-subagent-epilogue-ref.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-and-claim-lockdir",
+            &["bash", "scripts/ci/test-pick-and-claim-lockdir.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "meta-011-git-stomp",
+            &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],
+            GateKind::Scripts,
+        ));
     }
 
     // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
