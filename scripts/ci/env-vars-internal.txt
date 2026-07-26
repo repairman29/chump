@@ -1242,3 +1242,4 @@ CHUMP_PREFLIGHT_DISK_FLOOR_GB
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S
+CHUMP_RESERVE_GIT_HISTORY_CHECK
