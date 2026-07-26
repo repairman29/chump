@@ -8979,6 +8979,84 @@ async fn main() -> Result<()> {
                 }
                 // ── end CREDIBLE-107 evidence gate ──────────────────────────────────────
 
+                // ── MISSION-045: outcome gate for P0/P1 (anti-bloat keystone) ──
+                // Every P0/P1 gap must trace to a real outcome (a row in the
+                // outcomes table). Filing a high-priority gap with no outcome is
+                // how the backlog fills with self-referential meta-work — the
+                // 2026-07-26 bankruptcy closed 798 such untraced gaps. P2/P3 stay
+                // permissionless (exploratory). Bypass: --no-outcome-required or
+                // CHUMP_GAP_RESERVE_NO_OUTCOME=1, both audited so the pattern is
+                // visible. Pairs with the picker tie-break toward traced gaps.
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str()) {
+                        let bypass_env =
+                            std::env::var("CHUMP_GAP_RESERVE_NO_OUTCOME").as_deref() == Ok("1");
+                        let no_outcome_required = args.iter().any(|a| a == "--no-outcome-required");
+                        let oid = reserve_outcome_id
+                            .as_deref()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let outcome_valid =
+                            !oid.is_empty() && matches!(store.get_outcome(&oid), Ok(Some(_)));
+
+                        if oid.is_empty() && !no_outcome_required && !bypass_env {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --outcome <id> (MISSION-045 anti-bloat gate)."
+                            );
+                            eprintln!("Every high-priority gap must trace to a real outcome:");
+                            if let Ok(outs) = store.list_outcomes() {
+                                for o in outs.iter().take(12) {
+                                    eprintln!("  {}  {}", o.id, o.title);
+                                }
+                            }
+                            eprintln!(
+                                "Bypass: --no-outcome-required (audited) or CHUMP_GAP_RESERVE_NO_OUTCOME=1. P2/P3 need no outcome."
+                            );
+                            std::process::exit(1);
+                        }
+                        if !oid.is_empty() && !outcome_valid {
+                            eprintln!();
+                            eprintln!("chump gap: --outcome '{oid}' is not a valid outcome id.");
+                            eprintln!(
+                                "Run `chump outcome list` for valid outcomes, or create one first."
+                            );
+                            std::process::exit(1);
+                        }
+                        if oid.is_empty() && (no_outcome_required || bypass_env) {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let bypass_reason = if no_outcome_required {
+                                "--no-outcome-required flag"
+                            } else {
+                                "CHUMP_GAP_RESERVE_NO_OUTCOME=1"
+                            };
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"outcome_gate_bypassed","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"{bypass_reason}"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: outcome_gate_bypassed (bypass={bypass_reason})"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end MISSION-045 outcome gate ────────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
