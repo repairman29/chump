@@ -576,7 +576,7 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
 ///
 /// Fails the run early if the caller passed garbage so we don't waste a
 /// provider call building a prompt for a non-gap.
-pub(crate) fn validate_gap_id(gap_id: &str) -> Result<()> {
+fn validate_gap_id(gap_id: &str) -> Result<()> {
     if gap_id.is_empty() {
         return Err(anyhow!("gap id is empty"));
     }

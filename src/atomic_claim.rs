@@ -120,17 +120,24 @@ impl ClaimArgs {
         if gap_id.starts_with("--") {
             bail!("missing GAP-ID (saw flag {gap_id})");
         }
-        // CREDIBLE-166: validate the GAP-ID format at parse time, BEFORE
-        // run_claim's autonomy gate (RESILIENT-073). A malformed ID is an arg
-        // error regardless of fleet state — otherwise `claim <bad-id>` returned
-        // "fleet stopped (AUTONOMY_LEVEL=0)" instead of a format error, masking
-        // the real problem (caught by test-cli-integration.sh). This is a pure,
-        // non-mutating string check, so it does not reintroduce the ordering bug
-        // the autonomy-first gate guards against (a failing chump-op/DB masking
-        // the kill switch). Reuses the canonical validator; the wrapper message
-        // carries "invalid"/"format" so the arg error is unambiguous.
-        if let Err(e) = crate::execute_gap::validate_gap_id(&gap_id) {
-            bail!("invalid GAP-ID format: {gap_id} ({e})");
+        // CREDIBLE-166: reject an OBVIOUSLY-malformed GAP-ID at parse time,
+        // BEFORE run_claim's autonomy gate (RESILIENT-073). Otherwise
+        // `claim <bad-id>` returned "fleet stopped (AUTONOMY_LEVEL=0)" instead of
+        // a format error, masking the real problem (test-cli-integration.sh).
+        // Deliberately LOOSE: a real GAP-ID starts with an uppercase letter and
+        // contains a '-'. This rejects args like "bad-format-id" / "12345-not-valid"
+        // WITHOUT rejecting descriptive test fixtures (INFRA-NONEXISTENT-SMOKE-TEST,
+        // RESILIENT-073-FAKE) or forcing a digit suffix — the downstream existence/
+        // status checks and the autonomy gate handle well-formed-but-blocked IDs.
+        // Pure, non-mutating check, so it does not reintroduce the ordering bug the
+        // autonomy-first gate guards against (a failing chump-op/DB masking the switch).
+        let looks_like_gap_id = gap_id
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase())
+            && gap_id.contains('-');
+        if !looks_like_gap_id {
+            bail!("invalid GAP-ID format: {gap_id} (expected DOMAIN-NUMBER, e.g. INFRA-1234)");
         }
         let mut paths: Option<String> = None;
         let mut session_id: Option<String> = None;
