@@ -1369,6 +1369,7 @@ impl GapStore {
                 if git_id_referenced(&self.repo_root, &candidate) {
                     let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
                     let ts = unix_to_iso_full(unix_now());
+                    // scanner-anchor: "kind":"gap_id_reused_from_git_history_avoided" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-1954)
                     let line = format!(
                         "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reused_from_git_history_avoided\",\
                          \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
