@@ -58,12 +58,13 @@ fi
 # INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$(dirname "$0")/../lib/resolve-main-worktree.sh"
 mkdir -p "$LOCK_DIR"
 FLOCK_PATH="$LOCK_DIR/.gap-reserve-${DOMAIN}.flock"
 
 # ── Main-worktree guard (same rationale as chump claim) ─────────────────────
-_WT_LIST="$(git worktree list --porcelain)"
-MAIN_WORKTREE_PATH="$(awk '/^worktree /{sub(/^worktree /,""); print; exit}' <<<"$_WT_LIST")"
+MAIN_WORKTREE_PATH="$(resolve_main_worktree "$0")"
 if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTREE:-0}" != "1" ]]; then
     printf '[gap-reserve] ERROR: refusing to reserve from the main worktree.\n' >&2
     printf '[gap-reserve] Use a linked worktree, or CHUMP_ALLOW_MAIN_WORKTREE=1 for tests.\n' >&2

@@ -28,14 +28,19 @@
 # This file is `.` sourced — it does NOT exec; it uses `exit 1` on
 # block which terminates the parent (pre-commit) intentionally.
 
+# INFRA-1081: source lease helper
+if [ -f "$REPO_ROOT/scripts/coord/lib/lease.sh" ]; then
+    . "$REPO_ROOT/scripts/coord/lib/lease.sh"
+fi
+
 # ------------------------------------------------------------------
 # 1c. Off-rails guard (RESILIENT-025): commit subject must mention claimed gap
 # ------------------------------------------------------------------
 
 if [ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]; then
-    _CLAIM_FILE=$(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1 || true)
+    _CLAIM_FILE=$(get_active_claim_file "$REPO_ROOT")
     if [ -n "$_CLAIM_FILE" ] && [ -f "$_CLAIM_FILE" ]; then
-        _CLAIMED_GAP=$(jq -r '.gap_id // empty' "$_CLAIM_FILE" 2>/dev/null || true)
+        _CLAIMED_GAP=$(get_claimed_gap "$_CLAIM_FILE")
         if [ -n "$_CLAIMED_GAP" ]; then
             # Use git rev-parse --git-dir to resolve COMMIT_EDITMSG correctly in worktrees
             # (in a worktree .git is a file, not a directory — $REPO_ROOT/.git/COMMIT_EDITMSG fails)
@@ -67,10 +72,10 @@ fi
 # ------------------------------------------------------------------
 
 if [ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]; then
-    _CLAIM_FILE_CP=$(find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'claim-*.json' 2>/dev/null | head -1 || true)
+    _CLAIM_FILE_CP=$(get_active_claim_file "$REPO_ROOT")
     if [ -n "$_CLAIM_FILE_CP" ] && [ -f "$_CLAIM_FILE_CP" ]; then
-        _CLAIMED_GAP_CP=$(jq -r '.gap_id // empty' "$_CLAIM_FILE_CP" 2>/dev/null || true)
-        _CLAIM_PATHS_CP=$(jq -r '.paths[]? // empty' "$_CLAIM_FILE_CP" 2>/dev/null | grep -v '^$' || true)
+        _CLAIMED_GAP_CP=$(get_claimed_gap "$_CLAIM_FILE_CP")
+        _CLAIM_PATHS_CP=$(get_claim_paths "$_CLAIM_FILE_CP")
         if [ -n "$_CLAIMED_GAP_CP" ] && [ -n "$_CLAIM_PATHS_CP" ]; then
             # Check for bypass trailer first — same bypass as RESILIENT-025
             _GIT_DIR_CP=$(git rev-parse --git-dir 2>/dev/null || true)

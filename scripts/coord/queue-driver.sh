@@ -143,7 +143,7 @@ cascade_rebase_if_hot() {
         all_prs="$(cache_query_open_non_draft_prs)"
     fi
     if [[ -z "$all_prs" ]]; then
-        all_prs=$(chump_gh pr list \
+        all_prs=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr list \
             --state open \
             --limit 100 \
             --json number,isDraft \
@@ -212,7 +212,7 @@ except Exception:
     pass
 ' 2>/dev/null)
     if [[ -z "$branch" ]]; then
-        branch=$(chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+        branch=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
     fi
     if [[ -z "$branch" ]]; then
         return 1
@@ -500,13 +500,12 @@ if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
 fi
 # Fallback: cache empty (or library missing) → one direct gh pr list call.
 if [[ -z "$behind_candidates" && -z "$dirty_candidates" ]]; then
-    behind_candidates=$(chump_gh pr list \
+    behind_candidates=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr list \
       --state open \
       --limit 50 \
       --json number,mergeStateStatus,autoMergeRequest,isDraft \
       -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "BEHIND") | .number] | sort | .[]')
-
-    dirty_candidates=$(chump_gh pr list \
+    dirty_candidates=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr list \
       --state open \
       --limit 50 \
       --json number,mergeStateStatus,autoMergeRequest,isDraft \

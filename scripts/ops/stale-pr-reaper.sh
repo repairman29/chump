@@ -49,6 +49,12 @@ BASE="${BASE:-main}"
 STALE_BEHIND_THRESHOLD="${STALE_BEHIND_THRESHOLD:-15}"
 WARN_BEHIND_THRESHOLD="${WARN_BEHIND_THRESHOLD:-25}"
 
+# INFRA-1081: source github cache lib
+# shellcheck source=scripts/coord/lib/github_cache.sh
+if [[ -f "$(dirname "$0")/../coord/lib/github_cache.sh" ]]; then
+    source "$(dirname "$0")/../coord/lib/github_cache.sh"
+fi
+
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 info()  { printf '  %s\n' "$*"; }
@@ -118,9 +124,16 @@ is_filing_pr_title() {
     esac
 }
 
-# List open PRs (number branch title)
-PRS=$(gh pr list --json number,title,headRefName \
-    --jq '.[] | "\(.number)\t\(.headRefName)\t\(.title)"' 2>/dev/null || true)
+# List open PRs (number branch title) - INFRA-1081: cache-first
+PRS=""
+if command -v cache_query_open_prs >/dev/null 2>&1; then
+    PRS=$(cache_query_open_prs | awk -F$'\t' '{print $1"\t"$3"\t"$2}' || true)
+fi
+
+if [[ -z "$PRS" ]]; then
+    PRS=$(gh pr list --json number,title,headRefName \
+        --jq '.[] | "\(.number)\t\(.headRefName)\t\(.title)"' 2>/dev/null || true)
+fi
 
 CLOSED=0
 WARNED=0
@@ -206,7 +219,15 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE; do
         # an operator can review the unique content.
         PARTIAL_FILES=""
         if [[ "${CHUMP_REAPER_PARITY_CHECK:-1}" != "0" ]]; then
-            PR_FILES=$(gh pr diff "$PR_NUM" --name-only 2>/dev/null || true)
+            # INFRA-1275: cache-first file lookup
+            PR_FILES=""
+            if command -v cache_lookup_pr_files >/dev/null 2>&1; then
+                PR_FILES=$(cache_lookup_pr_files "$PR_NUM" | tr ',' '\n' || true)
+            fi
+            if [[ -z "$PR_FILES" ]]; then
+                PR_FILES=$(gh pr diff "$PR_NUM" --name-only 2>/dev/null || true)
+            fi
+
             if [[ -n "$PR_FILES" ]]; then
                 while IFS= read -r f; do
                     [[ -z "$f" ]] && continue
