@@ -1040,7 +1040,7 @@ When done, reply with the PR number only (e.g. \"#1234\")."
                         log "spawning ${HARNESS_SPAWN_PROGRAM:-opencode} (harness=${CHUMP_AGENT_HARNESS}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
                         ( cd "$wt_path" || exit 99
                           # shellcheck disable=SC2086
-                          $TO "${HARNESS_SPAWN_PROGRAM:-opencode}" "${_model_arg[@]}" "$prompt"
+                          $TO "${HARNESS_SPAWN_PROGRAM:-opencode}" run "${_model_arg[@]}" "$prompt"
                         ) >"$cycle_log" 2>&1
                         _rc_harness=$?
                         ;;
