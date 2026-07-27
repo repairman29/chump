@@ -402,6 +402,12 @@ struct Args {
     /// run preflight against origin/main HEAD (with caching) to determine which
     /// failures are pre-existing vs. caused by the current diff.
     vs_ref: Option<String>,
+    /// EFFECTIVE-318: reproduce CI's audit shards locally. Forces scope=all +
+    /// --with-tests, and additionally runs every `scripts/ci/test-*.sh` that
+    /// audit.yml runs and that is locally-safe (auto-classified: no gh/curl/push/
+    /// network markers). Closes the "local preflight != CI" gap that makes a
+    /// failure cost a ~20-min CI round-trip instead of one local pass.
+    full: bool,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -414,12 +420,14 @@ fn parse_args(argv: &[String]) -> Args {
         bad_scope: None,
         pre_commit: false,
         vs_ref: None,
+        full: false,
     };
     let mut i = 0;
     while i < argv.len() {
         let arg = &argv[i];
         match arg.as_str() {
             "--with-tests" => a.with_tests = true,
+            "--full" => a.full = true,
             "--keep-going" => a.keep_going = true,
             "--json" => a.json = true,
             "--pre-commit" => a.pre_commit = true,
@@ -477,6 +485,10 @@ OPTIONS:
                        all     same as the full INFRA-1670 set
     --with-tests    Also run scripts/ci/test-*.sh that match the staged diff
                     (slower; off by default to keep the fast path under 60s)
+    --full          EFFECTIVE-318: reproduce CI's audit shards locally. Forces
+                    --scope all + --with-tests, then runs every audit.yml test
+                    script that is locally-safe (auto-skips network/gh gates).
+                    Slower, but one local pass replaces a ~20-min CI round-trip.
     --keep-going    Don't exit on the first failure; run all gates
     --json          Emit one JSON object per gate to stdout (machine-readable)
     --pre-commit    Enable pre-commit-only gates (docs-delta-trailer audit
@@ -720,6 +732,106 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         .collect()
 }
 
+// ── EFFECTIVE-318: --full audit-shard reproduction ──────────────────────────
+//
+// The curated whitelist above is hand-maintained and covers only the tests
+// most-often-caught-locally. `--full` instead DISCOVERS every test script that
+// audit.yml actually runs, so local preflight stays in sync with CI without a
+// human porting each gate one at a time (the toil that left ~60 of ~120 audit
+// scripts un-mirrored). Trustworthiness comes from auto-classification: a test
+// that needs the network (gh / curl / git push / smee / a live server) would
+// false-fail locally, so it is SKIPPED with a reason rather than run. We err
+// toward skipping — a false-skip only means "that one still runs in CI", while
+// a false-run would erode trust in a green `--full`.
+
+/// Extract the unique `scripts/ci/*.sh` paths that audit.yml invokes. Line-based
+/// (no YAML dep): any `scripts/ci/<name>.sh` token in the workflow is a gate the
+/// audit shards run. Returns absolute paths that exist on disk.
+fn discover_audit_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let audit = repo_root.join(".github/workflows/audit.yml");
+    let Ok(text) = std::fs::read_to_string(&audit) else {
+        return Vec::new();
+    };
+    extract_ci_script_tokens(&text)
+        .into_iter()
+        .map(|p| repo_root.join(p))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
+/// Pure token extraction (testable): every `scripts/ci/<name>.sh` referenced on
+/// a non-comment line. Deduped + sorted.
+fn extract_ci_script_tokens(text: &str) -> std::collections::BTreeSet<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for line in text.lines() {
+        // Skip comment-only lines so a commented-out gate isn't resurrected.
+        if line.trim_start().starts_with('#') {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(pos) = rest.find("scripts/ci/") {
+            let tail = &rest[pos..];
+            // Token ends at the first char not valid in our script paths.
+            let end = tail
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.')))
+                .unwrap_or(tail.len());
+            let token = &tail[..end];
+            if token.ends_with(".sh") {
+                seen.insert(token.to_string());
+            }
+            rest = &tail[end.max(1)..];
+        }
+    }
+    seen
+}
+
+/// Auto-classify a test script as safe to run in a local `--full` pass.
+/// Returns false when the script (executable lines only — comments ignored)
+/// contains a marker that needs the network / GitHub / a live daemon, which
+/// would false-fail off-CI. Conservative by design: any real marker → skip.
+fn is_local_safe_script(path: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        // Unreadable → don't run it (can't classify → skip is the safe default).
+        return false;
+    };
+    // Markers that imply a live external dependency preflight can't satisfy.
+    const NETWORK_MARKERS: &[&str] = &[
+        "gh api",
+        "gh pr",
+        "gh run",
+        "gh workflow",
+        "gh release",
+        "gh repo",
+        "gh auth",
+        "curl ",
+        "wget ",
+        "git push",
+        "git fetch",
+        "git clone",
+        "smee",
+        "nats",
+        "nc -",
+        "ncat",
+        "://api.github.com",
+        "cache_refresh_open_prs",
+    ];
+    for line in text.lines() {
+        let t = line.trim_start();
+        if t.starts_with('#') {
+            continue;
+        }
+        // Strip trailing inline comment cheaply (best-effort; markers rarely
+        // live only inside a quoted string, and a false-skip is safe anyway).
+        let code = t.split(" #").next().unwrap_or(t);
+        for m in NETWORK_MARKERS {
+            if code.contains(m) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 // ── RESILIENT-196: disk-floor guard ────────────────────────────────────────
 //
 // A full workspace build writes several GB into target/. Starting one below
@@ -824,10 +936,17 @@ pub fn run(argv: &[String]) -> i32 {
     ] {
         std::env::remove_var(k);
     }
-    let args = parse_args(argv);
+    let mut args = parse_args(argv);
     if args.help {
         print_help();
         return 0;
+    }
+    // EFFECTIVE-318: --full reproduces CI's audit shards locally — force the
+    // widest scope + script gates, then (below) add every locally-safe audit
+    // test script. One local pass instead of a ~20-min CI round-trip per miss.
+    if args.full {
+        args.scope = ScopeArg::All;
+        args.with_tests = true;
     }
     if let Some(bad) = &args.bad_scope {
         eprintln!(
@@ -1665,6 +1784,44 @@ pub fn run(argv: &[String]) -> i32 {
         }
     }
 
+    // EFFECTIVE-318: --full — reproduce CI's audit shards by running every
+    // locally-safe test script audit.yml runs that isn't already a gate above.
+    if args.full && scope.includes(GateKind::Scripts) {
+        // Paths already covered by a step above (curated whitelist + the manual
+        // mirror list), so --full only ADDS the gap, never double-runs.
+        let mut present: std::collections::BTreeSet<String> = steps
+            .iter()
+            .filter_map(|s| s.argv.iter().find(|a| a.contains("scripts/ci/")).cloned())
+            .collect();
+        let mut added = 0usize;
+        let mut skipped_net = 0usize;
+        for script in discover_audit_scripts(&repo_root) {
+            let path = script.to_string_lossy().into_owned();
+            if present.contains(&path) {
+                continue;
+            }
+            present.insert(path.clone());
+            if !is_local_safe_script(&script) {
+                skipped_net += 1;
+                continue;
+            }
+            let name: &'static str = Box::leak(
+                format!("audit: {}", script.file_name().unwrap().to_string_lossy())
+                    .into_boxed_str(),
+            );
+            steps.push(Step {
+                name,
+                argv: vec!["bash".to_string(), path],
+                kind: GateKind::Scripts,
+            });
+            added += 1;
+        }
+        eprintln!(
+            "[preflight] --full: +{added} audit gate(s) discovered from audit.yml; \
+             {skipped_net} skipped (need network/gh — CI-only)"
+        );
+    }
+
     // ── META-153: --vs baseline resolution ──────────────────────────────────
     // Resolve baseline BEFORE running HEAD gates so we can tell the operator
     // early if baseline is unavailable (and fall back gracefully per AC #4).
@@ -2440,6 +2597,73 @@ mod tests {
         assert!(!a.help);
         assert_eq!(a.scope, ScopeArg::Auto);
         assert!(a.bad_scope.is_none());
+        assert!(!a.full);
+    }
+
+    #[test]
+    fn parse_args_full_flag() {
+        let a = parse_args(&["--full".to_string()]);
+        assert!(a.full);
+    }
+
+    // ── EFFECTIVE-318 ────────────────────────────────────────────────────────
+    #[test]
+    fn extract_ci_script_tokens_finds_dedupes_and_skips_comments() {
+        let yml = "\
+      - name: a\n\
+        run: bash scripts/ci/test-alpha.sh\n\
+      - name: b\n\
+        run: CHUMP_X=1 bash scripts/ci/test-beta.sh && echo ok\n\
+      - name: dup\n\
+        run: bash scripts/ci/test-alpha.sh\n\
+        # run: bash scripts/ci/test-commented-out.sh\n\
+      - name: notsh\n\
+        run: cat scripts/ci/env-vars-internal.txt\n";
+        let got = extract_ci_script_tokens(yml);
+        assert!(got.contains("scripts/ci/test-alpha.sh"));
+        assert!(got.contains("scripts/ci/test-beta.sh"));
+        // commented-out gate is not resurrected
+        assert!(!got.contains("scripts/ci/test-commented-out.sh"));
+        // non-.sh reference ignored
+        assert!(!got.contains("scripts/ci/env-vars-internal.txt"));
+        // dedup: alpha appears once
+        assert_eq!(
+            got.iter()
+                .filter(|t| *t == "scripts/ci/test-alpha.sh")
+                .count(),
+            1
+        );
+    }
+
+    fn _write_tmp_script(name: &str, body: &str) -> std::path::PathBuf {
+        let p =
+            std::env::temp_dir().join(format!("chump_pf_318_{}_{}.sh", std::process::id(), name));
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn is_local_safe_script_flags_network_markers() {
+        let p = _write_tmp_script("net", "#!/bin/bash\nset -e\ngh api repos/x/y\n");
+        assert!(!is_local_safe_script(&p), "gh api → not local-safe");
+        let _ = std::fs::remove_file(&p);
+
+        let p2 = _write_tmp_script("push", "#!/bin/bash\ngit push origin HEAD\n");
+        assert!(!is_local_safe_script(&p2), "git push → not local-safe");
+        let _ = std::fs::remove_file(&p2);
+    }
+
+    #[test]
+    fn is_local_safe_script_passes_pure_local_and_ignores_comments() {
+        let p = _write_tmp_script(
+            "clean",
+            "#!/bin/bash\n# this test does not call gh api at all\nsqlite3 :memory: 'select 1'\necho ok\n",
+        );
+        assert!(
+            is_local_safe_script(&p),
+            "pure-local script with marker only in a comment is safe"
+        );
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]
