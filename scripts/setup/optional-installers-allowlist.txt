@@ -113,3 +113,4 @@ install-daemon-exit-loop-watcher-launchd.sh
 install-ghost-gap-reaper-launchd.sh
 install-auto-deploy-launchd.sh
 install-node-refresh-systemd.sh
+install-opencode-harness.sh
