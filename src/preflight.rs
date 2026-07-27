@@ -662,6 +662,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
         "scripts/ci/test-event-registry-coverage.sh",
+        // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
+        // without an outcome (when outcomes exist), the audited flag + empty-DB
+        // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
+        "scripts/ci/test-outcome-gate.sh",
         // INFRA-2496: audit parser correctness regression — guards against
         // merge-conflict clobbers silently dropping registry kinds.
         "scripts/ci/test-event-registry-audit-regression.sh",
