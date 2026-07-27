@@ -564,6 +564,29 @@ pub async fn register_worker_rpc_handlers(
     nats: &async_nats::Client,
     session_id: &str,
 ) -> Result<(), RpcError> {
+    // INFRA-1588: Emit session_start to ambient for worker attribution.
+    let start_event = format!(
+        "{{\"ts\":\"{}\",\"session\":\"{}\",\"kind\":\"session_start\",\"role\":\"worker\"}}",
+        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        session_id
+    );
+    let _ = append_ambient(&start_event);
+
+    // Start background heartbeat task for this worker session.
+    let session_clone = session_id.to_string();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let hb = format!(
+                "{{\"ts\":\"{}\",\"session\":\"{}\",\"kind\":\"heartbeat\"}}",
+                chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                session_clone
+            );
+            let _ = append_ambient(&hb);
+        }
+    });
+
     // ask-eta stub handler
     serve_rpc_with_nats(Some(nats), session_id, "ask-eta", |_args| {
         Ok(serde_json::json!({"eta_seconds": null}))
@@ -627,10 +650,27 @@ fn append_ambient(line: &str) -> std::io::Result<()> {
     use std::io::Write;
     let log = std::env::var("CHUMP_AMBIENT_LOG")
         .unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string());
+
+    // INFRA-1588: avoid absolute path if it starts with current dir to stay portable in worktrees.
+    let log_path = if let Ok(cwd) = std::env::current_dir() {
+        let p = std::path::PathBuf::from(&log);
+        if p.is_absolute() && p.starts_with(&cwd) {
+            p.strip_prefix(&cwd).unwrap().to_path_buf()
+        } else {
+            p
+        }
+    } else {
+        std::path::PathBuf::from(&log)
+    };
+
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
     let mut f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log)?;
+        .open(log_path)?;
     writeln!(f, "{}", line)
 }
 
