@@ -8,7 +8,7 @@
 #
 # Logic mirrors src/version.rs INFRA-825 staleness check:
 #   - Read the binary's baked SHA (chump --version-json prints CHUMP_BUILD_SHA)
-#   - git log <baked>..origin/main -- src/gap_store.rs src/main.rs
+#   - git log <baked>..origin/main -- src/main.rs crates/chump-gap-store/src/lib.rs
 #   - If non-empty, rebuild via `cargo install --path . --bin chump --force`
 #
 # Designed for launchd (com.chump.binary-refresh.plist, hourly) and on-demand
@@ -75,7 +75,7 @@ if [[ "$BAKED_SHA" == "unknown" || -z "$BAKED_SHA" ]]; then
 fi
 
 # Count commits touching gap-store-affecting files since baked SHA.
-COMMITS_AHEAD=$(git log --oneline "$BAKED_SHA..origin/main" -- src/gap_store.rs src/main.rs 2>/dev/null | wc -l | tr -d ' ')
+COMMITS_AHEAD=$(git log --oneline "$BAKED_SHA..origin/main" -- src/main.rs src/gap_store.rs crates/chump-gap-store/src/lib.rs 2>/dev/null | wc -l | tr -d ' ')
 
 if [[ "$MODE" == "force" ]]; then
     REBUILD=1

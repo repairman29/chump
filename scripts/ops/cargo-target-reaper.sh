@@ -56,6 +56,16 @@ DISK_CRITICAL_GB="${CHUMP_DISK_CRITICAL_GB:-20}"
 RUNNER_CACHE_BASE="${CHUMP_CARGO_REAPER_RUNNER_CACHE:-${HOME}/.cache/chump-runner/cargo-target}"
 RUNNER_HOT_BIN_AGE_H="${CHUMP_CARGO_REAPER_RUNNER_HOT_AGE_H:-24}"
 
+# INFRA-1211: shared worktree scanning + github cache libs
+# shellcheck source=scripts/lib/worktree-iter.sh
+if [[ -f "$(dirname "$0")/../lib/worktree-iter.sh" ]]; then
+    source "$(dirname "$0")/../lib/worktree-iter.sh"
+fi
+# shellcheck source=scripts/coord/lib/github_cache.sh
+if [[ -f "$(dirname "$0")/../coord/lib/github_cache.sh" ]]; then
+    source "$(dirname "$0")/../coord/lib/github_cache.sh"
+fi
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --execute)            EXECUTE=1 ;;
@@ -270,37 +280,18 @@ fi
 #   permanent: rm -rf failed (path gone mid-reap, permission error, etc.).
 _tmp_orphan_count=0
 
-# Build set of registered worktree paths. Handle /tmp ↔ /private/tmp on macOS.
-# SAFETY: if git worktree list fails or returns empty (e.g. REPO_ROOT is not a git
-# checkout), we SKIP the /tmp scan entirely — fail-closed protects active worktrees.
-_registered_wts=$'\n'  # newline-delimited
-_wt_list_raw=""
-# Support override for testing: CHUMP_CARGO_REAPER_GIT_DIR overrides the git root.
-_GIT_DIR_FOR_WTS="${CHUMP_CARGO_REAPER_GIT_DIR:-$REPO_ROOT}"
-_wt_list_raw="$(git -C "$_GIT_DIR_FOR_WTS" worktree list --porcelain 2>/dev/null || true)"
-
-if [[ -z "$_wt_list_raw" ]]; then
-    echo "[cargo-target-reaper] WARN: git worktree list returned empty — skipping /tmp orphan scan (fail-safe)"
-    _skip_tmp_scan=1
+# Build set of registered worktree paths (INFRA-1211: use shared scanner).
+_registered_wts=$'\n'
+if command -v scan_worktrees >/dev/null 2>&1; then
+    for _wt in $(scan_worktrees --include-tmp --include-dot-claude); do
+        _registered_wts="${_registered_wts}${_wt}"$'\n'
+    done
 else
-    _skip_tmp_scan=0
+    # Fallback to legacy scan if lib missing
+    _wt_list_raw="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null || true)"
     while IFS= read -r _wt_line; do
         if [[ "$_wt_line" == worktree\ * ]]; then
-            _wt_path="${_wt_line#worktree }"
-            _registered_wts="${_registered_wts}${_wt_path}"$'\n'
-            # Add the /private/tmp ↔ /tmp symlink variant so macOS paths match either way.
-            # RESILIENT-118: must use variable-stored patterns. Inline literal
-            # backslash-escapes (e.g. `${var/\/tmp\//\/private\/tmp\/}`) are
-            # treated by bash as literal `\/`, producing strings like
-            # `\/tmp\/chump-foo` that never match the iteration candidates —
-            # so every active /tmp worktree on macOS got misidentified as
-            # orphaned and its target/ was reaped mid-build.
-            _tmp_pat='/tmp/'
-            _priv_pat='/private/tmp/'
-            case "$_wt_path" in
-                /tmp/*)          _registered_wts="${_registered_wts}${_wt_path//$_tmp_pat/$_priv_pat}"$'\n' ;;
-                /private/tmp/*)  _registered_wts="${_registered_wts}${_wt_path//$_priv_pat/$_tmp_pat}"$'\n' ;;
-            esac
+            _registered_wts="${_registered_wts}${_wt_line#worktree }"$'\n'
         fi
     done <<< "$_wt_list_raw"
 fi
@@ -308,10 +299,8 @@ fi
 # Support override for testing: CHUMP_CARGO_REAPER_TMP_GLOB controls the scan path.
 _TMP_GLOB="${CHUMP_CARGO_REAPER_TMP_GLOB:-/tmp/chump-*}"
 echo "[cargo-target-reaper] Scanning ${_TMP_GLOB}/target/ (orphaned worktrees)…"
-[[ "$_skip_tmp_scan" == "1" ]] && echo "  SKIP (git worktree list failed — fail-safe)" && _TMP_GLOB=""
 
 # META-117/B: materialize _registered_wts to a tempfile once before loop
-# (avoids printf | grep -q pipefail race — CLAUDE_GOTCHAS INFRA-755 class)
 _META117_REG_WTS_BUF="$(mktemp)"
 trap 'rm -f "$_META117_REG_WTS_BUF"' EXIT
 printf '%s' "$_registered_wts" > "$_META117_REG_WTS_BUF"
@@ -428,8 +417,18 @@ for _lease_file in "${REPO_ROOT}/.chump-locks"/*.json; do
     _branch=$(git -C "$_lease_wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
     [[ -n "$_branch" ]] || continue
 
-    # Check: does a PR exist for this branch?
-    _pr_json=$(gh pr list --head "$_branch" --json number,autoMergeRequest,headRefOid --limit 1 2>/dev/null || true)
+    # Check: does a PR exist for this branch? (INFRA-1081: cache-first)
+    _pr_json=""
+    if command -v cache_lookup_pr_by_branch >/dev/null 2>&1; then
+        _pr_json=$(cache_lookup_pr_by_branch "$_branch" 2>/dev/null || true)
+        if [[ -n "$_pr_json" ]]; then
+            _pr_json="[$_pr_json]" # wrap in array to match gh pr list --json output shape
+        fi
+    fi
+
+    if [[ -z "$_pr_json" ]]; then
+        _pr_json=$(gh pr list --head "$_branch" --json number,autoMergeRequest,headRefOid --limit 1 2>/dev/null || true)
+    fi
     [[ -n "$_pr_json" ]] || continue
     _pr_count=$(echo "$_pr_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))" 2>/dev/null || echo 0)
     [[ "$_pr_count" -gt 0 ]] || continue

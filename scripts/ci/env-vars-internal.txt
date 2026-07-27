@@ -340,6 +340,9 @@ CHUMP_AMBIENT_MAX_MB
 CHUMP_AGENT_HARNESS
 CHUMP_COORD_BIN
 CHUMP_NATS_URL
+# INFRA-2248: standard NATS broker URL fallback read by spawn_worker_tool.sh env
+# when CHUMP_NATS_URL is unset (mesh LocalProcessTransport worker spawn).
+NATS_URL
 # ── INFRA-1166: REST-direct merge fast path ──────────────────────────────
 CHUMP_BOT_MERGE_REST_DIRECT
 # ── INFRA-1229: stale-rebase threshold (commits behind before forced rebase) ─

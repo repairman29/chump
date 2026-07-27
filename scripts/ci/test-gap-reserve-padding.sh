@@ -32,6 +32,10 @@ sandbox_setup() {
     # (chump-doctor preflight). Sandbox needs this lib too or the source line
     # at the top of gap-reserve.sh aborts under set -euo pipefail.
     cp "$REPO_ROOT/scripts/lib/chump-preflight.sh" "$sandbox/scripts/lib/chump-preflight.sh"
+    # INFRA-3431: gap-reserve.sh now also sources scripts/lib/resolve-main-worktree.sh
+    # (main-worktree resolution refactor). Sandbox needs this lib too or the source
+    # line at the top of gap-reserve.sh aborts silently under set -euo pipefail.
+    cp "$REPO_ROOT/scripts/lib/resolve-main-worktree.sh" "$sandbox/scripts/lib/resolve-main-worktree.sh"
     # Create mock flock for systems that don't have it (e.g., macOS)
     cat > "$sandbox/bin/flock" <<'FLOCK_EOF'
 #!/bin/bash

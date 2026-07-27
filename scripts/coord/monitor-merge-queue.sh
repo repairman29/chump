@@ -28,8 +28,7 @@
 # Bypass: CHUMP_MERGE_QUEUE_MONITOR=0 exits 0 immediately.
 
 set -uo pipefail
-
-: "${MONITOR_INTERVAL_S:=10}"
+: "${MONITOR_INTERVAL_S:=60}"
 : "${QUEUE_ALERT_THRESHOLD:=50}"
 : "${QUEUE_CRITICAL_THRESHOLD:=100}"
 : "${MONITOR_ONCE:=0}"
@@ -43,6 +42,8 @@ fi
 # Resolve repo root + ambient log.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Source chump_gh wrapper for rate-limit awareness + ambient recording
+source "$SCRIPT_DIR/lib/github.sh"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 mkdir -p "$(dirname "$AMBIENT")"
 
@@ -69,13 +70,12 @@ _timeout_cmd() {
 
 gh_query_queued_workflows() {
     # Count GitHub Actions runs with status=queued. Timeout after 8s.
-    _timeout_cmd 8 gh run list --status queued --json databaseId --limit 100 \
+    CHUMP_GH_CALL_CRITICALITY=background _timeout_cmd 8 chump_gh run list --status queued --json databaseId --limit 100 \
         --jq 'length' 2>/dev/null || echo "ERROR"
 }
-
 gh_query_auto_merge_prs() {
     # Count open PRs with autoMergeRequest set. Uses REST search.
-    _timeout_cmd 8 gh pr list --state open --json autoMergeRequest \
+    CHUMP_GH_CALL_CRITICALITY=background _timeout_cmd 8 chump_gh pr list --state open --json autoMergeRequest \
         --jq '[.[] | select(.autoMergeRequest != null)] | length' 2>/dev/null \
     || echo "ERROR"
 }
