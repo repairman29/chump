@@ -9353,6 +9353,50 @@ async fn main() -> Result<()> {
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                // MISSION-045: close-side outcome gate — refuse to flip a P0/P1 gap
+                // to done without an outcome_id. Backstop for the reserve gate
+                // (catches gaps filed via CHUMP_GAP_RESERVE_NO_OUTCOME=1 or pre-
+                // dating it). Bypass: --no-outcome-required or the same env var
+                // (audited). P2/P3 unaffected — permissionless.
+                if let Ok(Some(g)) = store.get(&gap_id) {
+                    let is_p01 = matches!(g.priority.as_str(), "P0" | "P1");
+                    let traced = g
+                        .outcome_id
+                        .as_deref()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false);
+                    let bypass = std::env::var("CHUMP_GAP_RESERVE_NO_OUTCOME").as_deref()
+                        == Ok("1")
+                        || args.iter().any(|a| a == "--no-outcome-required");
+                    if is_p01 && !traced && !bypass {
+                        eprintln!();
+                        eprintln!(
+                            "chump gap ship: P0/P1 gap {gap_id} has no outcome_id (MISSION-045 close gate)."
+                        );
+                        eprintln!(
+                            "Link it first: chump outcome link {gap_id} --outcome <id>  (see: chump outcome list)"
+                        );
+                        eprintln!(
+                            "Bypass: --no-outcome-required or CHUMP_GAP_RESERVE_NO_OUTCOME=1 (audited)."
+                        );
+                        std::process::exit(1);
+                    }
+                    if is_p01 && !traced && bypass {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":"{ts}","kind":"outcome_gate_bypassed","phase":"ship","gap_id":"{gap_id}"}}"#
+                            );
+                        }
+                    }
+                }
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
                 let why = args.iter().any(|a| a == "--why");
                 // INFRA-156: --closed-pr N stamps the closure PR number on the

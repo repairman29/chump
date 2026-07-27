@@ -14,8 +14,9 @@ of yet-another-INFRA-fix.
 MISSION-028 FIX: this file now mirrors the ranking logic from _pick_gap.py
 (the CANONICAL ranking source). When changing ranking behaviour, change
 _pick_gap.py first and mirror here. Key invariants:
-  - Sort tuple: (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
+  - Sort tuple: (-affinity_score, effective_prio, mission_rank, outcome_rank, effort_rank, age, id)
   - mission_rank=0 for MISSION-linked gaps, 1 otherwise; causes MISSION gaps to win
+  - outcome_rank=0 for gaps traced to any outcome, 1 otherwise (MISSION-045 tie-break)
     within the same priority band (e.g. P0-MISSION beats P0-self-maintenance).
   - substrate P0 still beats mission P1 because effective_prio is compared first.
   - P0+domain=MISSION gaps bypass the sonnet xs-effort gate (mirroring
@@ -719,12 +720,22 @@ def main() -> int:
         #   (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
-        # Primary sort: affinity (desc), effective priority, mission rank, effort, created_at.
+        # MISSION-045: outcome_rank = 0 for any gap traced to an outcome, 1 for
+        # untraced. Placed AFTER mission_rank so active-mission gaps still win
+        # first, but among the rest a traced gap beats an untraced one — the
+        # picker-side complement to the reserve-time outcome gate, nudging the
+        # fleet toward work that names the value it serves without breaking
+        # permissionless picking (untraced P2/P3 remain pickable, just later).
+        outcome_rank = 0 if (g.get("outcome_id") or "").strip() else 1
+
+        # Primary sort: affinity (desc), effective priority, mission rank,
+        # outcome rank, effort, created_at.
         candidates.append(
             (
                 -affinity_score,
                 effective_prio,
                 mission_rank,
+                outcome_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
