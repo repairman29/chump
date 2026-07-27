@@ -179,6 +179,14 @@ jobs:
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-done-format.sh
 
+      - name: outcome gate — P0/P1 blocked w/o outcome, empty-DB skip, audited flag (MISSION-045)
+        if: matrix.shard == 1
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          export REPO_ROOT="$(pwd)"
+          source scripts/ci/lib/discover-chump-bin.sh
+          bash scripts/ci/test-outcome-gate.sh
+
       - name: state.db corruption recovery — restore from state.sql (INFRA-538)
         if: matrix.shard == 1
         run: |
