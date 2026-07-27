@@ -20,6 +20,7 @@ mod agent_turn;
 // Re-exported at the crate root so existing `crate::ambient_emit::*` callers
 // (18+ across the binary) keep working without churn.
 pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
+mod almanac_tool;
 mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;
