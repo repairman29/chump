@@ -31,6 +31,42 @@ live. "Offline-first" is a tier-3 differentiator, not the spine. The fleet's
 behavior (reliable auto-merge, conflict-resolving rebases, healing CI gates)
 IS what customers like Marcus pay for.
 
+## The ChumpOS arc — the multi-cycle north star (2026-07-27)
+
+> Chump is an **agentic operating system**: the coordination + governance layer
+> that runs a fleet of swappable harnesses to turn problems into shipped tools,
+> with the human at ring-0, not in the conductor's chair. The weekly cycles
+> below execute *inside* this arc. Outcome: **CHUMPOS**. Done-state: anyone
+> points it at a real problem, walks away, and gets a finished, honest tool.
+
+**How it's powered (two layers, both already live):** internal inference runs on
+the free-provider cascade (`CHUMP_CASCADE_ENABLED`, gemini-biased for reasoning,
+quality-tracked + auto-demoting); code-writing **workers** run on a swappable
+harness (`CHUMP_AGENT_HARNESS`), with OpenCode as the model gateway (many models,
+incl. subscription-backed) for the bulk and Claude reserved as the hard-ship
+fallback. Harness-agnostic but governed: any harness that meets
+[`HARNESS_CONTRACT.md`](process/HARNESS_CONTRACT.md) and *earns its place by
+measured quality* runs; the contracts and gates do not move.
+
+**The phases (pre-mortem-hardened — scaling is gated, not free):**
+
+| Phase | Goal | Done / scoreboard | Umbrella |
+|---|---|---|---|
+| 0 | Substrate & governance: Hetzner Linux host, ephemeral worktrees + one capped target + a disk-floor GATE (not six reapers), worker-scaling *formula*, usage ceiling, systemd daemon parity | disk flat, sub not exhausted, 7d unattended | **MISSION-065** |
+| 1 | Prove hands-off: instrument + verify zero-touch, repeatable, on BEAST-MODE | ① verified YES | **MISSION-066** |
+| 2 | Kernel ABI: design-time contract enforcement (A2A fires on invariant-reversal / privilege-spend / collision) — the #3331 lesson | cross-agent rework ↓ | **MISSION-067** |
+| 3 | Break the self-referential loop → mission-ship ratio ≥ ⅔ **(the gate for scaling)** | ② ≥ ⅔ | decompose after P2 |
+| 4 | Scale horizontally (integration trains, sharded CI, NATS, 2nd node) — only past the ⅔ gate | ④ ship rate | — |
+| 5 | Self-heal: cold reboot restores the fleet, zero manual steps | Goal 2 | — |
+| 6 | Userland: point freed capacity at real external tools | Goal 4 | — |
+| 7 | Giveable: one-command install on commodity Linux + local-model lane | North Star | — |
+
+**The spine:** Phases 0 and 3 are load-bearing — you earn the right to scale by
+bounding the substrate and making the work mission-weighted; Phase 2 is the
+unlock that makes both harness-agnosticism and scaling safe. This arc depends on
+the anti-bloat keystone `signals are not work` (MISSION-045 — doctrine doc lands
+with #3331; internal fleet health is telemetry, never a self-filed gap).
+
 ## Current cycle — Revival & Truth (2026-07-19 → 2026-08-16)
 
 > Filed 2026-07-19 after the queue-clear + registry triage session (15 PRs merged,
