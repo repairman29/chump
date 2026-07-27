@@ -561,6 +561,13 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
             .status()
             .await;
     }
+    // CREDIBLE-170: verify the fix actually accomplishes the gap BEFORE shipping.
+    // Cheap free-tier drafts are frequently plausible-but-ineffective (dead code,
+    // shadowed dups, no-ops) — CI stays green because nothing broke, so the
+    // gap would close with a non-fix. A skeptical model review of the diff-vs-AC
+    // gates that. FAIL aborts the ship; the gap stays open for a retry.
+    verify_fix_before_ship(gap_id, repo_root).await?;
+
     let script = repo_root.join("scripts/coord/bot-merge.sh");
     eprintln!("[execute-gap] free-tier ship: bot-merge.sh --gap {gap_id} --fast --auto-merge");
     let status = tokio::process::Command::new("bash")
@@ -580,6 +587,110 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
             gap_id
         ));
     }
+    Ok(())
+}
+
+/// CREDIBLE-170: skeptical model review of the agent's diff against the gap AC,
+/// run before bot-merge. Fails plausible-but-ineffective changes (no-ops, dead
+/// code, shadowed/duplicate defs, edits not wired into the real path) so a
+/// cheap-model non-fix never merges and closes a gap (green != covered, applied
+/// to the fleet's own output). Bypass: CHUMP_VERIFY_DISABLE=1. The reviewer uses
+/// the active provider by default; a stronger tier can be routed in later.
+/// CREDIBLE-170: classify a reviewer verdict as a fail. Skeptical: an explicit
+/// FAIL, or a FAIL mentioned without a PASS, blocks the ship. Pure — unit-tested.
+fn verdict_is_fail(verdict: &str) -> bool {
+    let up = verdict.trim().to_uppercase();
+    up.starts_with("FAIL") || (up.contains("FAIL") && !up.contains("PASS"))
+}
+
+async fn verify_fix_before_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()> {
+    if std::env::var("CHUMP_VERIFY_DISABLE").as_deref() == Ok("1") {
+        eprintln!("[verify] disabled (CHUMP_VERIFY_DISABLE=1) — shipping {gap_id} unverified");
+        return Ok(());
+    }
+    // Net diff of the agent's work vs the branch base.
+    let diff = tokio::process::Command::new("git")
+        .args(["diff", "origin/main...HEAD"])
+        .current_dir(repo_root)
+        .output()
+        .await
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if diff.trim().is_empty() {
+        return Err(anyhow!(
+            "verify gate: empty diff for {gap_id} — the agent changed nothing to ship"
+        ));
+    }
+    // Gap acceptance criteria (the canonical checkout owns state.db).
+    let canonical = crate::repo_path::main_checkout_root();
+    let ac = chump_gap_store::GapStore::open(&canonical)
+        .ok()
+        .and_then(|s| s.get(gap_id).ok().flatten())
+        .map(|r| {
+            format!(
+                "title: {}\ndescription: {}\nacceptance_criteria: {}",
+                r.title, r.description, r.acceptance_criteria
+            )
+        })
+        .unwrap_or_else(|| format!("gap {gap_id} (acceptance criteria unavailable)"));
+
+    let diff_trunc: String = diff.chars().take(8000).collect();
+    let system = "You are a skeptical senior code reviewer. Judge whether a DIFF actually \
+        accomplishes a TASK. Reply with ONE line: 'PASS: <reason>' or 'FAIL: <reason>'. \
+        FAIL plausible-but-ineffective changes: no-ops, dead code, a new function that \
+        DUPLICATES or SHADOWS an existing one, edits that do not wire into the real code \
+        path, or changes that do not address the stated acceptance criteria. When unsure, FAIL.";
+    let user = format!(
+        "TASK:\n{ac}\n\nDIFF:\n{diff_trunc}\n\nDoes this diff actually accomplish the task?"
+    );
+
+    let provider = crate::provider_cascade::build_provider_single_pub();
+    let resp = provider
+        .complete(
+            vec![axonerai::provider::Message {
+                role: "user".to_string(),
+                content: user,
+            }],
+            None,
+            Some(256),
+            Some(system.to_string()),
+        )
+        .await
+        .with_context(|| format!("verify gate: reviewer call failed for {gap_id}"))?;
+    let verdict = resp.text.unwrap_or_default();
+    let failed = verdict_is_fail(&verdict);
+
+    // scanner-anchor: "kind":"fix_verify_failed"
+    // scanner-anchor: "kind":"fix_verify_passed"
+    let amb = locate_ambient(&canonical)
+        .unwrap_or_else(|| canonical.join(".chump-locks").join("ambient.jsonl"));
+    let kind = if failed {
+        "fix_verify_failed"
+    } else {
+        "fix_verify_passed"
+    };
+    let line = format!(
+        "{{\"kind\":\"{}\",\"gap_id\":\"{}\",\"verdict\":{},\"source\":\"execute_gap\"}}\n",
+        kind,
+        gap_id,
+        serde_json::to_string(verdict.trim()).unwrap_or_else(|_| "\"\"".into())
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+
+    if failed {
+        eprintln!("[verify] FAIL for {gap_id}: {verdict}");
+        return Err(anyhow!(
+            "verify gate: fix does not accomplish {gap_id} — {verdict}. Gap stays open for retry."
+        ));
+    }
+    eprintln!("[verify] PASS for {gap_id}: {verdict}");
     Ok(())
 }
 
@@ -1105,6 +1216,37 @@ pub fn classify_execute_gap_error(err: &anyhow::Error) -> ExecuteGapErrorKind {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    // CREDIBLE-170 verify-gate verdict classification.
+    #[test]
+    fn verdict_pass_is_not_fail() {
+        assert!(!verdict_is_fail(
+            "PASS: correctly modifies the parser to check all paths"
+        ));
+        assert!(!verdict_is_fail("  pass: looks good  "));
+        assert!(!verdict_is_fail(
+            "The change looks correct and wires in properly. PASS"
+        ));
+    }
+
+    #[test]
+    fn verdict_fail_blocks_ship() {
+        assert!(verdict_is_fail(
+            "FAIL: adds a shadowed duplicate is_mirrored (dead code)"
+        ));
+        assert!(verdict_is_fail("  fail: this is a no-op  "));
+        assert!(verdict_is_fail(
+            "This diff never wires into the call path. FAIL"
+        ));
+    }
+
+    #[test]
+    fn verdict_empty_or_ambiguous_defaults_safe() {
+        // Empty / non-committal reply is not a FAIL token, so it does not block
+        // (the empty-diff guard and reviewer-call error handle the real gaps).
+        assert!(!verdict_is_fail(""));
+        assert!(!verdict_is_fail("PASS"));
+    }
 
     #[test]
     fn prompt_contains_gap_id_and_ship_command() {

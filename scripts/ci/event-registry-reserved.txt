@@ -813,3 +813,5 @@ opencode_harness_installed    # reason: EFFECTIVE-320 — install-opencode-harne
 opencode_harness_install_skipped    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
 opencode_harness_install_partial    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
 opencode_harness_install_unverified    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
+fix_verify_passed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
+fix_verify_failed    # reason: CREDIBLE-170 — execute_gap ship-path verify gate verdict
