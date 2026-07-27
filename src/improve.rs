@@ -201,12 +201,15 @@ fn run_inner(args: &[String]) -> Result<i32> {
 
     // If --gap is specified, that's the pre-selected work description.
     // Otherwise load the most-recent onboard scan from the canonical location.
-    let picked = pick_gap(&opts, &clone_dir)?;
+    // MISSION-056: pick_gap returns a RANKED LIST of candidates. The top is what
+    // a dry-run reports; --apply dedups each in order and takes the first UNDONE.
+    let candidates = pick_gap(&opts, &clone_dir)?;
+    let top = &candidates[0];
 
-    println!("[improve] picked: {}", picked.title);
+    println!("[improve] picked: {}", top.title);
     println!(
         "[improve] evidence: {} §{}",
-        picked.source_of_evidence.input_path, picked.source_of_evidence.section
+        top.source_of_evidence.input_path, top.source_of_evidence.section
     );
 
     if !opts.apply {
@@ -214,7 +217,7 @@ fn run_inner(args: &[String]) -> Result<i32> {
         println!("[improve] Stage 3: IMPLEMENT — skipped in dry-run.");
         println!("[improve] Stage 4: VERIFY-MERGE — skipped in dry-run.");
         println!("\n[improve] dry-run complete. Pass --apply to execute.");
-        emit_cycle_complete(&opts.owner_repo, &picked.title, "dry_run", None);
+        emit_cycle_complete(&opts.owner_repo, &top.title, "dry_run", None);
         return Ok(0);
     }
 
@@ -224,18 +227,55 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // main and fails CI gates that were already fixed on real main.
     refresh_clone(&clone_dir)?;
 
+    // ── Stage 1.5: SHEPHERD ───────────────────────────────────────────────
+    // MISSION-061: before implementing NEW work, drive the loop's own open PRs
+    // from prior cycles to a terminal state. Dep-bound: a held/behind PR opened
+    // last cycle may block this cycle's work, so resolve blockers first. Bounded
+    // + identity-filtered (only touches PRs a Chump agent authored).
+    shepherd_own_prs(&opts, &clone_dir);
+
     // ── Stage 2: DEDUP ────────────────────────────────────────────────────
-    println!("\n[improve] Stage 2: DEDUP — checking work isn't already done...");
+    // MISSION-056: dedup EACH ranked candidate and take the first that isn't
+    // already shipped. Before this, improve dedup'd ONLY the top gap and stopped
+    // on redundant — so it looped forever on an already-done gap and never
+    // advanced to new work (the scoreboard-① blocker: `chump improve` picked the
+    // same already-shipped RLS gap 3 runs running, SKIP every time).
+    println!("\n[improve] Stage 2: DEDUP — finding the first candidate that isn't already done...");
 
     let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
-    let dedup_result = dedup_check(&opts.owner_repo, &clone_dir, &picked, &gh_bin)?;
-    if let DedupResult::Redundant { reason } = dedup_result {
-        println!("[improve] SKIP (redundant): {reason}");
-        emit_redundant_work_skipped(&opts.owner_repo, &picked.title, &reason);
-        emit_cycle_complete(&opts.owner_repo, &picked.title, "skipped_redundant", None);
-        return Ok(0);
+    let mut chosen: Option<ProposedGap> = None;
+    for cand in &candidates {
+        match dedup_check(&opts.owner_repo, &clone_dir, cand, &gh_bin)? {
+            DedupResult::Redundant { reason } => {
+                println!("[improve] SKIP (redundant): {} — {reason}", cand.title);
+                emit_redundant_work_skipped(&opts.owner_repo, &cand.title, &reason);
+            }
+            DedupResult::NotRedundant => {
+                chosen = Some(cand.clone());
+                break;
+            }
+        }
     }
-    println!("[improve] dedup PASS — work is not already done.");
+    let picked = match chosen {
+        Some(p) => p,
+        None => {
+            println!(
+                "[improve] all {} candidate(s) already shipped — nothing new to do this cycle",
+                candidates.len()
+            );
+            emit_cycle_complete(
+                &opts.owner_repo,
+                "(all candidates redundant)",
+                "skipped_redundant",
+                None,
+            );
+            return Ok(0);
+        }
+    };
+    println!(
+        "[improve] dedup PASS — picked '{}' (not already done).",
+        picked.title
+    );
 
     // ── Stage 3: IMPLEMENT ────────────────────────────────────────────────
     println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
@@ -254,16 +294,29 @@ fn run_inner(args: &[String]) -> Result<i32> {
     let pr_num =
         pr_number.ok_or_else(|| anyhow::anyhow!("could not parse PR number from URL: {pr_url}"))?;
 
-    let verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
-
+    let mut verdict = verify_and_merge(&opts, pr_num, &picked.title)?;
     println!("[improve] verdict: {verdict}");
+
+    // MISSION-059: NEVER abandon a HELD PR. Drive it to a terminal state
+    // (merged or closed) instead of walking away red. remediate_held classifies
+    // the CI failure (composing ci_summary::classify_log, INFRA-506), reruns
+    // flakes for free, or re-spawns an escalating-model agent to fix real defects
+    // on the SAME branch — re-verifying after each attempt. If still red after
+    // the retry budget, it CLOSES the PR with a reason. This is what makes the
+    // loop CONVERGE (land work) rather than merely TRY: a held PR that blocks a
+    // dependent task is resolved in-cycle, never skipped, never left open-red.
+    if verdict != "verified" {
+        verdict = remediate_held(&opts, &clone_dir, &picked.title, pr_num, &pr_url)?;
+    }
+
     emit_cycle_complete(&opts.owner_repo, &picked.title, &verdict, Some(&pr_url));
 
-    if verdict == "verified" {
-        Ok(0)
-    } else {
-        // HELD — non-zero exit so callers can detect failure.
-        Ok(1)
+    match verdict.as_str() {
+        // Both are clean terminal states — no open-red PR left behind.
+        "verified" | "closed" => Ok(0),
+        // Should not reach here (remediate_held always returns verified|closed),
+        // but keep the non-zero signal for any unforeseen path.
+        _ => Ok(1),
     }
 }
 
@@ -274,12 +327,13 @@ fn run_inner(args: &[String]) -> Result<i32> {
 /// If `--gap` was specified, synthesise a minimal `ProposedGap` from the gap
 /// title/ID. Otherwise reads the most-recent onboard scan from `clone_dir`'s
 /// parent (the canonical external-repo directory).
-fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
+fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<Vec<ProposedGap>> {
     use chump_handoff::external_repo_schema::{Confidence, Effort, Priority, SourceOfEvidence};
 
     if let Some(ref gap_id) = opts.gap_id {
         // Synthesise a gap from the provided ID so downstream stages work uniformly.
-        return Ok(ProposedGap {
+        // Operator chose the work explicitly — single candidate, no dedup-advance.
+        return Ok(vec![ProposedGap {
             title: gap_id.clone(),
             domain: "EFFECTIVE".to_string(),
             priority: Priority::P1,
@@ -296,7 +350,7 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
             ],
             layer: None,
             doctrine_justification: None,
-        });
+        }]);
     }
 
     // EFFECTIVE-288 GREEN-FIRST doctrine (operator, 2026-06-22): before picking
@@ -311,7 +365,9 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
         println!(
             "[improve] GREEN-FIRST: repo not green ('{top}' failing across open PRs) — fixing before any new work"
         );
-        return Ok(green);
+        // Green-first is a FORCED single pick — a broken gate must be fixed, no
+        // dedup-advance past it.
+        return Ok(vec![green]);
     }
 
     // Repo is green (or gh unavailable) — proceed to scan-based feature picking.
@@ -324,7 +380,7 @@ fn pick_gap(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
 /// the L1<L2<L3 doctrine order. Kept separate + unit-tested directly so the
 /// scan-pick tests never depend on live `gh` state (the green-first gh call
 /// lives only in `pick_gap`).
-fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
+fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<Vec<ProposedGap>> {
     // Read the latest onboard scan from the external-repo directory.
     // The scan lives at <external-repo-dir>/scans/onboard-scan-<ts>.json
     // where <external-repo-dir> is clone_dir's parent (the repo root, not /clone/).
@@ -356,9 +412,14 @@ fn pick_gap_from_scan(opts: &Opts, clone_dir: &Path) -> Result<ProposedGap> {
             confidence_sort_key(&a.confidence).cmp(&confidence_sort_key(&b.confidence))
         })
     });
-    gaps.into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("onboard scan contains no proposed gaps"))
+    // MISSION-056: return the FULL ranked list, not just the top. The caller
+    // dedups each candidate in order and takes the first UNDONE one — without
+    // this, `chump improve` loops forever on an already-shipped top gap and
+    // never advances to new work (the scoreboard-① blocker).
+    if gaps.is_empty() {
+        anyhow::bail!("onboard scan contains no proposed gaps");
+    }
+    Ok(gaps)
 }
 
 /// Gather failing CI checks across the target repo's open PRs, tallied by check
@@ -655,6 +716,145 @@ pub(crate) fn configure_claude_auth_env(cmd: &mut Command) -> bool {
     true
 }
 
+// ── MISSION-063: named agent identity (provable zero-touch attribution) ─────
+//
+// Today every BEAST-MODE merge is authored + merged by the operator's token, so
+// the git trail can't tell "the loop did it" apart from "Jeff did it" — ① is
+// asserted, not measured. Give the loop a NAMED identity and author its commits
+// under it: `git log --format='%an <%ae>'` then proves zero-human-touch, and the
+// agents get rad workshop names.
+
+/// A named Chump agent — the author identity the improve loop commits under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentIdentity {
+    pub codename: String,
+    pub name: String,
+    pub email: String,
+    pub node: String,
+}
+
+/// Workshop-robot roster for the default codename (own-your-tools foundry vibe).
+pub(crate) const AGENT_ROSTER: &[&str] = &[
+    "Sprocket", "Bolt", "Gizmo", "Rivet", "Cog", "Ratchet", "Widget", "Gasket", "Piston", "Tinker",
+];
+
+/// Deterministic roster pick from a node name (sum-of-bytes hash — stable per node).
+pub(crate) fn roster_pick(node: &str) -> &'static str {
+    if AGENT_ROSTER.is_empty() {
+        return "Chump";
+    }
+    let h: usize = node.bytes().map(|b| b as usize).sum();
+    AGENT_ROSTER[h % AGENT_ROSTER.len()]
+}
+
+/// Short, dns-safe node token (before first dot, lowercased, alnum+dash).
+pub(crate) fn sanitize_node(s: &str) -> String {
+    let short = s.split('.').next().unwrap_or(s);
+    let cleaned: String = short
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "node".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Resolve this node's short hostname for identity + email.
+fn agent_node() -> String {
+    for var in ["CHUMP_AGENT_NODE", "HOSTNAME"] {
+        if let Ok(h) = std::env::var(var) {
+            if !h.trim().is_empty() {
+                return sanitize_node(&h);
+            }
+        }
+    }
+    if let Ok(o) = Command::new("hostname").output() {
+        if o.status.success() {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !s.is_empty() {
+                return sanitize_node(&s);
+            }
+        }
+    }
+    "node".to_string()
+}
+
+/// Pure identity builder (env-free — unit-testable without racing on process
+/// env). `name_override`/`email_override` come from `CHUMP_AGENT_NAME`/
+/// `CHUMP_AGENT_EMAIL`; empty/whitespace is treated as absent.
+pub(crate) fn build_identity(
+    name_override: Option<&str>,
+    email_override: Option<&str>,
+    node: &str,
+) -> AgentIdentity {
+    let node = sanitize_node(node);
+    let codename = name_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| roster_pick(&node).to_string());
+    let name = format!("Chump · {codename}");
+    let email = email_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{}@{}.chump.fleet", codename.to_ascii_lowercase(), node));
+    AgentIdentity {
+        codename,
+        name,
+        email,
+        node,
+    }
+}
+
+/// Compute the agent identity from the environment: env overrides
+/// (`CHUMP_AGENT_NAME` / `CHUMP_AGENT_EMAIL`), else a stable roster default
+/// keyed on hostname.
+pub(crate) fn agent_identity() -> AgentIdentity {
+    let node = agent_node();
+    build_identity(
+        std::env::var("CHUMP_AGENT_NAME").ok().as_deref(),
+        std::env::var("CHUMP_AGENT_EMAIL").ok().as_deref(),
+        &node,
+    )
+}
+
+impl AgentIdentity {
+    /// `Chump-Agent: <codename>@<node>` — grep-able commit trailer / signature.
+    pub(crate) fn trailer(&self) -> String {
+        format!("Chump-Agent: {}@{}", self.codename, self.node)
+    }
+
+    /// Set GIT_AUTHOR_*/GIT_COMMITTER_* on a spawned command so the agent's
+    /// commits (and thus the squash-merge commit) are authored by this agent,
+    /// not the operator's token.
+    fn apply_git_env(&self, cmd: &mut Command) {
+        cmd.env("GIT_AUTHOR_NAME", &self.name)
+            .env("GIT_AUTHOR_EMAIL", &self.email)
+            .env("GIT_COMMITTER_NAME", &self.name)
+            .env("GIT_COMMITTER_EMAIL", &self.email);
+    }
+
+    /// Instruction appended to a spawned agent's prompt so it stamps the
+    /// signature trailer on every commit body.
+    fn prompt_signature(&self) -> String {
+        format!(
+            "\n\nCOMMIT SIGNATURE (MISSION-063): you are the Chump agent \"{}\". \
+Add this exact trailer as the LAST line of every commit message body you create:\n{}\n",
+            self.name,
+            self.trailer()
+        )
+    }
+}
+
 // ── Implement stage ───────────────────────────────────────────────────────
 
 /// Stage 3: Spawn a capable agent in the repo clone to implement the gap and
@@ -676,7 +876,19 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         fork_owner: None, // direct-push to a branch; operator can set fork via --gap override
     };
 
-    let prompt = ExternalRepoContract::prompt(&input);
+    // MISSION-063: sign commits as a named Chump agent (provable zero-touch).
+    let id = agent_identity();
+    let prompt = format!(
+        "{}{}",
+        ExternalRepoContract::prompt(&input),
+        id.prompt_signature()
+    );
+    println!(
+        "[improve] agent identity: {} <{}>  (trailer: {})",
+        id.name,
+        id.email,
+        id.trailer()
+    );
 
     // Resolve claude binary — injectable for tests.
     let claude_bin =
@@ -691,6 +903,8 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
         .arg("--dangerously-skip-permissions")
         .args(["--model", "claude-sonnet-4-5"])
         .current_dir(clone_dir);
+    // MISSION-063: author the agent's commits under its identity, not the token.
+    id.apply_git_env(&mut cmd);
 
     // B4 + RESILIENT-106: inject OAUTH token and neutralize conflicting
     // gateway vars so the spawned agent authenticates from any context.
@@ -840,10 +1054,14 @@ pub(crate) fn parse_verdict(stdout: &str) -> Option<&'static str> {
 ///
 /// scanner-anchor: kind=improve_cycle_complete (EFFECTIVE-177)
 fn emit_cycle_complete(repo: &str, gap_title: &str, verdict: &str, pr_url: Option<&str>) {
+    // MISSION-063: stamp WHICH named agent ran this cycle so the fleet log (not
+    // just git) attributes work to a Chump agent.
+    let id = agent_identity();
     let mut fields = vec![
         ("repo".to_string(), repo.to_string()),
         ("gap".to_string(), gap_title.to_string()),
         ("verdict".to_string(), verdict.to_string()),
+        ("agent".to_string(), format!("{}@{}", id.codename, id.node)),
     ];
     if let Some(url) = pr_url {
         fields.push(("pr".to_string(), url.to_string()));
@@ -867,6 +1085,677 @@ fn emit_redundant_work_skipped(repo: &str, gap_title: &str, reason: &str) {
             ("repo".to_string(), repo.to_string()),
             ("gap".to_string(), gap_title.to_string()),
             ("reason".to_string(), reason.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Emit `kind=improve_pr_remediation` — one per fix attempt on a HELD PR.
+///
+/// scanner-anchor: kind=improve_pr_remediation (MISSION-059)
+fn emit_pr_remediation(
+    repo: &str,
+    pr_num: u64,
+    class: &str,
+    action: &str,
+    attempt: usize,
+    model: &str,
+) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_remediation".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("class".to_string(), class.to_string()),
+            ("action".to_string(), action.to_string()),
+            ("attempt".to_string(), attempt.to_string()),
+            ("model".to_string(), model.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Emit `kind=improve_pr_closed` — the loop closed a PR it could not get green
+/// (terminal, no-abandon).
+///
+/// scanner-anchor: kind=improve_pr_closed (MISSION-059)
+fn emit_pr_closed(repo: &str, pr_num: u64, pr_url: &str, reason: &str) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_closed".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("pr_url".to_string(), pr_url.to_string()),
+            ("reason".to_string(), reason.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+// ── MISSION-059: no-abandon PR remediation ─────────────────────────────────
+//
+// The improve loop must OWN every PR it opens to a terminal state — merged or
+// closed — never left open-red. On a HELD verdict we compose the CI-failure
+// classifier (ci_summary::classify_log, INFRA-506) with two remediation paths:
+//   * flake / infra-broken → RERUN the failed checks (no model spend — the
+//     scale lever: transient failures cost nothing to clear).
+//   * test-coupling / real-bug → re-spawn a fix agent on the SAME branch with
+//     an ESCALATING model (sonnet → opus, mirroring the work-tier cost ladder
+//     EFFECTIVE-314 — harder fixes get a more capable model, just like the work).
+// After a bounded retry budget with no green, CLOSE the PR with a reason.
+
+/// Remediation action for a CI-failure class.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum Remediation {
+    /// Transient / infra failure — rerun the failed checks, spend no model.
+    Rerun,
+    /// A real defect (or unknown) the agent must fix on the same branch.
+    AgentFix,
+}
+
+/// Map a `ci_summary::classify_log` class to a remediation action.
+///
+/// Unknown/empty classes fall through to `AgentFix` — the safe default: try a
+/// real fix rather than blindly rerun a failure we could not read.
+pub(crate) fn remediation_for_class(class: &str) -> Remediation {
+    match class {
+        "flake" | "infra-broken" => Remediation::Rerun,
+        _ => Remediation::AgentFix, // test-coupling | real-bug | unknown
+    }
+}
+
+/// The model-escalation ladder for fix retries. Attempt `i` (0-based) uses
+/// `ladder[min(i, len-1)]` — later attempts escalate to a more capable (costlier)
+/// model. Configurable via `CHUMP_IMPROVE_MODEL_LADDER` (comma-separated).
+pub(crate) fn fix_model_ladder() -> Vec<String> {
+    std::env::var("CHUMP_IMPROVE_MODEL_LADDER")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .collect::<Vec<String>>()
+        })
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| vec!["claude-sonnet-4-5".to_string(), "opus".to_string()])
+}
+
+/// Pick the model for a 0-based fix attempt, clamping to the last ladder rung.
+pub(crate) fn model_for_attempt(attempt: usize, ladder: &[String]) -> &str {
+    if ladder.is_empty() {
+        return "claude-sonnet-4-5";
+    }
+    &ladder[attempt.min(ladder.len() - 1)]
+}
+
+/// How many fix attempts before we close the PR. `CHUMP_IMPROVE_FIX_RETRIES`
+/// (default 2). Clamped to at least 1 so we always try before closing.
+fn fix_retries() -> usize {
+    std::env::var("CHUMP_IMPROVE_FIX_RETRIES")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(2)
+        .max(1)
+}
+
+/// The `gh` binary — injectable for tests via `CHUMP_IMPROVE_GH_BIN`.
+fn improve_gh_bin() -> String {
+    std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string())
+}
+
+/// Extract the `databaseId` of the first run whose `conclusion` is `"failure"`
+/// from a `gh run list --json databaseId,conclusion` array. Pure — unit-tested.
+pub(crate) fn find_failed_run_id(json: &str) -> Option<u64> {
+    for frag in json.split('{').skip(1) {
+        if !frag.contains("\"conclusion\":\"failure\"") {
+            continue;
+        }
+        if let Some(pos) = frag.find("\"databaseId\":") {
+            let rest = &frag[pos + "\"databaseId\":".len()..];
+            let digits: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(n) = digits.parse::<u64>() {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// The PR's head branch ref (`gh pr view <n> --json headRefName`).
+fn pr_head_branch(opts: &Opts, pr_num: u64) -> Option<String> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "view",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--json",
+            "headRefName",
+            "-q",
+            ".headRefName",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+/// The most-recent failed run id for a head branch (via `gh run list`).
+fn latest_failed_run_id(opts: &Opts, head_branch: &str) -> Option<u64> {
+    if head_branch.is_empty() {
+        return None;
+    }
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "run",
+            "list",
+            "--repo",
+            &opts.owner_repo,
+            "--branch",
+            head_branch,
+            "--limit",
+            "10",
+            "--json",
+            "databaseId,conclusion",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    find_failed_run_id(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Fetch the failing-check log for the PR's latest run. Best-effort: empty on
+/// any gh failure (the classifier treats empty as `real-bug` → AgentFix, the
+/// safe default).
+fn fetch_failing_log(opts: &Opts, head_branch: &str) -> String {
+    let Some(id) = latest_failed_run_id(opts, head_branch) else {
+        return String::new();
+    };
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "run",
+            "view",
+            &id.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--log-failed",
+        ])
+        .output();
+    match out {
+        Ok(o) => {
+            let raw = String::from_utf8_lossy(&o.stdout).into_owned();
+            if raw.len() > 65_536 {
+                raw[..65_536].to_string()
+            } else {
+                raw
+            }
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Rerun the failed jobs of the PR's latest failed run (flake path).
+fn rerun_failed_checks(opts: &Opts, head_branch: &str) -> Result<()> {
+    if let Some(id) = latest_failed_run_id(opts, head_branch) {
+        let _ = Command::new(improve_gh_bin())
+            .args([
+                "run",
+                "rerun",
+                &id.to_string(),
+                "--repo",
+                &opts.owner_repo,
+                "--failed",
+            ])
+            .status();
+        println!("[improve] reran failed jobs of run {id} (flake path — no model spend)");
+    } else {
+        println!("[improve] no failed run id found to rerun; will re-verify as-is");
+    }
+    Ok(())
+}
+
+/// Close a PR with a reason comment (the no-abandon terminal state).
+fn close_pr(opts: &Opts, pr_num: u64, reason: &str) -> Result<()> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "close",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--comment",
+            reason,
+        ])
+        .output()
+        .with_context(|| format!("gh pr close #{pr_num}"))?;
+    if !out.status.success() {
+        bail!(
+            "gh pr close #{pr_num} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+/// The fix-agent prompt: check out the EXISTING branch, fix the ROOT CAUSE of
+/// the CI failure, push to the same branch — do NOT open a new PR or merge.
+fn build_fix_prompt(
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    failing_log: &str,
+) -> String {
+    format!(
+        "You are fixing a FAILING pull request in the repository `{repo}`.\n\n\
+PR #{pr_num} (branch `{head_branch}`) implements: {gap_title}\n\
+Its CI is RED. Your job is to make CI GREEN by fixing the ROOT CAUSE — on the SAME branch.\n\n\
+STRICT RULES:\n\
+1. `git fetch origin && git checkout {head_branch}` — work on the EXISTING branch. \
+Do NOT create a new branch and do NOT open a new PR.\n\
+2. Diagnose the failure from the CI log below and fix the underlying cause in the code. \
+Do NOT disable the failing check, weaken an assertion, or delete the test to go green.\n\
+3. Commit with a clear message and `git push` to update the existing PR.\n\
+4. Do NOT merge and do NOT close the PR — just push the fix.\n\
+5. If the failure is a genuine flake unrelated to this diff, prefer a real fix; \
+only as a last resort make a trivial no-op commit to trigger a fresh run.\n\n\
+--- FAILING CI LOG (truncated) ---\n{failing_log}\n--- END LOG ---\n\n\
+Output nothing but a one-line summary of what you changed."
+    )
+}
+
+/// Re-spawn a fix agent on the PR's branch with an escalating model.
+fn fix_pr(
+    clone_dir: &Path,
+    repo: &str,
+    pr_num: u64,
+    head_branch: &str,
+    gap_title: &str,
+    failing_log: &str,
+    model: &str,
+) -> Result<()> {
+    let claude_bin =
+        std::env::var("CHUMP_IMPROVE_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_string());
+    let log_excerpt: String = failing_log.chars().take(6000).collect();
+    // MISSION-063: fixes are signed by the same named agent as the original work.
+    let id = agent_identity();
+    let prompt = format!(
+        "{}{}",
+        build_fix_prompt(repo, pr_num, head_branch, gap_title, &log_excerpt),
+        id.prompt_signature()
+    );
+    let prompt_file = write_temp_prompt(&prompt)?;
+
+    let mut cmd = Command::new(&claude_bin);
+    cmd.arg("-p")
+        .arg(std::fs::read_to_string(&prompt_file)?)
+        .arg("--dangerously-skip-permissions")
+        .args(["--model", model])
+        .current_dir(clone_dir);
+    id.apply_git_env(&mut cmd);
+    configure_claude_auth_env(&mut cmd);
+
+    let out = cmd
+        .output()
+        .with_context(|| format!("spawn `{claude_bin} -p` (fix, is claude CLI on PATH?)"))?;
+    let _ = std::fs::remove_file(&prompt_file);
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!(
+            "claude -p (fix) exited {} — {}",
+            out.status.code().unwrap_or(-1),
+            stderr.trim().lines().next().unwrap_or("(no output)")
+        );
+    }
+    Ok(())
+}
+
+/// MISSION-059: drive a HELD PR to a terminal state instead of abandoning it.
+///
+/// Loops up to `CHUMP_IMPROVE_FIX_RETRIES` times: classify the CI failure, rerun
+/// flakes (cheap) or re-spawn an escalating-model fix agent on the same branch,
+/// then re-verify. Returns the final verdict: `"verified"` (merged) or
+/// `"closed"` (closed with a reason after the budget is exhausted).
+fn remediate_held(
+    opts: &Opts,
+    clone_dir: &Path,
+    gap_title: &str,
+    pr_num: u64,
+    pr_url: &str,
+) -> Result<String> {
+    let retries = fix_retries();
+    let ladder = fix_model_ladder();
+    let head_branch = pr_head_branch(opts, pr_num).unwrap_or_default();
+
+    println!(
+        "\n[improve] MISSION-059: PR #{pr_num} HELD — remediating (no-abandon, up to {retries} attempt(s), branch={head_branch})"
+    );
+
+    for attempt in 0..retries {
+        let log = fetch_failing_log(opts, &head_branch);
+        let class = crate::ci_summary::classify_log(&log, false);
+        let action = remediation_for_class(class);
+        let model = model_for_attempt(attempt, &ladder);
+        println!(
+            "[improve] remediate {}/{}: class={class} action={action:?} model={model}",
+            attempt + 1,
+            retries
+        );
+        emit_pr_remediation(
+            &opts.owner_repo,
+            pr_num,
+            class,
+            &format!("{action:?}"),
+            attempt + 1,
+            model,
+        );
+
+        match action {
+            Remediation::Rerun => rerun_failed_checks(opts, &head_branch)?,
+            Remediation::AgentFix => fix_pr(
+                clone_dir,
+                &opts.owner_repo,
+                pr_num,
+                &head_branch,
+                gap_title,
+                &log,
+                model,
+            )?,
+        }
+
+        // Re-verify: verify_and_merge polls check-runs until terminal, so this
+        // waits out a rerun or the pushed fix's fresh CI before judging.
+        let verdict = verify_and_merge(opts, pr_num, gap_title)?;
+        println!("[improve] remediate {} → verdict: {verdict}", attempt + 1);
+        if verdict == "verified" {
+            return Ok("verified".to_string());
+        }
+    }
+
+    // Budget exhausted — CLOSE the PR (terminal, no open-red left behind).
+    let reason = format!(
+        "chump improve (MISSION-059): could not get CI green after {retries} escalating fix \
+         attempt(s); closing rather than leaving this PR open-red. The underlying work will be \
+         re-proposed on a future cycle. Reopen after manual triage if the diff is salvageable."
+    );
+    close_pr(opts, pr_num, &reason)?;
+    emit_pr_closed(&opts.owner_repo, pr_num, pr_url, &reason);
+    println!("[improve] PR #{pr_num} CLOSED after {retries} attempt(s) (no-abandon)");
+    Ok("closed".to_string())
+}
+
+// ── MISSION-061: external PR shepherd ──────────────────────────────────────
+//
+// Before implementing NEW work each cycle, sweep the loop's OWN open PRs and
+// drive any held/behind one to terminal (merged or closed). This composes what
+// we already built: 059 remediate_held (the per-PR fix engine) + 063 agent
+// identity (the ownership filter — only touch a Chump agent's PRs, never a
+// human's) + a rebase-BEHIND step. It answers the dep-bound problem: a held PR
+// from a prior cycle can block this cycle's work, so resolve blockers first.
+
+/// A minimal open-PR record from `gh pr list --json`.
+struct OpenPr {
+    number: u64,
+    title: String,
+    url: String,
+    merge_state: String,
+    #[allow(dead_code)]
+    head_branch: String,
+}
+
+/// Max own-PRs to remediate per cycle (`CHUMP_IMPROVE_SWEEP_MAX`, default 3) so
+/// the sweep can't starve new work.
+fn sweep_max() -> usize {
+    std::env::var("CHUMP_IMPROVE_SWEEP_MAX")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(3)
+}
+
+/// Email domain that marks a commit as agent-authored (`CHUMP_AGENT_EMAIL_DOMAIN`,
+/// default `chump.fleet` — matches the 063 identity `<code>@<node>.chump.fleet`).
+fn agent_email_domain() -> String {
+    std::env::var("CHUMP_AGENT_EMAIL_DOMAIN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "chump.fleet".to_string())
+}
+
+/// Pure ownership test: does this commit-author email belong to a Chump agent?
+pub(crate) fn email_is_agent(email: &str, domain: &str) -> bool {
+    let e = email.trim().to_ascii_lowercase();
+    let d = domain.trim().to_ascii_lowercase();
+    !d.is_empty() && (e.ends_with(&format!("@{d}")) || e.ends_with(&format!(".{d}")))
+}
+
+/// Split a top-level JSON array into its object substrings (string- and
+/// nesting-aware). Pure — unit-tested.
+pub(crate) fn split_top_objects(json: &str) -> Vec<String> {
+    let mut objs = Vec::new();
+    let bytes = json.as_bytes();
+    let (mut depth, mut start, mut in_str, mut esc) = (0i32, 0usize, false, false);
+    for (i, &b) in bytes.iter().enumerate() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if b == b'\\' {
+                esc = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'{' => {
+                if depth == 0 {
+                    start = i;
+                }
+                depth += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    objs.push(json[start..=i].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    objs
+}
+
+/// Extract a `"field":"value"` string from a flat JSON object (unescapes basics).
+pub(crate) fn json_str_field(obj: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{field}\":\"");
+    let start = obj.find(&needle)? + needle.len();
+    let mut out = String::new();
+    let mut chars = obj[start..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => {
+                if let Some(n) = chars.next() {
+                    match n {
+                        'n' => out.push('\n'),
+                        't' => out.push('\t'),
+                        '"' => out.push('"'),
+                        '\\' => out.push('\\'),
+                        '/' => out.push('/'),
+                        o => out.push(o),
+                    }
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    None
+}
+
+/// Extract a `"field":<int>` unsigned integer from a flat JSON object.
+pub(crate) fn json_int_field(obj: &str, field: &str) -> Option<u64> {
+    let needle = format!("\"{field}\":");
+    let start = obj.find(&needle)? + needle.len();
+    let digits: String = obj[start..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
+}
+
+/// List open PRs on the repo (best-effort; empty on any gh failure).
+fn list_open_prs(opts: &Opts) -> Vec<OpenPr> {
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "list",
+            "--repo",
+            &opts.owner_repo,
+            "--state",
+            "open",
+            "--limit",
+            "40",
+            "--json",
+            "number,title,url,mergeStateStatus,headRefName",
+        ])
+        .output();
+    let json = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => return Vec::new(),
+    };
+    split_top_objects(&json)
+        .iter()
+        .filter_map(|o| {
+            Some(OpenPr {
+                number: json_int_field(o, "number")?,
+                title: json_str_field(o, "title").unwrap_or_default(),
+                url: json_str_field(o, "url").unwrap_or_default(),
+                merge_state: json_str_field(o, "mergeStateStatus").unwrap_or_default(),
+                head_branch: json_str_field(o, "headRefName").unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+/// Ownership filter: is the PR's latest commit authored by a Chump agent? This
+/// is the guardrail that keeps the shepherd from ever touching a human's PR.
+fn pr_authored_by_agent(opts: &Opts, pr_num: u64) -> bool {
+    let domain = agent_email_domain();
+    let out = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "view",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--json",
+            "commits",
+            "-q",
+            ".commits[-1].authors[].email",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .any(|l| email_is_agent(l, &domain)),
+        _ => false,
+    }
+}
+
+/// Rebase a BEHIND PR onto its base (branch-protection "require up-to-date").
+fn rebase_behind_pr(opts: &Opts, pr_num: u64) {
+    let _ = Command::new(improve_gh_bin())
+        .args([
+            "pr",
+            "update-branch",
+            &pr_num.to_string(),
+            "--repo",
+            &opts.owner_repo,
+            "--rebase",
+        ])
+        .status();
+    println!("[improve] shepherd: rebased BEHIND PR #{pr_num}");
+}
+
+/// MISSION-061: sweep the loop's own open PRs and drive each to terminal.
+fn shepherd_own_prs(opts: &Opts, clone_dir: &Path) {
+    if std::env::var("CHUMP_IMPROVE_SHEPHERD").as_deref() == Ok("0") {
+        return;
+    }
+    let max = sweep_max();
+    if max == 0 {
+        return;
+    }
+    let prs = list_open_prs(opts);
+    let mut acted = 0usize;
+    for pr in &prs {
+        if acted >= max {
+            break;
+        }
+        // CLEAN = mergeable + green → auto-merge will land it; nothing to do.
+        if pr.merge_state == "CLEAN" || pr.merge_state == "HAS_HOOKS" {
+            continue;
+        }
+        // GUARDRAIL: never touch a PR a human authored.
+        if !pr_authored_by_agent(opts, pr.number) {
+            continue;
+        }
+        acted += 1;
+        println!(
+            "[improve] MISSION-061 shepherd: PR #{} state={} — {}",
+            pr.number, pr.merge_state, pr.title
+        );
+        emit_shepherd_swept(&opts.owner_repo, pr.number, &pr.merge_state);
+
+        if pr.merge_state == "BEHIND" {
+            rebase_behind_pr(opts, pr.number);
+        }
+
+        match verify_and_merge(opts, pr.number, &pr.title) {
+            Ok(v) if v == "verified" => {
+                println!("[improve] shepherd: #{} verified + merged", pr.number)
+            }
+            Ok(_) => {
+                if let Err(e) = remediate_held(opts, clone_dir, &pr.title, pr.number, &pr.url) {
+                    eprintln!("[improve] shepherd: remediate #{} failed: {e}", pr.number);
+                }
+            }
+            Err(e) => eprintln!("[improve] shepherd: verify #{} failed: {e}", pr.number),
+        }
+    }
+    if acted > 0 {
+        println!("[improve] MISSION-061 shepherd: swept {acted} own PR(s) before new work");
+    }
+}
+
+/// Emit `kind=improve_pr_swept` — one per own-PR the shepherd resolves.
+///
+/// scanner-anchor: kind=improve_pr_swept (MISSION-061)
+fn emit_shepherd_swept(repo: &str, pr_num: u64, state: &str) {
+    let id = agent_identity();
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "improve_pr_swept".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("pr".to_string(), pr_num.to_string()),
+            ("state".to_string(), state.to_string()),
+            ("agent".to_string(), format!("{}@{}", id.codename, id.node)),
         ],
         ..Default::default()
     });
@@ -908,11 +1797,26 @@ fn refresh_clone(clone_dir: &Path) -> Result<()> {
         );
         return Ok(());
     }
-    let branch = detect_default_branch(&cd);
-    // Hard-reset the working tree to the freshly-fetched default branch and drop
-    // any untracked leftovers from a prior run (prevents scope-crept PRs).
+    // MISSION-057: `git fetch` does NOT update origin/HEAD, so a clone made when
+    // the repo default was a feature branch keeps a stale origin/HEAD. Refresh it
+    // so default-branch detection is authoritative.
     let _ = Command::new("git")
-        .args(["-C", &cd, "reset", "--hard", &format!("origin/{branch}")])
+        .args(["-C", &cd, "remote", "set-head", "origin", "--auto"])
+        .status();
+    let branch = detect_default_branch(&cd);
+    // MISSION-057: SWITCH ONTO the default branch (checkout -B), not just reset the
+    // current one. `reset --hard` moves content but keeps the pre-existing local
+    // branch NAME — which then leaked into the PR base (fix/rls-recursion-test-
+    // proven) and every PR opened DIRTY. Drop untracked leftovers too.
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            &cd,
+            "checkout",
+            "-B",
+            &branch,
+            &format!("origin/{branch}"),
+        ])
         .status();
     let _ = Command::new("git")
         .args(["-C", &cd, "clean", "-fd"])
@@ -1015,41 +1919,13 @@ fn read_oauth_token_file() -> Option<String> {
 
 /// Detect the default branch of the cloned repo.
 fn detect_base_branch(clone_dir: &Path) -> String {
-    let out = Command::new("git")
-        .args([
-            "-C",
-            &clone_dir.to_string_lossy(),
-            "rev-parse",
-            "--abbrev-ref",
-            "HEAD",
-        ])
-        .output();
-    if let Ok(o) = out {
-        let branch = String::from_utf8_lossy(&o.stdout).trim().to_string();
-        if !branch.is_empty() && branch != "HEAD" {
-            return branch;
-        }
-    }
-    // Try symbolic-ref to get origin's HEAD.
-    let out2 = Command::new("git")
-        .args([
-            "-C",
-            &clone_dir.to_string_lossy(),
-            "remote",
-            "show",
-            "origin",
-        ])
-        .output();
-    if let Ok(o) = out2 {
-        let text = String::from_utf8_lossy(&o.stdout);
-        for line in text.lines() {
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("HEAD branch:") {
-                return rest.trim().to_string();
-            }
-        }
-    }
-    "main".to_string()
+    // MISSION-057: the PR base MUST be the repo's remote DEFAULT branch — not the
+    // clone's current local branch (`rev-parse HEAD`). refresh_clone resets the
+    // working tree to origin/<default> but a stale local branch NAME (e.g.
+    // fix/rls-recursion-test-proven) survived and leaked into the PR base, so
+    // every improve PR opened DIRTY/unmergeable. Use the authoritative resolver
+    // (origin/HEAD, refreshed by refresh_clone, then main/master fallback).
+    detect_default_branch(&clone_dir.to_string_lossy())
 }
 
 /// Build a human-readable description of the gap for the implement-agent prompt.
@@ -1133,6 +2009,208 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    // ── MISSION-059: no-abandon remediation helpers ────────────────────────
+
+    #[test]
+    fn mission059_remediation_flake_and_infra_rerun() {
+        assert_eq!(remediation_for_class("flake"), Remediation::Rerun);
+        assert_eq!(remediation_for_class("infra-broken"), Remediation::Rerun);
+    }
+
+    #[test]
+    fn mission059_remediation_realbug_coupling_and_unknown_agentfix() {
+        assert_eq!(remediation_for_class("real-bug"), Remediation::AgentFix);
+        assert_eq!(
+            remediation_for_class("test-coupling"),
+            Remediation::AgentFix
+        );
+        // Unknown/empty is the safe default: attempt a real fix, not a blind rerun.
+        assert_eq!(remediation_for_class(""), Remediation::AgentFix);
+        assert_eq!(remediation_for_class("weird"), Remediation::AgentFix);
+    }
+
+    #[test]
+    fn mission059_model_escalates_then_clamps() {
+        let ladder = vec!["sonnet".to_string(), "opus".to_string()];
+        // Attempt 0 = cheap, attempt 1 = escalated, attempt 2+ clamps to last.
+        assert_eq!(model_for_attempt(0, &ladder), "sonnet");
+        assert_eq!(model_for_attempt(1, &ladder), "opus");
+        assert_eq!(model_for_attempt(2, &ladder), "opus");
+        assert_eq!(model_for_attempt(99, &ladder), "opus");
+    }
+
+    #[test]
+    fn mission059_model_empty_ladder_has_safe_default() {
+        assert_eq!(model_for_attempt(0, &[]), "claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn mission059_default_ladder_is_sonnet_then_opus() {
+        // Guard the default (env-independent shape): cheap first, escalate second.
+        let ladder = fix_model_ladder();
+        assert!(!ladder.is_empty());
+        assert!(ladder[0].contains("sonnet"), "first rung cheap: {ladder:?}");
+        assert!(
+            ladder.last().unwrap().contains("opus"),
+            "last rung escalated: {ladder:?}"
+        );
+    }
+
+    #[test]
+    fn mission059_find_failed_run_id_picks_first_failure() {
+        let json = r#"[{"databaseId":111,"conclusion":"success"},{"databaseId":222,"conclusion":"failure"},{"databaseId":333,"conclusion":"failure"}]"#;
+        assert_eq!(find_failed_run_id(json), Some(222));
+    }
+
+    #[test]
+    fn mission059_find_failed_run_id_none_when_all_green() {
+        let json = r#"[{"databaseId":111,"conclusion":"success"},{"databaseId":222,"conclusion":"success"}]"#;
+        assert_eq!(find_failed_run_id(json), None);
+        assert_eq!(find_failed_run_id("[]"), None);
+    }
+
+    #[test]
+    fn mission059_fix_prompt_forbids_new_pr_and_pins_branch() {
+        let p = build_fix_prompt(
+            "owner/repo",
+            42,
+            "chump/feature-x",
+            "Add retry",
+            "error[E0308]",
+        );
+        assert!(p.contains("chump/feature-x"), "pins the head branch");
+        assert!(p.contains("#42"));
+        assert!(p.contains("Do NOT create a new branch"));
+        assert!(p.contains("Do NOT merge"));
+        assert!(p.contains("error[E0308]"), "includes the failing log");
+    }
+
+    // ── MISSION-063: named agent identity ──────────────────────────────────
+
+    #[test]
+    fn mission063_roster_pick_is_stable_and_in_roster() {
+        let a = roster_pick("closetjunky");
+        let b = roster_pick("closetjunky");
+        assert_eq!(a, b, "same node → same codename (stable)");
+        assert!(AGENT_ROSTER.contains(&a), "pick is from the roster");
+        // Different nodes generally differ (not a hard guarantee, but these do).
+        assert_ne!(roster_pick("helsinki"), roster_pick("closetjunky-xyz"));
+    }
+
+    #[test]
+    fn mission063_sanitize_node_shortens_and_cleans() {
+        assert_eq!(sanitize_node("ClosetJunky.local"), "closetjunky");
+        assert_eq!(sanitize_node("host_name!!"), "host-name--");
+        assert_eq!(sanitize_node(""), "node");
+    }
+
+    #[test]
+    fn mission063_env_override_wins() {
+        // Explicit codename + email override the roster/derived defaults.
+        let id = build_identity(Some("Zapp"), Some("zapp@example.test"), "rig7");
+        assert_eq!(id.codename, "Zapp");
+        assert_eq!(id.name, "Chump · Zapp");
+        assert_eq!(id.email, "zapp@example.test");
+        assert_eq!(id.node, "rig7");
+        assert_eq!(id.trailer(), "Chump-Agent: Zapp@rig7");
+    }
+
+    #[test]
+    fn mission063_blank_override_falls_back_to_default() {
+        // Whitespace-only overrides are treated as absent.
+        let id = build_identity(Some("  "), Some(""), "closetjunky");
+        assert!(AGENT_ROSTER.contains(&id.codename.as_str()));
+        assert!(id.email.ends_with("@closetjunky.chump.fleet"));
+    }
+
+    #[test]
+    fn mission063_email_default_derived_from_codename_and_node() {
+        let id = build_identity(Some("Rivet"), None, "closetjunky");
+        assert_eq!(id.email, "rivet@closetjunky.chump.fleet");
+        assert_eq!(id.name, "Chump · Rivet");
+    }
+
+    #[test]
+    fn mission063_prompt_signature_carries_trailer_and_name() {
+        let id = AgentIdentity {
+            codename: "Rivet".into(),
+            name: "Chump · Rivet".into(),
+            email: "rivet@closetjunky.chump.fleet".into(),
+            node: "closetjunky".into(),
+        };
+        let sig = id.prompt_signature();
+        assert!(sig.contains("Chump · Rivet"));
+        assert!(sig.contains("Chump-Agent: Rivet@closetjunky"));
+        assert!(sig.contains("LAST line of every commit"));
+    }
+
+    // ── MISSION-061: external shepherd ─────────────────────────────────────
+
+    #[test]
+    fn mission061_email_is_agent_matches_only_agent_domain() {
+        // Agent emails (from 063: <code>@<node>.chump.fleet) match; humans don't.
+        assert!(email_is_agent(
+            "rivet@closetjunky.chump.fleet",
+            "chump.fleet"
+        ));
+        assert!(email_is_agent("bolt@chump.fleet", "chump.fleet"));
+        assert!(email_is_agent(
+            "  Gizmo@Helsinki.Chump.Fleet ",
+            "chump.fleet"
+        ));
+        // Never match a human's PR — this is the guardrail.
+        assert!(!email_is_agent("jeff@gmail.com", "chump.fleet"));
+        assert!(!email_is_agent("noreply@github.com", "chump.fleet"));
+        // A domain that merely contains the string but isn't the suffix.
+        assert!(!email_is_agent("x@chump.fleet.evil.com", "chump.fleet"));
+        assert!(!email_is_agent("anything", ""));
+    }
+
+    #[test]
+    fn mission061_split_top_objects_handles_nesting_and_strings() {
+        let json = r#"[{"number":17,"title":"a}b","url":"u1","mergeStateStatus":"BLOCKED","headRefName":"br1"},{"number":18,"title":"c","authors":[{"email":"x@y"}]}]"#;
+        let objs = split_top_objects(json);
+        assert_eq!(
+            objs.len(),
+            2,
+            "two top-level objects despite nested braces and a brace char inside a string"
+        );
+        assert!(objs[0].contains("\"number\":17"));
+        assert!(objs[1].contains("authors"));
+    }
+
+    #[test]
+    fn mission061_json_field_extractors() {
+        let obj = r#"{"number":17,"title":"fix: a \"quoted\" thing","url":"https://x/17","mergeStateStatus":"BEHIND"}"#;
+        assert_eq!(json_int_field(obj, "number"), Some(17));
+        assert_eq!(
+            json_str_field(obj, "title"),
+            Some("fix: a \"quoted\" thing".to_string())
+        );
+        assert_eq!(json_str_field(obj, "url"), Some("https://x/17".to_string()));
+        assert_eq!(
+            json_str_field(obj, "mergeStateStatus"),
+            Some("BEHIND".to_string())
+        );
+        assert_eq!(json_int_field(obj, "missing"), None);
+    }
+
+    #[test]
+    fn mission061_parse_open_pr_list_shape() {
+        let json = r#"[{"number":17,"title":"t17","url":"u17","mergeStateStatus":"BLOCKED","headRefName":"b17"},{"number":18,"title":"t18","url":"u18","mergeStateStatus":"CLEAN","headRefName":"b18"}]"#;
+        let objs = split_top_objects(json);
+        let nums: Vec<u64> = objs
+            .iter()
+            .filter_map(|o| json_int_field(o, "number"))
+            .collect();
+        assert_eq!(nums, vec![17, 18]);
+        let states: Vec<String> = objs
+            .iter()
+            .filter_map(|o| json_str_field(o, "mergeStateStatus"))
+            .collect();
+        assert_eq!(states, vec!["BLOCKED".to_string(), "CLEAN".to_string()]);
+    }
+
     fn sample_scan(owner_repo: &str) -> OnboardScan {
         OnboardScan {
             scan_timestamp: Utc::now(),
@@ -1200,7 +2278,9 @@ mod tests {
             clone_dir: Some(clone_dir),
         };
 
-        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap()).unwrap();
+        let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap())
+            .unwrap()
+            .remove(0);
         // Should pick the first (highest-confidence) gap.
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
     }
@@ -1219,7 +2299,7 @@ mod tests {
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap(&opts, &clone_dir).unwrap();
+        let picked = pick_gap(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(picked.title, "EFFECTIVE-177");
     }
 
@@ -1406,7 +2486,7 @@ Some prose from the agent.
         };
 
         // Run just the pick stage + dedup logic without spawning any processes.
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(picked.title, "EFFECTIVE: add integration tests");
 
         // Dedup on an empty clone dir should pass (no code present).
@@ -1625,7 +2705,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L1: foundation gate unmet",
             "doctrine-order picking must select L1 first, even if it appears last in the scan"
@@ -1662,7 +2742,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L1 high-conf",
             "within L1, high-confidence gap must be picked before low-confidence"
@@ -1697,7 +2777,7 @@ Some prose from the agent.
             clone_dir: Some(clone_dir.clone()),
         };
 
-        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap();
+        let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
         assert_eq!(
             picked.title, "L3 low-conf",
             "L3 (even low-confidence) must be picked before an untagged gap"

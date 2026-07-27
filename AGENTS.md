@@ -51,6 +51,12 @@ cargo build --bin chump           # CLI binary only (fastest iteration)
 cargo check --bin chump --tests   # type-check without codegen (use this in tight loops)
 ```
 
+`chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) — the
+META-072 Track-3 autonomous-throughput demo loop (crates/chump-demo), wired
+as a real subcommand instead of an undiscoverable standalone binary. It execs
+the sibling `chump-demo` binary built by this workspace, so `cargo build`
+(which builds both bins) is a prerequisite.
+
 ## Test commands
 
 ```bash

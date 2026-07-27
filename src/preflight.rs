@@ -60,6 +60,72 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
     }
 }
 
+/// INFRA-3377 (META-070): staged-diff commit-content-guards mirrored from
+/// `scripts/git-hooks/pre-commit-*.sh` into `chump preflight --pre-commit`.
+/// Each of these scripts inspects `git diff --cached` directly (same input
+/// the real pre-commit hook sees) and already owns its own
+/// `CHUMP_<NAME>_CHECK=0` disable var — those are scanned by
+/// `scripts/ci/test-no-new-bypass-env-vars.sh`'s EFFECTIVE-094 debt-ceiling,
+/// so preflight deliberately does NOT layer a second per-gate opt-out toggle
+/// on top of each one (that would just grow the bypass-var count with no
+/// new capability — disable at the source script instead).
+///
+/// `event-registry-staged` is a distinct gate from the existing
+/// `event-registry-audit` mirror above: that one runs
+/// `scripts/ci/test-event-registry-coverage.sh` (full-tree audit, any scope);
+/// this one runs `pre-commit-event-registry.sh` (staged-diff only, catches
+/// new unregistered ambient-event kind literals before they're even
+/// committed).
+const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
+    (
+        "ac-completeness",
+        "scripts/git-hooks/pre-commit-ac-completeness.sh",
+    ),
+    (
+        "css-token-discipline",
+        "scripts/git-hooks/pre-commit-css-token-discipline.sh",
+    ),
+    (
+        "default-flip",
+        "scripts/git-hooks/pre-commit-default-flip.sh",
+    ),
+    (
+        "effect-metric",
+        "scripts/git-hooks/pre-commit-effect-metric.sh",
+    ),
+    (
+        "event-registry-staged",
+        "scripts/git-hooks/pre-commit-event-registry.sh",
+    ),
+    (
+        "gap-divergence",
+        "scripts/git-hooks/pre-commit-gap-divergence.sh",
+    ),
+    (
+        "git-identity",
+        "scripts/git-hooks/pre-commit-git-identity.sh",
+    ),
+    (
+        "hardcoded-dates",
+        "scripts/git-hooks/pre-commit-hardcoded-dates.sh",
+    ),
+    (
+        "main-worktree-config",
+        "scripts/git-hooks/pre-commit-main-worktree-config.sh",
+    ),
+    ("obs-budget", "scripts/git-hooks/pre-commit-obs-budget.sh"),
+    (
+        "preflight-ci-parity",
+        "scripts/git-hooks/pre-commit-preflight-ci-parity.sh",
+    ),
+    (
+        "pwa-index-uniq",
+        "scripts/git-hooks/pre-commit-pwa-index-uniq.sh",
+    ),
+    ("redundancy", "scripts/git-hooks/pre-commit-redundancy.sh"),
+    ("rust-first", "scripts/git-hooks/pre-commit-rust-first.sh"),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Pass,
@@ -237,7 +303,12 @@ fn scope_from_paths(paths: &[String]) -> Scope {
             || lower.starts_with("crates/")
             || lower.starts_with("chump-tool-macro/")
             || lower.starts_with("tests/")
-            || lower.starts_with("wasm/");
+            || lower.starts_with("wasm/")
+            // INFRA-1787 AC#3: env-var-coverage lives in the rust-scope gate
+            // bucket, but its allowlist file is a scripts/ path — without this
+            // special case, a diff touching only env-vars-internal.txt (no
+            // .rs files) would fall into scripts-only scope and skip the gate.
+            || lower == "scripts/ci/env-vars-internal.txt";
         let is_scripts = lower.ends_with(".sh")
             || lower.starts_with("scripts/")
             || lower.starts_with(".github/workflows/")
@@ -408,11 +479,14 @@ OPTIONS:
                     (slower; off by default to keep the fast path under 60s)
     --keep-going    Don't exit on the first failure; run all gates
     --json          Emit one JSON object per gate to stdout (machine-readable)
-    --pre-commit    Enable pre-commit-only gates (e.g. docs-delta-trailer audit
-                    against HEAD's COMMIT_EDITMSG, INFRA-1788). Mirrored from
-                    scripts/coord/chump-commit.sh on the path leading to a
-                    real commit; the bare 'chump preflight' silently skips
-                    these so it stays fast for ad-hoc validation runs.
+    --pre-commit    Enable pre-commit-only gates (docs-delta-trailer audit
+                    against HEAD's COMMIT_EDITMSG, INFRA-1788; plus 14
+                    staged-diff commit-content-guards mirrored from
+                    scripts/git-hooks/pre-commit-*.sh, INFRA-3377/META-070).
+                    Mirrored from scripts/coord/chump-commit.sh on the path
+                    leading to a real commit; the bare 'chump preflight'
+                    silently skips these so it stays fast for ad-hoc
+                    validation runs.
     --vs <REF>      META-153: diff-scoped failure attribution. REF is typically
                     'origin/main'. Runs preflight against both HEAD and REF,
                     separates failures into NEW (your diff broke this — blocks)
@@ -433,12 +507,14 @@ BYPASS:
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
 
 GATES (in order):
-    1. cargo fmt --check               (scope: rust)
-    2. cargo clippy -- -D warnings     (scope: rust)
-    3. cargo check --all-targets        (scope: rust)
-    4. event-registry-audit            (scope: rust, INFRA-1731)
-    5. docs-delta-trailer              (--pre-commit only, INFRA-1788)
-    6. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
+    1. event-registry-audit            (scope: ALWAYS, INFRA-1731/MISSION-064)
+    2. env-var-coverage                (scope: ALWAYS, INFRA-1787/MISSION-064)
+    3. cargo fmt --check               (scope: rust)
+    4. cargo clippy -- -D warnings     (scope: rust)
+    5. cargo check --all-targets        (scope: rust)
+    6. docs-delta-trailer              (--pre-commit only, INFRA-1788)
+    7. 14 commit-content-guards        (--pre-commit only, INFRA-3377/META-070)
+    8. (with --with-tests) selected scripts/ci/test-*.sh  (scope: scripts)
 
 EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
@@ -625,12 +701,97 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
+        // end-to-end --dry-run both exit 0. Pure local, no network.
+        "scripts/ci/test-chump-demo-smoke.sh",
     ];
     candidates
         .iter()
         .map(|p| repo_root.join(p))
         .filter(|p| p.is_file())
         .collect()
+}
+
+// ── RESILIENT-196: disk-floor guard ────────────────────────────────────────
+//
+// A full workspace build writes several GB into target/. Starting one below
+// headroom ENOSPC-crashes mid-compile — on 2026-07-24 the data volume hit 100%
+// and deadlocked even the shell (couldn't write a command's output file). Refuse
+// to start the cargo gates below a floor, with a clear message + an audit event,
+// instead of crashing. Fail-open if df is unreadable (never block on unknown).
+
+const DEFAULT_PREFLIGHT_DISK_FLOOR_GB: f64 = 15.0;
+
+fn preflight_disk_floor_gb() -> f64 {
+    std::env::var("CHUMP_PREFLIGHT_DISK_FLOOR_GB")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(DEFAULT_PREFLIGHT_DISK_FLOOR_GB)
+}
+
+/// Pure floor comparison (extracted for testing). At-or-above the floor is OK.
+fn disk_floor_breached(free_gb: f64, floor_gb: f64) -> bool {
+    free_gb < floor_gb
+}
+
+/// Live free space (GiB) at `path` via `df -Pk`. `None` on any failure so the
+/// caller fails open rather than blocking on an unreadable df.
+fn free_disk_gb(path: &std::path::Path) -> Option<f64> {
+    let out = std::process::Command::new("df")
+        .args(["-Pk", &path.to_string_lossy()])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // POSIX `df -Pk`: header line, then one data line; column 4 = available 1K-blocks.
+    let avail_k: f64 = text
+        .lines()
+        .nth(1)?
+        .split_whitespace()
+        .nth(3)?
+        .parse()
+        .ok()?;
+    Some(avail_k / 1_048_576.0) // KiB → GiB
+}
+
+fn emit_disk_floor_breach(free_gb: f64, floor_gb: f64) {
+    // scanner-anchor: kind=disk_floor_breach (RESILIENT-196)
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "disk_floor_breach".to_string(),
+        source: Some("chump-preflight".to_string()),
+        fields: vec![
+            ("free_gb".to_string(), format!("{free_gb:.1}")),
+            ("floor_gb".to_string(), format!("{floor_gb:.1}")),
+        ],
+        ..Default::default()
+    });
+}
+
+/// Refuse to start a cargo build below the disk floor. Returns Err(message) when
+/// breached; Ok otherwise (including fail-open on unreadable df or floor<=0).
+fn check_build_disk_floor(repo_root: &std::path::Path) -> Result<(), String> {
+    let floor = preflight_disk_floor_gb();
+    if floor <= 0.0 {
+        return Ok(()); // disabled via CHUMP_PREFLIGHT_DISK_FLOOR_GB=0
+    }
+    let Some(free) = free_disk_gb(repo_root) else {
+        return Ok(()); // fail-open: unknown free space never blocks
+    };
+    if disk_floor_breached(free, floor) {
+        emit_disk_floor_breach(free, floor);
+        return Err(format!(
+            "disk floor breached: {free:.1} GB free < {floor:.1} GB needed for a build.\n\
+             A full compile writes several GB to target/; starting one now risks an \
+             ENOSPC crash mid-build. Free space first, e.g.:\n  \
+             rm -rf target/debug/incremental   # regenerable\n  \
+             rm -rf /private/tmp/wt-*           # stale worktrees (branches pushed)\n  \
+             cargo clean                        # full, slow rebuild\n\
+             Or lower/disable the floor: CHUMP_PREFLIGHT_DISK_FLOOR_GB=<N> (0 disables)."
+        ));
+    }
+    Ok(())
 }
 
 /// Entry point called from main.rs subcommand dispatch.
@@ -703,6 +864,15 @@ pub fn run(argv: &[String]) -> i32 {
         scope.label(),
         args.scope
     );
+    // RESILIENT-196: refuse to start the cargo gates below the disk floor rather
+    // than ENOSPC-crashing mid-compile (2026-07-24 deadlock). Only guards when a
+    // rust build will actually run; fails open on unreadable df.
+    if scope.rust {
+        if let Err(msg) = check_build_disk_floor(&repo_root) {
+            eprintln!("[preflight] {msg}");
+            return 2;
+        }
+    }
     // Print which heavy buckets are being skipped — useful operator signal.
     if !scope.rust {
         eprintln!("[preflight] skipping cargo gates (no rust files in scope)");
@@ -722,6 +892,50 @@ pub fn run(argv: &[String]) -> i32 {
     }
 
     let mut steps: Vec<Step> = vec![];
+
+    // MISSION-064: env-var-coverage (INFRA-1787) + event-registry-audit
+    // (INFRA-1731) are ALWAYS-ON (AlwaysFast), not rust-scoped. A scripts- or
+    // docs-scoped PR that introduces a new CHUMP_* env var or ambient kind
+    // (common in shell) must be caught locally, not on a ~15-min CI round-trip
+    // (docs/strategy/CI_REVIEW_2026-05-29.md Lever 4 — the cheapest high-value
+    // lever). Per-gate skip flags preserved.
+    if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
+        eprintln!("[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)");
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "preflight_registry_bypassed".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![(
+                "reason".to_string(),
+                "CHUMP_PREFLIGHT_SKIP_REGISTRY=1".to_string(),
+            )],
+            ..Default::default()
+        });
+    } else {
+        steps.push(step(
+            "event-registry-audit",
+            &["bash", "scripts/ci/test-event-registry-coverage.sh"],
+            GateKind::AlwaysFast,
+        ));
+    }
+    if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
+        eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "preflight_envvars_bypassed".to_string(),
+            source: Some("chump-preflight".to_string()),
+            fields: vec![(
+                "reason".to_string(),
+                "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
+            )],
+            ..Default::default()
+        });
+    } else {
+        steps.push(step(
+            "env-var-coverage",
+            &["bash", "scripts/ci/test-env-var-coverage.sh"],
+            GateKind::AlwaysFast,
+        ));
+    }
+
     if scope.includes(GateKind::Rust) {
         steps.push(step(
             "cargo fmt --check",
@@ -752,55 +966,8 @@ pub fn run(argv: &[String]) -> i32 {
             &["cargo", "check", "--workspace", "--all-targets"],
             GateKind::Rust,
         ));
-        // INFRA-1731: event-registry-audit local gate. Catches
-        // register-without-emit (orphan) failures BEFORE push so operators
-        // don't burn a CI round-trip on an audit fail. The audit script
-        // itself respects CHUMP_REGISTRY_GATE_MODE; gate-specific skip is
-        // CHUMP_PREFLIGHT_SKIP_REGISTRY=1 (with audit-trail emit).
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_REGISTRY").as_deref() == Ok("1") {
-            eprintln!(
-                "[preflight] skipping event-registry-audit (CHUMP_PREFLIGHT_SKIP_REGISTRY=1)"
-            );
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_registry_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_REGISTRY=1".to_string(),
-                )],
-                ..Default::default()
-            });
-        } else {
-            steps.push(step(
-                "event-registry-audit",
-                &["bash", "scripts/ci/test-event-registry-coverage.sh"],
-                GateKind::Rust,
-            ));
-        }
-        // INFRA-1787: env-var-coverage local gate. Catches CHUMP_* env vars
-        // referenced in Rust/scripts but not documented in
-        // scripts/ci/env-vars-internal.txt — the #1 most-frequent CI audit
-        // fail class (5+ failures/week pre-mirror). Skip via
-        // CHUMP_PREFLIGHT_SKIP_ENVVARS=1 with audit-trail emit (mirrors the
-        // INFRA-1731 pattern shipped at #2377).
-        if std::env::var("CHUMP_PREFLIGHT_SKIP_ENVVARS").as_deref() == Ok("1") {
-            eprintln!("[preflight] skipping env-var-coverage (CHUMP_PREFLIGHT_SKIP_ENVVARS=1)");
-            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
-                kind: "preflight_envvars_bypassed".to_string(),
-                source: Some("chump-preflight".to_string()),
-                fields: vec![(
-                    "reason".to_string(),
-                    "CHUMP_PREFLIGHT_SKIP_ENVVARS=1".to_string(),
-                )],
-                ..Default::default()
-            });
-        } else {
-            steps.push(step(
-                "env-var-coverage",
-                &["bash", "scripts/ci/test-env-var-coverage.sh"],
-                GateKind::Rust,
-            ));
-        }
+        // MISSION-064: event-registry-audit + env-var-coverage moved to the
+        // ALWAYS-ON section above (they now run for any scope, not just rust).
         // INFRA-1789: chump-subcommand-help regression gate. Catches the
         // class of failures where a subcommand registers but `chump <subcmd>
         // --help` falls through to the LLM agent or fails on "missing
@@ -1245,6 +1412,234 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-worker-timeout-scale.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-3379 (META-086 cluster 1/5, gap/state-registry consistency):
+        // mirror 14 gap/state-registry gates that were previously only
+        // allowlisted in preflight-ci-parity-exceptions.txt. Each is pure
+        // shell/sqlite, no chump binary required, <5s — safe for the fast
+        // local loop. All always-on (no per-gate bypass env var) per the
+        // EFFECTIVE-094 bypass-var debt-ceiling: adding 14 new
+        // CHUMP_PREFLIGHT_SKIP_* vars would blow the ceiling, so these
+        // follow the plist-no-tmp-paths / no-new-bypass-env-vars precedent
+        // of shipping without one.
+        steps.push(step(
+            "docs-delta-trailer",
+            &["bash", "scripts/ci/test-infra-124-docs-delta-trailer.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-force-lease-guard",
+            &["bash", "scripts/ci/test-pre-push-force-lease-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "claim-fuzzy-match",
+            &["bash", "scripts/ci/test-claim-fuzzy-match.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "git-identity-guard",
+            &["bash", "scripts/ci/test-git-identity-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "hardcoded-date-guard",
+            &["bash", "scripts/ci/test-hardcoded-date-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "migration-pipeline-gates",
+            &["bash", "scripts/ci/test-migration-pipeline-gates.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "model-registry",
+            &["bash", "scripts/ci/test-model-registry.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "submodule-guard",
+            &["bash", "scripts/ci/test-submodule-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "credential-pattern-guard",
+            &["bash", "scripts/ci/test-credential-pattern-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "docs-delta-guard",
+            &["bash", "scripts/ci/test-docs-delta-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "raw-yaml-guard",
+            &["bash", "scripts/ci/test-raw-yaml-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "ambient-schema",
+            &["bash", "scripts/ci/test-ambient-schema.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "schema-version-assert",
+            &["bash", "scripts/ci/test-schema-version-assert.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "lease-ttl-file",
+            &["bash", "scripts/ci/test-infra-115-lease-ttl-file.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-3383 (META-086 misc-hygiene cluster): mirror 25 docs/CLI/
+        // git-hooks hygiene gates that were previously only allowlisted in
+        // preflight-ci-parity-exceptions.txt. Each is a fixture-based or
+        // pure-shell check, no chump binary build required, <1s each —
+        // safe for the fast local loop. All always-on (no per-gate bypass
+        // env var) per the EFFECTIVE-094 bypass-var debt-ceiling, same
+        // precedent as the INFRA-3379/INFRA-3377 cluster mirrors above.
+        steps.push(step(
+            "book-sync-guard",
+            &["bash", "scripts/ci/test-book-sync-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "doc-freshness",
+            &["bash", "scripts/ci/test-doc-freshness.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "no-claude-leak",
+            &["bash", "scripts/ci/test-no-claude-leak.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "no-verify-audit",
+            &["bash", "scripts/ci/test-no-verify-audit.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "css-token-discipline-smoke",
+            &["bash", "scripts/ci/test-css-token-discipline.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "cross-judge-guard",
+            &["bash", "scripts/ci/test-cross-judge-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "prereg-content-guard",
+            &["bash", "scripts/ci/test-prereg-content-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "effective-010-completion",
+            &["bash", "scripts/ci/test-effective-010-completion.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "default-flip-guard",
+            &["bash", "scripts/ci/test-default-flip-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "install-ambient-hooks",
+            &["bash", "scripts/ci/test-install-ambient-hooks.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-ci-yml-add-row",
+            &["bash", "scripts/ci/test-merge-driver-ci-yml-add-row.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-ci-yml",
+            &["bash", "scripts/ci/test-merge-driver-ci-yml.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-coverage",
+            &["bash", "scripts/ci/test-merge-driver-coverage.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-gap-yaml",
+            &["bash", "scripts/ci/test-merge-driver-gap-yaml.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-pre-commit",
+            &["bash", "scripts/ci/test-merge-driver-pre-commit.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "merge-driver-state-sql",
+            &["bash", "scripts/ci/test-merge-driver-state-sql.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-1025-atomic-claim",
+            &["bash", "scripts/ci/test-infra-1025-atomic-claim.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-250-v1-retirement",
+            &["bash", "scripts/ci/test-infra-250-v1-retirement.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-257-doc-only-guards",
+            &["bash", "scripts/ci/test-infra-257-doc-only-guards.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "infra-258-reaper-partial-delivery",
+            &[
+                "bash",
+                "scripts/ci/test-infra-258-reaper-partial-delivery.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "attribution-portable",
+            &["bash", "scripts/ci/test-attribution-portable.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "cli-version-debug",
+            &["bash", "scripts/ci/test-cli-version-debug.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "subagent-epilogue-ref",
+            &["bash", "scripts/ci/test-subagent-epilogue-ref.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pick-and-claim-lockdir",
+            &["bash", "scripts/ci/test-pick-and-claim-lockdir.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "meta-011-git-stomp",
+            &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],
+            GateKind::Scripts,
+        ));
+    }
+
+    // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
+    // only, same rationale as docs-delta-trailer above — these gates read
+    // `git diff --cached`, so running them under a bare `chump preflight`
+    // (no real staged commit in flight) would just recheck an empty stage
+    // and pass trivially. Each fires in well under 1s (pure `git diff
+    // --cached` + grep/awk, no cargo, no network).
+    if args.pre_commit {
+        for (name, script) in CONTENT_GUARD_MIRRORS {
+            steps.push(step(name, &["bash", script], GateKind::Scripts));
+        }
     }
 
     if args.with_tests && scope.includes(GateKind::Scripts) {
@@ -2006,6 +2401,28 @@ struct BaselineDiff {
 mod tests {
     use super::*;
 
+    // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
+    #[test]
+    fn resilient196_disk_floor_comparison() {
+        assert!(
+            disk_floor_breached(9.0, 15.0),
+            "9 GB free < 15 GB floor → breach"
+        );
+        assert!(
+            disk_floor_breached(2.1, 15.0),
+            "the 2026-07-24 crash condition"
+        );
+        assert!(!disk_floor_breached(20.0, 15.0), "plenty of headroom → ok");
+        assert!(
+            !disk_floor_breached(15.0, 15.0),
+            "exactly at floor → ok (not <)"
+        );
+        assert_eq!(
+            DEFAULT_PREFLIGHT_DISK_FLOOR_GB, 15.0,
+            "raised from disk_cmd's 5 GB inventory floor"
+        );
+    }
+
     #[test]
     fn parse_args_defaults() {
         let a = parse_args(&[]);
@@ -2224,6 +2641,19 @@ mod tests {
         assert!(s.rust);
         assert!(!s.scripts);
         assert!(s.docs);
+    }
+
+    #[test]
+    fn scope_from_paths_env_vars_internal_txt_triggers_rust_scope() {
+        // INFRA-1787 AC#3: touching only the env-var allowlist (no .rs files)
+        // must still trigger the rust-scope bucket so env-var-coverage runs.
+        let paths = vec!["scripts/ci/env-vars-internal.txt".to_string()];
+        let s = scope_from_paths(&paths);
+        assert!(
+            s.rust,
+            "env-vars-internal.txt alone should trigger rust scope"
+        );
+        assert!(s.scripts);
     }
 
     #[test]

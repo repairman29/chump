@@ -32,17 +32,23 @@ if [ -n "$out" ]; then
 fi
 echo "    OK"
 
+# CREDIBLE-164: run-fleet.sh defaults FLEET_MODEL=sonnet (INFRA-2998). The picker's
+# INFRA-471 haiku m/l/xl gate would otherwise skip INFRA-104 (P0, effort m), so
+# exercise the picker under the fleet's real default model. Inline-env invocations
+# below inherit this exported value.
+export FLEET_MODEL="${FLEET_MODEL:-sonnet}"
+
 echo "[smoke] 3) _pick_gap.py: filter logic"
 TMP=$(mktemp -t fleet-test.XXXXXX)
 cat > "$TMP" <<'JSON'
 [
-    {"id": "EVAL-001",  "domain": "eval",  "priority": "P0", "effort": "s", "depends_on": ""},
-    {"id": "INFRA-100", "domain": "infra", "priority": "P2", "effort": "s", "depends_on": ""},
-    {"id": "INFRA-101", "domain": "infra", "priority": "P1", "effort": "l", "depends_on": ""},
-    {"id": "INFRA-102", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "X-1"},
-    {"id": "INFRA-103", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "", "created_at": 100},
-    {"id": "INFRA-104", "domain": "infra", "priority": "P0", "effort": "m", "depends_on": "", "created_at": 200},
-    {"id": "DOC-001",   "domain": "doc",   "priority": "P1", "effort": "xs","depends_on": "", "created_at": 300}
+    {"id": "EVAL-001",  "domain": "eval",  "priority": "P0", "effort": "s", "depends_on": "", "status": "open", "acceptance_criteria": "eval passes"},
+    {"id": "INFRA-100", "domain": "infra", "priority": "P2", "effort": "s", "depends_on": "", "status": "open", "acceptance_criteria": "infra 100 done"},
+    {"id": "INFRA-101", "domain": "infra", "priority": "P1", "effort": "l", "depends_on": "", "status": "open", "acceptance_criteria": "infra 101 done"},
+    {"id": "INFRA-102", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "X-1", "status": "open", "acceptance_criteria": "infra 102 done"},
+    {"id": "INFRA-103", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "", "created_at": 100, "status": "open", "acceptance_criteria": "infra 103 done"},
+    {"id": "INFRA-104", "domain": "infra", "priority": "P0", "effort": "m", "depends_on": "", "created_at": 200, "status": "open", "acceptance_criteria": "infra 104 done"},
+    {"id": "DOC-001",   "domain": "doc",   "priority": "P1", "effort": "xs","depends_on": "", "created_at": 300, "status": "open", "acceptance_criteria": "doc 001 done"}
 ]
 JSON
 
@@ -115,8 +121,8 @@ echo "[smoke] 3b) _pick_gap.py: SUPERSEDED notes skip"
 TMP2=$(mktemp -t fleet-test-sup.XXXXXX)
 cat > "$TMP2" <<'JSON'
 [
-    {"id": "INFRA-999", "domain": "infra", "priority": "P0", "effort": "xs", "depends_on": "", "notes": "SUPERSEDED 2026-05-02 by INFRA-314", "created_at": 50},
-    {"id": "INFRA-104", "domain": "infra", "priority": "P0", "effort": "m",  "depends_on": "", "created_at": 200}
+    {"id": "INFRA-999", "domain": "infra", "priority": "P0", "effort": "xs", "depends_on": "", "notes": "SUPERSEDED 2026-05-02 by INFRA-314", "created_at": 50, "status": "open", "acceptance_criteria": "infra 999 done"},
+    {"id": "INFRA-104", "domain": "infra", "priority": "P0", "effort": "m",  "depends_on": "", "created_at": 200, "status": "open", "acceptance_criteria": "infra 104 done"}
 ]
 JSON
 got="$(GAP_JSON_FILE="$TMP2" \
@@ -139,8 +145,8 @@ echo "[smoke] 3c) _pick_gap.py: WORKER_INDEX stagger with FLEET_AGENT_DOMAINS ho
 TMP3=$(mktemp -t fleet-test-aff.XXXXXX)
 cat > "$TMP3" <<'JSON'
 [
-    {"id": "INFRA-A", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "", "created_at": 1},
-    {"id": "DOC-A",   "domain": "doc",   "priority": "P1", "effort": "s", "depends_on": "", "created_at": 2}
+    {"id": "INFRA-A", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "", "created_at": 1, "status": "open", "acceptance_criteria": "infra A done"},
+    {"id": "DOC-A",   "domain": "doc",   "priority": "P1", "effort": "s", "depends_on": "", "created_at": 2, "status": "open", "acceptance_criteria": "doc A done"}
 ]
 JSON
 got="$(GAP_JSON_FILE="$TMP3" \

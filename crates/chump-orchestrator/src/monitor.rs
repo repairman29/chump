@@ -443,6 +443,12 @@ fn write_routing_outcome(
         CREATE INDEX IF NOT EXISTS routing_outcomes_recent
             ON routing_outcomes(recorded_at);",
     )?;
+    // INFRA-1770: keep the cost_usd column in sync with the gap_store.rs
+    // migration — see comment there. Idempotent on a DB that already has it.
+    let _ = conn.execute(
+        "ALTER TABLE routing_outcomes ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+        [],
+    );
 
     let task_class = task_class_for_gap_id(&entry.handle.gap_id).unwrap_or("");
     // COG-038: prefer the handle's model/provider (carried from the
@@ -463,12 +469,13 @@ fn write_routing_outcome(
     let outcome_label = outcome_str(outcome);
     let pr_num = pr_number_of(outcome);
     let recorded_at = unix_to_rfc3339(now_unix);
+    let cost_usd = tier_default_cost_usd(&entry.effort);
 
     conn.execute(
         "INSERT INTO routing_outcomes
             (recorded_at, task_class, priority, effort, backend, model,
-             provider_pfx, gap_id, outcome, pr_number, duration_s)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             provider_pfx, gap_id, outcome, pr_number, duration_s, cost_usd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             recorded_at,
             task_class,
@@ -481,10 +488,27 @@ fn write_routing_outcome(
             outcome_label,
             pr_num,
             duration_s as i64,
+            cost_usd,
         ],
     )
     .context("insert routing_outcomes row")?;
     Ok(())
+}
+
+/// INFRA-1770: effort-tier → estimated USD cost of one dispatch attempt.
+/// The orchestrator crate has no per-dispatch token accounting yet, so this
+/// mirrors the same tier defaults as `budget_tracker::tier_default_cost_usd`
+/// in the bin crate (which chump-orchestrator cannot depend on) as a
+/// reasonable stand-in until real measured cost is threaded through
+/// `DispatchHandle`. Keep the two functions' constants in sync.
+fn tier_default_cost_usd(effort: &str) -> f64 {
+    match effort {
+        "xs" => 0.50,
+        "s" => 2.00,
+        "m" => 5.00,
+        "l" => 20.00,
+        _ => 5.00, // unknown → m default
+    }
 }
 
 /// RFC3339 UTC string, matching the format `record_routing_outcome` writes
@@ -1019,12 +1043,13 @@ mod tests {
             task_class: String,
             priority: String,
             effort: String,
+            cost_usd: f64,
         }
         let conn = Connection::open(dir.path().join(".chump").join("state.db")).unwrap();
         let mut stmt = conn
             .prepare(
                 "SELECT gap_id, backend, outcome, pr_number, task_class,
-                        priority, effort, duration_s
+                        priority, effort, duration_s, cost_usd
                  FROM routing_outcomes ORDER BY gap_id",
             )
             .unwrap();
@@ -1038,6 +1063,7 @@ mod tests {
                     task_class: r.get(4)?,
                     priority: r.get(5)?,
                     effort: r.get(6)?,
+                    cost_usd: r.get(8)?,
                 })
             })
             .unwrap()
@@ -1052,11 +1078,15 @@ mod tests {
         assert_eq!(rows[0].task_class, "research");
         assert_eq!(rows[0].priority, "P1");
         assert_eq!(rows[0].effort, "s");
+        // INFRA-1770: effort=s → tier_default_cost_usd("s") == $2.00.
+        assert!((rows[0].cost_usd - 2.00).abs() < f64::EPSILON);
         // INFRA-7 → ci_failed(202), task_class="" (no research prefix), priority=P2
         assert_eq!(rows[1].gap_id, "INFRA-7");
         assert_eq!(rows[1].outcome, "ci_failed");
         assert_eq!(rows[1].pr_number, Some(202));
         assert_eq!(rows[1].task_class, "");
         assert_eq!(rows[1].priority, "P2");
+        // INFRA-1770: effort=m → tier_default_cost_usd("m") == $5.00.
+        assert!((rows[1].cost_usd - 5.00).abs() < f64::EPSILON);
     }
 }

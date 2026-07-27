@@ -91,6 +91,13 @@ events:
     trigger: any chump session begins (fleet worker, operator, reaper)
     consumers: [fleet-brief, ambient-context-inject]
 
+  - kind: collision_prediction
+    effect_metric: self
+    emitter: src/collision_prediction.rs (META-076, first implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md)
+    trigger: mock agent trajectory (position/velocity) projection finds an overlap within the lookahead window at or above the configurable confidence_threshold
+    consumers: [dashboard (future, INFRA-1883)]
+    fields_required: [ts, kind, agent_a, agent_b, predicted_ts_offset_s, confidence]
+
   - kind: farmer_drain_guard
     effect_metric: self
     emitter: scripts/dev/farmer-drain-guard.sh (via farmer-brown tick, RESILIENT-076)
@@ -1248,6 +1255,19 @@ events:
       pause_reason is the "reason" field from the fleet-paused JSON payload
       (e.g. pipeline_jam, slo_breach). Bypass: set CHUMP_IGNORE_WASTE_PAUSE=1.
 
+  - kind: gap_id_reused_from_git_history_avoided
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs — gap ID assignment (INFRA-1954)
+    trigger: chump gap reserve generated a candidate ID that already appears in
+      git history (a merged/abandoned branch used it); the counter is advanced
+      and the collision-prone ID is skipped before any state.db write
+    consumers: [audit-log]
+    fields_required: [ts, kind, domain, skipped_id]
+    docs: |
+      Prevents ID reuse when git history references a candidate ID the counter
+      would otherwise re-assign. skipped_id is the avoided candidate; the reserve
+      retries with the next number.
+
   - kind: gap_cooldown_cleared
     effect_metric: self
     emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)
@@ -1713,6 +1733,48 @@ events:
     consumers: [fleet-brief, audit-log, PWA <chump-view-audit-findings>]
     fields_required: [ts, kind, feature_id, feature_class, plumbing_ok, heartbeat_ok, effect_ok, effect_metric_name, effect_observed, effect_expected_min, severity, note]
 
+  - kind: ingest_librarian_started
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep invoked against a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo_path]
+
+  - kind: ingest_librarian_completed
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep finished and triage.md was written
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo_path, files_scanned, dead_code_candidate_count, redundant_script_group_count, cost_usd_cents, elapsed_ms]
+
+  - kind: ingest_librarian_failed
+    effect_metric: self
+    emitter: src/ingest_librarian.rs (INFRA-1781, `chump audit librarian-sweep`)
+    trigger: librarian sweep aborted (bad path, not a git repo, invalid budget, or IO error writing the report)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo_path, failure_class, transient, message]
+
+  - kind: cartographer_started
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: cartograph scan invoked against a target repo
+    consumers: [audit-log]
+    fields_required: [ts, kind, target_repo]
+
+  - kind: cartographer_completed
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: cartograph scan finished and ARCHITECTURE.md was written
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, files_scanned, elapsed_ms, cost_usd_cents, wrote_architecture_md]
+
+  - kind: cartographer_failed
+    effect_metric: self
+    emitter: src/cartographer.rs (INFRA-1782, `chump cartograph`)
+    trigger: cartograph scan aborted (bad/missing target path, or an IO error mid-scan or writing ARCHITECTURE.md)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, target_repo, failure_class, note]
+
   - kind: pillar_imbalance
     effect_metric: self
     emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-720)
@@ -2002,6 +2064,10 @@ events:
     trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
     consumers: [waste-tally, fleet-brief, watchdog]
     fields_required: [ts, kind, count]
+    docs: "Full event lifecycle (pr_stuck -> pr_stuck_cluster ->
+      pr_stuck_announced -> rescue/resolve/exempt), cost tracking via
+      chump waste-tally, and failure-class taxonomy:
+      docs/observability/PR_STUCK_CLUSTER_OBSERVABILITY.md (INFRA-1749)"
 
   # INFRA-2754: run-level observability for the detector itself — fires on
   # every invocation (no-op, cluster-filed, or error) so mutation cost
@@ -2188,6 +2254,38 @@ events:
     emitter: scripts/dispatch/operator-recall.sh (INFRA-665)
     trigger: an event needs operator attention
     consumers: [discord, telegram messaging adapter]
+
+  - kind: operator_page
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
+    trigger: >
+      a session raises a structured human-in-the-loop interrupt tiered
+      info | action | block, distinct from operator_recall's halt-class-only
+      scope (T1-T3 style decisions rather than T4 fleet-wide halts).
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
+      - severity   # info | action | block
+      - title
+      - message
+      - cost_usd_at_page
+
+  - kind: operator_page_ack
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh --ack (INFRA-1774)
+    trigger: operator (or automation) acknowledges a raised operator_page
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
+      - ack_by
+
+  - kind: operator_page_timeout
+    effect_metric: self
+    emitter: scripts/dispatch/operator-page.sh --check-timeouts (INFRA-1774)
+    trigger: an operator_page's timeout_secs elapsed with no matching ack
+    consumers: [web/cockpit PWA operator-page panel]
+    fields_required:
+      - corr_id
 
   - kind: escalation
     effect_metric: self
@@ -6676,10 +6774,30 @@ events:
     trigger: >
       Emitted by `chump-policy check` when the layered policy chain
       blocks auto-merge. Carries the contributing scope(s) so the
-      operator can see WHICH scope (fleet / operator / repo) drove the
-      block — kills the "silent auto-merge refused, why?" debugging tax.
+      operator can see WHICH scope (fleet / operator / repo / lane) drove
+      the block — kills the "silent auto-merge refused, why?" debugging
+      tax. Since INFRA-1767, also carries `lane` and `failure_class`
+      (`permanent_by_design` for a lane-only Critical block, vs.
+      `transient_review_or_trust_gate` for a review/trust-count gate that
+      clears on its own).
     consumers: [ops-audit, bot-merge.sh integration]
     fields_required: [ts, kind, reason, contributing]
+
+  - kind: bot_merge_lane_resolved
+    effect_metric: resilient
+    emitter: scripts/coord/bot-merge.sh (INFRA-1767)
+    trigger: >
+      Emitted once per bot-merge.sh invocation, immediately after CLI
+      flags are parsed, disclosing which merge-risk lane (internal /
+      user-facing / critical) the run resolved to and whether
+      auto-merge was requested implicitly (lane default) or explicitly
+      (`--auto-merge` passed). Precedes the `chump-policy check --lane
+      <lane>` gate later in the run — this event is the "what lane did
+      we even think we were in" audit trail independent of whether the
+      policy chain ultimately allowed or blocked.
+    consumers: [ops-audit, bot-merge.sh integration]
+    fields_required: [ts, kind, lane, auto_merge_requested, auto_merge_explicit, session]
+    expected_volume: "1 per bot-merge.sh run"
 
   # ── Integration-cycle pipeline (META-124 / INFRA-2130) ────────────────────
   - kind: integration_cycle_started
@@ -8046,6 +8164,93 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, failure_class, intent, target_dir]
     # payload: {failure_class: str, intent: str, target_dir: str}
+
+  # ── INFRA-1780: chump ingest phase 1a (repo validation, read-only) ────────
+
+  - kind: ingest_initiated
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_initiated"
+    trigger: >
+      `chump ingest <repo-path>` begins execution. Fires immediately after
+      CLI args are parsed and before any validation or filesystem access.
+      Fields: repo_path, budget_usd (the raw --budget-usd value, default
+      "10.0").
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, budget_usd]
+    # payload: {repo_path: str, budget_usd: str}
+    status: stable
+
+  - kind: ingest_validated
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_validated"
+    trigger: >
+      `chump ingest <repo-path>` confirmed the target is a directory
+      containing .git. Phase 1a makes zero LLM/API calls, so cost_usd_cents
+      is always 0; later ingest phases that do network/LLM work will emit
+      their own cost. Fields: repo_path, cost_usd_cents, elapsed_ms.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, cost_usd_cents, elapsed_ms]
+    # payload: {repo_path: str, cost_usd_cents: int, elapsed_ms: int}
+    status: stable
+
+  - kind: ingest_failed
+    effect_metric: effective
+    emitter: src/ingest.rs (INFRA-1780)
+    # scanner-anchor: "kind":"ingest_failed"
+    trigger: >
+      `chump ingest <repo-path>` failed validation. failure_class is one of:
+      path_not_found (target does not exist), not_a_git_repo (target exists
+      but is not a directory containing .git), invalid_budget (--budget-usd
+      was not a positive finite number). All three are permanent
+      (transient=false) in phase 1a; the transient boolean field is shared
+      with downstream network-calling phases which may set it true on
+      timeout/rate-limit style failures. Fields: repo_path, failure_class,
+      transient, elapsed_ms, error.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, repo_path, failure_class, transient, elapsed_ms, error]
+    # payload: {repo_path: str, failure_class: str, transient: bool,
+    #           elapsed_ms: int, error: str}
+    status: stable
+
+  # ── INFRA-1778: chump ingest-preflight (gh auth + push-access safety rail) ─
+
+  - kind: ingest_preflight_started
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_started"
+    trigger: >
+      `chump ingest-preflight <target>` begins execution. Fires immediately
+      after CLI args are parsed, before any gh/git subprocess call.
+      cost_usd is always "0.00" — this command makes zero LLM calls.
+      Fields: target, cost_usd.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target, cost_usd]
+    # payload: {target: str, cost_usd: str}
+    status: stable
+
+  - kind: ingest_preflight_result
+    effect_metric: effective
+    emitter: src/ingest_preflight.rs (INFRA-1778)
+    # scanner-anchor: "kind":"ingest_preflight_result"
+    trigger: >
+      `chump ingest-preflight <target>` completed (success or failure).
+      failure_class is empty on success, else one of: gh_not_installed,
+      not_authenticated, unresolvable_repo, repo_not_found_or_no_access,
+      no_push_access (all permanent, transient=false, exit code 1), or
+      transient_api_error (retryable, transient=true, exit code 3).
+      resolved_repo is the owner/repo slug once resolved (empty if
+      resolution never ran, e.g. gh_not_installed). cost_usd is always
+      "0.00". Fields: target, resolved_repo, has_push_access, failure_class,
+      transient, elapsed_ms, cost_usd, error.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, target, resolved_repo, has_push_access, failure_class, transient, elapsed_ms, cost_usd, error]
+    # payload: {target: str, resolved_repo: str, has_push_access: bool,
+    #           failure_class: str, transient: bool, elapsed_ms: int,
+    #           cost_usd: str, error: str}
+    status: stable
+
   - kind: sccache_hit_rate_low
     effect_metric: credible
     emitter: scripts/ci/check-sccache-hit-rate.sh (CREDIBLE-085)
@@ -8379,3 +8584,24 @@ events:
     consumers: [fleet-brief, audit-log, ops-audit]
     fields_required: [ts, kind, session, rule, reason, stage]
     fields_optional: [gap_id, worktree]
+
+  - kind: role_card
+    effect_metric: self
+    emitter: scripts/coord/role-card-emit.sh (INFRA-2017)
+    trigger: first turn of a curator/orchestrator session, and any
+      role-switch within the same shell (same physical session_id, new
+      alias) — RCA Change 2 follow-up (COLLISION_RCA_2026-05-24.md)
+    consumers: [role-card-query.sh, dispatch-dedup]
+    fields_required: [ts, kind, session_id, aliases, primary_lane, active_claim, wake_mode]
+  # ── INFRA-2391: shelfware-resolution audit trail ────────────────────────
+  - kind: shelfware_resolved
+    effect_metric: self
+    emitter: manual append by the agent shipping the resolution (no
+      long-running daemon owns this; it is a one-shot audit event per
+      resolved crate)
+    trigger: >
+      A crate flagged shelfware (built but never wired/invoked) is either
+      wired into a real entry point or deleted. One event per resolution,
+      recording which action was taken and the PR that did it.
+    consumers: [quartermaster, ops-audit]
+    fields_required: [ts, kind, crate, action, pr]

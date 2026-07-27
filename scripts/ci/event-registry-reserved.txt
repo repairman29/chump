@@ -203,6 +203,8 @@ picker_priority_stale      # reason: planned for INFRA-1258 picker priority stal
 pr_auto_closed_for_respawn         # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
 pr_auto_rearmed  # reason: INFRA-1907 emitted by scripts/coord/pr-auto-rearm.sh safety-net sweeper when a BLOCKED+disarmed PR gets re-armed; printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rebase_fallback # reason: INFRA-1958 emitted by scripts/coord/pr-auto-rebase.sh when gh pr update-branch returned false-positive but local git rebase succeeded; printf-direct JSON not grep-scannable as kind=X literal
+pr_auto_rebase_recovered # reason: INFRA-1811 emitted by scripts/coord/pr-auto-rebase.sh when the local-rebase fallback succeeds; carries prior_state + drivers (merge-driver names that resolved the conflict); printf-direct JSON not grep-scannable as kind=X literal
+pr_auto_rebase_unresolvable # reason: INFRA-1811 emitted by scripts/coord/pr-auto-rebase.sh when the local-rebase fallback still conflicts (or times out) after merge-driver resolution; carries conflict_files array for a future smart-rescuer agent; printf-direct JSON not grep-scannable as kind=X literal
 pr_auto_rescue_invoked # reason: registered for INFRA-1600 pr-rescue MVP; emit pending
 pr_bounced_relanded        # reason: emitter scripts/coord/ uses _emit function (confirmed in grep); adding to reserved while INFRA-1287 grep fixes land
 pr_bounced_unfinished      # reason: emitter scripts/coord/bounced-pr-detector.sh; _emit pattern may not cover all code paths
@@ -737,6 +739,13 @@ bootstrap_initiated
 bootstrap_completed
 bootstrap_failed
 
+# INFRA-1780 — chump ingest phase 1a emits via crate::ambient_emit::emit()
+# with the same Rust struct-init `kind: "X".to_string()` syntax as bootstrap
+# above; same scanner limitation. Real emit sites: src/ingest.rs.
+ingest_initiated
+ingest_validated
+ingest_failed
+
 
 # ── MISSION-012: auto-deploy daemon ──────────────────────────────────────────
 binary_auto_deployed        # reason: MISSION-012 emitted by scripts/ops/auto-deploy.sh via printf after successful rebuild+install; scanner-anchor comment present in source; printf-direct JSON not grep-scannable as kind=X literal in PROD_PATHS
@@ -749,6 +758,10 @@ binary_auto_deploy_failed   # reason: MISSION-012 emitted by scripts/ops/auto-de
 # and misses these. Reserved until the regex is generalized. Real emit sites: src/onboard.rs.
 external_repo_scheduled
 external_repo_unscheduled
+# MISSION-058 — chump onboard --iter-once mission-loop emits via crate::ambient_emit::emit()
+# from src/onboard.rs (same struct-init `kind: "X".to_string()` pattern the audit regex misses).
+external_repo_iter_started
+external_repo_iter_done
 # CREDIBLE-013 — CI failure triage emits from scripts/ci/ path which is excluded
 # from the audit's PROD_PATHS scan (same pattern as CREDIBLE-085 sccache entries).
 # The emit is real (post-build triage step in CI cargo-test job), just not
@@ -774,6 +787,9 @@ external_merge_held      # reason: CREDIBLE-096 emitted by src/external_verify_m
 # Reserved here so the register-without-emit coverage gate does not flag these.
 improve_cycle_complete   # reason: EFFECTIVE-177 emitted at end of every improve cycle (dry-run or apply); fields: repo, gap, verdict, pr
 redundant_work_skipped   # reason: EFFECTIVE-177 / ZERO-WASTE-006 dedup stage decided the work is already in the target repo; fields: repo, gap, reason
+improve_pr_remediation   # reason: MISSION-059 no-abandon loop — one per fix attempt on a HELD improve PR; fields: repo, pr, class, action, attempt, model
+improve_pr_closed        # reason: MISSION-059 no-abandon loop — the improve loop closed a PR it could not get green after the retry budget; fields: repo, pr, pr_url, reason
+improve_pr_swept         # reason: MISSION-061 external shepherd — one per own open PR swept to terminal before new work; fields: repo, pr, state, agent
 
 # ── INFRA-918: bot-merge rebase-before-test telemetry ────────────────────────
 # Emitted by scripts/coord/bot-merge.sh before the cargo test phase.
@@ -790,3 +806,4 @@ token_discipline_bypass       # reason: INFRA-1590 CSS token-discipline trailer 
 # Emitted by scripts/coord/post-rebase-verify.sh when a rebase silently drops file content.
 # scanner-anchor: "kind":"rebase_hunk_dropped"
 rebase_hunk_dropped           # reason: INFRA-1526 post-rebase hunk-drop detector; fields: file, lines_dropped, original_commit, rebased_commit
+disk_floor_breach        # reason: RESILIENT-196 — preflight refused to start a build below the disk floor; fields: free_gb, floor_gb

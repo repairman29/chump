@@ -457,6 +457,15 @@ impl GapStore {
                 ON routing_outcomes(recorded_at);
         ",
         )?;
+        // INFRA-1770: cost_usd per dispatch attempt, so the (eventual)
+        // INFRA-1764 router can score routes by
+        // (success_rate * value) / cost_per_attempt instead of success_rate
+        // alone. ALTER TABLE ADD is idempotent — duplicate-column errors are
+        // ignored so re-running migrate() on an existing DB is safe.
+        let _ = self.conn.execute(
+            "ALTER TABLE routing_outcomes ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0",
+            [],
+        );
         // M1 (INFRA-059): add ISO-date columns alongside existing unix timestamps.
         // The YAML uses author-provided date strings (`opened_date: '2026-04-25'`);
         // round-trip preserves them verbatim instead of reformatting from unix ts.
@@ -1334,16 +1343,57 @@ impl GapStore {
                 }
             }
             // Atomically bump the counter and read the assigned number.
-            self.conn.execute(
-                "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
-                params![domain_upper],
-            )?;
-            let num: i64 = self.conn.query_row(
-                "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
-                params![domain_upper],
-                |r| r.get(0),
-            )?;
-            let new_id = format!("{}{:03}", prefix, num);
+            //
+            // INFRA-1954: state.db (plus the open-PR/lease sources above) is
+            // blind to a gap that already shipped and was later dropped from
+            // the live registry — e.g. state.db rebuilt from an older
+            // `.chump/state.sql` snapshot, or a domain counter that never saw
+            // the closed row. Git commit history never forgets, so before
+            // committing to a candidate ID, check whether it already appears
+            // in a past commit message on any ref; if so, skip it and try the
+            // next number. Bounded retry (not unbounded) so a persistently
+            // broken git binary can't hang reserve forever.
+            const MAX_GIT_HISTORY_SKIPS: u32 = 50;
+            let mut new_id = String::new();
+            for _ in 0..MAX_GIT_HISTORY_SKIPS {
+                self.conn.execute(
+                    "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
+                    params![domain_upper],
+                )?;
+                let num: i64 = self.conn.query_row(
+                    "SELECT next_num - 1 FROM gap_counters WHERE domain=?1",
+                    params![domain_upper],
+                    |r| r.get(0),
+                )?;
+                let candidate = format!("{}{:03}", prefix, num);
+                if git_id_referenced(&self.repo_root, &candidate) {
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    // scanner-anchor: "kind":"gap_id_reused_from_git_history_avoided" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-1954)
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reused_from_git_history_avoided\",\
+                         \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                    continue;
+                }
+                new_id = candidate;
+                break;
+            }
+            if new_id.is_empty() {
+                bail!(
+                    "reserve({domain}) failed: {MAX_GIT_HISTORY_SKIPS} consecutive candidate \
+                     IDs were all found referenced in git history — investigate \
+                     CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
+                );
+            }
             self.conn.execute(
                 "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
                  VALUES(?1,?2,?3,?4,?5,'open',?6)",
@@ -3805,6 +3855,37 @@ fn list_open_pr_titles() -> Result<Vec<String>> {
         .collect())
 }
 
+/// INFRA-1954: has `id` (e.g. `"INFRA-1953"`) ever been referenced in a
+/// commit message on any ref? `reserve_with_external`'s counter-based dedup
+/// only sees rows currently in state.db plus in-flight leases/open-PR
+/// titles — it is blind to a gap that shipped, whose commit landed on main,
+/// but whose row later disappeared from state.db (e.g. a rebuild from an
+/// older `.chump/state.sql` snapshot). Git commit history never forgets, so
+/// it's the last line of defense against handing out that same ID again.
+///
+/// Skips entirely (returns `false`) when `repo_root` has no `.git` — most
+/// unit tests run against a bare tempdir and shelling out to git there is
+/// pure overhead with no repo to search. Any git failure (binary missing,
+/// corrupt repo, etc.) is non-fatal — this is defense-in-depth on top of the
+/// DB-based counter, not the primary correctness mechanism, so a git hiccup
+/// must not brick reserve. Opt out via `CHUMP_RESERVE_GIT_HISTORY_CHECK=0`.
+fn git_id_referenced(repo_root: &Path, id: &str) -> bool {
+    if std::env::var("CHUMP_RESERVE_GIT_HISTORY_CHECK").as_deref() == Ok("0") {
+        return false;
+    }
+    if !repo_root.join(".git").exists() {
+        return false;
+    }
+    let output = std::process::Command::new("git")
+        .args(["log", "--all", "--oneline", "-F", "--grep", id, "-1"])
+        .current_dir(repo_root)
+        .output();
+    match output {
+        Ok(out) => out.status.success() && !out.stdout.is_empty(),
+        Err(_) => false,
+    }
+}
+
 /// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
 /// Avoids pulling in the `regex` crate just for this since it's not already
 /// a dep of chump's bin target. Domain is uppercase; NNN is one-or-more
@@ -4544,6 +4625,11 @@ pub struct RoutingOutcomeRow {
     pub outcome: String,
     pub pr_number: Option<u32>,
     pub duration_s: i64,
+    /// INFRA-1770: estimated USD cost of this one dispatch attempt (LLM
+    /// spend). `0.0` when unknown/unmeasured — callers should prefer a real
+    /// measured cost (e.g. `session_ledger::cost_usd_from_tokens`) over the
+    /// effort-tier default when one is available.
+    pub cost_usd: f64,
 }
 
 /// One aggregated row from the `(task_class, backend, model, provider_pfx)`
@@ -4559,6 +4645,17 @@ pub struct ScoreboardEntry {
     pub total: u64,
     pub success_rate: f64,
     pub last_seen: String,
+    /// INFRA-1770: mean `cost_usd` across every attempt on this route.
+    pub avg_cost_usd: f64,
+    /// INFRA-1770: `(success_rate * value) / avg_cost_usd`, the score the
+    /// (eventual) INFRA-1764 router is meant to rank routes by instead of
+    /// success_rate alone — a route that ships reliably but burns 10x the
+    /// budget of an equally-reliable cheaper route should rank lower.
+    /// `value` is the mean priority weight of attempts on this route (P0=4
+    /// … P3=1, default 2), a proxy for how much a shipped gap on this route
+    /// was actually worth. `0.0` when `avg_cost_usd` is `0.0` (no cost data
+    /// yet — most historical rows predate this column).
+    pub route_score: f64,
 }
 
 impl GapStore {
@@ -4570,8 +4667,8 @@ impl GapStore {
             .execute(
                 "INSERT INTO routing_outcomes
                     (recorded_at, task_class, priority, effort, backend, model,
-                     provider_pfx, gap_id, outcome, pr_number, duration_s)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     provider_pfx, gap_id, outcome, pr_number, duration_s, cost_usd)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     row.recorded_at,
                     row.task_class,
@@ -4584,6 +4681,7 @@ impl GapStore {
                     row.outcome,
                     row.pr_number,
                     row.duration_s,
+                    row.cost_usd,
                 ],
             )
             .context("insert routing_outcomes row")?;
@@ -4600,7 +4698,12 @@ impl GapStore {
                     SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
                     SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures,
                     COUNT(*) AS total,
-                    MAX(recorded_at) AS last_seen
+                    MAX(recorded_at) AS last_seen,
+                    AVG(cost_usd) AS avg_cost_usd,
+                    AVG(CASE priority
+                        WHEN 'P0' THEN 4.0 WHEN 'P1' THEN 3.0
+                        WHEN 'P2' THEN 2.0 WHEN 'P3' THEN 1.0
+                        ELSE 2.0 END) AS avg_value
              FROM routing_outcomes
              GROUP BY task_class, backend, model, provider_pfx
              ORDER BY total DESC, successes DESC",
@@ -4614,8 +4717,17 @@ impl GapStore {
             let failures: i64 = r.get(5)?;
             let total: i64 = r.get(6)?;
             let last_seen: String = r.get::<_, Option<String>>(7)?.unwrap_or_default();
+            let avg_cost_usd: f64 = r.get::<_, Option<f64>>(8)?.unwrap_or(0.0);
+            let avg_value: f64 = r.get::<_, Option<f64>>(9)?.unwrap_or(2.0);
             let success_rate = if total > 0 {
                 successes as f64 / total as f64
+            } else {
+                0.0
+            };
+            // INFRA-1770: score routes by (success_rate * value) / cost —
+            // undefined (0.0) until real cost_usd data accumulates.
+            let route_score = if avg_cost_usd > 0.0 {
+                (success_rate * avg_value) / avg_cost_usd
             } else {
                 0.0
             };
@@ -4629,6 +4741,8 @@ impl GapStore {
                 total: total as u64,
                 success_rate,
                 last_seen,
+                avg_cost_usd,
+                route_score,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -6458,6 +6572,7 @@ meta:
             outcome: outcome.into(),
             pr_number: pr,
             duration_s: 60,
+            cost_usd: 2.0,
         }
     }
 
@@ -6474,6 +6589,24 @@ meta:
         assert_eq!(board[0].total, 1);
         assert!((board[0].success_rate - 1.0).abs() < f64::EPSILON);
         assert_eq!(board[0].last_seen, "2026-04-27T12:00:00Z");
+        assert!((board[0].avg_cost_usd - 2.0).abs() < f64::EPSILON);
+        // priority=P1 -> value=3.0; score = (1.0 success * 3.0 value) / 2.0 cost.
+        assert!((board[0].route_score - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn routing_outcomes_route_score_is_zero_without_cost_data() {
+        let (store, _dir) = test_store();
+        let mut row = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(7), "", "");
+        row.cost_usd = 0.0;
+        store.record_routing_outcome(&row).unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 1);
+        assert_eq!(board[0].avg_cost_usd, 0.0);
+        assert_eq!(
+            board[0].route_score, 0.0,
+            "score is undefined (0.0) when no cost data has accumulated yet"
+        );
     }
 
     #[test]
@@ -6752,6 +6885,73 @@ meta:
             .reserve_verified("INFRA", "fast", "P1", "s", "any-session")
             .unwrap();
         assert_eq!(id, "INFRA-001");
+    }
+
+    // ── INFRA-1954: git-history reuse guard ─────────────────────────────
+
+    /// Reproduces the 2026-05-25 Cold Water incident: state.db has no row
+    /// for the domain (fresh/rebuilt counter), so the naive next ID would be
+    /// `<PREFIX>-001` — but that ID was already used by a gap that shipped
+    /// and whose commit is sitting in git history. reserve() must skip it
+    /// and hand out `<PREFIX>-002` instead.
+    #[test]
+    fn reserve_skips_id_already_referenced_in_git_history() {
+        let dir = TempDir::new().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .status()
+                .unwrap();
+        };
+        git(&["init", "--initial-branch=main", "--quiet"]);
+        git(&["config", "user.email", "test@test.local"]);
+        git(&["config", "user.name", "test"]);
+        git(&[
+            "commit",
+            "--allow-empty",
+            "-m",
+            "feat(COLDWATER-001): already shipped and removed from the registry",
+        ]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        let store = GapStore::open(dir.path()).unwrap();
+
+        let id = store.reserve("COLDWATER", "re-reserve", "P1", "s").unwrap();
+        assert_eq!(
+            id, "COLDWATER-002",
+            "should skip COLDWATER-001 (found in git history), got {id}"
+        );
+    }
+
+    /// Sanity check on the other side: when the candidate ID does NOT appear
+    /// anywhere in git history, reserve() proceeds normally without skipping.
+    #[test]
+    fn reserve_does_not_skip_id_absent_from_git_history() {
+        let dir = TempDir::new().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .status()
+                .unwrap();
+        };
+        git(&["init", "--initial-branch=main", "--quiet"]);
+        git(&["config", "user.email", "test@test.local"]);
+        git(&["config", "user.name", "test"]);
+        git(&["commit", "--allow-empty", "-m", "chore: unrelated commit"]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+        }
+        let store = GapStore::open(dir.path()).unwrap();
+
+        let id = store.reserve("FRESHDOM", "brand new", "P1", "s").unwrap();
+        assert_eq!(id, "FRESHDOM-001");
     }
 
     // ── INFRA-208: dump preserves unknown hand-curated fields ──────────

@@ -341,16 +341,18 @@ FLEET_START_EPOCH="${FLEET_START_EPOCH:-$(date +%s)}"
 
 # INFRA-210: every worktree compiling its own target/ is the #1 disk hog.
 # Default to a shared target dir unless the caller explicitly set their own.
-# INFRA-535: when the fleet is launched from a /tmp/ clone (common pattern
-# for fleet worktrees), $REPO_ROOT/target fills /tmp/ and causes disk-full.
-# Redirect to ~/.cache/chump-fleet-target/ instead — outside /tmp/ — so
-# the shared cache survives across sessions and doesn't blow the ramdisk.
+# INFRA-535: when the fleet is launched from a /tmp/ clone, a worktree-local
+# target/ fills /tmp/ and causes disk-full — so the shared dir must live in
+# $HOME, outside /tmp/, surviving across sessions.
+# ZERO-WASTE-029: the previous impl forked TWO extra targets — $REPO_ROOT/target
+# (non-tmp) and ~/.cache/chump-fleet-target (tmp) — neither matching worker.sh's
+# canonical ~/.cargo/chump-shared-target. Because run-fleet propagates
+# CARGO_TARGET_DIR into every worker env (see the worker env block below), that
+# override defeated worker.sh's default, producing a duplicate ~45G target dir
+# (the 2026-07-26 disk-100% incident). Converge on worker.sh's exact canonical
+# value so launcher, workers, and interactive builds all share one target dir.
 if [ -z "${CARGO_TARGET_DIR:-}" ]; then
-    if [[ "$REPO_ROOT" == /tmp/* || "$REPO_ROOT" == /private/tmp/* ]]; then
-        export CARGO_TARGET_DIR="$HOME/.cache/chump-fleet-target"
-    else
-        export CARGO_TARGET_DIR="$REPO_ROOT/target"
-    fi
+    export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
 fi
 
 # ── INFRA-844: --restart — tear down existing fleet then relaunch ─────────────

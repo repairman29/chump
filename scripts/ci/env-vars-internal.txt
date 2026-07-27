@@ -404,6 +404,7 @@ CHUMP_CLAIM_FUZZY_THRESHOLD
 
 # INFRA-1442: claim-time fuzzy-match disable
 CHUMP_CLAIM_NO_FUZZY
+CHUMP_CLAIM_NO_NATS
 
 # INFRA-1454: agent-bash sandbox opt-in (macOS sandbox-exec wrap)
 CHUMP_AGENT_SANDBOX
@@ -996,10 +997,26 @@ CHUMP_GH_BIN
 # CHUMP_IMPROVE_GH_BIN     — path to gh CLI passed through to verify-merge (default: gh)
 # CHUMP_IMPROVE_CHUMP_BIN  — path to chump binary for verify-merge delegation (default: auto-resolve)
 # CHUMP_IMPROVE_DISABLED   — Category-B kill-switch; set to 1 to disable the subcommand (INFRA-2429)
+# CHUMP_IMPROVE_FIX_RETRIES — MISSION-059: max escalating fix attempts on a HELD PR before closing it (default 2)
+# CHUMP_IMPROVE_MODEL_LADDER — MISSION-059: comma-separated model-escalation ladder for fix retries (default: claude-sonnet-4-5,opus)
 CHUMP_IMPROVE_CLAUDE_BIN
 CHUMP_IMPROVE_GH_BIN
 CHUMP_IMPROVE_CHUMP_BIN
 CHUMP_IMPROVE_DISABLED
+CHUMP_IMPROVE_FIX_RETRIES
+CHUMP_IMPROVE_MODEL_LADDER
+# CHUMP_AGENT_NAME  — MISSION-063: override the improve loop's agent codename (default: stable roster pick by hostname)
+# CHUMP_AGENT_EMAIL — MISSION-063: override the agent's git author email (default: <codename>@<node>.chump.fleet)
+# CHUMP_AGENT_NODE  — MISSION-063: override the node token used in the identity (default: hostname)
+CHUMP_AGENT_NAME
+CHUMP_AGENT_EMAIL
+CHUMP_AGENT_NODE
+# CHUMP_IMPROVE_SHEPHERD      — MISSION-061: set 0 to disable the pre-pick own-PR shepherd sweep (default on)
+# CHUMP_IMPROVE_SWEEP_MAX     — MISSION-061: max own PRs remediated per cycle before new work (default 3)
+# CHUMP_AGENT_EMAIL_DOMAIN    — MISSION-061: commit-author email domain that marks a PR as agent-owned (default chump.fleet)
+CHUMP_IMPROVE_SHEPHERD
+CHUMP_IMPROVE_SWEEP_MAX
+CHUMP_AGENT_EMAIL_DOMAIN
 
 # EFFECTIVE-201: 0→1 audit doctrine layer + standard-mission injection
 # No new env vars — the doctrine layer field is schema-only, not runtime-configurable.
@@ -1193,3 +1210,36 @@ CHUMP_HOME
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_FREE_TIER_PROVIDERS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MODEL_ESCALATION_LADDER
+# detected in: (standard input)
+CHUMP_OAUTH_TOKEN_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CASCADE_ENABLED
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_HOME_FIXTURE
+CHUMP_OPERATOR_PAGE_AUTO_ACK_SECS
+# detected in: (standard input)
+CHUMP_SESSION_COST_USD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_STATE
+# CHUMP_PREFLIGHT_DISK_FLOOR_GB — RESILIENT-196: refuse to start a cargo build below N GB free (default 15; 0 disables)
+CHUMP_PREFLIGHT_DISK_FLOOR_GB
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S
+CHUMP_RESERVE_GIT_HISTORY_CHECK

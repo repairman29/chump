@@ -84,6 +84,21 @@ Documented for completeness; do **not** file follow-ups.
 | `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
 | `actionlint — workflow syntax gate` (META-199) | Uses `rhysd/actionlint` GitHub Action; requires the actionlint binary not in standard preflight env |
 | `coverage-nightly.yml` (META-200) | Nightly cron only; llvm-cov instrument pass is too slow for per-PR preflight |
+| commit-msg docs-delta trailer check | INFRA-1969/INFRA-3379 — `test-docs-delta-commit-msg.sh` validates the commit-msg git hook itself; runs as a `commit-msg` hook, not a preflight gate — mirroring would duplicate hook logic rather than test something preflight doesn't already cover |
+| gap-reserve concurrency | INFRA-021/301/INFRA-3379 — `test-gap-reserve-concurrency.sh` requires a freshly `cargo build`-ed `chump` binary on `PATH`; the parallel-claim race it tests only reproduces against the compiled binary, too slow for the preflight fast loop |
+| gap-reserve ID zero-padding | INFRA-080/INFRA-3379 — `test-gap-reserve-padding.sh`, same as above, requires compiled `chump` binary on `PATH` |
+| gap-ID cross-session collision | CREDIBLE-052/INFRA-3379 — `test-gap-id-cross-session.sh` requires `CHUMP_BIN` pointing at a compiled `chump` binary; cross-session collision fixture needs the real CLI, not source |
+| gap-ID lease uniqueness gate | INFRA-1970/INFRA-3379 — `test-gap-id-lease-uniqueness.sh` requires `CHUMP_BIN`; duplicate-PR race-window guard needs the compiled binary under concurrent invocation |
+| UUID gap-ID compatibility | INFRA-3379 — `test-uuid-gap-id-compat.sh` requires `CHUMP_BIN`; UUID gap-ID compatibility fixture drives the real CLI |
+| release --lease | INFRA-3379 — `test-release-lease-flag.sh` requires `CHUMP_BIN`; `--lease` release flag fixture drives the real CLI |
+| CLI help system consistency | INFRA-3383 — `test-cli-help.sh`; falls back to `cargo build --bin chump` when no binary is on `PATH`; too slow for the preflight fast loop (step name matched, not script path — the CI step wraps it in a multi-line `run: \|` with a `CHUMP_BIN=` prefix line) |
+| CLI integration tests | INFRA-3383 — `test-cli-integration.sh`; requires a compiled `chump` binary on `PATH` to exercise; not preflight-fast-loop shaped (step name matched — see note above) |
+| `test-infra-254-pwa-root-redirect.sh` | INFRA-3383 — runs `cargo build --bin chump` and spins up the PWA server on a port; too heavyweight for preflight |
+| `test-subagent-budget-kill.sh` | INFRA-3383 — INFRA-1972 parent-enforced kill is a runtime supervisor test that spawns + kills child processes; not preflight-shaped |
+| `test-md-links-loop.sh` | INFRA-3383 — INFRA-1925 md-links curator loop smoke; tests a curator daemon loop, not a per-commit gate |
+| `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
+| `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
+| `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
 
 ## Promotion criteria for Tier C → Tier A
 

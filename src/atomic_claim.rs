@@ -76,6 +76,13 @@ pub struct ClaimArgs {
     /// Emits `force_recover_wip_discarded` instead of `force_recover_wip_loss`.
     /// Use only when the uncommitted state is intentionally abandoned.
     pub discard_wip: bool,
+    /// INFRA-1730: when the deterministic claim branch already exists on the
+    /// remote AND is orphaned (its PR is closed, not open), auto-rename to
+    /// `<branch>-N` and continue instead of bailing. No effect when the
+    /// existing branch has an open PR (that's the stomp-check's lane) or
+    /// when `--resume` is also passed (`--resume` wins: same branch, reset
+    /// to remote tip).
+    pub rename: bool,
 }
 
 impl ClaimArgs {
@@ -94,6 +101,8 @@ impl ClaimArgs {
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
                        --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
                        --discard-wip    With --force-recover: bypass WIP-loss guard and wipe uncommitted changes\n  \
+                       --rename         If the claim branch is orphaned (remote branch exists, its PR is closed),\n                        \
+                                        auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
@@ -111,6 +120,25 @@ impl ClaimArgs {
         if gap_id.starts_with("--") {
             bail!("missing GAP-ID (saw flag {gap_id})");
         }
+        // CREDIBLE-166: reject an OBVIOUSLY-malformed GAP-ID at parse time,
+        // BEFORE run_claim's autonomy gate (RESILIENT-073). Otherwise
+        // `claim <bad-id>` returned "fleet stopped (AUTONOMY_LEVEL=0)" instead of
+        // a format error, masking the real problem (test-cli-integration.sh).
+        // Deliberately LOOSE: a real GAP-ID starts with an uppercase letter and
+        // contains a '-'. This rejects args like "bad-format-id" / "12345-not-valid"
+        // WITHOUT rejecting descriptive test fixtures (INFRA-NONEXISTENT-SMOKE-TEST,
+        // RESILIENT-073-FAKE) or forcing a digit suffix — the downstream existence/
+        // status checks and the autonomy gate handle well-formed-but-blocked IDs.
+        // Pure, non-mutating check, so it does not reintroduce the ordering bug the
+        // autonomy-first gate guards against (a failing chump-op/DB masking the switch).
+        let looks_like_gap_id = gap_id
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase())
+            && gap_id.contains('-');
+        if !looks_like_gap_id {
+            bail!("invalid GAP-ID format: {gap_id} (expected DOMAIN-NUMBER, e.g. INFRA-1234)");
+        }
         let mut paths: Option<String> = None;
         let mut session_id: Option<String> = None;
         let mut skip_doctor = false;
@@ -123,6 +151,7 @@ impl ClaimArgs {
         let mut check_only = false;
         let mut json = false;
         let mut discard_wip = false;
+        let mut rename = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -183,6 +212,10 @@ impl ClaimArgs {
                     discard_wip = true;
                     i += 1;
                 }
+                "--rename" => {
+                    rename = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -211,6 +244,7 @@ impl ClaimArgs {
             check_only,
             json,
             discard_wip,
+            rename,
         })
     }
 }
@@ -462,7 +496,17 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         }
     }
 
-    // Gate 6: Check disk space (must have >5GB free)
+    // Gate 6: Disk-space ADMISSION control (ZERO-WASTE-028).
+    // A `chump claim` provisions a worktree with an isolated CARGO_TARGET_DIR
+    // (INFRA-2183) that grows to 1–7 GB. Creating one when disk is already tight
+    // is how the machine oscillates to 100% full — at which point the reaper,
+    // the fleet, AND cargo all wedge. The upstream fix is backpressure: REFUSE
+    // to create the worktree below the floor so the worker backs off and idles
+    // (recoverable) instead of overcommitting (unrecoverable). Was warn-only,
+    // which is why claims kept succeeding past the floor.
+    // Escape hatch is the floor itself: CHUMP_DISK_FLOOR_GB=0 admits any disk
+    // (a legitimate config knob, not a bypass-class var — no new bypass per the
+    // INFRA-2429 zero-bypass thesis).
     match check_disk_space(&args.worktree_base) {
         Ok(msg) => {
             gates.push(GateResult {
@@ -474,10 +518,14 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
         Err(msg) => {
             gates.push(GateResult {
                 gate: "disk_space".to_string(),
-                status: "warn".to_string(),
-                message: msg,
+                status: "fail".to_string(),
+                message: format!(
+                    "{msg} — refusing to create a worktree below the disk floor. \
+                     Free space (e.g. reclaim orphaned worktree targets) or lower \
+                     CHUMP_DISK_FLOOR_GB (set to 0 to admit any disk)."
+                ),
             });
-            has_warn = true;
+            has_fail = true;
         }
     }
 
@@ -724,7 +772,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // 5. Worktree path + branch name.
     let gap_lower = args.gap_id.to_lowercase();
     let worktree_path = args.worktree_base.join(format!("chump-{}", gap_lower));
-    let branch = format!("chump/{}-claim", gap_lower);
+    let mut branch = format!("chump/{}-claim", gap_lower);
 
     // PathBuf-to-str needed for both the force-recover block and worktree-add below.
     // Derive early so both code paths share the same binding.
@@ -1101,6 +1149,43 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &ambient_log,
     );
 
+    // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
+    // 5b stomp-check has already run (above) and would have bailed if an
+    // OPEN PR covers this exact branch — so if the remote still has the
+    // branch here, it's either orphaned (its PR closed) or was pushed and
+    // never PR'd. With `--rename` (and no `--resume`, which wins and reuses
+    // the branch), rename the freshly-created local branch to `<branch>-N`
+    // and proceed instead of aborting. Best-effort PR lookup only decorates
+    // the log line; the rename itself doesn't require it.
+    if !args.resume && args.rename && remote_branch_exists(&args.repo_root, &args.remote, &branch) {
+        let orphan_pr = closed_pr_for_branch(&args.repo_root, &branch);
+        let new_branch = next_available_branch_name(&args.repo_root, &args.remote, &branch);
+        if let Err(e) = run_git(&worktree_path, &["branch", "-m", &branch, &new_branch]) {
+            let _ = run_git(
+                &args.repo_root,
+                &["worktree", "remove", "--force", worktree_path_str],
+            );
+            let _ = run_git(&args.repo_root, &["branch", "-D", &branch]);
+            bail!(
+                "--rename: git branch -m {} {} failed: {}",
+                branch,
+                new_branch,
+                e
+            );
+        }
+        match orphan_pr {
+            Some(pr) => eprintln!(
+                "[claim] --rename: {} is orphaned from closed PR #{} — renamed local branch to {}",
+                branch, pr, new_branch
+            ),
+            None => eprintln!(
+                "[claim] --rename: {} already exists on {} with no open PR — renamed local branch to {}",
+                branch, args.remote, new_branch
+            ),
+        }
+        branch = new_branch;
+    }
+
     // Rollback helper: undo worktree + branch on failure.
     let rollback_wt = |extra: &str| {
         let _ = run_git(
@@ -1138,12 +1223,25 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             );
         } else {
             rollback_wt("");
+            // INFRA-1730: best-effort orphan detection to make the abort
+            // message actionable instead of a bare "branch exists" dead end.
+            let orphan_pr = closed_pr_for_branch(&args.repo_root, &branch);
+            let orphan_line = match orphan_pr {
+                Some(pr) => format!(
+                    "  This looks like an orphaned branch: PR #{} on this branch is already closed.\n",
+                    pr
+                ),
+                None => String::new(),
+            };
             bail!(
-                "branch {} already exists on {}.\n  \
+                "branch {} already exists on {}.\n{}  \
                  Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
+                 Pass --rename to auto-rename to {}-N and start a fresh branch.\n  \
                  Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
                 branch,
                 args.remote,
+                orphan_line,
+                branch,
                 branch
             );
         }
@@ -1399,6 +1497,76 @@ pub(crate) fn open_pr_info(repo_root: &Path, branch: &str) -> Option<(u64, Strin
     let num = parts.next()?.parse::<u64>().ok()?;
     let author = parts.next().unwrap_or("").to_string();
     Some((num, author))
+}
+
+/// INFRA-1730: Returns `Some(pr_number)` if the upstream has a CLOSED
+/// (merged or not) PR with `<branch>` as its head. This is the "orphan
+/// branch" signal: a remote branch exists but the PR that used it is
+/// already closed, so the branch is dead weight left over from a prior
+/// session rather than in-flight work. Distinguishing this from
+/// `open_pr_on_branch` lets `chump claim` give an actionable message
+/// (resume vs. rename) instead of a generic "branch already exists" bail.
+///
+/// Best-effort: any `gh` failure (no auth, no network, gh not on PATH)
+/// returns `None` — the caller falls back to the pre-INFRA-1730 generic
+/// message.
+fn closed_pr_for_branch(repo_root: &Path, branch: &str) -> Option<u64> {
+    let owner_repo = gh_owner_repo(repo_root)?;
+    let owner = owner_repo.split('/').next()?;
+    let head = format!("{}:{}", owner, branch);
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!(
+                "repos/{}/pulls?state=closed&head={}&per_page=1",
+                owner_repo, head
+            ),
+            "--jq",
+            r#".[0] | if . == null then empty else "\(.number)" end"#,
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+    line.parse::<u64>().ok()
+}
+
+/// INFRA-1730: find the next available `<branch>-N` name (N starting at 2)
+/// that exists neither locally nor on `remote`. Used by `chump claim --rename`
+/// to auto-rebrand an orphaned branch instead of aborting the claim.
+fn next_available_branch_name(repo_root: &Path, remote: &str, branch: &str) -> String {
+    for n in 2..100 {
+        let candidate = format!("{}-{}", branch, n);
+        let local_exists = run_git(
+            repo_root,
+            &[
+                "show-ref",
+                "--verify",
+                "--quiet",
+                &format!("refs/heads/{}", candidate),
+            ],
+        )
+        .is_ok();
+        if !local_exists && !remote_branch_exists(repo_root, remote, &candidate) {
+            return candidate;
+        }
+    }
+    // Exhausted the search space (pathological) — fall back to a timestamped
+    // suffix so the claim can still proceed.
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{}-{}", branch, secs)
 }
 
 /// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
@@ -3449,9 +3617,14 @@ fn check_base_branch(repo_root: &Path, remote: &str, base_branch: &str) -> Resul
 
 /// Check available disk space (must have >5GB free in worktree base).
 fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
-    // Use 'df' to check available space
+    // Use 'df' to check available space.
+    // ZERO-WASTE-028: `-Bk` is a GNU-only flag — on macOS (BSD df) it errors
+    // ("invalid option -- B"), stdout is empty, parsing bails to Ok(), and the
+    // gate goes SILENTLY INERT. That is why the Mac fleet host filled to 2% free
+    // while the gate "passed" every claim. `-k` (1024-byte blocks, Available in
+    // column 4) is portable across BSD and GNU df.
     let output = std::process::Command::new("df")
-        .arg("-Bk")
+        .arg("-k")
         .arg(worktree_base)
         .output();
 
@@ -3464,15 +3637,21 @@ fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
                 if parts.len() >= 4 {
                     if let Ok(avail_kb) = parts[3].parse::<u64>() {
                         let avail_gb = avail_kb / (1024 * 1024);
-                        if avail_gb >= 5 {
+                        // ZERO-WASTE-028: floor shared with the rest of the disk
+                        // subsystem (CHUMP_DISK_FLOOR_GB, same var `chump disk`
+                        // uses; default 5 GB).
+                        let floor_gb: u64 = std::env::var("CHUMP_DISK_FLOOR_GB")
+                            .ok()
+                            .and_then(|v| v.trim().parse::<f64>().ok())
+                            .map(|f| f.max(0.0) as u64)
+                            .unwrap_or(5);
+                        if avail_gb >= floor_gb {
                             Ok(format!(
-                                "Available disk space: {}GB (>5GB required)",
-                                avail_gb
+                                "Available disk space: {avail_gb}GB (>= {floor_gb}GB floor)"
                             ))
                         } else {
                             Err(format!(
-                                "Insufficient disk space: {}GB (need >5GB)",
-                                avail_gb
+                                "Insufficient disk space: {avail_gb}GB (need >= {floor_gb}GB floor)"
                             ))
                         }
                     } else {
@@ -4820,6 +4999,34 @@ mod tests {
         assert!(ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_err());
     }
 
+    // CREDIBLE-166: malformed GAP-IDs are rejected at parse time with an
+    // "invalid GAP-ID format" error — BEFORE run_claim's autonomy gate — so
+    // `claim <bad-id>` no longer returns "fleet stopped" for a malformed arg.
+    #[test]
+    fn from_argv_rejects_malformed_gap_id_with_format_error() {
+        for bad in ["bad-format-id", "12345-not-valid", "lowercase-1", "NODASH"] {
+            let argv: Vec<String> = vec!["claim".into(), bad.into()];
+            let err = ClaimArgs::from_argv(&argv, PathBuf::from("."))
+                .expect_err(&format!("{bad} should be rejected"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("invalid GAP-ID format"),
+                "{bad}: message should carry 'invalid GAP-ID format', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_argv_accepts_canonical_gap_ids() {
+        for good in ["INFRA-1234", "ZERO-WASTE-015", "SMOKE-001", "CREDIBLE-166"] {
+            let argv: Vec<String> = vec!["claim".into(), good.into()];
+            assert!(
+                ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_ok(),
+                "{good} should parse"
+            );
+        }
+    }
+
     // INFRA-779: verify_and_repair_gitdir repairs a clobbered gitdir file
     #[test]
     fn infra779_repairs_clobbered_gitdir() {
@@ -5916,6 +6123,62 @@ mod open_pr_dup_tests {
     }
 
     #[test]
+    fn closed_pr_for_branch_returns_none_when_gh_unavailable_or_unauthed() {
+        // Best-effort: no panic, no assumption about gh presence/auth in CI.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let _result: Option<u64> = closed_pr_for_branch(dir.path(), "chump/infra-testonly-claim");
+    }
+
+    #[test]
+    fn next_available_branch_name_skips_existing_local_branches() {
+        // INFRA-1730: --rename must not collide with a branch that already
+        // exists locally, even before checking the remote.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        assert!(Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(repo)
+            .status()
+            .expect("git init")
+            .success());
+        assert!(Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .status()
+            .expect("git config email")
+            .success());
+        assert!(Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .status()
+            .expect("git config name")
+            .success());
+        std::fs::write(repo.join("f.txt"), "x").expect("write file");
+        assert!(Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .status()
+            .expect("git add")
+            .success());
+        assert!(Command::new("git")
+            .args(["commit", "-m", "init", "--quiet"])
+            .current_dir(repo)
+            .status()
+            .expect("git commit")
+            .success());
+        // Pre-create chump/infra-1730-claim-2 locally so the search must skip it.
+        assert!(Command::new("git")
+            .args(["branch", "chump/infra-1730-claim-2"])
+            .current_dir(repo)
+            .status()
+            .expect("git branch")
+            .success());
+
+        let name = next_available_branch_name(repo, "origin", "chump/infra-1730-claim");
+        assert_eq!(name, "chump/infra-1730-claim-3");
+    }
+
+    #[test]
     fn gate_name_is_plausible_rejects_garbled_signals() {
         // INFRA-2524 regression: the 2026-06-03 watchdog wrote failing_gates=["—"]
         // (a stray em-dash) which fail-CLOSED the whole fleet's claims for 5h+.
@@ -5952,6 +6215,28 @@ mod release_lease_tests {
     //! NATS-KV leg is a best-effort `chump-coord release` shell-out.)
     use super::*;
     use tempfile::tempdir;
+
+    // ZERO-WASTE-028: the disk admission gate must actually fire. Two regressions
+    // this guards: (1) `df -Bk` was BSD-invalid → gate silently inert on macOS;
+    // (2) the floor must be env-driven and enforce a real pass/fail boundary.
+    // The absurd-floor case only returns Err if `df` truly parsed a number, so
+    // this also catches any relapse to a df flag that produces no output.
+    #[test]
+    fn disk_gate_floor_env_enforces_pass_and_fail() {
+        let dir = tempdir().expect("tempdir");
+        // floor 0 → any real disk passes
+        std::env::set_var("CHUMP_DISK_FLOOR_GB", "0");
+        let ok = check_disk_space(dir.path());
+        assert!(ok.is_ok(), "floor=0 must pass, got {ok:?}");
+        // absurd floor → must block (proves df parsed a real avail number too)
+        std::env::set_var("CHUMP_DISK_FLOOR_GB", "9999999");
+        let err = check_disk_space(dir.path());
+        assert!(
+            err.is_err(),
+            "absurd floor must block (and df must have parsed real avail), got {err:?}"
+        );
+        std::env::remove_var("CHUMP_DISK_FLOOR_GB");
+    }
 
     fn setup_db(repo_root: &Path) {
         let chump_dir = repo_root.join(".chump");

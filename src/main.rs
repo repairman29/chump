@@ -87,6 +87,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_fanout; // INFRA-1484: cross-repo fan-out (Marcus M-B continuation)
 mod fleet_health;
+mod fleet_mode;
 mod fleet_pulse; // INFRA-1995: THE FLOOR Phase 2 — single-pane fleet status
 mod fleet_resize;
 mod fleet_self_doctor;
@@ -105,6 +106,8 @@ use chump_gap_store as gap_store;
 extern crate chump_ship;
 mod audit;
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
+mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
+mod collision_prediction; // META-076: predictive collision detection (mock inputs), first impl of docs/design/COLLISION_PREDICTION_SCHEMA.md
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod external_verify_merge; // CREDIBLE-096: chump external verify-merge
@@ -117,6 +120,9 @@ mod health_server;
 mod hitl_escalation;
 mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
+mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
+mod ingest_librarian; // INFRA-1781: Phase 1 Librarian audit + triage report (INFRA-1746 phase 1b)
+mod ingest_preflight; // INFRA-1778: chump ingest-preflight — gh auth + push-access safety rail
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
@@ -1315,6 +1321,30 @@ async fn main() -> Result<()> {
         std::process::exit(code);
     }
 
+    // `chump ingest <repo-path>` (INFRA-1780, phase 1a of INFRA-1746) —
+    // repo validation + read-only safety only. No filesystem mutation, no
+    // network calls. Later phases add the actual scanning/writing.
+    if args.get(1).map(String::as_str) == Some("ingest") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(ingest::run(&sub_args));
+    }
+
+    // `chump ingest-preflight <owner/repo|url|local-path>` (INFRA-1778) —
+    // verifies gh auth + push access before any ingest phase runs. Read-only.
+    if args.get(1).map(String::as_str) == Some("ingest-preflight") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(ingest_preflight::run(&sub_args));
+    }
+
+    // `chump cartograph <target-repo-path> [--json]` (INFRA-1782, phase 2 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/ARCHITECTURE.md. No LLM calls, no network
+    // calls; the only write is ARCHITECTURE.md itself.
+    if args.get(1).map(String::as_str) == Some("cartograph") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(cartographer::run(&sub_args));
+    }
+
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
     // emit a FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
     // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1; prints "feature flag off,
@@ -1331,6 +1361,16 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("voice") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::voice::run(&sub_args));
+    }
+
+    // `chump demo [--seed N] [--duration 60m] [--dry-run] ...` (INFRA-2391) —
+    // wires the META-072 chump-demo crate (Track-3 autonomous-throughput
+    // demo loop) in as a first-class subcommand instead of leaving it as an
+    // undiscoverable standalone binary. Execs the sibling chump-demo binary
+    // built by this workspace, forwarding args + exit code.
+    if args.get(1).map(String::as_str) == Some("demo") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::demo::run(&sub_args));
     }
 
     // `chump config [show] [--json]` (INFRA-2371) — runtime cascade /
@@ -1688,9 +1728,95 @@ async fn main() -> Result<()> {
             println!("Usage: chump audit <subcommand> [options]");
             println!();
             println!("Subcommands:");
-            println!("  aha-sweep   walk code/runtime/effect triangle for every registered kind");
+            println!(
+                "  aha-sweep         walk code/runtime/effect triangle for every registered kind"
+            );
+            println!(
+                "  librarian-sweep   dead-code + redundant-script triage for an ingest target repo"
+            );
             println!();
-            println!("Run 'chump audit aha-sweep --help' for sweep options.");
+            println!("Run 'chump audit <subcommand> --help' for options.");
+            return Ok(());
+        }
+        if sub == "librarian-sweep" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.is_empty() || rest.iter().any(|a| *a == "--help" || *a == "help") {
+                println!(
+                    "Usage: chump audit librarian-sweep <target-repo> [--budget-usd N] [--json]"
+                );
+                println!();
+                println!(
+                    "INFRA-1781 (INFRA-1746 phase 1b). Read-only static sweep of <target-repo>:"
+                );
+                println!("flags dead-code candidates (source stem never referenced elsewhere) and");
+                println!(
+                    "redundant scripts (byte-identical content under scripts/ or *.sh). Writes"
+                );
+                println!(
+                    "<target-repo>/.chump-ingest/triage.md. Zero LLM/API calls (cost_usd_cents=0)."
+                );
+                println!();
+                println!("Options:");
+                println!("  --budget-usd N   accepted for interface parity with later ingest phases (default 10.0)");
+                println!("  --json           output JSON instead of the markdown report");
+                std::process::exit(if rest.is_empty() { 2 } else { 0 });
+            }
+            let want_json = rest.contains(&"--json");
+            let budget_usd: f64 = {
+                let mut it = rest.iter().peekable();
+                let mut n = 10.0f64;
+                while let Some(a) = it.next() {
+                    if *a == "--budget-usd" {
+                        if let Some(v) = it.next() {
+                            if let Ok(parsed) = v.parse::<f64>() {
+                                n = parsed;
+                            }
+                        }
+                    }
+                }
+                n
+            };
+            let target_repo = std::path::PathBuf::from(rest[0]);
+            let chump_repo_root = repo_path::repo_root();
+            let cfg = ingest_librarian::LibrarianConfig {
+                target_repo: target_repo.clone(),
+                budget_usd,
+            };
+            ingest_librarian::emit_started(&chump_repo_root, &target_repo);
+            let report = match ingest_librarian::run_sweep(&cfg) {
+                Ok(r) => r,
+                Err(e) => {
+                    ingest_librarian::emit_failed(&chump_repo_root, &target_repo, &e);
+                    eprintln!("chump audit librarian-sweep: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            if let Err(e) = ingest_librarian::write_triage_report(&report) {
+                ingest_librarian::emit_failed(&chump_repo_root, &target_repo, &e);
+                eprintln!("chump audit librarian-sweep: {}", e);
+                std::process::exit(1);
+            }
+            ingest_librarian::emit_completed(&chump_repo_root, &report);
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "target_repo": report.target_repo.display().to_string(),
+                        "files_scanned": report.files_scanned,
+                        "dead_code_candidate_count": report.dead_code_candidates.len(),
+                        "redundant_script_group_count": report.redundant_scripts.len(),
+                        "cost_usd_cents": report.cost_usd_cents,
+                        "elapsed_ms": report.elapsed_ms,
+                        "truncated": report.truncated,
+                    })
+                );
+            } else {
+                print!("{}", ingest_librarian::render_markdown(&report));
+                println!(
+                    "triage report written to {}",
+                    target_repo.join(".chump-ingest/triage.md").display()
+                );
+            }
             return Ok(());
         }
         if sub != "aha-sweep" {
@@ -5283,25 +5409,6 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
-                // INFRA-2013: 1h window events for leading-indicator stall detection
-                let events_1h: Vec<&serde_json::Value> = events
-                    .iter()
-                    .filter(|e| {
-                        e.get("ts")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                            .map(|dt| dt.timestamp() >= cutoff_1h)
-                            .unwrap_or(false)
-                    })
-                    .collect();
-
-                // Count by "event" field (top-level event type)
-                let count_event = |ev: &str| -> usize {
-                    window_events
-                        .iter()
-                        .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some(ev))
-                        .count()
-                };
                 // Count by "kind" sub-field (used in alert-category events)
                 let count_kind = |kind: &str| -> usize {
                     window_events
@@ -5310,12 +5417,46 @@ async fn main() -> Result<()> {
                         .count()
                 };
 
-                let ships = count_event("commit");
+                // CREDIBLE-168: count ACTUAL merges to origin/main (like the shell
+                // fleet-brief.sh), NOT ambient "commit" events. Every worker WIP
+                // commit + auto-commit across every worktree/session emits a
+                // "commit" ambient event, so count_event("commit") over-counted
+                // ships ~55x (720 ambient commits vs 13 real merges in 24h),
+                // inflating the operator banner to a fictional ~30/hr when the
+                // real ship rate is ~0.5/hr — conditioning "healthy, autonomous"
+                // when the fleet ships little. git reads local origin/main (no
+                // fetch), matching the shell script's window semantics exactly.
+                let count_merges_since = |cutoff_ts: i64| -> usize {
+                    let cutoff_iso = chrono::DateTime::from_timestamp(cutoff_ts, 0)
+                        .map(|d| d.to_rfc3339())
+                        .unwrap_or_default();
+                    if cutoff_iso.is_empty() {
+                        return 0;
+                    }
+                    let main_root = repo_path::main_checkout_root();
+                    std::process::Command::new("git")
+                        .args([
+                            "-C",
+                            &main_root.to_string_lossy(),
+                            "log",
+                            "--format=%H",
+                            &format!("--since={cutoff_iso}"),
+                            "origin/main",
+                        ])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .lines()
+                                .filter(|l| !l.trim().is_empty())
+                                .count()
+                        })
+                        .unwrap_or(0)
+                };
+                let ships = count_merges_since(cutoff);
                 // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
-                let ships_1h: usize = events_1h
-                    .iter()
-                    .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some("commit"))
-                    .count();
+                let ships_1h = count_merges_since(cutoff_1h);
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
@@ -7026,6 +7167,21 @@ async fn main() -> Result<()> {
                     0
                 };
                 std::process::exit(code);
+            }
+            "mode" => {
+                // INFRA-1718: fleet-mode surface — auth + backend + cost
+                // ceiling snapshot so agents stop misrouting work to a
+                // broken cascade or an unusable auth path. Read-only, no
+                // network/gh calls.
+                let want_json = args.iter().any(|a| a == "--json");
+                let effort_tier = flag("--effort").unwrap_or_default();
+                let mode = fleet_mode::compute(&effort_tier);
+                if want_json {
+                    println!("{}", fleet_mode::render_json(&mode));
+                } else {
+                    println!("{}", fleet_mode::render_line(&mode));
+                }
+                std::process::exit(if mode.auth_usable { 0 } else { 1 });
             }
             "doctor" => {
                 // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
@@ -8975,6 +9131,45 @@ async fn main() -> Result<()> {
                             .unwrap_or_default()
                     });
                 let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
+
+                // RESILIENT-190: cross-machine collision guard. When a NATS
+                // broker is configured (CHUMP_NATS_URL), acquire a cluster-wide
+                // atomic claim BEFORE the local flock so two machines never pick
+                // the same gap. Degrades to local-only if NATS is unreachable
+                // (connect_or_skip). Escape hatch: CHUMP_CLAIM_NO_NATS=1. --force
+                // bypasses (recovery). Same-session holds stay idempotent.
+                let nats_claim: Option<chump_coord::CoordClient> = if !force
+                    && std::env::var("CHUMP_NATS_URL").is_ok()
+                    && std::env::var("CHUMP_CLAIM_NO_NATS").is_err()
+                {
+                    match chump_coord::CoordClient::connect_or_skip().await {
+                        Some(coord) => match coord.try_claim_gap(&gap_id, &session_id).await {
+                            Ok(true) => Some(coord),
+                            Ok(false) => {
+                                // Already held in the cluster — us (re-entrant) or another machine?
+                                match coord.gap_claim(&gap_id).await {
+                                    Ok(Some(held)) if held.session_id == session_id => Some(coord),
+                                    Ok(Some(held)) => {
+                                        eprintln!(
+                                            "chump gap claim: {gap_id} already claimed by session {} on another machine (NATS-KV) — skipping",
+                                            held.session_id
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                    _ => Some(coord),
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[chump-coord] cluster claim check failed ({e:#}) — proceeding local-only");
+                                None
+                            }
+                        },
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+
                 match store.claim(&gap_id, &session_id, &worktree, ttl) {
                     Ok(()) => {
                         println!("claimed {} for session {}", gap_id, session_id);
@@ -8986,6 +9181,11 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                     Err(e) => {
+                        // Roll back the cluster claim so a local failure doesn't
+                        // wedge the gap cluster-wide until the KV TTL expires.
+                        if let Some(coord) = &nats_claim {
+                            let _ = coord.release_gap(&gap_id).await;
+                        }
                         eprintln!("chump gap claim: {e:#}");
                         std::process::exit(1);
                     }
@@ -13780,12 +13980,21 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         println!(
-            "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>8}{:>20}",
-            "class", "backend", "model", "provider", "succ", "fail", "rate%", "last_seen"
+            "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>8}{:>10}{:>8}{:>20}",
+            "class",
+            "backend",
+            "model",
+            "provider",
+            "succ",
+            "fail",
+            "rate%",
+            "avg_cost",
+            "score",
+            "last_seen"
         );
         for e in &entries {
             println!(
-                "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>7.1}%{:>20}",
+                "{:<10}{:<14}{:<40}{:<10}{:>6}{:>6}{:>7.1}%{:>9.4}${:>7.2} {:>20}",
                 if e.task_class.is_empty() {
                     "-"
                 } else {
@@ -13801,6 +14010,8 @@ async fn main() -> Result<()> {
                 e.successes,
                 e.failures,
                 e.success_rate * 100.0,
+                e.avg_cost_usd,
+                e.route_score,
                 e.last_seen
             );
         }

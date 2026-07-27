@@ -4612,6 +4612,109 @@ async fn handle_fleet_wire_health(headers: HeaderMap) -> Json<serde_json::Value>
     }))
 }
 
+// ── INFRA-1774: /api/operator-page/pending + /api/operator-page/ack ──────────
+
+/// GET /api/operator-page/pending — structured human-in-the-loop interrupts
+/// raised via `scripts/dispatch/operator-page.sh` that have no matching
+/// `operator_page_ack` yet.
+///
+/// Scans the last 500 lines of `ambient.jsonl` for `kind=operator_page`
+/// events, subtracts any `corr_id` that has a matching `operator_page_ack`,
+/// and returns the remainder sorted newest-first.
+///
+/// Response: `{ pages: [{ corr_id, severity, title, message, gap_id,
+/// cost_usd_at_page, timeout_secs, ts }], updated_at }`
+async fn handle_operator_page_pending(headers: HeaderMap) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers); // unauthenticated read-only for dashboard
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let updated_at = chrono::Utc::now().to_rfc3339();
+
+    let Ok(contents) = std::fs::read_to_string(&ambient_path) else {
+        return Json(serde_json::json!({ "pages": [], "updated_at": updated_at }));
+    };
+
+    let lines: Vec<&str> = contents.lines().collect();
+    let start = lines.len().saturating_sub(500);
+
+    let mut acked: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pages: Vec<serde_json::Value> = Vec::new();
+
+    for line in &lines[start..] {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        match v.get("kind").and_then(|k| k.as_str()) {
+            Some("operator_page_ack") => {
+                if let Some(c) = v.get("corr_id").and_then(|c| c.as_str()) {
+                    acked.insert(c.to_string());
+                }
+            }
+            Some("operator_page") => pages.push(v),
+            _ => {}
+        }
+    }
+
+    let mut pending: Vec<serde_json::Value> = pages
+        .into_iter()
+        .filter(|v| {
+            v.get("corr_id")
+                .and_then(|c| c.as_str())
+                .is_some_and(|c| !acked.contains(c))
+        })
+        .collect();
+    pending.reverse(); // newest-first
+
+    Json(serde_json::json!({ "pages": pending, "updated_at": updated_at }))
+}
+
+#[derive(serde::Deserialize)]
+struct OperatorPageAckRequest {
+    corr_id: String,
+    #[serde(default)]
+    ack_by: Option<String>,
+}
+
+/// POST /api/operator-page/ack — acknowledge a pending operator_page.
+///
+/// Shells out to `scripts/dispatch/operator-page.sh --ack` so the CLI and
+/// the PWA cockpit share one code path for the ack write + permanent-failure
+/// check (corr_id never raised).
+async fn handle_operator_page_ack(
+    headers: HeaderMap,
+    Json(body): Json<OperatorPageAckRequest>,
+) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers);
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let script = repo_root.join("scripts/dispatch/operator-page.sh");
+    let ack_by = body.ack_by.unwrap_or_else(|| "pwa-cockpit".to_string());
+
+    let output = std::process::Command::new(&script)
+        .arg("--ack")
+        .arg(&body.corr_id)
+        .arg("--ack-by")
+        .arg(&ack_by)
+        .env("REPO_ROOT", &repo_root)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => Json(serde_json::json!({ "ok": true })),
+        Ok(o) => Json(serde_json::json!({
+            "ok": false,
+            "error": String::from_utf8_lossy(&o.stderr).to_string(),
+        })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
 /// Compute (p50_ms, p99_ms) from a sorted list of latency samples.
 /// Returns (None, None) when the slice is empty.
 fn percentiles(samples: &[i64]) -> (Option<i64>, Option<i64>) {
@@ -8685,6 +8788,12 @@ fn build_api_router() -> Router {
         .route("/api/health/doctor", get(handle_doctor_health))
         // META-175: JetStream consumer lag + delivery latency per role.
         .route("/api/fleet-wire/health", get(handle_fleet_wire_health))
+        // INFRA-1774: operator-page protocol — structured HITL interrupts.
+        .route(
+            "/api/operator-page/pending",
+            get(handle_operator_page_pending),
+        )
+        .route("/api/operator-page/ack", post(handle_operator_page_ack))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/prs", get(handle_pr_list))
         // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.

@@ -644,10 +644,13 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
-      # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
-      # DOC-063 showed .cargo-test-target / /tmp/chump-coord-linux-build* poisoning
-      # was a top-3 CI failure class. Each run gets a fresh dir; cleaned up by
-      # runner after the job.
+      # INFRA-2118: per-run /tmp CARGO_TARGET_DIR isolates cross-PR target
+      # corruption (DOC-063). fast-checks stays on /tmp (NOT ./target caching like
+      # clippy/cargo-test): pointing it at ./target un-skips a cohort of fast-checks
+      # guards that hardcode $ROOT/target/debug/chump and then fail on claim's
+      # autonomy gate (test-cli-integration.sh etc. — claim checks AUTONOMY_LEVEL
+      # before format validation, a real ordering bug). A follow-up gap fixes that
+      # cohort + the ordering, THEN enables ./target caching here.
       CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
@@ -701,8 +704,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-fast-checks
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
@@ -753,6 +762,11 @@ jobs:
         # Prevents "claim --help exits non-zero" / "ship --help falls through to LLM" regressions.
         # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
         run: bash scripts/ci/test-chump-subcommand-help.sh
+
+      - name: chump demo subcommand smoke (INFRA-2391)
+        # Wires crates/chump-demo (META-072) as `chump demo`; asserts --help
+        # and an end-to-end --dry-run both exit 0.
+        run: bash scripts/ci/test-chump-demo-smoke.sh
 
       - name: repos table migration + CLI + auto-import (MISSION-033)
         run: bash scripts/ci/test-chump-repos.sh
@@ -885,9 +899,6 @@ jobs:
 
       - name: stale-pr-rebase-bot — 3-strike circuit-break (INFRA-2295)
         run: bash scripts/ci/test-stale-pr-rebase-bot.sh
-
-      - name: paramedic stale-branch auto-rebase (INFRA-1429)
-        run: bash scripts/ci/test-stale-branch-rebase.sh
 
       - name: paramedic stale-branch auto-rebase (INFRA-1429)
         run: bash scripts/ci/test-stale-branch-rebase.sh
@@ -1174,9 +1185,10 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
-    # INFRA-2118: per-run CARGO_TARGET_DIR breaks cross-PR target corruption.
+    # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
+    # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
     env:
-      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -1218,9 +1230,20 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-clippy
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # INFRA-3421 REVERTED: sccache was wired into clippy, but warm measurement
+      # (2026-07-26) showed clippy went 300s → ~450s. sccache is redundant with
+      # the warm Swatinem trunk cache (INFRA-3420 restores the target dir), so on
+      # clippy's huge --all-targets unit count it only added an R2 round-trip per
+      # unit for no gain. clippy relies on the trunk cache alone (like before).
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -1243,8 +1266,9 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
-      # INFRA-2118: per-run CARGO_TARGET_DIR (see fast-checks comment for rationale).
-      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
+      # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
+      CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -1286,8 +1310,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-cargo-test
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # INFRA-3420: restore-only trunk cache. PRs restore main's warm cache
+          # (the per-PR prefix cold-missed on first run — the run that matters —
+          # and that was ~58% of CI machine-minutes: the chump dep-graph compiled
+          # cold 3x/PR). save-if restricts writes to main, so a PR still cannot
+          # poison the shared cache (the INFRA-2118 isolation goal), while first
+          # PR runs go warm. main-push CI (on.push [main]) populates the key.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # INFRA-2094: install cargo-nextest (parallel test runner, ~60% faster)
       - name: Install cargo-nextest
@@ -1301,6 +1331,15 @@ jobs:
         id: r2detect
         env:
           R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          # ZERO-WASTE-027 (2026-07-24): sccache is OFF by default in CI. Measured
+          # Rust hit rate = 0.00% (777 misses / 0 hits; the "8%" was C/C++ only) —
+          # per-run CARGO_TARGET_DIR paths (INFRA-2118) poison the keys so they
+          # never repeat, same 0.00%-Rust problem the fleet already retreated from
+          # (ZERO-WASTE-021). Running it anyway pays sccache-server-start + R2 auth
+          # + a hit-rate monitor that warns every run, for ~zero Rust benefit.
+          # Re-enable ONLY once builds use stable paths (ZW-021's own criterion):
+          # set repo variable CHUMP_CI_SCCACHE=true.
+          SCCACHE_ENABLED: ${{ vars.CHUMP_CI_SCCACHE || 'false' }}
         run: |
           # RESILIENT-041 (2026-05-30): tightened length check from `-n` to `>= 16`.
           # A misconfigured secret stored as a single character used to pass `-n`
@@ -1308,7 +1347,10 @@ jobs:
           # → cargo metadata exit 101 → cargo-test exit 102 → queue-wide trunk-RED.
           # Length floor of 16 routes garbage creds through the existing graceful
           # no-cache fallback instead of crashing the toolchain.
-          if [ "${#R2_KEY}" -ge 16 ]; then
+          if [ "$SCCACHE_ENABLED" != "true" ]; then
+            echo "configured=false (sccache disabled in CI — ZERO-WASTE-027; set vars.CHUMP_CI_SCCACHE=true to re-enable)" >&2
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#R2_KEY}" -ge 16 ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false (R2_KEY length=${#R2_KEY}, expected >= 16)" >&2
@@ -1491,6 +1533,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
+          # cache-budget fix: restore-only trunk cache (see INFRA-3420). e2e wrote
+          # a per-PR cache per suite (~2.7 GB total) every PR, churning the shared
+          # 10 GB Actions budget and evicting the hot-path trunk caches.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # ── pwa-only: Ollama + Playwright ───────────────────────────────────────
       - name: Cache Ollama models
@@ -1681,6 +1728,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-integration-test
+          # cache-budget fix: restore-only trunk cache (see INFRA-3420) — stop the
+          # per-PR cache writes that starve the hot-path trunk caches.
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build chump binary
         run: cargo build --bin chump --quiet 2>&1 | tail -3

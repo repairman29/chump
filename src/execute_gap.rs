@@ -404,6 +404,35 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
 
     let overlay = maybe_overlay_from_env().unwrap_or_default();
 
+    // RESILIENT-187: weak free-tier models (glm-5.2, minimax-m3, …) emit
+    // structurally-broken unified diffs — blank context lines missing the
+    // leading space ("corrupt patch at line N"), wrong hunk counts, and
+    // overlapping hunks. Neither git apply, GNU patch, nor our strict→fuzzy→
+    // tier-c applier can rescue a truly-broken diff, so the patch lands in
+    // $CHUMP_PATCH_DEBUG_DIR, the model retries patch_file until the cycle
+    // wall, zero commits result, and bot-merge refuses (CREDIBLE-162). When
+    // CHUMP_FREE_TIER_WRITE_FILE is set, steer the model to write_file
+    // (whole-file rewrite) instead — no diff structure means nothing to
+    // corrupt. Capable free models keep the leaner patch_file path.
+    let write_mode = std::env::var("CHUMP_FREE_TIER_WRITE_FILE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let (edit_step, edit_rule) = if write_mode {
+        (
+            "Step 3: write_file — rewrite the ENTIRE file with your change applied. \
+   Emit the complete new file contents, not a diff. This avoids the diff/context \
+   mismatches that weaker models produce.",
+            "- Use write_file (full file contents) for ALL modifications — never emit a unified diff.",
+        )
+    } else {
+        (
+            "Step 3: patch_file — apply your change as a unified diff patch. \
+   Provide the old text and new text. Do NOT rewrite the entire file.",
+            "- Use patch_file for ALL modifications — it only changes what you specify.",
+        )
+    };
+
     format!(
         "{overlay}You are a code agent working in a Rust repository. \
 Your ONLY job is to make code changes that satisfy the gap below, then commit.
@@ -418,8 +447,7 @@ Step 1: grep_repo — search for a function name, error string, or key phrase \
    from the gap to FIND the file that needs changing. Do NOT guess file paths \
    or walk directories with list_dir — search first.
 Step 2: read_file — read the file grep_repo pointed you to.
-Step 3: patch_file — apply your change as a unified diff patch. \
-   Provide the old text and new text. Do NOT rewrite the entire file.
+{edit_step}
 Step 4: git_commit — commit with message \"{gap_id}: <short summary>\". \
    This automatically stages modified files.
 Step 5: Respond with the single word: done
@@ -430,11 +458,13 @@ Step 5: Respond with the single word: done
 - NEVER write documentation, plans, or markdown files.
 - NEVER explain what you will do — just call the tool.
 - NEVER create new files (no chump-plan.md, no docs/*.md).
-- Use patch_file for ALL modifications — it only changes what you specify.
-- You MUST read a file with read_file BEFORE patching it.
+{edit_rule}
+- You MUST read a file with read_file BEFORE editing it.
 - After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,
+        edit_step = edit_step,
+        edit_rule = edit_rule,
         gap_id = gap_id,
     )
 }
@@ -480,6 +510,10 @@ fn build_free_tier_agent() -> Result<ChumpAgent> {
 /// Uses `--fast` to skip local clippy/test — CI is the gate, and free-tier
 /// dispatch runs against tight task-budget walls (INFRA-252 / INFRA-733).
 async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()> {
+    // INFRA-3406: the agent run pins CHUMP_REPO to the worktree so file
+    // tools write HERE — but bot-merge's claim/registry paths need the MAIN
+    // checkout. Restore it for the ship subprocess.
+    std::env::set_var("CHUMP_REPO", crate::repo_path::main_checkout_root());
     // EFFECTIVE-312: open models routinely patch_file and then skip the
     // git_commit step (observed: first sighted M3 cycle patched 1 file,
     // committed nothing). Uncommitted agent work would either vanish or be
@@ -652,6 +686,20 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     if free_tier {
         let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
         eprintln!("[execute-gap] free-tier mode: model={model}, slim dispatch profile");
+        // INFRA-3406: file tools (read/patch/git_commit) resolve paths via
+        // CHUMP_REPO — inherited as the MAIN checkout from worker env, so
+        // every model patch and commit landed OUTSIDE the dispatch worktree
+        // (found stranded in /root/Chump after 15 cycles of "zero-commit
+        // branch"). Point the tools at THIS worktree; the canonical state.db
+        // is still resolved via main_checkout_root() (git-common-dir),
+        // unaffected.
+        if let Ok(cwd) = std::env::current_dir() {
+            std::env::set_var("CHUMP_REPO", &cwd);
+            eprintln!(
+                "[execute-gap] INFRA-3406: tool root pinned to worktree {}",
+                cwd.display()
+            );
+        }
         // INFRA-784: signal the agent loop to insert inter-request delays so we
         // don't exhaust the provider's RPM quota on multi-step dispatches.
         // CHUMP_FREE_TIER_DELAY_MS takes precedence if set; this is the fallback

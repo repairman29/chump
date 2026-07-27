@@ -107,8 +107,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-audit
-          # INFRA-2118: PR-scoped prefix prevents cross-PR cache pollution.
-          prefix-key: "v1-pr-${{ github.event.pull_request.number || github.ref_name }}"
+          # cache-budget fix: restore-only trunk cache (see INFRA-3420). audit is
+          # a REQUIRED check that runs on EVERY PR — the old per-PR prefix wrote a
+          # fresh ~0.2 GB cache each time, and with ~15 PRs/day that churn evicted
+          # the hot clippy/cargo-test/fast-checks trunk caches from the shared
+          # 10 GB Actions budget (measured 2026-07-26: hot caches "No cache found").
+          prefix-key: "v1-trunk"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # INFRA-2452-fix: restore sccache R2 compile cache dropped during audit extraction.
       # Mirrors the ci.yml cargo-test job pattern (lines 1245-1303).

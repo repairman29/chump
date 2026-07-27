@@ -24,7 +24,7 @@
 //! in scripts/coord/bot-merge.sh and is a follow-up gap so this PR can
 //! land without colliding with the active INFRA-2119 lease on bot-merge.
 
-use chump_policy::{Policy, PolicyChain, Scope};
+use chump_policy::{Lane, Policy, PolicyChain, Scope};
 use std::path::PathBuf;
 
 fn main() {
@@ -60,18 +60,38 @@ fn print_usage() {
     eprintln!(
         "Usage: chump-policy <subcommand> [flags]\n\n\
          Subcommands:\n  \
-           show [--json]                                        — print effective + per-scope policy\n  \
+           show [--json] [--lane <internal|user-facing|critical>]  — print effective + per-scope policy\n  \
            set --scope <fleet|operator|repo> [policy fields]    — write policy fields to that scope\n  \
                 --enabled <bool>\n  \
                 --require-human-review <bool>\n  \
                 --trust-threshold <N>\n  \
            record-review                                        — increment operator reviewed_pr_count by 1\n  \
-           check                                                — exit 0 if auto-merge allowed, 1 otherwise\n\n\
+           check [--lane <internal|user-facing|critical>]       — exit 0 if auto-merge allowed, 1 otherwise\n\n\
+         Lane (INFRA-1767, default: internal):\n  \
+           internal      auto-merge allowed by default\n  \
+           user-facing   requires a human review by default\n  \
+           critical      disabled by default; must be explicitly enabled per-repo/operator\n\n\
          Storage paths (resolved via $CHUMP_REPO and $HOME):\n  \
            operator: $HOME/.chump/auto_merge_policy.toml\n  \
            repo:     $CHUMP_REPO/.chump/auto_merge_policy.toml\n  \
            fleet:    $CHUMP_REPO/.chump/fleet-policy.toml"
     );
+}
+
+/// Pulls `--lane <value>` out of an arg slice; defaults to `Lane::Internal`
+/// when absent. Errors on an unrecognized lane value or a dangling flag.
+fn parse_lane_flag(args: &[&str]) -> anyhow::Result<Lane> {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--lane" {
+            let v = args
+                .get(i + 1)
+                .ok_or_else(|| anyhow::anyhow!("--lane needs a value"))?;
+            return Lane::parse(v);
+        }
+        i += 1;
+    }
+    Ok(Lane::default())
 }
 
 fn repo_root() -> PathBuf {
@@ -91,7 +111,8 @@ fn home_dir() -> PathBuf {
 
 fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
     let json = args.contains(&"--json");
-    let chain = PolicyChain::load(&repo_root(), &home_dir())?;
+    let lane = parse_lane_flag(args)?;
+    let chain = PolicyChain::load(&repo_root(), &home_dir(), lane)?;
     let (eff, contributing) = chain.effective();
 
     if json {
@@ -103,12 +124,14 @@ fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
             .collect();
         println!(
             "{{\
+\"lane\":\"{}\",\
 \"effective\":{{\"enabled\":{},\"require_human_review\":{},\
 \"trust_threshold_pr_count\":{},\"reviewed_pr_count\":{},\
 \"auto_merge_allowed\":{},\"block_reason\":{}}},\
 \"contributing_scopes\":[{}],\
-\"fleet\":{},\"operator\":{},\"repo\":{}\
+\"fleet\":{},\"operator\":{},\"repo\":{},\"lane_policy\":{}\
 }}",
+            chain.lane_kind.as_str(),
             eff.enabled,
             eff.require_human_review,
             eff.trust_threshold_pr_count,
@@ -122,9 +145,13 @@ fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
             policy_to_json(&chain.fleet),
             policy_to_json(&chain.operator),
             policy_to_json(&chain.repo),
+            policy_to_json(&chain.lane),
         );
     } else {
-        println!("Effective auto-merge policy:");
+        println!(
+            "Effective auto-merge policy (lane: {}):",
+            chain.lane_kind.as_str()
+        );
         println!("  enabled:                {}", eff.enabled);
         println!("  require_human_review:   {}", eff.require_human_review);
         println!(
@@ -143,6 +170,7 @@ fn cmd_show(args: &[&str]) -> anyhow::Result<()> {
         print_scope("fleet", &chain.fleet);
         print_scope("operator", &chain.operator);
         print_scope("repo", &chain.repo);
+        print_scope("lane", &chain.lane);
     }
     Ok(())
 }
@@ -257,14 +285,16 @@ fn cmd_record_review(_args: &[&str]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_check(_args: &[&str]) -> anyhow::Result<()> {
-    let chain = PolicyChain::load(&repo_root(), &home_dir())?;
+fn cmd_check(args: &[&str]) -> anyhow::Result<()> {
+    let lane = parse_lane_flag(args)?;
+    let chain = PolicyChain::load(&repo_root(), &home_dir(), lane)?;
     let ts = chrono_like_now();
     match chain.require_auto_merge_allowed() {
         Ok(()) => {
             println!(
                 "{{\"ts\":\"{ts}\",\"kind\":\"auto_merge_policy_evaluated\",\
-\"outcome\":\"allowed\"}}",
+\"lane\":\"{}\",\"outcome\":\"allowed\"}}",
+                chain.lane_kind.as_str(),
             );
             std::process::exit(0);
         }
@@ -274,9 +304,24 @@ fn cmd_check(_args: &[&str]) -> anyhow::Result<()> {
                 .iter()
                 .map(|s| format!("\"{}\"", s.as_str()))
                 .collect();
+            // Failure-class taxonomy (INFRA-1767 AC): a lane-only block on
+            // Critical (no other scope contributing) is a PERMANENT
+            // by-design gate — the operator must explicitly opt in. Any
+            // other block (fleet/operator/repo review or trust gate) is
+            // TRANSIENT — it clears on its own as review/trust accrues.
+            let failure_class = if blocked.contributing == vec![Scope::Lane]
+                && chain.lane_kind.as_str() == "critical"
+            {
+                "permanent_by_design"
+            } else {
+                "transient_review_or_trust_gate"
+            };
             println!(
                 "{{\"ts\":\"{ts}\",\"kind\":\"auto_merge_policy_blocked\",\
+\"lane\":\"{}\",\"failure_class\":\"{}\",\
 \"reason\":\"{}\",\"contributing\":[{}]}}",
+                chain.lane_kind.as_str(),
+                failure_class,
                 blocked.reason.replace('"', "\\\""),
                 scopes.join(",")
             );
@@ -285,11 +330,16 @@ fn cmd_check(_args: &[&str]) -> anyhow::Result<()> {
     }
 }
 
+/// Path for an on-disk scope. `Scope::Lane` has no file — the lane
+/// baseline is computed in-memory from [`chump_policy::Lane::default_policy`]
+/// — so `set --scope lane` is rejected by `cmd_set`'s flag parser before it
+/// ever reaches here; the arm below only exists to satisfy exhaustiveness.
 fn scope_path(scope: Scope) -> PathBuf {
     match scope {
         Scope::Fleet => repo_root().join(".chump").join("fleet-policy.toml"),
         Scope::Operator => home_dir().join(".chump").join("auto_merge_policy.toml"),
         Scope::Repo => repo_root().join(".chump").join("auto_merge_policy.toml"),
+        Scope::Lane => unreachable!("cmd_set never constructs Scope::Lane"),
     }
 }
 

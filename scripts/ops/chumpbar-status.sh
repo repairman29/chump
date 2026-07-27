@@ -15,6 +15,12 @@
 
 set -uo pipefail
 
+# Optional persistent config (CHUMPBAR_HOSTS, CHUMPBAR_SSH_TIMEOUT, …). The
+# menu-bar binary runs this script with a minimal GUI env, so a sourced file is
+# the durable place to declare multi-host fleets — e.g. a node reachable only via
+# an ssh ProxyJump alias (closetjunky at a remote site, tunnelled through helsinki).
+[ -f "$HOME/.chump/chumpbar.env" ] && . "$HOME/.chump/chumpbar.env"
+
 # Under launchd/app contexts LANG is unset → cut/sed slice BYTES, which can
 # bisect a multibyte char (em-dashes in commit subjects) and emit invalid
 # UTF-8 that strict decoders (Swift String) reject wholesale. Force UTF-8.
@@ -49,30 +55,62 @@ for _hb in /tmp/chump-fleet-worker-*.heartbeat; do
 done
 mode=$(cat "$MODE_FILE" 2>/dev/null || echo "off")
 
-# ── EU fleet (chumpd-eu, 2026-07-22 migration) ──────────────────────────────
-# The fleet's primary home is the Helsinki host. Refresh its status over ssh
-# in the BACKGROUND on a TTL (never block the menu on the network), read the
-# cached copy every call. The host-side emitter is scripts/ops/chump-eu-status.sh
-# (deployed at /root/chump-eu-status.sh).
-EU_HOST="${CHUMPBAR_EU_HOST:-root@204.168.229.237}"
-EU_CACHE="$HOME/.chump/chumpbar-eu.json"
-EU_TTL_S="${CHUMPBAR_EU_TTL_S:-120}"
-eu_cache_age=$(( now - $(stat -f %m "$EU_CACHE" 2>/dev/null || echo 0) ))
-if (( eu_cache_age > EU_TTL_S )); then
-    ( ssh -o BatchMode=yes -o ConnectTimeout=4 "$EU_HOST" 'bash /root/chump-eu-status.sh' \
-        > "$EU_CACHE.tmp" 2>/dev/null && [ -s "$EU_CACHE.tmp" ] && mv "$EU_CACHE.tmp" "$EU_CACHE" & )
+# JSON string escaper (\ and "). Defined here — before the remote-fleet loop
+# uses it — so per-host summary lines can be escaped inline.
+_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+# ── Remote fleets — multi-host (RESILIENT-185 follow-up) ────────────────────
+# CHUMPBAR_HOSTS = comma-separated "label=user@host" pairs, e.g.
+#   "helsinki=root@204.168.229.237,cabinet=jeff@192.168.1.50"
+# Each host runs the emitter scripts/ops/chump-eu-status.sh (deployed at
+# ~/chump-eu-status.sh or /root/chump-eu-status.sh). We refresh each over ssh
+# in the BACKGROUND on a TTL (never block the menu on the network) and read a
+# per-host cache. Backward-compat: with CHUMPBAR_HOSTS unset, fall back to the
+# old single CHUMPBAR_EU_HOST as label "helsinki". An unreachable host degrades
+# to a stale cache (marked) and never blocks the others.
+if [[ -n "${CHUMPBAR_HOSTS:-}" ]]; then
+    _hosts_spec="$CHUMPBAR_HOSTS"
+else
+    _hosts_spec="helsinki=${CHUMPBAR_EU_HOST:-root@204.168.229.237}"
 fi
-eu_ok=0; eu_broken=0; eu_mode="?"; eu_last10=""; eu_lines_json="[]"
-if [[ -s "$EU_CACHE" ]]; then
-    eu_ok=$(sed -E 's/.*"eu_ok":([0-9]+).*/\1/' "$EU_CACHE" 2>/dev/null || echo 0)
-    eu_broken=$(sed -E 's/.*"eu_broken":([0-9]+).*/\1/' "$EU_CACHE" 2>/dev/null || echo 0)
-    eu_mode=$(sed -E 's/.*"eu_mode":"([^"]*)".*/\1/' "$EU_CACHE" 2>/dev/null || echo "?")
-    eu_last10=$(sed -E 's/.*"eu_last10":"([^"]*)".*/\1/' "$EU_CACHE" 2>/dev/null || echo "")
-    eu_lines_json=$(sed -E 's/.*"eu_lines":(\[[^]]*\]).*/\1/' "$EU_CACHE" 2>/dev/null || echo "[]")
-    [[ "$eu_lines_json" == \[* ]] || eu_lines_json="[]"
-    _eu_stale_min=$(( eu_cache_age / 60 ))
-    (( eu_cache_age > 600 )) && eu_mode="${eu_mode} (stale ${_eu_stale_min}m)"
-fi
+REMOTE_TTL_S="${CHUMPBAR_EU_TTL_S:-120}"
+
+eu_ok=0; eu_broken=0                 # totals across all remote hosts (icon math)
+remote_lines_inner=""               # accumulated labeled worker-line JSON (comma-joined)
+remote_summary_inner=""             # accumulated per-host summary-line JSON
+remote_modes=""                     # "label:mode label:mode …" for the title
+
+IFS=',' read -r -a _host_specs <<< "$_hosts_spec"
+for _spec in ${_host_specs[@]+"${_host_specs[@]}"}; do
+    _label="${_spec%%=*}"
+    _addr="${_spec#*=}"
+    [[ -n "$_label" && -n "$_addr" ]] || continue
+    _cache="$HOME/.chump/chumpbar-${_label}.json"
+    _age=$(( now - $(stat -f %m "$_cache" 2>/dev/null || echo 0) ))
+    if (( _age > REMOTE_TTL_S )); then
+        # Emitter may live in the user's home OR /root; try both. Pass the
+        # host's label so its worker lines are prefixed with it.
+        ( ssh -o BatchMode=yes -o ConnectTimeout="${CHUMPBAR_SSH_TIMEOUT:-15}" "$_addr" \
+            "CHUMP_FLEET_LABEL='$_label' bash ~/chump-eu-status.sh 2>/dev/null || CHUMP_FLEET_LABEL='$_label' bash /root/chump-eu-status.sh" \
+            > "$_cache.tmp" 2>/dev/null && [ -s "$_cache.tmp" ] && mv "$_cache.tmp" "$_cache" & )
+    fi
+    [[ -s "$_cache" ]] || continue
+    _hok=$(sed -E 's/.*"eu_ok":([0-9]+).*/\1/' "$_cache" 2>/dev/null || echo 0)
+    _hbroken=$(sed -E 's/.*"eu_broken":([0-9]+).*/\1/' "$_cache" 2>/dev/null || echo 0)
+    _hmode=$(sed -E 's/.*"eu_mode":"([^"]*)".*/\1/' "$_cache" 2>/dev/null || echo "?")
+    _hlast10=$(sed -E 's/.*"eu_last10":"([^"]*)".*/\1/' "$_cache" 2>/dev/null || echo "")
+    _hlines=$(sed -E 's/.*"eu_lines":(\[[^]]*\]).*/\1/' "$_cache" 2>/dev/null || echo "[]")
+    [[ "$_hlines" == \[* ]] || _hlines="[]"
+    _hok="${_hok:-0}"; _hbroken="${_hbroken:-0}"
+    (( _age > 600 )) && _hmode="${_hmode} (stale $(( _age / 60 ))m)"
+    eu_ok=$(( eu_ok + _hok ))
+    eu_broken=$(( eu_broken + _hbroken ))
+    remote_modes="${remote_modes} ${_label}:${_hmode}"
+    _inner="${_hlines#[}"; _inner="${_inner%]}"
+    [[ -n "$_inner" ]] && remote_lines_inner+="${_inner},"
+    remote_summary_inner+="\"[$_label] ${_hok}⚙ ${_hbroken}✗  mode=$(_esc "$_hmode")  last10: $(_esc "$_hlast10")\","
+done
+remote_modes="${remote_modes# }"
 
 last_merge_epoch=$(git log origin/main -1 --format=%ct 2>/dev/null || echo 0)
 last_merge_min=$(( (now - last_merge_epoch) / 60 ))
@@ -129,21 +167,17 @@ fi
 # assembler hung when parented by the ChumpBar app (never reproduced under
 # shells or launchd one-shots) — and a status surface must not depend on an
 # interpreter spawn anyway. Titles are single-line; escape \ and ".
-_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+# (_esc defined near the top so the remote-fleet loop can use it.)
 
 _wd_json=""
 for _l in "${worker_lines[@]:-}"; do
     [[ -n "$_l" ]] || continue
     _wd_json+="\"$(_esc "$_l")\","
 done
-# EU worker lines come pre-escaped/pre-formatted from the host emitter.
-_eu_inner="${eu_lines_json#[}"; _eu_inner="${_eu_inner%]}"
-if [[ -n "$_eu_inner" ]]; then
-    _wd_json+="${_eu_inner},"
-fi
-if [[ -n "$eu_last10" ]]; then
-    _wd_json+="\"🇫🇮 fleet: ${eu_ok}⚙ ${eu_broken}✗  mode=$(_esc "$eu_mode")  last10: $(_esc "$eu_last10")\","
-fi
+# Remote worker lines come pre-escaped/pre-formatted from each host emitter,
+# already prefixed with the host label. Per-host summary lines follow them.
+[[ -n "$remote_lines_inner" ]] && _wd_json+="${remote_lines_inner}"
+[[ -n "$remote_summary_inner" ]] && _wd_json+="${remote_summary_inner}"
 _wd_json="[${_wd_json%,}]"
 
 _rs_json=""
@@ -153,6 +187,33 @@ while IFS= read -r _l; do
 done <<< "$recent_ships"
 _rs_json="[${_rs_json%,}]"
 
-printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s}\n' \
-    "$icon" "$(_esc "local:$mode eu:$eu_mode")" "${total_workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
-    "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json"
+# EFFECTIVE-309: per-node pause state (AUTONOMY_LEVEL) for the ChumpBar pause/
+# resume controls. `local` reads the file directly; remotes via a cached ssh
+# (short timeout + 60s cache so a down node degrades to "?" rather than stalling
+# the menu behind the 20s guard). Nodes: local + the ssh aliases we manage.
+_node_level() {
+    local n="$1"
+    if [[ "$n" == "local" ]]; then
+        cat "$HOME/.chump/AUTONOMY_LEVEL" 2>/dev/null | tr -d '[:space:]' || echo 0
+        return
+    fi
+    local cache="/tmp/chumpbar-autonomy-$n" now mtime
+    now=$(date +%s); mtime=$(stat -f %m "$cache" 2>/dev/null || echo 0)
+    if [[ -f "$cache" ]] && (( now - mtime < 60 )); then cat "$cache"; return; fi
+    local lvl
+    lvl=$(ssh -o BatchMode=yes -o ConnectTimeout="${CHUMPBAR_SSH_TIMEOUT:-6}" "$n" \
+              'cat ~/.chump/AUTONOMY_LEVEL 2>/dev/null | tr -d "[:space:]" || echo 0' 2>/dev/null)
+    [[ -z "$lvl" ]] && lvl="?"
+    printf '%s' "$lvl" | tee "$cache"
+}
+_nodes_json=""
+for _n in ${CHUMPBAR_NODES:-local helsinki closetjunky}; do
+    _lvl=$(_node_level "$_n")
+    _paused="true"; [[ "$_lvl" =~ ^[1-9] ]] && _paused="false"
+    _nodes_json+="{\"label\":\"$(_esc "$_n")\",\"level\":\"$(_esc "$_lvl")\",\"paused\":$_paused},"
+done
+_nodes_json="[${_nodes_json%,}]"
+
+printf '{"icon":"%s","mode":"%s","workers":%d,"ships_24h":%d,"last_merge_min":%d,"p0_open":"%s","open_gaps":"%s","workers_detail":%s,"recent_ships":%s,"nodes":%s}\n' \
+    "$icon" "$(_esc "local:$mode ${remote_modes:-}")" "${total_workers:-0}" "${ships_24h:-0}" "${last_merge_min:-0}" \
+    "$(_esc "$p0_open")" "$(_esc "$open_gaps")" "$_wd_json" "$_rs_json" "$_nodes_json"
