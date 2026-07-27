@@ -134,6 +134,13 @@ if [[ -f "$_harness_cfg" ]]; then
     # shellcheck source=/dev/null
     source "$_harness_cfg"
 fi
+# EFFECTIVE-323: canonical non-claude spawn-command builder (unit-tested by
+# scripts/ci/test-opencode-harness-smoke.sh). Single source of truth for the argv.
+_harness_cmd_lib="${BASH_SOURCE[0]%/*}/harness-cmd.sh"
+if [[ -f "$_harness_cmd_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_harness_cmd_lib"
+fi
 
 # INFRA-315: poll-jitter + idle-backpressure. Without jitter, N workers
 # wake up at the same instant and stampede the same gap (observed live
@@ -1036,19 +1043,15 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             if [[ "${HARNESS_SPAWN_MODE:-claude-p}" != "claude-p" ]]; then
                 _rc_harness=0
                 case "${HARNESS_SPAWN_MODE}" in
-                    opencode-prompt)
-                        log "spawning ${HARNESS_SPAWN_PROGRAM:-opencode} (harness=${CHUMP_AGENT_HARNESS}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
+                    opencode-prompt|codex-prompt)
+                        # EFFECTIVE-323: argv built by the unit-tested
+                        # build_harness_cmd (harness-cmd.sh) — single source of
+                        # truth, so spawn-command bugs are caught by the smoke
+                        # test, not by a crashed production worker.
+                        log "spawning ${HARNESS_SPAWN_PROGRAM} (harness=${CHUMP_AGENT_HARNESS}, mode=${HARNESS_SPAWN_MODE}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
+                        build_harness_cmd
                         ( cd "$wt_path" || exit 99
-                          # shellcheck disable=SC2086
-                          $TO "${HARNESS_SPAWN_PROGRAM:-opencode}" run "${_model_arg[@]}" "$prompt"
-                        ) >"$cycle_log" 2>&1
-                        _rc_harness=$?
-                        ;;
-                    codex-prompt)
-                        log "spawning ${HARNESS_SPAWN_PROGRAM:-codex} (harness=${CHUMP_AGENT_HARNESS}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
-                        ( cd "$wt_path" || exit 99
-                          # shellcheck disable=SC2086
-                          $TO "${HARNESS_SPAWN_PROGRAM:-codex}" --approval-mode auto-edit "${_model_arg[@]}" "$prompt"
+                          "${_HARNESS_CMD[@]}"
                         ) >"$cycle_log" 2>&1
                         _rc_harness=$?
                         ;;

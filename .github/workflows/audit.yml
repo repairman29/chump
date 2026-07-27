@@ -186,6 +186,12 @@ jobs:
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
 
+      - name: opencode harness smoke — build_harness_cmd argv + live spawn (EFFECTIVE-323)
+        if: matrix.shard == 1
+        # Single-line run (INFRA-1867 parity parser reads only the first line).
+        # LIVE=0: Tier-1 wiring is the gate; Tier-2 live spawn is a local-dev aid.
+        run: CHUMP_HARNESS_SMOKE_LIVE=0 bash scripts/ci/test-opencode-harness-smoke.sh
+
       - name: state.db corruption recovery — restore from state.sql (INFRA-538)
         if: matrix.shard == 1
         run: |
