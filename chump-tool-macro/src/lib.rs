@@ -78,7 +78,9 @@ pub fn chump_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
             Ok(r) => r,
             Err(e) => return e.into_compile_error().into(),
         };
-        let path = &trait_ref.1;
+        // syn 3.0: ItemImpl.trait_ is (Path, Token![for]) — the Option<Not> negative-impl
+        // slot was removed, so the trait Path moved from tuple index .1 to .0.
+        let path = &trait_ref.0;
         if !path.is_ident("Tool") {
             return syn::Error::new_spanned(path, "chump_tool requires impl Tool for T")
                 .into_compile_error()
