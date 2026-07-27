@@ -286,6 +286,20 @@ After ship, exit. Reply ONLY with the PR number.{epilogue}",
 /// free-tier provider. When true, `execute_gap` uses a slim 5-tool profile
 /// and a simplified prompt that avoids confusing non-Claude models.
 fn is_free_tier_model() -> bool {
+    // EFFECTIVE-324: an explicitly-configured free-tier rotation is a direct
+    // operator instruction to use free-tier dispatch. Don't let a stale
+    // OPENAI_API_BASE (e.g. the local-ollama default baked into .env) veto it
+    // and silently fall back to the web-slim chat profile — that profile lacks
+    // patch_file AND any search tool, so the worker explores blind and ships
+    // nothing. The provider (and a cloud OPENAI_API_BASE) is set later in the
+    // rotation loop via activate_free_tier_provider.
+    if std::env::var("CHUMP_FREE_TIER_PROVIDERS")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+        || std::env::var("CHUMP_FREE_TIER_MODE").as_deref() == Ok("1")
+    {
+        return true;
+    }
     let model = std::env::var("OPENAI_MODEL")
         .unwrap_or_default()
         .to_lowercase();

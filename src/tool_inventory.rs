@@ -138,6 +138,7 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
     "read_file",
     "grep_repo",
+    "almanac_search",
     "list_dir",
     "patch_file",
     "git_commit",
@@ -159,7 +160,10 @@ pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
         keys.push("write_file");
     }
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
-        .filter(|e| keys.contains(&e.sort_key))
+        // EFFECTIVE-324: honor per-tool `when_enabled` here (e.g. almanac_search
+        // only registers when the index + binary are present) — the other
+        // free-tier keys are unguarded so this is a no-op for them.
+        .filter(|e| keys.contains(&e.sort_key) && e.enabled())
         .collect();
     entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
     for entry in entries {
