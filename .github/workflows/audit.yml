@@ -192,6 +192,11 @@ jobs:
         # LIVE=0: Tier-1 wiring is the gate; Tier-2 live spawn is a local-dev aid.
         run: CHUMP_HARNESS_SMOKE_LIVE=0 bash scripts/ci/test-opencode-harness-smoke.sh
 
+      - name: opencode-harness install smoke — born-wired opencode+Almanac (EFFECTIVE-320)
+        if: matrix.shard == 1
+        # Single-line run (INFRA-1867 parity parser reads only the first line).
+        run: bash scripts/ci/test-opencode-harness-install.sh
+
       - name: state.db corruption recovery — restore from state.sql (INFRA-538)
         if: matrix.shard == 1
         run: |

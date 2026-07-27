@@ -682,6 +682,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // well-formed + set-u clean (catches the $_TO unbound + missing-`run`
         // class). Pure shell, ~1s; live spawn skips without opencode/auth.
         "scripts/ci/test-opencode-harness-smoke.sh",
+        // EFFECTIVE-320: born-wired — install-opencode-harness.sh wires
+        // opencode.json's mcp.almanac idempotently without clobbering config.
+        // Fully stubbed, ~1s, no network.
+        "scripts/ci/test-opencode-harness-install.sh",
         // INFRA-2496: audit parser correctness regression — guards against
         // merge-conflict clobbers silently dropping registry kinds.
         "scripts/ci/test-event-registry-audit-regression.sh",

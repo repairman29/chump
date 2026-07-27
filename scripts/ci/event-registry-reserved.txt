@@ -809,3 +809,7 @@ rebase_hunk_dropped           # reason: INFRA-1526 post-rebase hunk-drop detecto
 disk_floor_breach        # reason: RESILIENT-196 — preflight refused to start a build below the disk floor; fields: free_gb, floor_gb
 heartbeat        # reason: INFRA-3431 — synthetic ambient fixture kind emitted only in test-*.sh (test-ambient-rotate.sh, test-ambient-rotation.sh, test-health-ambient-preview.sh); no production emitter (real curator heartbeats use <role>_heartbeat)
 outcome_gate_bypassed    # reason: MISSION-045 — P0/P1 reserve outcome gate bypassed; fields: priority, domain, title, bypass_reason
+opencode_harness_installed    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
+opencode_harness_install_skipped    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
+opencode_harness_install_partial    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
+opencode_harness_install_unverified    # reason: EFFECTIVE-320 — install-opencode-harness.sh status (born-wired opencode+Almanac)
