@@ -461,6 +461,7 @@ ENVEOF
     fi
     run "mkdir -p $UNIT_DIR" mkdir -p "$UNIT_DIR"
     sed -e "s|__REPO_ROOT__|$CHUMPD_PROVISION_DIR|g" -e "s|__HOME__|$HOME|g" \
+      -e "s|__RUN_USER__|$(id -un)|g" \
       "$TEMPLATE" > "$UNIT_DST"
     log "wrote $UNIT_DST"
     # RESILIENT-191: workers spawned by the --user service inherit a minimal PATH

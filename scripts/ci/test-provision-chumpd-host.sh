@@ -138,6 +138,16 @@ if grep -q 'EnvironmentFile=' "$REPO_ROOT/scripts/setup/chumpd.service" 2>/dev/n
 else
   fail "chumpd.service does not reference EnvironmentFile= for credential material"
 fi
+if grep -qE '^User=__RUN_USER__$' "$REPO_ROOT/scripts/setup/chumpd.service" 2>/dev/null; then
+  ok "chumpd.service declares an explicit User= (MISSION-072 systemd parity)"
+else
+  fail "chumpd.service is missing an explicit User= directive"
+fi
+if grep -q '__RUN_USER__' "$REPO_ROOT/scripts/setup/provision-chumpd-host.sh" 2>/dev/null; then
+  ok "provisioner substitutes __RUN_USER__ when writing the unit file"
+else
+  fail "provisioner does not substitute __RUN_USER__ into the unit file"
+fi
 
 # 7. --check / --uninstall / --dry-run flags present (documented usage surface)
 echo
