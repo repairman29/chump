@@ -352,3 +352,4 @@ chump improve orchestrator  # reason: Tier-C integration test (test-chump-improv
 test-auth-status.sh       # reason: RESILIENT-086 auth validity probe; runs in audit shard with CI credential context (mirror in preflight is a follow-up)
 curator pillar no-overlap — every agent declares unique primary_pillar (MISSION-003)       # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up
 inbox-watcher pattern — every checked-in agent arms event-driven wake (INFRA-1936 / MISSION-003)   # reason: agent-doc lint over .claude/agents/*.md, CI-only sweep; preflight mirror is a MISSION-003 follow-up
+Enable fleet autonomy for claim-exercising guards (CREDIBLE-166)   # reason: CI-only env setup — sets AUTONOMY_LEVEL so the ./target-cached claim guards un-skip in fast-checks; not a test gate, no preflight equivalent (local autonomy is the dev's own)
