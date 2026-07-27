@@ -1246,5 +1246,3 @@ CHUMP_PREFLIGHT_DISK_FLOOR_GB
 # detected in: (standard input)
 CHUMP_PR_AUTO_REBASE_LOCAL_TIMEOUT_S
 CHUMP_RESERVE_GIT_HISTORY_CHECK
-# CHUMP_GAP_RESERVE_NO_OUTCOME — MISSION-045: bypass the P0/P1 outcome gate at reserve (audited via outcome_gate_bypassed)
-CHUMP_GAP_RESERVE_NO_OUTCOME

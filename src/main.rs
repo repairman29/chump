@@ -8984,14 +8984,13 @@ async fn main() -> Result<()> {
                 // outcomes table). Filing a high-priority gap with no outcome is
                 // how the backlog fills with self-referential meta-work — the
                 // 2026-07-26 bankruptcy closed 798 such untraced gaps. P2/P3 stay
-                // permissionless (exploratory). Bypass: --no-outcome-required or
-                // CHUMP_GAP_RESERVE_NO_OUTCOME=1, both audited so the pattern is
-                // visible. Pairs with the picker tie-break toward traced gaps.
+                // permissionless (exploratory). Bypass: --no-outcome-required,
+                // audited so the pattern stays visible. (No env-var bypass — the
+                // EFFECTIVE-094 debt-ceiling forbids adding new bypass vars; the
+                // audited CLI flag is the only escape hatch, fixtures included.)
                 {
                     let enforce_priorities = ["P0", "P1"];
                     if enforce_priorities.contains(&priority.as_str()) {
-                        let bypass_env =
-                            std::env::var("CHUMP_GAP_RESERVE_NO_OUTCOME").as_deref() == Ok("1");
                         let no_outcome_required = args.iter().any(|a| a == "--no-outcome-required");
                         let oid = reserve_outcome_id
                             .as_deref()
@@ -9001,7 +9000,7 @@ async fn main() -> Result<()> {
                         let outcome_valid =
                             !oid.is_empty() && matches!(store.get_outcome(&oid), Ok(Some(_)));
 
-                        if oid.is_empty() && !no_outcome_required && !bypass_env {
+                        if oid.is_empty() && !no_outcome_required {
                             eprintln!();
                             eprintln!(
                                 "chump gap: P0/P1 gaps require --outcome <id> (MISSION-045 anti-bloat gate)."
@@ -9013,7 +9012,7 @@ async fn main() -> Result<()> {
                                 }
                             }
                             eprintln!(
-                                "Bypass: --no-outcome-required (audited) or CHUMP_GAP_RESERVE_NO_OUTCOME=1. P2/P3 need no outcome."
+                                "Bypass: --no-outcome-required (audited). P2/P3 need no outcome."
                             );
                             std::process::exit(1);
                         }
@@ -9025,17 +9024,13 @@ async fn main() -> Result<()> {
                             );
                             std::process::exit(1);
                         }
-                        if oid.is_empty() && (no_outcome_required || bypass_env) {
+                        if oid.is_empty() && no_outcome_required {
                             let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
                             let ambient_path =
                                 worktree_root.join(".chump-locks").join("ambient.jsonl");
                             let safe_domain = domain.replace(['"', '\\'], "");
                             let safe_title = title.replace(['"', '\\'], "");
-                            let bypass_reason = if no_outcome_required {
-                                "--no-outcome-required flag"
-                            } else {
-                                "CHUMP_GAP_RESERVE_NO_OUTCOME=1"
-                            };
+                            let bypass_reason = "--no-outcome-required flag";
                             if let Ok(mut f) = std::fs::OpenOptions::new()
                                 .append(true)
                                 .create(true)
@@ -9355,8 +9350,7 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 // MISSION-045: close-side outcome gate — refuse to flip a P0/P1 gap
                 // to done without an outcome_id. Backstop for the reserve gate
-                // (catches gaps filed via CHUMP_GAP_RESERVE_NO_OUTCOME=1 or pre-
-                // dating it). Bypass: --no-outcome-required or the same env var
+                // (catches gaps that pre-date it). Bypass: --no-outcome-required
                 // (audited). P2/P3 unaffected — permissionless.
                 if let Ok(Some(g)) = store.get(&gap_id) {
                     let is_p01 = matches!(g.priority.as_str(), "P0" | "P1");
@@ -9365,9 +9359,7 @@ async fn main() -> Result<()> {
                         .as_deref()
                         .map(|s| !s.trim().is_empty())
                         .unwrap_or(false);
-                    let bypass = std::env::var("CHUMP_GAP_RESERVE_NO_OUTCOME").as_deref()
-                        == Ok("1")
-                        || args.iter().any(|a| a == "--no-outcome-required");
+                    let bypass = args.iter().any(|a| a == "--no-outcome-required");
                     if is_p01 && !traced && !bypass {
                         eprintln!();
                         eprintln!(
@@ -9376,9 +9368,7 @@ async fn main() -> Result<()> {
                         eprintln!(
                             "Link it first: chump outcome link {gap_id} --outcome <id>  (see: chump outcome list)"
                         );
-                        eprintln!(
-                            "Bypass: --no-outcome-required or CHUMP_GAP_RESERVE_NO_OUTCOME=1 (audited)."
-                        );
+                        eprintln!("Bypass: --no-outcome-required (audited).");
                         std::process::exit(1);
                     }
                     if is_p01 && !traced && bypass {
