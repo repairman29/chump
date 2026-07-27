@@ -10,7 +10,7 @@
 //! - Profile data must never appear in logs, tool responses, or error output.
 //! - `sessions/` is git-ignored; profile never lands in git.
 
-use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
+use aes_gcm::aead::{Aead, Generate, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -160,7 +160,7 @@ fn load_or_create_key() -> Result<[u8; 32]> {
         }
     }
     let _ = std::fs::create_dir_all(sessions_dir());
-    let key: [u8; 32] = Aes256Gcm::generate_key(OsRng).into();
+    let key: [u8; 32] = Key::<Aes256Gcm>::generate().into();
     std::fs::write(&path, key)?;
     #[cfg(unix)]
     {
@@ -177,7 +177,7 @@ fn load_or_create_key() -> Result<[u8; 32]> {
 #[allow(deprecated)] // aes-gcm 0.10 still ships old generic-array 0.x from_slice
 fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<Vec<u8>> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
         .map_err(|_| anyhow!("encrypt failed"))?;

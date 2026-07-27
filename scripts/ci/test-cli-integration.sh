@@ -176,7 +176,11 @@ check_success "fleet-velocity exits 0"                fleet-velocity
 check_success "waste-tally exits 0"                   waste-tally
 check_success "ship-quality exits 0"                  ship-quality
 check_success "roadmap-status exits 0"                roadmap-status
-check_success "mission-grade exits 0"                 mission-grade
+# mission-grade is a HEALTH command: it exits non-zero by design when a pillar's
+# shipped_24h is 0 (grade F). That count comes from `git log origin/main --since=24h`,
+# so the exit code is time-dependent on real merge activity — asserting exit 0 makes
+# this smoke test flaky. Assert instead that the command RUNS and prints its scorecard.
+check_any     "mission-grade prints scorecard"        "Mission Grade|Pillar" mission-grade
 # lesson-grade requires <GAP-ID> --pr <N> — check it at least shows usage
 check_any     "lesson-grade --help shows Usage"        "Usage|lesson-grade|GAP-ID" lesson-grade --help
 check_success "ci-summary exits 0"                    ci-summary

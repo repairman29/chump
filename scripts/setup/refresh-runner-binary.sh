@@ -117,15 +117,23 @@ trap 'git -C "$REPO_ROOT" worktree remove --force "$BUILD_WORKTREE" >>"$LOG" 2>&
 
 # Build --release in the detached worktree. Use cargo build (not cargo install)
 # so we write to BUILD_WORKTREE/target/release/chump and nothing else.
-log "cargo build --release --bin chump (in $BUILD_WORKTREE) …"
-if ! PATH="$(dirname "$CARGO"):$PATH" \
+# RESILIENT-199: build into the WARM shared target dir ($REPO_ROOT/target),
+# not the cold BUILD_WORKTREE/target. A detached /tmp worktree does not inherit
+# the repo's .cargo/config shared target-dir, so it compiled from scratch every
+# run — the ~26-min cold build that got SIGKILL'd on 2026-07-05 and left the
+# auto-deploy dead + disabled. Reusing the warm target makes this an incremental
+# ~1-2 min build. The auto-deploy is serialized (one launchd job), so sharing
+# the target with the main checkout is safe here.
+SHARED_TARGET="$REPO_ROOT/target"
+log "cargo build --release --bin chump (worktree $BUILD_WORKTREE, warm target $SHARED_TARGET) …"
+if ! PATH="$(dirname "$CARGO"):$PATH" CARGO_TARGET_DIR="$SHARED_TARGET" \
      "$CARGO" build --release --bin chump --manifest-path "$BUILD_WORKTREE/Cargo.toml" >>"$LOG" 2>&1; then
     log "FATAL: cargo build failed; see $LOG"
     emit runner_binary_refresh_failed "\"reason\":\"cargo_build_failed\""
     exit 1
 fi
 
-BUILT_BIN="$BUILD_WORKTREE/target/release/chump"
+BUILT_BIN="$SHARED_TARGET/release/chump"
 if [[ ! -x "$BUILT_BIN" ]]; then
     log "FATAL: $BUILT_BIN missing after cargo build"
     emit runner_binary_refresh_failed "\"reason\":\"binary_missing_post_build\""

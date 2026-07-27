@@ -644,14 +644,12 @@ jobs:
     env:
       CHUMP_REPO: ${{ github.workspace }}
       CHUMP_LOCK_DIR: ${{ github.workspace }}/.chump-locks
-      # INFRA-2118: per-run /tmp CARGO_TARGET_DIR isolates cross-PR target
-      # corruption (DOC-063). fast-checks stays on /tmp (NOT ./target caching like
-      # clippy/cargo-test): pointing it at ./target un-skips a cohort of fast-checks
-      # guards that hardcode $ROOT/target/debug/chump and then fail on claim's
-      # autonomy gate (test-cli-integration.sh etc. — claim checks AUTONOMY_LEVEL
-      # before format validation, a real ordering bug). A follow-up gap fixes that
-      # cohort + the ordering, THEN enables ./target caching here.
-      CARGO_TARGET_DIR: /tmp/cargo-target-${{ github.run_id }}-${{ github.run_attempt }}
+      # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
+      # <workspace>/target so Swatinem caches build artifacts. CREDIBLE-166 fixed
+      # the guards that ./target un-skips: coord-surfaces-smoke (its own fix),
+      # the claim format-ordering bug (#3325), and the fleet-GO setup step above
+      # (claim-exercising guards need AUTONOMY_LEVEL>=1). Now matches clippy/cargo-test.
+      CARGO_TARGET_DIR: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && format('/tmp/cargo-target-{0}-{1}', github.run_id, github.run_attempt) || format('{0}/target', github.workspace) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -699,6 +697,18 @@ jobs:
       - name: Install mold linker (Linux only)
         if: runner.os == 'Linux'
         run: sudo apt-get install -y mold
+
+      # CREDIBLE-166: several fast-checks guards exercise `chump claim`, which
+      # refuses when the RESILIENT-073 kill switch (~/.chump/AUTONOMY_LEVEL) is
+      # 0/absent. Those guards were silently skipping under the old /tmp target
+      # dir (binary absent from $ROOT/target); once fast-checks caches ./target
+      # they run for real and need fleet GO. test-fleet-kill-switch.sh isolates
+      # its own state in a synthetic FAKE_HOME, so this job-level GO does not
+      # affect it; the runner's HOME is ephemeral.
+      - name: Enable fleet autonomy for claim-exercising guards (CREDIBLE-166)
+        run: |
+          mkdir -p "$HOME/.chump"
+          echo 5 > "$HOME/.chump/AUTONOMY_LEVEL"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
