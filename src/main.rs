@@ -8979,6 +8979,90 @@ async fn main() -> Result<()> {
                 }
                 // ── end CREDIBLE-107 evidence gate ──────────────────────────────────────
 
+                // ── MISSION-045: outcome gate for P0/P1 (anti-bloat keystone) ──
+                // Every P0/P1 gap must trace to a real outcome (a row in the
+                // outcomes table). Filing a high-priority gap with no outcome is
+                // how the backlog fills with self-referential meta-work — the
+                // 2026-07-26 bankruptcy closed 798 such untraced gaps. P2/P3 stay
+                // permissionless (exploratory). Bypass: --no-outcome-required,
+                // audited so the pattern stays visible. (No env-var bypass — the
+                // EFFECTIVE-094 debt-ceiling forbids adding new bypass vars; the
+                // audited CLI flag is the only escape hatch.)
+                //
+                // Empty-outcomes skip: if the outcomes table is empty, there is
+                // nothing to trace to, so the gate is vacuous — enforce only once
+                // at least one outcome exists (always true in the real repo, which
+                // carries MISSION-010/CREDIBLE-000/… ). This keeps every
+                // seed-a-fixture test green with zero bypass vars, while the gate
+                // stays fully live in production.
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str()) {
+                        let no_outcome_required = args.iter().any(|a| a == "--no-outcome-required");
+                        let has_outcomes = store
+                            .list_outcomes()
+                            .map(|o| !o.is_empty())
+                            .unwrap_or(false);
+                        let oid = reserve_outcome_id
+                            .as_deref()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let outcome_valid =
+                            !oid.is_empty() && matches!(store.get_outcome(&oid), Ok(Some(_)));
+
+                        if oid.is_empty() && !no_outcome_required && has_outcomes {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --outcome <id> (MISSION-045 anti-bloat gate)."
+                            );
+                            eprintln!("Every high-priority gap must trace to a real outcome:");
+                            if let Ok(outs) = store.list_outcomes() {
+                                for o in outs.iter().take(12) {
+                                    eprintln!("  {}  {}", o.id, o.title);
+                                }
+                            }
+                            eprintln!(
+                                "Bypass: --no-outcome-required (audited). P2/P3 need no outcome."
+                            );
+                            std::process::exit(1);
+                        }
+                        if !oid.is_empty() && !outcome_valid {
+                            eprintln!();
+                            eprintln!("chump gap: --outcome '{oid}' is not a valid outcome id.");
+                            eprintln!(
+                                "Run `chump outcome list` for valid outcomes, or create one first."
+                            );
+                            std::process::exit(1);
+                        }
+                        if oid.is_empty() && no_outcome_required {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            let safe_domain = domain.replace(['"', '\\'], "");
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let bypass_reason = "--no-outcome-required flag";
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts}","kind":"outcome_gate_bypassed","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"{bypass_reason}"}}"#
+                                );
+                            }
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] WARN: outcome_gate_bypassed (bypass={bypass_reason})"
+                                );
+                            }
+                        }
+                    }
+                }
+                // ── end MISSION-045 outcome gate ────────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -9275,6 +9359,51 @@ async fn main() -> Result<()> {
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                // MISSION-045: close-side outcome gate — refuse to flip a P0/P1 gap
+                // to done without an outcome_id. Backstop for the reserve gate
+                // (catches gaps that pre-date it). Bypass: --no-outcome-required
+                // (audited). P2/P3 unaffected — permissionless.
+                if let Ok(Some(g)) = store.get(&gap_id) {
+                    let is_p01 = matches!(g.priority.as_str(), "P0" | "P1");
+                    let traced = g
+                        .outcome_id
+                        .as_deref()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false);
+                    let bypass = args.iter().any(|a| a == "--no-outcome-required");
+                    // Empty-outcomes skip (mirrors the reserve gate): a DB with no
+                    // outcomes has nothing to trace to, so the gate is vacuous.
+                    let has_outcomes = store
+                        .list_outcomes()
+                        .map(|o| !o.is_empty())
+                        .unwrap_or(false);
+                    if is_p01 && !traced && !bypass && has_outcomes {
+                        eprintln!();
+                        eprintln!(
+                            "chump gap ship: P0/P1 gap {gap_id} has no outcome_id (MISSION-045 close gate)."
+                        );
+                        eprintln!(
+                            "Link it first: chump outcome link {gap_id} --outcome <id>  (see: chump outcome list)"
+                        );
+                        eprintln!("Bypass: --no-outcome-required (audited).");
+                        std::process::exit(1);
+                    }
+                    if is_p01 && !traced && bypass {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":"{ts}","kind":"outcome_gate_bypassed","phase":"ship","gap_id":"{gap_id}"}}"#
+                            );
+                        }
+                    }
+                }
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
                 let why = args.iter().any(|a| a == "--why");
                 // INFRA-156: --closed-pr N stamps the closure PR number on the

@@ -605,31 +605,18 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
           fi
         fi
 
-        if _curator_already_filed_today "balance_restock_${_pillar}"; then
-          echo "Decision 3: ${_pillar} pillar starved ($_count < 2) — already filed today, skipping"
-          continue
-        fi
-        if [[ "${_DRY_RUN:-0}" == "1" ]]; then
-          echo "Decision 3: ${_pillar} pillar starved ($_count < 2) — [dry-run] would file gap"
-          log_curator_decision \
-            "balance_restock" \
-            "${_pillar} pillar has $_count pickable; target ≥2" \
-            "dry_run: would file balance gap for ${_pillar}"
-        else
-          _today="$(date -u +%Y-%m-%d)"
-          _gap_id="$(_curator_file_gap "MISSION-${_pillar}: pillar starved — only $_count pickable xs/s/m gaps as of ${_today}" "s")"
-          if [[ -n "$_gap_id" ]]; then
-            _curator_mark_filed_today "balance_restock_${_pillar}" "$_gap_id"
-            echo "Decision 3: ${_pillar} starved → filed $_gap_id"
-            log_curator_decision \
-              "balance_restock" \
-              "${_pillar} pillar has $_count pickable; below target of 2" \
-              "filed $_gap_id (${_pillar}=$_count pickable, target ≥2)"
-          else
-            log_curator_decision "balance_restock" \
-              "${_pillar} starved at $_count" "error: chump gap reserve failed"
-          fi
-        fi
+        # MISSION-045 / anti-bloat (2026-07-26): pillar starvation is a METRIC,
+        # not a work item. It is already surfaced by fleet_health.rs
+        # (pillars_starved, with a score penalty) and `chump fleet brief`. Filing
+        # a "pillar starved" gap here — as an INFRA gap that never refills the
+        # NAMED pillar — recurs every cycle and bloats the backlog (146 such gaps
+        # accumulated by the 2026-07-26 bankruptcy). Log the signal; do NOT file a
+        # gap. Real refill happens by pointing the fleet at an outcome, not by
+        # manufacturing self-referential gaps.
+        log_curator_decision \
+          "balance_restock" \
+          "${_pillar} pillar has $_count pickable; target ≥2" \
+          "signal-only (no gap filed, anti-bloat): starvation is a metric — see fleet_health.pillars_starved / chump fleet brief"
       fi
     done
   fi
@@ -665,22 +652,18 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
             "dry_run: would file pr_stuck_cluster gap" \
             '"gh_calls":'"$_gh_calls"
         else
-          _today="$(date -u +%Y-%m-%d)"
-          _gap_id="$(_curator_file_gap "RESILIENT: pr-stuck-cluster — ${_stuck_count} PRs blocked >2h as of ${_today}" "s")"
-          if [[ -n "$_gap_id" ]]; then
-            _curator_mark_filed_today "pr_unstick" "$_gap_id"
-            echo "Decision 4: $_stuck_count stuck PR(s) → filed $_gap_id"
-            log_curator_decision "pr_unstick" \
-              "$_stuck_count PR(s) open >2h with failing checks block fleet throughput" \
-              "filed $_gap_id ($_stuck_count stuck PRs)" \
-              '"gh_calls":'"$_gh_calls"
-          else
-            _fclass="$(_curator_read_file_gap_failure_class)"
-            echo "Decision 4: gap reserve failed (class=$_fclass)"
-            log_curator_decision "pr_unstick" \
-              "$_stuck_count stuck PRs" "error: chump gap reserve failed" \
-              '"gh_calls":'"$_gh_calls"',"failure_class":"'"$_fclass"'"'
-          fi
+          # anti-bloat (2026-07-26): a pr-stuck cluster is a transient ALERT, not
+          # a work item. The count goes stale the moment PRs unstick, and the
+          # actual fix (rebase / re-arm / merge) is done by queue-driver + the
+          # shepherd — not by someone picking a "pr-stuck-cluster" gap. Emit the
+          # ambient alert; do NOT file a persistent gap (11 such gaps had
+          # accumulated by the 2026-07-26 bankruptcy).
+          log_ambient "pr_stuck_cluster" '"count":'"$_stuck_count"',"gh_calls":'"$_gh_calls"
+          echo "Decision 4: $_stuck_count stuck PR(s) → ambient alert (no gap filed, anti-bloat)"
+          log_curator_decision "pr_unstick" \
+            "$_stuck_count PR(s) open >2h with failing checks" \
+            "signal-only (no gap filed, anti-bloat): transient alert, handled by queue-driver/shepherd" \
+            '"gh_calls":'"$_gh_calls"
         fi
       else
         echo "Decision 4: 0 stuck PRs — no action needed"
@@ -707,18 +690,14 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
           "Waste rate ${_waste_rate}% exceeds 20% threshold" \
           "dry_run: would file waste-spike gap"
       else
-        _today="$(date -u +%Y-%m-%d)"
-        _gap_id="$(_curator_file_gap "ZERO-WASTE: waste-spike — ${_waste_rate}% in 2h window as of ${_today}" "s")"
-        if [[ -n "$_gap_id" ]]; then
-          _curator_mark_filed_today "waste_investigation" "$_gap_id"
-          echo "Decision 5: waste rate ${_waste_rate}% → filed $_gap_id"
-          log_curator_decision "waste_investigation" \
-            "Waste rate ${_waste_rate}% exceeds 20% threshold" \
-            "filed $_gap_id (rate=${_waste_rate}%)"
-        else
-          log_curator_decision "waste_investigation" \
-            "Waste rate ${_waste_rate}%" "error: chump gap reserve failed"
-        fi
+        # anti-bloat (2026-07-26): a waste-rate spike is a transient ALERT, not a
+        # work item — a snapshot gap ("N% in 2h as of DATE") goes stale
+        # immediately. Emit the ambient alert; do NOT file a persistent gap.
+        log_ambient "waste_rate_high" '"rate":'"$_waste_rate"',"threshold":20'
+        echo "Decision 5: waste rate ${_waste_rate}% → ambient alert (no gap filed, anti-bloat)"
+        log_curator_decision "waste_investigation" \
+          "Waste rate ${_waste_rate}% exceeds 20% threshold" \
+          "signal-only (no gap filed, anti-bloat): transient alert"
       fi
     else
       echo "Decision 5: waste rate ${_waste_rate}% ≤ 20% — no action"

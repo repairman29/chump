@@ -174,10 +174,20 @@ DECOMPOSE_CALLS3=$(wc -l < "$DECOMPOSE_LOG" | tr -d ' ')
   || fail "Scenario 3: decompose called when no valid l/xl candidate exists"
 ok "Scenario 3: no decompose when only blocked/no l/xl candidate"
 
+# MISSION-045 anti-bloat: a starved pillar with no decomposable l/xl gap no
+# longer *files* a restock gap (that manufactured self-referential backlog —
+# 146 such gaps by the 2026-07-26 bankruptcy). The curator still DETECTS and
+# LOGS the starvation as a signal-only balance_restock decision; the metric
+# lives in fleet_health.pillars_starved / `chump fleet brief`.
+BALANCE_SIGNAL=$(grep '"decision_type":"balance_restock"' "$AMB" | grep -c 'signal-only' || true)
+[[ "$BALANCE_SIGNAL" -ge 1 ]] \
+  || fail "Scenario 3: balance_restock signal not logged when decompose unavailable"
+ok "Scenario 3: starvation logged signal-only when decompose unavailable"
+
 BALANCE_FILED=$(grep '"decision_type":"balance_restock"' "$AMB" | grep -c '"action_taken":"filed INFRA-' || true)
-[[ "$BALANCE_FILED" -ge 1 ]] \
-  || fail "Scenario 3: tracking gap not filed when decompose unavailable"
-ok "Scenario 3: tracking gap filed as fallback"
+[[ "$BALANCE_FILED" -eq 0 ]] \
+  || fail "Scenario 3: balance_restock must NOT file a gap (anti-bloat)"
+ok "Scenario 3: no restock gap filed (anti-bloat)"
 
 # ---------------------------------------------------------------------------
 # Scenario 4: dry-run — no actual decompose call, dry_run event logged
