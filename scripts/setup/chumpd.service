@@ -11,6 +11,10 @@
 # Placeholders (substituted by provision-chumpd-host.sh):
 #   __REPO_ROOT__   absolute path to the cloned chump checkout on this host
 #   __HOME__        the provisioning user's $HOME
+#   __RUN_USER__    the provisioning user's username (`id -un`) — explicit
+#                   User= keeps this unit portable to a system-level install
+#                   (/etc/systemd/system) without silently running as root;
+#                   under `systemctl --user` it's a no-op self-reference.
 #
 # STATUS: chumpd itself (MISSION-051) has not merged yet, so ExecStart
 # below points at a binary that may not exist until then. The unit is
@@ -28,6 +32,7 @@
 # Install (user-level, no sudo/root needed):
 #   mkdir -p ~/.config/systemd/user
 #   sed -e "s|__REPO_ROOT__|/path/to/chump-host|g" -e "s|__HOME__|$HOME|g" \
+#     -e "s|__RUN_USER__|$(id -un)|g" \
 #     scripts/setup/chumpd.service > ~/.config/systemd/user/chumpd.service
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now chumpd.service
@@ -47,6 +52,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=__RUN_USER__
 WorkingDirectory=__REPO_ROOT__
 ExecStart=__REPO_ROOT__/target/release/chumpd
 EnvironmentFile=-__HOME__/.chump/chumpd.env
